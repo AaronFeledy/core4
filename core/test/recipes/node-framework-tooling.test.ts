@@ -6,7 +6,7 @@ import { createStandaloneRedactor } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { ProviderId } from "@lando/sdk/schema";
 import { RuntimeProviderRegistry } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect, Layer, Schema, Stream } from "effect";
 import { runCli } from "../../src/cli/run.ts";
 import { bundledRecipe } from "../_support/bundled-recipe.ts";
@@ -22,22 +22,21 @@ test.each([
     const root = await realpath(await mkdtemp(join(tmpdir(), "lando-recipe-local-bin-")));
     const caller = join(root, "caller");
     const calls: unknown[] = [];
-    const providerRegistry = Layer.succeed(RuntimeProviderRegistry, {
-      list: Effect.succeed([ProviderId.make("lando")]),
-      capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-      appliedPlansFor: () => Effect.succeed([]),
-      resolveAppliedPlan: () => Effect.succeed(undefined),
-      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" }),
-      select: () =>
-        Effect.succeed({
-          ...TestRuntimeProvider,
-          execStream: (target, spec) =>
-            Stream.suspend(() => {
-              calls.push({ service: target.service, cmd: spec.command, cwd: spec.cwd });
-              return Stream.make({ exitCode: 0 });
-            }),
-        }),
-    });
+    const providerRegistry = Layer.succeed(
+      RuntimeProviderRegistry,
+      makeTestRuntimeProviderRegistry({
+        list: Effect.succeed([ProviderId.make("lando")]),
+        select: () =>
+          Effect.succeed({
+            ...TestRuntimeProvider,
+            execStream: (target, spec) =>
+              Stream.suspend(() => {
+                calls.push({ service: target.service, cmd: spec.command, cwd: spec.cwd });
+                return Stream.make({ exitCode: 0 });
+              }),
+          }),
+      }),
+    );
     const io = createBufferedRendererIO();
     const exitCodes: number[] = [];
     try {

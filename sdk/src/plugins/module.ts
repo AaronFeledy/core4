@@ -1,5 +1,6 @@
 import type { Effect, Layer } from "effect";
 import type {
+  AppliedStateVersionError,
   ProviderCapabilityError,
   ProviderUnavailableError,
   ProxyError,
@@ -10,6 +11,7 @@ import type { RendererContribution } from "../renderer/index.ts";
 import type { HostUninstallOutcome, HostUninstallStep } from "../schema/host-maintenance.ts";
 import type {
   AbsolutePath,
+  AppId,
   AppPlan,
   AppliedStateInventory,
   HostPlatform,
@@ -58,9 +60,18 @@ export type RuntimeProviderFactoryRequirements =
   | AppPlanSanitizer;
 
 export interface RuntimeProviderContribution {
-  readonly appliedStateInventory?: (
+  readonly appliedStateInventory: (
     ctx: LandoPluginContext,
-  ) => Effect.Effect<AppliedStateInventory, ProviderUnavailableError, PathsService>;
+  ) => Effect.Effect<
+    AppliedStateInventory,
+    ProviderUnavailableError | AppliedStateVersionError,
+    PathsService
+  >;
+  /** Filesystem-only targeted read. Returns undefined only when the app has no record. */
+  readonly readAppliedPlanStrict: (
+    ctx: LandoPluginContext,
+    appId: AppId,
+  ) => Effect.Effect<AppPlan | undefined, ProviderUnavailableError | AppliedStateVersionError, PathsService>;
   readonly id: ProviderId;
   readonly declaredCapabilities?: (platform: HostPlatform, arch?: string) => ProviderCapabilities;
   readonly resourceOwnership?: (

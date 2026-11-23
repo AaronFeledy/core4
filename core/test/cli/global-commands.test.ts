@@ -75,7 +75,7 @@ import * as AppPlannerLayer from "@lando/engine/services/planner";
 import { parseLandofile } from "@lando/landofile/parser";
 import { RedactionService } from "@lando/redaction/service";
 import { PreAppStartEvent } from "@lando/sdk/events";
-import { makeTestRouterService } from "@lando/sdk/test";
+import { makeTestRouterService, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Cause, DateTime, Deferred, Effect, Exit, Fiber, Layer, Queue, Schema, Stream } from "effect";
 import { globalConfigOptionsFromInput } from "../../src/cli/command-specs/meta/global/config.ts";
@@ -652,16 +652,16 @@ const makeHarness = async (
     Layer.succeed(BuildOrchestrator, buildOrchestrator),
     Layer.succeed(
       RuntimeProviderRegistry,
-      RuntimeProviderRegistry.of({
-        resolveAppliedPlan: () => Effect.succeed(undefined),
-        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+      makeTestRuntimeProviderRegistry({
         appliedStateInventory: () =>
           Effect.sync(() => ({
             plans: [
               ...(options.missingAppliedState || appliedPlan === undefined ? [] : [appliedPlan]),
               ...(options.consumerPlans ?? []),
             ],
-            unreadable: options.unreadableConsumerState ? [{ path: "/protected/unreadable-app.json" }] : [],
+            unreadable: options.unreadableConsumerState
+              ? [{ path: "/protected/unreadable-app.json", reason: "unreadable" }]
+              : [],
           })),
         appliedPlansFor: () =>
           Effect.sync(() => (options.missingAppliedState || appliedPlan === undefined ? [] : [appliedPlan])),
@@ -3885,11 +3885,7 @@ describe("meta:global command effects", () => {
         harness.layer,
         Layer.succeed(
           RuntimeProviderRegistry,
-          RuntimeProviderRegistry.of({
-            resolveAppliedPlan: () => Effect.succeed(undefined),
-            resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-            appliedPlansFor: () => Effect.succeed([]),
-            list: Effect.succeed([]),
+          makeTestRuntimeProviderRegistry({
             capabilities: Effect.fail(missingProvider),
             select: () => Effect.fail(missingProvider),
           }),

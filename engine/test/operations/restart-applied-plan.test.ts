@@ -11,6 +11,7 @@ import {
   appIdentityKey,
 } from "@lando/sdk/schema";
 import { RuntimeProviderRegistry } from "@lando/sdk/services";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect } from "effect";
 import { restartApp } from "../../src/operations/restart.ts";
 import { makeHarness, plan, web } from "./start-progress-topology-support.ts";
@@ -78,15 +79,18 @@ test("records selected runtime metadata, carries unselected services, and keeps 
       app: { kind: "user", id: desired.id, root: desired.root },
     },
   ).pipe(
-    Effect.provideService(RuntimeProviderRegistry, {
-      ...harness.runtimeProviderRegistry,
-      select: () =>
-        Effect.succeed({
-          ...provider,
-          apply: (selected, options) =>
-            rememberAppliedPlan(cacheStore, selected, options).pipe(Effect.as({ changed: false })),
-        }),
-    }),
+    Effect.provideService(
+      RuntimeProviderRegistry,
+      makeTestRuntimeProviderRegistry({
+        ...harness.runtimeProviderRegistry,
+        select: () =>
+          Effect.succeed({
+            ...provider,
+            apply: (selected, options) =>
+              rememberAppliedPlan(cacheStore, selected, options).pipe(Effect.as({ changed: false })),
+          }),
+      }),
+    ),
     Effect.provide(harness.layer),
   );
 

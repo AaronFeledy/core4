@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { deriveToolInputSchema } from "@lando/mcp/registry";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { InteractionService, LandofileService, RuntimeProviderRegistry } from "@lando/sdk/services";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Cause, Effect, Exit, Layer, Result } from "effect";
 import { destroySpec, runDestroyCommand } from "../../src/cli/command-specs/app/destroy";
 import { rebuildSpec, runRebuildCommand } from "../../src/cli/command-specs/app/rebuild";
@@ -58,9 +59,7 @@ describe("lifecycle confirmation boundary", () => {
               Layer.merge(
                 Layer.succeed(
                   RuntimeProviderRegistry,
-                  RuntimeProviderRegistry.of({
-                    resolveAppliedPlan: () => Effect.succeed(undefined),
-                    appliedPlansFor: () => Effect.succeed([]),
+                  makeTestRuntimeProviderRegistry({
                     list: Effect.die("Unexpected provider list"),
                     capabilities: Effect.die("Unexpected capabilities"),
                     select: () => Effect.die("Unexpected provider selection"),
@@ -105,10 +104,7 @@ describe("lifecycle confirmation boundary", () => {
           ),
           Layer.succeed(
             RuntimeProviderRegistry,
-            RuntimeProviderRegistry.of({
-              resolveAppliedPlan: () => Effect.succeed(undefined),
-              resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-              appliedPlansFor: () => Effect.succeed([]),
+            makeTestRuntimeProviderRegistry({
               list: Effect.die("Unexpected provider list"),
               capabilities: Effect.die("Unexpected provider capabilities"),
               select: () => Effect.die("Unexpected provider selection"),

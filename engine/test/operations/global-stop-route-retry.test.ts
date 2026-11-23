@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { ProxyApplyError, ProxyError } from "@lando/sdk/errors";
 import { AbsolutePath, type AppPlan, ServiceName } from "@lando/sdk/schema";
 import { RouterService, RuntimeProviderRegistry, type ServiceRuntimeInfo } from "@lando/sdk/services";
-import { TestRuntimeProvider, makeTestRouterService } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRouterService, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect } from "effect";
 import { globalStop } from "../../src/operations/global-stop.ts";
 import { makeUnavailableRouter } from "../../src/subsystems/proxy/api.ts";
@@ -91,9 +91,7 @@ test("selected global stop retries failed route cleanup after its container was 
     const stop = globalStop({ services: ["ssh-agent"] }).pipe(
       Effect.provideService(
         RuntimeProviderRegistry,
-        RuntimeProviderRegistry.of({
-          resolveAppliedPlan: () => Effect.succeed(undefined),
-          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+        makeTestRuntimeProviderRegistry({
           appliedPlansFor: () => Effect.succeed([plan]),
           list: Effect.succeed([plan.provider]),
           capabilities: Effect.succeed(provider.capabilities),

@@ -1,5 +1,5 @@
 import { orDieWithRole } from "@lando/sdk/command-result";
-import { ProviderUnavailableError } from "@lando/sdk/errors";
+import { type AppliedStateVersionError, ProviderUnavailableError } from "@lando/sdk/errors";
 import {
   type AbsolutePath,
   type AppId,
@@ -21,12 +21,19 @@ import {
   serviceContainerOwnershipProblem,
 } from "./native-ownership.ts";
 import { type makeResourceOwnershipStore, ownershipFailure } from "./resource-ownership.ts";
-import { PlanfulVolumeCoverage, deleteVolumeSnapshot } from "./teardown-volumes.ts";
+import {
+  PlanfulVolumeCoverage,
+  type SkippedVolume,
+  deleteVolumeSnapshot,
+  protectedSkip,
+} from "./teardown-volumes.ts";
 
 export { privateNetworkLabels } from "./native-ownership.ts";
 
 export const makeOwnedResourcesCleanup = (input: {
-  readonly checkAppliedState?: (appId: AppId) => Effect.Effect<void, ProviderUnavailableError>;
+  readonly checkAppliedState?: (
+    appId: AppId,
+  ) => Effect.Effect<void, ProviderUnavailableError | AppliedStateVersionError>;
   readonly store: ReturnType<typeof makeResourceOwnershipStore>;
   readonly api?: {
     readonly request?: (request: EngineHttpRequest) => Effect.Effect<EngineHttpResponse, ProviderError>;
@@ -39,7 +46,7 @@ export const makeOwnedResourcesCleanup = (input: {
     const inventory = yield* input.store.load(root);
     const receipts = inventory?.adoptions?.flatMap((batch) => batch.receipts) ?? [];
     const servicesRemoved: ServiceName[] = [];
-    const skipped: Array<{ appId: AppId; resource: string; reason: string }> = [];
+    const skipped: SkippedVolume[] = [];
     const events = yield* Effect.serviceOption(EventService);
     let networksRemoved = 0;
     const coverage = yield* PlanfulVolumeCoverage;
@@ -73,12 +80,12 @@ export const makeOwnedResourcesCleanup = (input: {
           (error) => error.operation === "applied-state.read",
           (error) =>
             Effect.gen(function* () {
-              skipped.push({ appId: resource.appId, resource: resource.nativeName, reason: error.message });
+              skipped.push({ appId: resource.appId, resource: resource.nativeName, ...protectedSkip(error) });
               if (Option.isSome(events))
                 yield* events.value
                   .publish({
                     _tag: "message.warn",
-                    body: `Skipped ${resource.nativeName} for app ${resource.appId}: ${error.message}`,
+                    body: `Skipped ${resource.nativeName} for app ${resource.appId}: ${error.message} ${error.remediation}`,
                     timestamp: DateTime.nowUnsafe(),
                   })
                   .pipe(orDieWithRole("cleanup"));

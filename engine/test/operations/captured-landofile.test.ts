@@ -18,7 +18,7 @@ import {
   LandofileService,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
-import { makeTestRuntimeProvider } from "@lando/sdk/test";
+import { makeTestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { DateTime, Effect, Layer, Result, Schema, Stream } from "effect";
 import type { ResolvedAppTarget } from "../../src/landofile/app-resolution.ts";
@@ -110,9 +110,7 @@ const fixture = (
     ),
     Layer.succeed(
       RuntimeProviderRegistry,
-      RuntimeProviderRegistry.of({
-        appliedPlansFor: () => Effect.succeed([]),
-        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+      makeTestRuntimeProviderRegistry({
         resolveAppliedPlan: () => Effect.succeed(options.applied === true ? plan : undefined),
         list: Effect.succeed([providerId]),
         capabilities: Effect.succeed(provider.capabilities),

@@ -6,6 +6,7 @@ import { makeLandoPaths } from "@lando/paths";
 import { GlobalAppError, SshError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId } from "@lando/sdk/schema";
 import { GlobalAppService, PathsService, RuntimeProviderRegistry, SshService } from "@lando/sdk/services";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect, Result } from "effect";
 import { layer as sshService } from "../src/ssh-service.ts";
 
@@ -29,7 +30,7 @@ const globalApp = {
     }),
 };
 
-const registry = RuntimeProviderRegistry.of({
+const registry = makeTestRuntimeProviderRegistry({
   list: Effect.succeed([]),
   capabilities: Effect.die("unexpected capability lookup"),
   appliedPlansFor: () => Effect.succeed([]),

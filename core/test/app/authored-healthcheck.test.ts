@@ -7,6 +7,7 @@ import { startApp } from "@lando/core/cli/operations";
 import { ProviderId } from "@lando/core/schema";
 import { RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect, Layer, Result } from "effect";
 import { withCwd } from "../_support/temp-cwd.ts";
 
@@ -81,10 +82,7 @@ for (const [kind, field] of [
                   layers: [
                     Layer.succeed(
                       RuntimeProviderRegistry,
-                      RuntimeProviderRegistry.of({
-                        resolveAppliedPlan: () => Effect.succeed(undefined),
-                        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-                        appliedPlansFor: () => Effect.succeed([]),
+                      makeTestRuntimeProviderRegistry({
                         list: Effect.succeed([ProviderId.make("test")]),
                         capabilities: Effect.succeed(provider.capabilities),
                         select: () => Effect.succeed(provider),

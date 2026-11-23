@@ -238,6 +238,15 @@ export const parseCompiledBinaryArgs = (
 };
 
 if (import.meta.main) {
+  // Bun keeps symlinked workspace paths under this flag, so the bundle gets a second copy of
+  // @lando/sdk and errors from one copy fail `instanceof` checks against the other.
+  const preserveSymlinks = process.env.NODE_PRESERVE_SYMLINKS;
+  if (preserveSymlinks !== undefined && preserveSymlinks !== "" && preserveSymlinks !== "0") {
+    console.error(
+      "Compiled builds cannot run with NODE_PRESERVE_SYMLINKS enabled: it bundles workspace packages twice. Run `env -u NODE_PRESERVE_SYMLINKS bun run build` or remove the export from your shell profile.",
+    );
+    process.exit(1);
+  }
   try {
     await buildCompiledBinary(parseCompiledBinaryArgs(Bun.argv.slice(2)));
   } catch (error) {

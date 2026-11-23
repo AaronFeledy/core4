@@ -11,7 +11,7 @@ import {
   RuntimeProviderRegistry,
   SshService,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Effect, Fiber, Schema } from "effect";
 import { TestClock } from "effect/testing";
@@ -87,29 +87,29 @@ const appliedGlobal = globalPlanAt(AbsolutePath.make("/global"), {
   intervalSeconds: 1,
   retries: 1,
 });
-const registry = (state: "running" | "exited", selected: string[], providerId = appliedGlobal.provider) => ({
-  appliedPlansFor: () => Effect.succeed([]),
-  resolveAppliedPlan: () => Effect.succeed({ ...appliedGlobal, provider: providerId }),
-  resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-  list: Effect.succeed([providerId]),
-  capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-  select: (selectedPlan?: AppPlan | ProviderId) => {
-    selected.push(String(typeof selectedPlan === "string" ? selectedPlan : selectedPlan?.provider));
-    return Effect.succeed({
-      ...TestRuntimeProvider,
-      id: providerId,
-      inspect: () =>
-        Effect.succeed({
-          app: AppId.make("global"),
-          service: ServiceName.make("ssh-agent"),
-          providerId,
-          status: state,
-          publications: { status: "unknown" as const },
-        }),
-      exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
-    });
-  },
-});
+const registry = (state: "running" | "exited", selected: string[], providerId = appliedGlobal.provider) =>
+  makeTestRuntimeProviderRegistry({
+    appliedStateInventory: () => Effect.succeed({ plans: [appliedGlobal], unreadable: [] }),
+    readAppliedPlanStrict: () => Effect.succeed(appliedGlobal),
+    resolveAppliedPlan: () => Effect.succeed({ ...appliedGlobal, provider: providerId }),
+    list: Effect.succeed([providerId]),
+    select: (selectedPlan?: AppPlan | ProviderId) => {
+      selected.push(String(typeof selectedPlan === "string" ? selectedPlan : selectedPlan?.provider));
+      return Effect.succeed({
+        ...TestRuntimeProvider,
+        id: providerId,
+        inspect: () =>
+          Effect.succeed({
+            app: AppId.make("global"),
+            service: ServiceName.make("ssh-agent"),
+            providerId,
+            status: state,
+            publications: { status: "unknown" as const },
+          }),
+        exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
+      });
+    },
+  });
 
 test("Docker app uses the runtime volume when the global app is realized on Docker", async () => {
   const selected: string[] = [];
@@ -358,26 +358,29 @@ test("stopped sidecar starts once and forwards after delayed readiness with task
             setups++;
           }),
       }),
-      Effect.provideService(RuntimeProviderRegistry, {
-        ...providerRegistry,
-        select: (input) =>
-          providerRegistry.select(input).pipe(
-            Effect.map((provider) => ({
-              ...provider,
-              inspect: () =>
-                provider.inspect().pipe(
-                  Effect.map((service) => ({
-                    app: service.app,
-                    service: service.service,
-                    providerId: service.providerId,
-                    publications: service.publications,
-                    status: setups === 0 ? ("exited" as const) : ("running" as const),
-                  })),
-                ),
-              exec: () => Effect.sync(() => ({ exitCode: ++probes < 3 ? 2 : 0, stdout: "", stderr: "" })),
-            })),
-          ),
-      }),
+      Effect.provideService(
+        RuntimeProviderRegistry,
+        makeTestRuntimeProviderRegistry({
+          ...providerRegistry,
+          select: (input) =>
+            providerRegistry.select(input).pipe(
+              Effect.map((provider) => ({
+                ...provider,
+                inspect: (target: Parameters<typeof provider.inspect>[0]) =>
+                  provider.inspect(target).pipe(
+                    Effect.map((service) => ({
+                      app: service.app,
+                      service: service.service,
+                      providerId: service.providerId,
+                      publications: service.publications,
+                      status: setups === 0 ? ("exited" as const) : ("running" as const),
+                    })),
+                  ),
+                exec: () => Effect.sync(() => ({ exitCode: ++probes < 3 ? 2 : 0, stdout: "", stderr: "" })),
+              })),
+            ),
+        }),
+      ),
       Effect.provideService(PathsService, makeLandoPaths({ platform: "linux" })),
       Effect.provide(PrivateFileAccessService.layer),
       Effect.provide(LandoEventService.layer),
@@ -473,16 +476,19 @@ test.each([false, true])(
           yield* TestClock.adjust("30 seconds");
           return yield* Fiber.join(fiber);
         }).pipe(
-          Effect.provideService(RuntimeProviderRegistry, {
-            ...providerRegistry,
-            select: (input) =>
-              providerRegistry.select(input).pipe(
-                Effect.map((provider) => ({
-                  ...provider,
-                  exec: () => Effect.succeed({ exitCode: 2, stdout: "", stderr: `exec denied ${secret}` }),
-                })),
-              ),
-          }),
+          Effect.provideService(
+            RuntimeProviderRegistry,
+            makeTestRuntimeProviderRegistry({
+              ...providerRegistry,
+              select: (input) =>
+                providerRegistry.select(input).pipe(
+                  Effect.map((provider) => ({
+                    ...provider,
+                    exec: () => Effect.succeed({ exitCode: 2, stdout: "", stderr: `exec denied ${secret}` }),
+                  })),
+                ),
+            }),
+          ),
           Effect.provideService(GlobalAppService, globalApp),
           Effect.provideService(PathsService, makeLandoPaths()),
           Effect.provide(LandoEventService.layer),

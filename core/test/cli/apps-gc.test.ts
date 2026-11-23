@@ -9,7 +9,7 @@ import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { AbsolutePath, AppId, LANDO_DATA_ROOT_LABEL, ProviderId } from "@lando/sdk/schema";
 import { InteractionService, PathsService, RuntimeProviderRegistry } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect, Layer, Schema } from "effect";
 import { appsGcConfirmation, appsGcSpec, runAppsGcCommand } from "../../src/cli/command-specs/apps/gc";
 import { renderAppsGcReport } from "../../src/cli/commands/apps-gc";
@@ -49,13 +49,7 @@ const report: AppsGcReport = {
     ],
   })),
 };
-const registry = RuntimeProviderRegistry.of({
-  list: Effect.succeed([]),
-  capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-  select: () => Effect.succeed(TestRuntimeProvider),
-  appliedPlansFor: () => Effect.succeed([]),
-  resolveAppliedPlan: () => Effect.succeed(undefined),
-  resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+const registry = makeTestRuntimeProviderRegistry({
   observeRuntime: Effect.succeed([]),
 });
 
@@ -196,31 +190,34 @@ test.each([false, true])(
     const root = AbsolutePath.make("/missing/retained-data");
     const result = await Effect.runPromise(
       runAppsGcCommand({ flags: { prune: true, yes: true, volumes } }).pipe(
-        Effect.provideService(RuntimeProviderRegistry, {
-          ...registry,
-          list: Effect.succeed([providerId]),
-          observeRuntime: Effect.succeed([
-            {
-              providerId,
-              runtimeObserved: true,
-              appliedPlans: [],
-              services: [],
-              volumes: [
-                {
-                  ref: { app: AppId.make("kept"), store: "database" },
-                  labels: { [LANDO_DATA_ROOT_LABEL]: makeLandoPaths().roots.userDataRoot },
-                  identity: {
-                    nativeName: "kept-data",
-                    coordinationKey: "key",
-                    generation: "1",
-                    ownerRoot: root,
-                    origin: "created" as const,
+        Effect.provideService(
+          RuntimeProviderRegistry,
+          makeTestRuntimeProviderRegistry({
+            ...registry,
+            list: Effect.succeed([providerId]),
+            observeRuntime: Effect.succeed([
+              {
+                providerId,
+                runtimeObserved: true,
+                appliedPlans: [],
+                services: [],
+                volumes: [
+                  {
+                    ref: { app: AppId.make("kept"), store: "database" },
+                    labels: { [LANDO_DATA_ROOT_LABEL]: makeLandoPaths().roots.userDataRoot },
+                    identity: {
+                      nativeName: "kept-data",
+                      coordinationKey: "key",
+                      generation: "1",
+                      ownerRoot: root,
+                      origin: "created" as const,
+                    },
                   },
-                },
-              ],
-            },
-          ]),
-        }),
+                ],
+              },
+            ]),
+          }),
+        ),
         Effect.provide(layer),
       ),
     );

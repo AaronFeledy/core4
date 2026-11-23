@@ -11,7 +11,7 @@ import {
   type ProviderRuntimeSnapshot,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect, Layer, Schema } from "effect";
 import { missingAppRootsDoctor } from "../../src/cli/commands/doctor-missing-app-roots";
 
@@ -67,13 +67,8 @@ const snapshot = (appRoot = root, cache = false, runtimeObserved = true): Provid
   ],
 });
 const registry = (snapshots: ReadonlyArray<ProviderRuntimeSnapshot>) =>
-  RuntimeProviderRegistry.of({
-    resolveAppliedPlan: () => Effect.succeed(undefined),
-    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-    appliedPlansFor: () => Effect.succeed([]),
+  makeTestRuntimeProviderRegistry({
     list: Effect.succeed([providerId]),
-    capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-    select: () => Effect.succeed(TestRuntimeProvider),
     observeRuntime: Effect.succeed(snapshots),
   });
 const fsLayer = Layer.effect(
@@ -118,10 +113,7 @@ test("returns one redacted manual warning when app state cannot be read", async 
           pathsLayer,
           Layer.succeed(
             RuntimeProviderRegistry,
-            RuntimeProviderRegistry.of({
-              ...registry([]),
-              observeRuntime: Effect.fail(error),
-            }),
+            makeTestRuntimeProviderRegistry({ ...registry([]), observeRuntime: Effect.fail(error) }),
           ),
         ),
       ),
@@ -153,7 +145,7 @@ test("does not observe the runtime without a filesystem", async () => {
     missingAppRootsDoctor((text) => text).pipe(
       Effect.provideService(
         RuntimeProviderRegistry,
-        RuntimeProviderRegistry.of({
+        makeTestRuntimeProviderRegistry({
           ...registry([]),
           observeRuntime: Effect.sync(() => {
             observed = true;
@@ -278,17 +270,20 @@ test.each([false, true])(
             exists: () => Effect.succeed(false),
             readDir: () => Effect.succeed([corruptKey, key]),
           }),
-          Effect.provideService(RuntimeProviderRegistry, {
-            ...registry([snapshot(), snapshot(AbsolutePath.make("/apps/second"), true)]),
-            select: () =>
-              Effect.succeed({
-                ...TestRuntimeProvider,
-                capabilities: {
-                  ...TestRuntimeProvider.capabilities,
-                  ...(prepared ? { fileSyncTargets: "prepared-volume" as const } : {}),
-                },
-              }),
-          }),
+          Effect.provideService(
+            RuntimeProviderRegistry,
+            makeTestRuntimeProviderRegistry({
+              ...registry([snapshot(), snapshot(AbsolutePath.make("/apps/second"), true)]),
+              select: () =>
+                Effect.succeed({
+                  ...TestRuntimeProvider,
+                  capabilities: {
+                    ...TestRuntimeProvider.capabilities,
+                    ...(prepared ? { fileSyncTargets: "prepared-volume" as const } : {}),
+                  },
+                }),
+            }),
+          ),
           Effect.provide(store.layer),
           Effect.provide(pathsLayer),
         );

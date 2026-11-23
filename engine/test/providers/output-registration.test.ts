@@ -89,6 +89,9 @@ const registryLayer = (
           {
             id,
             appliedPlans: () => Effect.succeed(appliedPlans),
+            appliedStateInventory: () => Effect.succeed({ plans: appliedPlans, unreadable: [] }),
+            readAppliedPlanStrict: (_ctx: unknown, appId: string) =>
+              Effect.succeed(appliedPlans.find((plan) => plan.id === appId)),
             make: () => Effect.succeed(provider),
           },
         ],

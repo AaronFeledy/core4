@@ -17,7 +17,7 @@ import {
   type ProviderRuntimeSnapshot,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { type Context, DateTime, Effect } from "effect";
 import { findMissingAppRoots, scanMissingAppRoots } from "../../src/operations/missing-app-roots.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
@@ -79,15 +79,12 @@ const run = (
       const fs = yield* FileSystem;
       return yield* findMissingAppRoots.pipe(
         Effect.provideService(FileSystem, { ...fs, exists }),
-        Effect.provideService(RuntimeProviderRegistry, {
-          appliedPlansFor: () => Effect.succeed([]),
-          resolveAppliedPlan: () => Effect.succeed(undefined),
-          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-          list: Effect.succeed([]),
-          capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-          select: () => Effect.succeed(TestRuntimeProvider),
-          ...(snapshots === undefined ? {} : { observeRuntime: Effect.succeed(snapshots) }),
-        }),
+        Effect.provideService(
+          RuntimeProviderRegistry,
+          makeTestRuntimeProviderRegistry({
+            ...(snapshots === undefined ? {} : { observeRuntime: Effect.succeed(snapshots) }),
+          }),
+        ),
       );
     }).pipe(
       Effect.provide(BunFileSystem.layer),
@@ -243,21 +240,20 @@ test.each(["none", "plan", "ownership", "unreadable"] as const)(
   async (source) => {
     const inventory = await Effect.runPromise(
       scanMissingAppRoots().pipe(
-        Effect.provideService(RuntimeProviderRegistry, {
-          list: Effect.succeed([providerId]),
-          capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-          select: () => Effect.die("State inventory must not select a runtime without journal copies"),
-          appliedPlansFor: () => Effect.succeed([]),
-          resolveAppliedPlan: () => Effect.succeed(undefined),
-          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-          hasRecordedOwnership: () => Effect.succeed(source === "ownership"),
-          appliedStateInventory: () =>
-            Effect.succeed({
-              plans: source === "plan" ? [plan] : [],
-              unreadable: source === "unreadable" ? [{ path: "/state/broken" }] : [],
-            }),
-          observeRuntime: Effect.succeed([snapshot({ runtimeObserved: false })]),
-        }),
+        Effect.provideService(
+          RuntimeProviderRegistry,
+          makeTestRuntimeProviderRegistry({
+            list: Effect.succeed([providerId]),
+            select: () => Effect.die("State inventory must not select a runtime without journal copies"),
+            hasRecordedOwnership: () => Effect.succeed(source === "ownership"),
+            appliedStateInventory: () =>
+              Effect.succeed({
+                plans: source === "plan" ? [plan] : [],
+                unreadable: source === "unreadable" ? [{ path: "/state/broken", reason: "unreadable" }] : [],
+              }),
+            observeRuntime: Effect.succeed([snapshot({ runtimeObserved: false })]),
+          }),
+        ),
         Effect.provideService(PathsService, makeLandoPaths({ userDataRoot: dataRoot })),
         Effect.provide(BunFileSystem.layer),
       ),
@@ -309,29 +305,27 @@ test.each(["unreadable", "missing"] as const)(
       scanMissingAppRoots().pipe(
         Effect.provide(BunFileSystem.layer),
         Effect.provideService(PathsService, makeLandoPaths({ userDataRoot: dataRoot })),
-        Effect.provideService(RuntimeProviderRegistry, {
-          appliedPlansFor: () => Effect.succeed([]),
-          resolveAppliedPlan: () => Effect.succeed(undefined),
-          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" }),
-          list: Effect.succeed([providerId, otherProvider]),
-          capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-          select: () => Effect.succeed(TestRuntimeProvider),
-          observeRuntime: Effect.succeed([
-            snapshot({ services: [legacy] }),
-            snapshot({ providerId: otherProvider }),
-          ]),
-          resourceOwnership: (id) =>
-            state === "unreadable" && id === providerId
-              ? Effect.fail(
-                  new ProviderUnavailableError({
-                    providerId,
-                    operation: "resource-ownership",
-                    message: "Resource ownership inventory could not be read.",
-                    remediation: "Repair the provider plugin state.",
-                  }),
-                )
-              : Effect.succeed(undefined),
-        }),
+        Effect.provideService(
+          RuntimeProviderRegistry,
+          makeTestRuntimeProviderRegistry({
+            list: Effect.succeed([providerId, otherProvider]),
+            observeRuntime: Effect.succeed([
+              snapshot({ services: [legacy] }),
+              snapshot({ providerId: otherProvider }),
+            ]),
+            resourceOwnership: (id) =>
+              state === "unreadable" && id === providerId
+                ? Effect.fail(
+                    new ProviderUnavailableError({
+                      providerId,
+                      operation: "resource-ownership",
+                      message: "Resource ownership inventory could not be read.",
+                      remediation: "Repair the provider plugin state.",
+                    }),
+                  )
+                : Effect.succeed(undefined),
+          }),
+        ),
       ),
     );
 
@@ -359,34 +353,32 @@ test("verified adoption receipts keep unlabeled missing-root services", async ()
       const fs = yield* FileSystem;
       return yield* findMissingAppRoots.pipe(
         Effect.provideService(FileSystem, { ...fs, exists: () => Effect.succeed(false) }),
-        Effect.provideService(RuntimeProviderRegistry, {
-          appliedPlansFor: () => Effect.succeed([]),
-          resolveAppliedPlan: () => Effect.succeed(undefined),
-          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-          list: Effect.succeed([providerId]),
-          capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-          select: () => Effect.succeed(TestRuntimeProvider),
-          resourceOwnership: () =>
-            Effect.succeed({
-              appRoot: root,
-              ownerKey: appIdentityKey("owner", root),
-              providerId,
-              appIds: [app],
-              members: [
-                {
-                  kind: "container" as const,
-                  nativeName: "observed-container",
-                  nativeId: "observed-container",
-                  dataRoot: AbsolutePath.make(dataRoot),
-                  appId: app,
-                  service: ServiceName.make("web"),
-                },
-              ],
-            }),
-          observeRuntime: Effect.succeed([
-            snapshot({ services: [{ ...unlabeled, nativeName: "observed-container" }] }),
-          ]),
-        }),
+        Effect.provideService(
+          RuntimeProviderRegistry,
+          makeTestRuntimeProviderRegistry({
+            list: Effect.succeed([providerId]),
+            resourceOwnership: () =>
+              Effect.succeed({
+                appRoot: root,
+                ownerKey: appIdentityKey("owner", root),
+                providerId,
+                appIds: [app],
+                members: [
+                  {
+                    kind: "container" as const,
+                    nativeName: "observed-container",
+                    nativeId: "observed-container",
+                    dataRoot: AbsolutePath.make(dataRoot),
+                    appId: app,
+                    service: ServiceName.make("web"),
+                  },
+                ],
+              }),
+            observeRuntime: Effect.succeed([
+              snapshot({ services: [{ ...unlabeled, nativeName: "observed-container" }] }),
+            ]),
+          }),
+        ),
       );
     }).pipe(
       Effect.provide(BunFileSystem.layer),
@@ -394,4 +386,39 @@ test("verified adoption receipts keep unlabeled missing-root services", async ()
     ),
   );
   expect(result).toMatchObject([{ root, services: ["app/web"], appliedState: false }]);
+});
+
+test.each([
+  [
+    { path: "/state/newer", reason: "newer-version", appId: app, storedVersion: 9, supportedVersion: 1 },
+    "AppliedStateVersionError",
+    "upgrade Lando",
+  ],
+  [{ path: "/state/broken", reason: "unreadable" }, "ProviderUnavailableError", "lando apps:gc"],
+] as const)("scan keeps the %o reason and its remediation", async (issue, errorTag, remediation) => {
+  const inventory = await Effect.runPromise(
+    scanMissingAppRoots().pipe(
+      Effect.provideService(
+        RuntimeProviderRegistry,
+        makeTestRuntimeProviderRegistry({
+          list: Effect.succeed([providerId]),
+          select: () => Effect.die("State inventory must not select a runtime without journal copies"),
+          appliedStateInventory: () =>
+            Effect.succeed({
+              plans: [],
+              unreadable: [{ path: "/state/broken", reason: "unreadable" }, issue],
+            }),
+          observeRuntime: Effect.succeed([snapshot({ runtimeObserved: true })]),
+        }),
+      ),
+      Effect.provide(BunFileSystem.layer),
+      Effect.provideService(PathsService, makeLandoPaths({ userDataRoot: dataRoot })),
+    ),
+  );
+  expect(inventory.scans[0]).toMatchObject({
+    complete: false,
+    errorTag,
+    message: expect.stringContaining(issue.path),
+  });
+  expect(inventory.scans[0]?.remediation).toContain(remediation);
 });

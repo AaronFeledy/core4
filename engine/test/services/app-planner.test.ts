@@ -36,7 +36,7 @@ import {
   PluginRegistry,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
-import { TestFileSyncEngine, TestRuntimeProvider } from "@lando/sdk/test";
+import { TestFileSyncEngine, TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Cause, Effect, Exit, Layer, Option, References, Schema, Tracer } from "effect";
 import { APP_PLAN_CACHE_HEADER_BYTES, writeCachedAppPlan } from "../../src/cache/app-plan.ts";
 import { appPlanCachePath } from "../../src/cache/paths.ts";
@@ -1498,10 +1498,7 @@ describe("AppPlannerLayer.layer", () => {
             return TestRuntimeProvider.inspect(target);
           },
         };
-        const registry = RuntimeProviderRegistry.of({
-          appliedPlansFor: () => Effect.succeed([]),
-          resolveAppliedPlan: () => Effect.succeed(undefined),
-          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+        const registry = makeTestRuntimeProviderRegistry({
           list: Effect.succeed([appPlan.provider]),
           capabilities: Effect.succeed(capabilities),
           select: () => Effect.succeed(provider),

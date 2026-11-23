@@ -7,6 +7,7 @@ import {
   RuntimeProviderRegistry,
   physicalVolumeLockKey,
 } from "@lando/sdk/services";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect, type Layer } from "effect";
 import type { ResolvedAppTarget } from "../../src/landofile/app-resolution.ts";
 import { rebuildApp } from "../../src/operations/rebuild.ts";
@@ -90,11 +91,14 @@ const traced = async (
       root: plannedApp.root,
       app: { kind: "user", id: plannedApp.id, root: plannedApp.root },
     }).pipe(
-      Effect.provideService(RuntimeProviderRegistry, {
-        ...registry,
-        appliedPlansFor: (root: AbsolutePath) =>
-          Effect.sync(() => mark("applied state")).pipe(Effect.andThen(registry.appliedPlansFor(root))),
-      }),
+      Effect.provideService(
+        RuntimeProviderRegistry,
+        makeTestRuntimeProviderRegistry({
+          ...registry,
+          appliedPlansFor: (root: AbsolutePath) =>
+            Effect.sync(() => mark("applied state")).pipe(Effect.andThen(registry.appliedPlansFor(root))),
+        }),
+      ),
       Effect.provideService(ManagedFileTransactionGuard, {
         assertReadable: () => Effect.void,
         ensureConsistent: () =>

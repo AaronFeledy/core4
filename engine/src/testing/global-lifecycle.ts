@@ -23,7 +23,7 @@ import {
   type ServiceRuntimeFields,
   type ServiceRuntimeInfo,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider, makeTestRouterService } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRouterService, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Effect, Layer, Schema } from "effect";
 import { makeGlobalAppService } from "../global-app/service.ts";
@@ -103,7 +103,7 @@ export const makeGlobalLifecycleFixture = (
     ensureReady: Effect.die("Policy operations must not initialize providers"),
     destroy: () => Effect.die("Selected cleanup must retain applied state and volumes"),
   };
-  const registry = RuntimeProviderRegistry.of({
+  const registry = makeTestRuntimeProviderRegistry({
     list: Effect.succeed([providerId]),
     select: () => Effect.succeed(provider),
     capabilities: Effect.succeed(provider.capabilities),

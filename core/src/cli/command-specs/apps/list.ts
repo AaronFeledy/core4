@@ -94,4 +94,8 @@ export const listSpec: LandoCommandSpec<ListServicesResult> = {
     renderAppsListResult(result, extractFormat(input), ctx, {
       filtered: appsListHasFiltersFromInput(input),
     }),
+  completion: (result) =>
+    result.pruneFailures !== undefined && result.pruneFailures.length > 0
+      ? { ok: false, exitCode: 1 }
+      : { ok: true, exitCode: 0 },
 };

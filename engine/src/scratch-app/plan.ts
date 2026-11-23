@@ -18,5 +18,6 @@ export const openScratchPlan = Effect.fn("ScratchAppService.openPlan")(function*
     mode: 0o600,
     onCorrupt: "quarantine",
     onVersionMismatch: "discard",
+    onNewerVersion: "discard",
   });
 });

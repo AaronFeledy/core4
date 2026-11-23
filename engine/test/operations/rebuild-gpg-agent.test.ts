@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AbsolutePath, type AppPlan, PortablePath } from "@lando/sdk/schema";
 import { type ApplyOptions, RuntimeProviderRegistry, SshService } from "@lando/sdk/services";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect, Exit, Scope } from "effect";
 import { rebuildApp } from "../../src/operations/rebuild.ts";
 import * as gpgAgentModule from "../../src/operations/start-gpg-agent.ts";
@@ -118,20 +119,23 @@ for (const prepareExit of [0, 1]) {
             }),
           ),
         ).pipe(
-          Effect.provideService(RuntimeProviderRegistry, {
-            ...harness.runtimeProviderRegistry,
-            select: () =>
-              Effect.succeed({
-                ...provider,
-                capabilities: { ...provider.capabilities, agentSocket: { delivery: "bind-directory" } },
-                stop: (target) => Effect.sync(() => calls.push(`stop:${target.service}`)),
-                exec: () =>
-                  Effect.sync(() => {
-                    calls.push("gpg-prepare");
-                    return { exitCode: prepareExit, stdout: "", stderr: "" };
-                  }),
-              }),
-          }),
+          Effect.provideService(
+            RuntimeProviderRegistry,
+            makeTestRuntimeProviderRegistry({
+              ...harness.runtimeProviderRegistry,
+              select: () =>
+                Effect.succeed({
+                  ...provider,
+                  capabilities: { ...provider.capabilities, agentSocket: { delivery: "bind-directory" } },
+                  stop: (target) => Effect.sync(() => calls.push(`stop:${target.service}`)),
+                  exec: () =>
+                    Effect.sync(() => {
+                      calls.push("gpg-prepare");
+                      return { exitCode: prepareExit, stdout: "", stderr: "" };
+                    }),
+                }),
+            }),
+          ),
           Effect.provideService(SshService, {
             id: "sidecar",
             setup: () => Effect.void,

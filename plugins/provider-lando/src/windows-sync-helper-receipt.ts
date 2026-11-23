@@ -3,6 +3,7 @@ import { ProviderUnavailableError, StateStoreError } from "@lando/sdk/errors";
 import type { PluginStateStore } from "@lando/sdk/plugins";
 import type { StateWrite } from "@lando/sdk/services";
 import { defineTransitions, illegalTransitionMessage, planTransition } from "@lando/sdk/transitions";
+import { storeErrorRemediation } from "@lando/state-store";
 import { Effect, Schema } from "effect";
 
 const identity = {
@@ -51,13 +52,17 @@ export const receiptFailure = (message: string, cause?: unknown) =>
     providerId: "lando",
     operation: "syncHelper.receipt",
     message,
-    remediation:
+    remediation: storeErrorRemediation(
+      cause,
       "Inspect the named volume and sync helper in the managed Podman machine, then retry with resources owned by this app.",
+    ),
     cause,
   });
 
 const migrateReceipt = (raw: unknown, fromVersion: number): Receipt => {
-  if (fromVersion !== 1) throw receiptFailure("The sync helper ownership receipt has an unknown version.");
+  // Store refuses newer envelopes before calling this migrator; only older unsupported stamps reach here.
+  if (fromVersion !== 1)
+    throw receiptFailure("The sync helper ownership receipt has an unsupported older version.");
   const old = Schema.decodeUnknownSync(legacyReceipt)(raw);
   const phase =
     old.removing === true

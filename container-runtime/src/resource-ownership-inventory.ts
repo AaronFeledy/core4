@@ -1,5 +1,5 @@
 import { canonicalJson, sha256Hex } from "@lando/sdk/digest";
-import { ProviderUnavailableError } from "@lando/sdk/errors";
+import { ProviderUnavailableError, StateStoreError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
@@ -87,12 +87,18 @@ export const ResourceOwnershipInventory = Schema.Struct({
 });
 export type ResourceInventory = typeof ResourceOwnershipInventory.Type;
 
+const OWNERSHIP_REMEDIATION = "Repair the provider plugin state and retry cleanup before starting this app.";
+
+/** Map ownership store failures; keep upgrade remediation for newer envelopes. */
 export const ownershipFailure = (providerId: string, cause?: unknown) =>
   new ProviderUnavailableError({
     providerId,
     operation: "resource-ownership",
     message: "Resource ownership inventory could not be verified or persisted.",
-    remediation: "Repair the provider plugin state and retry cleanup before starting this app.",
+    remediation:
+      cause instanceof StateStoreError && cause.reason === "newer-version"
+        ? cause.remediation
+        : OWNERSHIP_REMEDIATION,
     ...(cause === undefined ? {} : { cause }),
   });
 

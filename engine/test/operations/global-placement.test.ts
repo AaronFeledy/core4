@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AbsolutePath, AppId, type AppPlan, GlobalConfig, ProviderId } from "@lando/sdk/schema";
 import { AppPlanner, ConfigService, GlobalAppService, RuntimeProviderRegistry } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { DateTime, Effect, Layer, Schema } from "effect";
 import {
   globalCreateProviderId,
@@ -68,12 +68,9 @@ const layers = (plans: ReadonlyArray<AppPlan>, globalRoot: AbsolutePath = root) 
     ),
     Layer.succeed(
       RuntimeProviderRegistry,
-      RuntimeProviderRegistry.of({
+      makeTestRuntimeProviderRegistry({
         list: Effect.succeed([ProviderId.make("lando"), ProviderId.make("docker")]),
-        capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
         // Exact canonical-root equality, as the production registry filters.
-        resolveAppliedPlan: () => Effect.succeed(undefined),
-        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         appliedPlansFor: (target) =>
           Effect.succeed(plans.filter((applied) => applied.identity?.appRoot === target)),
         select: () => Effect.die("placement must not construct providers"),

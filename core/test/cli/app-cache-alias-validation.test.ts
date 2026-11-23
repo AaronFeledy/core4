@@ -17,6 +17,7 @@ import { appCommandCachePath, appToolingCompilationCachePath } from "@lando/engi
 import { attachEffectiveTooling } from "@lando/engine/planner/effective-tooling";
 import { CommandAliasConflictError, CommandAliasTargetError } from "@lando/sdk/errors";
 import type { LandofileShape } from "@lando/sdk/schema";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { DateTime, Effect, Layer } from "effect";
 import { resolveToolingRoute } from "../../src/cli/tooling-router.ts";
 
@@ -121,10 +122,7 @@ const withRefreshFixture = async <T>(
     ),
     Layer.succeed(
       RuntimeProviderRegistry,
-      RuntimeProviderRegistry.of({
-        resolveAppliedPlan: () => Effect.succeed(undefined),
-        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-        appliedPlansFor: () => Effect.succeed([]),
+      makeTestRuntimeProviderRegistry({
         list: Effect.succeed([providerId]),
         capabilities: Effect.succeed(capabilities),
         select: () => Effect.die("provider must not be selected"),

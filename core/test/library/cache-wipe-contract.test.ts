@@ -15,7 +15,7 @@ import {
 import { TestRuntimeProvider } from "@lando/core/testing";
 import { makeLandoPaths } from "@lando/paths";
 import type { LandoRuntime } from "@lando/sdk/app";
-import { TestRouterService } from "@lando/sdk/test";
+import { TestRouterService, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect, Layer, Option, Schema } from "effect";
 import { withCwd } from "../_support/temp-cwd.ts";
 
@@ -84,7 +84,7 @@ const providerLayers = () => {
     Layer.succeed(RouterService, RouterService.of({ ...TestRouterService, id: "traefik" })),
     Layer.succeed(
       RuntimeProviderRegistry,
-      RuntimeProviderRegistry.of({
+      makeTestRuntimeProviderRegistry({
         resolveAppliedPlan: (root) => Effect.sync(() => plans.get(root)),
         resolveTeardownEvidence: (root) =>
           Effect.sync(() => {

@@ -1,14 +1,16 @@
 import { realpath } from "node:fs/promises";
 import { isAbsolute, relative } from "node:path";
 import { adoptionReceiptsFromSummary } from "@lando/container-runtime/native-ownership";
-import { AppResolveError, ProviderUnavailableError } from "@lando/sdk/errors";
+import { AppResolveError, AppliedStateVersionError, ProviderUnavailableError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
+  type AppId,
   type AppPlan,
   type AppRef,
   type AppliedStateInventory,
   ProviderId,
   type ResourceOwnership,
+  type UnreadableAppliedState,
   appIdentityKey,
 } from "@lando/sdk/schema";
 import type {
@@ -20,7 +22,7 @@ import type {
   ProviderRuntimeSnapshot,
   RuntimeProviderShape,
 } from "@lando/sdk/services";
-import { Effect } from "effect";
+import { Effect, Result } from "effect";
 import { localAppliedRecord, scopeRuntimeSnapshot } from "../operations/data-root-scope.ts";
 import { matchesAppPlanIdentity } from "./app-plan-identity.ts";
 import { refuseContradictoryOrphans } from "./orphan-ownership-refusal.ts";
@@ -30,13 +32,20 @@ export type AppliedStateProvider = Pick<
   "id" | "appliedPlans" | "list" | "listVolumes"
 > & {
   readonly isAvailable: Effect.Effect<boolean, ProviderError>;
+  /**
+   * Host-wide inventory. The registry always supplies it; pure doubles may omit it
+   * (treated as empty protection and `appliedPlans` for readable plans).
+   */
   readonly appliedStateInventory?: Effect.Effect<AppliedStateInventory, ProviderError>;
+  readonly readAppliedPlanStrict?: (id: AppId) => Effect.Effect<AppPlan | undefined, ProviderError>;
   readonly resourceOwnership?: (
     root: AbsolutePath,
   ) => Effect.Effect<ResourceOwnership | undefined, ProviderUnavailableError>;
   readonly canCleanupOwnedResources?: Effect.Effect<boolean, ProviderError>;
   readonly runtimeOnline?: Effect.Effect<boolean, ProviderError>;
 };
+
+const emptyInventory: AppliedStateInventory = { plans: [], unreadable: [] };
 
 const runtimeEvidence = (provider: AppliedStateProvider, filter: ListFilter, teardown = false) => {
   const online = provider.runtimeOnline ?? provider.isAvailable;
@@ -122,13 +131,17 @@ const isSameOrDescendantPath = (ancestor: string, candidate: string): boolean =>
   return child === "" || (!child.startsWith("..") && !isAbsolute(child));
 };
 
-const gatherAppliedPlans = (provider: AppliedStateProvider) =>
-  (provider.appliedStateInventory === undefined
-    ? (provider.appliedPlans ?? Effect.succeed([]))
-    : provider.appliedStateInventory.pipe(Effect.map((inventory) => inventory.plans))
+/** True when an inventory entry protects `appId` (or every app on the provider). Never uses path. */
+export const inventoryProtectsApp = (entry: UnreadableAppliedState, appId: string): boolean =>
+  entry.appId === undefined || entry.appId === appId;
+
+const gatherProviderInventory = (provider: AppliedStateProvider) =>
+  (
+    provider.appliedStateInventory ??
+    (provider.appliedPlans ?? Effect.succeed([])).pipe(Effect.map((plans) => ({ ...emptyInventory, plans })))
   ).pipe(
-    Effect.flatMap((appliedPlans) =>
-      Effect.forEach(appliedPlans, (plan) =>
+    Effect.flatMap((inventory) =>
+      Effect.forEach(inventory.plans, (plan) =>
         String(plan.provider) === provider.id
           ? Effect.succeed(plan)
           : Effect.fail(
@@ -139,23 +152,25 @@ const gatherAppliedPlans = (provider: AppliedStateProvider) =>
                 remediation: "Remove the mismatched applied state before retrying teardown.",
               }),
             ),
-      ),
+      ).pipe(Effect.map((plans) => ({ ...inventory, plans }))),
     ),
   );
+
+const isToleratedAppliedStateObservationFailure = (error: unknown): boolean =>
+  (error instanceof ProviderUnavailableError || error instanceof AppliedStateVersionError) &&
+  (error.operation === "applied-state.read" ||
+    error.operation === "applied-state.list" ||
+    error.operation.startsWith("applied-state."));
 
 export const observeProviderRuntime = (
   providers: ReadonlyArray<AppliedStateProvider>,
 ): Effect.Effect<ReadonlyArray<ProviderRuntimeSnapshot>, AppResolveError | ProviderError> =>
   Effect.forEach(providers, (provider) =>
     Effect.gen(function* () {
-      // An unreadable receipt is unknown for observation, never absence for teardown.
-      const appliedPlans = yield* gatherAppliedPlans(provider).pipe(
-        Effect.catchIf(
-          (error) =>
-            error instanceof ProviderUnavailableError &&
-            (error.operation === "applied-state.read" || error.operation === "applied-state.list"),
-          () => Effect.succeed([]),
-        ),
+      // An unreadable or newer receipt is unknown for observation, never absence for teardown.
+      const appliedPlans = yield* gatherProviderInventory(provider).pipe(
+        Effect.map((inventory) => inventory.plans),
+        Effect.catchIf(isToleratedAppliedStateObservationFailure, () => Effect.succeed([])),
       );
       const runtime = yield* runtimeEvidence(provider, { includeUnplanned: true });
       return { providerId: ProviderId.make(provider.id), appliedPlans, ...runtime };
@@ -185,22 +200,24 @@ const collectEvidence = Effect.fn("RuntimeProviderRegistry.collectEvidence")(fun
     );
   }
   const lookupRoot = AbsolutePath.make(yield* canonicalPath(root));
-  const plans = (yield* Effect.forEach(providers, gatherAppliedPlans))
-    .flat()
+  const inventories = yield* Effect.forEach(providers, (provider) =>
+    gatherProviderInventory(provider).pipe(
+      Effect.map((inventory) => ({ ...inventory, providerId: provider.id })),
+    ),
+  );
+  const plans = inventories
+    .flatMap((inventory) => inventory.plans)
     .filter((plan) => dataRoot === undefined || localAppliedRecord(plan, dataRoot));
-  const protectedInventories = teardown
-    ? []
-    : yield* Effect.forEach(providers, (provider) =>
-        (provider.appliedStateInventory ?? Effect.succeed({ plans: [], unreadable: [] })).pipe(
-          Effect.map((inventory) => ({ providerId: provider.id, unreadable: inventory.unreadable })),
-        ),
-      );
+  // Always retain inventory issues (including teardown): match against known ids / provider scope
+  // before orphan classification. Never infer a root from an unreadable filename.
   const isProtected = (providerId: string, appId: string) =>
-    protectedInventories.some(
-      (inventory) =>
-        inventory.providerId === providerId &&
-        inventory.unreadable.some((entry) => entry.appId === undefined || entry.appId === appId),
-    );
+    inventories
+      .find((inventory) => inventory.providerId === providerId)
+      ?.unreadable.some((entry) => inventoryProtectsApp(entry, appId)) === true;
+  const readProtected = (providerId: string, id: AppId) =>
+    isProtected(providerId, id)
+      ? (providers.find((provider) => provider.id === providerId)?.readAppliedPlanStrict?.(id) ?? Effect.void)
+      : Effect.void;
   const belongsToApp = (providerId: string, appId: string) => {
     const plan = plans.find(
       (candidate) =>
@@ -230,8 +247,10 @@ const collectEvidence = Effect.fn("RuntimeProviderRegistry.collectEvidence")(fun
     }
     const inventories = rawInventories.map((hints): ResourceOwnership | undefined => {
       if (hints === undefined) return undefined;
+      // Teardown keeps protected app ids enumerable so callers can refuse mutation with the
+      // inventory diagnosis; non-teardown drops them so protected state is unknown, not owned.
       const appIds = hints.appIds.filter(
-        (id) => belongsToApp(hints.providerId, id) && !isProtected(hints.providerId, id),
+        (id) => belongsToApp(hints.providerId, id) && (teardown || !isProtected(hints.providerId, id)),
       );
       if (appIds.length === 0) return undefined;
       const allowed = new Set(appIds.map(String));
@@ -243,10 +262,20 @@ const collectEvidence = Effect.fn("RuntimeProviderRegistry.collectEvidence")(fun
       };
     });
     const ownershipHints = inventories.filter((item): item is ResourceOwnership => item !== undefined);
+    return ownershipHints;
+  });
+  const teardownOwnership = teardown ? yield* readOwnership : [];
+  if (teardown) {
+    for (const hints of teardownOwnership) {
+      for (const id of hints.appIds) {
+        yield* readProtected(hints.providerId, id);
+      }
+    }
+  }
+  const requireOwnershipRuntime = Effect.gen(function* () {
     if (teardown)
-      for (const [index, hints] of inventories.entries()) {
-        if (hints === undefined) continue;
-        const provider = providers[index];
+      for (const hints of teardownOwnership) {
+        const provider = providers.find((candidate) => candidate.id === hints.providerId);
         if (
           provider === undefined ||
           !(yield* provider.isAvailable) ||
@@ -261,9 +290,7 @@ const collectEvidence = Effect.fn("RuntimeProviderRegistry.collectEvidence")(fun
             }),
           );
       }
-    return ownershipHints;
   });
-  const teardownOwnership = teardown ? yield* readOwnership : [];
   const matches = plans
     .filter((plan) => {
       const appRoot = plan.identity?.appRoot;
@@ -303,15 +330,25 @@ const collectEvidence = Effect.fn("RuntimeProviderRegistry.collectEvidence")(fun
   if (!teardown && selected !== undefined) return { kind: "applied", plan: selected };
   const ownershipHints = teardown ? teardownOwnership : yield* readOwnership;
   const owned = ownershipHints.length === 0 ? {} : { ownership: ownershipHints };
-  if (selected === undefined) {
+  const observedProviders =
+    selected === undefined
+      ? providers
+      : teardown
+        ? providers.filter((provider) =>
+            inventories.some(
+              (inventory) => inventory.providerId === provider.id && inventory.unreadable.length > 0,
+            ),
+          )
+        : [];
+  if (selected === undefined || observedProviders.length > 0) {
     // Only a provider that recorded state for this root fails teardown with its status failure;
     // another installed provider that cannot be observed simply contributes no evidence.
     const receipts = ownershipHints.flatMap(adoptionReceiptsFromSummary);
-    const evidence = yield* Effect.forEach(providers, (provider) =>
+    const observations = yield* Effect.forEach(observedProviders, (provider) =>
       runtimeEvidence(
         provider,
         teardown ? { includeUnplanned: true } : {},
-        teardown && ownershipHints.some((hint) => hint.providerId === provider.id),
+        teardown && selected === undefined && ownershipHints.some((hint) => hint.providerId === provider.id),
       ).pipe(
         Effect.map((snapshot) =>
           dataRoot === undefined
@@ -322,18 +359,37 @@ const collectEvidence = Effect.fn("RuntimeProviderRegistry.collectEvidence")(fun
                 receipts.filter((receipt) => receipt.providerId === provider.id),
               ),
         ),
+        Effect.result,
       ),
     );
-    yield* refuseContradictoryOrphans({ root: lookupRoot, providers, evidence, isProtected });
-    const groups = groupOrphans(lookupRoot, providers, evidence).filter(
-      (group) => belongsToApp(group.providerId, group.appId) && !isProtected(group.providerId, group.appId),
+    const evidence = observations.map((result) =>
+      Result.isSuccess(result) ? result.success : { runtimeObserved: false, services: [], volumes: [] },
     );
+    const candidates = groupOrphans(lookupRoot, observedProviders, evidence).filter((group) =>
+      belongsToApp(group.providerId, group.appId),
+    );
+    if (teardown)
+      for (const group of candidates) {
+        yield* readProtected(group.providerId, group.appId);
+      }
+    yield* requireOwnershipRuntime;
+    if (selected !== undefined) return { kind: "applied", plan: selected, ...owned };
+    for (const result of observations)
+      if (Result.isFailure(result)) return yield* Effect.fail(result.failure);
+    yield* refuseContradictoryOrphans({
+      root: lookupRoot,
+      providers: observedProviders,
+      evidence,
+      isProtected,
+    });
+    const groups = candidates.filter((group) => !isProtected(group.providerId, group.appId));
     return groups.length > 0
       ? { kind: "orphans" as const, groups, ...owned }
       : ownershipHints.length > 0
         ? { kind: "owned", ownership: ownershipHints }
         : { kind: "absent" as const };
   }
+  yield* requireOwnershipRuntime;
   return { kind: "applied" as const, plan: selected, ...owned };
 });
 
@@ -378,3 +434,6 @@ export const resolveAppliedPlanEvidence = (
       }
     }),
   );
+
+/** Empty inventory for pure doubles that do not exercise protection. */
+export const emptyAppliedStateInventory = emptyInventory;

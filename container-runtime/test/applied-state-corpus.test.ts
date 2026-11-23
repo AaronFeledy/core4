@@ -273,10 +273,6 @@ test.each([
     },
   },
   {
-    name: "future envelope version",
-    version: 99,
-  },
-  {
     name: "non-record second entry",
     mutate: (data: Record<string, unknown>) => ({ ...data, survivor: "nope" }),
   },
@@ -297,9 +293,8 @@ test.each([
       data: Record<string, unknown>;
     };
     const payload = {
-      version: "version" in scenario && scenario.version !== undefined ? scenario.version : source.version,
-      data:
-        "mutate" in scenario && scenario.mutate !== undefined ? scenario.mutate(source.data) : source.data,
+      version: source.version,
+      data: scenario.mutate(source.data),
     };
     await writeFile(target, `${JSON.stringify(payload, null, 2)}\n`);
     const before = await readFile(target);
@@ -318,6 +313,118 @@ test.each([
     });
 
     expect(Buffer.compare(await readFile(target), before)).toBe(0);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+const newerVersionLayouts = [
+  {
+    name: "per-app",
+    providerId: "lando",
+    layout: "per-app",
+    target: "applied-plans/historical.json",
+    source: join(v7Fixtures, "lando/applied-plans/historical.json"),
+    scope: "app",
+  },
+  {
+    name: "record",
+    providerId: "podman",
+    layout: "record",
+    target: "applied-plans.json",
+    source: join(v7Fixtures, "podman/applied-plans.json"),
+    scope: "provider",
+  },
+] as const;
+
+for (const fixture of newerVersionLayouts) {
+  test(`future envelope on ${fixture.name} layout is newer-version and preserves bytes`, async () => {
+    const root = await mkdtemp(join(tmpdir(), `lando-state-newer-${fixture.name}-`));
+    const target = join(root, fixture.target);
+    try {
+      await mkdir(dirname(target), { recursive: true });
+      const source = JSON.parse(await readFile(fixture.source, "utf8")) as {
+        version: number;
+        data: unknown;
+      };
+      const payload = { version: APPLIED_STATE_VERSION + 1, data: source.data };
+      await writeFile(target, `${JSON.stringify(payload, null, 2)}\n`);
+      const before = await readFile(target);
+      const state = openState(root);
+      const store =
+        fixture.layout === "record" ? makeAppliedPlanStore(fixture) : makeAppliedPlanStore(fixture);
+
+      const inspect = await Effect.runPromise(store.inspectAppliedPlan(state, AppId.make("historical")));
+      expect(inspect).toEqual({
+        status: "newer-version",
+        path: target,
+        storedVersion: APPLIED_STATE_VERSION + 1,
+        supportedVersion: APPLIED_STATE_VERSION,
+      });
+
+      const strictFailure = await Effect.runPromise(
+        Effect.flip(store.loadAppliedPlanStrict(state, AppId.make("historical"))),
+      );
+      expect(strictFailure).toMatchObject({
+        _tag: "AppliedStateVersionError",
+        providerId: fixture.providerId,
+        operation: "applied-state.read",
+        path: target,
+        storedVersion: APPLIED_STATE_VERSION + 1,
+        supportedVersion: APPLIED_STATE_VERSION,
+        scope: fixture.scope,
+        appId: "historical",
+      });
+
+      const removeFailure = await Effect.runPromise(
+        Effect.flip(store.removeAppliedPlan(state, AppId.make("historical"))),
+      );
+      expect(removeFailure).toMatchObject({
+        _tag: "AppliedStateVersionError",
+        operation: "applied-state.remove",
+        storedVersion: APPLIED_STATE_VERSION + 1,
+        supportedVersion: APPLIED_STATE_VERSION,
+        scope: fixture.scope,
+      });
+
+      const inventory =
+        fixture.layout === "record"
+          ? await Effect.runPromise(makeAppliedPlanStore(fixture).listAppliedPlans(state))
+          : await Effect.runPromise(store.listAppliedPlans(state, root));
+      expect(inventory.plans).toEqual([]);
+      expect(inventory.unreadable).toEqual([
+        {
+          ...(fixture.layout === "per-app" ? { appId: AppId.make("historical") } : {}),
+          path: target,
+          reason: "newer-version",
+          storedVersion: APPLIED_STATE_VERSION + 1,
+          supportedVersion: APPLIED_STATE_VERSION,
+        },
+      ]);
+
+      expect(Buffer.compare(await readFile(target), before)).toBe(0);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+}
+
+test("malformed current envelope stays unreadable, not newer-version", async () => {
+  const root = await mkdtemp(join(tmpdir(), "lando-state-malformed-vs-newer-"));
+  const target = join(root, "applied-plans/historical.json");
+  try {
+    await mkdir(dirname(target), { recursive: true });
+    const bytes = `${JSON.stringify({ version: APPLIED_STATE_VERSION, data: { not: "a plan" } }, null, 2)}\n`;
+    await writeFile(target, bytes);
+    const state = openState(root);
+    const store = makeAppliedPlanStore({ providerId: "lando", layout: "per-app" });
+    const inspect = await Effect.runPromise(store.inspectAppliedPlan(state, AppId.make("historical")));
+    expect(inspect.status).toBe("unreadable");
+    const failure = await Effect.runPromise(
+      Effect.flip(store.loadAppliedPlanStrict(state, AppId.make("historical"))),
+    );
+    expect(failure).toMatchObject({ _tag: "ProviderUnavailableError", operation: "applied-state.read" });
+    expect(await readFile(target, "utf8")).toBe(bytes);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

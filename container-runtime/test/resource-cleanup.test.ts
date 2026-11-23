@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { ProviderUnavailableError } from "@lando/sdk/errors";
+import { ProviderUnavailableError, appliedStateVersionError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, ProviderId, ServiceName, appIdentityKey } from "@lando/sdk/schema";
 import { makeTestStateStore } from "@lando/state-store/testing";
 import { Effect } from "effect";
@@ -176,6 +176,7 @@ const ownershipFixture = (input: {
   readonly transport?: boolean;
   readonly missingInventory?: boolean;
   readonly missingNativeId?: boolean;
+  readonly appliedState?: ProviderUnavailableError | ReturnType<typeof appliedStateVersionError>;
 }) => {
   const root = AbsolutePath.make("/apps/owned");
   const owner = {
@@ -211,7 +212,9 @@ const ownershipFixture = (input: {
   const calls: EngineHttpRequest[] = [];
   const retired: OwnedResource[] = [];
   let inspections = 0;
+  const { appliedState } = input;
   const cleanup = makeOwnedResourcesCleanup({
+    ...(appliedState === undefined ? {} : { checkAppliedState: () => Effect.fail(appliedState) }),
     ctx: { providerId: "test", remediation: "Retry cleanup.", env: {} },
     endpointNamespace: "test-daemon",
     store: {
@@ -342,3 +345,33 @@ test("missing ownership inventory authorizes no native discovery or deletion", a
   });
   expect(fixture.calls).toEqual([]);
 });
+
+for (const kind of ["container", "volume"] as const)
+  test(`a protected applied-state skip keeps its tag and remediation for a ${kind}`, async () => {
+    const newer = appliedStateVersionError({
+      path: "/state/app.json",
+      storedVersion: 99,
+      supportedVersion: 1,
+      appId: "app",
+      providerId: "test",
+      operation: "applied-state.read",
+      scope: "app",
+    });
+    const unreadable = new ProviderUnavailableError({
+      providerId: "test",
+      operation: "applied-state.read",
+      message: "Applied state is unreadable.",
+      remediation: "Restore the applied-state record.",
+    });
+    for (const error of [newer, unreadable]) {
+      const fixture = ownershipFixture({ kind, appliedState: error });
+      expect(await fixture.run()).toMatchObject({
+        _tag: "Success",
+        success: {
+          skipped: [{ reason: error.message, errorTag: error._tag, remediation: error.remediation }],
+        },
+      });
+      expect(fixture.calls).toEqual([]);
+      expect(fixture.retired).toEqual([]);
+    }
+  });

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { makeLandoPaths } from "@lando/paths";
@@ -7,6 +7,7 @@ import { PathsService } from "@lando/sdk/services";
 import * as DiskStateStore from "@lando/state-store/service";
 import { Effect, Layer } from "effect";
 import { deriveAppPlanCacheKey } from "../../src/cache/app-plan.ts";
+import { resolveAppCommandCacheSource } from "../../src/cache/command-index-source.ts";
 import {
   readAppCommandCacheForCwdDetailed,
   writeAppCommandCacheStrict,
@@ -14,6 +15,29 @@ import {
 import { resolveAppIdentity } from "../../src/planner/app-identity.ts";
 import { clearAppDataIdentity, recordAppDataIdentity } from "../../src/planner/data-identity.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
+
+test("tooling source reports upgrade guidance for newer app data identity", async () => {
+  const root = await mkdtemp(join(tmpdir(), "lando-data-tooling-newer-"));
+  try {
+    const identity = await Effect.runPromise(resolveAppIdentity(root));
+    const paths = makeLandoPaths({ userDataRoot: join(root, "data"), env: {} });
+    const directory = join(paths.roots.userDataRoot, "app-data-identity");
+    const path = join(directory, `${identity.ownerKey}.json`);
+    await mkdir(directory, { recursive: true });
+    await writeFile(join(root, ".lando.yml"), "name: newer\nruntime: 4\n");
+    await writeFile(path, JSON.stringify({ version: 2, data: {} }));
+
+    const failure = await Effect.runPromise(Effect.flip(resolveAppCommandCacheSource(root, paths.roots)));
+
+    expect(failure).toMatchObject({
+      _tag: "CacheError",
+      cause: { _tag: "AppDataIdentityError", cause: { reason: "newer-version", path } },
+    });
+    expect(failure.remediation).toContain("upgrade Lando");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
 
 test.each(["default", "paths", "roots", "state-store"] as const)(
   "tooling follows %s identity records when created or cleared",

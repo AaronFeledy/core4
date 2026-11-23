@@ -20,7 +20,7 @@ import {
   RuntimeProviderRegistry,
   StateStore,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import * as DiskStateStore from "@lando/state-store/service";
 import { Cause, Effect, Exit, Layer } from "effect";
 import { prepareAppsGc } from "../../src/operations/apps-gc.ts";
@@ -89,7 +89,7 @@ const fixture = (names: readonly string[] = ["one", "two"], retainData = false, 
         return Effect.succeed({ kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } });
       }),
   };
-  const registry = RuntimeProviderRegistry.of({
+  const registry = makeTestRuntimeProviderRegistry({
     list: Effect.sync(() => listed),
     capabilities: Effect.succeed(provider.capabilities),
     select: () => Effect.succeed(provider),
@@ -344,22 +344,25 @@ test("a failed provider scan does not hide another provider's roots", async () =
       const registry = yield* RuntimeProviderRegistry;
       const broken = ProviderId.make("broken");
       return yield* prepareAppsGc().pipe(
-        Effect.provideService(RuntimeProviderRegistry, {
-          ...registry,
-          list: Effect.succeed([broken, providerId]),
-          observeRuntime: Effect.flatMap(TeardownProvider, (id) =>
-            id === broken
-              ? Effect.fail(
-                  new ProviderUnavailableError({
-                    providerId: broken,
-                    operation: "observe",
-                    message: "unreadable",
-                    remediation: "Repair the provider state.",
-                  }),
-                )
-              : (registry.observeRuntime ?? Effect.succeed([])),
-          ),
-        }),
+        Effect.provideService(
+          RuntimeProviderRegistry,
+          makeTestRuntimeProviderRegistry({
+            ...registry,
+            list: Effect.succeed([broken, providerId]),
+            observeRuntime: Effect.flatMap(TeardownProvider, (id) =>
+              id === broken
+                ? Effect.fail(
+                    new ProviderUnavailableError({
+                      providerId: broken,
+                      operation: "observe",
+                      message: "unreadable",
+                      remediation: "Repair the provider state.",
+                    }),
+                  )
+                : (registry.observeRuntime ?? Effect.succeed([])),
+            ),
+          }),
+        ),
       );
     }).pipe(Effect.provide(f.layer)),
   );
@@ -394,11 +397,17 @@ test("an answering runtime does not hide unreadable applied-state records", asyn
     Effect.gen(function* () {
       const registry = yield* RuntimeProviderRegistry;
       return yield* prepareAppsGc().pipe(
-        Effect.provideService(RuntimeProviderRegistry, {
-          ...registry,
-          appliedStateInventory: () =>
-            Effect.succeed({ plans: [], unreadable: [{ path: "/private/applied-state" }] }),
-        }),
+        Effect.provideService(
+          RuntimeProviderRegistry,
+          makeTestRuntimeProviderRegistry({
+            ...registry,
+            appliedStateInventory: () =>
+              Effect.succeed({
+                plans: [],
+                unreadable: [{ path: "/private/applied-state", reason: "unreadable" }],
+              }),
+          }),
+        ),
       );
     }).pipe(Effect.provide(f.layer)),
   );
@@ -406,7 +415,7 @@ test("an answering runtime does not hide unreadable applied-state records", asyn
   expect(prepared.report.scans[0]).toMatchObject({
     runtimeObserved: true,
     complete: false,
-    errorTag: "AppResolveError",
+    errorTag: "ProviderUnavailableError",
   });
 });
 
@@ -442,9 +451,8 @@ test("an owner that cannot start does not block another owner's confirmation", a
         return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
       }),
   });
-  const registry = RuntimeProviderRegistry.of({
+  const registry = makeTestRuntimeProviderRegistry({
     list: Effect.succeed([healthy, broken]),
-    capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
     select: (target) =>
       Effect.succeed(providerFor(typeof target === "string" ? target : (target?.provider ?? healthy))),
     appliedPlansFor: (root, providerId) =>

@@ -91,10 +91,10 @@ If you are looking for a public surface or policy:
 | Container create-config identity and ordinary apply recreate | 05 | §5.3.2 |
 | Shutdown observations: `ServiceShutdownObservation`, `FileSyncQuiesceResult`, optional `shutdownObservations` on teardown receipts, no graceful/forced verdict | 05 | §5.3.3 |
 | Durable ownership manifest and verified teardown cleanup | 05 + 12 | §5.3.1 + §12.4.2 |
-| `AppPlan` and `ServicePlan` schema families; applied-state v1–v11 readers, v7-to-v8 `kind` migration, v9 `keepAlive` intent, v10 `RouteText` environments, v11 event-intent removal, and strict applied-map writers | 05 | §5.5 + §5.5.2 |
+| `AppPlan` and `ServicePlan` schema families; applied-state v1–v11 readers, v7-to-v8 `kind` migration, v9 `keepAlive` intent, v10 `RouteText` environments, v11 event-intent removal, strict applied-map writers, newer-format protection on the stamp alone (`AppliedStateVersionError`), required contribution and registry inventory and targeted strict read | 05 | §5.3.1 + §5.5 + §5.5.2 |
 | Runtime-owned helper creation mount, logical/applied-plan exclusion, non-root cache permissions, and file-log delivery | 05 + 06 + 12 | §5.5 + §6.2.1 + §6.4 + §6.14.3 + §12.1 |
 | Environment values and executable-plan eligibility | 05 + 07 | §5.5.2 + §7.3.1 |
-| Provider extensions and error family | 05 | §5.6 + §5.7 |
+| Provider extensions and error family, including `AppliedStateVersionError` | 05 | §5.6 + §5.7 |
 | Bundled providers (managed init helper ownership, `0.1.7` bridge, existing-runtime rescue) and multi-provider non-goal | 05 | §5.8 + §5.9 |
 | Service bases and common service schema, including `extraArgs` | 06 | §6.1 + §6.2 |
 | Native container init: one authored `init` key, canonical `ServicePlan.init`, base default, opt-out, `serviceInit` capability, and signal guarantees | 06 | §6.2.1 |
@@ -112,6 +112,7 @@ If you are looking for a public surface or policy:
 | Certificates and trust injection | 06 | §6.8 |
 | Reserved service environment variables and agent context | 06 | §6.9 |
 | `ServiceInfo`, scoped `ServiceConnection`, and connection observation/projection | 06 | §6.10 |
+| `InfoAppResult.appliedStateIssue` for a protected applied-state record | 05 + 06 + 08 | §5.5.2 + §6.10 + §8.2 |
 | `ServiceType` (including planned primary listen-port selection), `ServiceFeature`, and `AppFeature` contracts | 06 | §6.11 |
 | Provider-independent service/app endpoint declarations (`EndpointDeclaration.Encoded`, strict decode once, tagged feature failures), effective numeric route declarations before application, finalization replay from original inputs, immutable selection facts, and non-endpoint application | 06 | §6.11.0 + §6.11.4 |
 | Read-only service-type resolution metadata in app-feature declaration and application | 06 | §6.11.4 |
@@ -186,6 +187,7 @@ If you are looking for a public surface or policy:
 | Host color opt-out (`NO_COLOR`, `TERM=dumb`) for narration, result decoration, help, and hyperlinks | 08 | §8.4.2 + §8.9 |
 | `InteractionService`, prompt schemas, and interaction errors | 08 | §8.10 |
 | Command completion, result projection, machine envelopes, bounded output capture, streams, closed pipes, and shared stdio descriptors | 08 + 11 | §8.3 + §8.11 + §10.14 |
+| `apps:list --prune` selection, `pruneFailures`, and partial-failure completion with a retained result | 05 + 08 | §5.5.2 + §8.2 + §8.11.1 |
 | Output routing table, JSON frame-stream events, and dropped-event warnings | 08 | §8.11.3 |
 | History-plus-live event subscriptions (`subscribeWithHistory`) | 03 | §11.1 |
 | Library entry points and runtime factory | 09 | §16.2 + §16.3 |
@@ -232,7 +234,7 @@ If you are looking for a public surface or policy:
 | Managed-file transaction journal and recovery | 12 | §12.4.1 |
 | Durable resource-ownership manifest | 12 | §12.4.2 |
 | Hot-path caches, compiled decoder targets, and offline-state policies | 12 | §12.5 + §12.6 |
-| `StateStore`, buckets, kernel lock modes and waits, app/worker locks, consumers, and plugin access | 12 | §12.7 |
+| `StateStore`, buckets, newer-version policy (`newer-version` reason, `onNewerVersion` discard opt-ins, record classes), kernel lock modes and waits, app/worker locks, consumers, and plugin access | 12 | §12.1 + §12.7 |
 | Source store: layout, integrity, publication and leases, offline reuse, and `meta:sources:gc` | 12 | §12.8 |
 | Test and contract-suite layers | 13 | §13.1 |
 | Schema, documentation, type, native-lock, and PR gates, including merge-gate job results and automatic reruns after runner loss | 13 | §13.2 + §13.4 |
@@ -244,7 +246,7 @@ If you are looking for a public surface or policy:
 | Paired Tomcat image/config maintenance, offline catalog generation, and automation failure reporting | 15 | §17.2 |
 | Signing, supply chain, update, and installation | 15 | §17.4 + §17.7 |
 | Release workflow and shipping criteria | 15 | §17.8 + §17.9 |
-| Unreleased endpoint/filter `kind` vocabulary, declaration wire form, applied/cache bumps, and authored spelling removals | 16 | §18.1 |
+| Unreleased endpoint/filter `kind` vocabulary, declaration wire form, applied/cache bumps, and authored spelling removals; unreleased provider applied-state contract changes for newer-format protection | 16 | §18.1 |
 | Deprecation schema, service, event, and surface matrix | 16 | §18.2 + §18.5 |
 | Deprecation presentation, removal, and gates | 16 | §18.6 + §18.8 |
 | Executable-guide model, components, scenario runtime, and display vs. execute bindings | 17 | §19.2 + §19.4 + §19.5 |

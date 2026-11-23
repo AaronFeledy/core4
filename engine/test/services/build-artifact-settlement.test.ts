@@ -13,7 +13,7 @@ import {
   type RuntimeProviderShape,
   StateStore,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Cause, DateTime, Deferred, Effect, Exit, Fiber, Layer, Queue, Schema } from "effect";
 import { openArtifactBuildResults } from "../../src/services/build-artifact-results.ts";
 import * as BuildLayer from "../../src/services/build-orchestrator.ts";
@@ -93,10 +93,7 @@ const dependencies = (provider: RuntimeProviderShape, root: string) => {
     Layer.succeed(StateStore, makeTestStateStore().service),
     Layer.succeed(
       RuntimeProviderRegistry,
-      RuntimeProviderRegistry.of({
-        appliedPlansFor: () => Effect.succeed([]),
-        resolveAppliedPlan: () => Effect.succeed(undefined),
-        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+      makeTestRuntimeProviderRegistry({
         list: Effect.succeed([ProviderId.make(provider.id)]),
         capabilities: Effect.succeed(provider.capabilities),
         select: () => Effect.succeed(provider),

@@ -51,6 +51,17 @@ export const OwnedResourcesCleanupResult = Schema.Struct({
         reason: Schema.String.annotate({
           description: "Why cleanup retained this resource, such as in use or unreadable applied state.",
         }),
+        errorTag: Schema.optionalKey(
+          Schema.String.annotate({
+            description:
+              "Tag of the failure that protected this resource, such as AppliedStateVersionError for state a newer Lando wrote.",
+          }),
+        ),
+        remediation: Schema.optionalKey(
+          Schema.NonEmptyString.annotate({
+            description: "How to resolve the failure that protected this resource.",
+          }),
+        ),
       }),
     ).annotate({ description: "Resources retained without failing teardown." }),
   ),

@@ -343,3 +343,25 @@ describe("compiled binary OpenTUI native pruning", () => {
     });
   });
 });
+
+test("the build CLI refuses NODE_PRESERVE_SYMLINKS before bundling", async () => {
+  // Given: a build environment that preserves symlinked workspace paths.
+  const script = resolve(import.meta.dirname, "../../../scripts/build-compiled-binary.ts");
+  const outdir = await mkdtemp(resolve(tmpdir(), "lando-build-guard-"));
+  try {
+    // When: the build CLI starts.
+    const proc = Bun.spawn([process.execPath, script, "--outfile", resolve(outdir, "lando")], {
+      env: { ...process.env, NODE_PRESERVE_SYMLINKS: "1" },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [exit, stderr] = await Promise.all([proc.exited, new Response(proc.stderr).text()]);
+
+    // Then: it exits before writing a binary and names the setting.
+    expect(exit).toBe(1);
+    expect(stderr).toContain("NODE_PRESERVE_SYMLINKS");
+    expect(await Bun.file(resolve(outdir, "lando")).exists()).toBe(false);
+  } finally {
+    await rm(outdir, { recursive: true, force: true });
+  }
+});

@@ -81,7 +81,7 @@ test("strict inventory preserves B and reports unreadable A by filename and path
     await writeFile(path, "invalid json");
     const inventory = await Effect.runPromise(listAppliedPlans(state, `${root}/plugin-state`));
     expect(inventory.plans.map((item) => item.id)).toEqual([b.id]);
-    expect(inventory.unreadable).toEqual([{ appId: plan.id, path }]);
+    expect(inventory.unreadable).toEqual([{ appId: plan.id, path, reason: "unreadable" }]);
   });
 });
 
