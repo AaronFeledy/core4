@@ -49,6 +49,7 @@ export interface AppsListPruneFailure {
   readonly appId?: string;
   readonly storedVersion: number;
   readonly supportedVersion: number;
+  readonly writtenBy?: string;
   readonly message: string;
   readonly remediation: string;
 }
@@ -84,6 +85,7 @@ const protectOrFail = (
         ...(meta.appId === undefined ? {} : { appId: meta.appId }),
         storedVersion: read.storedVersion,
         supportedVersion: read.supportedVersion,
+        ...(read.writtenBy === undefined ? {} : { writtenBy: read.writtenBy }),
         message: error.message,
         remediation: error.remediation,
       },

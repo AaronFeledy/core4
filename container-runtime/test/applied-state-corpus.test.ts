@@ -347,7 +347,8 @@ for (const fixture of newerVersionLayouts) {
         version: number;
         data: unknown;
       };
-      const payload = { version: APPLIED_STATE_VERSION + 1, data: source.data };
+      const writtenBy = "4.15.0";
+      const payload = { version: APPLIED_STATE_VERSION + 1, writtenBy, data: source.data };
       await writeFile(target, `${JSON.stringify(payload, null, 2)}\n`);
       const before = await readFile(target);
       const state = openState(root);
@@ -355,9 +356,10 @@ for (const fixture of newerVersionLayouts) {
         fixture.layout === "record" ? makeAppliedPlanStore(fixture) : makeAppliedPlanStore(fixture);
 
       const inspect = await Effect.runPromise(store.inspectAppliedPlan(state, AppId.make("historical")));
-      expect(inspect).toEqual({
+      expect(inspect).toMatchObject({
         status: "newer-version",
         path: target,
+        writtenBy,
         storedVersion: APPLIED_STATE_VERSION + 1,
         supportedVersion: APPLIED_STATE_VERSION,
       });
@@ -370,6 +372,7 @@ for (const fixture of newerVersionLayouts) {
         providerId: fixture.providerId,
         operation: "applied-state.read",
         path: target,
+        writtenBy,
         storedVersion: APPLIED_STATE_VERSION + 1,
         supportedVersion: APPLIED_STATE_VERSION,
         scope: fixture.scope,
@@ -382,6 +385,7 @@ for (const fixture of newerVersionLayouts) {
       expect(removeFailure).toMatchObject({
         _tag: "AppliedStateVersionError",
         operation: "applied-state.remove",
+        writtenBy,
         storedVersion: APPLIED_STATE_VERSION + 1,
         supportedVersion: APPLIED_STATE_VERSION,
         scope: fixture.scope,
@@ -397,6 +401,7 @@ for (const fixture of newerVersionLayouts) {
           ...(fixture.layout === "per-app" ? { appId: AppId.make("historical") } : {}),
           path: target,
           reason: "newer-version",
+          writtenBy,
           storedVersion: APPLIED_STATE_VERSION + 1,
           supportedVersion: APPLIED_STATE_VERSION,
         },

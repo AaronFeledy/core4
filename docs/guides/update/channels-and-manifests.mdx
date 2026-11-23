@@ -31,3 +31,31 @@ Update also keeps a freshness record per channel. A verified manifest whose vers
 If Lando reports that a newer Lando wrote the local freshness record, leave that file in place, run the release that wrote it or upgrade Lando, then retry. The error is about the local record's stored format version, not the version named in the signed manifest.
 
 Run `lando update --dry-run` to see the resolved channel and target version without changing anything. See [Update permission errors](./permission-errors.mdx) when the swap cannot write the install path.
+
+Use `lando update --only=plugins --dry-run --format=json` to preview plugin changes without checking for a core binary update.
+
+## Share one data root carefully
+
+Let all running Lando commands finish before upgrading with `lando update` or switching source builds. Before making more changes, make sure every shell and tool that shares the data root runs the same build. Rebuild or reinstall any checkout that still uses the old binary against that root.
+
+Don't run commands from different builds that modify the same data root at the same time. Builds before [dev.1539](https://github.com/AaronFeledy/core4/releases/tag/v4.0.0-dev.1539) used `.lock` files and don't honor the newer kernel locks on `.lck` files. Don't delete lock files to end a wait. The OS releases a kernel lock when its holder exits; deleting the file doesn't release a live lock.
+
+If a command says a newer Lando wrote a state file, leave that file in place. Run the build that wrote it, or upgrade this Lando with `lando update`, then retry. Builds that recognize this format refusal won't overwrite or delete the protected record.
+
+### Isolate side-by-side builds
+
+To test two Lando builds on one machine without sharing state, give each build its own config, data, and cache roots and its own runtime resources. Set `LANDO_USER_CONF_ROOT`, `LANDO_USER_DATA_ROOT`, and `LANDO_USER_CACHE_ROOT` for each shell, then run `lando setup` in that environment. See [Find where Lando keeps files](../config/global-config.mdx#find-where-lando-keeps-files).
+
+### Lock wait timeout
+
+`LANDO_LOCK_TIMEOUT_MS` sets how long a command waits for an exclusive lock (default two minutes; range `0` to `600000`). It replaces the removed `LANDO_APP_LOCK_TIMEOUT_MS` name; there is no alias. See [Wait for another command to finish](../cli/everyday-commands.mdx#wait-for-another-command-to-finish).
+
+<Guide>
+  <Scenario id="preview-plugin-updates" render={false} reason="Verify a plugins-only preview in an isolated install without contacting a core update channel.">
+    <Step name="preview-plugins-only">
+      <Run runtime="library" displayCode="lando update --only=plugins --dry-run --format=json" code={`const run = yield* context.runCli(["update", "--only=plugins", "--dry-run", "--format=json"]);
+expect(run.exitCode).toBe(0);
+expect(JSON.parse(run.stdout)).toMatchObject({ command: "meta:update", ok: true, result: { updatedCore: false, updatedPlugins: [] } });`} />
+    </Step>
+  </Scenario>
+</Guide>

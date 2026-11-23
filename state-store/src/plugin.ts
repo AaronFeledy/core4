@@ -7,6 +7,7 @@ import { Effect, Schema } from "effect";
 import { withAdvisoryLockUsing } from "./lock.ts";
 import { resolveStatePath } from "./paths.ts";
 import type { PrivateFileAccess } from "./private-file-access.ts";
+import { PluginStateWriter, type StateWriterOptions } from "./writer.ts";
 
 export type { PluginStateBucketSpec, PluginStateStore } from "@lando/sdk/plugins";
 
@@ -20,6 +21,7 @@ export const makePluginStateStore = (
   store: StateStoreShape,
   pluginStateRoot: AbsolutePath,
   privateFileAccess: PrivateFileAccess,
+  options: StateWriterOptions = {},
 ): PluginStateStore => {
   const open: PluginStateStore["open"] = (spec) => {
     if ("root" in spec && stateRootPathOf(spec.root) !== pluginStateRoot) {
@@ -32,7 +34,10 @@ export const makePluginStateStore = (
         }),
       );
     }
-    return store.open({ ...spec, root: { path: pluginStateRoot } });
+    const bucket = store.open({ ...spec, root: { path: pluginStateRoot } });
+    return options.writer === undefined
+      ? bucket
+      : Effect.provideService(bucket, PluginStateWriter, options.writer);
   };
 
   const withLock: PluginStateStore["withLock"] = (key, body, options) => {

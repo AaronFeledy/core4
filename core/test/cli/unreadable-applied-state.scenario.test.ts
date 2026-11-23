@@ -7,7 +7,8 @@ import { appIdentityKey } from "@lando/sdk/schema";
 
 const cliEntry = resolve(import.meta.dir, "../../bin/lando.ts");
 const newerVersion = APPLIED_STATE_VERSION + 1;
-const newerRecord = `{"version":${newerVersion},"data":{"future":true}}\n`;
+const writtenBy = "4.15.0";
+const newerRecord = JSON.stringify({ version: newerVersion, writtenBy, data: { future: true } });
 
 const withIsolatedState = async (use: (root: string, env: NodeJS.ProcessEnv) => Promise<void>) => {
   const root = await mkdtemp(join(tmpdir(), "lando-unreadable-cli-"));
@@ -29,6 +30,36 @@ const withIsolatedState = async (use: (root: string, env: NodeJS.ProcessEnv) => 
     await rm(root, { recursive: true, force: true });
   }
 };
+
+test("doctor reports newer applied state from disk without selecting a runtime", async () => {
+  await withIsolatedState(async (root, env) => {
+    const path = join(root, "data/plugins/@lando/provider-lando/applied-plans/damaged-a.json");
+    await writeFile(path, newerRecord, { mode: 0o600 });
+    const child = Bun.spawn(
+      [process.execPath, cliEntry, "doctor", "--section", "state-compatibility", "--format=json"],
+      { cwd: root, env: { ...env, LANDO_PROVIDER: "not-installed" }, stdout: "pipe", stderr: "pipe" },
+    );
+    const [exit, stdout] = await Promise.all([
+      child.exited,
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+    ]);
+    expect(exit).toBe(0);
+    expect(JSON.parse(stdout)).toMatchObject({
+      result: {
+        checks: expect.arrayContaining([
+          expect.objectContaining({
+            section: "state-compatibility",
+            name: "applied-state",
+            status: "warn",
+            context: expect.objectContaining({ reason: "newer-version", path, writtenBy }),
+          }),
+        ]),
+      },
+    });
+    expect(await Bun.file(path).text()).toBe(newerRecord);
+  });
+});
 
 for (const command of ["info", "logs", "stop", "destroy"] as const) {
   test(`${command} outside an app preserves LandofileNotFound with unrelated unreadable state in isolated roots`, async () => {
@@ -100,7 +131,7 @@ test.each([false, true])(
       expect({ exit, stderr }).toEqual({ exit: 0, stderr: "" });
       expect(JSON.parse(stdout)).toMatchObject({
         result: nested
-          ? { app: "damaged-a", appliedStateIssue: { reason: "newer-version", path } }
+          ? { app: "damaged-a", appliedStateIssue: { reason: "newer-version", path, writtenBy } }
           : { app: "readable-b" },
       });
     });
@@ -160,11 +191,10 @@ for (const { provider, record, scope } of [
           path,
           storedVersion: newerVersion,
           supportedVersion: APPLIED_STATE_VERSION,
+          writtenBy,
           scope,
         },
       });
-      expect(stdout).toContain("upgrade Lando");
-      expect(stdout).not.toContain("move it aside");
       expect(await Bun.file(path).text()).toBe(bytes);
     });
   });

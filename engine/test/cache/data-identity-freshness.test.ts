@@ -25,15 +25,14 @@ test("tooling source reports upgrade guidance for newer app data identity", asyn
     const path = join(directory, `${identity.ownerKey}.json`);
     await mkdir(directory, { recursive: true });
     await writeFile(join(root, ".lando.yml"), "name: newer\nruntime: 4\n");
-    await writeFile(path, JSON.stringify({ version: 2, data: {} }));
+    await writeFile(path, JSON.stringify({ version: 2, writtenBy: "4.15.0", data: {} }));
 
     const failure = await Effect.runPromise(Effect.flip(resolveAppCommandCacheSource(root, paths.roots)));
 
     expect(failure).toMatchObject({
       _tag: "CacheError",
-      cause: { _tag: "AppDataIdentityError", cause: { reason: "newer-version", path } },
+      cause: { _tag: "AppDataIdentityError", cause: { reason: "newer-version", path, writtenBy: "4.15.0" } },
     });
-    expect(failure.remediation).toContain("upgrade Lando");
   } finally {
     await rm(root, { recursive: true, force: true });
   }

@@ -241,6 +241,9 @@ export const InfoAppliedStateIssue = Schema.Union([
     supportedVersion: Schema.Int.annotate({
       description: "Applied-state format version this Lando supports.",
     }),
+    writtenBy: Schema.optionalKey(
+      Schema.String.annotate({ description: "Lando version that wrote the record, when recorded." }),
+    ),
   }),
 ]).annotate({
   description:

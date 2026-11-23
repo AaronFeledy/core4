@@ -32,6 +32,7 @@ import {
 } from "../runtime/managed-provider-machine";
 import { cleanupAgentRelayState } from "../subsystems/ssh-agent/cleanup.ts";
 import { TerminableAgentRelayWorkerRecord } from "../subsystems/ssh-agent/worker-protocol.ts";
+import { CORE_VERSION } from "../version.ts";
 import {
   type ContributionBinding,
   type ElevateCapability,
@@ -350,7 +351,7 @@ const defaultTeardownRuntimeService = (
             paths,
             platform,
             privateFileAccess,
-            stateStore: makeStateStore({ privateFileAccess, roots: paths.roots }),
+            stateStore: makeStateStore({ privateFileAccess, roots: paths.roots, writer: CORE_VERSION }),
           });
         }).pipe(Effect.provide(PrivateFileAccessService.layer)),
       ),

@@ -2,6 +2,7 @@ import { realpath, stat } from "node:fs/promises";
 import { basename, join, posix, win32 } from "node:path";
 import { isLandoExecutableName } from "@lando/engine/install/owned-executable";
 import * as EngineLandofileServiceLayer from "@lando/engine/services/landofile-live";
+import { CORE_VERSION } from "@lando/engine/version";
 import * as ManagedFileTransactionGuardLayer from "@lando/managed-file/transaction-guard";
 import type { DoctorExecutableLocator, DoctorResourceInspector } from "@lando/sdk/plugins";
 import {
@@ -17,7 +18,9 @@ import { loadUserLandofile } from "../app-resolution.ts";
 import { describeDoctorCause, redactDoctorMessage } from "./doctor-self.ts";
 
 const DoctorLandofileLayer = EngineLandofileServiceLayer.layerDefault.pipe(
-  Layer.provide(Layer.merge(StateStoreLayer.layer, ManagedFileTransactionGuardLayer.layer)),
+  Layer.provide(
+    Layer.merge(StateStoreLayer.layerWith({ writer: CORE_VERSION }), ManagedFileTransactionGuardLayer.layer),
+  ),
 );
 
 export const resolveDoctorAppIdentity = Effect.fnUntraced(
