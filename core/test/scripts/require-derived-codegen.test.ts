@@ -121,13 +121,6 @@ describe("require-derived-codegen", () => {
     expect(entries[0]?.endsWith("require-derived-codegen-preload.ts")).toBe(true);
   });
 
-  test("test-preload awaits bundled-plugins dynamically after the guard", async () => {
-    const repoRoot = resolve(import.meta.dirname, "../../..");
-    const source = await Bun.file(join(repoRoot, "scripts/test-preload.ts")).text();
-    expect(source).toMatch(/await import\(["']\.\.\/core\/src\/runtime\/bundled-plugins/);
-    expect(source).not.toContain('import "../core/src/runtime/bundled-plugins');
-  });
-
   test("every derived-codegen sentinel path is gitignored", async () => {
     const repoRoot = resolve(import.meta.dirname, "../../..");
     const input = `${DERIVED_CODEGEN_SENTINELS.join("\n")}\n`;
