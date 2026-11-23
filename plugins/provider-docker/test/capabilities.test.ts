@@ -8,6 +8,7 @@ import { composeKnobsForDialect } from "@lando/container-runtime/podman/compose-
 import {
   dockerCapabilitiesForHost,
   dockerCapabilitiesForPlatform,
+  introspectProviderCapabilities,
   linuxDockerCapabilities,
   macosDockerCapabilities,
   makeDockerApiClient,
@@ -116,11 +117,11 @@ describe("provider-docker capabilities", () => {
     expect(rootful.projectUserMapping).toBe("image-renumber");
     expect(rootful.bindOwnership).toBe("host-ids");
 
-    const rootless = dockerCapabilitiesForHost("linux", "/var/run/docker.sock", [], true);
+    const rootless = dockerCapabilitiesForHost("linux", "/var/run/docker.sock", { rootless: true });
     expect(rootless.projectUserMapping).toBe("unsupported");
     expect(rootless.bindOwnership).toBe("root-is-host-user");
 
-    const remapped = dockerCapabilitiesForHost("linux", "/var/run/docker.sock", [], false, true);
+    const remapped = dockerCapabilitiesForHost("linux", "/var/run/docker.sock", { usernsRemap: true });
     expect(remapped.projectUserMapping).toBe("unsupported");
     expect(remapped.bindOwnership).toBe("userns-remap");
 
@@ -180,6 +181,27 @@ describe("provider-docker capabilities", () => {
     expect(macos.composePreservedPaths).toBeUndefined();
     expect(linux.composeProjectFields).toEqual({ supported: ["configs"] });
     expect(macos.composeProjectFields).toEqual({ supported: ["configs"] });
+  });
+
+  test.each([
+    ["1.44", ["healthcheck.start_interval"]],
+    ["1.48", ["healthcheck.start_interval"]],
+    ["1.43", undefined],
+    [undefined, undefined],
+  ] as const)(
+    "declares healthcheck.start_interval from live requests at API %s: %o",
+    async (version, supported) => {
+      // Given a live endpoint whose start-interval requests would use this API version
+      const api = { info: Effect.succeed({}), requestApiVersion: () => version };
+      // When capabilities are introspected
+      const capabilities = await Effect.runPromise(introspectProviderCapabilities(api, "linux"));
+      // Then only an endpoint that honors StartInterval declares it
+      expect(capabilities.composePreservedPaths?.supported).toEqual(supported);
+    },
+  );
+
+  test("the offline declaration needs live evidence for healthcheck.start_interval", () => {
+    expect(dockerCapabilitiesForPlatform("linux").composePreservedPaths).toBeUndefined();
   });
 
   test("leaves native healthchecks to the Docker daemon", () => {

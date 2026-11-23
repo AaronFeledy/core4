@@ -4,6 +4,7 @@ import { type ConnectionOptions, connect as createTlsConnection } from "node:tls
 import { ProviderCapabilityError, ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
 import { Effect } from "effect";
 import type {
+  DockerFeatureApiVersion,
   EngineApiClient,
   EngineHttpRequest,
   EngineHttpResponse,
@@ -28,6 +29,7 @@ import {
   isDockerApiPrefixFailure,
   isDockerWaitRequest,
   learnDockerApiPrefix,
+  peekDockerApiPrefix,
   peekDockerDaemonApiVersion,
   resolveInitialDockerApiPrefix,
   resolvedPrefix,
@@ -36,9 +38,9 @@ import {
 import {
   DOCKER_API_PREFIX,
   type DockerApiNegotiationFail,
-  compareDockerApiVersion,
-  dockerApiPrefixFor,
+  dockerApiVersionFromPrefix,
   dockerApiVersionUnavailable,
+  dockerRequestPrefix,
 } from "./api-version.ts";
 
 export type { DockerApiPrefixSource } from "./api-prefix.ts";
@@ -50,7 +52,14 @@ export {
   isDockerApiVersionError,
 } from "./api-version.ts";
 
-export type DockerApiClient = EngineApiClient;
+export interface DockerApiClient extends EngineApiClient {
+  /**
+   * The API version a request needing these feature floors would use now, from this endpoint's
+   * negotiation and advertised version. Undefined until the endpoint has answered, or when the
+   * version in use is unversioned. Capability declarations and requests share this selection.
+   */
+  readonly requestApiVersion?: (wanted: ReadonlyArray<DockerFeatureApiVersion>) => string | undefined;
+}
 export type DockerHttpRequest = EngineHttpRequest;
 export type DockerHttpResponse = EngineHttpResponse;
 
@@ -171,14 +180,28 @@ const initialPrefix = (session: DockerPrefixSession, ctx: ProviderErrorContext):
     }),
   );
 
-const requestPrefix = (session: DockerPrefixSession, input: DockerHttpRequest, prefix: string): string => {
-  const advertised = peekDockerDaemonApiVersion(session.endpointKey);
-  return input.minimumApiVersion !== undefined &&
-    advertised !== undefined &&
-    (compareDockerApiVersion(advertised, input.minimumApiVersion) ?? -1) >= 0
-    ? dockerApiPrefixFor(input.minimumApiVersion)
-    : prefix;
+const requestPrefix = (
+  session: DockerPrefixSession,
+  input: Pick<DockerHttpRequest, "minimumApiVersions">,
+  prefix: string,
+): string => {
+  const source = peekDockerApiPrefix(session.endpointKey)?.source;
+  return dockerRequestPrefix({
+    prefix,
+    pinned: source === "explicit" || source === "env",
+    advertised: peekDockerDaemonApiVersion(session.endpointKey),
+    wanted: input.minimumApiVersions ?? [],
+  });
 };
+
+const requestApiVersionFor =
+  (session: DockerPrefixSession) =>
+  (wanted: ReadonlyArray<DockerFeatureApiVersion>): string | undefined => {
+    const current = peekDockerApiPrefix(session.endpointKey);
+    return current === undefined
+      ? undefined
+      : dockerApiVersionFromPrefix(requestPrefix(session, { minimumApiVersions: wanted }, current.prefix));
+  };
 
 const learnFromResponse = (
   session: DockerPrefixSession,
@@ -486,6 +509,7 @@ export const makeUnixDockerApiClient = (
         catch: (cause) => dockerApiFailure(ctx)(input, cause),
       });
     }),
+    requestApiVersion: requestApiVersionFor(session),
     info: Effect.suspend(() =>
       fetchDockerInfo(makeUnixDockerApiClient(socketPath, ctx, options).request, ctx),
     ),
@@ -521,6 +545,7 @@ export const makeNamedPipeDockerApiClient = (
           ),
         catch: (cause) => dockerApiFailure(ctx)(input, cause),
       }),
+    requestApiVersion: requestApiVersionFor(session),
     info: Effect.suspend(() =>
       fetchDockerInfo(makeNamedPipeDockerApiClient(pipePath, ctx, options, connect).request, ctx),
     ),
@@ -555,6 +580,7 @@ export const makeHttpDockerApiClient = (
           ),
         catch: (cause) => dockerApiFailure(ctx)(input, cause),
       }),
+    requestApiVersion: requestApiVersionFor(session),
     info: Effect.suspend(() => fetchDockerInfo(makeHttpDockerApiClient(baseUrl, ctx, options).request, ctx)),
   };
 };

@@ -22,6 +22,7 @@ import {
   isDockerApiVersionError,
   makeDockerApiClient as makeRuntimeDockerApiClient,
 } from "@lando/container-runtime/docker/api-client";
+import { compareDockerApiVersion } from "@lando/container-runtime/docker/api-version";
 import type { ProviderErrorContext } from "@lando/container-runtime/engine-api";
 import { apiResponseFailure, parseEngineJson } from "@lando/container-runtime/engine-errors";
 import { validateHealthcheckExecution } from "@lando/container-runtime/healthcheck-attempt";
@@ -267,13 +268,21 @@ const isVmMediatedDockerHost = (platform: HostPlatform, dockerHost: string): boo
   );
 };
 
+/** Engine facts that only a live endpoint reports. Omitted facts take the conservative default. */
+export interface DockerEngineFacts {
+  readonly containerTargets?: ReadonlyArray<HostProxyContainerTarget>;
+  readonly rootless?: boolean;
+  readonly usernsRemap?: boolean;
+  /** The request API version in use reaches 1.44, where Docker honors `Healthcheck.StartInterval`. */
+  readonly healthStartInterval?: boolean;
+}
+
 export const dockerCapabilitiesForHost = (
   platform: HostPlatform,
   dockerHost: string,
-  containerTargets: ReadonlyArray<HostProxyContainerTarget> = [],
-  rootless = false,
-  usernsRemap = false,
+  facts: DockerEngineFacts = {},
 ): ProviderCapabilities => {
+  const { containerTargets = [], rootless = false, usernsRemap = false } = facts;
   // A VM-mediated endpoint hides the engine's identity facts. A rootless
   // Docker engine maps only container root to the host user, and a daemon
   // user namespace stores subordinate host ids, so neither can realize a
@@ -311,6 +320,9 @@ export const dockerCapabilitiesForHost = (
     composeServiceFields: { supported: ["labels", "configs"] },
     authoredNetworks: true,
     composeProjectFields: { supported: ["configs"] },
+    ...(facts.healthStartInterval === true
+      ? { composePreservedPaths: { supported: ["healthcheck.start_interval"] } }
+      : {}),
     providerExtensions: [],
     hostProxy: hostProxyCapabilities(platform, containerTargets, "host.docker.internal"),
     agentSocket: {
@@ -350,13 +362,15 @@ export const introspectProviderCapabilities = (
     ),
     Effect.map((info) => {
       const engineArch = engineInfoArchitecture(info);
-      return dockerCapabilitiesForHost(
-        platform,
-        dockerHost,
-        hostProxyContainerTargets(engineArch),
-        engineInfoRootless(info) ?? false,
-        engineInfoUsernsRemap(info) ?? false,
-      );
+      const startIntervalVersion = api.requestApiVersion?.(["1.44"]);
+      return dockerCapabilitiesForHost(platform, dockerHost, {
+        containerTargets: hostProxyContainerTargets(engineArch),
+        rootless: engineInfoRootless(info) ?? false,
+        usernsRemap: engineInfoUsernsRemap(info) ?? false,
+        healthStartInterval:
+          startIntervalVersion !== undefined &&
+          (compareDockerApiVersion(startIntervalVersion, "1.44") ?? -1) >= 0,
+      });
     }),
   );
 

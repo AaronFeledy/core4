@@ -215,6 +215,40 @@ Host readiness runs at the same lifecycle gates, never as permanent host monitor
 
 Private capture prevents live streaming and process/shell execution events; it does not make the configured command confidential. Redacted lifecycle plan metadata can include the command, and failures can include bounded, redacted stderr or command context. Keep secrets out of the command text. Bind the secret in the service `environment` and read it as `$NAME` in a string probe command, which runs under a shell inside the service. A `${secret:...}` reference written in the command itself fails loading with `LandofileValidationError`. `lando info` omits raw commands entirely.
 
+## Speed up native checks during startup
+
+Set `startIntervalSeconds` under `healthcheck` to check more often while the service starts. While the service is still `starting` within `startPeriodSeconds`, the engine runs the check every `startIntervalSeconds`. After the first success, or when the start period ends, it switches to `intervalSeconds`:
+
+```yaml
+services:
+  web:
+    type: compose
+    image: docker.io/library/alpine:3.20
+    command: sleep infinity
+    healthcheck:
+      command: "true"
+      startPeriodSeconds: 10
+      startIntervalSeconds: 2
+```
+
+The Compose spelling is `start_interval: 2s`. The `docker` provider honors it when Docker Engine speaks API 1.44 or newer (Docker Engine 25 and later). Lando checks that when it connects, so an older engine never receives a setting it would drop. Podman drops the setting, so the `podman` provider, the Podman machine Lando manages on macOS and Windows, and the `lando` provider on Linux don't offer it. Neither does an older Docker Engine. On those, `lando start` stops before changing anything with a `CapabilityError` that names `readiness.startIntervalSeconds`.
+
+`readiness.startIntervalSeconds` paces Lando's own startup gate instead, which runs the same way on every provider:
+
+```yaml
+services:
+  web:
+    type: compose
+    image: docker.io/library/alpine:3.20
+    command: sleep infinity
+    healthcheck:
+      command: "true"
+    readiness:
+      command: "true"
+      startPeriodSeconds: 10
+      startIntervalSeconds: 2
+```
+
 ## Turn the probe off
 
 Choose which policy to disable. `healthcheck: false` turns off native monitoring, including an inherited image healthcheck, but keeps explicit or contributed readiness. `readiness: false` disables the lifecycle command gate and prevents fallback to native health; it does not disable native monitoring. Process-running and job-completion supervision continue. A `service_healthy` dependency still requires an enabled readiness probe; disabling it does not relax the dependency gate and the plan is rejected.
@@ -353,6 +387,13 @@ Info never executes probes or reports a durable last-readiness proof. `not-obser
       <UseFixture name="native-user-invalid" />
       <Run command="lando app:cache:refresh --format=json" expectExit={1} />
       <Verify errorTag="HealthcheckTargetUnsupportedError" />
+    </Step>
+  </Scenario>
+  <Scenario id="reject-native-start-interval" render={false} reason="A provider that does not honor a native start interval refuses it and names the readiness cadence">
+    <Step name="reject-native-start-interval-plan">
+      <UseFixture name="native-start-interval" />
+      <Run command="lando app:cache:refresh --format=json" expectExit={1} />
+      <Verify errorTag="CapabilityError" expect={{ regex: "readiness\\.startIntervalSeconds" }} />
     </Step>
   </Scenario>
   <Scenario id="reject-missing-host-command" render={false} reason="Host readiness cannot inherit the database type command">

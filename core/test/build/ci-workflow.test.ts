@@ -236,7 +236,10 @@ describe("ci workflow", () => {
     expect(providerContracts).toContain('              docker pull "$image"');
     expect(providerContracts).toContain("      - name: Run structured provider acceptance cell");
     expect(providerContracts).toContain("        if: always()");
-    expect(providerContracts).toContain("      - name: Assert Docker latest exec creates 0644 files");
+    expect(providerContracts).toContain("      - name: Assert Docker latest feature checks passed");
+    expect(providerContracts).toContain(
+      '            for (const id of ["exec-umask-mode","health-start-interval"]) {',
+    );
     expect(providerContracts).toContain("        if: ${{ matrix.cell == 'docker-engine-linux-latest' }}");
     expect(providerContracts).toContain(
       "          bun run scripts/provider-matrix-acceptance.ts --cell '${{ matrix.cell }}' --report-dir provider-matrix-reports",

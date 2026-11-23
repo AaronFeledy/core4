@@ -1698,6 +1698,10 @@
       "digest": "bcc4567082628a6d0c5a64c4b948451281715d8ae951c7d969ef5891d8e86478"
     },
     {
+      "fixture": "docs/guides/wait-for-your-app/fixtures/native-start-interval",
+      "digest": "e171da42cc4ffb02addb593a6fda0f71f54f87ef0905f60072e585df9be0ebdb"
+    },
+    {
       "fixture": "docs/guides/wait-for-your-app/fixtures/native-user-invalid",
       "digest": "06c17f7c856440bd6d0007c7959911ff86c430aafb8943da3d8ba28902685be6"
     },
