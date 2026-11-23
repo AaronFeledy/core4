@@ -1,7 +1,9 @@
 import { Context, type Effect, type Redacted, Schema } from "effect";
 import {
+  type AppliedStateVersionError,
   type CommandInputValidationError,
   type CommandStdioError,
+  type ProviderUnavailableError,
   type SqlCredentialAdminAuthError,
   type SqlCredentialApplyError,
   SqlCredentialMember,
@@ -57,6 +59,8 @@ export interface DatabaseCredentialConvergenceRequest {
 }
 
 export type DatabaseCredentialConvergenceError =
+  | AppliedStateVersionError
+  | ProviderUnavailableError
   | SqlCredentialTargetError
   | SqlCredentialApplyError
   | SqlCredentialAdminAuthError

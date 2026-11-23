@@ -81,9 +81,9 @@ export const makeProviderFactory = (services: ProviderRuntimeContext) => {
                 target.plan === undefined && desired?.id === target.app
                   ? { ...target, plan: desired }
                   : target;
-              return contribution.appliedPlans(context).pipe(
-                Effect.flatMap((appliedPlans) =>
-                  registerProviderOutput({ target: selected, provider: runtime, appliedPlans }),
+              return contribution.appliedStateInventory(context).pipe(
+                Effect.flatMap(({ plans }) =>
+                  registerProviderOutput({ target: selected, provider: runtime, appliedPlans: plans }),
                 ),
                 Effect.provideService(PathsService, paths),
                 Effect.provideService(PrivateFileAccessService, privateFileAccess),

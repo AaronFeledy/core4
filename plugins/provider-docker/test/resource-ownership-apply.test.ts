@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { EngineHttpResponse } from "@lando/container-runtime/engine-api";
-import { loadAppliedPlan } from "@lando/provider-docker";
+import { loadAppliedPlanStrict } from "@lando/provider-docker";
 import { ServiceName, landoAppNetworkName } from "@lando/sdk/schema";
 import { Effect, Result, Schema } from "effect";
 import { makeRuntimeProvider } from "./provider-fixture.ts";
@@ -77,7 +77,7 @@ test("failed apply leaves durable ownership hints for verified later cleanup wit
     // Retention: apply does not compensate/teardown on failure.
     expect(deleteAttempts).toBe(0);
     expect(networks.has(privateNetwork)).toBe(true);
-    expect(await Effect.runPromise(loadAppliedPlan(state, desired.id))).toBeUndefined();
+    expect(await Effect.runPromise(loadAppliedPlanStrict(state, desired.id))).toBeUndefined();
     expect(await Effect.runPromise(store.summary(root))).toBeDefined();
     const cleanup = provider.cleanupOwnedResources;
     if (cleanup === undefined) throw new TypeError("built-in cleanup port is missing");
@@ -199,7 +199,7 @@ test("destroy of a partial apply is a no-op and ownership inventory removes reta
       Effect.scoped(provider.apply(desired, { reconcile: false })).pipe(Effect.result),
     );
     expect(Result.isFailure(failed)).toBe(true);
-    expect(await Effect.runPromise(loadAppliedPlan(state, desired.id))).toBeUndefined();
+    expect(await Effect.runPromise(loadAppliedPlanStrict(state, desired.id))).toBeUndefined();
     expect(await Effect.runPromise(store.summary(root))).toBeDefined();
     // Explicit retained container + private network before cleanup.
     expect(containers.has(containerName)).toBe(true);
@@ -306,6 +306,6 @@ test("unknown ownership on retry fails closed without mutating foreign resources
     expect(calls.filter((call) => call.includes("/start"))).toEqual([]);
     expect(calls.filter((call) => call.includes("/containers/create"))).toEqual([]);
     expect(calls.length).toBeGreaterThan(callsAfterFirst);
-    expect(await Effect.runPromise(loadAppliedPlan(state, desired.id))).toBeUndefined();
+    expect(await Effect.runPromise(loadAppliedPlanStrict(state, desired.id))).toBeUndefined();
   });
 });

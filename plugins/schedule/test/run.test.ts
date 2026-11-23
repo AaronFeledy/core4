@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { PlanReplanRequiredError } from "@lando/sdk/errors";
+import {
+  type AppliedStateVersionError,
+  PlanReplanRequiredError,
+  appliedStateVersionError,
+} from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
@@ -9,6 +13,7 @@ import {
   ProviderId,
   ServiceName,
   ServicePlan,
+  appIdentityKey,
 } from "@lando/sdk/schema";
 import {
   type ExecTarget,
@@ -86,12 +91,16 @@ const makePlan = (
     { name: "web-schedule", clonedFrom: "web" },
     { name: "web-schedule-1002", clonedFrom: "web" },
   ],
+  recordedRoot?: AbsolutePath,
 ) =>
   AppPlan.make({
     id: AppId.make("demo"),
     name: "demo",
     slug: "demo",
     root: appRoot,
+    ...(recordedRoot === undefined
+      ? {}
+      : { identity: { appRoot: recordedRoot, ownerKey: appIdentityKey("owner", recordedRoot) } }),
     provider: ProviderId.make("lando"),
     services: Object.fromEntries(
       services.map(({ name, clonedFrom }) => [ServiceName.make(name), servicePlan(name, clonedFrom)]),
@@ -104,10 +113,15 @@ const makePlan = (
   });
 
 const makeRuntime = (
-  options: { readonly applied?: boolean; readonly planServices?: ReadonlyArray<PlannedService> } = {},
+  options: {
+    readonly applied?: boolean;
+    readonly planServices?: ReadonlyArray<PlannedService>;
+    readonly protection?: AppliedStateVersionError;
+    readonly recordedRoot?: AbsolutePath;
+  } = {},
 ) => {
   const execs: Array<{ readonly target: ExecTarget; readonly command: ProviderCommandSpec }> = [];
-  const plan = makePlan(options.planServices);
+  const plan = makePlan(options.planServices, options.recordedRoot);
   const provider: RuntimeProviderShape = {
     ...TestRuntimeProvider,
     exec: (target, command) => {
@@ -129,6 +143,8 @@ const makeRuntime = (
         ? Effect.succeed(options.applied === false ? undefined : plan)
         : Effect.die("schedule run must ask for the exact app"),
     resolveTeardownEvidence: () => Effect.die("unused"),
+    readAppliedPlanStrict: () =>
+      options.protection === undefined ? Effect.succeed(plan) : Effect.fail(options.protection),
   });
   const layer = Layer.mergeAll(
     Layer.succeed(
@@ -150,6 +166,31 @@ const makeRuntime = (
 };
 
 describe("schedule:run", () => {
+  test("refuses a newer receipt before executing a scheduled job", async () => {
+    const protection = appliedStateVersionError({
+      providerId: "test",
+      operation: "applied-state.read",
+      path: "/state/demo.json",
+      storedVersion: 12,
+      supportedVersion: 11,
+      scope: "app",
+      appId: "demo",
+    });
+    const runtime = makeRuntime({ protection });
+    await expect(runtime.run("fail")).rejects.toMatchObject({ _tag: "AppliedStateVersionError" });
+    expect(runtime.execs).toEqual([]);
+  });
+  test("runs a job when the applied record names the canonical form of the app root", async () => {
+    // Given: the Landofile reports the root as written while the record holds its canonical form,
+    // as on Windows, where the drive letter and separators can differ.
+    const runtime = makeRuntime({ recordedRoot: AbsolutePath.make("/canonical/schedule-run") });
+
+    // When / Then: the exact lookup and the strict reread agree, so the job runs.
+    const result = await runtime.run("ok");
+    expect(result.exitCode).toBe(0);
+    expect(runtime.execs).toHaveLength(1);
+  });
+
   test("returns the completed result and classifies a nonzero exit through completion", async () => {
     const runtime = makeRuntime();
     const result = await runtime.run("fail");

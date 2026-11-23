@@ -104,7 +104,7 @@ export const executeSqliteCommand = Effect.fn("Sql.executeSqliteCommand")(functi
     case "snapshots": {
       const filter = yield* resolveSnapshotSource({
         plan: deps.plan,
-        appliedPlans: deps.appliedPlans,
+        findAppliedSource: deps.findAppliedSource,
         store: store.store,
         ownerKey: owner.ownerKey,
         ...(deps.plan.identity?.repoGroupKey === undefined

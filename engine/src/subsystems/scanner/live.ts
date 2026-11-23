@@ -1,14 +1,8 @@
+import { inventoryProtectsApp, protectedSlotError } from "@lando/container-runtime/applied-state";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import { mapFailures } from "@lando/sdk/command-result";
 import { ProviderUnavailableError, ScannerError } from "@lando/sdk/errors";
-import {
-  type AppId,
-  type AppPlan,
-  type EndpointRef,
-  type ProviderId,
-  ServiceName,
-  type ServicePlan,
-} from "@lando/sdk/schema";
+import { type AppId, type AppPlan, type EndpointRef, ServiceName, type ServicePlan } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
 import {
   type PortCollision,
@@ -17,7 +11,7 @@ import {
   UrlScanner,
   type UrlScannerShape,
 } from "@lando/sdk/services";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Result } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 import { collectObservedConnections, observeService } from "../../operations/connection-collector.ts";
 import { observedPublicationConnection, serviceStateOf } from "../../operations/service-connections.ts";
@@ -213,20 +207,19 @@ export const layer: Layer.Layer<UrlScanner, never, RuntimeProviderRegistry | Htt
           const redactor = yield* resolveRedactor;
           const selected = Effect.gen(function* () {
             if (suppliedPlan !== undefined) return yield* registry.select(suppliedPlan);
-            const inspectAppliedPlans = (id: ProviderId) =>
-              registry
-                .select(id)
-                .pipe(Effect.flatMap((candidate) => candidate.appliedPlans ?? Effect.succeed([])));
+            const inspectAppliedPlans = registry.appliedStateInventory;
             // The first provider that could not be inspected keeps its own tag and remediation.
             let uninspected: Effect.Error<ReturnType<typeof inspectAppliedPlans>> | undefined;
             for (const id of yield* registry.list) {
               const inspected = yield* Effect.result(inspectAppliedPlans(id));
-              if (inspected._tag === "Failure") {
+              if (Result.isFailure(inspected)) {
                 uninspected ??= inspected.failure;
                 continue;
               }
-              const plan = inspected.success.find((plan) => plan.id === appId);
+              const plan = inspected.success.plans.find((plan) => plan.id === appId && plan.provider === id);
               if (plan !== undefined) return yield* registry.select(plan);
+              const issue = inspected.success.unreadable.find((entry) => inventoryProtectsApp(entry, appId));
+              if (issue !== undefined) uninspected ??= protectedSlotError(id, issue, appId);
             }
             if (uninspected !== undefined) return yield* Effect.fail(uninspected);
             return yield* Effect.fail(

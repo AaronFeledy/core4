@@ -39,15 +39,15 @@ export const resolveConnectionClientTask = Effect.fnUntraced(function* (input: {
   const plugins = yield* Effect.serviceOption(PluginRegistry);
   if (Option.isNone(registry) || Option.isNone(plugins)) return yield* Effect.fail(refused);
   const root = AbsolutePath.make(yield* canonicalMissingAppRoot(input.plan.root).pipe(mapFailures(refusal)));
-  const plans = yield* registry.value.appliedPlansFor(root).pipe(mapFailures(refusal));
-  const owned = plans.filter(
-    (plan) =>
-      plan.id === input.plan.id &&
-      plan.provider === input.plan.provider &&
-      planAppIdentity(plan).appRoot === root &&
-      planAppIdentity(plan).ownerKey === appIdentityKey("owner", root),
-  );
-  const applied = owned.length === 1 ? owned[0] : undefined;
+  const recorded = yield* registry.value.readAppliedPlanStrict(input.plan);
+  const applied =
+    recorded !== undefined &&
+    recorded.id === input.plan.id &&
+    recorded.provider === input.plan.provider &&
+    planAppIdentity(recorded).appRoot === root &&
+    planAppIdentity(recorded).ownerKey === appIdentityKey("owner", root)
+      ? recorded
+      : undefined;
   const service = applied?.services[owner];
   const desired = input.plan.services[owner];
   if (

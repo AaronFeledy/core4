@@ -5,7 +5,13 @@ import {
   type StateStoreError,
 } from "@lando/sdk/errors";
 import type { PluginStateStore } from "@lando/sdk/plugins";
-import type { AppId, AppPlan, AppliedAppPlan, AppliedStateInventory } from "@lando/sdk/schema";
+import type {
+  AppId,
+  AppPlan,
+  AppliedAppPlan,
+  AppliedStateInventory,
+  UnreadableAppliedState,
+} from "@lando/sdk/schema";
 import { AppPlanSanitizer } from "@lando/sdk/services";
 import { Effect, Option } from "effect";
 
@@ -37,6 +43,20 @@ export {
 } from "./applied-state-read.ts";
 
 export type AppliedPlanStoreError = ProviderUnavailableError | AppliedStateVersionError;
+
+export const inventoryProtectsApp = (entry: UnreadableAppliedState, appId: string): boolean =>
+  entry.appId === undefined || entry.appId === appId;
+
+export const protectedSlotError = (providerId: string, entry: UnreadableAppliedState, appId = entry.appId) =>
+  appliedStateInspectError({
+    providerId,
+    ...(appId === undefined ? {} : { appId }),
+    layout: entry.appId === undefined ? "record" : "per-app",
+    read:
+      entry.reason === "newer-version"
+        ? { ...entry, status: "newer-version" }
+        : { path: entry.path, status: "unreadable" },
+  });
 
 export const openAppliedPlansRecord = (stateStore: Pick<PluginStateStore, "open">) =>
   stateStore.open({
@@ -74,10 +94,6 @@ interface AppliedPlanOperations {
     stateStore: PluginStateStore,
     plan: AppPlan,
   ) => Effect.Effect<string, AppliedPlanStoreError>;
-  readonly loadAppliedPlan: (
-    stateStore: PluginStateStore,
-    appId: AppId,
-  ) => Effect.Effect<AppliedAppPlan | undefined, never>;
   readonly removeAppliedPlan: (
     stateStore: PluginStateStore,
     appId: AppId,
@@ -85,10 +101,6 @@ interface AppliedPlanOperations {
 }
 
 export interface PerAppAppliedPlanStore extends AppliedPlanOperations {
-  readonly listObservedPlans: (
-    stateStore: PluginStateStore,
-    stateDir: string,
-  ) => Effect.Effect<ReadonlyArray<AppliedAppPlan>>;
   readonly listAppliedPlans: (
     stateStore: PluginStateStore,
     stateDir: string,
@@ -96,7 +108,6 @@ export interface PerAppAppliedPlanStore extends AppliedPlanOperations {
 }
 
 export interface RecordAppliedPlanStore extends AppliedPlanOperations {
-  readonly listObservedPlans: (stateStore: PluginStateStore) => Effect.Effect<ReadonlyArray<AppliedAppPlan>>;
   readonly listAppliedPlans: (
     stateStore: PluginStateStore,
   ) => Effect.Effect<AppliedStateInventory, AppliedPlanStoreError>;
@@ -178,8 +189,6 @@ export function makeAppliedPlanStore(
           }
         }),
       );
-    const loadAppliedPlan = (stateStore: PluginStateStore, appId: AppId) =>
-      loadAppliedPlanStrict(stateStore, appId).pipe(Effect.catch(() => Effect.succeed(undefined)));
     const list = (stateStore: PluginStateStore, stateDir: string) =>
       listAppliedPlanInventory(
         stateDir,
@@ -189,13 +198,7 @@ export function makeAppliedPlanStore(
     return {
       inspectAppliedPlan,
       loadAppliedPlanStrict,
-      loadAppliedPlan,
       listAppliedPlans: list,
-      listObservedPlans: (stateStore, stateDir) =>
-        list(stateStore, stateDir).pipe(
-          Effect.map((inventory) => inventory.plans),
-          Effect.catch(() => Effect.succeed([])),
-        ),
       persistAppliedPlan: (stateStore, plan) =>
         open(stateStore, plan.id).pipe(
           Effect.flatMap((bucket) =>
@@ -272,8 +275,6 @@ export function makeAppliedPlanStore(
         ),
         mapFailures((cause) => mutationError("persist", cause)),
       ),
-    loadAppliedPlan: (stateStore, appId) =>
-      loadAppliedPlanStrict(stateStore, appId).pipe(Effect.catch(() => Effect.succeed(undefined))),
     listAppliedPlans: (stateStore: PluginStateStore) =>
       inspectRecord(stateStore).pipe(
         Effect.map((read): AppliedStateInventory => {
@@ -289,11 +290,6 @@ export function makeAppliedPlanStore(
             }
           }
         }),
-      ),
-    listObservedPlans: (stateStore: PluginStateStore) =>
-      readRecord(stateStore).pipe(
-        Effect.map((plans) => Object.values(plans ?? {})),
-        Effect.catch(() => Effect.succeed([])),
       ),
     removeAppliedPlan: (stateStore, appId) =>
       open(stateStore).pipe(

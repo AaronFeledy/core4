@@ -466,7 +466,7 @@ test.each([
 });
 
 test.each(["lando", "docker"])(
-  "protects a future-version modern %s record that alone backs the candidate",
+  "warns without inventing a prune candidate from a future-version %s body",
   async (provider) => {
     // Given: modern state from a newer Lando is the only record for the missing root.
     const f = await fixture(provider);
@@ -479,18 +479,20 @@ test.each(["lando", "docker"])(
     // When
     const result = await f.run();
 
-    // Then: partial failure, nothing deleted, upgrade remediation.
+    // Then: no row or prune candidate, but the version issue survives.
+    expect(result.apps).toEqual([]);
     expect(result.pruned).toEqual([]);
-    expect(result.pruneFailures).toEqual([
+    expect(result.pruneFailures).toBeUndefined();
+    expect(result.appliedStateIssues).toEqual([
       expect.objectContaining({
         reason: "newer-version",
         providerId: provider,
-        appId: "alpha",
+        path: modern,
         storedVersion: APPLIED_STATE_VERSION + 1,
         supportedVersion: APPLIED_STATE_VERSION,
       }),
     ]);
-    const failure = result.pruneFailures?.[0];
+    const failure = result.appliedStateIssues?.[0];
     expect(failure?.remediation).toMatch(/newer Lando|upgrade Lando/i);
     expect(failure?.remediation).not.toMatch(/move it aside|destroy/i);
     expect(await readFile(modern, "utf8")).toBe(payload);
@@ -608,7 +610,8 @@ test("prunes an unrelated candidate while protecting a future-version podman rec
 
   // Then: beta pruned, alpha protected, podman bytes intact.
   expect(result.pruned?.map((entry) => entry.appId)).toEqual(["beta"]);
-  expect(result.pruneFailures).toEqual(
+  expect(result.pruneFailures).toBeUndefined();
+  expect(result.appliedStateIssues).toEqual(
     expect.arrayContaining([
       expect.objectContaining({
         reason: "newer-version",

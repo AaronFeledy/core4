@@ -75,32 +75,29 @@ export const layer = dataMoverLayer.pipe(
   Layer.provide(
     Layer.effect(
       RuntimeProviderRegistry,
-      Effect.map(RuntimeProvider, (provider) =>
-        makeTestRuntimeProviderRegistry({
-          list: Effect.succeed([ProviderId.make(provider.id)]),
+      Effect.map(RuntimeProvider, (provider) => {
+        const plan = {
+          valueModel: 1,
+          id: AppId.make("data-app"),
+          name: "Data app",
+          slug: "data-app",
+          root: fixtureOwnerRoot,
+          provider: ProviderId.make(provider.id),
+          services: {},
+          routes: [],
+          stores: [],
+          fileSync: [],
+          metadata: { resolvedAt: DateTime.makeUnsafe(0), source: "test", runtime: 4 },
+          extensions: {},
+        } satisfies AppPlan;
+        return makeTestRuntimeProviderRegistry({
+          list: Effect.succeed([plan.provider]),
           capabilities: Effect.succeed(provider.capabilities),
-          select: () =>
-            Effect.succeed({
-              ...provider,
-              appliedPlans: Effect.succeed([
-                {
-                  valueModel: 1,
-                  id: AppId.make("data-app"),
-                  name: "Data app",
-                  slug: "data-app",
-                  root: fixtureOwnerRoot,
-                  provider: ProviderId.make(provider.id),
-                  services: {},
-                  routes: [],
-                  stores: [],
-                  fileSync: [],
-                  metadata: { resolvedAt: DateTime.makeUnsafe(0), source: "test", runtime: 4 },
-                  extensions: {},
-                } satisfies AppPlan,
-              ]),
-            }),
-        }),
-      ),
+          select: () => Effect.succeed(provider),
+          appliedStateInventory: () => Effect.succeed({ plans: [plan], unreadable: [] }),
+          readAppliedPlanStrict: ({ id }) => Effect.succeed(id === plan.id ? plan : undefined),
+        });
+      }),
     ),
   ),
 );

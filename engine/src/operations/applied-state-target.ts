@@ -190,7 +190,10 @@ export const teardownResolutionAtRoot = <E, R>(
           const app: AppRef = { kind: "user", id: normalizeAppSlug(loaded.document.name ?? "app", ""), root };
           const registry = yield* RuntimeProviderRegistry;
           const providerId = yield* TeardownProvider;
-          const plans = (yield* registry.appliedPlansFor(root, providerId)).filter(
+          const plans = (yield* registry.appliedPlansFor(
+            root,
+            providerId === undefined ? undefined : { providerId },
+          )).filter(
             (plan) =>
               (providerId === undefined || plan.provider === providerId) && matchesAppPlanIdentity(plan, app),
           );

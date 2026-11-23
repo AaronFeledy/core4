@@ -5,6 +5,7 @@ import {
   LandofileParseError,
   LandofileValidationError,
   ProviderUnavailableError,
+  appliedStateVersionError,
 } from "@lando/sdk/errors";
 import { type AppPlan, appIdentityKey } from "@lando/sdk/schema";
 import { AppPlanner, LandofileService, RuntimeProviderRegistry } from "@lando/sdk/services";
@@ -112,6 +113,34 @@ for (const scenario of failures) {
     });
   }
 }
+
+test("info falls back to desired planning when applied discovery is protected", async () => {
+  const protection = appliedStateVersionError({
+    providerId: plan.provider,
+    appId: plan.id,
+    operation: "applied-state.read",
+    path: "/state/app.json",
+    storedVersion: 12,
+    supportedVersion: 11,
+    scope: "app",
+  });
+  const harness = makeHarness({ appliedPlans: [], resolveAppliedPlan: () => Effect.fail(protection) });
+  try {
+    const registry = makeTestRuntimeProviderRegistry({
+      ...harness.runtimeProviderRegistry,
+      readAppliedPlanStrict: () => Effect.fail(protection),
+    });
+    const result = await Effect.runPromise(
+      withResolvedCwd(plan.root, infoApp()).pipe(
+        Effect.provideService(RuntimeProviderRegistry, registry),
+        Effect.provide(harness.layer),
+      ),
+    );
+    expect(result.appliedStateIssue).toMatchObject({ reason: "newer-version", path: protection.path });
+  } finally {
+    rmSync(harness.userDataRoot, { recursive: true, force: true });
+  }
+});
 
 test("info retains a successful desired-versus-applied policy difference", async () => {
   // Given an applied accelerated plan and an ordinary desired plan.
