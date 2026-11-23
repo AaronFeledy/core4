@@ -1,5 +1,5 @@
 import { ProviderUnavailableError } from "@lando/sdk/errors";
-import type { AppId, AppPlan } from "@lando/sdk/schema";
+import { type AppId, type AppPlan, planAppIdentity } from "@lando/sdk/schema";
 import {
   AppPlanSanitizer,
   type ApplyOptions,
@@ -7,10 +7,13 @@ import {
   type DestroyOptions,
   EventService,
   PathsService,
+  type RuntimeProviderShape,
 } from "@lando/sdk/services";
 import { Effect, Option } from "effect";
 import { type AppliedPlanCacheOptions, makeAppliedPlanCache } from "./applied-plan-cache.ts";
+import { adoptLegacyDataRoot } from "./data-root-adoption.ts";
 import { refuseOtherAppsResources } from "./foreign-owner.ts";
+import { volumeCoordinationKey } from "./native-volume-identity.ts";
 import { removeOrphanedNetworks } from "./orphaned-networks.ts";
 import { makeOwnedResourcesCleanup } from "./resource-cleanup.ts";
 import { makeResourceOwnershipStore } from "./resource-ownership.ts";
@@ -48,18 +51,71 @@ export const providerHostInputs = Effect.gen(function* () {
 type ProviderPlanStateOptions = AppliedPlanCacheOptions &
   Omit<ProviderDataPlaneOptions, "api" | "providerId" | "redactorFor"> & {
     readonly ctx: ProviderErrorContext;
+    readonly userDataRoot?: string | undefined;
     readonly api?: ProviderDataPlaneOptions["api"];
   };
 
 const makeOwnership = (options: ProviderPlanStateOptions) => {
   const store = makeResourceOwnershipStore(options.ctx.providerId, options.appliedPlanState);
+  const receiptsAt = (root: AppPlan["root"]) =>
+    store
+      .load(root)
+      .pipe(Effect.map((inventory) => inventory?.adoptions?.flatMap((batch) => batch.receipts) ?? []));
+  const receiptsFor = Effect.fnUntraced(function* (plan: AppPlan) {
+    if (plan.identity?.dataRoot === undefined) return [];
+    return yield* receiptsAt(planAppIdentity(plan).appRoot);
+  });
+  const adopt = Effect.fn("ProviderOwnership.adopt")(function* (
+    plan: AppPlan,
+    previous: AppPlan | undefined,
+    witness: Parameters<NonNullable<RuntimeProviderShape["adoptDataRoot"]>>[1],
+  ) {
+    const api = options.api;
+    if (api?.request === undefined) return;
+    yield* adoptLegacyDataRoot(plan, previous, {
+      request: api.request,
+      store,
+      volumeWitness: (name) =>
+        volumeCoordinationKey({ ...options, api, providerId: options.ctx.providerId }, name).pipe(
+          Effect.flatMap((key) => (key === undefined ? Effect.succeed(undefined) : witness(key))),
+        ),
+    });
+  });
   return {
     ...store,
-    prepare: (plan: AppPlan, previous?: AppPlan) =>
-      refuseOtherAppsResources(plan, previous, {
+    adopt,
+    receiptsFor,
+    receiptsAt,
+    prepare: Effect.fn("ProviderOwnership.prepare")(function* (plan: AppPlan, previous?: AppPlan) {
+      yield* refuseOtherAppsResources(plan, previous, {
         ctx: options.ctx,
         ...(options.api === undefined ? {} : { api: options.api }),
-      }).pipe(Effect.andThen(store.prepare(plan, previous))),
+      });
+      const owner = planAppIdentity(plan);
+      if (
+        owner.dataRoot !== undefined &&
+        previous !== undefined &&
+        previous.root === plan.root &&
+        previous.identity?.dataRoot === undefined
+      ) {
+        const inventory = yield* store.load(owner.appRoot);
+        if (
+          !inventory?.adoptions?.some(
+            (batch) => batch.dataRoot === owner.dataRoot && batch.previousAppId === previous.id,
+          )
+        ) {
+          return yield* new ProviderUnavailableError({
+            providerId: options.ctx.providerId,
+            operation: "data-root-adoption",
+            message: "The legacy applied plan has not been checked for data-root adoption.",
+            remediation:
+              "Start the app through Lando so it can verify legacy resources and volume initialization before applying the new plan.",
+          });
+        }
+      }
+      yield* store.prepare(plan, previous);
+      return yield* receiptsFor(plan);
+    }),
   };
 };
 
@@ -72,6 +128,7 @@ export const makeProviderPlanState = (options: ProviderPlanStateOptions) => ({
     }),
   ownership: makeOwnership(options),
   cleanupOwnedResources: makeOwnedResourcesCleanup({
+    userDataRoot: options.userDataRoot,
     checkAppliedState: (app) =>
       options.appliedPlanState === undefined
         ? Effect.void

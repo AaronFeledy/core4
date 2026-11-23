@@ -3251,6 +3251,7 @@ describe("meta:setup command", () => {
               Effect.provide(
                 Layer.mergeAll(
                   Layer.succeed(GlobalConfigSources, { env: {}, sources: { user: false, env: false } }),
+                  Layer.succeed(PathsService, makeLandoPaths()),
                   Layer.succeed(RuntimeProviderRegistry, registry),
                   Layer.succeed(
                     ConfigService,

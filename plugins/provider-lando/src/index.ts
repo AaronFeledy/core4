@@ -938,6 +938,7 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
     };
     const planState = makeProviderPlanState({
       ctx: LANDO_CTX,
+      userDataRoot: options.userDataRoot,
       ...(podmanApi === undefined
         ? {}
         : {
@@ -1788,6 +1789,16 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
           podmanApi === undefined
             ? Effect.fail(makeUnavailable("listArtifacts"))
             : listContainerArtifacts(podmanApi, selector, LANDO_CTX),
+        adoptDataRoot: Effect.fn("RuntimeProvider.adoptDataRoot")(function* (plan, witness) {
+          if (plan.identity?.dataRoot === undefined) return;
+          const previous = yield* appliedPlans.resolveMutationPlan(plan.id);
+          if (previous === undefined || previous.identity?.dataRoot !== undefined) return;
+          yield* planState.ownership.adopt(
+            yield* physicalNetworkPlan(plan),
+            yield* physicalNetworkPlan(previous),
+            witness,
+          );
+        }),
         apply: Effect.fn("RuntimeProvider.apply")(function* (plan, applyOptions) {
           yield* validateHealthcheckExecution(plan, applyOptions.executeReadinessAttempt);
           const previous = yield* appliedPlans.resolveMutationPlan(plan.id);
@@ -1795,11 +1806,12 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
           const physicalPlan = yield* physicalNetworkPlan(plan);
           const previousPhysicalPlan =
             previous === undefined ? undefined : yield* physicalNetworkPlan(previous);
-          yield* planState.ownership.prepare(physicalPlan, previousPhysicalPlan);
+          const adoptionReceipts = yield* planState.ownership.prepare(physicalPlan, previousPhysicalPlan);
           const result = yield* withGlobalPublishedLifecycle(
             String(plan.id),
             "apply",
             runtimeBringUp(physicalPlan, {
+              adoptionReceipts,
               ...(applyOptions.executeReadinessAttempt === undefined
                 ? {}
                 : { executeReadinessAttempt: applyOptions.executeReadinessAttempt }),
@@ -1853,6 +1865,7 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
               }
               const physicalPlan = yield* physicalNetworkPlan(plan);
               return yield* runtimeBringDown(physicalPlan, {
+                adoptionReceipts: yield* planState.ownership.receiptsFor(physicalPlan),
                 ...(podmanApi === undefined ? {} : { api: podmanApi }),
                 ctx: LANDO_CTX,
                 volumes: false,
@@ -1873,6 +1886,7 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
               if (plan === undefined) return DESTROY_NO_OP;
               const physicalPlan = yield* physicalNetworkPlan(plan);
               const result = yield* runtimeBringDown(physicalPlan, {
+                adoptionReceipts: yield* planState.ownership.receiptsFor(physicalPlan),
                 ...(podmanApi === undefined ? {} : { api: podmanApi }),
                 ...(socketPath === undefined
                   ? {}
@@ -1899,13 +1913,19 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
             String(observed.app),
             "removeObservedService",
             appliedPlans.resolveMutationPlan(observed.app).pipe(
-              Effect.andThen(
-                Effect.suspend(() =>
-                  removeObservedContainer(observed, {
+              Effect.flatMap(
+                Effect.fnUntraced(function* (plan) {
+                  const receipts =
+                    observed.appRoot !== undefined && observed.nativeName !== undefined
+                      ? yield* planState.ownership.receiptsAt(observed.appRoot)
+                      : [];
+                  return yield* removeObservedContainer(observed, {
                     ...(podmanApi === undefined ? {} : { api: podmanApi }),
                     ctx: LANDO_CTX,
-                  }),
-                ),
+                    dataRoot: options.userDataRoot ?? plan?.identity?.dataRoot,
+                    receipts,
+                  });
+                }),
               ),
               Effect.tap(() =>
                 runtimeBinDir === undefined || observed.containerId === undefined

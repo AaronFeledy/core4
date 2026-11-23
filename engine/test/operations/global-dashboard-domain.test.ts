@@ -26,11 +26,15 @@ test("global Mailpit preserves its expression in dist and replans it after a dom
     load: Effect.sync(() => config),
     get: (key) => Effect.sync(() => config[key]),
   });
-  const infrastructure = Layer.mergeAll(configLayer, BunFileSystem.layer);
+  const infrastructure = Layer.mergeAll(
+    configLayer,
+    BunFileSystem.layer,
+    Layer.succeed(PathsService, makeLandoPaths()),
+  );
   const registry = PluginRegistryLayer.layerWith({ user: false, app: false }, [serviceLando]);
   const layer = Layer.mergeAll(
     registry,
-    Layer.succeed(PathsService, makeLandoPaths()),
+    infrastructure,
     makeTestStateStore().layer,
     GlobalAppLayer.layer.pipe(Layer.provide(infrastructure)),
     PlannerLayer.layer.pipe(Layer.provide(Layer.mergeAll(registry, infrastructure))),

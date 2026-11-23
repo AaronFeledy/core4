@@ -87,7 +87,7 @@ export const scanMissingAppRoots = Effect.fn("AppOperation.scanMissingAppRoots")
   if (ids.length === 0 && selected === undefined && registry.observeRuntime !== undefined)
     snapshots.push(...(yield* registry.observeRuntime));
   const inventory = yield* collectMissingAppRoots(snapshots);
-  for (const [id, failure] of inventory.capabilityFailures) {
+  for (const [id, failure] of inventory.scanFailures) {
     const index = scans.findIndex((scan) => scan.providerId === id);
     if (index < 0) scans.push(failure);
     else scans[index] = failure;

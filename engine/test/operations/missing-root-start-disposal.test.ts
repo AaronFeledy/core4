@@ -5,7 +5,13 @@ import { basename, join } from "node:path";
 import { makeLandoPaths } from "@lando/paths";
 import { NoProviderInstalledError } from "@lando/sdk/errors";
 import { AbsolutePath, SnapshotInfo, type VolumeInfo, appIdentityKey } from "@lando/sdk/schema";
-import { DataMover, FileSystem, RuntimeProviderRegistry, StateStore } from "@lando/sdk/services";
+import {
+  DataMover,
+  FileSystem,
+  PathsService,
+  RuntimeProviderRegistry,
+  StateStore,
+} from "@lando/sdk/services";
 import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import * as DiskStateStore from "@lando/state-store/service";
 import { Effect, Layer, Schema } from "effect";
@@ -229,6 +235,7 @@ test.each([false, true, "unavailable"] as const)(
       const otherRoot = AbsolutePath.make(join(root, "other"));
       const layer = Layer.mergeAll(
         DiskStateStore.layerAt(paths.roots),
+        Layer.succeed(PathsService, paths),
         BunFileSystem.layer,
         Layer.succeed(
           RuntimeProviderRegistry,

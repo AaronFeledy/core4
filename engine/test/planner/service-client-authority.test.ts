@@ -13,6 +13,7 @@ import * as Registry from "../../src/plugins/registry.ts";
 import { composeExtendedServiceType } from "../../src/services/extends.ts";
 import * as Planner from "../../src/services/planner.ts";
 import { compileTestLandofile } from "../compiled-landofile.ts";
+import { pathsServiceLayer } from "../paths-service.ts";
 
 const planClient = (options: {
   readonly direct?: boolean;
@@ -80,7 +81,7 @@ const planClient = (options: {
     });
     const planner = yield* AppPlanner;
     return yield* planner.plan(landofile, TestRuntimeProvider.capabilities);
-  }).pipe(Effect.provide(Planner.layer), Effect.provide(plugins));
+  }).pipe(Effect.provide(Planner.layer.pipe(Layer.provide(pathsServiceLayer()))), Effect.provide(plugins));
 };
 
 test.each([

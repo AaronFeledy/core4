@@ -3,6 +3,9 @@ import { makeCleanupDiscoveredApps } from "@lando/engine/install/uninstall-disco
 import { LANDO_SHARED_CROSS_APP_NETWORK, appIdentityKey } from "@lando/sdk/schema";
 
 const root = "/apps/owned";
+const dataRoot = "/nonexistent-uninstall-owned-fixture";
+const container = { "dev.lando.app": "app", "dev.lando.app-root": root, "dev.lando.service": "web" };
+const scoped = (labels: Record<string, string>) => ({ ...labels, "dev.lando.data-root": dataRoot });
 const owner = appIdentityKey("owner", root);
 const network = {
   "dev.lando.app": "app",
@@ -42,7 +45,7 @@ const fixture = (
           stdout: JSON.stringify([
             {
               Id: "exact-container",
-              Config: { Labels: overrides.container ?? { "com.lando.app": "legacy" } },
+              Config: { Labels: scoped(overrides.container ?? container) },
             },
           ]),
         };
@@ -52,7 +55,7 @@ const fixture = (
             {
               Id: "exact-network",
               Name: overrides.networkName ?? "private",
-              Labels: overrides.network ?? network,
+              Labels: overrides.legacyDiscovery ? overrides.network : scoped(overrides.network ?? network),
             },
           ]),
         };
@@ -61,10 +64,13 @@ const fixture = (
         stdout: JSON.stringify([
           {
             Name: "named-data",
-            Labels:
-              volumeInspects > 1
-                ? (overrides.fresh ?? overrides.volume ?? volume)
-                : (overrides.volume ?? volume),
+            Labels: overrides.legacyDiscovery
+              ? overrides.volume
+              : scoped(
+                  volumeInspects > 1
+                    ? (overrides.fresh ?? overrides.volume ?? volume)
+                    : (overrides.volume ?? volume),
+                ),
           },
         ]),
       };
@@ -86,7 +92,7 @@ const fixture = (
       };
     return { stdout: "" };
   };
-  return { calls, run: makeCleanupDiscoveredApps("/nonexistent-uninstall-owned-fixture", exec, "linux") };
+  return { calls, run: makeCleanupDiscoveredApps(dataRoot, exec, "linux") };
 };
 
 test("purge inspects and deduplicates exact containers, private networks and owned volumes", async () => {
@@ -139,7 +145,7 @@ test("installed but unqueryable runtime is not treated as absent", async () => {
   ).rejects.toThrow();
 });
 
-test("explicit all-Lando purge is not narrowed to the discovery app root", async () => {
+test("explicit purge includes other app roots in the same data root", async () => {
   const f = fixture({
     container: {
       "dev.lando.app": "app",
@@ -157,9 +163,8 @@ test("old volume and network labels discover retention candidates without author
     network: { "dev.lando.network": "true" },
     volume: { "dev.lando.volume": "true" },
   });
-  await expect(f.run([])).rejects.toMatchObject({
-    _tag: "UninstallResourceCleanupError",
-    retained: expect.arrayContaining([expect.stringContaining("network"), expect.stringContaining("volume")]),
-  });
+  const report = await f.run([]);
+  expect(report).toContain("network");
+  expect(report).toContain("volume");
   expect(f.calls.some((args) => args.includes("rm") || args.includes("prune"))).toBe(false);
 });

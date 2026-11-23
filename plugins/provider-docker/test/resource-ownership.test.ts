@@ -83,7 +83,7 @@ for (const damage of ["corrupt", "version", "digest", "root", "provider"] as con
         damage === "corrupt"
           ? "{"
           : damage === "version"
-            ? raw.replace(/"version":\s*1/u, '"version":99')
+            ? raw.replace(/"version":\s*\d+/u, '"version":99')
             : damage === "digest"
               ? raw.replace(/"identityDigest":\s*"/u, '"identityDigest":"bad')
               : damage === "provider"

@@ -19,6 +19,7 @@ import * as Registry from "../../src/plugins/registry.ts";
 import * as FileSystem from "../../src/services/file-system.ts";
 import * as Planner from "../../src/services/planner.ts";
 import { literalTestLandofile } from "../compiled-landofile.ts";
+import { pathsServiceLayer } from "../paths-service.ts";
 
 const slow = {
   ...TestRuntimeProvider.capabilities,
@@ -84,7 +85,12 @@ test("plans exact transport filtering while retaining nested includes and tmpfs"
         Effect.provide(
           Planner.layer.pipe(
             Layer.provide(
-              Layer.mergeAll(Registry.layer, FileSystem.layer, Layer.succeed(FileSyncResolver, resolver)),
+              Layer.mergeAll(
+                Registry.layer,
+                FileSystem.layer,
+                Layer.succeed(FileSyncResolver, resolver),
+                pathsServiceLayer(),
+              ),
             ),
           ),
         ),
@@ -157,6 +163,7 @@ test("invalidates cached engine strategy and global passthrough policy", async (
               get: (key) => Effect.sync(() => config[key]),
             }),
           ),
+          pathsServiceLayer(),
         ),
       ),
     );
@@ -235,7 +242,9 @@ test("records one engine with separate accelerated, opted-out and absent service
       Effect.flatMap(AppPlanner, (planner) => planner.plan(literalTestLandofile(document, root), slow)).pipe(
         Effect.provide(
           Planner.layer.pipe(
-            Layer.provide(Layer.mergeAll(Registry.layer, Layer.succeed(FileSyncResolver, resolver))),
+            Layer.provide(
+              Layer.mergeAll(Registry.layer, Layer.succeed(FileSyncResolver, resolver), pathsServiceLayer()),
+            ),
           ),
         ),
       ),

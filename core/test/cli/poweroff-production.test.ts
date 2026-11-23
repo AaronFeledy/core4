@@ -52,6 +52,7 @@ const serviceAt = (root: string): ServiceRuntimeInfo => ({
   status: "running",
   containerId: "container-web",
   publications: { status: "unknown" },
+  labels: { "dev.lando.data-root": root },
 });
 
 const orphanAt = (root: string): AppliedOrphanGroup => ({

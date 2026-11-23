@@ -537,6 +537,7 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CT
     };
     const planState = makeProviderPlanState({
       ctx: DOCKER_CTX,
+      userDataRoot: options.userDataRoot,
       providerId: ProviderId.make(PROVIDER_ID),
       endpointNamespace: resolvedDockerHost,
       pullHelperImage: (ref) =>
@@ -667,11 +668,16 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CT
       ),
       removeArtifact: (request) => removeContainerArtifact(dockerApi, request, DOCKER_CTX),
       listArtifacts: (selector) => listContainerArtifacts(dockerApi, selector, DOCKER_CTX),
+      adoptDataRoot: Effect.fn("RuntimeProvider.adoptDataRoot")(function* (plan, witness) {
+        if (plan.identity?.dataRoot === undefined) return;
+        yield* planState.ownership.adopt(plan, yield* appliedPlans.resolveMutationPlan(plan.id), witness);
+      }),
       apply: Effect.fn("RuntimeProvider.apply")(function* (plan, applyOptions) {
         yield* validateHealthcheckExecution(plan, applyOptions.executeReadinessAttempt);
         const previous = yield* appliedPlans.resolveMutationPlan(plan.id);
-        yield* planState.ownership.prepare(plan, previous);
+        const adoptionReceipts = yield* planState.ownership.prepare(plan, previous);
         return yield* bringUp(plan, {
+          adoptionReceipts,
           ...(applyOptions.executeReadinessAttempt === undefined
             ? {}
             : { executeReadinessAttempt: applyOptions.executeReadinessAttempt }),
@@ -707,16 +713,20 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CT
           Effect.flatMap((plan) =>
             plan === undefined
               ? Effect.succeed(DESTROY_NO_OP)
-              : bringDown(plan, {
-                  api: dockerApi,
-                  endpointNamespace: resolvedDockerHost,
-                  ctx: DOCKER_CTX,
-                  dialect: dockerLifecycleDialect,
-                  volumes: destroyOptions.volumes,
-                  ...(destroyOptions.purgeCaches === undefined
-                    ? {}
-                    : { purgeCaches: destroyOptions.purgeCaches }),
-                }).pipe(
+              : planState.ownership.receiptsFor(plan).pipe(
+                  Effect.flatMap((adoptionReceipts) =>
+                    bringDown(plan, {
+                      adoptionReceipts,
+                      api: dockerApi,
+                      endpointNamespace: resolvedDockerHost,
+                      ctx: DOCKER_CTX,
+                      dialect: dockerLifecycleDialect,
+                      volumes: destroyOptions.volumes,
+                      ...(destroyOptions.purgeCaches === undefined
+                        ? {}
+                        : { purgeCaches: destroyOptions.purgeCaches }),
+                    }),
+                  ),
                   Effect.tap(() => forgetAppliedPlanUnlessKept(appliedPlans, target.app, destroyOptions)),
                   Effect.map(({ shutdownObservations, volumesRemoved, skipped }) => ({
                     kind: "destroyed" as const,
@@ -729,9 +739,22 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CT
         );
       }),
       removeObservedService: Effect.fn("RuntimeProvider.removeObservedService")((observed) =>
-        appliedPlans
-          .resolveMutationPlan(observed.app)
-          .pipe(Effect.andThen(removeObservedContainer(observed, { api: dockerApi, ctx: DOCKER_CTX }))),
+        appliedPlans.resolveMutationPlan(observed.app).pipe(
+          Effect.flatMap(
+            Effect.fnUntraced(function* (plan) {
+              const receipts =
+                observed.appRoot !== undefined && observed.nativeName !== undefined
+                  ? yield* planState.ownership.receiptsAt(observed.appRoot)
+                  : [];
+              return yield* removeObservedContainer(observed, {
+                api: dockerApi,
+                ctx: DOCKER_CTX,
+                dataRoot: options.userDataRoot ?? plan?.identity?.dataRoot,
+                receipts,
+              });
+            }),
+          ),
+        ),
       ),
       logs: (target, logOptions) =>
         Stream.unwrap(
@@ -818,6 +841,7 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CT
                     providerId: ProviderId.make(PROVIDER_ID),
                     ...runObservationFromListState(container.state),
                     containerId: container.id,
+                    nativeName: container.name,
                     labels: container.labels,
                     publications,
                   };

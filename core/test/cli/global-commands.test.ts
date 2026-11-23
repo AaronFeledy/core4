@@ -352,6 +352,9 @@ const makeHarness = async (
                         labels: {
                           "dev.lando.app": plan.id,
                           "dev.lando.app-root": options.observationRoot ?? plan.root,
+                          ...(plan.identity?.dataRoot === undefined
+                            ? {}
+                            : { "dev.lando.data-root": plan.identity.dataRoot }),
                           "dev.lando.provider": options.observationProviderId ?? providerId,
                           "dev.lando.service": service,
                         },

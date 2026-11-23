@@ -1,13 +1,19 @@
 import { expect } from "bun:test";
+import { makeLandoPaths } from "@lando/paths";
 import { ProviderUnavailableError, type ScratchAppError } from "@lando/sdk/errors";
-import { AbsolutePath, AppId, ProviderId, ServiceName } from "@lando/sdk/schema";
-import { RuntimeProviderRegistry, type RuntimeProviderShape } from "@lando/sdk/services";
+import { AbsolutePath, AppId, LANDO_DATA_ROOT_LABEL, ProviderId, ServiceName } from "@lando/sdk/schema";
+import { PathsService, RuntimeProviderRegistry, type RuntimeProviderShape } from "@lando/sdk/services";
 import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect } from "effect";
 import { ScratchResourceScanner } from "../../src/scratch-app/scanner.ts";
 
 export const scratchId = "scratch-demo-123456";
-export const labels = { "dev.lando.scratch": "TRUE", "dev.lando.scratch-id": scratchId };
+const paths = makeLandoPaths();
+export const labels = {
+  "dev.lando.scratch": "TRUE",
+  "dev.lando.scratch-id": scratchId,
+  [LANDO_DATA_ROOT_LABEL]: paths.roots.userDataRoot,
+};
 export const service = {
   app: AppId.make(scratchId),
   service: ServiceName.make("app"),
@@ -87,6 +93,7 @@ export const runScanner = <A, E>(
   Effect.runPromise(
     Effect.flatMap(ScratchResourceScanner, use).pipe(
       Effect.provide(ScratchResourceScanner.layer),
+      Effect.provideService(PathsService, paths),
       Effect.provideService(
         RuntimeProviderRegistry,
         makeTestRuntimeProviderRegistry({

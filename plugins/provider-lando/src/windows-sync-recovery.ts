@@ -170,7 +170,7 @@ export const quiesceRetainedWindowsSyncWriters = Effect.fn("ProviderLando.quiesc
     });
     const writers = yield* inventory;
     for (const writer of writers) {
-      yield* removeObservedContainer(writer, { api, ctx });
+      yield* removeObservedContainer(writer, { api, ctx, dataRoot: plan.identity?.dataRoot });
     }
     const remaining = yield* inventory;
     if (remaining.length !== 0)

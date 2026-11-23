@@ -30,7 +30,7 @@ Use the URLs and connection details from `lando info` to reach your services. Wh
 | `lando destroy -y` | Remove this app's containers and networks. Named volumes stay unless you pass `--volumes` or `--purge`. Alias of `app:destroy`. |
 | `lando doctor` | Report setup, provider, proxy, and cert health. Alias of `meta:doctor`. |
 | `lando poweroff -y` | Stop every Lando app on this host. Alias of `apps:poweroff`. |
-| `lando list` | List apps on this host. Alias of `apps:list`. |
+| `lando list` | List apps belonging to this Lando data root. Alias of `apps:list`. |
 | `lando share` | Start a public tunnel. Use `--target` for a non-primary service or extra port. Alias of `app:share`. |
 
 ## Fix a mistyped command
@@ -261,7 +261,7 @@ lando list
 lando poweroff -y
 ```
 
-`lando list` keeps known apps in the inventory after they stop. Names are not unique: two apps with the same name at different roots are separate rows, and status matches the provider, root, and name together. Its status comes from runtime discovery, not the saved plan:
+`lando list` keeps known apps in the inventory after they stop. It does not use another installation's containers to report an app as active, even when both installations use the same engine. `--all` includes more app kinds, not more installations. Names are not unique: two apps with the same name at different roots are separate rows, and status matches the provider, root, and name together. Status comes from runtime discovery, not the saved plan:
 
 | Status | Meaning |
 | --- | --- |

@@ -1,20 +1,30 @@
 import { expect, test } from "bun:test";
-import { FileIoError } from "@lando/sdk/errors";
+import { makeLandoPaths } from "@lando/paths";
+import { FileIoError, ProviderUnavailableError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
   type AppPlan,
+  LANDO_DATA_ROOT_LABEL,
   ProviderId,
   ServiceName,
   type VolumeInfo,
+  appIdentityKey,
 } from "@lando/sdk/schema";
-import { FileSystem, type ProviderRuntimeSnapshot, RuntimeProviderRegistry } from "@lando/sdk/services";
+import {
+  FileSystem,
+  PathsService,
+  type ProviderRuntimeSnapshot,
+  RuntimeProviderRegistry,
+} from "@lando/sdk/services";
 import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { type Context, DateTime, Effect } from "effect";
 import { findMissingAppRoots, scanMissingAppRoots } from "../../src/operations/missing-app-roots.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
 
 const root = AbsolutePath.make("/missing/app");
+const dataRoot = "/missing/test-data-root";
+const labelsHere = { [LANDO_DATA_ROOT_LABEL]: dataRoot };
 const app = AppId.make("app");
 const providerId = ProviderId.make("lando");
 const plan: AppPlan = {
@@ -45,10 +55,11 @@ const service = {
   status: "running" as const,
   publications: { status: "unknown" as const },
   containerId: "observed-container",
+  labels: labelsHere,
 };
 const volume = (name: string, labels: Readonly<Record<string, string>> = {}): VolumeInfo => ({
   ref: { app, store: name },
-  labels,
+  labels: { ...labelsHere, ...labels },
   identity: { coordinationKey: name, nativeName: name, generation: "1", ownerRoot: root, origin: "created" },
 });
 const snapshot = (overrides: Partial<ProviderRuntimeSnapshot> = {}): ProviderRuntimeSnapshot => ({
@@ -75,7 +86,10 @@ const run = (
           }),
         ),
       );
-    }).pipe(Effect.provide(BunFileSystem.layer)),
+    }).pipe(
+      Effect.provide(BunFileSystem.layer),
+      Effect.provideService(PathsService, makeLandoPaths({ userDataRoot: dataRoot })),
+    ),
   );
 
 test("retains applied state without counting a service whose container is gone", async () => {
@@ -157,7 +171,9 @@ test.each([
     }),
     "global-scope": snapshot({ volumes: [volume("data", { "dev.lando.scope": "global" })] }),
     "scratch-plan": snapshot({ appliedPlans: [{ ...plan, extensions: { "@lando/core/scratch": {} } }] }),
-    "scratch-service": snapshot({ services: [{ ...service, labels: { "dev.lando.scratch": "TRUE" } }] }),
+    "scratch-service": snapshot({
+      services: [{ ...service, labels: { ...labelsHere, "dev.lando.scratch": "TRUE" } }],
+    }),
     "scratch-volume": snapshot({ volumes: [volume("data", { "dev.lando.scratch": "TRUE" })] }),
     "unowned-volume": snapshot({ volumes: [{ ref: { app, store: "data" } }] }),
     "unowned-service": snapshot({
@@ -204,7 +220,16 @@ test("marks a root partially observed only when a contributing provider was not 
 
 test("ignores unrelated unobserved providers", async () => {
   const result = await run([
-    snapshot({ services: [service] }),
+    snapshot({
+      services: [
+        service,
+        {
+          ...service,
+          appRoot: AbsolutePath.make("/missing/foreign"),
+          labels: { [LANDO_DATA_ROOT_LABEL]: "/missing/foreign-data-root" },
+        },
+      ],
+    }),
     snapshot({ providerId: ProviderId.make("docker"), runtimeObserved: false }),
   ]);
   expect(result).toMatchObject([{ appliedState: false, runtimeObserved: true, providers: ["lando"] }]);
@@ -229,12 +254,139 @@ test.each(["none", "plan", "ownership", "unreadable"] as const)(
             observeRuntime: Effect.succeed([snapshot({ runtimeObserved: false })]),
           }),
         ),
+        Effect.provideService(PathsService, makeLandoPaths({ userDataRoot: dataRoot })),
         Effect.provide(BunFileSystem.layer),
       ),
     );
     expect(inventory.scans[0]?.recordedState).toBe(source !== "none");
   },
 );
+
+test("keeps the local applied record but does not claim its unlabeled services", async () => {
+  const historical = {
+    ...plan,
+    identity: { appRoot: root, ownerKey: "owner" },
+    services: { [String(service.service)]: {} as never },
+  };
+  const { labels: _omitLabels, ...unlabeled } = service;
+  const result = await run([
+    snapshot({
+      appliedPlans: [historical],
+      services: [
+        unlabeled,
+        {
+          ...unlabeled,
+          containerId: "foreign",
+          labels: { [LANDO_DATA_ROOT_LABEL]: "/missing/foreign-data-root" },
+        },
+      ],
+    }),
+  ]);
+  expect(result).toMatchObject([
+    {
+      root,
+      appliedState: true,
+      services: [],
+    },
+  ]);
+});
+
+test("drops unlabeled services without local plan membership under a data root", async () => {
+  const { labels: _omitLabels, ...unlabeled } = service;
+  expect(await run([snapshot({ services: [unlabeled] })])).toEqual([]);
+});
+
+test.each(["unreadable", "missing"] as const)(
+  "reports an %s ownership inventory accurately in the GC scan",
+  async (state) => {
+    const otherProvider = ProviderId.make("docker");
+    const { labels: _labels, ...legacy } = service;
+    const result = await Effect.runPromise(
+      scanMissingAppRoots().pipe(
+        Effect.provide(BunFileSystem.layer),
+        Effect.provideService(PathsService, makeLandoPaths({ userDataRoot: dataRoot })),
+        Effect.provideService(
+          RuntimeProviderRegistry,
+          makeTestRuntimeProviderRegistry({
+            list: Effect.succeed([providerId, otherProvider]),
+            observeRuntime: Effect.succeed([
+              snapshot({ services: [legacy] }),
+              snapshot({ providerId: otherProvider }),
+            ]),
+            resourceOwnership: (id) =>
+              state === "unreadable" && id === providerId
+                ? Effect.fail(
+                    new ProviderUnavailableError({
+                      providerId,
+                      operation: "resource-ownership",
+                      message: "Resource ownership inventory could not be read.",
+                      remediation: "Repair the provider plugin state.",
+                    }),
+                  )
+                : Effect.succeed(undefined),
+          }),
+        ),
+      ),
+    );
+
+    expect(result.candidates).toEqual([]);
+    expect(result.scans).toMatchObject([
+      state === "unreadable"
+        ? {
+            providerId,
+            runtimeObserved: true,
+            complete: false,
+            errorTag: "ProviderUnavailableError",
+            remediation: expect.stringMatching(/ownership inventory/i),
+          }
+        : { providerId, runtimeObserved: true, complete: true },
+      { providerId: otherProvider, complete: true },
+    ]);
+    if (state === "missing") expect(result.scans[0]?.errorTag).toBeUndefined();
+  },
+);
+
+test("verified adoption receipts keep unlabeled missing-root services", async () => {
+  const { labels: _labels, ...unlabeled } = service;
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const fs = yield* FileSystem;
+      return yield* findMissingAppRoots.pipe(
+        Effect.provideService(FileSystem, { ...fs, exists: () => Effect.succeed(false) }),
+        Effect.provideService(
+          RuntimeProviderRegistry,
+          makeTestRuntimeProviderRegistry({
+            list: Effect.succeed([providerId]),
+            resourceOwnership: () =>
+              Effect.succeed({
+                appRoot: root,
+                ownerKey: appIdentityKey("owner", root),
+                providerId,
+                appIds: [app],
+                members: [
+                  {
+                    kind: "container" as const,
+                    nativeName: "observed-container",
+                    nativeId: "observed-container",
+                    dataRoot: AbsolutePath.make(dataRoot),
+                    appId: app,
+                    service: ServiceName.make("web"),
+                  },
+                ],
+              }),
+            observeRuntime: Effect.succeed([
+              snapshot({ services: [{ ...unlabeled, nativeName: "observed-container" }] }),
+            ]),
+          }),
+        ),
+      );
+    }).pipe(
+      Effect.provide(BunFileSystem.layer),
+      Effect.provideService(PathsService, makeLandoPaths({ userDataRoot: dataRoot })),
+    ),
+  );
+  expect(result).toMatchObject([{ root, services: ["app/web"], appliedState: false }]);
+});
 
 test.each([
   [
@@ -260,6 +412,7 @@ test.each([
         }),
       ),
       Effect.provide(BunFileSystem.layer),
+      Effect.provideService(PathsService, makeLandoPaths({ userDataRoot: dataRoot })),
     ),
   );
   expect(inventory.scans[0]).toMatchObject({

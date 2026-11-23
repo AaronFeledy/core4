@@ -11,6 +11,7 @@ import { rebuildApp } from "../../src/operations/rebuild.ts";
 import * as gpgAgentModule from "../../src/operations/start-gpg-agent.ts";
 import { GPG_AGENT_PLAN_EXTENSION_KEY } from "../../src/subsystems/gpg-agent/intent.ts";
 import { SSH_AGENT_PLAN_EXTENSION_KEY } from "../../src/subsystems/ssh/intent.ts";
+import * as worker from "../../src/subsystems/ssh-agent/detached-worker.ts";
 import type { AgentRelaySession } from "../../src/subsystems/ssh-agent/session.ts";
 import { makeHarness, plan, web } from "./start-progress-topology-support.ts";
 
@@ -79,6 +80,18 @@ for (const prepareExit of [0, 1]) {
           ),
         ),
     );
+    const startWorker = spyOn(worker, "startDetachedAgentRelayWorker").mockImplementation((options) => {
+      const session: AgentRelaySession = {
+        appId: selected.id,
+        sessionId: "rebuild-ssh-session",
+        kind: "ssh",
+        socketName: "agent.sock",
+        mount: { _tag: "bind-directory", directory: AbsolutePath.make(join(root, "relay")) },
+        closed: Promise.resolve(),
+        close: async () => undefined,
+      };
+      return (options.publish?.(session) ?? Effect.void).pipe(Effect.as(session));
+    });
     try {
       // When
       const result = await Effect.runPromise(
@@ -163,6 +176,7 @@ for (const prepareExit of [0, 1]) {
         expect(calls).toEqual(["stop:web", "apply", "gpg-prepare"]);
       }
     } finally {
+      startWorker.mockRestore();
       gpgSession.mockRestore();
       await new Promise<void>((resolve) => server.close(() => resolve()));
       await rm(root, { recursive: true, force: true });

@@ -52,6 +52,7 @@ interface AppPlanCachePayload {
 }
 
 export interface AppPlanCacheKeyInput {
+  readonly dataRoot?: string | undefined;
   readonly dataName?: string;
   readonly kind?: "user" | "scratch" | "global";
   readonly hostProvider: string;
@@ -173,6 +174,7 @@ export const deriveAppPlanCacheKey = (input: AppPlanCacheKeyInput): string => {
       planningRuntime: input.planningRuntime ?? defaultPlanningRuntimeIdentity(),
       hostHome: input.hostHome ?? homedir(),
       appRoot: input.appRoot,
+      dataRoot: input.dataRoot,
       dataName: input.dataName ?? input.landofile.name ?? "app",
       kind: input.kind ?? "user",
       hostProvider: input.hostProvider,

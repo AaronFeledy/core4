@@ -1,17 +1,31 @@
-import { ownsServiceContainer } from "@lando/container-runtime/native-ownership";
+import {
+  adoptionReceiptsFromSummary,
+  dataRootRefusal,
+  ownsServiceContainer,
+} from "@lando/container-runtime/native-ownership";
 import { GlobalAppError } from "@lando/sdk/errors";
-import { MessageInfoEvent } from "@lando/sdk/events";
-import { type AppPlan, isActiveRunStatus, isIdleRunStatus } from "@lando/sdk/schema";
+import { MessageInfoEvent, MessageWarnEvent } from "@lando/sdk/events";
+import {
+  type AppPlan,
+  LANDO_DATA_ROOT_LABEL,
+  isActiveRunStatus,
+  isIdleRunStatus,
+  landoNativeAppSlug,
+  planAppIdentity,
+} from "@lando/sdk/schema";
 import {
   EventService,
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
   type ServiceRuntimeInfo,
+  StateStore,
 } from "@lando/sdk/services";
 import { DateTime, Effect, Option } from "effect";
 import { resolveGlobalPlacement } from "../global-app/placement.ts";
 import { readGlobalResolution } from "../global-app/resolution.ts";
+import { adoptPlanDataRoot } from "../lifecycle/volume-coordination.ts";
 import { prepareProvider } from "../providers/prepared.ts";
+import { serviceInDataRoot } from "./data-root-scope.ts";
 import { composeGlobalRecordedPlan } from "./global-recorded-plan.ts";
 import { selectGlobalPlan } from "./global-selected-plan.ts";
 import { globalSiblingConflicts } from "./global-sibling-conflicts.ts";
@@ -23,6 +37,90 @@ export interface GlobalSiblingRemoval {
   readonly binding: readonly string[];
 }
 
+export const prepareGlobalReplacement = Effect.fn("GlobalApp.prepareReplacement")(function* (
+  desired: AppPlan,
+  selectedProvider: RuntimeProviderShape,
+) {
+  const registry = yield* RuntimeProviderRegistry;
+  yield* registry.readAppliedPlanStrict(desired);
+  const { plan: placed } = yield* resolveGlobalPlacement();
+  const renamed = placed !== undefined && landoNativeAppSlug(placed) !== landoNativeAppSlug(desired);
+  const prior = renamed ? undefined : placed;
+  if (
+    placed !== undefined &&
+    (placed.provider !== desired.provider ||
+      placed.root !== desired.root ||
+      (placed.identity?.dataRoot !== undefined && placed.identity.dataRoot !== desired.identity?.dataRoot))
+  )
+    return yield* Effect.fail(
+      new GlobalAppError({
+        operation: "start",
+        ...(placed.identity?.dataRoot !== undefined && placed.identity.dataRoot !== desired.identity?.dataRoot
+          ? dataRootRefusal({
+              kind: "global app",
+              nativeName: placed.id,
+              labels: { [LANDO_DATA_ROOT_LABEL]: placed.identity.dataRoot },
+            })
+          : {
+              message: `Global services have conflicting applied placement at ${placed.root} on ${placed.provider}.`,
+              remediation: "Resolve the recorded global app placement before starting services.",
+            }),
+      }),
+    );
+  const provider = yield* prepareProvider(selectedProvider);
+  return { prior, provider, replacement: renamed ? placed : undefined };
+});
+
+export const retireGlobalReplacement = Effect.fn("GlobalApp.retireReplacement")(function* (
+  provider: RuntimeProviderShape,
+  prior: AppPlan,
+  next: AppPlan,
+) {
+  const stores = new Set(next.stores.map(({ name }) => name));
+  const retained = prior.stores.filter(({ name, kind }) => kind === "data" && !stores.has(name));
+  const dataRoot = next.identity?.dataRoot;
+  const adopting =
+    prior.identity?.dataRoot === undefined && dataRoot !== undefined && provider.adoptDataRoot !== undefined;
+  const retirement = adopting ? { ...prior, identity: { ...planAppIdentity(prior), dataRoot } } : prior;
+  if (adopting) yield* adoptPlanDataRoot(provider, retirement, yield* StateStore);
+  const registry = yield* Effect.serviceOption(RuntimeProviderRegistry);
+  const receipts =
+    adopting && Option.isSome(registry)
+      ? adoptionReceiptsFromSummary(
+          yield* registry.value.resourceOwnership?.(prior.provider, prior.root) ?? Effect.succeed(undefined),
+        )
+      : [];
+  const cleanup = retained.filter(({ name }) =>
+    receipts.some(
+      (receipt) => receipt.kind === "volume" && receipt.nativeName === name && receipt.dataRoot === dataRoot,
+    ),
+  );
+  const unverified = retained.filter((store) => !cleanup.includes(store));
+  if (retained.length > 0) {
+    const events = yield* Effect.serviceOption(EventService);
+    if (Option.isSome(events))
+      yield* events.value.publish(
+        MessageWarnEvent.make({
+          body: [
+            "Persisted global mounts changed; replacement stores do not inherit their data.",
+            ...(cleanup.length === 0
+              ? []
+              : [
+                  `Retained volumes: ${cleanup.map(({ name }) => name).join(", ")}. To delete them, run \`lando global:destroy --volumes\`.`,
+                ]),
+            ...(unverified.length === 0
+              ? []
+              : [
+                  `Retained without verified ownership: ${unverified.map(({ name }) => name).join(", ")}. Lando will not automatically delete them.`,
+                ]),
+          ].join(" "),
+          timestamp: DateTime.nowUnsafe(),
+        }),
+      );
+  }
+  yield* provider.destroy({ app: retirement.id, plan: retirement }, { volumes: false, removeState: true });
+});
+
 export const reconcileGlobalSiblings = Effect.fn("GlobalApp.reconcileSiblings")(function* (
   desired: AppPlan,
   selectedProvider: RuntimeProviderShape,
@@ -31,22 +129,25 @@ export const reconcileGlobalSiblings = Effect.fn("GlobalApp.reconcileSiblings")(
     readonly close: (ids: ReadonlySet<string>) => Set<string>;
   },
 ) {
+  const { prior, provider, replacement } = yield* prepareGlobalReplacement(desired, selectedProvider);
   const registry = yield* RuntimeProviderRegistry;
-  yield* registry.readAppliedPlanStrict(desired);
-  const { plan: prior } = yield* resolveGlobalPlacement();
-  if (prior !== undefined && (prior.provider !== desired.provider || prior.root !== desired.root))
-    return yield* Effect.fail(
-      new GlobalAppError({
-        operation: "start",
-        message: `Global services ${request.selectedIds.join(", ")} have conflicting applied placement at ${prior.root} on ${prior.provider}.`,
-        remediation:
-          "Run `lando global:restart` to recreate every global service from its current definition.",
-      }),
-    );
-  const provider = yield* prepareProvider(selectedProvider);
+  const dataRoot = desired.identity?.dataRoot;
+  const receipts =
+    dataRoot === undefined
+      ? []
+      : adoptionReceiptsFromSummary(
+          yield* registry.resourceOwnership?.(desired.provider, desired.root) ?? Effect.succeed(undefined),
+        ).filter(
+          (receipt) =>
+            receipt.providerId === desired.provider &&
+            receipt.appRoot === desired.root &&
+            receipt.appId === desired.id,
+        );
   const observed = (yield* provider.list({ app: desired.id, includeUnplanned: true })).filter(
     (service) =>
-      service.app === desired.id && (service.appRoot === undefined || service.appRoot === desired.root),
+      service.app === desired.id &&
+      service.appRoot === desired.root &&
+      serviceInDataRoot(service, dataRoot, receipts),
   );
   const resolution = yield* readGlobalResolution({
     providerId: desired.provider,
@@ -54,8 +155,18 @@ export const reconcileGlobalSiblings = Effect.fn("GlobalApp.reconcileSiblings")(
   });
   const disabledIds = resolution.entries.filter((entry) => !entry.enabled).map((entry) => entry.id);
   const disabled = new Set(disabledIds);
-  let selected = request.close(new Set(request.selectedIds));
-  const initial = new Set(selected);
+  const initial = request.close(new Set(request.selectedIds));
+  let selected =
+    replacement === undefined
+      ? new Set(initial)
+      : request.close(
+          new Set([
+            ...initial,
+            ...Object.keys(replacement.services).filter(
+              (id) => Object.hasOwn(desired.services, id) && !disabled.has(id),
+            ),
+          ]),
+        );
   const candidates = new Set(observed);
   const bindings: string[][] = [];
   const removals: GlobalSiblingRemoval[] = [];
@@ -70,7 +181,7 @@ export const reconcileGlobalSiblings = Effect.fn("GlobalApp.reconcileSiblings")(
       const id = String(observation.service);
       if (selected.has(id)) continue;
       const active = isActiveRunStatus(observation.status);
-      if (!ownsServiceContainer(desired, observation)) {
+      if (!ownsServiceContainer(desired, observation, receipts)) {
         if (active)
           failure = new GlobalAppError({
             operation: "start",
@@ -137,7 +248,7 @@ export const reconcileGlobalSiblings = Effect.fn("GlobalApp.reconcileSiblings")(
   // Removal targets keep their recorded metadata until the group that removes them succeeds.
   const owned = observed.filter(
     (observation) =>
-      ownsServiceContainer(desired, observation) &&
+      ownsServiceContainer(desired, observation, receipts) &&
       Object.hasOwn(prior?.services ?? {}, String(observation.service)),
   );
   const recordedIds = new Set(owned.map((observation) => String(observation.service)));
@@ -176,6 +287,7 @@ export const reconcileGlobalSiblings = Effect.fn("GlobalApp.reconcileSiblings")(
   }
   return {
     provider,
+    replacement,
     recordedPlan,
     disabledIds,
     retainedIds: [...retained].sort(),

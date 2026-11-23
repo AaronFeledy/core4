@@ -1,3 +1,4 @@
+import { ownsAppliedGlobalService } from "@lando/container-runtime/applied-global-service";
 import type { GlobalAppError, ProxyApplyError } from "@lando/sdk/errors";
 import { type AppPlan, isActiveRunStatus } from "@lando/sdk/schema";
 import type { ProviderError, RouterServiceShape, RuntimeProviderShape } from "@lando/sdk/services";
@@ -36,13 +37,7 @@ export const publishGlobalRoutes = Effect.fn("GlobalRoutes.publish")(function* (
         : [];
       const active = new Set(
         observed
-          .filter(
-            (service) =>
-              service.app === plan.id &&
-              service.appRoot === plan.root &&
-              service.providerId === plan.provider &&
-              isActiveRunStatus(service.status),
-          )
+          .filter((service) => ownsAppliedGlobalService(plan, service) && isActiveRunStatus(service.status))
           .map((service) => service.service),
       );
       const routes = plan.routes.filter((route) => started.has(route.service) || active.has(route.service));

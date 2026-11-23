@@ -39,6 +39,7 @@ const fixture = async (runtime: "docker" | "podman", scenario: string) => {
           Config: {
             Labels: {
               "dev.lando.app": "app",
+              "dev.lando.data-root": roots.userDataRoot,
               "dev.lando.app-root": roots.root,
               "dev.lando.provider": runtime,
               "dev.lando.service": "web",

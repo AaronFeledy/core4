@@ -6,6 +6,7 @@ import {
   ProviderId,
   ServiceName,
   type ServicePlan,
+  planAppIdentity,
 } from "@lando/sdk/schema";
 import { DateTime, Effect } from "effect";
 import type { EngineHttpRequest, EngineHttpResponse } from "../src/engine-api.ts";
@@ -110,6 +111,35 @@ const runningInspect = (plan: AppPlan, serviceName: string, id: string): EngineH
 };
 
 describe("selectStaleServiceContainers", () => {
+  test("a scoped apply selects only the receipted native container for an unlabeled service", () => {
+    const previous = planOf("old-slug");
+    const plan = {
+      ...planOf(),
+      identity: { ...planAppIdentity(previous), dataRoot: AbsolutePath.make("/data/current") },
+    };
+    const oldName = serviceContainerName(previous, "web");
+    const labels = ownedLabels(previous, "web");
+    const listed = [
+      labeled("recorded", [oldName], labels),
+      labeled("unrecorded", ["arbitrary-web"], labels),
+      labeled("peer-root", [oldName], { ...labels, "dev.lando.data-root": "/data/peer" }),
+    ];
+    expect(
+      selectStaleServiceContainers(plan, ctx.providerId, listed, [
+        {
+          kind: "container",
+          nativeName: oldName,
+          nativeId: "recorded",
+          dataRoot: plan.identity.dataRoot,
+          appRoot: previous.root,
+          appId: previous.id,
+          providerId: previous.provider,
+        },
+      ]),
+    ).toEqual([{ containerId: "recorded", service: "web", name: oldName }]);
+    expect(selectStaleServiceContainers(plan, ctx.providerId, listed)).toEqual([]);
+  });
+
   test("selects owned plan-service containers whose name is not the planned name", () => {
     const plan = planOf();
     const expectedWeb = serviceContainerName(plan, "web");

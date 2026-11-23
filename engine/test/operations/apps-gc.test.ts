@@ -8,12 +8,14 @@ import {
   AbsolutePath,
   AppId,
   type AppPlan,
+  LANDO_DATA_ROOT_LABEL,
   ProviderId,
   ServiceName,
   appIdentityKey,
 } from "@lando/sdk/schema";
 import {
   FileSystem,
+  PathsService,
   type ProviderRuntimeSnapshot,
   RuntimeProviderRegistry,
   StateStore,
@@ -46,7 +48,9 @@ const at = (name: string): AppPlan => {
   };
 };
 
-const fixture = (names: readonly string[] = ["one", "two"], retainData = false) => {
+const fixture = (names: readonly string[] = ["one", "two"], retainData = false, foreign = false) => {
+  const harness = makeHarness();
+  const paths = makeLandoPaths({ userDataRoot: harness.userDataRoot });
   let plans = names.map(at);
   let listed = [providerId];
   const destroyed: string[] = [];
@@ -105,7 +109,7 @@ const fixture = (names: readonly string[] = ["one", "two"], retainData = false) 
         appliedPlans: plans,
         // The idle runtime's containers are only listed once it runs.
         services: running
-          ? plans.map((plan) => ({
+          ? [...plans, ...(foreign ? [at("foreign")] : [])].map((plan) => ({
               app: plan.id,
               appRoot: plan.root,
               service: ServiceName.make("web"),
@@ -113,12 +117,17 @@ const fixture = (names: readonly string[] = ["one", "two"], retainData = false) 
               status: "created" as const,
               publications: { status: "unknown" as const },
               containerId: `${plan.id}-web`,
+              labels: {
+                [LANDO_DATA_ROOT_LABEL]:
+                  plan.id === "foreign" ? "/another-data-root" : paths.roots.userDataRoot,
+              },
             }))
           : [],
         volumes: retainData
           ? [
               {
                 ref: { app: at("one").id, store: "database" },
+                labels: { [LANDO_DATA_ROOT_LABEL]: paths.roots.userDataRoot },
                 identity: {
                   nativeName: "one-data",
                   coordinationKey: "key",
@@ -132,9 +141,9 @@ const fixture = (names: readonly string[] = ["one", "two"], retainData = false) 
       },
     ]),
   });
-  const harness = makeHarness();
   const layer = Layer.mergeAll(
     harness.layer,
+    Layer.succeed(PathsService, paths),
     BunFileSystem.layer,
     Layer.succeed(RuntimeProviderRegistry, registry),
   );
@@ -215,6 +224,13 @@ test("report lists missing roots without preparing the runtime or destroying app
   expect(result.prune).toBe(false);
   expect(f.destroyed).toEqual([]);
   expect(f.launches()).toBe(0);
+});
+
+test("prune never selects another data root's missing app", async () => {
+  const f = fixture(["one"], false, true);
+  const prepared = await Effect.runPromise(prepareAppsGc({}).pipe(Effect.provide(f.layer)));
+  await Effect.runPromise(prepared.prune.pipe(Effect.provide(f.layer)));
+  expect(f.destroyed).toEqual(["one"]);
 });
 
 test.each([false, true])(
@@ -467,6 +483,7 @@ test("an owner that cannot start does not block another owner's confirmation", a
                 appRoot: plan.root,
                 service: ServiceName.make("web"),
                 providerId: id,
+                labels: { [LANDO_DATA_ROOT_LABEL]: harness.userDataRoot },
                 status: "created" as const,
                 publications: { status: "unknown" as const },
                 containerId: `${plan.id}-web`,
@@ -477,8 +494,9 @@ test("an owner that cannot start does not block another owner's confirmation", a
       }),
     ),
   });
+  const harness = makeHarness();
   const layer = Layer.mergeAll(
-    makeHarness().layer,
+    harness.layer,
     BunFileSystem.layer,
     Layer.succeed(RuntimeProviderRegistry, registry),
   );

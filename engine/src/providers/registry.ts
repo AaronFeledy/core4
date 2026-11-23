@@ -37,6 +37,7 @@ import * as HttpClient from "effect/http/HttpClient";
 import { bundledPluginModules } from "../composition.ts";
 import { makePublishRender } from "../lifecycle/publish-render.ts";
 import { pendingStartAtRoot } from "../operations/accelerated-start-record.ts";
+import { canonicalMissingAppRoot } from "../operations/app-mutation-lock.ts";
 import { makeLandoPluginContext } from "../plugins/context.ts";
 import { makePluginCapabilityIndex } from "../plugins/module-set.ts";
 import { GlobalConfigSources } from "../services/config.ts";
@@ -259,19 +260,44 @@ export const makeRuntimeProviderRegistry = (
         );
       });
 
-      const resolveAppliedPlan = Effect.fn("RuntimeProviderRegistry.resolveAppliedPlan")(
-        (root: AbsolutePath, app?: Pick<AppRef, "kind" | "id">, lookup?: AppliedPlanLookup) =>
-          appliedStateProviders.pipe(
-            Effect.flatMap((providers) => resolveAppliedPlanEvidence(root, providers, app, lookup)),
-          ),
+      const currentDataRoot = canonicalMissingAppRoot(paths.roots.userDataRoot).pipe(
+        mapFailures(
+          (cause) =>
+            new ProviderUnavailableError({
+              providerId: "runtime",
+              operation: "data-root",
+              message: "Cannot establish the current Lando data root.",
+              remediation: "Restore access to the configured Lando data root before retrying cleanup.",
+              cause,
+            }),
+        ),
       );
 
-      const resolveTeardown = Effect.fn("RuntimeProviderRegistry.resolveTeardownEvidence")(
-        (root: AbsolutePath, app?: Pick<AppRef, "kind" | "id">) =>
-          appliedStateProviders.pipe(
-            Effect.flatMap((providers) => resolveTeardownEvidence(root, providers, app)),
-          ),
-      );
+      const resolveAppliedPlan = Effect.fn("RuntimeProviderRegistry.resolveAppliedPlan")(function* (
+        root: AbsolutePath,
+        app?: Pick<AppRef, "kind" | "id">,
+        lookup?: AppliedPlanLookup,
+      ) {
+        return yield* resolveAppliedPlanEvidence(
+          root,
+          yield* appliedStateProviders,
+          app,
+          lookup,
+          yield* currentDataRoot,
+        );
+      });
+
+      const resolveTeardown = Effect.fn("RuntimeProviderRegistry.resolveTeardownEvidence")(function* (
+        root: AbsolutePath,
+        app?: Pick<AppRef, "kind" | "id">,
+      ) {
+        return yield* resolveTeardownEvidence(
+          root,
+          yield* appliedStateProviders,
+          app,
+          yield* currentDataRoot,
+        );
+      });
 
       return RuntimeProviderRegistry.of({
         appliedStateInventory: Effect.fn("RuntimeProviderRegistry.appliedStateInventory")(function* (

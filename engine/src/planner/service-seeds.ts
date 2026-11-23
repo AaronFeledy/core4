@@ -25,7 +25,8 @@ export const resolveServiceSeeds = Effect.fn("AppPlanner.resolveServices")(funct
   input: ServiceSeedInput,
 ) {
   const { landofile, fileSystem, appRoot } = input;
-  const appSlug = normalizeAppSlug(input.dataName ?? landofile.name ?? "app", appRoot);
+  const appSlug =
+    input.nativeDataSlug ?? normalizeAppSlug(input.dataName ?? landofile.name ?? "app", appRoot);
   const issues: PlannerIssue[] = [];
   const record = (error: LandofileValidationError) => {
     const attributed = error.issues.map((issue) =>

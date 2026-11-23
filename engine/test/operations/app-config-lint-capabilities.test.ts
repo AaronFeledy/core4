@@ -2,9 +2,10 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { makeLandoPaths } from "@lando/paths";
 import type { CapabilityError } from "@lando/sdk/errors";
 import { type ProviderCapabilities, ProviderId } from "@lando/sdk/schema";
-import { AppPlanner, PluginRegistry } from "@lando/sdk/services";
+import { AppPlanner, PathsService, PluginRegistry } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect, Layer, Result } from "effect";
 import { loadUserLandofileFile } from "../../src/landofile/app-resolution.ts";
@@ -48,6 +49,7 @@ const planWith = (root: string, selected: ProviderCapabilities, capabilities: De
             ),
           ),
         ),
+        Effect.provideService(PathsService, makeLandoPaths()),
         Effect.result,
       );
     }).pipe(Effect.provide(Plugins.layer)),

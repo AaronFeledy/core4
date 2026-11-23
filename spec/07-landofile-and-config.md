@@ -197,7 +197,7 @@ Every engine receives schema-defined `TemplateRenderContext`, limited to scopes 
 | Plugins | `plugins`, `pluginDirs` |
 | Compose subset | `volumes`, `networks`, `configs`, `secrets`, `include`, `x-*` |
 
-`name` defaults to the app-root basename. `slug` deterministically normalizes it for paths, URLs, and provider labels; an empty normalized value uses a stable root hash. `<app-id>` is the slug. Collisions fail with `AppIdCollisionError` and MUST NOT auto-suffix. `global` is reserved and fails with `AppIdReservedError`; scratch apps occupy a separate `AppRef.kind` namespace (§20.2, §21.2). Identity rules are published as schema metadata.
+`name` defaults to the app-root basename. `slug` deterministically normalizes it for paths, URLs, and provider labels; an empty normalized value uses a stable root hash. `<app-id>` is the slug. Collisions fail with `AppIdCollisionError` and MUST NOT auto-suffix. `global` and `global-<16 hex>` are reserved (§20.2) and fail with `AppIdReservedError`; scratch apps occupy a separate `AppRef.kind` namespace (§20.2, §21.2). Identity rules are published as schema metadata.
 
 For a user-app launch, the canonical folder identifies the app instance across changes to `name`. Per-folder **data identity** is the durable name under which that folder's persisted data was first created. The record is the user-data `StateStore` bucket `app-data-identity/<ownerKey>.json` (§12.4, §12.7): version 1, payload `{ name }`, keyed by `appIdentityKey("owner", <canonical app root>)`. Only user apps use it. Scratch and global apps MUST NOT read or write it.
 

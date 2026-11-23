@@ -4,6 +4,7 @@ import { PostServiceStopEvent, PreServiceStopEvent } from "@lando/sdk/events";
 import { type AppPlan, ProviderId, type ServicePlan } from "@lando/sdk/schema";
 import type { EventService } from "@lando/sdk/services";
 import { type Context, DateTime, Effect } from "effect";
+import type { AdoptionReceipt } from "../data-root-ownership.ts";
 import type { EngineHttpApi, ProviderErrorContext } from "../engine-api.ts";
 import { containerOwnershipLabels, inspectOwnedNativeId } from "../native-ownership.ts";
 import { serviceContainerName } from "../plan.ts";
@@ -16,6 +17,7 @@ export const stopService = Effect.fnUntraced(function* (
     readonly api: EngineHttpApi;
     readonly ctx: ProviderErrorContext;
     readonly eventService?: Pick<Context.Service.Shape<typeof EventService>, "publish">;
+    readonly adoptionReceipts?: readonly AdoptionReceipt[];
   },
 ) {
   const providerId = ProviderId.make(options.ctx.providerId);
@@ -48,6 +50,7 @@ export const stopService = Effect.fnUntraced(function* (
       kind: "container",
       name: serviceContainerName(plan, service.name),
       labels: containerOwnershipLabels(plan, service.name),
+      ...(options.adoptionReceipts === undefined ? {} : { receipts: options.adoptionReceipts }),
     },
     options.ctx,
   );

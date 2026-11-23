@@ -39,6 +39,7 @@ import * as BunFileSystem from "../../src/services/file-system.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";
 import * as BunProcessRunner from "../../src/services/process-runner.ts";
 import { emptyConfigServiceLayer } from "../_support/agent-env-test-config.ts";
+import { pathsServiceLayer } from "../paths-service.ts";
 
 const capabilities: ProviderCapabilities = {
   artifactBuild: true,
@@ -141,7 +142,9 @@ test("attaches effective tooling on fresh and cache-hit plans and keys service t
     ),
   ).pipe(Layer.provide(PluginRegistryLayer.layer));
   const plannerLayer = AppPlannerLayer.layer.pipe(
-    Layer.provide(Layer.mergeAll(AppCacheService.layer, BunFileSystem.layer, registryLayer)),
+    Layer.provide(
+      Layer.mergeAll(AppCacheService.layer, BunFileSystem.layer, registryLayer, pathsServiceLayer()),
+    ),
   );
   const landofile = {
     name: "effective-tooling-cache",
@@ -278,7 +281,9 @@ const phpPlannerLayer = (serviceType: ServiceType, feature?: ServiceFeatureDefin
     ),
   ).pipe(Layer.provide(PluginRegistryLayer.layer));
   return AppPlannerLayer.layer.pipe(
-    Layer.provide(Layer.mergeAll(AppCacheService.layer, BunFileSystem.layer, registryLayer)),
+    Layer.provide(
+      Layer.mergeAll(AppCacheService.layer, BunFileSystem.layer, registryLayer, pathsServiceLayer()),
+    ),
   );
 };
 

@@ -1,8 +1,14 @@
-import { SCRATCH_ID_LABEL, SCRATCH_LABEL } from "@lando/container-runtime/labels";
+import { SCRATCH_ID_LABEL, SCRATCH_LABEL, VOLUME_INSTANCE_LABEL } from "@lando/container-runtime/labels";
+import {
+  adoptionReceiptsFromSummary,
+  decideDataRootOwnership,
+} from "@lando/container-runtime/native-ownership";
 import { mapFailures } from "@lando/sdk/command-result";
 import { ScratchAppError } from "@lando/sdk/errors";
-import { RuntimeProviderRegistry } from "@lando/sdk/services";
+import { type AbsolutePath, LANDO_DATA_ROOT_LABEL, ProviderId } from "@lando/sdk/schema";
+import { PathsService, RuntimeProviderRegistry, type RuntimeProviderShape } from "@lando/sdk/services";
 import { Context, Effect, Layer, Option } from "effect";
+import { currentDataRoot } from "../operations/data-root-scope.ts";
 import { runtimeOnline } from "../providers/runtime-observation.ts";
 
 const CANONICAL_SCRATCH_ID = /^scratch-[a-z0-9]+(?:-[a-z0-9]+)*-[0-9a-f]{6}$/u;
@@ -51,7 +57,8 @@ export class ScratchResourceScanner extends Context.Service<
     this,
     Effect.gen(function* () {
       const registryOption = yield* Effect.serviceOption(RuntimeProviderRegistry);
-      if (Option.isNone(registryOption)) {
+      const paths = yield* Effect.serviceOption(PathsService);
+      if (Option.isNone(registryOption) || Option.isNone(paths)) {
         return ScratchResourceScanner.of({
           listScratchIds: Effect.succeed([]),
           pruneScratch: () => Effect.void,
@@ -60,6 +67,67 @@ export class ScratchResourceScanner extends Context.Service<
         });
       }
       const registry = registryOption.value;
+      const scopedRoot = yield* Effect.cached(
+        currentDataRoot.pipe(Effect.provideService(PathsService, paths.value)),
+      );
+      const owns = Effect.fnUntraced(function* (target: {
+        readonly provider: ProviderId;
+        readonly appRoot?: AbsolutePath | undefined;
+        readonly app: string;
+        readonly native: Parameters<typeof decideDataRootOwnership>[0];
+      }) {
+        const dataRoot = yield* scopedRoot;
+        const { native, appRoot, provider, app } = target;
+        const summary =
+          native.labels?.[LANDO_DATA_ROOT_LABEL] === undefined && appRoot !== undefined
+            ? yield* registry.resourceOwnership?.(provider, appRoot) ?? Effect.succeed(undefined)
+            : undefined;
+        const receipts = adoptionReceiptsFromSummary(summary).filter(
+          (receipt) =>
+            receipt.appRoot === appRoot && receipt.providerId === provider && receipt.appId === app,
+        );
+        return decideDataRootOwnership(native, { dataRoot, receipts }) === "owned";
+      });
+      const listServices = (provider: RuntimeProviderShape) =>
+        provider.list({ includeScratch: true, includeUnplanned: true }).pipe(
+          Effect.flatMap((services) =>
+            Effect.filter(services, (service) =>
+              scratchIdFromLabels(service.labels, String(service.app)) === undefined
+                ? Effect.succeed(false)
+                : owns({
+                    provider: service.providerId,
+                    appRoot: service.appRoot,
+                    app: service.app,
+                    native: {
+                      kind: "container",
+                      nativeName: service.nativeName ?? "",
+                      nativeId: service.containerId,
+                      labels: service.labels,
+                    },
+                  }),
+            ),
+          ),
+        );
+      const listVolumes = (provider: RuntimeProviderShape) =>
+        provider.listVolumes({ labels: { [SCRATCH_LABEL]: "TRUE" } }).pipe(
+          Effect.flatMap((volumes) =>
+            Effect.filter(volumes, (volume) =>
+              scratchIdFromLabels(volume.labels) === undefined
+                ? Effect.succeed(false)
+                : owns({
+                    provider: ProviderId.make(provider.id),
+                    appRoot: volume.identity?.ownerRoot,
+                    app: volume.ref.app,
+                    native: {
+                      kind: "volume",
+                      nativeName: volume.identity?.nativeName ?? volume.ref.store,
+                      volumeInstance: volume.labels?.[VOLUME_INSTANCE_LABEL],
+                      labels: volume.labels,
+                    },
+                  }),
+            ),
+          ),
+        );
 
       const loadResources = Effect.fn("ScratchResourceScanner.loadResources")(
         function* () {
@@ -77,8 +145,8 @@ export class ScratchResourceScanner extends Context.Service<
                 if (provider === undefined) return [];
                 const resources = yield* Effect.all(
                   {
-                    services: provider.list({ includeScratch: true, includeUnplanned: true }),
-                    volumes: provider.listVolumes({ labels: { [SCRATCH_LABEL]: "TRUE" } }),
+                    services: listServices(provider),
+                    volumes: listVolumes(provider),
                   },
                   { concurrency: "unbounded" },
                 );
@@ -135,9 +203,22 @@ export class ScratchResourceScanner extends Context.Service<
         const stop = Effect.forEach(
           matches,
           ({ provider, services }) =>
-            Effect.forEach(services, (service) => provider.removeObservedService(service), {
-              concurrency: "unbounded",
-            }),
+            services.length === 0
+              ? Effect.succeed([])
+              : listServices(provider).pipe(
+                  Effect.flatMap((fresh) =>
+                    Effect.forEach(
+                      fresh.filter(
+                        (service) =>
+                          service.containerId !== undefined &&
+                          service.app === id &&
+                          services.some((candidate) => candidate.containerId === service.containerId),
+                      ),
+                      (service) => provider.removeObservedService(service),
+                      { concurrency: "unbounded" },
+                    ),
+                  ),
+                ),
           { concurrency: "unbounded" },
         ).pipe(
           Effect.map((results) => results.flat().some((result) => result.kind === "removed")),
@@ -147,10 +228,25 @@ export class ScratchResourceScanner extends Context.Service<
         );
         const destroy = Effect.forEach(
           uniqueVolumes,
-          ({ provider, ref, identity }) => provider.removeVolume(ref, identity.generation),
-          { concurrency: "unbounded", discard: true },
+          ({ provider, ref, identity }) =>
+            listVolumes(provider).pipe(
+              Effect.flatMap((fresh) =>
+                fresh.some(
+                  (volume) =>
+                    scratchIdFromLabels(volume.labels) === id &&
+                    volume.ref.app === ref.app &&
+                    volume.ref.store === ref.store &&
+                    volume.ref.scope === ref.scope &&
+                    volume.identity?.coordinationKey === identity.coordinationKey &&
+                    volume.identity.generation === identity.generation,
+                )
+                  ? provider.removeVolume(ref, identity.generation).pipe(Effect.as(true))
+                  : Effect.succeed(false),
+              ),
+            ),
+          { concurrency: "unbounded" },
         ).pipe(
-          Effect.as(uniqueVolumes.length > 0),
+          Effect.map((removed) => removed.some(Boolean)),
           mapFailures((cause) => scannerError("gc", `Unable to prune volumes for scratch app ${id}.`, cause)),
         );
         return { stop, destroy };

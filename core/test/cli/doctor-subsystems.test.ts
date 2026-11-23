@@ -19,7 +19,7 @@ import { renderDoctorReport } from "../../src/cli/commands/doctor-render-text.ts
 import { makeDoctorReport } from "../../src/cli/commands/doctor-report.ts";
 import { HOST_DNS_SPEC, PROXY_SPEC } from "../../src/cli/commands/doctor-subsystem-checks.ts";
 import { subsystemDoctor } from "../../src/cli/commands/doctor-subsystems.ts";
-import { DefaultSubsystemDoctorLayer } from "./doctor-subsystem-fixture.ts";
+import { DefaultSubsystemDoctorLayer, doctorPathsLayer } from "./doctor-subsystem-fixture.ts";
 
 const EXPECTED_SUBSYSTEMS = ["router", "ssh", "host-dns"] as const;
 
@@ -145,7 +145,12 @@ describe("meta:doctor subsystem checks", () => {
   });
 
   test("skips manual DNS recovery when fix is requested", async () => {
-    const result = await Effect.runPromise(subsystemDoctor({ fix: true }).pipe(Effect.provide(dnsLayer([]))));
+    const result = await Effect.runPromise(
+      subsystemDoctor({ fix: true }).pipe(
+        Effect.provide(dnsLayer([])),
+        Effect.provide(DefaultSubsystemDoctorLayer),
+      ),
+    );
     const hostProxy = result.checks.find((check) => check.name === "host-dns");
     expect(hostProxy?.status).toBe("warn");
     expect(hostProxy?.context.fixOutcome).toBe("skipped-manual");
@@ -406,7 +411,7 @@ describe("meta:doctor subsystem checks", () => {
     "skips uninspected subsystems with runtime services provided=%s",
     async (provided) => {
       // Given a runtime with or without the inspectable subsystem services.
-      const runtime = provided ? DefaultSubsystemDoctorLayer : dnsLayer([]);
+      const runtime = provided ? DefaultSubsystemDoctorLayer : Layer.merge(dnsLayer([]), doctorPathsLayer);
       // When doctor inspects that runtime.
       const result = await Effect.runPromise(subsystemDoctor().pipe(Effect.provide(runtime)));
       // Then missing services and unexecuted probes never become passing checks.

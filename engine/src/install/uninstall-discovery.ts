@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { makeLandoPaths } from "@lando/paths";
 import { AppId } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
+import { canonicalMissingAppRoot } from "../operations/app-mutation-lock.ts";
 import type { DiscoveredApp } from "../operations/uninstall.ts";
 import { artifactBuildStoreKey } from "../services/build-artifact-name.ts";
 import { cleanupUninstallBuiltImages } from "./uninstall-built-images.ts";
@@ -135,11 +136,12 @@ export const makeCleanupDiscoveredApps =
   ): Promise<string> => {
     const runtimes = await availableUninstallRuntimes({ userDataRoot, platform, exec, seams });
     if (platform === "win32") await assertUninstallSyncSafe({ userDataRoot, runtimes, exec });
-    for (const runtime of runtimes) await cleanupUninstallResources(exec, runtime);
+    const dataRoot = await Effect.runPromise(canonicalMissingAppRoot(userDataRoot));
+    const details: string[] = [];
+    for (const runtime of runtimes) details.push(await cleanupUninstallResources(exec, runtime, dataRoot));
     for (const runtime of runtimes) await assertManagedStorageResolved(exec, runtime);
     const store = await Effect.runPromise(artifactBuildStoreKey(userCacheRoot));
-    const details: string[] = [];
     for (const runtime of runtimes.filter((runtime) => !runtime.managed))
       details.push(await cleanupUninstallBuiltImages(exec, runtime, store));
-    return details.join(" ");
+    return details.filter(Boolean).join(" ");
   };

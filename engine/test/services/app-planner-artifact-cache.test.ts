@@ -16,6 +16,7 @@ import { buildKeyForService } from "../../src/services/build-key.ts";
 import * as FileSystem from "../../src/services/file-system.ts";
 import * as Planner from "../../src/services/planner.ts";
 import { literalTestLandofile } from "../compiled-landofile.ts";
+import { pathsServiceLayer } from "../paths-service.ts";
 
 test("#2122 replans a cached service that predates the artifact requirement", async () => {
   const root = await mkdtemp(join(tmpdir(), "lando-artifact-cache-"));
@@ -33,7 +34,7 @@ test("#2122 replans a cached service that predates the artifact requirement", as
     root,
   );
   const layer = Planner.layer.pipe(
-    Layer.provide(Layer.mergeAll(Cache.layer, Registry.layer, FileSystem.layer)),
+    Layer.provide(Layer.mergeAll(Cache.layer, Registry.layer, FileSystem.layer, pathsServiceLayer())),
   );
   const plan = () =>
     Effect.runPromise(
@@ -82,7 +83,7 @@ test("a scripts-only manifest edit replans but reuses the Node artifact", async 
     root,
   );
   const layer = Planner.layer.pipe(
-    Layer.provide(Layer.mergeAll(Cache.layer, Registry.layer, FileSystem.layer)),
+    Layer.provide(Layer.mergeAll(Cache.layer, Registry.layer, FileSystem.layer, pathsServiceLayer())),
   );
   const plan = () =>
     Effect.runPromise(

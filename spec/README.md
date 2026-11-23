@@ -15,7 +15,7 @@ The split is almost one section per file, with these principled merges and addit
 - **§17** is filed as part 15, after the appendices, because build and release engineering operationalize §13 distribution and quality policy.
 - **§18** is filed as part 16 because one cross-cutting contract governs deprecation across every public surface.
 - **§19** is filed as part 17 because executable guides connect authored documentation to §13 scenario testing.
-- **§20** is filed as part 18 because the global app is a cross-cutting host-level app used by routing and shared services.
+- **§20** is filed as part 18 because the global app is a cross-cutting per-installation app used by routing and shared services.
 - **§21** is filed as part 19 because scratch apps are scope-bounded peers to user and global apps with distinct identity and persistence rules.
 - **§22** is filed as part 20 because programmable execution composes existing environments, operations, and scopes without changing Lando's local-development focus.
 - **§23** is filed as part 21 because templates compose recipes, the template engine, source acquisition, scratch apps, and execution sessions into project generation.

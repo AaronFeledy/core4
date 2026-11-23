@@ -7,7 +7,7 @@ import * as TransactionGuard from "@lando/managed-file/transaction-guard";
 import { isMcpDestructiveCommand } from "@lando/mcp/allowlist";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
-import { AbsolutePath, AppId, ProviderId } from "@lando/sdk/schema";
+import { AbsolutePath, AppId, LANDO_DATA_ROOT_LABEL, ProviderId } from "@lando/sdk/schema";
 import { InteractionService, PathsService, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect, Layer, Schema } from "effect";
@@ -204,6 +204,7 @@ test.each([false, true])(
                 volumes: [
                   {
                     ref: { app: AppId.make("kept"), store: "database" },
+                    labels: { [LANDO_DATA_ROOT_LABEL]: makeLandoPaths().roots.userDataRoot },
                     identity: {
                       nativeName: "kept-data",
                       coordinationKey: "key",

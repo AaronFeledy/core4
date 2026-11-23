@@ -3,11 +3,12 @@ import { LandofileValidationError } from "@lando/sdk/errors";
 import { LandofileShape, type ServiceConfig, ServiceName } from "@lando/sdk/schema";
 import { AppPlanner, PluginRegistry, type ServiceType } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { Effect, Result, Schema } from "effect";
+import { Effect, Layer, Result, Schema } from "effect";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import { composeExtendedServiceType } from "../../src/services/extends.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";
 import { literalTestLandofile } from "../compiled-landofile.ts";
+import { pathsServiceLayer } from "../paths-service.ts";
 
 const planInherited = (
   parentId: string,
@@ -38,7 +39,7 @@ const planInherited = (
         artifactBuild: true,
       }),
     ).pipe(
-      Effect.provide(AppPlannerLayer.layer),
+      Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
       Effect.provideService(PluginRegistry, {
         ...registry,
         loadServiceType: (id) => (id === child.id ? Effect.succeed(composed) : registry.loadServiceType(id)),

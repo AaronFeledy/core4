@@ -9,6 +9,7 @@ import {
   AppId,
   type AppPlan,
   GlobalConfig,
+  LANDO_DATA_ROOT_LABEL,
   PluginManifest,
   ProviderId,
   ServiceName,
@@ -225,6 +226,7 @@ test.each([
             {
               app: appId,
               appRoot: receiptRoot,
+              labels: { [LANDO_DATA_ROOT_LABEL]: testPaths.roots.userDataRoot },
               providerId: plan.provider,
               service: ServiceName.make("web"),
               status: "running",
@@ -294,6 +296,7 @@ test.each(["offline ownership", "runtime labels beside a readable plan"] as cons
             {
               app: appId,
               appRoot: root,
+              labels: { [LANDO_DATA_ROOT_LABEL]: testPaths.roots.userDataRoot },
               providerId: plan.provider,
               service: ServiceName.make("web"),
               status: "running",
@@ -327,6 +330,8 @@ test.each(["offline ownership", "runtime labels beside a readable plan"] as cons
     ).toMatchObject({ _tag: "Failure", failure });
   },
 );
+
+const testPaths = makeLandoPaths({ userDataRoot: "/tmp/applied-state-registry" });
 
 const registryLayer = (
   modules: ReadonlyArray<LandoPluginModule>,
@@ -367,7 +372,7 @@ const registryLayer = (
       ContainerHelperAssets.of({ resolve: () => Effect.die("unused helper") }),
     ),
     Layer.succeed(ManagedFileService, Effect.runSync(makeTestManagedFileStore()).service),
-    Layer.succeed(PathsService, makeLandoPaths({ userDataRoot: "/tmp/applied-state-registry" })),
+    Layer.succeed(PathsService, testPaths),
     Layer.succeed(StateStore, store),
     Layer.succeed(AppPlanSanitizer, AppPlanSanitizer.of({ sanitizeForPersistence: (value) => value })),
   );

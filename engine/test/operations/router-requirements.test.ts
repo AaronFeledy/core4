@@ -1,7 +1,8 @@
 import { expect, spyOn, test } from "bun:test";
+import { makeLandoPaths } from "@lando/paths";
 import { ProxyError } from "@lando/sdk/errors";
 import { type AppPlan, GlobalConfig, LandofileShape, PluginManifest, ServiceName } from "@lando/sdk/schema";
-import { AppPlanner, ConfigService, PluginRegistry, RouterService } from "@lando/sdk/services";
+import { AppPlanner, ConfigService, PathsService, PluginRegistry, RouterService } from "@lando/sdk/services";
 import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect, Layer, Result, Schema } from "effect";
 import * as AppPlanCache from "../../src/cache/app-plan.ts";
@@ -66,6 +67,7 @@ const planned = (options: {
   const dependencies = Layer.mergeAll(
     registry,
     Cache.layer,
+    Layer.succeed(PathsService, makeLandoPaths()),
     Layer.succeed(ConfigService, {
       load: Effect.succeed(config),
       get: (key) => Effect.succeed(config[key]),

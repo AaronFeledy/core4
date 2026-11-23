@@ -350,6 +350,7 @@ export interface ServiceRuntimeFields {
   /** Native container identity: stable across in-place restarts, different after replacement.
    * Omission means consumers cannot prove that container-local work can be reused. */
   readonly containerId?: string;
+  readonly nativeName?: string;
   readonly labels?: Readonly<Record<string, string>>;
   readonly imageIdentity?: string;
   readonly publications: PublicationObservation;
@@ -676,6 +677,10 @@ export class RuntimeProvider extends Context.Service<
     ) => Effect.Effect<void, ProviderError | E, Scope.Scope | R>;
     readonly listVolumes: (filter: VolumeFilter) => Effect.Effect<ReadonlyArray<VolumeInfo>, ProviderError>;
     readonly locateVolume: (ref: VolumeRef) => Effect.Effect<VolumeLocator, ProviderError>;
+    readonly adoptDataRoot?: (
+      plan: AppPlan,
+      volumeWitness: (coordinationKey: string) => Effect.Effect<string | undefined, ProviderError>,
+    ) => Effect.Effect<void, ProviderError>;
     readonly inspectResourceNames?: (
       query: DoctorResourceNameQuery,
     ) => Effect.Effect<ReadonlyArray<string>, ProviderError>;

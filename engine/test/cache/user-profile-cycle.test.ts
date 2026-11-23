@@ -22,6 +22,7 @@ import { landofileRuntimeInputs } from "../../src/composition.ts";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";
+import { pathsServiceLayer } from "../paths-service.ts";
 import { includeSourcesOf, provenanceIn } from "../provenance-support.ts";
 
 test("recomputes profile identities through edit, deletion, and byte-identical restoration", async () => {
@@ -53,7 +54,7 @@ test("recomputes profile identities through edit, deletion, and byte-identical r
     ),
   ).pipe(Layer.provide(AppCacheService.layer));
   const plannerLayer = AppPlannerLayer.layer.pipe(
-    Layer.provide(Layer.mergeAll(PluginRegistryLayer.layer, BunFileSystem.layer, cache)),
+    Layer.provide(Layer.mergeAll(PluginRegistryLayer.layer, BunFileSystem.layer, cache, pathsServiceLayer())),
   );
   const authored = { name: "profile-cycle", includes: ["user:profile.yml"] };
   const load = () =>

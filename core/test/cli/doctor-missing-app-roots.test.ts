@@ -1,10 +1,16 @@
 import { expect, test } from "bun:test";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
+import { makeLandoPaths } from "@lando/paths";
 import { sha256Hex } from "@lando/sdk/digest";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
-import { AbsolutePath, AppId, ProviderId, ServiceName } from "@lando/sdk/schema";
-import { FileSystem, type ProviderRuntimeSnapshot, RuntimeProviderRegistry } from "@lando/sdk/services";
+import { AbsolutePath, AppId, LANDO_DATA_ROOT_LABEL, ProviderId, ServiceName } from "@lando/sdk/schema";
+import {
+  FileSystem,
+  PathsService,
+  type ProviderRuntimeSnapshot,
+  RuntimeProviderRegistry,
+} from "@lando/sdk/services";
 import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect, Layer, Schema } from "effect";
 import { missingAppRootsDoctor } from "../../src/cli/commands/doctor-missing-app-roots";
@@ -12,6 +18,9 @@ import { missingAppRootsDoctor } from "../../src/cli/commands/doctor-missing-app
 const root = AbsolutePath.make("/apps/gone");
 const app = AppId.make("gone");
 const providerId = ProviderId.make("test");
+const dataRoot = "/doctor-missing-test-data-root";
+const pathsLayer = Layer.succeed(PathsService, makeLandoPaths({ userDataRoot: dataRoot, env: {} }));
+const dataRootLabels = { [LANDO_DATA_ROOT_LABEL]: dataRoot };
 const snapshot = (appRoot = root, cache = false, runtimeObserved = true): ProviderRuntimeSnapshot => ({
   providerId,
   runtimeObserved,
@@ -25,11 +34,13 @@ const snapshot = (appRoot = root, cache = false, runtimeObserved = true): Provid
       status: "running",
       containerId: "observed-container",
       publications: { status: "unknown" },
+      labels: dataRootLabels,
     },
   ],
   volumes: [
     {
       ref: { app, store: "database" },
+      labels: dataRootLabels,
       identity: {
         coordinationKey: "key",
         nativeName: "native-data",
@@ -42,7 +53,7 @@ const snapshot = (appRoot = root, cache = false, runtimeObserved = true): Provid
       ? [
           {
             ref: { app, store: "cache" },
-            labels: { "dev.lando.storage-kind": "cache" },
+            labels: { ...dataRootLabels, "dev.lando.storage-kind": "cache" },
             identity: {
               coordinationKey: "cache",
               nativeName: "native-cache",
@@ -70,13 +81,17 @@ const run = (
 ) =>
   Effect.runPromise(
     missingAppRootsDoctor(redact).pipe(
-      Effect.provide(Layer.merge(fsLayer, Layer.succeed(RuntimeProviderRegistry, registry(snapshots)))),
+      Effect.provide(
+        Layer.mergeAll(fsLayer, pathsLayer, Layer.succeed(RuntimeProviderRegistry, registry(snapshots))),
+      ),
     ),
   );
 
 test("does not scan without a registry", async () => {
   expect(
-    await Effect.runPromise(missingAppRootsDoctor((text) => text).pipe(Effect.provide(fsLayer))),
+    await Effect.runPromise(
+      missingAppRootsDoctor((text) => text).pipe(Effect.provide(Layer.mergeAll(fsLayer, pathsLayer))),
+    ),
   ).toEqual([]);
 });
 
@@ -93,8 +108,9 @@ test("returns one redacted manual warning when app state cannot be read", async 
   const checks = await Effect.runPromise(
     missingAppRootsDoctor((text) => text.replaceAll("secret-path", "[redacted]")).pipe(
       Effect.provide(
-        Layer.merge(
+        Layer.mergeAll(
           fsLayer,
+          pathsLayer,
           Layer.succeed(
             RuntimeProviderRegistry,
             makeTestRuntimeProviderRegistry({ ...registry([]), observeRuntime: Effect.fail(error) }),
@@ -137,6 +153,7 @@ test("does not observe the runtime without a filesystem", async () => {
           }),
         }),
       ),
+      Effect.provide(pathsLayer),
     ),
   );
   expect(checks).toEqual([]);
@@ -268,6 +285,7 @@ test.each([false, true])(
             }),
           ),
           Effect.provide(store.layer),
+          Effect.provide(pathsLayer),
         );
       }).pipe(Effect.provide(BunFileSystem.layer)),
     );

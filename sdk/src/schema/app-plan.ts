@@ -22,7 +22,7 @@ import {
   RouteRef,
   ScanPlan,
 } from "./networking.ts";
-import { normalizeAppSlug } from "./physical-names.ts";
+import { landoNativeAppSlug, landoSharedCrossAppNetworkName, normalizeAppSlug } from "./physical-names.ts";
 import {
   AbsoluteContainerPath,
   AbsolutePath,
@@ -246,6 +246,7 @@ type AuthoredNetworkIntent = {
  */
 export const landoNetworkingPlan = (input: {
   readonly slug: string;
+  readonly identity?: Pick<AppIdentity, "dataRoot"> | undefined;
   readonly serviceNames: ReadonlyArray<string>;
   readonly sharedCrossAppNetwork: boolean;
   readonly perAppBridge?: boolean;
@@ -254,6 +255,7 @@ export const landoNetworkingPlan = (input: {
   readonly bridgeAliases?: Readonly<Record<string, ReadonlyArray<string>>> | undefined;
   readonly authoredNetworks?: ReadonlyArray<AuthoredNetworkIntent> | undefined;
 }): NetworkingPlan => {
+  const nativeSlug = landoNativeAppSlug(input);
   const bridgeAliases = Object.fromEntries(
     Object.entries(input.bridgeAliases ?? {}).filter(([, aliases]) => aliases.length > 0),
   );
@@ -261,7 +263,7 @@ export const landoNetworkingPlan = (input: {
     input.perAppBridge === false
       ? null
       : {
-          name: perAppBridgeNetworkName(input.slug),
+          name: perAppBridgeNetworkName(nativeSlug),
           driver: "bridge",
           ...(Object.keys(bridgeAliases).length === 0 ? {} : { aliases: bridgeAliases }),
         };
@@ -270,7 +272,7 @@ export const landoNetworkingPlan = (input: {
       key: network.key,
       name: network.external
         ? (network.name ?? network.key)
-        : landoAuthoredNetworkName(input.slug, network.key),
+        : landoAuthoredNetworkName(nativeSlug, network.key),
       external: network.external,
       ...(network.external ? {} : { driver: network.driver ?? "bridge" }),
       members: Object.fromEntries(
@@ -293,7 +295,13 @@ export const landoNetworkingPlan = (input: {
   }
   return {
     perAppBridge,
-    sharedNetworkMembership: { name: LANDO_SHARED_CROSS_APP_NETWORK, aliases },
+    sharedNetworkMembership: {
+      name:
+        input.identity?.dataRoot === undefined
+          ? LANDO_SHARED_CROSS_APP_NETWORK
+          : landoSharedCrossAppNetworkName(input.identity.dataRoot),
+      aliases,
+    },
     ...authored,
   };
 };
@@ -444,6 +452,9 @@ export const planAppIdentity = (plan: Pick<AppPlan, "root" | "identity">): AppId
 
 export const AppIdentity = Schema.Struct({
   appRoot: AbsolutePath.annotate({ description: "Canonical root that owns this app instance." }),
+  dataRoot: Schema.optionalKey(AbsolutePath).annotate({
+    description: "Canonical Lando user data root whose state owns this app instance.",
+  }),
   ownerKey: Schema.String.annotate({
     description: "Stable identity derived from the canonical app root.",
   }),

@@ -22,6 +22,7 @@ import {
   type Downloader,
   GlobalAppService,
   InteractionService,
+  type PathsService,
   PrivilegeService,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
@@ -75,6 +76,7 @@ export const setupSpec: LandoCommandSpec<
   unknown,
   | ConfigService
   | GlobalConfigSources
+  | PathsService
   | RuntimeProviderRegistry
   | HttpClient.HttpClient
   | Downloader

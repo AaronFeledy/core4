@@ -751,6 +751,7 @@ const assembleRuntimeProvider = (
     const agentBridge = yield* resolvePodmanAgentBridge({ ...options, platform });
     const planState = makeProviderPlanState({
       ctx: PODMAN_CTX,
+      userDataRoot: options.userDataRoot,
       providerId: providerIdBranded,
       endpointNamespace: socketPath.startsWith("/") ? `unix://${socketPath}` : socketPath,
       pullHelperImage: (ref) =>
@@ -866,11 +867,16 @@ const assembleRuntimeProvider = (
       ),
       removeArtifact: (request) => removeContainerArtifact(podmanApi, request, PODMAN_CTX),
       listArtifacts: (selector) => listContainerArtifacts(podmanApi, selector, PODMAN_CTX),
+      adoptDataRoot: Effect.fn("RuntimeProvider.adoptDataRoot")(function* (plan, witness) {
+        if (plan.identity?.dataRoot === undefined) return;
+        yield* planState.ownership.adopt(plan, yield* appliedPlans.resolveMutationPlan(plan.id), witness);
+      }),
       apply: Effect.fn("RuntimeProvider.apply")(function* (plan, applyOptions) {
         yield* validateHealthcheckExecution(plan, applyOptions.executeReadinessAttempt);
         const previous = yield* appliedPlans.resolveMutationPlan(plan.id);
-        yield* planState.ownership.prepare(plan, previous);
+        const adoptionReceipts = yield* planState.ownership.prepare(plan, previous);
         return yield* bringUp(plan, {
+          adoptionReceipts,
           ...(applyOptions.executeReadinessAttempt === undefined
             ? {}
             : { executeReadinessAttempt: applyOptions.executeReadinessAttempt }),
@@ -901,6 +907,7 @@ const assembleRuntimeProvider = (
         const plan = target.plan ?? previous;
         if (plan === undefined) return DESTROY_NO_OP;
         const { shutdownObservations, volumesRemoved, skipped } = yield* bringDown(plan, {
+          adoptionReceipts: yield* planState.ownership.receiptsFor(plan),
           api: podmanApi,
           endpointNamespace: socketPath.startsWith("/") ? `unix://${socketPath}` : socketPath,
           ctx: PODMAN_CTX,
@@ -916,9 +923,22 @@ const assembleRuntimeProvider = (
         };
       }),
       removeObservedService: Effect.fn("RuntimeProvider.removeObservedService")((observed) =>
-        appliedPlans
-          .resolveMutationPlan(observed.app)
-          .pipe(Effect.andThen(removeObservedContainer(observed, { api: podmanApi, ctx: PODMAN_CTX }))),
+        appliedPlans.resolveMutationPlan(observed.app).pipe(
+          Effect.flatMap(
+            Effect.fnUntraced(function* (plan) {
+              const receipts =
+                observed.appRoot !== undefined && observed.nativeName !== undefined
+                  ? yield* planState.ownership.receiptsAt(observed.appRoot)
+                  : [];
+              return yield* removeObservedContainer(observed, {
+                api: podmanApi,
+                ctx: PODMAN_CTX,
+                dataRoot: options.userDataRoot ?? plan?.identity?.dataRoot,
+                receipts,
+              });
+            }),
+          ),
+        ),
       ),
       logs: (target, logOptions) =>
         Stream.unwrap(

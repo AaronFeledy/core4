@@ -87,9 +87,7 @@ describe("ssh-agent global service ServiceConfig", () => {
 
   test("declares the runtime socket volume as global app storage", async () => {
     const config = await decodeConfig();
-    expect(config.storage).toEqual([
-      { store: "lando-ssh-agent", target: "/run/lando/ssh-agent", scope: "app" },
-    ]);
+    expect(config.storage).toEqual(["/run/lando/ssh-agent"]);
   });
 
   test("creates the socket in /ssh-auth directory (bind-mounted from host)", async () => {
@@ -115,9 +113,7 @@ describe("SSH sidecar host delivery", () => {
     async (platform) => {
       const config = await decodeConfig(platform);
       const command = commandText(config);
-      expect(config.storage).toEqual([
-        { store: "lando-ssh-agent", target: "/run/lando/ssh-agent", scope: "app" },
-      ]);
+      expect(config.storage).toEqual(["/run/lando/ssh-agent"]);
       expect(config.environment?.SSH_AUTH_SOCK).toBe("/run/lando/ssh-agent/agent.sock");
       expect(
         config.mounts?.find((mount) => typeof mount !== "string" && mount.target === "/root/.ssh"),

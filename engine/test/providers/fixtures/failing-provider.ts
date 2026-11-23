@@ -61,6 +61,7 @@ export const failingProvider = (): Required<RuntimeProviderShape> => {
     restoreVolume: fail,
     listVolumes: fail,
     locateVolume: fail,
+    adoptDataRoot: fail,
     inspectResourceNames: fail,
     observeVolume: fail,
     adoptVolume: fail,

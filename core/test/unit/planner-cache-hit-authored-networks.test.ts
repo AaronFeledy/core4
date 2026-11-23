@@ -9,8 +9,9 @@ import * as Cache from "@lando/engine/cache/service";
 import * as Plugins from "@lando/engine/plugins/registry";
 import * as Files from "@lando/engine/services/file-system";
 import * as Planner from "@lando/engine/services/planner";
+import { makeLandoPaths } from "@lando/paths";
 import { LandofileShape, ServiceName } from "@lando/sdk/schema";
-import { AppPlanner } from "@lando/sdk/services";
+import { AppPlanner, PathsService } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect, Layer, Result, Schema } from "effect";
 import { withCwd, withEnvVar } from "../_support/temp-cwd.ts";
@@ -30,7 +31,14 @@ test("cache hits fail closed for authored networks and bridge aliases", async ()
           });
           const { authoredNetworks: _authoredNetworks, ...capabilities } = TestRuntimeProvider.capabilities;
           const layer = Planner.layer.pipe(
-            Layer.provide(Layer.mergeAll(Cache.layer, Files.layer, Plugins.layer)),
+            Layer.provide(
+              Layer.mergeAll(
+                Cache.layer,
+                Files.layer,
+                Plugins.layer,
+                Layer.succeed(PathsService, makeLandoPaths()),
+              ),
+            ),
           );
           const run = () =>
             Effect.runPromise(

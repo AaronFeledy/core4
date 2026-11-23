@@ -6,6 +6,7 @@ import * as GlobalAppRuntime from "@lando/engine/global-app/runtime";
 import * as EventService from "@lando/engine/services/event-service";
 import { makeGlobalLifecycleFixture } from "@lando/engine/testing/global-lifecycle";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
+import { AbsolutePath, planAppIdentity } from "@lando/sdk/schema";
 import {
   BuildOrchestrator,
   EnvironmentValueResolver,
@@ -30,6 +31,11 @@ test.each([
     const base = await realpath(await mkdtemp(join(tmpdir(), "lando-idle-windows-routes-")));
     try {
       const global = makeGlobalLifecycleFixture(base);
+      const applied = global.planFor(["traefik"]);
+      global.setApplied({
+        ...applied,
+        identity: { ...planAppIdentity(applied), dataRoot: AbsolutePath.make(base) },
+      });
       global.setOnline(state === "running");
       const failure = new ProviderUnavailableError({
         providerId: "lando",

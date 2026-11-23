@@ -56,6 +56,7 @@ import {
   planLiteralTestLandofile as planTestLandofile,
 } from "../compiled-landofile.ts";
 import { fileSyncEngineLayer } from "../file-sync-engine.ts";
+import { pathsServiceLayer } from "../paths-service.ts";
 import * as TestLandofileServiceLayer from "./landofile-layer.ts";
 
 const providerLandoCapabilities: ProviderCapabilities = {
@@ -144,7 +145,7 @@ const plan = (landofile: LandofileShape, providerCapabilities = providerLandoCap
     Effect.flatMap(AppPlanner, (appPlanner) =>
       planTestLandofile(appPlanner, landofile, providerCapabilities),
     ).pipe(
-      Effect.provide(AppPlannerLayer.layer),
+      Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
       Effect.provide(
         Layer.mergeAll(
           PluginRegistryLayer.layer,
@@ -164,7 +165,7 @@ const planExit = (landofile: LandofileShape, providerCapabilities = providerLand
     Effect.flatMap(AppPlanner, (appPlanner) =>
       planTestLandofile(appPlanner, landofile, providerCapabilities),
     ).pipe(
-      Effect.provide(AppPlannerLayer.layer),
+      Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
       Effect.provide(Layer.mergeAll(PluginRegistryLayer.layer, BunFileSystem.layer)),
     ),
   );
@@ -175,7 +176,7 @@ const compiledPlanExit = (landofile: LandofileShape) =>
     Effect.flatMap(AppPlanner, (appPlanner) =>
       planCompiledTestLandofile(appPlanner, landofile, providerLandoCapabilities),
     ).pipe(
-      Effect.provide(AppPlannerLayer.layer),
+      Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
       Effect.provide(Layer.mergeAll(PluginRegistryLayer.layer, BunFileSystem.layer)),
     ),
   );
@@ -184,7 +185,10 @@ const planWithoutFileSystem = (landofile: LandofileShape) =>
   Effect.runPromiseExit(
     Effect.flatMap(AppPlanner, (appPlanner) =>
       planTestLandofile(appPlanner, landofile, providerLandoCapabilities),
-    ).pipe(Effect.provide(AppPlannerLayer.layer), Effect.provide(PluginRegistryLayer.layer)),
+    ).pipe(
+      Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
+      Effect.provide(PluginRegistryLayer.layer),
+    ),
   );
 
 test("planning emits phase spans beneath AppPlanner.plan", async () => {
@@ -202,7 +206,7 @@ test("planning emits phase spans beneath AppPlanner.plan", async () => {
     Effect.flatMap(AppPlanner, (planner) =>
       planTestLandofile(planner, landofileFixture, providerLandoCapabilities),
     ).pipe(
-      Effect.provide(AppPlannerLayer.layer),
+      Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
       Effect.provide(PluginRegistryLayer.layer),
       Effect.withTracer(tracer),
       Effect.provideService(References.TracerEnabled, true),
@@ -238,7 +242,7 @@ test("planning emits phase spans beneath AppPlanner.plan", async () => {
     "AppPlanner.planServices",
     "AppPlanner.applyPreparedFeatures",
     "AppPlanner.finalizeServices",
-    "AppPlanner.normalizeNetworks",
+    "AppPlanner.planNetworking",
     "AppPlanner.validateServiceProbes",
     "AppPlanner.validateRouteUrls",
   ]);
@@ -329,7 +333,7 @@ const planWithFileSystem = (landofile: LandofileShape) =>
     Effect.flatMap(AppPlanner, (appPlanner) =>
       planTestLandofile(appPlanner, landofile, providerLandoCapabilities),
     ).pipe(
-      Effect.provide(AppPlannerLayer.layer),
+      Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
       Effect.provide(PluginRegistryLayer.layer),
       Effect.provide(BunFileSystem.layer),
     ),
@@ -357,7 +361,7 @@ const planWithConfig = (
     Effect.flatMap(AppPlanner, (appPlanner) =>
       planTestLandofile(appPlanner, landofile, providerCapabilities),
     ).pipe(
-      Effect.provide(AppPlannerLayer.layer),
+      Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
       Effect.provide(PluginRegistryLayer.layer),
       Effect.provide(configLayer(defaultProviderId)),
     ),
@@ -535,7 +539,7 @@ const planWithCustomRegistry = (
     Effect.flatMap(AppPlanner, (appPlanner) =>
       planTestLandofile(appPlanner, landofile, providerCapabilities),
     ).pipe(
-      Effect.provide(AppPlannerLayer.layer),
+      Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
       Effect.provide(Layer.succeed(PluginRegistry, customPluginRegistry)),
     ),
   );
@@ -548,7 +552,7 @@ const planExitWithCustomRegistry = (
     Effect.flatMap(AppPlanner, (appPlanner) =>
       planTestLandofile(appPlanner, landofile, providerCapabilities),
     ).pipe(
-      Effect.provide(AppPlannerLayer.layer),
+      Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
       Effect.provide(Layer.succeed(PluginRegistry, customPluginRegistry)),
     ),
   );
@@ -604,6 +608,7 @@ describe("AppPlannerLayer.layer", () => {
                     Effect.map(load, (value): GlobalConfig[K] => value[key]),
                 }),
               ),
+              pathsServiceLayer(),
             ),
           ),
         );
@@ -737,7 +742,7 @@ describe("AppPlannerLayer.layer", () => {
       Effect.flatMap(AppPlanner, (planner) =>
         planTestLandofile(planner, landofile, providerLandoCapabilities),
       ).pipe(
-        Effect.provide(AppPlannerLayer.layer),
+        Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
         Effect.provide(Layer.succeed(PluginRegistry, registryWithServiceType(serviceType))),
       ),
     );
@@ -1089,7 +1094,7 @@ describe("AppPlannerLayer.layer", () => {
         Effect.flatMap(AppPlanner, (planner) =>
           planTestLandofile(planner, landofile, providerLandoCapabilities),
         ).pipe(
-          Effect.provide(AppPlannerLayer.layer),
+          Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
           Effect.provide(Layer.succeed(PluginRegistry, registry)),
         ),
       );
@@ -1400,7 +1405,7 @@ describe("AppPlannerLayer.layer", () => {
             { ...providerLandoCapabilities, serviceLogSources: false },
           ),
         ).pipe(
-          Effect.provide(AppPlannerLayer.layer),
+          Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
           Effect.provide(Layer.succeed(PluginRegistry, registryWithServiceType(serviceType))),
         ),
       );
@@ -1434,7 +1439,7 @@ describe("AppPlannerLayer.layer", () => {
             { ...providerLandoCapabilities, serviceLogSources: false },
           ),
         ).pipe(
-          Effect.provide(AppPlannerLayer.layer),
+          Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
           Effect.provide(Layer.succeed(PluginRegistry, registryWithServiceType(serviceType))),
         ),
       );
@@ -1661,7 +1666,7 @@ describe("AppPlannerLayer.layer", () => {
         Effect.flatMap(AppPlanner, (planner) =>
           planTestLandofile(planner, landofile, providerLandoCapabilities),
         ).pipe(
-          Effect.provide(AppPlannerLayer.layer),
+          Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
           Effect.provide(PluginRegistryLayer.layer),
           Effect.provide(BunFileSystem.layer),
         ),
@@ -1709,7 +1714,7 @@ describe("AppPlannerLayer.layer", () => {
       // When
       const appPlan = await Effect.runPromise(
         Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, providerLandoCapabilities)).pipe(
-          Effect.provide(AppPlannerLayer.layer),
+          Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
           Effect.provide(PluginRegistryLayer.layer),
           Effect.provide(BunFileSystem.layer),
         ),
@@ -1736,7 +1741,7 @@ describe("AppPlannerLayer.layer", () => {
         Effect.flatMap(AppPlanner, (planner) =>
           planTestLandofile(planner, landofile, providerLandoCapabilities),
         ).pipe(
-          Effect.provide(AppPlannerLayer.layer),
+          Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
           Effect.provide(PluginRegistryLayer.layer),
           Effect.provide(BunFileSystem.layer),
         ),
@@ -1805,7 +1810,7 @@ describe("AppPlannerLayer.layer", () => {
         Effect.flatMap(AppPlanner, (planner) =>
           planTestLandofile(planner, landofile, providerLandoCapabilities),
         ).pipe(
-          Effect.provide(AppPlannerLayer.layer),
+          Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
           Effect.provide(PluginRegistryLayer.layer),
           Effect.provide(BunFileSystem.layer),
         ),
@@ -1846,7 +1851,7 @@ describe("AppPlannerLayer.layer", () => {
         Effect.flatMap(AppPlanner, (planner) =>
           planTestLandofile(planner, landofile, providerLandoCapabilities),
         ).pipe(
-          Effect.provide(AppPlannerLayer.layer),
+          Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
           Effect.provide(PluginRegistryLayer.layer),
           Effect.provide(BunFileSystem.layer),
         ),
@@ -1885,7 +1890,7 @@ describe("AppPlannerLayer.layer", () => {
         Effect.flatMap(AppPlanner, (planner) =>
           planTestLandofile(planner, landofile, providerLandoCapabilities),
         ).pipe(
-          Effect.provide(AppPlannerLayer.layer),
+          Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
           Effect.provide(PluginRegistryLayer.layer),
           Effect.provide(BunFileSystem.layer),
         ),
@@ -2012,6 +2017,7 @@ describe("AppPlannerLayer.layer", () => {
                 loadAppFeature: () => Effect.die("not used"),
               }),
             ),
+            pathsServiceLayer(),
           ),
         ),
       );
@@ -2151,6 +2157,7 @@ describe("AppPlannerLayer.layer", () => {
                 loadAppFeature: () => Effect.die("not used"),
               }),
             ),
+            pathsServiceLayer(),
           ),
         ),
       );
@@ -2396,7 +2403,7 @@ describe("AppPlannerLayer.layer", () => {
             providerLandoCapabilities,
           ),
         ).pipe(
-          Effect.provide(AppPlannerLayer.layer),
+          Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
           Effect.provide(Layer.succeed(PluginRegistry, registry)),
         ),
       );
@@ -2455,7 +2462,7 @@ describe("AppPlannerLayer.layer", () => {
             { ...providerLandoCapabilities, sharedCrossAppNetwork: false },
           ),
         ).pipe(
-          Effect.provide(AppPlannerLayer.layer),
+          Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
           Effect.provide(Layer.succeed(PluginRegistry, registry)),
         ),
       );
@@ -2556,7 +2563,7 @@ describe("AppPlannerLayer.layer", () => {
             providerLandoCapabilities,
           ),
         ).pipe(
-          Effect.provide(AppPlannerLayer.layer),
+          Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
           Effect.provide(Layer.succeed(PluginRegistry, registry)),
         ),
       );
@@ -2662,7 +2669,7 @@ describe("AppPlannerLayer.layer", () => {
             providerLandoCapabilities,
           ),
         ).pipe(
-          Effect.provide(AppPlannerLayer.layer),
+          Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
           Effect.provide(Layer.succeed(PluginRegistry, registry)),
         ),
       );
@@ -2737,7 +2744,7 @@ describe("AppPlannerLayer.layer", () => {
             providerLandoCapabilities,
           ),
         ).pipe(
-          Effect.provide(AppPlannerLayer.layer),
+          Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
           Effect.provide(Layer.succeed(PluginRegistry, registry)),
         ),
       );
@@ -2794,7 +2801,7 @@ describe("AppPlannerLayer.layer", () => {
             providerLandoCapabilities,
           ),
         ).pipe(
-          Effect.provide(AppPlannerLayer.layer),
+          Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
           Effect.provide(Layer.succeed(PluginRegistry, registry)),
         ),
       );
@@ -3103,7 +3110,14 @@ describe("AppPlannerLayer.layer", () => {
         services: { [ServiceName.make("web")]: { type: "node", packageRoot: "apps/web" } },
       };
       const layer = AppPlannerLayer.layer.pipe(
-        Layer.provide(Layer.mergeAll(AppCacheService.layer, BunFileSystem.layer, PluginRegistryLayer.layer)),
+        Layer.provide(
+          Layer.mergeAll(
+            AppCacheService.layer,
+            BunFileSystem.layer,
+            PluginRegistryLayer.layer,
+            pathsServiceLayer(),
+          ),
+        ),
       );
       const runPlan = () =>
         Effect.runPromise(
@@ -3388,7 +3402,11 @@ describe("AppPlannerLayer.layer", () => {
             slowBindMountCapabilities,
           ),
         ).pipe(
-          Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(Layer.succeed(PluginRegistry, registry)))),
+          Effect.provide(
+            AppPlannerLayer.layer.pipe(
+              Layer.provide(Layer.mergeAll(Layer.succeed(PluginRegistry, registry), pathsServiceLayer())),
+            ),
+          ),
         ),
       );
 
@@ -4661,7 +4679,7 @@ describe("AppPlannerLayer.layer", () => {
             providerLandoCapabilities,
           ),
         ).pipe(
-          Effect.provide(AppPlannerLayer.layer),
+          Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
           Effect.provide(Layer.succeed(PluginRegistry, registry)),
         ),
       );
@@ -4758,7 +4776,7 @@ describe("AppPlannerLayer.layer", () => {
             providerLandoCapabilities,
           ),
         ).pipe(
-          Effect.provide(AppPlannerLayer.layer),
+          Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
           Effect.provide(Layer.succeed(PluginRegistry, registry)),
         ),
       );
@@ -4877,7 +4895,7 @@ describe("AppPlannerLayer.layer", () => {
             providerLandoCapabilities,
           ),
         ).pipe(
-          Effect.provide(AppPlannerLayer.layer),
+          Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
           Effect.provide(Layer.succeed(PluginRegistry, registry)),
         ),
       );
@@ -4961,7 +4979,9 @@ describe("AppPlannerLayer.layer", () => {
         },
       };
       const layer = AppPlannerLayer.layer.pipe(
-        Layer.provide(Layer.mergeAll(AppCacheService.layer, Layer.succeed(PluginRegistry, registry))),
+        Layer.provide(
+          Layer.mergeAll(AppCacheService.layer, Layer.succeed(PluginRegistry, registry), pathsServiceLayer()),
+        ),
       );
       const landofile: LandofileShape = {
         name: "feature-flip-app",
@@ -5116,7 +5136,7 @@ describe("AppPlannerLayer.layer", () => {
                   providerLandoCapabilities,
                 ),
               ).pipe(
-                Effect.provide(AppPlannerLayer.layer),
+                Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
                 Effect.provide(PluginRegistryLayer.layer),
                 Effect.provide(AppCacheService.layer),
               ),
@@ -5161,7 +5181,7 @@ describe("AppPlannerLayer.layer", () => {
                 providerLandoCapabilities,
               ),
             ).pipe(
-              Effect.provide(AppPlannerLayer.layer),
+              Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
               Effect.provide(Layer.mergeAll(PluginRegistryLayer.layer, BunFileSystem.layer)),
               Effect.provide(AppCacheService.layer),
             ),
@@ -5242,7 +5262,7 @@ describe("AppPlannerLayer.layer", () => {
               providerLandoCapabilities,
             ),
           ).pipe(
-            Effect.provide(AppPlannerLayer.layer),
+            Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
             Effect.provide(Layer.succeed(PluginRegistry, registry)),
           ),
         );
@@ -5269,7 +5289,7 @@ describe("AppPlannerLayer.layer", () => {
               providerLandoCapabilities,
             ),
           ).pipe(
-            Effect.provide(AppPlannerLayer.layer),
+            Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
             Effect.provide(Layer.succeed(PluginRegistry, registry)),
           ),
         );
@@ -5290,7 +5310,7 @@ describe("AppPlannerLayer.layer", () => {
               providerLandoCapabilities,
             ),
           ).pipe(
-            Effect.provide(AppPlannerLayer.layer),
+            Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
             Effect.provide(Layer.succeed(PluginRegistry, registry)),
           ),
         );
@@ -5312,7 +5332,7 @@ describe("AppPlannerLayer.layer", () => {
               providerLandoCapabilities,
             ),
           ).pipe(
-            Effect.provide(AppPlannerLayer.layer),
+            Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
             Effect.provide(Layer.succeed(PluginRegistry, registry)),
           ),
         );
@@ -5534,7 +5554,11 @@ describe("AppPlannerLayer.layer", () => {
       });
       const plannerLayer = AppPlannerLayer.layer.pipe(
         Layer.provide(
-          Layer.mergeAll(AppCacheService.layer, Layer.succeed(PluginRegistry, customPluginRegistry)),
+          Layer.mergeAll(
+            AppCacheService.layer,
+            Layer.succeed(PluginRegistry, customPluginRegistry),
+            pathsServiceLayer(),
+          ),
         ),
       );
 
@@ -5829,7 +5853,7 @@ describe("Compose runtime knobs", () => {
       Effect.flatMap(AppPlanner, (appPlanner) =>
         planTestLandofile(appPlanner, injectedLandofile, providerCapabilities),
       ).pipe(
-        Effect.provide(AppPlannerLayer.layer),
+        Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
         Effect.provide(Layer.succeed(PluginRegistry, knobInjectingRegistry)),
       ),
     );
@@ -5866,7 +5890,14 @@ describe("Compose runtime knobs", () => {
       const cacheRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-knob-cache-root-")));
       process.env.LANDO_USER_CACHE_ROOT = cacheRoot;
       const cachedLayer = AppPlannerLayer.layer.pipe(
-        Layer.provide(Layer.mergeAll(AppCacheService.layer, BunFileSystem.layer, PluginRegistryLayer.layer)),
+        Layer.provide(
+          Layer.mergeAll(
+            AppCacheService.layer,
+            BunFileSystem.layer,
+            PluginRegistryLayer.layer,
+            pathsServiceLayer(),
+          ),
+        ),
       );
       const runPlan = (providerCapabilities: ProviderCapabilities) =>
         Effect.runPromiseExit(

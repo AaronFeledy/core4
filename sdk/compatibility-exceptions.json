@@ -24,6 +24,13 @@
     "justification": "Derive the build input union from the codec and remove the old authored camelCase Dockerfile alias (#2067)."
   },
   {
+    "surface": "persisted:resource-ownership",
+    "changeKind": "unsupported-construct",
+    "path": "$.resources.items.anyOf",
+    "justification": "Resource entries optionally carry the data root and a volume instance witness. Version 1 and 2 rows retain their original identity digest and migrate without granting adoption receipts.",
+    "persistedState": { "store": "resource-ownership", "version": 3 }
+  },
+  {
     "surface": "command:app:info",
     "changeKind": "unsupported-construct",
     "path": "$.services.items.listenerAuthority.anyOf",
