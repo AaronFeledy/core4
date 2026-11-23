@@ -149,7 +149,7 @@ A colon is fine in a destination. `/srv/a:b` is a legal POSIX path, so Lando kee
 Lando also binds a few files of its own into every service: its helper directory at `/run/lando/helper`, commands such as `lando-create-project` (plus `lando`, `xdg-open`, and `open` when [host-proxy](../subsystems/host-open.mdx) is on) in `/usr/local/bin`, and the login-profile file that [keeps your `PATH`](../cli/ssh.mdx#keep-the-service-path). Your mounts decide what happens to them:
 
 - A mount at `/run/lando/helper`, inside it, or a bind or volume above it such as `/run/lando` is a validation error. `lando app:config:lint` reports it, and `lando start` fails with `LandofileValidationError` before it builds anything. Move the mount to a path that is neither above nor inside `/run/lando/helper`.
-- A mount at the exact path of one of Lando's own commands, such as `/usr/local/bin/lando-create-project`, is the same validation error.
+- A mount at the exact path of one of Lando's own commands is the same validation error. That covers `/usr/local/bin/lando-create-project` and the other scaffold commands in every service, and `/usr/local/bin/lando`, `/usr/local/bin/xdg-open`, and `/usr/local/bin/open` in a service with host-proxy. The error names the path and the command Lando provides there.
 - A bind or volume above those commands, such as `/usr/local/bin`, keeps your mount: Lando leaves those commands out of that service rather than create empty files in your directory, and `lando start` prints a `LANDO_HELPER_COMMANDS_UNAVAILABLE` warning that names the mount and the missing commands. Move the mount to another path to get the commands back.
 - A bind or volume at `/etc/profile.d` or `/etc` keeps your mount, and Lando leaves its profile file out without a warning.
 - A `tmpfs` is different: it holds nothing on your host, so Lando's helper directory, commands, and profile file all still mount beneath a `tmpfs` at `/run`, `/usr/local/bin`, or `/etc/profile.d`, with no warning.
@@ -259,6 +259,21 @@ If the request is refused, see [Reach host services and sibling stacks](../subsy
     <Step name="cleanup-bin-tmpfs">
       <Cleanup />
       <Run command="lando destroy -y --volumes" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="host-proxy-command-mount" render={false} reason="An exact mount at a host-proxy command path fails planning and lint before any build">
+    <Step name="scaffold-host-proxy-command">
+      <UseFixture name="home-and-host-host-proxy-command" />
+    </Step>
+    <Step name="lint-reports-command-mount">
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"rule\":\\s*\"landofile.service\",\\s*\"severity\":\\s*\"error\",\\s*\"path\":\\s*\\[\"services\",\\s*\"tools\",\\s*\"mounts\",\\s*0\\],\\s*\"message\":\\s*\"[^\"]*reserved for Lando.s xdg-open command" } }} />
+    </Step>
+    <Step name="refuse-command-mount-before-build">
+      <Verify command="lando start --format=json" expectExit={1} expect={{ stdout: { regex: "^(?![\\s\\S]*\"event\":\\s*\"(task\\.start|build-step-[a-z]+)\")[\\s\\S]*\"_tag\":\\s*\"LandofileValidationError\"[\\s\\S]*\"path\":\\s*\\[\"services\",\\s*\"tools\",\\s*\"mounts\",\\s*0\\][\\s\\S]*Lando provides the xdg-open command at /usr/local/bin/xdg-open" } }} />
+    </Step>
+    <Step name="cleanup-host-proxy-command">
+      <Cleanup />
     </Step>
   </Scenario>
 

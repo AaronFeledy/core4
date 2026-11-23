@@ -2,7 +2,7 @@ import { posix, win32 } from "node:path";
 import { reservedHelperTargetConflict } from "@lando/container-runtime/container-helper";
 import { LandofileValidationError } from "@lando/sdk/errors";
 import type { MountPlan, ServiceConfig, ValidationIssuePath } from "@lando/sdk/schema";
-import { landoServiceStorageName } from "@lando/sdk/schema";
+import { landoServiceStorageName, mountTargetCovers } from "@lando/sdk/schema";
 import { compileConfigMounts } from "./authored-config-mounts.ts";
 import {
   type CompiledAuthoredMount,
@@ -56,6 +56,19 @@ export const excludeDestination = (
         `Mount exclude ${exclude} resolves outside ${bindTarget}.`,
         "Use a relative path beneath the mount, without .. segments that leave it.",
       );
+};
+
+/** A mount at the exact file where Lando binds one of its commands would replace that command. */
+const commandTargetConflict = (context: MountAuthoringContext, mount: Pick<MountPlan, "target">) => {
+  const target = context.commandTargets?.find(
+    (command) => mountTargetCovers(command, mount.target) && mountTargetCovers(mount.target, command),
+  );
+  if (target === undefined) return undefined;
+  const command = posix.basename(target);
+  return {
+    message: `Service ${context.serviceName} mounts ${mount.target}, which is reserved for Lando's ${command} command.`,
+    remediation: `Move the mount at ${mount.target} to another path. Lando provides the ${command} command at ${target} in this service.`,
+  };
 };
 
 export const compileAuthoredMounts = (
@@ -163,7 +176,8 @@ export const compileAuthoredMounts = (
     ...lando.values(),
   ];
   for (const { mount, path } of selected) {
-    const conflict = reservedHelperTargetConflict(context.serviceName, mount);
+    const conflict =
+      reservedHelperTargetConflict(context.serviceName, mount) ?? commandTargetConflict(context, mount);
     if (conflict !== undefined)
       return mountInputError(context, [path], conflict.message, conflict.remediation);
   }
@@ -190,8 +204,8 @@ export const compileAuthoredMounts = (
 
 /**
  * Checks that need only authored input, shared by `app:config:lint` and
- * planning: duplicate Lando destinations, Lando's reserved helper targets, mount
- * syntax, tmpfs access modes, bind-only excludes, and literal includes.
+ * planning: duplicate Lando destinations, Lando's reserved helper and command
+ * targets, mount syntax, tmpfs access modes, bind-only excludes, and literal includes.
  */
 export const validateAuthoredMounts = (
   context: MountAuthoringContext,

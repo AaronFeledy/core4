@@ -741,6 +741,10 @@
       "digest": "cc50b5dc76f70c6fae1b23d88bc660e6f3268331c54992f4d8096d84230eaaae"
     },
     {
+      "fixture": "docs/guides/home-and-host/fixtures/home-and-host-host-proxy-command",
+      "digest": "f20d79ac7e6a37a22b327e735340d1237fc870da903bce74f71978ffdb0a353f"
+    },
+    {
       "fixture": "docs/guides/home-and-host/fixtures/home-and-host-unknown-home",
       "digest": "2fcfc6c5a00ae68feaaae6aea33fc3e6b0cf8770f8f5d54869a8e78530846aaf"
     },

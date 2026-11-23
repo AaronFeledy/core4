@@ -5,11 +5,14 @@ import { Effect, Result } from "effect";
 import { mergeLogSources } from "../services/log-sources.ts";
 import { SECURITY_FEATURE_ID } from "../services/network-inject.ts";
 import { CERTS_FEATURE_ID } from "../services/service-certs.ts";
+import { HOST_PROXY_COMMAND_TARGETS } from "../subsystems/host-proxy/transport-feature.ts";
+import { HOST_PROXY_FEATURE_ID } from "../subsystems/host-proxy/worker-service-plan.ts";
 import { SSH_AGENT_FEATURE_ID } from "../subsystems/ssh/api.ts";
 import { validateAuthoredAppMount } from "./authored.ts";
 import type { MountAuthoringContext } from "./authored-mount-entry.ts";
 import { validateAuthoredMounts } from "./authored-mounts.ts";
 import { validateServicePullPolicy } from "./pull-policy.ts";
+import { declaredServiceFeatures } from "./service-feature-input.ts";
 import type { ResolvedServiceSeed } from "./service-seeds.ts";
 import { authoredStorageScopes, rejectGlobalScope } from "./storage.ts";
 
@@ -68,8 +71,12 @@ export const validateServiceSeed = Effect.fnUntraced(function* (
   if (mount !== undefined) errors.push(mount);
   const pullPolicy = validateServicePullPolicy(seed.service, seed.name, landofilePath);
   if (pullPolicy !== undefined) errors.push(pullPolicy);
+  // Host-proxy binds its client at fixed command paths, so an exact mount there is refused while planning.
+  const hostProxy = declaredServiceFeatures(seed.resolution, false).featureRefs.some(
+    (feature) => feature.id === HOST_PROXY_FEATURE_ID,
+  );
   const mounts = validateAuthoredMounts(
-    context,
+    hostProxy ? { ...context, commandTargets: HOST_PROXY_COMMAND_TARGETS } : context,
     seed.resolution.normalizedConfig,
     seed.service.storage,
     seed.service.appMount,
