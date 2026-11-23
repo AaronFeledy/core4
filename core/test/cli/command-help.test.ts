@@ -91,6 +91,7 @@ describe("renderCommandHelp", () => {
       "lando exec [--service SERVICE | SERVICE] -- [COMMAND...]",
     );
     expect(commandStructureExample("app:start")).toBe("lando start [--service SERVICE]");
+    expect(commandStructureExample("app:stop")).toBe("lando stop [--service SERVICE]");
   });
 
   test("exec attaches stdin only through an explicit interactive flag", () => {

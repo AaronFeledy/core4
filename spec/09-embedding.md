@@ -78,7 +78,7 @@ The returned opaque, SDK-published `App` handle captures app identity and runtim
 | `App` member | Contract |
 |---|---|
 | `id`, `ref`, `root`, `plan` | Stable app identity, root, and planned state. |
-| `start`, `stop`, `restart`, `rebuild`, `destroy` | Typed lifecycle operations. |
+| `start`, `stop`, `restart`, `rebuild`, `destroy` | Typed lifecycle operations. `stop` takes `StopAppOptions.services`: omitted or an empty list (`services: []`) stops the whole app, as for `start`, `restart`, and `rebuild`; a nonempty list is a selected stop (§6.15), whose result carries `servicesKeptRunning`; an unknown or empty name fails with `ServiceNotFoundError` before mutation. |
 | `info` | Typed app and service information. |
 | `exec`, `tooling`, `logs` | Scoped execution and streaming operations. |
 | `share`, `shareList`, `shareStop` | Scoped or detached tunnel operations (§10.2.2). |
@@ -119,7 +119,7 @@ Bootstrap, event order, payload schemas, subscriber priorities, and subscriber f
 - `makeLandoRuntime` returns a scoped Layer and MUST run under a scope-bearing context.
 - Provider connections, watchers, streams, listeners, and plugin handles belong to that scope and finalize in LIFO order.
 - Interruption MUST propagate through provider operations and finalize acquisition-local work. Interrupting an individual `App` operation MUST NOT close its owning runtime or current managed scope; closing the outer runtime scope finalizes the resources it owns.
-- An `App` handle owns a child scope for managed start-state resources. `stop`, `restart`, `destroy`, or outer runtime closure ends it. Repeated managed starts converge resources, but init and lifecycle hooks run on every invocation (§6.15). A failed or interrupted managed start keeps the current managed scope and the resources it established (§6.7); the handle retries by converging on them. Only unused staged scopes are discarded before ownership transfer; acquisition-local incomplete resources finalize without releasing app-owned resources.
+- An `App` handle owns a child scope for managed start-state resources. Whole-app `stop`, `restart`, `destroy`, or outer runtime closure ends it. A selected `stop({ services })` keeps it open, because running siblings still hold its workers and sessions. Repeated managed starts converge resources, but init and lifecycle hooks run on every invocation (§6.15). A failed or interrupted managed start keeps the current managed scope and the resources it established (§6.7); the handle retries by converging on them. Only unused staged scopes are discarded before ownership transfer; acquisition-local incomplete resources finalize without releasing app-owned resources.
 - Configured scratch apps are materialized in runtime scope and destroyed when it closes (§21). Imperatively acquired scratches retain their returned scope contract.
 - Session closure leaves borrowed App ownership unchanged; owned environments and processes follow §22.3 and §22.5.
 
