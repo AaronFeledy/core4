@@ -45,10 +45,10 @@ test.each([
     hint: false,
   },
   {
-    label: "own port outside a process site",
+    label: "own port in map-form environment",
     service: { type: "redis", environment: { SELF: "{{ services.cache.port }}" } },
     field: ["environment", "SELF"],
-    hint: false,
+    hint: true,
   },
   {
     label: "own port without a planned listener",
