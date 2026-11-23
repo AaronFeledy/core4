@@ -2,21 +2,23 @@ import { RouteUrlBindingError } from "@lando/sdk/errors";
 import type { AppPlan } from "@lando/sdk/schema";
 import { Effect } from "effect";
 import type { PreparedRouteUrls } from "../lifecycle/route-url-bindings.ts";
-import { recordedRouteUrl } from "../lifecycle/route-url-evidence.ts";
-import { routeUrlConsumers } from "../planner/route-url-validation.ts";
+import { boundRouteFacts, changedRouteFacts, recordedRouteFacts } from "../lifecycle/route-url-evidence.ts";
 
+/** Each route target an applied consumer outside the selection reads, with the facts it binds. */
 export const retainedRouteReferences = (applied: AppPlan | undefined, selected: AppPlan) =>
   applied === undefined
     ? []
     : Object.values(applied.services).flatMap((consumer) =>
         Object.hasOwn(selected.services, consumer.name)
           ? []
-          : routeUrlConsumers({ services: { [consumer.name]: consumer } }).map(({ service }) => ({
-              consumer,
-              service,
-            })),
+          : [...boundRouteFacts(consumer)].map(([service, facts]) => ({ consumer, service, facts })),
       );
 
+/**
+ * Refuse a selected activation that would change a route fact a retained consumer's environment
+ * holds. Each consumer is judged by the facts it binds: a hostname reader survives a port move and
+ * an origin reader survives a path-only edit. A consumer with no recorded evidence is refused.
+ */
 export const refuseRetainedRouteConsumers = Effect.fn("Activation.refuseRetainedRouteConsumers")(
   function* (input: {
     readonly retained: ReturnType<typeof retainedRouteReferences>;
@@ -27,17 +29,25 @@ export const refuseRetainedRouteConsumers = Effect.fn("Activation.refuseRetained
     const affected = new Set<string>();
     const reasons: string[] = [];
     let target: string | undefined;
-    for (const { consumer, service } of input.retained) {
-      const previous = recordedRouteUrl(consumer, service);
-      const next = input.proof?.facts.get(service)?.url;
-      if (previous !== undefined && previous === next) continue;
+    for (const { consumer, service, facts } of input.retained) {
+      const previous = recordedRouteFacts(consumer, service);
+      const next = input.proof?.facts.get(service);
+      if (previous === undefined) {
+        target ??= service;
+        affected.add(consumer.name);
+        reasons.push(
+          `Lando has no record of the route ${consumer.name} was started with for services.${service}.`,
+        );
+        continue;
+      }
+      const changed = changedRouteFacts(facts, previous, next);
+      if (changed.length === 0) continue;
       target ??= service;
       affected.add(consumer.name);
-      reasons.push(
-        previous === undefined
-          ? `Lando has no record of the URL ${consumer.name} was started with for services.${service}.url.`
-          : `${consumer.name} uses ${previous} for services.${service}.url, but this ${input.operation} publishes ${next ?? "no URL"}.`,
-      );
+      for (const fact of changed)
+        reasons.push(
+          `${consumer.name} uses ${previous[fact]} for services.${service}.${fact}, but this ${input.operation} publishes ${next?.[fact] ?? "no value"}.`,
+        );
     }
     if (target !== undefined) {
       const consumers = [...affected];

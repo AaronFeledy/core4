@@ -22,6 +22,7 @@ import { unavailableRouterReason } from "../subsystems/proxy/api.ts";
 import type { ServiceUrlFailureReason } from "../tooling/event-errors.ts";
 import { type RouteFacts, primaryConcreteRoute } from "./connection-url.ts";
 import { activeEventNames } from "./event-invocation.ts";
+import { publishRouteFactDrift } from "./route-fact-drift.ts";
 
 /** Lifecycle points that run before start publishes routes and acquires router ports. */
 const UNPUBLISHED = ["pre-init", "post-init", "pre-start"] as const satisfies readonly LandofileEventName[];
@@ -206,5 +207,7 @@ export const resolveInvocationServiceUrls = Effect.fnUntraced(function* (input: 
     else services[service] = authorized.facts;
   }
   if (unrecorded.length > 0) return yield* fail("authority-unavailable", unrecorded);
+  // The applied plan already in hand tells whether a consumer was started with an older value.
+  yield* publishRouteFactDrift(applied, services);
   return services;
 });

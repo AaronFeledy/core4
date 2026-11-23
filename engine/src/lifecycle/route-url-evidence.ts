@@ -1,16 +1,48 @@
-import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
+import type { AppPlan, PublicRouteFact, ServicePlan } from "@lando/sdk/schema";
 import { Predicate } from "effect";
+import type { RouteFacts } from "../operations/connection-url.ts";
 import { routeUrlConsumers } from "../planner/route-url-validation.ts";
 import type { PreparedRouteUrls } from "./route-url-bindings.ts";
 
 const evidenceKey = "@lando/engine/realized-route-urls";
 
-export const recordedRouteUrl = (consumer: ServicePlan, target: string): string | undefined => {
+/** `routeUrl` output: scheme, a hostname with no port separator, an optional port, then the path. */
+const RECORDED_URL = /^(https?):\/\/([^/:]+)(?::(\d+))?(\/.*)?$/u;
+
+/**
+ * The route facts a consumer was started with for a target, projected from the URL recorded as
+ * evidence. Hostname and origin are pure functions of that URL, so the evidence stays URL-only;
+ * the projection splits it by hand, never through `new URL()`, which rewrites or rejects hostnames
+ * routes admit. Undefined when the consumer has no evidence for the target.
+ */
+export const recordedRouteFacts = (consumer: ServicePlan, target: string): RouteFacts | undefined => {
   const evidence = consumer.extensions[evidenceKey];
   if (!Predicate.isObject(evidence) || !Object.hasOwn(evidence, target)) return undefined;
   const url = evidence[target];
-  return typeof url === "string" ? url : undefined;
+  const match = typeof url === "string" ? RECORDED_URL.exec(url) : null;
+  if (match === null) return undefined;
+  const [, scheme, hostname = "", port] = match;
+  return {
+    url: match[0],
+    hostname,
+    origin: `${scheme}://${hostname}${port === undefined ? "" : `:${port}`}`,
+  };
 };
+
+/** Each route target a consumer's environment reads, with the facts it binds. */
+export const boundRouteFacts = (consumer: ServicePlan): ReadonlyMap<string, ReadonlySet<PublicRouteFact>> => {
+  const bound = new Map<string, Set<PublicRouteFact>>();
+  for (const { service, fact } of routeUrlConsumers({ services: { [consumer.name]: consumer } }))
+    bound.set(service, new Set([...(bound.get(service) ?? []), fact]));
+  return bound;
+};
+
+/** The bound facts whose recorded value differs from the current one; all of them when there is none. */
+export const changedRouteFacts = (
+  bound: ReadonlySet<PublicRouteFact>,
+  recorded: RouteFacts,
+  current: RouteFacts | undefined,
+): readonly PublicRouteFact[] => [...bound].filter((fact) => recorded[fact] !== current?.[fact]);
 
 export const recordRouteUrlEvidence = (
   record: AppPlan,
