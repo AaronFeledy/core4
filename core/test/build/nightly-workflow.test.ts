@@ -139,7 +139,7 @@ test("#2302 nightly reporter waits for every job with issue permission only on t
   expect(reporter?.["runs-on"]).toBe("ubuntu-24.04");
   expect(reporter?.steps).toHaveLength(1);
   expect(reporter?.steps[0]).toMatchObject({ name: "Report automation failure" });
-  expect(jobs["provider-lando-e2e-linux-x64"]?.["timeout-minutes"]).toBe(90);
+  expect(jobs["provider-lando-e2e-linux-x64"]?.["timeout-minutes"]).toBe(120);
 });
 
 test.each([
