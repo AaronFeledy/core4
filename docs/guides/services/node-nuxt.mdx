@@ -181,7 +181,7 @@ The build writes `.output`, and the second command runs that server on port `310
     </Step>
     <Step name="vitest">
       <Run command="lando npm install -D vitest @nuxt/test-utils" />
-      <Verify command="lando npx vitest run" expect={{ stdout: { regex: "Tests\\s+1 passed" } }} />
+      <Verify command="lando npx vitest run" expect={{ stdout: { regex: "Tests\\b[^\\n]*1 passed" } }} />
     </Step>
     <Step name="production">
       <Run command="lando npm run build" />
