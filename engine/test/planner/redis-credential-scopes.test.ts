@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { AppPlan, ServiceName } from "@lando/sdk/schema";
+import { AppPlan, PortNumber, ServiceName } from "@lando/sdk/schema";
 import { AppPlanner } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect, Schema } from "effect";
@@ -60,6 +60,7 @@ test.each([...cases])(
     expect(effectiveToolingForPlan(plan)?.["redis-cli"]?.env?.REDISCLI_AUTH).toEqual(password);
     expect(serviceCredsScopeForPlan(plan).cache).toEqual({
       url: { _tag: "RouteText", parts: [{ service: "cache", encoding: "raw" }] },
+      port: PortNumber.make(6379),
       creds: { user: "default", database: "0", password },
     });
   },

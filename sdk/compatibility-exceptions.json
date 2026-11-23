@@ -7089,10 +7089,10 @@
     "surface": "schema:AppliedAppPlan",
     "changeKind": "unsupported-keyword",
     "path": "$.services.additionalProperties",
-    "justification": "AppliedAppPlan projects the service map from AppPlan. The nested healthcheck and readiness plans now accept optional startIntervalSeconds. Records without it retain the existing startup cadence and need no timing migration. Applied-state v11 already migrates the v10 payload to the event-free applied projection.",
+    "justification": "AppliedAppPlan projects the service map from AppPlan. The nested healthcheck and readiness plans now accept optional startIntervalSeconds. Records without it retain the existing startup cadence and need no timing migration. Applied-state v11 already migrates the v10 payload to the event-free applied projection. Applied-state v12 adds the optional ServicePlan plannedPort; v11 records decode unchanged and need no rewrite.",
     "persistedState": {
       "store": "applied-state",
-      "version": 11
+      "version": 12
     }
   },
   {
@@ -7375,10 +7375,10 @@
     "surface": "schema:ServicePlan",
     "changeKind": "unsupported-construct",
     "path": "$.anyOf",
-    "justification": "History: ServicePlan anyOf evolves with endpoint kind discriminators and nested plan fields (#2456, #2109). applied-state version 8 migrates endpoint _tag→kind and route filter type→kind under data.services and data.routes (map: data[appId].…) on read only; no write-back. Historical applied ServicePlan values remain readable after that pass; v8 never accepts old keys. Applied-state v9 added optional keepAlive intent for application-owned listeners. In v10, #2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation. Consumers that recorded RouteText also carry their realized URLs under the @lando/engine/realized-route-urls service extension. At existing applied-state v11, the nested probe plans accept optional startIntervalSeconds. Previously valid service plans remain readable without a timing migration, and omission retains the existing startup cadence.",
+    "justification": "History: ServicePlan anyOf evolves with endpoint kind discriminators and nested plan fields (#2456, #2109). applied-state version 8 migrates endpoint _tag→kind and route filter type→kind under data.services and data.routes (map: data[appId].…) on read only; no write-back. Historical applied ServicePlan values remain readable after that pass; v8 never accepts old keys. Applied-state v9 added optional keepAlive intent for application-owned listeners. In v10, #2534 adds the non-secret RouteText descriptor ({ _tag: \"RouteText\", parts: [string | { service, encoding: raw | uri-component }] }) to EnvironmentValue, so every schema that embeds that union gains one arm. Every previously accepted value remains accepted. Planning produces RouteText only from {{ services.<name>.url }}; load refuses raw authored RouteText objects and a literal URL reference outside a map-form service environment, planning refuses a RouteText value at any other destination (including computed member reads), and activation lowers it to a string before container creation. Consumers that recorded RouteText also carry their realized URLs under the @lando/engine/realized-route-urls service extension. At existing applied-state v11, the nested probe plans accept optional startIntervalSeconds. Previously valid service plans remain readable without a timing migration, and omission retains the existing startup cadence. Applied-state v12 adds the optional plannedPort, the container listen port the service type planned for service.port, so tooling reads the same services.<name>.port planning published. v11 records decode unchanged and need no rewrite.",
     "persistedState": {
       "store": "applied-state",
-      "version": 11
+      "version": 12
     }
   },
   {

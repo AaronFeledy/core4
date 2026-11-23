@@ -198,6 +198,77 @@ const failure = async (landofile: LandofileShape): Promise<ConfigExpressionError
   return result.failure;
 };
 
+test("materializes service.port in map-form environment from the planned listen port", () =>
+  withAppRoot(async (root) => {
+    const app = await Effect.runPromise(
+      plan(
+        withAppRootProvenance(
+          {
+            name: "Self Port Env",
+            services: {
+              [ServiceName.make("cache")]: {
+                type: "redis",
+                port: 6380,
+                home: false as const,
+                environment: { LISTEN: "redis://cache:{{ service.port }}" },
+              },
+            },
+          },
+          root,
+        ),
+      ),
+    );
+    expect(app.services[ServiceName.make("cache")]?.environment.LISTEN).toBe("redis://cache:6380");
+  }));
+
+test.each([
+  { name: "nginx", target: { type: "nginx", port: 8088 }, expected: 8088 },
+  { name: "PHP on Apache", target: { type: "php:8.4", port: 8080 }, expected: 8080 },
+  { name: "PHP-FPM", target: { type: "php:8.4", via: "fpm" }, expected: 9000 },
+  {
+    name: "nginx with authored endpoints",
+    target: {
+      type: "nginx",
+      endpoints: [
+        { kind: "internal", protocol: "tcp", port: PortNumber.make(9100), name: "metrics" },
+        { kind: "internal", protocol: "http", port: PortNumber.make(8090), primary: true },
+      ],
+    },
+    expected: 80,
+  },
+] as const)(
+  "uses the same peer planned listen port before and after plan assembly ($name)",
+  ({ target, expected }) =>
+    withAppRoot(async (root) => {
+      const app = await Effect.runPromise(
+        plan(
+          withAppRootProvenance(
+            {
+              name: "Peer Port Env",
+              services: {
+                [ServiceName.make("web")]: {
+                  type: "compose",
+                  image: "alpine:3.22",
+                  home: false as const,
+                  environment: { TARGET_PORT: "{{ services.target.port }}" },
+                },
+                [ServiceName.make("target")]: {
+                  ...target,
+                  home: false as const,
+                },
+              },
+            },
+            root,
+          ),
+        ),
+      );
+      const targetPort = app.services[ServiceName.make("web")]?.environment.TARGET_PORT;
+      const rehydratedPort = serviceCredsScopeForPlan(app).target?.port;
+      expect(targetPort).toBe(String(expected));
+      expect(targetPort).toBe(String(rehydratedPort));
+    }),
+);
+
 test("rejects a boolean result in the deferred service-credential pass", () =>
   withAppRoot(async (root) => {
     // Given

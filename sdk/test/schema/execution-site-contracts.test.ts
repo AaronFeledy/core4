@@ -29,7 +29,7 @@ test("execution site schemas carry canonical public annotations", () => {
 test.each([
   ["{{ service.port }}", ["command", 2], "supported"],
   ["{{ service.port }}", ["port"], "unsupported-site"],
-  ["{{ service.port }}", ["environment", "SELF_PORT"], "unsupported-site"],
+  ["{{ service.port }}", ["environment", "SELF_PORT"], "supported"],
   ["{{ service.name }}", ["command", 2], "unsupported-member"],
   ["{{ service }}", ["command", 2], "unsupported-member"],
   ['{{ service["port"] }}', ["command", 2], "unsupported-member"],

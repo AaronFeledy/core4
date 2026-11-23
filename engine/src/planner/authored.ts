@@ -104,6 +104,7 @@ export const planServiceDrafts = Effect.fn("AppPlanner.planServices")(function* 
     serviceType,
     resolution,
     logSources,
+    plannedPort,
     prepared,
     endpointContributions,
     applicationConfigs,
@@ -247,6 +248,7 @@ export const planServiceDrafts = Effect.fn("AppPlanner.planServices")(function* 
         composition.featureIds,
       ),
       logSources,
+      plannedPort,
       routes,
       extensions:
         configSourceInputs.length === 0

@@ -69,6 +69,7 @@ type DraftExternalOptionalServicePlanKey =
   | "pullPolicy"
   | "scanner"
   | "logSources"
+  | "plannedPort"
   | "connection"
   | "nonSqlCreds"
   | "sqlite"
