@@ -11,5 +11,5 @@ services:
         - npm config set fund false
       app:
         - npm ci
-        - run: chown -R node:node /app/node_modules
+        - run: ln -sf /app/bin/dev /usr/local/bin/dev
           user: root
