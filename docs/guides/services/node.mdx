@@ -434,8 +434,10 @@ Lando mounts `lando-cache-node-packages` at `/var/lib/lando/node-cache`. Each
 service process user writes under `/var/lib/lando/node-cache/<uid>/`, because
 npm creates `_cacache` and `_logs` as mode `0755` directories owned by the
 writer; a `1777` seed on the volume root does not apply to those subdirs. The
-default root user uses `0`; `user: node` on the catalog image uses `1000`. The
-image creates and owns those uid directories. Lando does not chown the live
+default root user uses `0`; `user: node` on the catalog image uses `1000`. A
+numeric `user:` uses that uid. An unrecognized name falls back to uid `0`,
+which that user cannot write; set a numeric `user:` or `packageCache: false`.
+The image creates and owns those uid directories. Lando does not chown the live
 volume at start.
 
 Lando sets cache environment only when you have not set it in the service's

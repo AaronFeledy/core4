@@ -37,6 +37,7 @@ export const nodePackageCacheUid = (user: string | undefined): number => {
   const principal = user === undefined ? "root" : separator === -1 ? user : user.slice(0, separator);
   if (principal === "root") return NODE_PACKAGE_CACHE_CATALOG_UIDS.root;
   if (principal === "node") return NODE_PACKAGE_CACHE_CATALOG_UIDS.node;
+  // Unknown names have no catalog uid. Fall back to 0; that tree is not writable for that user.
   return NUMERIC_USER.test(principal) ? Number(principal) : NODE_PACKAGE_CACHE_CATALOG_UIDS.root;
 };
 

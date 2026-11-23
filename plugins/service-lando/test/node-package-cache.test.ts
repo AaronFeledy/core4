@@ -108,6 +108,9 @@ describe("nodePackageCacheUid", () => {
     expect(nodePackageCacheUid("node:node")).toBe(NODE_PACKAGE_CACHE_CATALOG_UIDS.node);
     expect(nodePackageCacheUid("1000")).toBe(NODE_PACKAGE_CACHE_CATALOG_UIDS.node);
     expect(nodePackageCacheUid("1000:1000")).toBe(NODE_PACKAGE_CACHE_CATALOG_UIDS.node);
+    expect(nodePackageCacheUid("1001")).toBe(1001);
+    expect(nodePackageCacheUid("1001:1001")).toBe(1001);
+    expect(nodePackageCacheUid("appuser")).toBe(NODE_PACKAGE_CACHE_CATALOG_UIDS.root);
   });
 });
 
@@ -241,6 +244,15 @@ describe("shared Node package cache", () => {
     expect(node.environment.npm_config_cache).toBe(nodePaths.npm);
     expect(root.environment.npm_config_cache).not.toBe(node.environment.npm_config_cache);
     expect(node.user).toBe("node");
+  });
+
+  test("points numeric user: 1001 at that uid tree and an unknown name at uid 0", async () => {
+    const numeric = await composeNodePlan({ user: "1001" });
+    const unknown = await composeNodePlan({ user: "appuser" });
+
+    expect(numeric.environment.npm_config_cache).toBe(`${NODE_PACKAGE_CACHE_TARGET}/1001/npm`);
+    expect(unknown.environment.npm_config_cache).toBe(`${NODE_PACKAGE_CACHE_TARGET}/0/npm`);
+    expect(numeric.environment.npm_config_cache).not.toBe(unknown.environment.npm_config_cache);
   });
 
   test("points user: node pnpm at the node uid store, not the root uid store", async () => {
