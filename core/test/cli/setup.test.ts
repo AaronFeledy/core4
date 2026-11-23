@@ -83,6 +83,7 @@ import { validateUnknownCliFlags } from "../../src/cli/flag-value-validation.ts"
 import { COMMAND_REGISTRY_MANIFEST } from "../../src/cli/generated/command-registry-manifest.ts";
 import { compiledCommandInputFromArgv } from "../../src/cli/run.ts";
 import { resolveTopLevelAliases } from "../../src/cli/spec/command-spec.ts";
+import { compileCliTo } from "../_support/compiled-cli.ts";
 import { buildRuntimeTarGz, nativeInitBridgeFixture } from "../_support/runtime-bundle.ts";
 import { withEnvVar } from "../_support/temp-cwd.ts";
 import { stubContainerHelperDir } from "../build/fixtures/container-helper-stubs.ts";
@@ -158,7 +159,6 @@ const buildSetupLayersWithPrivilege = (
 
 const coreRoot = resolve(import.meta.dirname, "../..");
 const sourceCliPath = resolve(coreRoot, "bin/lando.ts");
-const binaryPath = resolve(coreRoot, "dist/lando");
 
 interface RunResult {
   readonly exitCode: number;
@@ -3485,24 +3485,25 @@ describe("meta:setup command", () => {
 
 describe.skipIf(process.platform !== "linux" || process.arch !== "x64")("compiled setup install dir", () => {
   let helperDir = "";
+  let root = "";
   beforeAll(async () => {
     helperDir = await stubContainerHelperDir();
+    root = await mkdtemp(join(tmpdir(), "lando-compiled-setup-"));
   });
   afterAll(async () => {
     await rm(helperDir, { recursive: true, force: true });
+    await rm(root, { recursive: true, force: true });
   });
   test("matches source setup failure output and points shellenv at the compiled binary", async () => {
-    const build = await runCommand([process.execPath, "run", "build"], coreRoot, {
-      LANDO_CONTAINER_HELPER_DIR: helperDir,
-    });
-    expect(build.exitCode).toBe(0);
+    const binaryPath = join(root, "bin", "lando");
+    await compileCliTo(binaryPath, { ...process.env, LANDO_CONTAINER_HELPER_DIR: helperDir });
 
     const commandEnv = {
       PATH: "/no-such-path",
       LANDO_PROVIDER: "podman",
-      LANDO_USER_CACHE_ROOT: resolve(coreRoot, "dist/setup-test-cache"),
-      LANDO_USER_CONF_ROOT: resolve(coreRoot, "dist/setup-test-conf"),
-      LANDO_USER_DATA_ROOT: resolve(coreRoot, "dist/setup-test-data"),
+      LANDO_USER_CACHE_ROOT: join(root, "cache"),
+      LANDO_USER_CONF_ROOT: join(root, "conf"),
+      LANDO_USER_DATA_ROOT: join(root, "data"),
     };
     const source = await runCommand([process.execPath, sourceCliPath, "setup"], coreRoot, commandEnv);
     const compiled = await runCommand([binaryPath, "setup"], coreRoot, commandEnv);

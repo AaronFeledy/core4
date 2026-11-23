@@ -3,9 +3,9 @@ import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 
 import corePackage from "../../package.json";
+import { ensureCompiledCli } from "../_support/compiled-cli.ts";
 
 const coreRoot = resolve(import.meta.dirname, "../..");
-const binaryPath = resolve(coreRoot, "dist/lando");
 
 interface RunResult {
   readonly exitCode: number;
@@ -37,8 +37,7 @@ describe.skipIf(process.platform !== "linux" || process.arch !== "x64")(
   "compiled CLI version command",
   () => {
     test("prints a stamped 4.x prerelease, never the working-tree 0.0.0 pin", async () => {
-      const build = await runCommand([process.execPath, "run", "build"]);
-      expect(build.exitCode).toBe(0);
+      const binaryPath = await ensureCompiledCli();
 
       // Outside any app: app commandAliases route `version` past the bare-version fast path.
       const version = await runCommand([binaryPath, "version"], tmpdir());
