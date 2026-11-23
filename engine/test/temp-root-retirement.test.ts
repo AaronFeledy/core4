@@ -188,6 +188,27 @@ test.each([
   });
 });
 
+test.each([endpoint, `unix://${endpoint}`])(
+  "accepts a Docker test socket that names the endpoint as %s",
+  async (socket) => {
+    await fixture(async (input) => {
+      const result = await retireTempRoots(
+        { ...input, env: { ...input.env, LANDO_TEST_DOCKER_SOCKET: socket } },
+        {
+          runCli: async ({ env: childEnv }) => {
+            expect(childEnv?.LANDO_TEST_DOCKER_SOCKET).toBe(`unix://${endpoint}`);
+            return success;
+          },
+          engineApi: readOnlyEngine((url) => ({
+            body: url.pathname === "/volumes" ? { Volumes: null } : [],
+          })),
+        },
+      );
+      expect(result).toEqual({ removed: [input.directory], retained: [], failed: [] });
+    });
+  },
+);
+
 test.each(["LANDO_TEST_PODMAN_SOCKET", "DOCKER_HOST", "LANDO_TEST_DOCKER_SOCKET"])(
   "rejects mismatched %s before running purge or verification",
   async (key) => {

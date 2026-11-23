@@ -38,6 +38,8 @@ test.skipIf(socket === undefined && !required)(
             LANDO_PROVIDER: "podman",
             LANDO_CONFIG__default_provider_id: "podman",
             DOCKER_HOST: `unix://${socket.socketPath}`,
+            LANDO_TEST_DOCKER_SOCKET: undefined,
+            LANDO_TEST_WINDOWS_DOCKER_SOCKET: undefined,
           }),
       LANDO_SECRET_ADMINER_LIVE_DB: password,
     };

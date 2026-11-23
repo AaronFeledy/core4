@@ -56,6 +56,8 @@ for (const provider of providers) {
         LANDO_PROVIDER: provider.id,
         LANDO_CONFIG__default_provider_id: provider.id,
         LANDO_TEST_PODMAN_SOCKET: provider.id === "podman" ? provider.socketPath : undefined,
+        LANDO_TEST_DOCKER_SOCKET: provider.id === "docker" ? provider.socketPath : undefined,
+        LANDO_TEST_WINDOWS_DOCKER_SOCKET: undefined,
         DOCKER_HOST: `unix://${provider.socketPath}`,
         LANDO_TELEMETRY_ENABLED: "false",
       };

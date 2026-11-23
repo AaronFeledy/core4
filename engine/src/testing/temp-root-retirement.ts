@@ -84,6 +84,10 @@ const failedWith = (error: TempRootRetirementError): RetirementOutcome => ({
   failed: [error],
 });
 
+/** A socket variable may name the endpoint as a path or a `unix://` URL; both are the same engine. */
+const socketPath = (value: string): string =>
+  value.startsWith("unix://") ? value.slice("unix://".length) : value;
+
 const bindOwnedRoot = Effect.fnUntraced(function* (input: TempRootRetirement) {
   const { endpoint } = input;
   const providerId = input.env.LANDO_PROVIDER ?? "podman";
@@ -101,9 +105,10 @@ const bindOwnedRoot = Effect.fnUntraced(function* (input: TempRootRetirement) {
     (providerId === "podman"
       ? input.env.LANDO_TEST_PODMAN_SOCKET !== endpoint
       : input.env.DOCKER_HOST !== dockerHost) ||
-    Object.entries(endpointBindings).some(
-      ([key, value]) => input.env[key] !== undefined && input.env[key] !== value,
-    )
+    Object.keys(endpointBindings).some((key) => {
+      const value = input.env[key];
+      return value !== undefined && socketPath(value) !== endpoint;
+    })
   ) {
     return yield* fail(
       "Retirement endpoint does not match the explicit provider endpoint in the owned environment.",

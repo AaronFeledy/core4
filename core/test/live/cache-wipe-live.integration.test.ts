@@ -44,6 +44,8 @@ test.skipIf(socket === undefined && !required)(
       LANDO_SYSTEM_PLUGIN_ROOT: join(directory, "system-plugins"),
       LANDO_PROVIDER: "podman",
       DOCKER_HOST: `unix://${socket.socketPath}`,
+      LANDO_TEST_DOCKER_SOCKET: undefined,
+      LANDO_TEST_WINDOWS_DOCKER_SOCKET: undefined,
       LANDO_CONFIG__default_provider_id: "podman",
       LANDO_TELEMETRY_ENABLED: "false",
     };
