@@ -692,6 +692,18 @@ The live region exists so a hung job leaves evidence of where it stopped; see th
 
 The e2e `@smoke` scenarios run in their own job, `guide-e2e-linux-x64`, so the generated-scenario job above no longer waits for the binary or spends its time limit on them. The job runs as two shards. Each one downloads the Linux x64 compiled binary, provisions the same managed Podman socket that provider integration uses, sets `LANDO_GUIDE_E2E=1`, and runs half of the generated scenarios tagged `@smoke` on the `e2e` layer, one at a time. The wrapper's `--smoke-e2e` flag selects those files from the header that the scenario generator writes into each one, and Bun's `--shard=<i>/<n>` splits them by sorted path. E2e guide scenarios without the `@smoke` tag are not part of the PR gate; the nightly job below runs every `[e2e]` scenario.
 
+With an explicit `LANDO_TEST_PODMAN_SOCKET`, guide runs with `LANDO_GUIDE_E2E=1` and test selections that opt into runner-owned Podman roots use one temporary directory for the data, config, cache, and system-plugin roots. An `[e2e]` name filter alone does not enable guide e2e or allocate roots. The runner allocates roots only if none of the four root variables is set and `LANDO_TEST_USE_REAL_ROOTS` is not `1`. Before the tests run, it runs `lando setup` in those roots for the Podman provider and the local CA tooling, so routed scenarios can issue certificates. It skips the router helper, shell integration, the file-sync engine, and trust-store changes, which belong to your installation. If that setup fails, the runner skips the tests and still retires the roots. Selections that need an existing managed installation use the job's or caller's roots instead. The runner never retires those roots. A fixture that supplies its own temporary roots retires them itself.
+
+After reaping the test child, even if it fails, the runner gives the compiled CLI a bounded time to run `lando uninstall --purge --yes --format=json` with the test roots and a private `LANDO_SHELL_PROFILE`. Purge can remove the data, config, and cache roots itself. Before deleting the enclosing temporary directory, the runner checks the same endpoint for containers, networks, and volumes labeled for the original data root and images labeled for its build store. Shared cache volumes without a data-root label are outside this check.
+
+If purge fails or verification cannot confirm cleanup, the runner exits nonzero and preserves the enclosing directory and anything purge did not remove. Its error reports the original test exit status, the directory, the socket, and what it kept or could not verify. After you resolve the cause, run this from the repository root, using the socket and runner-owned directory from the report:
+
+```bash
+LANDO_TEST_PODMAN_SOCKET=<socket> bun scripts/live-test-roots.ts retire <directory>
+```
+
+Use the same `LANDO_SCENARIO_E2E_BINARY` if the original run did not use `core/dist/lando`. On `SIGINT` or `SIGTERM`, the runner forwards the signal, reaps the child, and attempts retirement before exiting with status 130 or 143, respectively. `SIGKILL` cannot be handled and can prevent cleanup.
+
 Run the whole subset locally, or add `--shard=1/2` to run the first CI shard:
 
 ```bash

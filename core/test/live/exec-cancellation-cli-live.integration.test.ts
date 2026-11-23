@@ -1,10 +1,11 @@
 import { expect, test } from "bun:test";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { deserialize } from "node:v8";
 import { serviceContainerName } from "@lando/container-runtime/plan";
 import { APP_PLAN_CACHE_HEADER_BYTES } from "@lando/engine/cache/app-plan";
+import { retireTempRoots } from "@lando/engine/testing/temp-root-retirement";
 import { makeLandoPaths } from "@lando/paths";
 import { CurrentExecutableAppPlan, StreamFrame } from "@lando/sdk/schema";
 import { Schema } from "effect";
@@ -12,12 +13,12 @@ import { Schema } from "effect";
 // Explicit local-daemon opt-in only; never inherit a managed runtime or user app.
 const socket = process.env.LANDO_TEST_DOCKER_SOCKET;
 const enabled = socket === "/var/run/docker.sock";
-const source = [process.execPath, resolve(import.meta.dir, "../../bin/lando.ts")];
+const source = [process.execPath, resolve(import.meta.dir, "../../bin/lando.ts")] as const;
 const compiled = process.env.LANDO_SCENARIO_E2E_BINARY;
 const variants = [
   { name: "source", command: source },
-  { name: "compiled", command: compiled === undefined ? undefined : [compiled] },
-];
+  { name: "compiled", command: compiled === undefined ? undefined : ([compiled] as const) },
+] as const;
 
 const docker = async (args: readonly string[]) => {
   const proc = Bun.spawn(["docker", "--host", "unix:///var/run/docker.sock", ...args], {
@@ -312,9 +313,18 @@ for (const variant of variants.flatMap((entry) =>
             await active.exited;
           }
           if (id !== undefined) await docker(["rm", "--force", id]);
-          await rm(root, { recursive: true, force: true });
+          const retirement = await retireTempRoots({
+            directory: root,
+            env,
+            endpoint: "/var/run/docker.sock",
+            command,
+          });
+          expect(
+            [...retirement.retained, ...retirement.failed],
+            JSON.stringify({ root, ...retirement }),
+          ).toEqual([]);
         }
       },
-      120_000,
+      360_000,
     );
   }

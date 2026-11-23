@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { runWithLiveTestRoots } from "./live-test-roots.ts";
 import { TEST_ROOT, collectTestFiles, resolveTestSelection } from "./test-selection-files.ts";
 import { TEST_SELECTIONS, type TestSelection } from "./test-selections.ts";
 
@@ -39,17 +40,24 @@ export const runTestSelection = async (
       ? [`./${selector.slice(0, -1)}`]
       : resolveTestSelection({ ...selection, paths: [selector] }, files).map((path) => `./${path}`),
   );
-  return Bun.spawn(
-    [
-      process.execPath,
-      ...(selection.noOrphans ? ["--no-orphans"] : []),
-      "test",
-      ...(selection.args ?? []),
-      ...(selection.ignore ?? []).map((pattern) => `--path-ignore-patterns=${pattern}`),
-      ...new Set(targets),
-    ],
-    { cwd: root, stdin: "inherit", stdout: "inherit", stderr: "inherit" },
-  ).exited;
+  return runWithLiveTestRoots(
+    { live: selection.usesInheritedLivePodmanRoots === true, cwd: root, env: process.env },
+    (env, track) => {
+      const child = Bun.spawn(
+        [
+          process.execPath,
+          ...(selection.noOrphans ? ["--no-orphans"] : []),
+          "test",
+          ...(selection.args ?? []),
+          ...(selection.ignore ?? []).map((pattern) => `--path-ignore-patterns=${pattern}`),
+          ...new Set(targets),
+        ],
+        { cwd: root, env, stdin: "inherit", stdout: "inherit", stderr: "inherit" },
+      );
+      track(child);
+      return child.exited;
+    },
+  );
 };
 
 if (import.meta.main) {
