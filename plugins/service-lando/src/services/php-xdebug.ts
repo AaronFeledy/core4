@@ -4,6 +4,7 @@ import type { ServiceBuildStepIntent } from "@lando/sdk/services";
 
 import { ServiceConfigIssue } from "./_feature-helpers.ts";
 import type { PhpVia, SupportedPhpVersion } from "./php-via.ts";
+import pins from "./php-xdebug-pins.json" with { type: "json" };
 
 type PhpXdebugRelease = {
   readonly version: string;
@@ -11,25 +12,9 @@ type PhpXdebugRelease = {
   readonly url: string;
 };
 
-const XDEBUG_3_5_3 = {
-  version: "3.5.3",
-  sha256: "f073de91bea046106abf4d6071c963ea71e58571df6ce58948ceca89d121cb2d",
-  url: "https://pecl.php.net/get/xdebug-3.5.3.tgz",
-} as const;
-
-const XDEBUG_RELEASE_BY_PHP_VERSION = {
-  "8.1": XDEBUG_3_5_3,
-  "8.2": XDEBUG_3_5_3,
-  "8.3": XDEBUG_3_5_3,
-  "8.4": XDEBUG_3_5_3,
-  "8.5": XDEBUG_3_5_3,
-  // 3.5.x caps at PHP 8.5; xdebug.org's installer selects 3.6.0alpha1 for 8.6, the only compatible release (not on PECL).
-  "8.6": {
-    version: "3.6.0alpha1",
-    sha256: "5f464dfbba2f2aec384f9a10cb42cbfb2b3c07274b70491c46080b707271fcde",
-    url: "https://xdebug.org/files/xdebug-3.6.0alpha1.tgz",
-  },
-} as const satisfies Readonly<Record<SupportedPhpVersion, PhpXdebugRelease>>;
+const XDEBUG_RELEASE_BY_PHP_VERSION = pins.releases satisfies Readonly<
+  Record<SupportedPhpVersion, PhpXdebugRelease>
+>;
 
 export const PHP_XDEBUG_PORT = 9003;
 export const PHP_XDEBUG_CLIENT_HOST = DEBUGGER_HOST_ALIAS;
@@ -96,7 +81,8 @@ export const phpXdebugBuildStep = (
   xdebug: Exclude<PhpXdebug, false>,
 ): ServiceBuildStepIntent => {
   const { mode } = xdebug;
-  const release = XDEBUG_RELEASE_BY_PHP_VERSION[phpVersion];
+  const { version, sha256, url } = XDEBUG_RELEASE_BY_PHP_VERSION[phpVersion];
+  const release = { version, sha256, url };
   const sourceDir = `/tmp/xdebug-${release.version}`;
   const command = [
     "set -eux",
