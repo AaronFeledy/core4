@@ -62,7 +62,11 @@ test("plans exact transport filtering while retaining nested includes and tmpfs"
           type: "compose",
           image: "alpine",
           home: false,
-          appMount: { target: "/app", excludes: ["secret.txt"], includes: ["vendor/subdir"] },
+          appMount: {
+            target: "/app",
+            excludes: ["secret.txt", "vendor"],
+            includes: ["vendor/subdir"],
+          },
           mounts: [{ type: "tmpfs", target: "/app/memory" }],
         },
       },
@@ -96,7 +100,9 @@ test("plans exact transport filtering while retaining nested includes and tmpfs"
     expect(Result.isSuccess(normalizeFileSyncBundle(result))).toBe(true);
     expect(result.fileSync[0]).toMatchObject({
       engineId: "alternative",
-      session: { excludes: expect.arrayContaining(["secret.txt", ".git"]) },
+      session: {
+        excludes: ["secret.txt", "vendor", "memory", "vendor/subdir", ".git"],
+      },
     });
     const mounts = result.services[ServiceName.make("web")]?.mounts;
     expect(mounts).toContainEqual(expect.objectContaining({ type: "volume", target: "/app/vendor" }));
@@ -175,14 +181,19 @@ test("invalidates cached engine strategy and global passthrough policy", async (
         expect((yield* plan()).fileSync).toHaveLength(1);
         expect(featureCalls).toBe(firstCalls);
         current = { ...candidate, capabilities: { ...candidate.capabilities, exclusionPatterns: false } };
-        expect((yield* plan()).fileSync).toHaveLength(0);
+        const noEligibleEngine = yield* plan();
+        expect(noEligibleEngine.fileSync).toHaveLength(0);
+        expect(
+          serviceAppMount(noEligibleEngine.services[ServiceName.make("web")] ?? { mounts: [] })?.excludes,
+        ).toEqual([]);
         expect(featureCalls).toBeGreaterThan(firstCalls);
         config = { ...config, defaultFileSyncEngine: "passthrough" };
         const ordinary = yield* plan();
         expect(ordinary.fileSync).toEqual([]);
-        expect(
-          serviceAppMount(ordinary.services[ServiceName.make("web")] ?? { mounts: [] })?.realization,
-        ).toBe("passthrough");
+        expect(serviceAppMount(ordinary.services[ServiceName.make("web")] ?? { mounts: [] })).toMatchObject({
+          realization: "passthrough",
+          excludes: [],
+        });
         const unsupportedBind = yield* Effect.result(
           planner.plan(literalTestLandofile(document, root), {
             ...slow,

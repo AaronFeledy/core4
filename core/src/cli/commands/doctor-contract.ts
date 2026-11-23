@@ -22,6 +22,7 @@ export const DOCTOR_SECTION_IDS = [
   "global-app",
   "mcp",
   "accelerated-starts",
+  "state-compatibility",
   "missing-app-roots",
   "orphaned-volume-snapshots",
   "legacy-snapshot-catalogs",

@@ -23,9 +23,10 @@ lando open
 
 The front page and `/user/login` both answer HTTP 200 once install finishes.
 
-The scaffold command handles the empty `vendor` and `node_modules` volumes by
-staging the `composer create-project` output and atomically moving files into
-place, similar to how the `drupal` recipe works.
+The scaffold command stages the `composer create-project` output and atomically
+moves files into place, similar to how the `drupal` recipe works. PHP services
+get no `vendor` or `node_modules` volumes, so the project lands in your app
+directory.
 
 Right after `create-project`, the staged project allows the
 `dealerdirect/phpcodesniffer-composer-installer` and

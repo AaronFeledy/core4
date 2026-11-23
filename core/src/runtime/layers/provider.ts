@@ -27,6 +27,21 @@ import { BUILT_IN_COMMAND_IDS } from "../../cli/generated/command-ids.ts";
 import { buildSourceStoreLayer } from "../engine-composition.ts";
 import { makeCommandsBootstrapBaseLayer } from "./commands.ts";
 import type { MinimalBootstrapLayerInputs } from "./minimal.ts";
+import { makePluginsBootstrapBaseLayer } from "./plugins.ts";
+
+export const makeProviderInventoryLayer = (inputs: MinimalBootstrapLayerInputs) => {
+  if (inputs.runtimeProviderRegistry !== undefined) return inputs.runtimeProviderRegistry;
+  const plugins = makePluginsBootstrapBaseLayer<never>({ ...inputs, pluginLayers: [] });
+  return makeRuntimeProviderRegistryWithPrivateFileAccess(bundledPluginModules()).pipe(
+    Layer.provide(
+      Layer.mergeAll(
+        plugins,
+        AppPlanSanitizerLayer.layer,
+        ContainerHelperAssetsLayer.layer.pipe(Layer.provide(plugins)),
+      ),
+    ),
+  );
+};
 
 export const makeProviderBootstrapBaseLayer = (inputs: MinimalBootstrapLayerInputs) => {
   // Effect 4 memoizes leaf layers, not composite traversal. Share this dependency graph too.

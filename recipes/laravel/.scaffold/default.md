@@ -46,9 +46,9 @@ lando npm run build
 `public/build` lands in the shared `/app`, so Apache serves the built assets.
 `node_modules` lives in a volume private to the `node` service.
 
-The default app keeps `vendor` in an appserver volume.
-With `--answer=worker=true`, the recipe automatically shares the host `vendor`
-directory between appserver and worker. No manual mount overrides are needed.
+`vendor` is part of your project directory, so your editor reads the same
+packages PHP does. With `--answer=worker=true`, the worker mounts that
+directory too and shares `vendor` with appserver.
 The worker uses `restart: unless-stopped`. Before Laravel and its dependencies are installed, its process exits: `lando start` warns and reports it as `restarting`. The worker retries automatically and starts on its own once installation finishes. An exhausted healthcheck still fails start, even with this restart policy:
 
 ```sh

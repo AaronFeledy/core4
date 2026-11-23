@@ -39,6 +39,7 @@ export const buildStateBucket = <A, I>(
   spec: StateBucketSpec<A, I>,
   file: string,
   backend: StateBucketBackend,
+  writer?: string,
 ): StateBucket<A> => {
   // The caller has already resolved and containment-checked this absolute path.
   const path = file as AbsolutePath;
@@ -48,8 +49,15 @@ export const buildStateBucket = <A, I>(
   const schema = makeSchemaCodec(spec.schema);
   const codec = spec.codec;
   const discardNewer = spec.root === "userCache" || spec.onNewerVersion === "discard";
-  const newerError = (operation: string, storedVersion: number) =>
-    newerStateVersionError({ operation, path: file, storedVersion, supportedVersion: spec.version });
+  const newerError = (operation: string, storedVersion: number, writtenBy: string | undefined) =>
+    newerStateVersionError({
+      operation,
+      path: file,
+      storedVersion,
+      supportedVersion: spec.version,
+      reader: writer,
+      ...(writtenBy === undefined ? {} : { writtenBy }),
+    });
   const writeOptions = {
     ...(spec.mode === undefined ? {} : { mode: spec.mode }),
   };
@@ -98,7 +106,9 @@ export const buildStateBucket = <A, I>(
         try {
           const frame = readFrame(codec, bytes);
           if (frame.version !== null && frame.version > spec.version) {
-            return discardNewer ? Effect.succeed(fallback) : Effect.fail(newerError("get", frame.version));
+            return discardNewer
+              ? Effect.succeed(fallback)
+              : Effect.fail(newerError("get", frame.version, frame.writtenBy));
           }
           const payload = frame.readPayload();
           return frame.version !== null && frame.version !== spec.version
@@ -120,7 +130,7 @@ export const buildStateBucket = <A, I>(
     return schema.encode(value).pipe(
       mapFailures((cause) => decodeError("set", file, cause)),
       Effect.flatMap((encoded) => {
-        const body = encodeFrame(codec, spec.version, encoded, value);
+        const body = encodeFrame(codec, spec.version, encoded, value, writer);
         return backend.writeBytes(file, body, "set", writeOptions);
       }),
     );
@@ -146,9 +156,9 @@ export const buildStateBucket = <A, I>(
           Effect.flatMap((bytes) => {
             if (bytes === null) return Effect.void;
             try {
-              const { version } = readFrame(codec, bytes);
+              const { version, writtenBy } = readFrame(codec, bytes);
               return version !== null && version > spec.version
-                ? Effect.fail(newerError(operation, version))
+                ? Effect.fail(newerError(operation, version, writtenBy))
                 : Effect.void;
             } catch (cause) {
               if (cause instanceof FrameDecodeError) return Effect.void;

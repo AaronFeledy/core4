@@ -70,6 +70,8 @@ type AppliedPlanReadFailure =
       readonly path: string;
       readonly storedVersion: number;
       readonly supportedVersion: number;
+      readonly writtenBy?: string;
+      readonly remediation?: string;
     };
 
 export type AppliedPlanRead =
@@ -86,10 +88,16 @@ export const classifyAppliedStateStoreError = (
   root: "plan" | "apps",
   fallbackPath: string,
 ): AppliedPlanReadFailure => {
-  const { reason, storedVersion, supportedVersion } = error;
+  const { reason, storedVersion, supportedVersion, writtenBy, remediation } = error;
   const path = error.path ?? fallbackPath;
   if (reason === "newer-version" && storedVersion !== undefined && supportedVersion !== undefined) {
-    return { status: "newer-version", path, storedVersion, supportedVersion };
+    return {
+      status: "newer-version",
+      path,
+      storedVersion,
+      supportedVersion,
+      ...(writtenBy === undefined ? {} : { writtenBy, remediation }),
+    };
   }
   const detail = appliedStateDecodeDetail(error, root);
   return { status: "unreadable", path, ...(detail === undefined ? {} : { detail }) };
@@ -134,6 +142,8 @@ export const appliedStateInspectError = (
         path: read.path,
         storedVersion: read.storedVersion,
         supportedVersion: read.supportedVersion,
+        ...(read.remediation === undefined ? {} : { remediation: read.remediation }),
+        ...(read.writtenBy === undefined ? {} : { writtenBy: read.writtenBy }),
         scope: layout === "record" ? "provider" : "app",
         ...(appId === undefined ? {} : { appId }),
         ...(cause === undefined ? {} : { cause }),
@@ -164,6 +174,7 @@ export const unreadableEntryFromRead = (
         reason: "newer-version",
         storedVersion: read.storedVersion,
         supportedVersion: read.supportedVersion,
+        ...(read.writtenBy === undefined ? {} : { writtenBy: read.writtenBy }),
       };
     case "unreadable":
       return { ...location, reason: "unreadable" };

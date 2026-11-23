@@ -1,21 +1,21 @@
 import { describe, expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { CODEGEN_CATALOG, resolveCodegenCommand } from "../../../scripts/codegen-catalog.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
-const bundledPluginPaths = [
-  resolve(repoRoot, "core/src/plugins/generated/bundled.ts"),
-  resolve(repoRoot, "core/src/plugins/generated/renderers.ts"),
-] as const;
-const commandRegistryManifestPath = resolve(repoRoot, "core/src/cli/generated/command-registry-manifest.ts");
+const outputsByGenerator = {
+  "bundled-plugins": ["core/src/plugins/generated/bundled.ts", "core/src/plugins/generated/renderers.ts"],
+  "command-registry-manifest": ["core/src/cli/generated/command-registry-manifest.ts"],
+} as const;
 
-const runCodegen = async (): Promise<void> => {
-  const proc = Bun.spawn({
-    cmd: [process.execPath, "run", "codegen"],
-    cwd: repoRoot,
-    stdout: "pipe",
-    stderr: "pipe",
-  });
+// Each generator's inputs, including its catalog dependencies' outputs, already exist:
+// the test preload refuses to run without generated modules.
+const runGenerator = async (id: string): Promise<void> => {
+  const entry = CODEGEN_CATALOG.find((candidate) => candidate.id === id);
+  if (entry === undefined) throw new Error(`Codegen catalog has no ${id} entry.`);
+  const command = resolveCodegenCommand(entry);
+  const proc = Bun.spawn({ cmd: [...command.cmd], cwd: command.cwd, stdout: "pipe", stderr: "pipe" });
 
   const [exitCode, stdout, stderr] = await Promise.all([
     proc.exited,
@@ -23,26 +23,23 @@ const runCodegen = async (): Promise<void> => {
     new Response(proc.stderr).text(),
   ]);
 
-  expect({ exitCode, stdout, stderr }).toMatchObject({ exitCode: 0 });
+  expect({ id, exitCode, stdout, stderr }).toMatchObject({ exitCode: 0 });
 };
 
-describe("codegen orchestrator", () => {
-  test("regenerates current MVP outputs idempotently", async () => {
-    await runCodegen();
+const readOutputs = (paths: readonly string[]) =>
+  Promise.all(paths.map((path) => readFile(resolve(repoRoot, path), "utf8")));
 
-    const firstBundledPlugins = await Promise.all(bundledPluginPaths.map((path) => readFile(path, "utf8")));
-    const firstCommandRegistryManifest = await readFile(commandRegistryManifestPath, "utf8");
+describe("codegen generators", () => {
+  test.each(Object.entries(outputsByGenerator))(
+    "%s regenerates its outputs idempotently",
+    async (id, paths) => {
+      await runGenerator(id);
+      const first = await readOutputs(paths);
+      expect(first.every((source) => source.length > 0)).toBe(true);
 
-    expect(firstBundledPlugins.every((source) => source.length > 0)).toBe(true);
-    expect(firstCommandRegistryManifest.length).toBeGreaterThan(0);
+      await runGenerator(id);
 
-    await runCodegen();
-
-    expect(await Promise.all(bundledPluginPaths.map((path) => readFile(path, "utf8")))).toEqual(
-      firstBundledPlugins,
-    );
-    expect(await readFile(commandRegistryManifestPath, "utf8")).toBe(firstCommandRegistryManifest);
-    // Runs the whole generator catalog twice; the catalog grows over time, so the
-    // idempotency assertion needs headroom beyond the default per-test timeout.
-  }, 60000);
+      expect(await readOutputs(paths)).toEqual(first);
+    },
+  );
 });

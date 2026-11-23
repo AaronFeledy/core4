@@ -20,7 +20,7 @@ Doctor checks the provider setup persisted, or the one `LANDO_PROVIDER` names fo
 
 ## Read the report
 
-Doctor runs one section at a time under the same live task list `lando start` paints, with one row per section: `provider`, `certificate-authority`, `network-trust`, `subsystems`, `global-app`, `mcp`, `accelerated-starts`, `missing-app-roots`, `orphaned-volume-snapshots`, `legacy-snapshot-catalogs`, `filesystem-watch`, and `debugger-host`. `--app` adds `app-listeners`, `database-credentials`, `app-version-constraints`, and `app-config` rows, and `--deprecations` adds a `deprecations` row. A row closes with `✓` for a clean section, `!` when it passed with warnings, and `✗` when a check failed or doctor could not run the section. A section where doctor inspected nothing closes as skipped.
+Doctor runs one section at a time under the same live task list `lando start` paints, with one row per section: `provider`, `certificate-authority`, `network-trust`, `subsystems`, `global-app`, `mcp`, `accelerated-starts`, `state-compatibility`, `missing-app-roots`, `orphaned-volume-snapshots`, `legacy-snapshot-catalogs`, `filesystem-watch`, and `debugger-host`. `--app` adds `app-listeners`, `database-credentials`, `app-version-constraints`, and `app-config` rows, and `--deprecations` adds a `deprecations` row. A row closes with `✓` for a clean section, `!` when it passed with warnings, and `✗` when a check failed or doctor could not run the section. A section where doctor inspected nothing closes as skipped.
 
 The text report names the selected provider once, at the top. Below that it shows non-passing checks grouped by section, skipped entries with their reasons, and every `doctor-self` entry. A `doctor-self` entry means doctor could not finish one of its own checks; it carries the probe, the reason, and the message. Deprecation findings stay visible when requested. Passing checks, including a valid global config, stay out of the default report, whether you read it in a terminal or pipe it to a file.
 
@@ -127,7 +127,7 @@ The `certs` check belongs to the `certificate-authority` section.
 | selected-provider | Idle passes without repair. For a failure, follow its cause-specific remediation; a missing runtime bundle needs `lando setup`, while a provider API or process-inspection failure names the access or runtime problem. |
 | runtime-service | Idle passes. Descendants of Lando's verified service process belong to it, including its rootless child. Only positively identified unowned processes receive termination advice. |
 | host-proxy-transport | Reachability is skipped on an idle runtime. The separate `host-proxy-privacy` check still reports host run-directory privacy; its pass does not claim reachability. If the runtime is up but the app's worker isn't running, `lando start` in that app restarts it. Ownership or privacy remediation appears only when those checks fail. |
-| provider-bootstrap | Global config passed, but doctor could not build the provider runtime. It appears as a `doctor-self` entry in the `provider` section with probe `provider-bootstrap`; read its failure and suggested repair. Doctor marks the `provider`, `certificate-authority`, `missing-app-roots`, and `orphaned-volume-snapshots` sections as `SKIPPED`, along with the `router`, `ssh`, `healthcheck`, and `scanner` checks in `subsystems`, plus requested `app-listeners`, `database-credentials`, `app-config`, and `deprecations`. It does not invent router, SSH, or certificate warnings or suggest `--fix` for checks it never ran. Host DNS (`host-dns`), filesystem watches, network trust, MCP, global-app files, accelerated-start journals, legacy snapshot catalogs, and requested app version constraints still get checked. Doctor exits `1`; repair the bootstrap failure, then rerun it. |
+| provider-bootstrap | Global config passed, but doctor could not build the provider runtime. It appears as a `doctor-self` entry in the `provider` section with probe `provider-bootstrap`; read its failure and suggested repair. Doctor marks the `provider`, `certificate-authority`, `missing-app-roots`, and `orphaned-volume-snapshots` sections as `SKIPPED`, along with the `router`, `ssh`, `healthcheck`, and `scanner` checks in `subsystems`, plus requested `app-listeners`, `database-credentials`, `app-config`, and `deprecations`. It does not invent router, SSH, or certificate warnings or suggest `--fix` for checks it never ran. Host DNS (`host-dns`), filesystem watches, network trust, MCP, global-app files, accelerated-start journals, state compatibility, legacy snapshot catalogs, and requested app version constraints still get checked. Doctor exits `1`; repair the bootstrap failure, then rerun it. |
 | host-dns | Host DNS did not resolve the probe hostname to loopback. Check connectivity and DNS-rebinding protection on your resolver, or add a local DNS rule for your configured domain. `lando setup` and `doctor --fix` do not write host DNS. See [Check host DNS](./host-dns.mdx). |
 | proxy | Run `lando setup`, then start an app so Traefik can route. You do not start Traefik by hand. When the finding says a router is not installed or not selected, set `defaultRouterService` in `config.yml` to an installed router id or remove the setting; `doctor --fix` leaves that one to you. Until you do, `lando start`, `lando restart`, and `lando rebuild` on an app with routes stop with the same reason before changing anything, so a running app stays up. Apps without routes, `lando info`, `lando logs`, `lando exec`, `lando stop`, and `lando destroy` keep working. |
 | legacy-route-files | Lando removes recognized generated files automatically on the next routed app start; run `lando setup` to clean them up now. The check reports generated and unrecognized counts with bounded evidence lists. Review and manually delete only unrecognized files you no longer need (on Windows, then run `lando global:restart`), then republish needed routes with each owning app's start command. See [Read the legacy route files check](../global/doctor-walkthrough.mdx#read-the-legacy-route-files-check). |
@@ -136,6 +136,8 @@ The `certs` check belongs to the `certificate-authority` section.
 | setup readiness | Rerun `lando setup` to resume the first failed step. |
 | filesystem-watch | Read the stage and errno. Windows can also report a missing file event after the watcher opens. On Linux or WSL, close unnecessary watchers first when allocation fails. See [Check filesystem watches on this host](#check-filesystem-watches-on-this-host). |
 | accelerated-start | An accelerated file-sync start didn't finish and its app folder still exists. In that folder, run `lando start` to finish it. `lando stop` and `lando destroy` also work when the attempt's sessions and sync targets still check out as yours. |
+| applied-state | An applied-state record was written by a newer Lando or cannot be read. Leave the file in place. For a newer record, run that newer Lando or upgrade with `lando update`. For a damaged record, restore a readable copy from backup. |
+| applied-state-inventory | Doctor could not finish reading applied state for a provider. Fix the reported problem, then rerun `lando doctor --section state-compatibility`. |
 | missing-app-root | Move the folder back to keep using the app, or run the `lando apps:gc --prune` command doctor gives you. It adds `--volumes` only when Lando can remove the recorded file-sync copies. Without `--volumes`, data and file-sync copies are kept. Add `--purge-caches` when doctor lists caches. |
 | missing-app-root-scan | Lando could not read app state to look for missing app folders. Fix the reported problem, then rerun `lando doctor`. |
 | orphaned-volume-snapshots | Inspect uncatalogued native images past the one-hour grace period with `lando snapshots:gc`. `lando snapshots:gc --prune` deletes eligible images after rechecking catalog references. GC never starts or repairs a runtime, including during removal. |
@@ -143,6 +145,18 @@ The `certs` check belongs to the `certificate-authority` section.
 | legacy-snapshot-catalogs | Review the reported count and catalog paths. These catalogs came from a development build. Their snapshots are no longer listed or restorable, but their referenced provider images stay protected from GC. Deleting a catalog directory releases that protection so GC can reclaim the images. |
 
 If doctor names a host prerequisite, fix it and rerun `lando setup`. If the managed runtime still cannot install and you have working system Docker, run `lando setup --provider=docker`. See [Pick a container provider](../setup/provider-selection.mdx).
+
+## Check state written by another Lando
+
+Run this on the host to find applied-state records that Lando can't read safely:
+
+```sh
+lando doctor --section state-compatibility --format=json
+```
+
+Doctor checks installed providers' records without selecting a provider or building its runtime. If all inventories are clean, `state-compatibility` passes. An `applied-state-inventory` warning means Doctor couldn't finish an inventory. Doctor reports up to 50 findings and flags any truncation.
+
+Each `applied-state` warning gives the file's `path` and `reason` (`newer-version` or `unreadable`), plus `writtenBy` and format versions when available. Lando won't change the resources that file protects. Leave newer files in place and run the build that wrote them, or upgrade an installer-managed binary with `lando update`. For damaged files, restore a readable copy from a trusted backup.
 
 ## Inspect leftover snapshot images
 
@@ -187,6 +201,16 @@ expect(report.result.skipped).toEqual([]);`} />
     <Step name="inspect">
       <Run command="lando snapshots:gc --format=json" />
       <Verify command="lando snapshots:gc --format=json" expect={{ stdout: { regex: "totalCount" } }} />
+    </Step>
+  </Scenario>
+  <Scenario id="state-compatibility-clean" render={false} reason="Verify the applied-state compatibility section passes on a clean host without depending on installed runtimes.">
+    <Step name="inspect-state-compatibility">
+      <Run runtime="library" displayCode="lando doctor --section state-compatibility --format=json" code={`const run = yield* context.runCli(["doctor", "--section", "state-compatibility", "--format=json"]);
+const report = JSON.parse(run.stdout).result;
+expect(run.exitCode).toBe(0);
+expect(report.checks.some((check: { readonly section: string; readonly name: string; readonly status: string }) => check.section === "state-compatibility" && check.name === "state-compatibility" && check.status === "pass")).toBe(true);
+expect(report.checks.every((check: { readonly section: string }) => check.section === "global-config" || check.section === "state-compatibility")).toBe(true);
+expect(report.skipped).toEqual([]);`} />
     </Step>
   </Scenario>
   <Scenario id="listeners-no-plan" render={false} reason="The test provider cannot observe real container listeners; verify the no-applied-plan skip instead.">
@@ -421,7 +445,7 @@ Each check has a `section`, a `name`, a `status` (`pass`, `warn`, or `fail`), a 
 
 Repeatable findings have a `subject`, such as an app root, journal path, or container name. Grouped text rows show up to three subjects and the number remaining, falling back to finding names when subjects are absent. Text shows the first three items of each context array unless you use `--all`, `--status`, or `--limit`, which print every record in full; it never splits scalar strings at commas. JSON and YAML preserve full arrays.
 
-The `section` is one of `global-config`, `provider`, `app-listeners`, `certificate-authority`, `network-trust`, `subsystems`, `global-app`, `mcp`, `accelerated-starts`, `missing-app-roots`, `orphaned-volume-snapshots`, `legacy-snapshot-catalogs`, `filesystem-watch`, `debugger-host`, `app-version-constraints`, `deprecations`, or `app-config`. To read one section, filter on it:
+The `section` is one of `global-config`, `provider`, `app-listeners`, `certificate-authority`, `network-trust`, `subsystems`, `global-app`, `mcp`, `accelerated-starts`, `state-compatibility`, `missing-app-roots`, `orphaned-volume-snapshots`, `legacy-snapshot-catalogs`, `filesystem-watch`, `debugger-host`, `app-version-constraints`, `deprecations`, or `app-config`. To read one section, filter on it:
 
 ```sh
 lando doctor --format=json | jq '.result.checks[] | select(.section == "subsystems")'

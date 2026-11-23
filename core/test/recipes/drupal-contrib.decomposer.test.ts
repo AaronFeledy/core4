@@ -100,7 +100,7 @@ describe("drupal-contrib decomposition", () => {
           composer: "{{ recipe.composer }}",
           working_dir: contribDir,
           depends_on: ["database", "chrome"],
-          appMount: { target: contribAppMount, includes: ["vendor", "node_modules", "tmp"] },
+          appMount: { target: contribAppMount },
           mounts: ["site:/app"],
           environment: {
             SIMPLETEST_BASE_URL: "http://appserver",
@@ -150,7 +150,7 @@ describe("drupal-contrib decomposition", () => {
     expect(authoring.services.appserver).toMatchObject({
       type: "php:{{ recipe.php }}",
       via: "fpm",
-      appMount: { target: contribAppMount, includes: ["vendor", "node_modules", "tmp"] },
+      appMount: { target: contribAppMount },
       environment: {
         SIMPLETEST_BASE_URL: "http://edge",
         SIMPLETEST_DB: pgsqlSimpletestDb,
@@ -162,7 +162,7 @@ describe("drupal-contrib decomposition", () => {
       webroot: "/app/web",
       uploadDirs: ["sites/*/files"],
       routes: [{ hostname: "{{ app.name }}.{{ proxy.defaultDomain }}", scheme: "both" }],
-      appMount: { target: contribAppMount, includes: ["vendor", "node_modules", "tmp"] },
+      appMount: { target: contribAppMount },
       mounts: ["site:/app:ro"],
     });
   });

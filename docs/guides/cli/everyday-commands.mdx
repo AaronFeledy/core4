@@ -162,11 +162,13 @@ Replace `web` with the service the error names.
 
 Read-only commands (`info`, `logs`, `app:config:lint`) don't take the lock.
 
-Lando gives up after two minutes and fails with an error that names the lock, how long it waited, and, when it can tell, the process holding it. Set `LANDO_LOCK_TIMEOUT_MS` to change that limit for every Lando lock a command can wait on for a whole operation, such as the app lock, a shared volume, or the router. It takes milliseconds from `0` to `600000`; `0` fails at once instead of waiting:
+Lando gives up after two minutes and fails with an error that names the lock, how long it waited, and, when it can tell, the process holding it. Set `LANDO_LOCK_TIMEOUT_MS` to change that limit for every Lando lock a command can wait on for a whole operation, such as the app lock, a shared volume, or the router. It takes milliseconds from `0` to `600000`; `0` fails at once instead of waiting. That name replaces the removed `LANDO_APP_LOCK_TIMEOUT_MS`; there is no alias:
 
 ```sh
 LANDO_LOCK_TIMEOUT_MS=600000 lando start
 ```
+
+Two different Lando builds that share the same data root do not always wait on each other's locks. Finish in-flight mutations, then use one current build for that root, or isolate side-by-side builds with separate config, data, and cache roots. Do not delete lock files. Details: [Share one data root carefully](../update/channels-and-manifests.mdx#share-one-data-root-carefully).
 
 Different apps don't wait on each other's app locks. If they share a package cache such as Composer's `lando-cache-composer`, their hooks and image builds can run at the same time, even before the cache exists. The only start phase that locks the cache is the one that creates or starts containers. Apps take turns in that phase when the cache is new, or whenever they use Docker. With Lando's managed provider or Podman, they can share that phase once the cache exists.
 

@@ -139,7 +139,11 @@ test("rejects incompatible definitions within one service rather than keeping th
 
 test.each([
   ["home", { type: "node:22", user: "root", appMount: false }, "lando-app--web--home--root-3177abf4"],
-  ["shadow", { type: "node:22", home: false }, "lando-app--web--shadow--app-vendor-64784057"],
+  [
+    "shadow",
+    { type: "compose", image: "alpine", home: false, appMount: { target: "/app", excludes: ["vendor"] } },
+    "lando-app--web--shadow--app-vendor-64784057",
+  ],
   ["catalog", { type: "mariadb", home: false, appMount: false }, "lando-app--web--mariadb-data"],
 ] as const)(
   "rejects an explicit app-scoped store that reuses a service-scoped %s store",

@@ -19,6 +19,9 @@ export const UnreadableAppliedState = Schema.Union([
     ...appliedStateLocation,
     reason: Schema.Literal("newer-version").annotate({ description: "The record uses a newer format." }),
     storedVersion: Schema.Int.annotate({ description: "Applied-state envelope version on disk." }),
+    writtenBy: Schema.optionalKey(
+      Schema.String.annotate({ description: "Lando version that wrote the record, when recorded." }),
+    ),
     supportedVersion: Schema.Int.annotate({
       description: "Applied-state envelope version this Lando supports.",
     }),

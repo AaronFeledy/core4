@@ -6730,13 +6730,13 @@
     "surface": "command:meta:doctor",
     "changeKind": "enum-widened",
     "path": "$.checks.items.section",
-    "justification": "GitHub #2278 adds the app-scoped database-credentials section to `lando doctor --app`. Every previous section id remains valid and unchanged; the new value only names the post-readiness login observation. Consumers that enumerate sections must accept the new id, which the doctor section table, --section validation, and the report tests cover."
+    "justification": "GitHub #2278 adds database-credentials; newer-state diagnostics add state-compatibility. Both doctor section IDs are additive. Existing findings keep their IDs and shape; consumers that enumerate sections must accept the two new values."
   },
   {
     "surface": "command:meta:doctor",
     "changeKind": "enum-widened",
     "path": "$.skipped.items.section",
-    "justification": "GitHub #2278 adds the app-scoped database-credentials section to `lando doctor --app`. Every previous section id remains valid and unchanged; the new value only names the post-readiness login observation. Consumers that enumerate sections must accept the new id, which the doctor section table, --section validation, and the report tests cover."
+    "justification": "GitHub #2278 adds database-credentials; newer-state diagnostics add state-compatibility. Both doctor section IDs are additive. Existing skips keep their IDs and shape; consumers that enumerate sections must accept the two new values."
   },
   {
     "surface": "schema:ProviderCapabilities",
@@ -7981,5 +7981,29 @@
     "changeKind": "property-removed",
     "path": "$.workingDirectory",
     "justification": "Remove alternate authored spellings in favor of Compose keys; compiled plan field names are unchanged (#2232)."
+  },
+  {
+    "surface": "command:app:info",
+    "changeKind": "unsupported-construct",
+    "path": "$.appliedStateIssue.anyOf",
+    "justification": "Adds the optional writtenBy (the Lando version that wrote the record) to the newer-version arm of the applied-state issue; the arms and their required fields are unchanged (#2432)."
+  },
+  {
+    "surface": "command:meta:global:info",
+    "changeKind": "unsupported-construct",
+    "path": "$.appliedStateIssue.anyOf",
+    "justification": "Adds the optional writtenBy (the Lando version that wrote the record) to the newer-version arm of the applied-state issue; the arms and their required fields are unchanged (#2432)."
+  },
+  {
+    "surface": "schema:InfoAppResult",
+    "changeKind": "unsupported-construct",
+    "path": "$.appliedStateIssue.anyOf",
+    "justification": "Adds the optional writtenBy (the Lando version that wrote the record) to the newer-version arm of the applied-state issue; the arms and their required fields are unchanged (#2432)."
+  },
+  {
+    "surface": "schema:InfoAppliedStateIssue",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Adds the optional writtenBy (the Lando version that wrote the record) to the newer-version arm of the applied-state issue; the arms and their required fields are unchanged (#2432)."
   }
 ]

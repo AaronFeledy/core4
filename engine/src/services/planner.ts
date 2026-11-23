@@ -13,17 +13,14 @@ import {
   validateAuthoredAppMount,
 } from "../planner/authored.ts";
 import { readAppDataIdentity } from "../planner/data-identity.ts";
-import { DEFAULT_APP_MOUNT_EXCLUDES, mergeDefaultExcludes } from "../planner/file-sync.ts";
 import { DEFAULT_PROXY_DOMAIN } from "../planner/naming.ts";
 import { FileSyncPolicy } from "../plugins/file-sync-policy.ts";
 
 export { AppPlanner } from "@lando/sdk/services";
 export {
-  DEFAULT_APP_MOUNT_EXCLUDES,
   DEFAULT_PROXY_DOMAIN,
   applyAuthoredDependencies,
   applyAuthoredHealthcheck,
-  mergeDefaultExcludes,
   validateAuthoredAppMount,
 };
 

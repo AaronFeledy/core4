@@ -2,6 +2,7 @@ import { Effect, Schema } from "effect";
 
 import { ListenerObservation } from "../schema/listener-observation.ts";
 import { AbsolutePath, ProviderId } from "../schema/primitives.ts";
+import { newerStateRemediation, sanitizeStateWriter } from "./state-version-remediation.ts";
 
 const Remediation = Schema.NonEmptyString.check(Schema.isPattern(/\S/u));
 // Schema.Json's Codec view erases constructor input to unknown; recover its JSON input view.
@@ -39,6 +40,9 @@ export class AppliedStateVersionError extends Schema.TaggedError<AppliedStateVer
     path: Schema.String,
     storedVersion: Schema.Int,
     supportedVersion: Schema.Int,
+    writtenBy: Schema.optionalKey(
+      Schema.String.annotate({ description: "Lando version that wrote the applied state, when recorded." }),
+    ),
     scope: Schema.Literals(["app", "provider"]),
     appId: Schema.optionalKey(Schema.String),
     message: Schema.String,
@@ -47,17 +51,31 @@ export class AppliedStateVersionError extends Schema.TaggedError<AppliedStateVer
   },
 ) {}
 
-export const appliedStateVersionError = (
-  input: Pick<
-    typeof AppliedStateVersionError.Type,
-    "providerId" | "operation" | "path" | "storedVersion" | "supportedVersion" | "scope" | "appId" | "cause"
-  >,
-): AppliedStateVersionError =>
-  new AppliedStateVersionError({
+export const appliedStateVersionError = ({
+  reader,
+  remediation,
+  writtenBy,
+  ...input
+}: Pick<
+  typeof AppliedStateVersionError.Type,
+  | "providerId"
+  | "operation"
+  | "path"
+  | "storedVersion"
+  | "supportedVersion"
+  | "scope"
+  | "appId"
+  | "cause"
+  | "writtenBy"
+> & { readonly reader?: string; readonly remediation?: string }): AppliedStateVersionError => {
+  const writer = sanitizeStateWriter(writtenBy);
+  return new AppliedStateVersionError({
     ...input,
+    ...(writer === undefined ? {} : { writtenBy: writer }),
     message: `A newer Lando wrote applied state file "${input.path}" with applied-state version ${input.storedVersion}; this Lando supports version ${input.supportedVersion}. Lando cannot safely change the affected runtime resources.${input.scope === "provider" ? " This file protects every app on this provider." : ""}`,
-    remediation: `Run the newer Lando that wrote "${input.path}" or upgrade Lando. Leave the file in place.`,
+    remediation: remediation ?? newerStateRemediation({ ...input, writtenBy: writer, reader }),
   });
+};
 
 export class ProviderCapabilityError extends Schema.TaggedError<ProviderCapabilityError>()(
   "ProviderCapabilityError",

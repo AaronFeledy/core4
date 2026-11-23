@@ -9,4 +9,4 @@ services:
         - dist
         - coverage
       includes:
-        - vendor
+        - node_modules

@@ -13,8 +13,9 @@ import {
 } from "@lando/container-runtime/labels";
 import { type AdoptionReceipt, decideDataRootOwnership } from "@lando/container-runtime/native-ownership";
 import { normalizeNamedPipePath } from "@lando/container-runtime/transport";
+import { CORE_VERSION } from "@lando/engine/version";
 import { makeLandoPaths, sameRealpath } from "@lando/paths";
-import { appliedStateVersionError } from "@lando/sdk/errors";
+import { appliedStateVersionError, sanitizeStateWriter } from "@lando/sdk/errors";
 import { AbsolutePath, LANDO_DATA_ROOT_LABEL } from "@lando/sdk/schema";
 import type { ProcessRunner } from "@lando/sdk/services";
 import type { Context } from "effect";
@@ -162,7 +163,7 @@ const planLikeToEntry = (value: unknown, fallbackProvider: string): AppsListEntr
 export const decodeAppliedStateFile = (
   content: string,
   fallbackProvider: string,
-  reportNewer?: (storedVersion: number) => void,
+  reportNewer?: (storedVersion: number, writtenBy: string | undefined) => void,
 ): AppsListEntry[] => {
   let parsed: unknown;
   try {
@@ -173,7 +174,7 @@ export const decodeAppliedStateFile = (
   if (!Predicate.isObject(parsed)) return [];
   const version = parsed.version;
   if (typeof version === "number" && Number.isSafeInteger(version) && version > APPLIED_STATE_VERSION) {
-    reportNewer?.(version);
+    reportNewer?.(version, sanitizeStateWriter(parsed.writtenBy));
     return [];
   }
 
@@ -200,7 +201,12 @@ export const decodeAppliedStateFile = (
   return direct === undefined ? [] : [direct];
 };
 
-type ReportNewerRecord = (providerId: string, path: string, storedVersion: number) => void;
+type ReportNewerRecord = (
+  providerId: string,
+  path: string,
+  storedVersion: number,
+  writtenBy: string | undefined,
+) => void;
 
 const readJsonPlanFiles = async (
   dir: string,
@@ -220,8 +226,8 @@ const readJsonPlanFiles = async (
       const path = join(dir, name);
       const content = await readFile(path, "utf8");
       apps.push(
-        ...decodeAppliedStateFile(content, fallbackProvider, (version) =>
-          reportNewer?.(fallbackProvider, path, version),
+        ...decodeAppliedStateFile(content, fallbackProvider, (version, writtenBy) =>
+          reportNewer?.(fallbackProvider, path, version, writtenBy),
         ),
       );
     } catch {
@@ -237,8 +243,8 @@ const readJsonPlanRecord = async (
   reportNewer?: ReportNewerRecord,
 ): Promise<AppsListEntry[]> => {
   try {
-    return decodeAppliedStateFile(await readFile(path, "utf8"), fallbackProvider, (version) =>
-      reportNewer?.(fallbackProvider, path, version),
+    return decodeAppliedStateFile(await readFile(path, "utf8"), fallbackProvider, (version, writtenBy) =>
+      reportNewer?.(fallbackProvider, path, version, writtenBy),
     );
   } catch {
     return [];
@@ -279,7 +285,7 @@ export const readAppliedPlansFromUserData = async (
 ): Promise<AppsListEntry[]> => {
   const paths = makeLandoPaths({ userDataRoot });
   const apps: AppsListEntry[] = [];
-  const reportNewer: ReportNewerRecord = (providerId, path, storedVersion) => {
+  const reportNewer: ReportNewerRecord = (providerId, path, storedVersion, writtenBy) => {
     reportIssue?.(
       appliedStateVersionError({
         providerId,
@@ -287,6 +293,8 @@ export const readAppliedPlansFromUserData = async (
         path,
         storedVersion,
         supportedVersion: APPLIED_STATE_VERSION,
+        ...(writtenBy === undefined ? {} : { writtenBy }),
+        reader: CORE_VERSION,
         scope: basename(path) === APPLIED_PLANS_RECORD ? "provider" : "app",
       }),
     );

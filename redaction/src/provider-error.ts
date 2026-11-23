@@ -144,6 +144,7 @@ export function redactProviderError(
         path: redactor.redactString(error.path),
         storedVersion: error.storedVersion,
         supportedVersion: error.supportedVersion,
+        ...(error.writtenBy === undefined ? {} : { writtenBy: redactor.redactString(error.writtenBy) }),
         scope: error.scope,
         ...(error.appId === undefined ? {} : { appId: redactor.redactString(error.appId) }),
       });
