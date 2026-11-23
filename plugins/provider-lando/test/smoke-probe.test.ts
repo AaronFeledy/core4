@@ -1,10 +1,17 @@
 import { describe, expect, test } from "bun:test";
 import type { EngineHttpRequest, PodmanApiClient } from "@lando/container-runtime/engine-api";
-import type { ProviderUnavailableError } from "@lando/sdk/errors";
+import { ProviderUnavailableError } from "@lando/sdk/errors";
 import type { RetryPolicy } from "@lando/sdk/probe";
 import { Deferred, Duration, Effect, Fiber } from "effect";
 import { TestClock } from "effect/testing";
 import { ProviderLandoSmokeError, type SmokeOperation, runSmokeReadinessProbe } from "../src/smoke-probe.ts";
+
+const scheduleFailure = new ProviderUnavailableError({
+  providerId: "lando",
+  operation: "nativeHealth",
+  message: "No timer.",
+  remediation: "Run lando doctor.",
+});
 
 const retryPolicy: RetryPolicy = {
   maxAttempts: 3,
@@ -224,6 +231,44 @@ describe("runSmokeReadinessProbe", () => {
     expect(
       requests.filter((request) => request.path.startsWith("/containers/") && request.path.endsWith("/json")),
     ).toHaveLength(2);
+  });
+
+  test("when Lando schedules native health, smoke waits for the timer instead of triggering the check", async () => {
+    // Given a provider whose native health Lando schedules
+    const requests: EngineHttpRequest[] = [];
+    const events: string[] = [];
+    // When smoke runs
+    await Effect.runPromise(
+      Effect.scoped(
+        runSmokeReadinessProbe({
+          podmanApi: fakeApi(requests),
+          retryPolicy,
+          nativeHealth: {
+            schedule: (container) => Effect.sync(() => events.push(`schedule ${container.split("-")[3]}`)),
+            sweep: Effect.sync(() => events.push("sweep")),
+          },
+        }),
+      ),
+    );
+    // Then it schedules the health container, sweeps its timers afterwards, and never triggers a check
+    expect(events).toEqual(["schedule health", "sweep"]);
+    expect(requests.some((request) => request.path.endsWith("/healthcheck"))).toBe(false);
+  });
+
+  test("a scheduling failure fails the health smoke step", async () => {
+    const failure = await Effect.runPromise(
+      Effect.scoped(
+        runSmokeReadinessProbe({
+          podmanApi: fakeApi([]),
+          retryPolicy,
+          nativeHealth: {
+            schedule: () => Effect.fail(scheduleFailure),
+            sweep: Effect.void,
+          },
+        }),
+      ).pipe(Effect.flip),
+    );
+    expect(failure.smokeOperation).toBe("health");
   });
 
   test("reports unhealthy as a health operation failure", async () => {

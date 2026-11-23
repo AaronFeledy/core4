@@ -1,0 +1,17 @@
+name: wait-native-start-interval
+router:
+  enabled: false
+services:
+  web:
+    type: compose
+    image: docker.io/library/busybox:1.37
+    appMount: false
+    home: false
+    command: [sh, -c, "touch /tmp/hc.log && exec sleep 600"]
+    readiness: false
+    healthcheck:
+      command: [sh, -c, "echo ran >> /tmp/hc.log"]
+      intervalSeconds: 30
+      timeoutSeconds: 2
+      startPeriodSeconds: 30
+      startIntervalSeconds: 1

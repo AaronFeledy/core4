@@ -6,7 +6,7 @@ import type {
   LandoPluginModule,
 } from "@lando/sdk/plugins";
 import { AbsolutePath, type HostPlatform } from "@lando/sdk/schema";
-import type { StateStoreShape } from "@lando/sdk/services";
+import type { ProcessRunner, StateStoreShape } from "@lando/sdk/services";
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
 import { Context, Effect, Layer } from "effect";
 import { makePluginStateStore } from "../plugins/context-state.ts";
@@ -39,6 +39,7 @@ export const teardownHostMaintainers = (
     readonly platform: HostPlatform;
     readonly stateStore: StateStoreShape;
     readonly privateFileAccess: PrivateFileAccess;
+    readonly processRunner: ProcessRunner["Service"];
   },
 ): Effect.Effect<HostTeardownResult> =>
   Effect.forEach(registry.maintainers, (maintainer) =>
@@ -52,6 +53,7 @@ export const teardownHostMaintainers = (
             AbsolutePath.make(input.paths.pluginStateDir(maintainer.pluginId)),
             input.privateFileAccess,
           ),
+          processRunner: input.processRunner,
         }),
   ).pipe(
     Effect.map((results) => {

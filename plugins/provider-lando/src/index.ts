@@ -60,6 +60,7 @@ import {
   type MachineSshBridgeHost,
   makeMachineSshBridge,
 } from "@lando/container-runtime/podman/machine-ssh-bridge";
+import { managedHealthUnitPrefix } from "@lando/container-runtime/podman/managed-health-units";
 import { resolveManagedRuntimeDir } from "@lando/container-runtime/podman/managed-runtime-dir";
 import {
   MINIMUM_PODMAN_VERSION,
@@ -142,6 +143,8 @@ import {
   declaredProviderLandoCapabilities,
   introspectProviderCapabilities,
   mvpProviderCapabilities,
+  nativeHealthScheduler,
+  withNativeHealth,
   withResourceControl,
 } from "./capabilities.ts";
 import type { CatatonitPackage } from "./catatonit-provision.ts";
@@ -152,13 +155,15 @@ import { managedConmonPath, reapLingeringExecConmons } from "./exec-conmon.ts";
 import { makeWindowsHostProxyBridge } from "./host-proxy-bridge.ts";
 import { rejectIntelMacHost } from "./host-support.ts";
 import type { RuntimeGenerationStore } from "./linux-runtime-generation.ts";
-import { managedResourceControl } from "./managed-resource-control.ts";
+import { managedPlacement } from "./managed-placement.ts";
 import { makeManagedRuntimeCgroupCheck } from "./managed-runtime-cgroup-check.ts";
+import { makeManagedRuntimeNativeHealthCheck } from "./managed-runtime-native-health-check.ts";
 import { managedRuntimePodmanArgv0 } from "./managed-runtime-service.ts";
 import {
   makeManagedRuntimeSocketPathCheck,
   validateManagedSocketPathLength,
 } from "./managed-runtime-socket-path.ts";
+import { makeManagedNativeHealth, withNativeHealthReconcile } from "./native-health-provider.ts";
 import { makePluginArtifactDownload, makePluginRuntimeState } from "./plugin-runtime.ts";
 import {
   type PodmanServiceRunner,
@@ -891,28 +896,70 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
   return Effect.gen(function* () {
     const shouldProbeCapabilities = options.podmanApi !== undefined || externalSocketPath !== undefined;
     const delegatedScopeHost = family === "linux" ? options.delegatedScopeHost : undefined;
+    const processRunnerOption =
+      options.processRunner === undefined ? yield* Effect.serviceOption(ProcessRunner) : undefined;
+    const processRunner =
+      options.processRunner ?? (processRunnerOption?._tag === "Some" ? processRunnerOption.value : undefined);
+    const privateRuntimeDir =
+      shouldManageRuntime && family === "linux" && options.runtimeRunDir !== undefined
+        ? yield* resolveManagedRuntimeDir(dirname(options.runtimeRunDir))
+        : undefined;
+    const placement =
+      !shouldProbeCapabilities && canEnsure && delegatedScopeHost !== undefined
+        ? yield* managedPlacement({
+            platform,
+            host: delegatedScopeHost,
+            pidPath: options.providerPidPath,
+            spec: buildPodmanServiceArgs({
+              podmanBin,
+              storageDir: options.runtimeStorageDir,
+              runRoot: options.runtimeRunDir,
+              configDir: options.runtimeConfigDir,
+              socketPath: ensureSocketPath,
+              privateRuntimeDir: undefined,
+            }),
+            serviceRunner,
+            podmanApi,
+          })
+        : undefined;
+    const systemdTools =
+      placement === undefined || delegatedScopeHost === undefined
+        ? undefined
+        : nativeHealthScheduler(platform, placement, delegatedScopeHost);
+    const nativeHealth =
+      systemdTools !== undefined &&
+      canEnsure &&
+      delegatedScopeHost !== undefined &&
+      processRunner !== undefined &&
+      runtimeBinDir !== undefined &&
+      privateRuntimeDir !== undefined
+        ? makeManagedNativeHealth({
+            tools: systemdTools,
+            processRunner,
+            api: podmanApi,
+            host: delegatedScopeHost,
+            pidPath: options.providerPidPath,
+            prefix: managedHealthUnitPrefix(privateRuntimeDir),
+            runtimeBinDir,
+            socketPath: ensureSocketPath,
+            runtimeConfigDir: options.runtimeConfigDir,
+            dataRoot: options.userDataRoot,
+            stateStore: options.appliedPlanState,
+            eventService: options.eventService,
+            redactor: redactorFor(LANDO_CTX),
+          })
+        : undefined;
     const capabilities =
       shouldProbeCapabilities && podmanApi !== undefined
         ? introspectProviderCapabilities(podmanApi, platform)
-        : canEnsure && delegatedScopeHost !== undefined
-          ? managedResourceControl({
-              platform,
-              host: delegatedScopeHost,
-              pidPath: options.providerPidPath,
-              spec: buildPodmanServiceArgs({
-                podmanBin,
-                storageDir: options.runtimeStorageDir,
-                runRoot: options.runtimeRunDir,
-                configDir: options.runtimeConfigDir,
-                socketPath: ensureSocketPath,
-                privateRuntimeDir: undefined,
-              }),
-              serviceRunner,
-              podmanApi,
-            }).pipe(
-              Effect.map((control) => withResourceControl(mvpProviderCapabilities(platform, arch), control)),
-            )
-          : Effect.succeed(mvpProviderCapabilities(platform, arch));
+        : Effect.succeed(
+            placement === undefined
+              ? mvpProviderCapabilities(platform, arch)
+              : withNativeHealth(
+                  withResourceControl(mvpProviderCapabilities(platform, arch), placement),
+                  nativeHealth !== undefined,
+                ),
+          );
     const { capabilities: resolvedCapabilities, logSourceBinding } = yield* capabilities.pipe(
       Effect.map((resolved) => {
         const logSourceBinding = makeProviderLogSourceBinding({
@@ -1034,10 +1081,6 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
             Effect.asVoid,
           );
 
-    const processRunnerOption =
-      options.processRunner === undefined ? yield* Effect.serviceOption(ProcessRunner) : undefined;
-    const processRunner =
-      options.processRunner ?? (processRunnerOption?._tag === "Some" ? processRunnerOption.value : undefined);
     const windowsStdinOptions =
       processRunner === undefined
         ? undefined
@@ -1057,10 +1100,6 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
         message: "Managed Windows Podman stdin execution requires ProcessRunner.",
         remediation: "Retry with the standard Lando runtime layer that provides ProcessRunner.",
       });
-    const privateRuntimeDir =
-      shouldManageRuntime && family === "linux" && options.runtimeRunDir !== undefined
-        ? yield* resolveManagedRuntimeDir(dirname(options.runtimeRunDir))
-        : undefined;
     const managedRuntimeStatusDeps =
       shouldManageRuntime &&
       managedSocketPath !== undefined &&
@@ -1145,6 +1184,12 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
                     ...apiOptions,
                     ctx: LANDO_CTX,
                   }),
+                ).pipe(
+                  Effect.tap(() =>
+                    action === "stop" || nativeHealth === undefined
+                      ? Effect.void
+                      : nativeHealth.enroll(serviceContainerName(activePlan, target.service)),
+                  ),
                 ),
                 reconcileAfterServiceLifecycle(activePlan, target),
               );
@@ -1159,6 +1204,10 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
                 ...apiOptions,
                 ctx: LANDO_CTX,
               }),
+            ).pipe(
+              Effect.tap(() =>
+                nativeHealth === undefined ? Effect.void : nativeHealth.enroll(identity.containerId),
+              ),
             ),
           ),
         suspend: (target, identity) =>
@@ -1714,6 +1763,14 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
                             ...(options.smokeRetryPolicy === undefined
                               ? {}
                               : { retryPolicy: options.smokeRetryPolicy }),
+                            ...(nativeHealth === undefined
+                              ? {}
+                              : {
+                                  nativeHealth: {
+                                    schedule: nativeHealth.enrollStrictly,
+                                    sweep: nativeHealth.reconcile,
+                                  },
+                                }),
                           }),
                         ),
                       );
@@ -1840,6 +1897,7 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
               reconcile: applyOptions.reconcile,
               onVolumeCreated: applyOptions.onVolumeCreated,
               completionPlan: applyOptions.completionPlan ?? applyOptions.recordedPlan ?? plan,
+              ...(nativeHealth === undefined ? {} : { onContainerStarted: nativeHealth.enroll }),
             }).pipe(
               Effect.tap(() => planState.removeOrphanedNetworks(physicalPlan, previousPhysicalPlan)),
               Effect.tap(() => rememberAppliedPlan(appliedPlans, plan, applyOptions)),
@@ -2008,7 +2066,9 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
           : teardownManagedRuntimeService({ paths: managedRuntimeServicePaths }),
     };
 
-    return provider satisfies RuntimeProviderShape;
+    return (
+      nativeHealth === undefined ? provider : withNativeHealthReconcile(provider, nativeHealth.reconcile)
+    ) satisfies RuntimeProviderShape;
   });
 };
 
@@ -2054,6 +2114,7 @@ export const plugin = definePlugin({
     makeWslMountPropagationCheck(),
     makeManagedRuntimeSocketPathCheck(),
     makeManagedRuntimeCgroupCheck(),
+    makeManagedRuntimeNativeHealthCheck(),
   ],
   hostMaintainers: [
     {

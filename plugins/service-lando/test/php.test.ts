@@ -717,6 +717,13 @@ describe("php serving modes (via:)", () => {
       /routes/,
     );
   });
+
+  test("accepts an empty routes list under cli", async () => {
+    const plan = await composePhpPlan(php82ServiceType, { type: "php:8.2", via: "cli", routes: [] });
+
+    expect(plan.endpoints).toEqual([]);
+    expect(plan.command).toEqual(["tail", "-f", "/dev/null"]);
+  });
 });
 
 import { serviceAppMount } from "@lando/sdk/schema";

@@ -1,5 +1,5 @@
 {
-  "hostMaintenanceTeardownSignature": "teardown?: (input: { readonly paths: HostRuntimePaths; readonly platform: HostPlatform; readonly stateStore: PluginStateStore; }) => Effect.Effect<HostTeardownResult, never>",
+  "hostMaintenanceTeardownSignature": "teardown?: (input: { readonly paths: HostRuntimePaths; readonly platform: HostPlatform; readonly stateStore: PluginStateStore; readonly processRunner: ProcessRunner[\"Service\"]; }) => Effect.Effect<HostTeardownResult, never>",
   "routerContributionFields": [
     "capabilities",
     "defaultFor",

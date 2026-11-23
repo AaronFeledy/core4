@@ -8,7 +8,7 @@ import { Effect, Predicate } from "effect";
 import type { ContainerCgroups } from "./delegated-scope.ts";
 import type { PodmanServiceSpec } from "./podman-service-runner.ts";
 
-interface RuntimeLaunchState {
+export interface RuntimeLaunchState {
   readonly pid: number;
   readonly env: Readonly<Record<string, string>>;
   readonly runtimeBundleVersion?: string;

@@ -167,7 +167,7 @@ export const infoForPlan = Effect.fn("AppOperation.infoForPlan")(function* (
     const appMount = serviceAppMount(service);
     return ServiceInfoConsistent.make({
       ...serviceInfoMetadata(plan, service, provider.capabilities),
-      ...projectServiceObservation(service, observed),
+      ...projectServiceObservation(service, observed, provider.capabilities.serviceHealth),
       ...(desiredOnly && observed.state === "stopped" && observed.runtime.status !== "absent"
         ? { status: "unknown" as const }
         : {}),

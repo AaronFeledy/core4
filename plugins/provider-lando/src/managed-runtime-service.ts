@@ -64,6 +64,8 @@ export interface RuntimeServiceSeams {
   readonly terminationPolicy?: RetryPolicy;
   readonly privateRuntimeDir?: (runtimeDir: string) => Effect.Effect<string | undefined>;
   readonly terminatePause?: (privateRuntimeDir: string) => Effect.Effect<boolean>;
+  /** Removes the runtime's native health timers; runs first, whether or not the service is alive. */
+  readonly removeHealthTimers?: Effect.Effect<void>;
 }
 
 type TerminationResult = { readonly terminated: boolean; readonly pid?: number; readonly quiescent?: true };
@@ -209,6 +211,7 @@ export const terminateOwnedRuntimeService = Effect.fn("ProviderLando.terminateOw
     const processSeam = seams.process ?? realProcessSeam;
     const fsSeam = seams.fs ?? realFsSeam;
 
+    if (seams.removeHealthTimers !== undefined) yield* seams.removeHealthTimers;
     const pid = yield* ownedRuntimePid(spec, processSeam);
     let quiescent = false;
     let exited = false;

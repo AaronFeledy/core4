@@ -13,6 +13,7 @@ export type ContainerCgroups = "delegated" | "shared";
 const REQUIRED_CONTROLLERS = ["memory", "pids", "cpu"] as const;
 // Absolute host locations only: the runtime-bin `systemd-run` shim must never launch the service.
 const HOST_SYSTEMD_RUN = ["/usr/bin/systemd-run", "/bin/systemd-run"] as const;
+const HOST_SYSTEMCTL = ["/usr/bin/systemctl", "/bin/systemctl"] as const;
 const CGROUP_ROOT = "/sys/fs/cgroup";
 
 /** Host reads behind delegated-scope decisions; tests inject a fake host. */
@@ -91,6 +92,30 @@ export const delegatedLaunchEligibility = (
   return { eligible: true, systemdRun, userRuntimeDir };
 };
 
+/** Host systemd tools that drive the user's systemd manager over its private socket. */
+export interface UserSystemdTools {
+  readonly systemdRun: string;
+  readonly systemctl: string;
+  /** `/run/user/<uid>`: `systemd-run` and `systemctl` find `systemd/private` beneath it. */
+  readonly userRuntimeDir: string;
+}
+
+/** Why the user's systemd manager cannot be driven from this host, if it cannot. */
+export type UserSystemdUnavailable = "unsupported-platform" | "missing-tools" | "no-user-manager";
+
+export const userSystemdTools = (
+  platform: HostPlatform,
+  host: DelegatedScopeHost,
+): UserSystemdTools | UserSystemdUnavailable => {
+  if (hostPlatformFamily(platform) !== "linux") return "unsupported-platform";
+  const systemdRun = HOST_SYSTEMD_RUN.find((path) => host.isExecutable(path));
+  const systemctl = HOST_SYSTEMCTL.find((path) => host.isExecutable(path));
+  if (systemdRun === undefined || systemctl === undefined) return "missing-tools";
+  const uid = host.uid();
+  if (uid === undefined || !host.exists(`/run/user/${uid}/systemd/private`)) return "no-user-manager";
+  return { systemdRun, systemctl, userRuntimeDir: `/run/user/${uid}` };
+};
+
 /** The unified-hierarchy cgroup path of a process, e.g. `/user.slice/.../run-p1-i1.scope`. */
 export const processCgroupPath = (pid: number, host: DelegatedScopeHost): string | undefined =>
   host
@@ -99,6 +124,12 @@ export const processCgroupPath = (pid: number, host: DelegatedScopeHost): string
     .find((line) => line.startsWith("0::"))
     ?.slice(3)
     .trim();
+
+/** The innermost `*.scope` unit a process runs in, e.g. `run-p1-i1.scope`. */
+export const processScopeUnit = (pid: number, host: DelegatedScopeHost): string | undefined =>
+  processCgroupPath(pid, host)
+    ?.split("/")
+    .findLast((segment) => segment.endsWith(".scope"));
 
 /**
  * Observed placement of a running service: its cgroup is owned by the user and offers memory,

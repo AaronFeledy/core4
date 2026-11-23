@@ -3,8 +3,9 @@ import { makeLandoPaths } from "@lando/paths";
 
 import type { HostMaintenanceContribution } from "@lando/sdk/plugins";
 import { PluginManifest } from "@lando/sdk/schema";
+import { ProcessRunner } from "@lando/sdk/services";
 import { makeTestStateStore } from "@lando/state-store/testing";
-import { Effect, Schema } from "effect";
+import { Effect, Schema, Stream } from "effect";
 import {
   HostMaintenanceRegistry,
   makeHostMaintenanceRegistryLayer,
@@ -23,6 +24,11 @@ const paths = {
 const storage = {
   stateStore: makeTestStateStore().service,
   privateFileAccess: { enforce: async () => undefined, verify: async () => undefined },
+  processRunner: ProcessRunner.of({
+    run: () => Effect.die("unused"),
+    stream: () => Stream.die("unused"),
+    streamWithExit: () => Stream.die("unused"),
+  }),
 };
 
 describe("teardownHostMaintainers", () => {
@@ -73,6 +79,25 @@ describe("teardownHostMaintainers", () => {
     );
     expect(calls).toEqual([paths.providerPidPath]);
     expect(result).toEqual({ terminated: true, pid: 42 });
+  });
+
+  test("hands every maintainer the host's process runner", async () => {
+    const seen: unknown[] = [];
+    const maintainers = [
+      {
+        id: "timers",
+        pluginId: "@lando/test",
+        teardown: (input: Parameters<NonNullable<HostMaintenanceContribution["teardown"]>>[0]) =>
+          Effect.sync(() => {
+            seen.push(input.processRunner);
+            return { terminated: false };
+          }),
+      },
+    ];
+    await Effect.runPromise(
+      teardownHostMaintainers({ maintainers }, { paths, platform: "linux", ...storage }),
+    );
+    expect(seen).toEqual([storage.processRunner]);
   });
 
   test("returns terminated false when every maintainer omits teardown", async () => {

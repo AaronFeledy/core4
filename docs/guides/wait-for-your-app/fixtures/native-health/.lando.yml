@@ -1,0 +1,16 @@
+name: wait-native-health
+router:
+  enabled: false
+services:
+  app:
+    type: compose
+    image: docker.io/library/busybox:1.37
+    appMount: false
+    home: false
+    command: [sh, -c, "touch /tmp/hc.log && exec sleep 600"]
+    readiness: false
+    healthcheck:
+      command: [sh, -c, "echo ran >> /tmp/hc.log; test ! -e /tmp/down"]
+      intervalSeconds: 1
+      timeoutSeconds: 2
+      retries: 1

@@ -7,7 +7,7 @@ tags: [docs, services, healthcheck]
 
 # Make start wait for your app
 
-Add `readiness:` so `lando start` waits until the app answers, not only until the process is running. Keep `healthcheck:` for the container runtime's ongoing health monitoring; the two settings are independent.
+Add `readiness:` so `lando start` waits until the app answers, not only until the process is running. Keep `healthcheck:` for ongoing health monitoring, which keeps running on its interval after start; the two settings are independent.
 
 ```yaml
 name: myapp
@@ -215,6 +215,76 @@ Host readiness runs at the same lifecycle gates, never as permanent host monitor
 
 Private capture prevents live streaming and process/shell execution events; it does not make the configured command confidential. Redacted lifecycle plan metadata can include the command, and failures can include bounded, redacted stderr or command context. Keep secrets out of the command text. Bind the secret in the service `environment` and read it as `$NAME` in a string probe command, which runs under a shell inside the service. A `${secret:...}` reference written in the command itself fails loading with `LandofileValidationError`. `lando info` omits raw commands entirely.
 
+## Keep native health running after start
+
+A native `healthcheck:` keeps running on its interval after `lando start` returns, and `lando info` reports its latest result. Docker Engine, your own Podman, and the Podman machine Lando manages on macOS and Windows run the checks themselves. On Linux, the default `lando` provider runs Podman as a service outside your systemd session, so Lando schedules each check as a systemd user timer. Lando creates the timers when a container starts and removes them when it stops, when the app is destroyed, and on `lando poweroff`. No Lando process stays running between commands.
+
+This example marks the service unhealthy once `/tmp/down` exists:
+
+```yaml
+services:
+  app:
+    type: compose
+    image: docker.io/library/busybox:1.37
+    command: [sleep, "600"]
+    healthcheck:
+      command: [sh, -c, "test ! -e /tmp/down"]
+      intervalSeconds: 1
+      timeoutSeconds: 2
+      retries: 1
+```
+
+Run these from the app directory on your host:
+
+```sh
+lando start
+lando info --format=json
+lando exec app -- touch /tmp/down
+lando info --format=json
+```
+
+The first `info` reports the service's `health.state` as `healthy`. A second or two after `touch`, it reports `unhealthy`. Nothing has to trigger the check by hand.
+
+Lando's timers need a systemd user manager and a runtime that runs in a delegated systemd user scope, the same scope that gives containers their own resource limits. Without them nothing runs the checks: `lando info` reports their health as `unknown`, and `lando doctor` reports `managed-runtime-native-health` with the step that fixes it, such as `loginctl enable-linger $USER`.
+
+```sh
+lando doctor --format=json
+```
+
+## Speed up native checks during startup
+
+Set `startIntervalSeconds` under `healthcheck` to check more often while the service starts. During `startPeriodSeconds` the check runs every `startIntervalSeconds`; when the start period ends, it switches to `intervalSeconds`:
+
+```yaml
+services:
+  web:
+    type: compose
+    image: docker.io/library/alpine:3.20
+    command: sleep infinity
+    healthcheck:
+      command: "true"
+      startPeriodSeconds: 10
+      startIntervalSeconds: 2
+```
+
+The Compose spelling is `start_interval: 2s`. Only the `lando` provider on Linux runs a native start interval, through a second timer that hands over to the regular one when the start period ends. It keeps the fast cadence for the whole start period, even after the first success. Podman drops the setting and Lando does not request it from Docker, so the `docker` and `podman` providers and the macOS and Windows machines refuse it before changing anything, with a `CapabilityError`. So does Linux when Lando cannot schedule native checks.
+
+To speed up startup on every provider, put the cadence on readiness instead. `readiness.startIntervalSeconds` paces Lando's own startup gate, which runs the same way everywhere:
+
+```yaml
+services:
+  web:
+    type: compose
+    image: docker.io/library/alpine:3.20
+    command: sleep infinity
+    healthcheck:
+      command: "true"
+    readiness:
+      command: "true"
+      startPeriodSeconds: 10
+      startIntervalSeconds: 2
+```
+
 ## Turn the probe off
 
 Choose which policy to disable. `healthcheck: false` turns off native monitoring, including an inherited image healthcheck, but keeps explicit or contributed readiness. `readiness: false` disables the lifecycle command gate and prevents fallback to native health; it does not disable native monitoring. Process-running and job-completion supervision continue. A `service_healthy` dependency still requires an enabled readiness probe; disabling it does not relax the dependency gate and the plan is rejected.
@@ -289,7 +359,7 @@ An exhausted readiness probe stays fatal even if the service has a restart polic
 
 ## Inspect configuration without claiming readiness
 
-Run `lando info --format=json` for a running app. Each service entry in the result separates `health` from `readiness`. Native `health` reports provider-observed `healthy`, `starting`, or `unhealthy`; explicitly disabled native health is `not-monitored`, and missing evidence is `unknown`, not a failure.
+Run `lando info --format=json` for a running app. Each service entry in the result separates `health` from `readiness`. Native `health` reports provider-observed `healthy`, `starting`, or `unhealthy`; explicitly disabled native health is `not-monitored`, and missing evidence is `unknown`, not a failure. When nothing schedules native checks, health is `unknown` too, whatever the runtime last recorded: the provider's `capabilities.serviceHealth` is `none`, and `lando doctor` explains why.
 
 The readiness `state` is `disabled`, `not-configured`, or `not-observed`. Its `source` is `authored`, `contributed`, `healthcheck` (fallback), `unknown` (historical provenance unavailable), or `none`. The metadata includes execution `target`, `userSource`, `listener`, timings, command presence, and a configuration pointer, not the raw command. A listener identifies the container endpoint a type-owned probe checks; it is not the host/service execution target.
 
@@ -472,6 +542,50 @@ expect(names).toEqual(["cache", "web"]);
       <UseFixture name="host-http-invalid" />
       <Run command="lando app:cache:refresh --format=json" expectExit={1} />
       <Verify errorTag="HealthcheckTargetUnsupportedError" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="reject-native-start-interval" render={false} reason="A provider that cannot run a native start interval refuses it with the readiness alternative">
+    <Step name="reject-native-start-interval-plan">
+      <UseFixture name="native-start-interval" />
+      <Run command="lando app:cache:refresh --format=json" expectExit={1} />
+      <Verify errorTag="CapabilityError" expect={{ regex: "readiness\\.startIntervalSeconds" }} />
+    </Step>
+  </Scenario>
+
+  <Scenario id="native-health-transitions" layer="e2e" platforms={["linux"]} render={false} reason="Native health keeps running after start and turns unhealthy with no manual healthcheck call">
+    <Step name="require-native-health-scheduler">
+      <UseFixture name="native-health" />
+      <Verify command="lando doctor --format=json" expect={{ stdout: { regex: "\"name\":\\s*\"managed-runtime-native-health\",\\s*\"status\":\\s*\"pass\"" } }} />
+    </Step>
+    <Step name="healthy-after-start">
+      <Run command="lando start --format=json" />
+      <Run command={`lando exec app -- sh -c 'want=$(( $(wc -l < /tmp/hc.log) + 2 )); end=$(( $(date +%s) + 20 )); until [ "$(wc -l < /tmp/hc.log)" -ge "$want" ]; do [ "$(date +%s)" -lt "$end" ] || { echo "the healthcheck ran $(wc -l < /tmp/hc.log) times, expected $want" >&2; exit 1; }; sleep 0.2; done'`} />
+      <Verify command="lando info --format=json" expect={{ stdout: { regex: "\"health\":\\s*\\{[^{}]*(?:\\{[^{}]*\\}[^{}]*)*\"state\":\\s*\"healthy\"" } }} />
+    </Step>
+    <Step name="unhealthy-on-its-own">
+      <Run command="lando exec app -- touch /tmp/down" />
+      <Run command={`lando exec app -- sh -c 'want=$(( $(wc -l < /tmp/hc.log) + 2 )); end=$(( $(date +%s) + 20 )); until [ "$(wc -l < /tmp/hc.log)" -ge "$want" ]; do [ "$(date +%s)" -lt "$end" ] || { echo "the healthcheck ran $(wc -l < /tmp/hc.log) times, expected $want" >&2; exit 1; }; sleep 0.2; done'`} />
+      <Verify command="lando info --format=json" expect={{ stdout: { regex: "\"health\":\\s*\\{[^{}]*(?:\\{[^{}]*\\}[^{}]*)*\"state\":\\s*\"unhealthy\"" } }} />
+    </Step>
+    <Step name="cleanup-native-health">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="native-start-interval-cadence" layer="e2e" platforms={["linux"]} render={false} reason="A native start interval runs checks far faster than the 30-second interval during the start period">
+    <Step name="require-start-interval-scheduler">
+      <UseFixture name="native-start-interval-cadence" />
+      <Verify command="lando doctor --format=json" expect={{ stdout: { regex: "\"name\":\\s*\"managed-runtime-native-health\",\\s*\"status\":\\s*\"pass\"" } }} />
+    </Step>
+    <Step name="fast-start-cadence">
+      <Run command="lando start --format=json" />
+      <Run command={`lando exec web -- sh -c 'end=$(( $(date +%s) + 8 )); until [ "$(wc -l < /tmp/hc.log)" -ge 3 ]; do [ "$(date +%s)" -lt "$end" ] || { echo "the healthcheck ran $(wc -l < /tmp/hc.log) times in 8 seconds, expected 3" >&2; exit 1; }; sleep 0.2; done'`} />
+    </Step>
+    <Step name="cleanup-start-interval">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes" />
     </Step>
   </Scenario>
 

@@ -6,11 +6,13 @@ import type { EngineHttpRequest, EngineHttpResponse } from "@lando/container-run
 import { makeLandoPaths } from "@lando/paths";
 import { ProviderUnavailableError, StateStoreError } from "@lando/sdk/errors";
 import { AbsolutePath } from "@lando/sdk/schema";
+import { ProcessRunner } from "@lando/sdk/services";
 import { makePluginStateStore } from "@lando/state-store/plugin";
 import { makeStateStore } from "@lando/state-store/service";
 
-import { Deferred, Duration, Effect, Fiber } from "effect";
+import { Deferred, Duration, Effect, Fiber, Stream } from "effect";
 import { TestClock } from "effect/testing";
+import type { DelegatedScopeHost } from "../src/delegated-scope.ts";
 import type { ExecConmonReaper } from "../src/exec-conmon.ts";
 import {
   type FsSeam,
@@ -21,7 +23,7 @@ import {
   verifyOwnedRuntimePid,
 } from "../src/managed-runtime-service.ts";
 import { makeRuntimeShutdownStore } from "../src/runtime-shutdown.ts";
-import { withRuntimeShutdownReceipt } from "../src/runtime-shutdown-teardown.ts";
+import { removeHealthTimers, withRuntimeShutdownReceipt } from "../src/runtime-shutdown-teardown.ts";
 import { ownerOnlyFileAccess } from "./private-file-access.ts";
 
 const run = <A>(effect: Effect.Effect<A, never>): Promise<A> => Effect.runPromise(effect);
@@ -434,6 +436,32 @@ describe("terminateOwnedRuntimeService", () => {
     expect(killedPids).toEqual([10]);
   });
 
+  test.each([
+    ["a live owned service", {}, ["timers", "SIGTERM"]],
+    ["no service", { readPid: () => Effect.fail(new Error("ENOENT")) }, ["timers"]],
+  ] as const)(
+    "removes native health timers before anything else with %s",
+    async (_name, overrides, expected) => {
+      // Given a runtime whose timers would keep checking a stopped socket
+      const actions: string[] = [];
+      const processSeam = makeProcessSeam({
+        ...overrides,
+        terminate: () => Effect.sync(() => actions.push("SIGTERM")),
+      });
+      // When the runtime is torn down
+      await run(
+        terminateOwnedRuntimeService(baseSpec, {
+          process: processSeam,
+          fs: { unlink: () => Effect.void },
+          apiClient: () => ({}),
+          removeHealthTimers: Effect.sync(() => actions.push("timers")),
+        }),
+      );
+      // Then the timers go first, whether or not a service process is alive
+      expect(actions).toEqual([...expected]);
+    },
+  );
+
   test("SIGTERMs and unlinks when the pid is owned", async () => {
     const terminatedPids: number[] = [];
     const unlinkedPaths: string[] = [];
@@ -510,5 +538,86 @@ describe("terminateOwnedRuntimeService", () => {
     const result = await run(terminateOwnedRuntimeService(baseSpec, { process: processSeam, fs: fsSeam }));
 
     expect(result).toEqual({ terminated: false });
+  });
+});
+
+describe("native health timer teardown", () => {
+  const userService = "/sys/fs/cgroup/user.slice/user-1000.slice/user@1000.service";
+  const host = (userManager: boolean): DelegatedScopeHost => ({
+    uid: () => 1000,
+    isExecutable: (path) => ["/usr/bin/systemd-run", "/usr/bin/systemctl"].includes(path),
+    exists: (path) => userManager && path === "/run/user/1000/systemd/private",
+    readText: (path) => (path === `${userService}/cgroup.controllers` ? "cpu memory pids" : undefined),
+    ownerUid: () => 1000,
+  });
+  const teardownInput = () => {
+    const spawned: { readonly argv: ReadonlyArray<string>; readonly env: unknown }[] = [];
+    const locks: unknown[] = [];
+    const runtimeDirs: string[] = [];
+    const paths = makeLandoPaths({ userDataRoot: "/tmp/udr" });
+    return {
+      spawned,
+      locks,
+      runtimeDirs,
+      input: {
+        paths,
+        platform: "linux" as const,
+        stateStore: {
+          open: () => Effect.die("timer teardown opens no bucket"),
+          withLock: <A, E>(key: string, body: Effect.Effect<A, E>, options?: { readonly wait?: string }) => {
+            locks.push({ key, wait: options?.wait });
+            return body;
+          },
+        },
+        processRunner: ProcessRunner.of({
+          run: (options) =>
+            Effect.sync(() => {
+              spawned.push({ argv: [options.cmd, ...options.args], env: options.env });
+              return { exitCode: 0, stdout: "", stderr: "" };
+            }),
+          stream: () => Stream.die("unused"),
+          streamWithExit: () => Stream.die("unused"),
+        }),
+      },
+    };
+  };
+
+  test("stops every timer of the runtime's private dir under a brief lock", async () => {
+    // Given a reachable user manager and the launch record's private runtime dir
+    const fake = teardownInput();
+    const remove = removeHealthTimers(fake.input, {
+      host: host(true),
+      privateRuntimeDir: (runtimeDir) =>
+        Effect.sync(() => {
+          fake.runtimeDirs.push(runtimeDir);
+          return "/run/user/1000/lando-0123456789abcdef";
+        }),
+    });
+    // When teardown removes the timers
+    await run(remove ?? Effect.die("expected a timer removal"));
+    // Then one stop by the runtime's prefix runs, with only the user manager's runtime dir
+    expect(fake.runtimeDirs).toEqual(["/tmp/udr/runtime"]);
+    expect(fake.locks).toEqual([{ key: "native-health-timers", wait: "brief" }]);
+    expect(fake.spawned).toEqual([
+      {
+        argv: ["/usr/bin/systemctl", "--user", "stop", "lando-0123456789abcdef-hc-*"],
+        env: { XDG_RUNTIME_DIR: "/run/user/1000" },
+      },
+    ]);
+  });
+
+  test("has nothing to remove without a user manager", () => {
+    expect(removeHealthTimers(teardownInput().input, { host: host(false) })).toBeUndefined();
+  });
+
+  test("has nothing to stop when no private runtime dir resolves", async () => {
+    const fake = teardownInput();
+    await run(
+      removeHealthTimers(fake.input, {
+        host: host(true),
+        privateRuntimeDir: () => Effect.succeed(undefined),
+      }) ?? Effect.die("expected a timer removal"),
+    );
+    expect(fake.spawned).toEqual([]);
   });
 });

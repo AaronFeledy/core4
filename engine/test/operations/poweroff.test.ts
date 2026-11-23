@@ -20,12 +20,13 @@ import {
   ConfigService,
   LandofileService,
   PathsService,
+  ProcessRunner,
   RuntimeProviderRegistry,
   ScratchAppService,
   StateStore,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
-import { DateTime, Effect, Layer, Result } from "effect";
+import { DateTime, Effect, Layer, Result, Stream } from "effect";
 import { pendingStartBucketSpec } from "../../src/operations/accelerated-start-record.ts";
 import { PoweroffStopError, poweroff } from "../../src/operations/poweroff.ts";
 import { HostMaintenanceRegistry } from "../../src/runtime/host-maintenance.ts";
@@ -257,6 +258,15 @@ const makeHarness = async (input: {
     fakeLandofile,
     planner,
     Layer.succeed(RuntimeProviderRegistry, registry as never),
+    // Host maintainers here are fakes; the runner only satisfies poweroff's teardown input.
+    Layer.succeed(
+      ProcessRunner,
+      ProcessRunner.of({
+        run: () => Effect.die("poweroff tests run no host process"),
+        stream: () => Stream.die("poweroff tests run no host process"),
+        streamWithExit: () => Stream.die("poweroff tests run no host process"),
+      }),
+    ),
   );
   return { layer, calls, events: teardown.events, routeRoots: teardown.routeRoots };
 };

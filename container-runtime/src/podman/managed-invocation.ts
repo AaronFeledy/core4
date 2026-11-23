@@ -29,7 +29,8 @@ const HOST_ENV_ALLOWLIST = new Set([
   "DOCKER_CONFIG",
 ]);
 
-const PODMAN_REDIRECT_DENYLIST = new Set([
+/** Variables that redirect a Podman client to another service or toggle its pause handling. */
+export const PODMAN_REDIRECT_DENYLIST: ReadonlySet<string> = new Set([
   "CONTAINER_HOST",
   "CONTAINER_CONNECTION",
   "CONTAINER_SSHKEY",

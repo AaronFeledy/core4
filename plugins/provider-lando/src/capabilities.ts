@@ -25,8 +25,10 @@ import { Effect } from "effect";
 
 import {
   type DelegatedScopeHost,
+  type UserSystemdTools,
   delegatedLaunchEligibility,
   delegatedScopeRemediation,
+  userSystemdTools,
 } from "./delegated-scope.ts";
 
 const PROVIDER_ID = "lando";
@@ -60,32 +62,66 @@ const libpodComposeKnobs = composeKnobsForDialect("libpod");
 // external socket, so the knob stays withheld unless resource control is established.
 const withheldResourceComposeKnobs = libpodComposeKnobs.filter((key) => key !== "deploy.resources");
 
-/** Whether containers get their own cgroups, deciding the `deploy.resources` knob. */
-export type ResourceControl =
-  | { readonly declared: true }
-  | { readonly declared: false; readonly remediation?: string };
+/**
+ * Whether the managed service runs in a delegated systemd user scope, so containers get their own
+ * cgroups. It decides the `deploy.resources` knob and, with the user's systemd tools, native health.
+ */
+export type ManagedPlacement =
+  | { readonly delegated: true }
+  | { readonly delegated: false; readonly remediation?: string };
 
 export const withResourceControl = (
   capabilities: ProviderCapabilities,
-  control: ResourceControl,
+  placement: ManagedPlacement,
 ): ProviderCapabilities => ({
   ...capabilities,
-  composeKnobs: control.declared
+  composeKnobs: placement.delegated
     ? { supported: libpodComposeKnobs }
     : {
         supported: withheldResourceComposeKnobs,
-        ...(control.remediation === undefined
+        ...(placement.remediation === undefined
           ? {}
-          : { withheld: [{ key: "deploy.resources", remediation: control.remediation }] }),
+          : { withheld: [{ key: "deploy.resources", remediation: placement.remediation }] }),
       },
 });
 
-/** Resource control the next managed Linux launch provides, from a few host stat/reads. */
-export const linuxResourceControl = (platform: HostPlatform, host: DelegatedScopeHost): ResourceControl => {
+/**
+ * Lando schedules native healthchecks for the managed Linux runtime with systemd user timers. The
+ * timers bind to the service's delegated scope, and Lando realizes `healthcheck.start_interval`
+ * with a start-phase timer, which Podman itself drops.
+ */
+export const withNativeHealth = (
+  capabilities: ProviderCapabilities,
+  scheduled: boolean,
+): ProviderCapabilities =>
+  scheduled
+    ? {
+        ...capabilities,
+        serviceHealth: "lando",
+        composePreservedPaths: { supported: ["healthcheck.start_interval"] },
+      }
+    : capabilities;
+
+/**
+ * The user's systemd tools when Lando can schedule native health: a delegated service and a
+ * reachable user manager. The offline declaration and the live provider both decide with this.
+ */
+export const nativeHealthScheduler = (
+  platform: HostPlatform,
+  placement: ManagedPlacement,
+  host: DelegatedScopeHost,
+): UserSystemdTools | undefined => {
+  if (!placement.delegated) return undefined;
+  const tools = userSystemdTools(platform, host);
+  return typeof tools === "string" ? undefined : tools;
+};
+
+/** Placement the next managed Linux launch provides, from a few host stat/reads. */
+export const linuxPlacement = (platform: HostPlatform, host: DelegatedScopeHost): ManagedPlacement => {
   const eligibility = delegatedLaunchEligibility(platform, host);
   return eligibility.eligible
-    ? { declared: true }
-    : { declared: false, remediation: delegatedScopeRemediation(eligibility.reason) };
+    ? { delegated: true }
+    : { delegated: false, remediation: delegatedScopeRemediation(eligibility.reason) };
 };
 
 /**
@@ -129,6 +165,9 @@ export const providerLandoCapabilitiesForPlatform = (
         : ("host-ids" as const);
   return buildProviderCapabilities({
     bindMounts: true,
+    // The machine's Podman runs under the VM's systemd and schedules its own timers. The managed
+    // Linux service runs off the user's bus, so nothing schedules them until Lando does.
+    serviceHealth: family === "linux" ? "none" : "native",
     artifactBuild: true,
     artifactPull: true,
     bindMountPerformance: bindMountPerformanceForPlatform(family),
@@ -160,8 +199,9 @@ export const mvpProviderCapabilities = (platform: HostPlatform, arch?: string): 
   providerLandoCapabilitiesForPlatform(platform, hostProxyContainerTargets(arch));
 
 /**
- * Offline declaration for the managed runtime on this host: Linux declares `deploy.resources`
- * when the next launch can run in a delegated systemd user scope; macOS and Windows withhold it.
+ * Offline declaration for the managed runtime on this host: on Linux, when the next launch can run
+ * in a delegated systemd user scope, it declares `deploy.resources` and, with a reachable user
+ * manager, Lando-scheduled native health. macOS and Windows withhold `deploy.resources`.
  */
 export const declaredProviderLandoCapabilities = (
   platform: HostPlatform,
@@ -169,9 +209,12 @@ export const declaredProviderLandoCapabilities = (
   host: DelegatedScopeHost,
 ): ProviderCapabilities => {
   const capabilities = mvpProviderCapabilities(platform, arch);
-  return hostPlatformFamily(platform) === "linux"
-    ? withResourceControl(capabilities, linuxResourceControl(platform, host))
-    : capabilities;
+  if (hostPlatformFamily(platform) !== "linux") return capabilities;
+  const placement = linuxPlacement(platform, host);
+  return withNativeHealth(
+    withResourceControl(capabilities, placement),
+    nativeHealthScheduler(platform, placement, host) !== undefined,
+  );
 };
 
 export const introspectProviderCapabilities = (

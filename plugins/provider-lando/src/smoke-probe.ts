@@ -160,14 +160,21 @@ export const runHealthSmokeProbe = (deps: SmokeProbeDeps, image: string) =>
         },
       });
       yield* startSmokeContainer(deps, "health", name);
-      yield* smokeApiRequest(deps, "health", {
-        method: "GET",
-        path: `/libpod/containers/${encodeURIComponent(name)}/healthcheck`,
-      }).pipe(
-        Effect.flatMap((response) =>
-          expectSmokeSuccess("health", response, "Podman could not run the health smoke container check."),
-        ),
-      );
+      const nativeHealth = deps.nativeHealth;
+      if (nativeHealth === undefined) {
+        // Nothing here proves scheduling: trigger one check so the exec path is still exercised.
+        yield* smokeApiRequest(deps, "health", {
+          method: "GET",
+          path: `/libpod/containers/${encodeURIComponent(name)}/healthcheck`,
+        }).pipe(
+          Effect.flatMap((response) =>
+            expectSmokeSuccess("health", response, "Podman could not run the health smoke container check."),
+          ),
+        );
+      } else {
+        yield* Effect.addFinalizer(() => nativeHealth.sweep);
+        yield* nativeHealth.schedule(name).pipe(mapFailures(mapProbeError("health")));
+      }
       let lastHealth = "invalid";
       const result = yield* runProbe(
         {

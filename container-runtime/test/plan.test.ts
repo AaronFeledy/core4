@@ -15,6 +15,7 @@ import {
 } from "@lando/container-runtime/plan";
 import { AbsolutePath, type AppPlan, PortablePath, ServiceName, type ServicePlan } from "@lando/sdk/schema";
 import { CREATE_CONFIG_LABEL } from "../src/create-fingerprint.ts";
+import { HEALTH_START_INTERVAL_LABEL } from "../src/labels.ts";
 
 const plan = {
   valueModel: 1,
@@ -543,6 +544,21 @@ describe("container plan helpers", () => {
     expect(body.Healthcheck).toMatchObject({
       StartInterval: 2_000_000_000,
     });
+    // Podman drops StartInterval, so the label carries it to Lando's native health timers.
+    expect(body).toMatchObject({ Labels: { [HEALTH_START_INTERVAL_LABEL]: "2000000000" } });
+  });
+
+  test("never stamps a health start interval label without one, whatever the author wrote", () => {
+    // Given an authored label claiming a start interval on a service without one
+    const authored = {
+      ...service,
+      extensions: { compose: { labels: { [HEALTH_START_INTERVAL_LABEL]: "1" } } },
+    };
+    // When / Then the authored value is dropped
+    expect(containerCreateBodyFragment(plan, authored).Labels).not.toHaveProperty(
+      HEALTH_START_INTERVAL_LABEL,
+    );
+    expect(containerCreateBodyFragment(plan, service).Labels).not.toHaveProperty(HEALTH_START_INTERVAL_LABEL);
   });
 
   test.each(["web", "web_1", "a".repeat(70)])("uses the container name as hostname for %s", (name) => {

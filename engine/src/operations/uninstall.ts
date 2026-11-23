@@ -30,6 +30,7 @@ import {
   classifyManagedProviderMachine,
   teardownManagedProviderMachine,
 } from "../runtime/managed-provider-machine";
+import * as BunProcessRunner from "../services/process-runner.ts";
 import { cleanupAgentRelayState } from "../subsystems/ssh-agent/cleanup.ts";
 import { TerminableAgentRelayWorkerRecord } from "../subsystems/ssh-agent/worker-protocol.ts";
 import { CORE_VERSION } from "../version.ts";
@@ -357,6 +358,7 @@ const defaultTeardownRuntimeService = (
             paths,
             platform,
             privateFileAccess,
+            processRunner: BunProcessRunner.service,
             stateStore: makeStateStore({ privateFileAccess, roots: paths.roots, writer: CORE_VERSION }),
           });
         }).pipe(Effect.provide(PrivateFileAccessService.layer)),

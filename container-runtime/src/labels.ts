@@ -35,6 +35,8 @@ export const SNAPSHOT_ID_LABEL = "dev.lando.snapshot-id" as const;
 export const SNAPSHOT_STORE_LABEL = "dev.lando.snapshot-store" as const;
 export const VOLUME_INSTANCE_LABEL = "dev.lando.volume-instance" as const;
 export const SCRATCH_LABEL = "dev.lando.scratch" as const;
+/** Native healthcheck start interval in nanoseconds, which Podman drops; Lando's timers realize it. */
+export const HEALTH_START_INTERVAL_LABEL = "dev.lando.health-start-interval" as const;
 export const SCRATCH_ID_LABEL = "dev.lando.scratch-id" as const;
 export const AGENT_SESSION_LABEL = "dev.lando.agent-session" as const;
 export const HOST_PROXY_SESSION_LABEL = "dev.lando.host-proxy-session" as const;

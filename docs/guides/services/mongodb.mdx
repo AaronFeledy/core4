@@ -95,7 +95,7 @@ The official image runs a temporary, loopback-only `mongod` while it creates the
 - A plain TCP dial of the planned port. Until that succeeds, Lando does not launch `mongosh` at all.
 - A credential-free MongoDB protocol `ping` with a bounded connection timeout. Only this step marks the service `ready`.
 
-After start, the service's ongoing healthcheck is the TCP dial alone, repeated on the usual interval. It starts no MongoDB shell and leaves no shell-state files behind. The protocol ping runs at startup, restart, and rebuild, not every few seconds for the life of the container.
+After start, the service's ongoing healthcheck is the TCP dial alone, repeated on the healthcheck interval wherever the provider [schedules native health](./wait-for-your-app.mdx#keep-native-health-running-after-start). It starts no MongoDB shell and leaves no shell-state files behind. The protocol ping runs at startup, restart, and rebuild, not every few seconds for the life of the container.
 
 `ready` means the final server is accepting connections. It does not prove that the credentials in your Landofile match the users stored on the volume. The probe never authenticates. See [Recover when credentials don't match](#recover-when-credentials-dont-match).
 

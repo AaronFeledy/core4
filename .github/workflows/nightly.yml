@@ -348,6 +348,13 @@ jobs:
           bun run scripts/sanitize-compiled-binary.ts ./dist/lando
           ./dist/lando --version
 
+      - name: Start a systemd user manager
+        run: |
+          sudo loginctl enable-linger "$(id -un)"
+          manager="/run/user/$(id -u)/systemd/private"
+          for _ in $(seq 1 30); do test -S "$manager" && break; sleep 1; done
+          test -S "$manager"
+
       - name: Provision rootless runtime prerequisites
         run: |
           sudo apt-get update

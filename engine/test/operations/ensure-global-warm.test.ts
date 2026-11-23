@@ -541,6 +541,27 @@ for (const change of [
   });
 }
 
+test.each([
+  ["none", 1],
+  ["lando", 2],
+] as const)(
+  "a starting service stays warm only when nothing schedules native health (serviceHealth %s)",
+  async (serviceHealth, applies) => {
+    await withFixture(async (f) => {
+      // Given a provider whose native health is scheduled, or not, and a warm record
+      f.setCapabilities({ ...TestRuntimeProvider.capabilities, serviceHealth });
+      await f.ensure();
+      const runtime = f.runtimes.get("dependency");
+      if (runtime?.status !== "running") throw new Error("expected a running dependency");
+      // When the engine still reports `starting`
+      f.runtimes.set("dependency", { ...runtime, health: "starting" });
+      await f.ensure();
+      // Then an unscheduled check never forces the cold path
+      expect(f.calls.apply).toBe(applies);
+    });
+  },
+);
+
 test("a pre-start hook source mutation rejects warm reuse without applying or publishing success", async () => {
   await withFixture(async (f) => {
     await f.ensure();

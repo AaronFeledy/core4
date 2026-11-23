@@ -50,6 +50,16 @@ const contractTestStep = (platform: string): string => `
       - name: Run file-sync contract matrix (${platform})
         run: ${testSelectionCommand("nightly-file-sync")}`;
 
+// Hosted runners have no systemd user manager, so the managed runtime cannot schedule native
+// healthchecks there. Linger starts one, as on a desktop session, so the native-health guide
+// scenarios exercise Lando's timers instead of the unscheduled fallback.
+const userSystemdManagerStep = `      - name: Start a systemd user manager
+        run: |
+          sudo loginctl enable-linger "$(id -un)"
+          manager="/run/user/$(id -u)/systemd/private"
+          for _ in $(seq 1 30); do test -S "$manager" && break; sleep 1; done
+          test -S "$manager"`;
+
 const providerLandoE2eJob = `
   provider-lando-e2e-linux-x64:
     needs: [${CONTAINER_HELPER_JOB_ID}, runtime-bundle-linux-x64]
@@ -72,6 +82,8 @@ ${regenerateDerivedSourcesStep}
           bun run scripts/build-compiled-binary.ts --target bun-linux-x64 --outfile ./dist/lando --version "$VERSION" --minify --sourcemap=external
           bun run scripts/sanitize-compiled-binary.ts ./dist/lando
           ./dist/lando --version
+
+${userSystemdManagerStep}
 
 ${linuxGuideE2eProviderSetupSteps}
 

@@ -92,6 +92,7 @@
     "./testing/exec-supervision": "./test/support/exec-supervision.ts",
     "./podman/logs": "./src/podman/logs.ts",
     "./podman/machine-ssh-bridge": "./src/podman/machine-ssh-bridge.ts",
+    "./podman/managed-health-units": "./src/podman/managed-health-units.ts",
     "./podman/managed-invocation": "./src/podman/managed-invocation.ts",
     "./podman/managed-runtime-dir": "./src/podman/managed-runtime-dir.ts",
     "./podman/managed-status": "./src/podman/managed-status.ts",

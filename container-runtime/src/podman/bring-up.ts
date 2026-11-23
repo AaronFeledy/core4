@@ -226,6 +226,11 @@ export interface BringUpOptions {
   readonly probeBind?: ServicePublishProbe;
   readonly completionPlan?: AppPlan;
   readonly userDataRoot?: string | undefined;
+  /**
+   * Runs once a service's container is confirmed running, before any readiness wait, with the
+   * container id. Providers attach per-container runtime work here, such as health scheduling.
+   */
+  readonly onContainerStarted?: (containerId: string) => Effect.Effect<void, ProviderError>;
 }
 
 interface BringUpDeps {
@@ -1264,6 +1269,14 @@ const startService = Effect.fnUntraced(function* (
         message: `provider-${deps.options.ctx.providerId} container did not reach running state.`,
       }),
     );
+  }
+
+  const startedId =
+    after.running && typeof after.body === "object" && after.body !== null
+      ? Reflect.get(after.body, "Id")
+      : undefined;
+  if (typeof startedId === "string" && deps.options.onContainerStarted !== undefined) {
+    yield* deps.options.onContainerStarted(startedId);
   }
 
   const action =

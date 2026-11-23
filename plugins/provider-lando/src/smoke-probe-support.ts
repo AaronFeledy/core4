@@ -51,6 +51,15 @@ export interface SmokeProbeDeps {
   readonly retryPolicy?: RetryPolicy;
   /** Verify `deploy.resources` mappings inside a container; set when the provider declares the knob. */
   readonly resourceLimits?: boolean;
+  /**
+   * Set when Lando schedules native health (`serviceHealth: "lando"`): the health check schedules the
+   * container and waits for its timer instead of triggering the check by hand.
+   */
+  readonly nativeHealth?: {
+    readonly schedule: (container: string) => Effect.Effect<void, ProviderUnavailableError>;
+    /** Stops the smoke container's timers once it is gone. */
+    readonly sweep: Effect.Effect<void>;
+  };
 }
 
 export const smokeRemediation = (operation: SmokeOperation): string => {

@@ -57,6 +57,19 @@ export interface ManagedRuntimeCgroupCheckSeams {
   readonly runningContainerPids?: RunningContainerPids;
 }
 
+/**
+ * The managed service when it is running: its pid file names a live process whose cgroup can be
+ * read and its launch record belongs to that pid. Doctor checks judge "running" by this one rule.
+ */
+export const observeRunningService = Effect.fnUntraced(function* (pidPath: string, host: DelegatedScopeHost) {
+  const pid = yield* readRuntimePid(pidPath);
+  const record = pid === undefined ? undefined : yield* readLaunchState(pidPath);
+  const cgroupPath = pid === undefined || record?.pid !== pid ? undefined : processCgroupPath(pid, host);
+  return pid === undefined || record === undefined || cgroupPath === undefined
+    ? undefined
+    : { pid, record, cgroupPath };
+});
+
 const report = (
   input: Pick<PluginDoctorReport, "status" | "runtimeStatus" | "context" | "solutions"> & {
     readonly running: boolean;
@@ -87,11 +100,9 @@ export const makeManagedRuntimeCgroupCheck = (
     const host = seams.host ?? systemDelegatedScopeHost;
     const layout = runtimeLayoutPaths(input.userDataRoot, "linux");
     const eligibility = delegatedLaunchEligibility(input.platform, host);
-    const pid = yield* readRuntimePid(layout.providerPidPath);
-    const record = pid === undefined ? undefined : yield* readLaunchState(layout.providerPidPath);
-    const servicePath = pid === undefined || record?.pid !== pid ? undefined : processCgroupPath(pid, host);
+    const service = yield* observeRunningService(layout.providerPidPath, host);
 
-    if (pid === undefined || servicePath === undefined) {
+    if (service === undefined) {
       return [
         eligibility.eligible
           ? report({
@@ -112,13 +123,13 @@ export const makeManagedRuntimeCgroupCheck = (
       ];
     }
 
-    if (observeServicePlacement(pid, host) === "shared") {
+    if (observeServicePlacement(service.pid, host) === "shared") {
       return [
         report({
           status: "warn",
           running: true,
-          runtimeStatus: `The runtime service runs in ${servicePath}, which is not delegated to your user, so containers get no cgroup of their own and resource limits do not apply.`,
-          context: { servicePlacement: "shared", serviceCgroup: servicePath },
+          runtimeStatus: `The runtime service runs in ${service.cgroupPath}, which is not delegated to your user, so containers get no cgroup of their own and resource limits do not apply.`,
+          context: { servicePlacement: "shared", serviceCgroup: service.cgroupPath },
           solutions: [
             {
               kind: "manual",
@@ -136,7 +147,7 @@ export const makeManagedRuntimeCgroupCheck = (
       input.env,
     );
     const withoutOwnCgroup = (containerPids ?? []).filter(
-      (containerPid) => processCgroupPath(containerPid, host) === servicePath,
+      (containerPid) => processCgroupPath(containerPid, host) === service.cgroupPath,
     ).length;
     return [
       withoutOwnCgroup === 0
@@ -147,7 +158,7 @@ export const makeManagedRuntimeCgroupCheck = (
               "The runtime service runs in a delegated systemd user scope; containers get their own cgroups.",
             context: {
               servicePlacement: "delegated",
-              serviceCgroup: servicePath,
+              serviceCgroup: service.cgroupPath,
               ...(containerPids === undefined ? { containers: "unreadable" } : {}),
             },
             solutions: [],
@@ -158,7 +169,7 @@ export const makeManagedRuntimeCgroupCheck = (
             runtimeStatus: `The runtime service runs in a delegated systemd user scope, but ${withoutOwnCgroup} running containers were created before it moved there and have no cgroup of their own, so their resource limits do not apply.`,
             context: {
               servicePlacement: "delegated",
-              serviceCgroup: servicePath,
+              serviceCgroup: service.cgroupPath,
               containersWithoutCgroup: String(withoutOwnCgroup),
             },
             solutions: [

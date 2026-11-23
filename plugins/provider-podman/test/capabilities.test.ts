@@ -80,6 +80,16 @@ describe("provider-podman capabilities", () => {
     expect(windowsPodmanCapabilities.sharedCrossAppNetwork).toBe(true);
   });
 
+  test("leaves native healthchecks to the user's Podman, which schedules them itself", () => {
+    for (const capabilities of [
+      linuxPodmanCapabilities,
+      macosPodmanCapabilities,
+      windowsPodmanCapabilities,
+    ]) {
+      expect(capabilities.serviceHealth).toBe("native");
+    }
+  });
+
   test("matches platform-keyed exports", () => {
     expect(podmanCapabilitiesForPlatform("linux")).toEqual(linuxPodmanCapabilities);
     expect(podmanCapabilitiesForPlatform("darwin")).toEqual(macosPodmanCapabilities);

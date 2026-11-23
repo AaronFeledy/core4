@@ -291,6 +291,7 @@ export const dockerCapabilitiesForHost = (
     vmMediated || usernsRemap || rootless ? ("unsupported" as const) : ("image-renumber" as const);
   return buildProviderCapabilities({
     bindMounts: true,
+    serviceHealth: "native",
     artifactBuild: true,
     artifactPull: true,
     bindMountPerformance: isVmMediatedDockerHost(platform, dockerHost) ? "slow" : "native",

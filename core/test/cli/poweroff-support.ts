@@ -14,6 +14,7 @@ import {
   EventService,
   LandofileService,
   ManagedFileTransactionGuard,
+  ProcessRunner,
   RuntimeProviderRegistry,
   ScratchAppService,
 } from "@lando/sdk/services";
@@ -200,6 +201,15 @@ export const makePoweroffFixture = async (input: PoweroffFixtureInput) => {
     planner,
     Layer.succeed(RuntimeProviderRegistry, registry as never),
     recorder,
+    // Host maintainers here are fakes; the runner only satisfies poweroff's teardown input.
+    Layer.succeed(
+      ProcessRunner,
+      ProcessRunner.of({
+        run: () => Effect.die("poweroff tests run no host process"),
+        stream: () => Stream.die("poweroff tests run no host process"),
+        streamWithExit: () => Stream.die("poweroff tests run no host process"),
+      }),
+    ),
   );
   return { layer, calls };
 };

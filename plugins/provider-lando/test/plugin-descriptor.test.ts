@@ -43,7 +43,7 @@ describe("provider-lando plugin descriptor", () => {
     expect(maintainerIds).toEqual(["lando-runtime-service"]);
   });
 
-  test("contributes WSL mount, managed socket path, and container cgroup doctor checks", () => {
+  test("contributes WSL mount, managed socket path, container cgroup, and native health doctor checks", () => {
     // Given: provider-lando's exported plugin descriptor.
 
     // When: doctor contributions are inspected.
@@ -53,6 +53,7 @@ describe("provider-lando plugin descriptor", () => {
       "wsl-root-mount-propagation",
       "managed-runtime-socket-path",
       "managed-runtime-container-cgroups",
+      "managed-runtime-native-health",
     ]);
   });
 

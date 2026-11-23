@@ -10,12 +10,18 @@ import { containerMountIntent } from "./container-mounts.ts";
 import { serviceContainerName } from "./container-name.ts";
 import { ContainerPlanError } from "./container-plan-error.ts";
 import { CREATE_CONFIG_LABEL, createConfigFingerprint } from "./create-fingerprint.ts";
-import { containerHealthcheck, normalizeCommand, normalizeEntrypoint } from "./create-values.ts";
+import {
+  containerHealthcheck,
+  nativeStartIntervalNs,
+  normalizeCommand,
+  normalizeEntrypoint,
+} from "./create-values.ts";
 import { dataRootLabels } from "./data-root-labels.ts";
 import { literalServiceEnvironment, requireCurrentCreationPlan } from "./environment-values.ts";
 import {
   APP_LABEL,
   APP_ROOT_LABEL,
+  HEALTH_START_INTERVAL_LABEL,
   SERVICE_LABEL,
   containerIntegrationLabels,
   scratchLabelsForPlan,
@@ -136,9 +142,13 @@ export const commonContainerLabels = (
   const userLabels =
     typeof labels === "object" && labels !== null && !Array.isArray(labels)
       ? Object.fromEntries(
-          Object.entries(labels).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
+          Object.entries(labels).filter(
+            (entry): entry is [string, string] =>
+              typeof entry[1] === "string" && entry[0] !== HEALTH_START_INTERVAL_LABEL,
+          ),
         )
       : {};
+  const startIntervalNs = nativeStartIntervalNs(service);
   const baseLabels = containerIntegrationLabels(
     service.environment,
     {
@@ -148,6 +158,7 @@ export const commonContainerLabels = (
       [SERVICE_LABEL]: service.name,
       ...scratchLabelsForPlan(plan),
       ...extra,
+      ...(startIntervalNs === undefined ? {} : { [HEALTH_START_INTERVAL_LABEL]: String(startIntervalNs) }),
       ...dataRootLabels(plan.identity?.dataRoot),
     },
     service.extensions,

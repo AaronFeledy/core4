@@ -117,10 +117,12 @@ export interface RuntimeProviderContribution {
 
 export interface HostMaintenanceContribution {
   readonly id: string;
+  /** `processRunner` is the host's process runner, for teardown that drives host tools. */
   readonly teardown?: (input: {
     readonly paths: HostRuntimePaths;
     readonly platform: HostPlatform;
     readonly stateStore: PluginStateStore;
+    readonly processRunner: ProcessRunner["Service"];
   }) => Effect.Effect<HostTeardownResult, never>;
   readonly uninstall?: {
     readonly plan: (input: HostUninstallInput) => Effect.Effect<ReadonlyArray<HostUninstallStep>, never>;

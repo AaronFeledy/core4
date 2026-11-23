@@ -4,6 +4,8 @@ import {
   type DelegatedScopeHost,
   delegatedLaunchEligibility,
   observeServicePlacement,
+  processScopeUnit,
+  userSystemdTools,
 } from "../src/delegated-scope.ts";
 
 const userService = "/sys/fs/cgroup/user.slice/user-1000.slice/user@1000.service";
@@ -89,4 +91,43 @@ describe("observeServicePlacement", () => {
   ])("%s is shared", (_name, host) => {
     expect(observeServicePlacement(42, host)).toBe("shared");
   });
+});
+
+describe("userSystemdTools", () => {
+  test("finds the host systemd-run and systemctl and the user's runtime dir", () => {
+    expect(
+      userSystemdTools("linux", fakeHost({ executables: ["/bin/systemd-run", "/usr/bin/systemctl"] })),
+    ).toEqual({
+      systemdRun: "/bin/systemd-run",
+      systemctl: "/usr/bin/systemctl",
+      userRuntimeDir: "/run/user/1000",
+    });
+  });
+
+  test.each([
+    ["missing-tools", "linux", fakeHost()],
+    [
+      "no-user-manager",
+      "linux",
+      fakeHost({
+        executables: ["/usr/bin/systemd-run", "/usr/bin/systemctl"],
+        files: without("/run/user/1000/systemd/private"),
+      }),
+    ],
+    [
+      "unsupported-platform",
+      "darwin",
+      fakeHost({ executables: ["/usr/bin/systemd-run", "/usr/bin/systemctl"] }),
+    ],
+  ] as const)("reports %s", (reason, platform, host) => {
+    expect(userSystemdTools(platform, host)).toBe(reason);
+  });
+});
+
+test("processScopeUnit names the innermost scope a process runs in", () => {
+  const host = fakeHost({
+    files: { "/proc/42/cgroup": `0::${scope.slice("/sys/fs/cgroup".length)}/container\n` },
+  });
+  expect(processScopeUnit(42, host)).toBe("run-p42-i1.scope");
+  expect(processScopeUnit(43, host)).toBeUndefined();
 });

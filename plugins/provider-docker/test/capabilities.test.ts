@@ -182,6 +182,11 @@ describe("provider-docker capabilities", () => {
     expect(macos.composeProjectFields).toEqual({ supported: ["configs"] });
   });
 
+  test("leaves native healthchecks to the Docker daemon", () => {
+    expect(dockerCapabilitiesForHost("linux", "unix:///var/run/docker.sock").serviceHealth).toBe("native");
+    expect(dockerCapabilitiesForHost("darwin", "unix:///var/run/docker.sock").serviceHealth).toBe("native");
+  });
+
   test("classifies Docker host bind mount performance", () => {
     expect(dockerCapabilitiesForHost("linux", "/var/run/docker.sock").bindMountPerformance).toBe("native");
     expect(

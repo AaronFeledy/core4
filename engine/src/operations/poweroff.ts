@@ -2,6 +2,7 @@ import { makeLandoPaths, normalizeHostPlatform } from "@lando/paths";
 import {
   ConfigService,
   type FileSystem,
+  ProcessRunner,
   type RuntimeProviderRegistry,
   ScratchAppService,
   type StateStore,
@@ -56,6 +57,7 @@ export type PoweroffServices =
   | FileSystem
   | GlobalStopServices
   | PrivateFileAccessService
+  | ProcessRunner
   | RuntimeProviderRegistry
   | ScratchAppService
   | StateStore
@@ -225,7 +227,7 @@ export const poweroff = Effect.fn("AppsPoweroff.poweroff")(function* (
 const stopManagedRuntimeService: Effect.Effect<
   RuntimeServiceStopResult,
   never,
-  ConfigService | PrivateFileAccessService
+  ConfigService | PrivateFileAccessService | ProcessRunner
 > = Effect.gen(function* () {
   const service = yield* Effect.serviceOption(HostMaintenanceRegistry);
   if (Option.isNone(service)) return { terminated: false };
@@ -233,6 +235,7 @@ const stopManagedRuntimeService: Effect.Effect<
   const userDataRoot = yield* config.get("userDataRoot");
   if (userDataRoot === undefined) return { terminated: false };
   const privateFileAccess = yield* PrivateFileAccessService;
+  const processRunner = yield* ProcessRunner;
   const platform = normalizeHostPlatform();
   const paths = makeLandoPaths({ userDataRoot, platform });
   const stateStore = makeStateStore({ privateFileAccess, roots: paths.roots, writer: CORE_VERSION });
@@ -240,6 +243,7 @@ const stopManagedRuntimeService: Effect.Effect<
     paths,
     platform,
     privateFileAccess,
+    processRunner,
     stateStore,
   });
   return result satisfies RuntimeServiceStopResult;

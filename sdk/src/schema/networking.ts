@@ -404,7 +404,10 @@ export const ProviderCapabilities = Schema.Struct({
   }),
   serviceLogs: Schema.Boolean,
   serviceLogSources: Schema.Boolean,
-  serviceHealth: Schema.Literals(["native", "lando", "none"]),
+  serviceHealth: Schema.Literals(["native", "lando", "none"]).annotate({
+    description:
+      "Who schedules native container healthchecks: `native` means the engine schedules them, `lando` means Lando schedules them, `none` means nothing schedules them, so inspected native health is not evidence.",
+  }),
   hostReachability: Schema.Literals(["native", "emulated", "none"]),
   sharedCrossAppNetwork: Schema.Boolean,
   authoredNetworks: Schema.optionalKey(Schema.Boolean).annotate({

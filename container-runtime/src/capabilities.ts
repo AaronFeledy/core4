@@ -110,6 +110,7 @@ export interface ProviderCapabilityConstants {
   readonly volumeSnapshot?: ProviderCapabilitiesShape["volumeSnapshot"];
   readonly volumeArchive?: ProviderCapabilitiesShape["volumeArchive"];
   readonly serviceFileCopy?: ProviderCapabilitiesShape["serviceFileCopy"];
+  readonly serviceHealth: ProviderCapabilitiesShape["serviceHealth"];
   readonly artifactBuild?: ProviderCapabilitiesShape["artifactBuild"];
   readonly artifactPull?: ProviderCapabilitiesShape["artifactPull"];
   readonly artifactExport?: ProviderCapabilitiesShape["artifactExport"];
@@ -145,7 +146,7 @@ export const buildProviderCapabilities = (
     serviceInit: true,
     serviceLogs: true,
     serviceLogSources: true,
-    serviceHealth: "lando",
+    serviceHealth: constants.serviceHealth,
     hostReachability: "emulated",
     sharedCrossAppNetwork: true,
     ...(constants.authoredNetworks === undefined ? {} : { authoredNetworks: constants.authoredNetworks }),

@@ -14,6 +14,7 @@ import { Effect, Schema } from "effect";
 const baseConstants: Omit<ProviderCapabilityConstants, "composeSpec"> = {
   bindMounts: true,
   bindMountPerformance: "native",
+  serviceHealth: "native",
   tlsCertificates: "none",
   rootless: false,
   providerExtensions: [],

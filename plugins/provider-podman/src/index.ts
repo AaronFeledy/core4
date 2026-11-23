@@ -378,6 +378,7 @@ export const podmanCapabilitiesForPlatform = (
         : ("host-ids" as const);
   return buildProviderCapabilities({
     bindMounts: true,
+    serviceHealth: "native",
     artifactBuild: true,
     artifactPull: true,
     bindMountPerformance: bindMountPerformanceForPlatform(platform),
