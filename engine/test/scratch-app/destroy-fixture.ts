@@ -9,6 +9,7 @@ import {
   ProviderUnavailableError,
   ProxyError,
   ScratchAppError,
+  appliedStateVersionError,
 } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -31,7 +32,7 @@ import {
   ScratchAppService,
   StateStore,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider, makeTestRouterService } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRouterService, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { makeStateStore } from "@lando/state-store/service";
 import { DateTime, Effect, Layer, Predicate, Schema, Stream } from "effect";
@@ -83,6 +84,8 @@ interface DestroyFixtureOptions {
   readonly desiredPlanVersion?: number;
   /** Return the scratch app's applied plan from resolveAppliedPlan; defaults to none. */
   readonly appliedPlan?: boolean;
+  /** A newer receipt protects this scratch app, by name or as the provider's shared record. */
+  readonly offlineNewerReceipt?: "app" | "provider";
 }
 
 export const withDestroyFixture = async (
@@ -162,6 +165,9 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
   const stateStore = makeStateStore({ privateFileAccess: ownerOnlyFileAccess });
   const provider = {
     ...TestRuntimeProvider,
+    ...(options.offlineNewerReceipt
+      ? { isAvailable: Effect.succeed(false), getStatus: Effect.succeed({ state: "idle" as const }) }
+      : {}),
     destroy: (_target: unknown, request: { readonly volumes: boolean; readonly removeState?: boolean }) =>
       Effect.sync(() => {
         calls.push(request.removeState ? `destroy:${request.volumes}` : "stop");
@@ -183,16 +189,45 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
   };
   const applied =
     options.appliedPlan === true ? { ...plan, extensions: { [SCRATCH_EXTENSION_KEY]: { id } } } : undefined;
+  const unreadable =
+    options.offlineNewerReceipt === undefined
+      ? []
+      : [
+          {
+            ...(options.offlineNewerReceipt === "app" ? { appId: plan.id } : {}),
+            path: join(root, "applied.json"),
+            reason: "newer-version" as const,
+            storedVersion: 11,
+            supportedVersion: 10,
+          },
+        ];
   const providers = Layer.succeed(
     RuntimeProviderRegistry,
-    RuntimeProviderRegistry.of({
+    makeTestRuntimeProviderRegistry({
+      readAppliedPlanStrict: ({ id, provider }) => {
+        const issue = unreadable.find(
+          (entry) => (entry.appId === undefined || entry.appId === id) && provider === plan.provider,
+        );
+        return issue === undefined
+          ? Effect.succeed(undefined)
+          : Effect.fail(
+              appliedStateVersionError({
+                ...issue,
+                providerId: provider,
+                operation: "applied-state.read",
+                scope: issue.appId === undefined ? "provider" : "app",
+              }),
+            );
+      },
+      appliedStateInventory: (provider) =>
+        Effect.succeed({ plans: [], unreadable: provider === plan.provider ? unreadable : [] }),
       appliedPlansFor: () => Effect.succeed(applied === undefined ? [] : [applied]),
       resolveAppliedPlan: () => Effect.succeed(applied),
       resolveTeardownEvidence: () =>
         Effect.succeed(
           applied === undefined ? { kind: "absent" as const } : { kind: "applied" as const, plan: applied },
         ),
-      list: Effect.succeed([ProviderId.make("lando")]),
+      list: Effect.succeed([ProviderId.make("docker"), ProviderId.make("lando"), ProviderId.make("podman")]),
       capabilities: Effect.succeed(provider.capabilities),
       select: () => Effect.succeed(provider),
     }),

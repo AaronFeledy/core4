@@ -256,7 +256,6 @@ describe("ci runbook", () => {
     expect(runbook).toContain("scripts/build-drupal-journey-workflow.ts");
     expect(runbook).toContain("scripts/drupal-journey.ts");
     expect(runbook).toContain("lando info");
-    expect(runbook).toContain("drupal-scaffold");
     expect(runbook).toContain("destroy -y");
     expect(runbook).toContain("lando-virt");
     expect(runbook).toContain("--provider=docker");

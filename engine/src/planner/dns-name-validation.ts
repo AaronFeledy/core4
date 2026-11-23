@@ -92,6 +92,7 @@ export const dnsNameIssues = (input: {
   readonly isLoadBlocked?: (path: ValidationIssuePath) => boolean;
   readonly isDeferredAncestor?: (path: ValidationIssuePath) => boolean;
   readonly appSlug: string | undefined;
+  readonly nativeSlug?: string | undefined;
 }): ReadonlyArray<PlannerIssue> => {
   const { landofile, isBlocked } = input;
   const issues: PlannerIssue[] = [];
@@ -147,9 +148,10 @@ export const dnsNameIssues = (input: {
       }
     } else names.set(claim.name.toLowerCase(), claim.service);
   }
-  if (input.appSlug !== undefined) {
+  const nativeSlug = input.nativeSlug ?? input.appSlug;
+  if (nativeSlug !== undefined) {
     for (const [name] of Object.entries(landofile.services ?? {})) {
-      const containerName = landoServiceContainerName(input.appSlug, name);
+      const containerName = landoServiceContainerName(nativeSlug, name);
       const other = containerNames.get(containerName);
       if (other === undefined) containerNames.set(containerName, name);
       else

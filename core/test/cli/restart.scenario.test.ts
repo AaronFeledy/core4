@@ -44,7 +44,7 @@ import type {
   RuntimeProviderShape,
 } from "@lando/sdk/services";
 import { ContainerHelperAssets } from "@lando/sdk/services";
-import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRouterService, TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Cause, DateTime, Effect, Exit, Layer, Option, Stream } from "effect";
 import * as BunShellRunner from "../_support/shell-runner.ts";
@@ -308,7 +308,7 @@ const makeRestartLayer = (
     requiredStartServicesLayer(proxy),
     Layer.succeed(
       RuntimeProviderRegistry,
-      RuntimeProviderRegistry.of({
+      makeTestRuntimeProviderRegistry({
         resolveTeardownEvidence: () => Effect.succeed({ kind: "applied" as const, plan: appliedRecord }),
         appliedPlansFor: () => Effect.succeed([appliedRecord]),
         list: Effect.succeed([providerId]),

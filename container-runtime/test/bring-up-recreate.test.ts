@@ -12,7 +12,7 @@ import {
 import { Cause, DateTime, Effect, Exit, Schema } from "effect";
 import { CREATE_CONFIG_LABEL } from "../src/create-fingerprint.ts";
 import type { EngineHttpRequest, EngineHttpResponse, PodmanApiClient } from "../src/engine-api.ts";
-import { HOST_PROXY_TRANSPORT_EXTENSION_KEY } from "../src/labels.ts";
+import { HOST_PROXY_TRANSPORT_EXTENSION_KEY, VOLUME_INSTANCE_LABEL } from "../src/labels.ts";
 import { ownedNetworkInspection } from "./network-inspection-fixture.ts";
 import { APPLY_REMEDIATION, bringUp, commonContainerLabels } from "./support/service-creation.ts";
 
@@ -165,6 +165,7 @@ const makeFakeApi = (input: {
   readonly failStartWithBindRejection?: boolean;
   readonly existingLabels?: Readonly<Record<string, string>>;
   readonly existingPlan?: AppPlan;
+  readonly existingVolumeLabels?: Readonly<Record<string, Readonly<Record<string, string>>>>;
   readonly additionalMounts?: ReadonlyArray<{
     readonly Type: string;
     readonly Source: string;
@@ -185,6 +186,7 @@ const makeFakeApi = (input: {
 }) => {
   const calls: EngineHttpRequest[] = [];
   let exists = input.containerExists ?? true;
+  let removedOriginal = false;
   let running = input.running ?? true;
   let hostPort = input.existingHostPort ?? "18080";
   let failNextStart = input.failStartWithBindRejection === true;
@@ -204,6 +206,13 @@ const makeFakeApi = (input: {
         calls.push(request);
         if (request.method === "GET" && request.path.startsWith("/containers/json?")) {
           return { status: 200, body: "[]" };
+        }
+        if (request.method === "GET" && request.path.startsWith("/volumes/")) {
+          const name = decodeURIComponent(request.path.slice("/volumes/".length));
+          const labels = input.existingVolumeLabels?.[name];
+          return removedOriginal || labels === undefined
+            ? { status: 404, body: "{}" }
+            : { status: 200, body: JSON.stringify({ Name: name, Labels: labels }) };
         }
         const containerMatch = request.path.match(/^\/containers\/([^/?]+)(?:\/([^?]+))?/u);
         const name = containerMatch === null ? "" : decodeURIComponent(containerMatch[1] ?? "");
@@ -254,6 +263,7 @@ const makeFakeApi = (input: {
           name === (input.existingNativeId ?? input.existingContainerName ?? containerName)
         ) {
           if (input.deleteStatus === 204) {
+            removedOriginal = true;
             exists = false;
             running = false;
           }
@@ -1178,16 +1188,27 @@ test("reports a host-port recovery replacement of a container that existed befor
   expect(result.services).toEqual({ web: { action: "replaced", reason: "host-port" } });
 });
 
-test("lists only anonymous volumes of the replaced container that no planned mount covers", async () => {
+test("reports uncovered engine-named volumes only if inspect finds no Lando creation labels", async () => {
   const base = volumePlan();
   const service = base.services[serviceName];
   if (service === undefined) throw new Error("Test service is missing.");
   const fake = makeFakeApi({
     deleteStatus: 204,
     existingLabels: commonContainerLabels(base, service),
+    existingVolumeLabels: { ["a".repeat(64)]: {}, ["b".repeat(64)]: { [VOLUME_INSTANCE_LABEL]: "created" } },
     existingMounts: [
-      { Type: "volume", Source: "data", Destination: "/data" },
-      { Type: "volume", Source: "anonymous-1", Destination: "/var/lib/anonymous" },
+      { Type: "volume", Name: "data", Source: "data", Destination: "/data" },
+      { Type: "volume", Name: "a".repeat(64), Source: "anonymous-1", Destination: "/var/lib/anonymous" },
+      { Type: "volume", Name: "b".repeat(64), Source: "named-hex", Destination: "/var/lib/named-hex" },
+      { Type: "volume", Name: "c".repeat(64), Source: "unverified", Destination: "/var/lib/unverified" },
+      { Type: "volume", Source: "/engine/volumes/unknown", Destination: "/var/lib/unknown" },
+      // A named volume the plan no longer mounts survives the replacement.
+      {
+        Type: "volume",
+        Name: "lando-app--web--shadow--app-vendor-64784057",
+        Source: "lando-app--web--shadow--app-vendor-64784057",
+        Destination: "/app/vendor",
+      },
       { Type: "bind", Source: "/host/cache", Destination: "/cache" },
     ],
     networkExists: true,

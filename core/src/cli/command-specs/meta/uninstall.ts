@@ -1,4 +1,3 @@
-import { makeCleanupDiscoveredApps, makeListDiscoveredApps } from "@lando/engine/install/uninstall-discovery";
 import {
   type UninstallOptions,
   type UninstallResult,
@@ -12,7 +11,10 @@ import { yesFlag } from "../../spec/confirmation-flag";
 import { booleanFlag, specFlagsOf } from "../../spec/input-coercion";
 import { Flags } from "../../spec/metadata";
 
-export const uninstallOptionsFromInput = (input: unknown): UninstallOptions => {
+export const uninstallOptionsFromInput = (
+  input: unknown,
+  prepareResourceCleanup?: UninstallOptions["prepareResourceCleanup"],
+): UninstallOptions => {
   if (typeof input !== "object" || input === null) return {};
   const flags = specFlagsOf(input);
   const extra = input as {
@@ -35,25 +37,27 @@ export const uninstallOptionsFromInput = (input: unknown): UninstallOptions => {
   };
   const purge = booleanFlag(flags, "purge");
   const hasInjectedDiscovery = typeof extra._listDiscoveredApps === "function";
-  const listDiscoveredApps = hasInjectedDiscovery
-    ? (extra._listDiscoveredApps as NonNullable<UninstallOptions["listDiscoveredApps"]>)
-    : makeListDiscoveredApps();
-  // Injected discovery must never fall through to real host cleanup.
-  const cleanupDiscoveredApps =
-    typeof extra._cleanupDiscoveredApps === "function"
-      ? (extra._cleanupDiscoveredApps as NonNullable<UninstallOptions["cleanupDiscoveredApps"]>)
-      : hasInjectedDiscovery
-        ? undefined
-        : makeCleanupDiscoveredApps(
-            typeof extra._userDataRoot === "string" ? extra._userDataRoot : undefined,
-          );
   return {
     dryRun: booleanFlag(flags, "dry-run"),
     yes: booleanFlag(flags, "yes"),
     keepData: booleanFlag(flags, "keep-data") && !purge,
     purge,
-    listDiscoveredApps,
-    ...(cleanupDiscoveredApps !== undefined ? { cleanupDiscoveredApps } : {}),
+    ...(hasInjectedDiscovery
+      ? {
+          listDiscoveredApps: extra._listDiscoveredApps as NonNullable<
+            UninstallOptions["listDiscoveredApps"]
+          >,
+        }
+      : prepareResourceCleanup === undefined
+        ? {}
+        : { prepareResourceCleanup }),
+    ...(typeof extra._cleanupDiscoveredApps === "function"
+      ? {
+          cleanupDiscoveredApps: extra._cleanupDiscoveredApps as NonNullable<
+            UninstallOptions["cleanupDiscoveredApps"]
+          >,
+        }
+      : {}),
     ...(typeof extra._userDataRoot === "string" ? { userDataRoot: extra._userDataRoot } : {}),
     ...(typeof extra._userCacheRoot === "string" ? { userCacheRoot: extra._userCacheRoot } : {}),
     ...(typeof extra._userConfRoot === "string" ? { userConfRoot: extra._userConfRoot } : {}),

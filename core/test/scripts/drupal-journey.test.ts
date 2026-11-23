@@ -21,7 +21,6 @@ const expectedPlan = (name: string): readonly DrupalJourneyStep[] => [
   },
   { id: "start", argv: [BINARY, "start"] },
   { id: "info", argv: [BINARY, "info"] },
-  { id: "scaffold", argv: [BINARY, "drupal-scaffold"] },
   {
     id: "composer-json",
     argv: [BINARY, "exec", "appserver", "--", "test", "-f", "/app/composer.json"],
@@ -38,7 +37,6 @@ const passingSteps = (): readonly DrupalJourneyStepResult[] => [
   { id: "init", exitCode: 0, stdout: "", stderr: "" },
   { id: "start", exitCode: 0, stdout: "", stderr: "" },
   { id: "info", exitCode: 0, stdout: "https://example.lndo.site", stderr: "" },
-  { id: "scaffold", exitCode: 0, stdout: "", stderr: "" },
   { id: "composer-json", exitCode: 0, stdout: "", stderr: "" },
   { id: "drush-bin", exitCode: 0, stdout: "", stderr: "" },
   { id: "drush-version", exitCode: 0, stdout: "", stderr: "" },
@@ -46,10 +44,9 @@ const passingSteps = (): readonly DrupalJourneyStepResult[] => [
 ];
 
 describe("drupal journey plan", () => {
-  test("buildDrupalJourneyPlan uses default name drupal-journey and exact 8-step order", () => {
+  test("buildDrupalJourneyPlan uses the default name and verifies scaffold outputs after start", () => {
     // Given: a binary and no name override.
     // When: buildDrupalJourneyPlan is called.
-    // Then: the plan is eight steps in locked order with default name drupal-journey.
     const plan = buildDrupalJourneyPlan({ binary: BINARY });
     expect(plan).toEqual(expectedPlan("drupal-journey"));
   });
@@ -67,7 +64,6 @@ describe("drupal journey plan", () => {
 
 describe("drupal journey classification", () => {
   test("classify passes when all steps exit 0 and info stdout contains https://example.lndo.site", () => {
-    // Given: all eight steps in order with exit 0 and info stdout containing an https URL.
     // When: classifyDrupalJourney is called.
     // Then: the classification is passed with exitCode 0.
     const classification: DrupalJourneyClassification = classifyDrupalJourney(passingSteps());

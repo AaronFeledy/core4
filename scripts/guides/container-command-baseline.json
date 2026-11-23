@@ -112,8 +112,6 @@
     "lando db:import dump.sql.gz --yes",
     "lando db:restore before-update --yes",
     "lando db:snapshot --label before-update",
-    "lando drupal-cms-install",
-    "lando drupal-cms-scaffold",
     "lando drush --version",
     "lando drush cache:rebuild",
     "lando drush config:export -y",
@@ -121,7 +119,6 @@
     "lando drush status --format=json",
     "lando drush updatedb -y",
     "lando drush user:login --no-browser",
-    "lando exec --user www-data appserver -- test -w /app/web/sites/default/files",
     "lando exec appserver -- curl --fail --silent --show-error --max-time 30 --output /dev/null --write-out '%{http_code}' http://127.0.0.1/",
     "lando exec appserver -- curl --fail --silent --show-error --max-time 30 --output /dev/null --write-out '%{http_code}' http://127.0.0.1/user/login",
     "lando exec appserver -- php -r 'echo ini_get(\"memory_limit\"), PHP_EOL;'",
@@ -704,7 +701,6 @@
     "lando db:snapshots --service appserver",
     "lando db:snapshots:prune --service appserver --keep-latest=3 --preview"
   ],
-  "docs/guides/tooling/xdebug-phpstorm.mdx": ["lando xdebug off", "lando xdebug on", "lando xdebug status"],
   "recipes/astro/README.mdx": ["lando astro --version", "lando npm install"],
   "recipes/django/README.mdx": [
     "lando django migrate",

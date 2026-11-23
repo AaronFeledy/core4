@@ -8,6 +8,7 @@ import {
   type StateBucketSpec,
   StateStore,
 } from "@lando/sdk/services";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Cause, Effect, Exit, Layer } from "effect";
 import { openJournal } from "../../src/operations/accelerated-start-journal.ts";
 import { destroyAppAtRoot } from "../../src/operations/destroy.ts";
@@ -58,51 +59,54 @@ const fixture = async (phase: "preparing" | "apply-intent" = "apply-intent") => 
         ...fs,
         exists: (path) => (path === app.root ? Effect.succeed(false) : fs.exists(path)),
       }),
-      Effect.provideService(RuntimeProviderRegistry, {
-        ...registry,
-        select: () =>
-          Effect.succeed({
-            ...provider,
-            capabilities,
-            id: "lando",
-            listVolumes: () =>
-              Effect.suspend(() => {
-                if (failInventory) return Effect.fail(unavailable);
-                const observed = listed ?? volumes;
-                if (vanishAfterListing) volumes = [];
-                return Effect.succeed(observed);
-              }),
-            locateVolume: (ref) => {
-              if (lookup === "failure") return Effect.fail(unavailable);
-              const common = {
-                coordinationKey: "key",
-                nativeName: lookup === "wrong-name" ? "other-volume" : ref.store,
-              };
-              if (lookup === "unknown") return Effect.succeed(common);
-              if (volumes.length === 0) {
-                if (reappearAfterLookup) {
-                  reappearAfterLookup = false;
-                  volumes = [volume];
+      Effect.provideService(
+        RuntimeProviderRegistry,
+        makeTestRuntimeProviderRegistry({
+          ...registry,
+          select: () =>
+            Effect.succeed({
+              ...provider,
+              capabilities,
+              id: "lando",
+              listVolumes: () =>
+                Effect.suspend(() => {
+                  if (failInventory) return Effect.fail(unavailable);
+                  const observed = listed ?? volumes;
+                  if (vanishAfterListing) volumes = [];
+                  return Effect.succeed(observed);
+                }),
+              locateVolume: (ref) => {
+                if (lookup === "failure") return Effect.fail(unavailable);
+                const common = {
+                  coordinationKey: "key",
+                  nativeName: lookup === "wrong-name" ? "other-volume" : ref.store,
+                };
+                if (lookup === "unknown") return Effect.succeed(common);
+                if (volumes.length === 0) {
+                  if (reappearAfterLookup) {
+                    reappearAfterLookup = false;
+                    volumes = [volume];
+                  }
+                  return Effect.succeed({ ...common, presence: "absent" as const });
                 }
-                return Effect.succeed({ ...common, presence: "absent" as const });
-              }
-              const identity = volumes[0]?.identity;
-              return Effect.succeed({
-                ...common,
-                presence: "present" as const,
-                ...(identity === undefined ? {} : { identity }),
-              });
-            },
-            removeVolume: (ref) =>
-              Effect.gen(function* () {
-                // The real data plane inspects before deleting, so a vanished volume fails removal.
-                if (volumes.length === 0) return yield* Effect.fail(unavailable);
-                removed.push(ref.store);
-                volumes = [];
-                if (interruptRemoval) yield* Effect.interrupt;
-              }),
-          }),
-      }),
+                const identity = volumes[0]?.identity;
+                return Effect.succeed({
+                  ...common,
+                  presence: "present" as const,
+                  ...(identity === undefined ? {} : { identity }),
+                });
+              },
+              removeVolume: (ref) =>
+                Effect.gen(function* () {
+                  // The real data plane inspects before deleting, so a vanished volume fails removal.
+                  if (volumes.length === 0) return yield* Effect.fail(unavailable);
+                  removed.push(ref.store);
+                  volumes = [];
+                  if (interruptRemoval) yield* Effect.interrupt;
+                }),
+            }),
+        }),
+      ),
       Effect.provideService(StateStore, {
         ...store,
         open: <A, I>(spec: StateBucketSpec<A, I>) =>
@@ -290,10 +294,13 @@ test("missing-root destroy preserves copies when session inventory fails", async
       const provider = yield* registry.select(acceleratedPlan);
       const { fileSyncTargets: _targets, ...capabilities } = provider.capabilities;
       return yield* destroyAppAtRoot(app.root, { volumes: true, yes: true }).pipe(
-        Effect.provideService(RuntimeProviderRegistry, {
-          ...registry,
-          select: () => Effect.succeed({ ...provider, capabilities }),
-        }),
+        Effect.provideService(
+          RuntimeProviderRegistry,
+          makeTestRuntimeProviderRegistry({
+            ...registry,
+            select: () => Effect.succeed({ ...provider, capabilities }),
+          }),
+        ),
         Effect.provideService(FileSystem, { ...fs, exists: () => Effect.succeed(false) }),
         Effect.result,
       );

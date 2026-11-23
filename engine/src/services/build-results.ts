@@ -1,6 +1,7 @@
 import { ProviderInternalError, type StateStoreError } from "@lando/sdk/errors";
 import { AbsolutePath, ServiceName } from "@lando/sdk/schema";
 import type { StateBucket, StateStoreShape } from "@lando/sdk/services";
+import { storeErrorRemediation } from "@lando/state-store";
 import { DateTime, Effect, Schema } from "effect";
 import type { BuildOwner } from "./build-owner.ts";
 
@@ -12,8 +13,10 @@ export const buildResultsError = (providerId: string, cause: unknown) =>
     operation: "buildResults",
     message: "Unable to access the build-results cache.",
     cause,
-    remediation:
+    remediation: storeErrorRemediation(
+      cause,
       "Re-run the command after checking provider logs; if it persists, report the internal provider error.",
+    ),
   });
 
 const BUILD_RESULTS_VERSION = 5;

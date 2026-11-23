@@ -57,10 +57,10 @@ For stock PHP, the persisted home follows the project user to `/var/www` even wh
 A container runtime creates a missing mount point itself, as an account that is neither you nor the project user. Lando gets there first. Before it creates a service's containers, it creates these paths on the host, as your host user, when they sit inside your app directory and don't exist yet:
 
 - The service's working directory.
-- Each nested mount point, such as the empty `vendor` and `node_modules` directories that a service volume covers.
+- Each nested mount point, such as the empty `node_modules` directory that a Node service's volume covers.
 - A file you mount into the app, created empty, along with its parent directories.
 
-That's why a fresh `web/` or `public/` webroot belongs to you, and why the empty `vendor` and `node_modules` directories in your app are yours to keep or delete.
+That's why a fresh `web/` or `public/` webroot belongs to you, and why the empty `node_modules` directory in your app is yours to keep or delete.
 
 Lando only fills in what's missing. It never changes the owner or mode of a path that already exists, and it creates nothing outside your app directory.
 

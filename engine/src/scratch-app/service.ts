@@ -297,6 +297,7 @@ const markScratchPlan = (plan: AppPlan, scratchId: string): AppPlan => ({
 const applyShareGlobalStorage = (plan: AppPlan): AppPlan => {
   const built = landoNetworkingPlan({
     slug: plan.slug,
+    identity: plan.identity,
     serviceNames: Object.keys(plan.services),
     sharedCrossAppNetwork: true,
   });

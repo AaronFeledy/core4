@@ -9,6 +9,7 @@ import { Effect } from "effect";
 import { globalDestroy } from "../../src/operations/global-destroy.ts";
 import { globalStop } from "../../src/operations/global-stop.ts";
 import { globalPlanAt, globalTeardownHarness } from "../../src/testing/global-teardown.ts";
+import { ownedGlobalOrphan } from "./owned-global-orphan.ts";
 
 const withDataRoot = async (use: (dataRoot: string) => Promise<void>) => {
   const dataRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-global-observation-")));
@@ -18,6 +19,22 @@ const withDataRoot = async (use: (dataRoot: string) => Promise<void>) => {
     await rm(dataRoot, { recursive: true, force: true });
   }
 };
+
+test("selected global stop removes a pre-upgrade container while its legacy plan is still applied", async () => {
+  await withDataRoot(async (dataRoot) => {
+    const root = AbsolutePath.make(join(dataRoot, "global"));
+    const legacy = ownedGlobalOrphan(root, dataRoot);
+    const { "dev.lando.data-root": _owner, ...labels } = legacy.labels ?? {};
+    const harness = await globalTeardownHarness(dataRoot, {
+      plan: globalPlanAt(root),
+      services: [{ ...legacy, labels }],
+    });
+    const result = await Effect.runPromise(
+      globalStop({ services: ["ssh-agent"] }).pipe(Effect.provide(harness.layer)),
+    );
+    expect(result.servicesStopped).toEqual(["ssh-agent"]);
+  });
+});
 
 test.each(["stop", "destroy"] as const)("global %s handles an idle applied owner", async (command) => {
   await withDataRoot(async (dataRoot) => {
@@ -89,7 +106,7 @@ for (const command of ["stop", "destroy"] as const) {
         const plan = globalPlanAt(root);
         const harness = await globalTeardownHarness(
           alias,
-          mode === "applied" ? { plan } : { orphanRoot: root },
+          mode === "applied" ? { plan } : { services: [ownedGlobalOrphan(root, dataRoot)] },
         );
         // When teardown resolves exact ownership before any desired config read.
         const result =

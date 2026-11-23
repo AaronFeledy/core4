@@ -94,7 +94,7 @@ Command ids MUST be canonical and namespaced. Command descriptors carry no `name
 
 | Surface | Loaded by | Architectural rule |
 |---|---|---|
-| `providers` | Provider registry | Implements `RuntimeProvider` (§5). |
+| `providers` | Provider registry | Implements `RuntimeProvider` (§5). The contribution's required filesystem-only callbacks (`appliedPlans`, `appliedStateInventory`, `readAppliedPlanStrict`) are checked when the registry resolves it, not at plugin import (§5.3.1). |
 | `serviceTypes` | App planner | Resolves or declaratively defines service types (§6.11). |
 | `serviceFeatures` | Service planner | Mutates one service through published context. |
 | `appFeatures` | App planner | Mutates selected services through published context. |

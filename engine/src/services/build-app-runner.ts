@@ -97,7 +97,7 @@ export const runAppBuild = Effect.fn("BuildOrchestrator.runAppBuild")(function* 
           ? listenerAuthorityAction(service)
           : undefined);
       // Each failure carries its own remediation; repeating the first one here would print it twice.
-      const remediation = "Fix each failed build step and rebuild.";
+      const remediation = "Fix each failed build step, then run lando start.";
       yield* new BuildPhaseFailedError({
         app: {
           kind: isScratchPlan(input.plan) ? "scratch" : "user",

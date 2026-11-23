@@ -88,7 +88,19 @@ const registryLayer = (
           id,
           {
             id,
-            appliedPlans: () => Effect.succeed(appliedPlans),
+            appliedStateInventory: () =>
+              Effect.succeed({
+                plans: appliedPlans,
+                unreadable: [
+                  {
+                    appId: AppId.make("unrelated"),
+                    reason: "unreadable" as const,
+                    path: "/state/unrelated.json",
+                  },
+                ],
+              }),
+            readAppliedPlanStrict: (_ctx: unknown, appId: string) =>
+              Effect.succeed(appliedPlans.find((plan) => plan.id === appId)),
             make: () => Effect.succeed(provider),
           },
         ],
@@ -229,6 +241,33 @@ test.each(Object.entries(calls))(
     expect(outputs).toBe(0);
   },
 );
+
+test("output registration retains readable plan secrets beside unrelated protected state", async () => {
+  const redaction = makeRedactionService();
+  const redactor = await Effect.runPromise(redaction.forProfile("secrets"));
+  const base = Object.values(plan.services)[0];
+  if (base === undefined) throw new TypeError("the test plan has no service");
+  const recorded = { ...plan, services: { [base.name]: { ...base, environment: { DB_PASSWORD: canary } } } };
+  const observed = await Effect.runPromise(
+    Effect.gen(function* () {
+      const registry = yield* RuntimeProviderRegistry;
+      const provider = yield* registry.select(plan.provider);
+      return (yield* provider.exec(target, command)).stdout;
+    }).pipe(
+      Effect.provide(
+        registryLayer(
+          {
+            ...outputProvider(() => redactor.redactString(canary)),
+            readAppEnvironment: () => Effect.succeed([]),
+          },
+          redaction,
+          [recorded],
+        ),
+      ),
+    ),
+  );
+  expect(observed).toBe("[redacted]");
+});
 
 test("buildArtifact registers the spec's app and plan before building", async () => {
   // Given a plan only the dispatched build spec carries.

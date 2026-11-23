@@ -36,8 +36,11 @@ const HistoricalEntries = Schema.Array(
 /**
  * Drop legacy status snapshots. Version 1 also drops hostnames rejected by the
  * narrowed grammar (it allowed a 253-character suffix after `*.`). Malformed records fail closed.
+ * Frames newer than {@link TUNNEL_REGISTRY_VERSION} never reach this migrator: the state store
+ * refuses them with reason `newer-version` before migration.
  */
 export const migrateTunnelRegistryEntries = (raw: unknown, fromVersion: number): TunnelRegistryEntries => {
+  // Older unsupported stamps only (the store owns forward-version refusal).
   Schema.decodeUnknownSync(Schema.Literals([1, 2]))(fromVersion);
   if (fromVersion === 2) {
     return Schema.decodeUnknownSync(TunnelRegistryEntries)(Schema.decodeUnknownSync(Version2Entries)(raw));

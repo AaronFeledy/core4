@@ -1,165 +1,113 @@
 import { expect, test } from "bun:test";
-import { makeCleanupDiscoveredApps } from "@lando/engine/install/uninstall-discovery";
-import { LANDO_SHARED_CROSS_APP_NETWORK, appIdentityKey } from "@lando/sdk/schema";
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 
-const root = "/apps/owned";
-const owner = appIdentityKey("owner", root);
-const network = {
-  "dev.lando.app": "app",
-  "dev.lando.app-root": root,
-  "dev.lando.owner": owner,
-  "dev.lando.provider": "docker",
-};
-const volume = {
-  "dev.lando.app": "app",
-  "dev.lando.volume-owner": root,
-  "dev.lando.volume-selector": `docker:app:${owner}:data`,
-  "dev.lando.scope": "app",
-  "dev.lando.store": "database",
-  "dev.lando.volume-instance": "generation-one",
-};
-const fixture = (
-  overrides: {
-    readonly container?: Record<string, string>;
-    readonly networkName?: string;
-    readonly network?: Record<string, string>;
-    readonly volume?: Record<string, string>;
-    readonly fail?: string;
-    readonly fresh?: Record<string, string>;
-    readonly legacyDiscovery?: boolean;
-  } = {},
-) => {
-  const calls: string[][] = [];
-  let volumeInspects = 0;
-  const exec = async (file: string, args: readonly string[]) => {
-    if (file !== "docker") throw Object.assign(new Error("not installed"), { code: "ENOENT" });
-    calls.push([...args]);
-    if (args.includes("--version")) return { stdout: "docker" };
-    if (args.includes("inspect")) {
-      if (overrides.fail === "inspect") throw new Error("inspection failed");
-      if (args[0] === "container")
-        return {
-          stdout: JSON.stringify([
-            {
-              Id: "exact-container",
-              Config: { Labels: overrides.container ?? { "com.lando.app": "legacy" } },
-            },
-          ]),
-        };
-      if (args[0] === "network")
-        return {
-          stdout: JSON.stringify([
-            {
-              Id: "exact-network",
-              Name: overrides.networkName ?? "private",
-              Labels: overrides.network ?? network,
-            },
-          ]),
-        };
-      volumeInspects++;
-      return {
-        stdout: JSON.stringify([
-          {
-            Name: "named-data",
-            Labels:
-              volumeInspects > 1
-                ? (overrides.fresh ?? overrides.volume ?? volume)
-                : (overrides.volume ?? volume),
-          },
-        ]),
-      };
-    }
-    if (args.includes("rm")) {
-      if (overrides.fail === "remove") throw new Error("removal failed");
-      return { stdout: "" };
-    }
-    if (args.includes("ps"))
-      return { stdout: overrides.legacyDiscovery ? "" : "candidate-container\ncandidate-container\n" };
-    if (args[0] === "network" && args.includes("ls"))
-      return {
-        stdout:
-          !overrides.legacyDiscovery || args.includes("label=dev.lando.network") ? "candidate-network\n" : "",
-      };
-    if (args[0] === "volume" && args.includes("ls"))
-      return {
-        stdout: !overrides.legacyDiscovery || args.includes("label=dev.lando.volume") ? "named-data\n" : "",
-      };
-    return { stdout: "" };
-  };
-  return { calls, run: makeCleanupDiscoveredApps("/nonexistent-uninstall-owned-fixture", exec, "linux") };
-};
-
-test("purge inspects and deduplicates exact containers, private networks and owned volumes", async () => {
-  const f = fixture();
-  await f.run([]);
-  expect(f.calls.filter((args) => args.includes("rm"))).toEqual([
-    ["rm", "-f", "--volumes", "exact-container"],
-    ["network", "rm", "exact-network"],
-    ["volume", "rm", "named-data"],
+test("native purge uses the bundled Podman hook with only its socket available", async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "lando-purge-http-")));
+  const dataRoot = join(root, "data");
+  const cacheRoot = join(root, "cache");
+  mkdirSync(dataRoot);
+  mkdirSync(cacheRoot);
+  const socket = join(root, "fake.sock");
+  const containers = new Map([
+    ["owned", dataRoot],
+    ["peer", join(root, "peer-data")],
+    ["legacy", undefined],
   ]);
-  expect(f.calls.some((args) => args.includes("prune"))).toBe(false);
-});
-
-for (const overrides of [
-  { volume: { ...volume, "dev.lando.volume-owner": "/other/root" } },
-  { volume: { ...volume, "dev.lando.volume-selector": "docker:app:wrong:data" } },
-  { volume: { "dev.lando.app": "legacy" } },
-  { volume: { ...volume, "com.lando.app": "contradictory" } },
-  { volume: { ...volume, "dev.lando.app-root": "/contradictory" } },
-  { network: { ...network, "dev.lando.owner": "wrong" } },
-  { network: { "dev.lando.app": "legacy" } },
-  { fresh: { ...volume, "dev.lando.volume-instance": "generation-two" } },
-  { fail: "inspect" },
-  { fail: "remove" },
-  { container: { "com.lando.app": "legacy", "dev.lando.app": "contradictory" } },
-  { container: { "com.lando.app": "legacy", "dev.lando.app-root": "/contradiction" } },
-  { container: { "dev.lando.app": "app", "dev.lando.app-root": "relative", "dev.lando.service": "web" } },
-  { container: { foreign: "true" } },
-  { networkName: LANDO_SHARED_CROSS_APP_NETWORK },
-]) {
-  test(`purge reports incomplete cleanup for ${JSON.stringify(overrides)}`, async () => {
-    const f = fixture(overrides);
-    await expect(f.run([])).rejects.toThrow();
-    if (overrides.volume || overrides.fresh)
-      expect(f.calls.some((args) => args[0] === "volume" && args.includes("rm"))).toBe(false);
-    if (overrides.network)
-      expect(f.calls.some((args) => args[0] === "network" && args.includes("rm"))).toBe(false);
-    if (overrides.networkName)
-      expect(f.calls.some((args) => args[0] === "network" && args.includes("rm"))).toBe(false);
-    if (overrides.container) expect(f.calls.some((args) => args[0] === "rm")).toBe(false);
-  });
-}
-
-test("installed but unqueryable runtime is not treated as absent", async () => {
-  const exec = async () => {
-    throw new Error("version process timed out");
-  };
-  await expect(
-    makeCleanupDiscoveredApps("/nonexistent-uninstall-owned-fixture", exec, "linux")([]),
-  ).rejects.toThrow();
-});
-
-test("explicit all-Lando purge is not narrowed to the discovery app root", async () => {
-  const f = fixture({
-    container: {
-      "dev.lando.app": "app",
-      "dev.lando.app-root": "/another/canonical/root",
-      "dev.lando.service": "web",
+  let stopped = false;
+  const server = Bun.serve({
+    unix: socket,
+    fetch(request) {
+      const url = new URL(request.url);
+      const path = url.pathname.replace(/^\/v[\d.]+/u, "");
+      if (path === "/_ping") return new Response("OK");
+      if (path === "/containers/json") {
+        const labels = url.searchParams.get("filters") ?? "";
+        return Response.json(
+          [...containers]
+            .filter(
+              ([, owner]) =>
+                !labels.includes("dev.lando.data-root=") || labels.includes(`dev.lando.data-root=${owner}`),
+            )
+            .map(([Id]) => ({ Id })),
+        );
+      }
+      if (path === "/containers/owned/stop" && request.method === "POST") {
+        stopped = true;
+        return new Response(null, { status: 204 });
+      }
+      if (
+        path === "/containers/owned" &&
+        request.method === "DELETE" &&
+        stopped &&
+        url.searchParams.get("v") === "true"
+      ) {
+        containers.delete("owned");
+        return new Response(null, { status: 204 });
+      }
+      if (path.endsWith("/json") && path.startsWith("/containers/")) {
+        const id = path.split("/")[2] ?? "";
+        const owner = containers.get(id);
+        return Response.json({
+          Id: id,
+          Config: {
+            Labels: {
+              "dev.lando.app": "web",
+              "dev.lando.app-root": root,
+              "dev.lando.service": "web",
+              "dev.lando.provider": "podman",
+              ...(owner === undefined ? {} : { "dev.lando.data-root": owner }),
+            },
+          },
+        });
+      }
+      if (path === "/volumes") return Response.json({ Volumes: [] });
+      if (path === "/networks" || path === "/images/json") return Response.json([]);
+      return Response.json({ message: `Unexpected request: ${request.method} ${path}` }, { status: 500 });
     },
   });
-  await f.run([{ appId: "app", appName: "app", appRoot: root, providerId: "docker", services: ["web"] }]);
-  expect(f.calls).toContainEqual(["rm", "-f", "--volumes", "exact-container"]);
-});
-
-test("old volume and network labels discover retention candidates without authorizing deletion", async () => {
-  const f = fixture({
-    legacyDiscovery: true,
-    network: { "dev.lando.network": "true" },
-    volume: { "dev.lando.volume": "true" },
-  });
-  await expect(f.run([])).rejects.toMatchObject({
-    _tag: "UninstallResourceCleanupError",
-    retained: expect.arrayContaining([expect.stringContaining("network"), expect.stringContaining("volume")]),
-  });
-  expect(f.calls.some((args) => args.includes("rm") || args.includes("prune"))).toBe(false);
-});
+  try {
+    const run = async (flag: string) => {
+      const proc = Bun.spawn(
+        [
+          process.execPath,
+          resolve(import.meta.dirname, "../../bin/lando.ts"),
+          "uninstall",
+          "--purge",
+          flag,
+          "--format=json",
+        ],
+        {
+          env: {
+            ...process.env,
+            PATH: join(root, "no-bin"),
+            LANDO_USER_DATA_ROOT: dataRoot,
+            LANDO_USER_CACHE_ROOT: cacheRoot,
+            LANDO_USER_CONF_ROOT: join(root, "conf"),
+            LANDO_SHELL_PROFILE: join(root, ".profile"),
+            LANDO_TEST_DOCKER_SOCKET: join(root, "absent.sock"),
+            LANDO_TEST_PODMAN_SOCKET: socket,
+          },
+          stdout: "pipe",
+          stderr: "pipe",
+        },
+      );
+      const [exit, out, err] = await Promise.all([proc.exited, proc.stdout.text(), proc.stderr.text()]);
+      if (exit !== 0) throw new Error(`Uninstall failed (${exit}): ${out}\n${err}`);
+      return out;
+    };
+    const plan = await run("--dry-run");
+    expect(plan).toContain(socket);
+    expect(plan).toContain("1 container, 0 networks, 0 volumes, and 0 built images");
+    expect(containers.has("owned")).toBe(true);
+    expect(stopped).toBe(false);
+    await run("--yes");
+    expect([...containers.keys()]).toEqual(["peer", "legacy"]);
+    expect(existsSync(dataRoot)).toBe(false);
+    expect(existsSync(cacheRoot)).toBe(false);
+  } finally {
+    await server.stop(true);
+    rmSync(root, { recursive: true, force: true });
+  }
+}, 15_000);

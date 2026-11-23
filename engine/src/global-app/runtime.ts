@@ -1,7 +1,15 @@
+import {
+  ownsAppliedGlobalService,
+  resolveAppliedGlobalPlan,
+} from "@lando/container-runtime/applied-global-service";
 import { mapFailures } from "@lando/sdk/command-result";
 import { AppPlacementError, DebuggerHostUnavailableError, GlobalAppError } from "@lando/sdk/errors";
-import { AppId } from "@lando/sdk/schema";
-import { type ConfigService, GlobalAppService, RuntimeProviderRegistry } from "@lando/sdk/services";
+import {
+  type ConfigService,
+  GlobalAppService,
+  PathsService,
+  RuntimeProviderRegistry,
+} from "@lando/sdk/services";
 import { Effect, Layer } from "effect";
 
 import {
@@ -17,9 +25,30 @@ export const layer = Layer.effect(
   Effect.gen(function* () {
     const globalApp = yield* GlobalAppService;
     const registry = yield* RuntimeProviderRegistry;
+    const paths = yield* PathsService;
     const context = yield* Effect.context<EnsureGlobalServicesServices | ConfigService>();
     const observedProviderId = globalObserveProviderId.pipe(Effect.provide(context));
     const observedProvider = observedProviderId.pipe(Effect.flatMap((id) => registry.select(id)));
+    const ownedServices = (onlyRunning: boolean) =>
+      observedProvider.pipe(
+        Effect.flatMap(
+          Effect.fnUntraced(function* (provider) {
+            const { root } = yield* globalApp.paths;
+            const plan = yield* resolveAppliedGlobalPlan(registry, {
+              appRoot: root,
+              dataRoot: paths.roots.userDataRoot,
+            });
+            const online = !onlyRunning || (yield* provider.getStatus).state !== "idle";
+            const services =
+              online && plan?.provider === provider.id
+                ? (yield* provider.list({ app: plan.id })).filter((service) =>
+                    ownsAppliedGlobalService(plan, service),
+                  )
+                : [];
+            return { provider, services, plan };
+          }),
+        ),
+      );
     const createProvider = globalCreateProviderId().pipe(
       Effect.provide(context),
       Effect.flatMap((id) => registry.select(id)),
@@ -72,39 +101,35 @@ export const layer = Layer.effect(
           ),
         ),
       ownedPublishPorts: (serviceId, ports) =>
-        observedProvider.pipe(
-          Effect.flatMap((provider) =>
-            provider.list({ app: AppId.make("global") }).pipe(
-              Effect.flatMap((services) =>
-                Effect.gen(function* () {
-                  const owned = new Set<number>();
-                  for (const service of services) {
-                    if (service.service !== serviceId) continue;
-                    const running = service.status === "running";
-                    // Only a provider with an explicit ownership validator may
-                    // reserve a stopped service's persisted pair. Providers
-                    // without that capability retain running-only behavior.
-                    if (!running && provider.matchingPublishPorts === undefined) continue;
-                    const published = ports.filter(
-                      (port) =>
-                        service.publications.status === "present" &&
-                        service.publications.bindings.some(
-                          (binding) => binding.transport === "tcp" && binding.hostPort === port,
-                        ),
-                    );
-                    if (published.length === 0) continue;
-                    const verified =
-                      provider.matchingPublishPorts === undefined
-                        ? published
-                        : service.containerId === undefined
-                          ? []
-                          : yield* provider.matchingPublishPorts(service.containerId, published);
-                    for (const port of verified) owned.add(port);
-                  }
-                  return ports.filter((port) => owned.has(port));
-                }),
-              ),
-            ),
+        ownedServices(false).pipe(
+          Effect.flatMap(({ provider, services }) =>
+            Effect.gen(function* () {
+              const owned = new Set<number>();
+              for (const service of services) {
+                if (service.service !== serviceId) continue;
+                const running = service.status === "running";
+                // Only a provider with an explicit ownership validator may
+                // reserve a stopped service's persisted pair. Providers
+                // without that capability retain running-only behavior.
+                if (!running && provider.matchingPublishPorts === undefined) continue;
+                const published = ports.filter(
+                  (port) =>
+                    service.publications.status === "present" &&
+                    service.publications.bindings.some(
+                      (binding) => binding.transport === "tcp" && binding.hostPort === port,
+                    ),
+                );
+                if (published.length === 0) continue;
+                const verified =
+                  provider.matchingPublishPorts === undefined
+                    ? published
+                    : service.containerId === undefined
+                      ? []
+                      : yield* provider.matchingPublishPorts(service.containerId, published);
+                for (const port of verified) owned.add(port);
+              }
+              return ports.filter((port) => owned.has(port));
+            }),
           ),
           mapFailures(
             (cause) =>
@@ -119,15 +144,12 @@ export const layer = Layer.effect(
           ),
         ),
       restartRunningService: (serviceId) =>
-        observedProvider.pipe(
+        ownedServices(true).pipe(
           Effect.flatMap(
-            Effect.fnUntraced(function* (provider) {
-              if ((yield* provider.getStatus).state === "idle") return false;
-              const services = yield* provider.list({ app: AppId.make("global") });
-              return services.some((service) => service.service === serviceId && service.status === "running")
-                ? yield* provider
-                    .restart({ app: AppId.make("global"), service: serviceId })
-                    .pipe(Effect.as(true))
+            Effect.fnUntraced(function* ({ provider, services, plan }) {
+              return plan !== undefined &&
+                services.some((service) => service.service === serviceId && service.status === "running")
+                ? yield* provider.restart({ app: plan.id, service: serviceId, plan }).pipe(Effect.as(true))
                 : false;
             }),
           ),

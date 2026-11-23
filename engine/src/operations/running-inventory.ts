@@ -1,6 +1,7 @@
 import { SCRATCH_LABEL } from "@lando/container-runtime/labels";
+import { adoptionReceiptsFromSummary } from "@lando/container-runtime/native-ownership";
 import { AppResolveError, ProviderUnavailableError } from "@lando/sdk/errors";
-import { AbsolutePath, AppId, ProviderId } from "@lando/sdk/schema";
+import { AbsolutePath, AppId, LANDO_DATA_ROOT_LABEL, ProviderId } from "@lando/sdk/schema";
 import {
   GlobalAppService,
   type ProviderRuntimeSnapshot,
@@ -15,11 +16,9 @@ import { matchesAppPlanIdentity } from "../providers/app-plan-identity.ts";
 import { readAcceleratedStartInventory } from "./accelerated-start-inventory.ts";
 import { digest } from "./accelerated-start-record.ts";
 import { appRootIdentityKey } from "./app-root-identity.ts";
-import {
-  providerInventoryFailure,
-  unobservedRuntimeError,
-  unreadableAppliedState,
-} from "./poweroff-failures.ts";
+import { appliedStateIssueError } from "./applied-state-issue.ts";
+import { currentDataRoot, scopeRuntimeSnapshot } from "./data-root-scope.ts";
+import { providerInventoryFailure, unobservedRuntimeError } from "./poweroff-failures.ts";
 
 type InventoryFailure = {
   readonly kind: "user" | "scratch";
@@ -55,16 +54,13 @@ const readProviderSnapshots = Effect.fnUntraced(function* (journalProviders: Rea
   if (Result.isFailure(idsResult)) failures.push(providerInventoryFailure("providers", idsResult.failure));
 
   for (const id of ids) {
-    const state =
-      registry.appliedStateInventory === undefined
-        ? undefined
-        : yield* registry.appliedStateInventory(id).pipe(Effect.result);
-    if (state !== undefined && Result.isFailure(state))
-      failures.push(providerInventoryFailure(String(id), state.failure));
-    if (state !== undefined && Result.isSuccess(state) && state.success.unreadable.length > 0)
-      failures.push(
-        providerInventoryFailure(String(id), unreadableAppliedState(id, state.success.unreadable.length)),
-      );
+    const state = yield* registry.appliedStateInventory(id).pipe(Effect.result);
+    if (Result.isFailure(state)) failures.push(providerInventoryFailure(String(id), state.failure));
+    else
+      for (const issue of state.success.unreadable)
+        failures.push(
+          providerInventoryFailure(String(id), appliedStateIssueError(id, issue, "lando poweroff")),
+        );
     const ownership =
       registry.hasRecordedOwnership === undefined
         ? undefined
@@ -73,8 +69,9 @@ const readProviderSnapshots = Effect.fnUntraced(function* (journalProviders: Rea
       failures.push(providerInventoryFailure(String(id), ownership.failure));
     const hasRecordedHoldings =
       journalProviders.has(String(id)) ||
-      (state !== undefined &&
-        (Result.isFailure(state) || state.success.plans.length > 0 || state.success.unreadable.length > 0)) ||
+      Result.isFailure(state) ||
+      state.success.plans.length > 0 ||
+      state.success.unreadable.length > 0 ||
       (ownership !== undefined && (Result.isFailure(ownership) || ownership.success));
 
     // Scope each observation so a broken provider cannot hide another provider's workloads.
@@ -263,11 +260,44 @@ export const readRunningInventory = Effect.fnUntraced(function* () {
         }),
       });
   }
-  const targets = deriveRunningTargets(inventory.snapshots, journalRecords);
+  const scope = yield* Effect.result(currentDataRoot);
+  if (Result.isFailure(scope)) failures.push(providerInventoryFailure("data-root", scope.failure));
+  const registry = yield* RuntimeProviderRegistry;
+  const ownershipFailures = new Set<ProviderId>();
+  const snapshots = Result.isSuccess(scope)
+    ? yield* Effect.forEach(inventory.snapshots, (snapshot) =>
+        Effect.gen(function* () {
+          const roots = new Set(
+            snapshot.services.flatMap((service) =>
+              service.appRoot !== undefined && service.labels?.[LANDO_DATA_ROOT_LABEL] === undefined
+                ? [service.appRoot]
+                : [],
+            ),
+          );
+          const summaries = yield* Effect.forEach(roots, (root) =>
+            (registry.resourceOwnership?.(snapshot.providerId, root) ?? Effect.succeed(undefined)).pipe(
+              Effect.catch((error) => {
+                if (!ownershipFailures.has(snapshot.providerId)) {
+                  ownershipFailures.add(snapshot.providerId);
+                  failures.push(providerInventoryFailure(snapshot.providerId, error));
+                }
+                return Effect.succeed(undefined);
+              }),
+            ),
+          );
+          return scopeRuntimeSnapshot(
+            snapshot,
+            scope.success,
+            summaries.flatMap(adoptionReceiptsFromSummary),
+          );
+        }),
+      )
+    : [];
+  const targets = deriveRunningTargets(snapshots, journalRecords);
   return {
     userTargets: targets.userTargets,
     failures: [...failures, ...targets.failures],
-    resolveGlobalTarget: resolveGlobalStopTarget(inventory.snapshots),
+    resolveGlobalTarget: resolveGlobalStopTarget(snapshots),
     // User stop hooks can change the scratch list before poweroff reaches that phase.
     readScratch: readScratchTargets(targets.scratchObserved),
   };

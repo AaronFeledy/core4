@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { deserialize, serialize } from "node:v8";
-import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/core/schema";
+import { AbsolutePath, AppId, type AppPlan, PortNumber, ProviderId, ServiceName } from "@lando/core/schema";
 import type { CacheService } from "@lando/core/services";
 import {
   APP_PLAN_CACHE_HEADER_BYTES,
@@ -62,7 +62,27 @@ const appPlanFixture: AppPlan = {
   slug: "fixture-app",
   root: AbsolutePath.make("/workspace/fixture-app"),
   provider: ProviderId.make("lando"),
-  services: {},
+  services: {
+    [ServiceName.make("web")]: {
+      name: ServiceName.make("web"),
+      type: "nginx",
+      provider: ProviderId.make("lando"),
+      primary: true,
+      environment: {},
+      mounts: [],
+      endpoints: [],
+      plannedPort: PortNumber.make(80),
+      routes: [],
+      dependsOn: [],
+      hostAliases: [],
+      metadata: {
+        resolvedAt: DateTime.makeUnsafe("2026-05-20T00:00:00Z"),
+        source: "/workspace/fixture-app/.lando.yml",
+        runtime: 4,
+      },
+      extensions: {},
+    },
+  },
   routes: [],
   stores: [],
   fileSync: [],

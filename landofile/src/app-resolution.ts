@@ -5,7 +5,7 @@ import {
   type LandofileVersionConstraintError,
 } from "@lando/sdk/errors";
 import type { AbsolutePath, AppPlan, AppRef, LandofileShape, LoadScopedLandofile } from "@lando/sdk/schema";
-import { normalizeAppSlug } from "@lando/sdk/schema";
+import { isLandoGlobalNativeSlug, normalizeAppSlug } from "@lando/sdk/schema";
 import type { LandofileService, UserLandofileError } from "@lando/sdk/services";
 import { type Context, Effect } from "effect";
 import { type LandofileProvenance, provenanceOf } from "./provenance.ts";
@@ -33,7 +33,9 @@ export const assertUserAppIdNotReserved = (
   landofile: Pick<LandofileShape, "name">,
 ): Effect.Effect<void, AppIdReservedError> => {
   const id = normalizeAppSlug(landofile.name ?? "app", "");
-  return RESERVED_APP_IDS.has(id) ? Effect.fail(new AppIdReservedError({ reserved: id })) : Effect.void;
+  return RESERVED_APP_IDS.has(id) || isLandoGlobalNativeSlug(id)
+    ? Effect.fail(new AppIdReservedError({ reserved: id }))
+    : Effect.void;
 };
 
 export const withResolvedCwd = <A, E, R>(

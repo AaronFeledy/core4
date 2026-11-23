@@ -60,5 +60,5 @@ export const globalInfo = Effect.fn("GlobalInfo.info")(function* (
   const loaded = yield* loadObservedGlobalPlan();
   if (!loaded.materialized) return { app: "global", services: [] };
   const plan = yield* selectPlanForServices(loaded.plan, options.services);
-  return yield* infoForPlan(plan);
+  return yield* infoForPlan(plan, loaded.plan, { kind: "global" });
 });

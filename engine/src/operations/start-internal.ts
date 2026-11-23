@@ -1,6 +1,6 @@
 import { observeTcpListener } from "@lando/container-runtime/listener-observation";
+import { adoptionReceiptsFromSummary } from "@lando/container-runtime/native-ownership";
 import type { RedactionService } from "@lando/redaction/service";
-
 import type { StartAppError as SdkStartAppError, StartAppOptions, StartAppResult } from "@lando/sdk/app";
 import {
   AppPlacementError,
@@ -352,6 +352,7 @@ const applyAppLaunch = Effect.fnUntraced(function* (input: {
   const { target, provider, overlays } = admitted;
   const events = yield* EventService;
   const services = Object.values(runtimePlan.services);
+  const registry = yield* RuntimeProviderRegistry;
   let applyOutcome: Effect.Success<ReturnType<typeof applyActivation>> | undefined;
   let initial: ReadonlyMap<string, ServiceRuntimeInfo> = new Map();
   let servicesRemoved: ReadonlyArray<string> = [];
@@ -369,6 +370,9 @@ const applyAppLaunch = Effect.fnUntraced(function* (input: {
       // Whole-app start names every service, so containers of services the Landofile no
       // longer defines are pruned here, after accelerated-start preparation.
       servicesRemoved = yield* convergeRemovedServices(runtimePlan, provider, {
+        receipts: (
+          registry.resourceOwnership?.(runtimePlan.provider, runtimePlan.root) ?? Effect.succeed(undefined)
+        ).pipe(Effect.map(adoptionReceiptsFromSummary)),
         app: target.app,
         events,
         observations,

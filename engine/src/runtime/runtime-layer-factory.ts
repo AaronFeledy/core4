@@ -22,6 +22,10 @@ type ProviderRuntimeOptions = LandoRuntimeOptions & { readonly bootstrap: "provi
 export class RuntimeLayerFactory extends Context.Service<
   RuntimeLayerFactory,
   {
+    readonly makeProviderInventory?: (
+      options: LandoRuntimeOptions,
+      snapshot: GlobalConfigSnapshot["Service"],
+    ) => Layer.Layer<RuntimeProviderRegistry, unknown>;
     readonly make: {
       (options: ProviderRuntimeOptions, snapshot?: GlobalConfigSnapshot["Service"]): ProviderRuntimeLayer;
       (

@@ -191,17 +191,17 @@ const provider = LandoCore.RuntimeProvider.of({
 });
 const providerLayers = [
   LandoTesting.withService(LandoCore.RuntimeProvider, provider),
-  LandoTesting.withService(LandoCore.RuntimeProviderRegistry, {
+  LandoTesting.withService(LandoCore.RuntimeProviderRegistry, LandoTesting.makeTestRuntimeProviderRegistry({
     appliedPlansFor: (root) => Effect.sync(() => [...appliedPlans.values()].filter((plan) => plan.root === root)),
-    list: Effect.succeed([]),
-    capabilities: Effect.succeed(provider.capabilities),
     select: () => Effect.succeed(provider),
     resolveAppliedPlan: (root) => Effect.sync(() => appliedPlans.get(root)),
     resolveTeardownEvidence: (root) => Effect.sync(() => {
       const plan = appliedPlans.get(root);
       return plan === undefined ? { kind: "absent" as const } : { kind: "applied" as const, plan };
     }),
-  }),
+    readAppliedPlanStrict: ({ id }) =>
+      Effect.sync(() => [...appliedPlans.values()].find((plan) => plan.id === id)),
+  })),
   LandoTesting.withService(RouterService, TestRouterService),
 ];
 yield* Effect.promise(() =>

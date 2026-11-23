@@ -4,19 +4,19 @@ import { FileSyncStartError, type StateStoreError } from "@lando/sdk/errors";
 import type { AppPlan, AppRef, ServiceName } from "@lando/sdk/schema";
 import { StateStore, type StateWrite } from "@lando/sdk/services";
 import { illegalTransitionMessage } from "@lando/sdk/transitions";
+import { storeErrorRemediation } from "@lando/state-store";
 import { Effect } from "effect";
 import {
   type PendingStart,
   type PendingStartStep,
   digest,
   journalRecovery,
-  pendingStartBucketSpec,
+  pendingStartAtRoot,
   pendingStartTransitions,
   recordedStartCommand,
   sameStartIdentity,
 } from "./accelerated-start-record.ts";
 import { canonicalMissingAppRoot } from "./app-mutation-lock.ts";
-import { appRootIdentityKey } from "./app-root-identity.ts";
 import { fileSyncBundle } from "./file-sync-bundle.ts";
 import { selectRebuildPlan } from "./service-selection.ts";
 
@@ -24,7 +24,7 @@ const journalError = (message: string, cause?: unknown, journalPath = "accelerat
   new FileSyncStartError({
     engineId: "mutagen",
     message,
-    remediation: journalRecovery(journalPath),
+    remediation: storeErrorRemediation(cause, journalRecovery(journalPath)),
     ...(cause === undefined ? {} : { cause }),
   });
 const journalRoot = (root: string) =>
@@ -35,11 +35,7 @@ const journalRoot = (root: string) =>
 export const openJournal = (app: AppRef) =>
   journalRoot(String(app.root)).pipe(
     Effect.flatMap((canonicalRoot) =>
-      StateStore.pipe(
-        Effect.flatMap((store) =>
-          store.open(pendingStartBucketSpec(`${digest(appRootIdentityKey(app, canonicalRoot))}.json`)),
-        ),
-      ),
+      StateStore.pipe(Effect.flatMap((store) => store.open(pendingStartAtRoot(app.kind, canonicalRoot)))),
     ),
     mapFailures((cause) => journalError("The accelerated-start journal cannot be opened.", cause)),
   );

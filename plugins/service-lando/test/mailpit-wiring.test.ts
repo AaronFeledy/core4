@@ -1,10 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
+import { makeLandoPaths } from "@lando/paths";
 import { LandofileShape, ServiceConfig, ServiceName } from "@lando/sdk/schema";
-import { AppPlanner } from "@lando/sdk/services";
+import { AppPlanner, PathsService } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { Effect, Schema } from "effect";
+import { Effect, Layer, Schema } from "effect";
 import { mailpitServiceType } from "../src/services/mailpit.ts";
 import { compileTestLandofile } from "./support/compiled-landofile.ts";
 
@@ -34,7 +35,10 @@ const planEffect = (mailFrom: unknown, php = true, firstOverrides: Record<string
       ),
       TestRuntimeProvider.capabilities,
     ),
-  ).pipe(Effect.provide(AppPlannerLayer.layer), Effect.provide(PluginRegistryLayer.layer));
+  ).pipe(
+    Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(Layer.succeed(PathsService, makeLandoPaths())))),
+    Effect.provide(PluginRegistryLayer.layer),
+  );
 const plan = (mailFrom: unknown, php = true, firstOverrides: Record<string, unknown> = {}) =>
   Effect.runPromise(planEffect(mailFrom, php, firstOverrides));
 

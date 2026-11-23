@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CapabilityError } from "@lando/core/errors";
 import { LandofileShape, type ProviderCapabilities } from "@lando/core/schema";
-import { AppPlanner } from "@lando/core/services";
+import { AppPlanner, PathsService } from "@lando/core/services";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
@@ -23,6 +23,7 @@ const withTempCwd = async <A>(run: () => Promise<A>): Promise<A> => {
   }
 };
 
+import { makeLandoPaths } from "@lando/paths";
 import { literalLandofile } from "../_support/value-contracts.ts";
 
 const planExit = (landofile: typeof LandofileShape.Type, capabilities: ProviderCapabilities) =>
@@ -32,7 +33,13 @@ const planExit = (landofile: typeof LandofileShape.Type, capabilities: ProviderC
     ).pipe(
       Effect.provide(
         AppPlannerLayer.layer.pipe(
-          Layer.provide(Layer.mergeAll(BunFileSystem.layer, PluginRegistryLayer.layer)),
+          Layer.provide(
+            Layer.mergeAll(
+              BunFileSystem.layer,
+              PluginRegistryLayer.layer,
+              Layer.succeed(PathsService, makeLandoPaths()),
+            ),
+          ),
         ),
       ),
     ),

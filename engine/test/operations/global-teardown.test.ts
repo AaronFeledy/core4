@@ -1,8 +1,9 @@
 import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { makeLandoPaths } from "@lando/paths";
+import { type AppliedStateVersionError, appliedStateVersionError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
@@ -20,7 +21,7 @@ import {
   type ServiceRuntimeInfo,
   StateStore,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider, makeTestRouterService } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRouterService, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { DateTime, Effect, Layer } from "effect";
 
@@ -69,12 +70,13 @@ const serviceAt = (root: AbsolutePath): ServiceRuntimeInfo => ({
     "dev.lando.app": "global",
     "dev.lando.app-root": root,
     "dev.lando.service": "orphan",
+    "dev.lando.data-root": dirname(root),
   },
 });
 
 const volumeAt = (root: AbsolutePath, scope: "app" | "global"): VolumeInfo => ({
   ref: { app: appId, store: scope },
-  labels: { "dev.lando.scope": scope },
+  labels: { "dev.lando.scope": scope, "dev.lando.data-root": dirname(root) },
   identity: {
     ownerRoot: root,
     nativeName: scope,
@@ -90,6 +92,7 @@ const harnessAt = (
     readonly plan?: AppPlan;
     readonly services?: ReadonlyArray<ServiceRuntimeInfo>;
     readonly volumes?: ReadonlyArray<VolumeInfo>;
+    readonly receiptError?: AppliedStateVersionError;
   },
 ) => {
   const root = AbsolutePath.make(join(dataRoot, "global"));
@@ -154,10 +157,18 @@ const harnessAt = (
     ),
     Layer.succeed(
       RuntimeProviderRegistry,
-      RuntimeProviderRegistry.of({
-        resolveAppliedPlan: () => Effect.succeed(undefined),
+      makeTestRuntimeProviderRegistry({
+        readAppliedPlanStrict: ({ id, provider: selectedProvider }) =>
+          id === appId && selectedProvider === providerId && input.receiptError !== undefined
+            ? Effect.fail(input.receiptError)
+            : Effect.map(provider.appliedPlans, (plans) => plans.find((plan) => plan.id === id)),
         appliedPlansFor: () =>
           Effect.map(provider.appliedPlans, (plans) => plans.filter((plan) => plan.provider === providerId)),
+        appliedStateInventory: (id) =>
+          Effect.map(provider.appliedPlans, (plans) => ({
+            plans: id === providerId ? plans : [],
+            unreadable: [],
+          })),
         list: Effect.succeed([providerId, ProviderId.make("docker")]),
         capabilities: Effect.succeed(provider.capabilities),
         select: (target) => {
@@ -171,6 +182,28 @@ const harnessAt = (
   );
   return { layer, selected, removedServices, removedVolumes, destroyed };
 };
+
+test.each(["stop", "destroy"] as const)(
+  "global %s refuses a newer receipt without runtime evidence",
+  async (intent) => {
+    await withRoot(async (dataRoot) => {
+      const receiptError = appliedStateVersionError({
+        providerId,
+        operation: "applied-state.read",
+        appId,
+        path: join(dataRoot, "global.json"),
+        storedVersion: 11,
+        supportedVersion: 10,
+        scope: "app",
+      });
+      const { layer } = harnessAt(dataRoot, { receiptError });
+      const refusal = await Effect.runPromise(
+        resolveGlobalTeardown(intent).pipe(Effect.provide(layer), Effect.flip),
+      );
+      expect(refusal).toBe(receiptError);
+    });
+  },
+);
 
 test("global teardown selects only managed-provider evidence at the explicit global root", async () => {
   await withRoot(async (dataRoot, root) => {

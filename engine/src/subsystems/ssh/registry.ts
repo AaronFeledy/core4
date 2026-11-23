@@ -1,13 +1,23 @@
 import { SshError } from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
-import type { FileSystem, GlobalAppService, PathsService, SshService } from "@lando/sdk/services";
+import type {
+  FileSystem,
+  GlobalAppService,
+  PathsService,
+  RuntimeProviderRegistry,
+  SshService,
+} from "@lando/sdk/services";
 import { Context, Effect, Layer } from "effect";
 
 import { bundledPluginModules } from "../../composition.ts";
 import { indexContributions, selectRegistration } from "../../plugins/capability-registry.ts";
 import * as UnavailableSshService from "./api.ts";
 
-export type SshServiceLayer = Layer.Layer<SshService, SshError, FileSystem | GlobalAppService | PathsService>;
+export type SshServiceLayer = Layer.Layer<
+  SshService,
+  SshError,
+  FileSystem | GlobalAppService | PathsService | RuntimeProviderRegistry
+>;
 
 export interface SshServiceRegistration {
   readonly id: string;

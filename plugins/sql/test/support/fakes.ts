@@ -152,7 +152,19 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
             ),
         }),
     },
-    ...(options.appliedPlans === undefined ? {} : { appliedPlans: options.appliedPlans }),
+    ...(options.findAppliedSource === undefined ? {} : { findAppliedSource: options.findAppliedSource }),
+    ...(options.appliedPlans === undefined
+      ? {}
+      : {
+          findAppliedSource: (selector) =>
+            (options.appliedPlans ?? Effect.succeed([])).pipe(
+              Effect.map((plans) =>
+                plans.find((plan) =>
+                  "id" in selector ? selector.id === plan.id : selector.root === plan.root,
+                ),
+              ),
+            ),
+        }),
     inspectSource:
       options.inspectSource ??
       ((target) =>

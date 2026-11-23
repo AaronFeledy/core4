@@ -3,10 +3,11 @@ import { LandofileValidationError } from "@lando/sdk/errors";
 import { LandofileShape, PortablePath } from "@lando/sdk/schema";
 import { AppPlanner, PluginRegistry, type ServiceType } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { Cause, Effect, Exit, Option, Schema } from "effect";
+import { Cause, Effect, Exit, Layer, Option, Schema } from "effect";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";
 import { literalTestLandofile } from "../compiled-landofile.ts";
+import { pathsServiceLayer } from "../paths-service.ts";
 
 test.each([false, true])(
   "uses original authored root and final substituted features (explicit=%s)",
@@ -43,7 +44,7 @@ test.each([false, true])(
         return yield* Effect.flatMap(AppPlanner, (planner) =>
           planner.plan(literalTestLandofile(landofile, process.cwd()), TestRuntimeProvider.capabilities),
         ).pipe(
-          Effect.provide(AppPlannerLayer.layer),
+          Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
           Effect.provideService(PluginRegistry, {
             ...registry,
             loadServiceType: () => Effect.succeed(type),

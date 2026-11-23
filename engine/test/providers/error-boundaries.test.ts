@@ -2,9 +2,11 @@ import { expect, test } from "bun:test";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import {
   type AppResolveError,
+  AppliedStateVersionError,
   type NoProviderInstalledError,
   ProviderCapabilityError,
   ProviderUnavailableError,
+  appliedStateVersionError,
 } from "@lando/sdk/errors";
 import { type ProviderError, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
@@ -31,7 +33,7 @@ test.each(Object.entries(evidenceCalls))(
     // Given
     const original = new ProviderUnavailableError(errorFields);
     const layer = registryLayer(TestRuntimeProvider, {
-      contribution: { appliedPlans: () => Effect.fail(original) },
+      contribution: { appliedStateInventory: () => Effect.fail(original) },
     });
     // When
     const result = await Effect.runPromise(
@@ -59,7 +61,7 @@ test.each(Object.entries(ownershipCalls))(
     const original = new ProviderUnavailableError(errorFields);
     const layer = registryLayer(TestRuntimeProvider, {
       contribution: {
-        appliedPlans: () => Effect.succeed([]),
+        appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
         resourceOwnership: () => Effect.fail(original),
       },
     });
@@ -79,8 +81,7 @@ test.each(Object.entries(ownershipCalls))(
 
 const contributionCalls = {
   appliedPlans: (r: Registry) => r.appliedPlansFor(plan.root),
-  appliedStateInventory: (r: Registry) =>
-    r.assertAppliedStateReadable?.(plan) ?? Effect.die("missing inventory check"),
+  appliedStateInventory: (r: Registry) => r.appliedStateInventory(plan.provider),
   resourceOwnership: (r: Registry) =>
     r.resourceOwnership?.(plan.provider, plan.root) ?? Effect.die("missing resourceOwnership"),
 } satisfies Readonly<Record<string, RegistryCall>>;
@@ -120,7 +121,6 @@ test.each(Object.entries(contributionCalls))(
     const failure = Effect.failCause(cause);
     const layer = registryLayer(TestRuntimeProvider, {
       contribution: {
-        appliedPlans: () => failure,
         appliedStateInventory: () => failure,
         resourceOwnership: () => failure,
         make: () =>
@@ -195,7 +195,6 @@ test.each(Object.entries(contributionCalls))(
         Effect.provide(
           registryLayer(TestRuntimeProvider, {
             contribution: {
-              appliedPlans: () => pending,
               appliedStateInventory: () => pending,
               resourceOwnership: () => pending,
               make: () =>
@@ -224,7 +223,6 @@ test.each(["resolveAppliedPlan", "resolveTeardownEvidence"] as const)(
     const original = new ProviderUnavailableError(errorFields);
     const layer = registryLayer(TestRuntimeProvider, {
       contribution: {
-        appliedPlans: () => Effect.die("must use inventory"),
         appliedStateInventory: () => Effect.fail(original),
         make: () => Effect.die("must not initialize runtime"),
       },
@@ -260,7 +258,7 @@ test("contribution diagnostics fail closed when a detail value cannot be inspect
       Effect.provide(
         registryLayer(TestRuntimeProvider, {
           contribution: {
-            appliedPlans: () => Effect.fail(original),
+            appliedStateInventory: () => Effect.fail(original),
             make: () => Effect.die("must not initialize runtime"),
           },
         }),
@@ -285,7 +283,7 @@ test("contribution diagnostics suppress callable serialization hooks", async () 
       Effect.provide(
         registryLayer(TestRuntimeProvider, {
           contribution: {
-            appliedPlans: () => Effect.fail(original),
+            appliedStateInventory: () => Effect.fail(original),
             make: () => Effect.die("must not initialize runtime"),
           },
         }),
@@ -354,7 +352,7 @@ test("contribution diagnostics safely project adversarial structures", async () 
         Effect.provide(
           registryLayer(TestRuntimeProvider, {
             contribution: {
-              appliedPlans: () => Effect.fail(original),
+              appliedStateInventory: () => Effect.fail(original),
               make: () => Effect.die("must not initialize runtime"),
             },
           }),
@@ -374,7 +372,16 @@ test("an unreadable local inventory stays an actionable applied-state failure", 
   let runtimeInitializations = 0;
   const layer = registryLayer(TestRuntimeProvider, {
     contribution: {
-      appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [{ path }] }),
+      appliedStateInventory: () => Effect.die("targeted read must not scan inventory"),
+      readAppliedPlanStrict: () =>
+        Effect.fail(
+          new ProviderUnavailableError({
+            providerId: plan.provider,
+            operation: "applied-state.read",
+            message: `Unreadable: ${path}`,
+            remediation: `Restore ${path} from backup.`,
+          }),
+        ),
       make: () =>
         Effect.sync(() => {
           runtimeInitializations += 1;
@@ -384,7 +391,7 @@ test("an unreadable local inventory stays an actionable applied-state failure", 
   });
   const result = await Effect.runPromise(
     Effect.flatMap(RuntimeProviderRegistry, (registry) =>
-      Effect.result(registry.assertAppliedStateReadable?.(plan) ?? Effect.die("missing inventory check")),
+      Effect.result(registry.readAppliedPlanStrict(plan)),
     ).pipe(Effect.provide(layer)),
   );
   expect(runtimeInitializations).toBe(0);
@@ -398,29 +405,44 @@ test("an unreadable local inventory stays an actionable applied-state failure", 
   expect(result.failure.remediation).toContain(path);
 });
 
-test("an unreadable inventory path is redacted without losing remediation", async () => {
+test("a newer targeted record is redacted without losing its diagnosis", async () => {
   const path = `/tmp/${canary}/unreadable-state.json`;
   const result = await Effect.runPromise(
     Effect.gen(function* () {
       yield* (yield* RedactionService).registerValues([canary]);
-      return yield* Effect.result(
-        (yield* RuntimeProviderRegistry).assertAppliedStateReadable?.(plan) ??
-          Effect.die("missing inventory check"),
-      );
+      return yield* Effect.result((yield* RuntimeProviderRegistry).readAppliedPlanStrict(plan));
     }).pipe(
       Effect.provide(
         registryLayer(TestRuntimeProvider, {
           contribution: {
-            appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [{ path }] }),
+            appliedStateInventory: () => Effect.die("must not scan inventory"),
+            readAppliedPlanStrict: () =>
+              Effect.fail(
+                appliedStateVersionError({
+                  providerId: plan.provider,
+                  operation: "applied-state.read",
+                  scope: "app",
+                  appId: plan.id,
+                  path,
+                  storedVersion: 11,
+                  supportedVersion: 10,
+                }),
+              ),
             make: () => Effect.die("must not initialize runtime"),
           },
         }),
       ),
     ),
   );
-  if (Result.isSuccess(result) || !(result.failure instanceof ProviderUnavailableError))
-    throw new Error("Expected unreadable state failure");
-  expect(result.failure.operation).toBe("applied-state.read");
+  if (Result.isSuccess(result) || !(result.failure instanceof AppliedStateVersionError))
+    throw new Error("Expected newer applied state failure");
+  expect(result.failure).toMatchObject({
+    _tag: "AppliedStateVersionError",
+    scope: "app",
+    storedVersion: 11,
+    supportedVersion: 10,
+    operation: "applied-state.read",
+  });
   expect(result.failure.message).toContain("/tmp/[redacted]/unreadable-state.json");
   expect(result.failure.message).not.toContain(canary);
   expect(result.failure.remediation).toContain("/tmp/[redacted]/unreadable-state.json");

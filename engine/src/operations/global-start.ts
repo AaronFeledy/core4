@@ -11,7 +11,10 @@ import { includeAvailableDependencies } from "@lando/engine/operations/ensure-gl
 import { requireSelectableGlobalRouter } from "@lando/engine/operations/global-consumer-admission";
 import { installAndLoadGlobalPlan } from "@lando/engine/operations/global-install";
 import type { LoadGlobalPlanError } from "@lando/engine/operations/global-plan";
-import { reconcileGlobalSiblings } from "@lando/engine/operations/global-retained-plan";
+import {
+  prepareGlobalReplacement,
+  reconcileGlobalSiblings,
+} from "@lando/engine/operations/global-retained-plan";
 import { applyGlobalServiceGroups } from "@lando/engine/operations/global-service-groups";
 import { withBuildProvider } from "@lando/engine/services/build-orchestrator";
 import type {
@@ -46,7 +49,6 @@ import {
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 import { DateTime, Effect, Schema } from "effect";
-import { prepareProvider } from "../providers/prepared.ts";
 import { globalAppRef, selectGlobalServices, withGlobalLifecycleEvents } from "./global-common";
 
 const now = () => DateTime.nowUnsafe();
@@ -170,7 +172,8 @@ export const globalStart = Effect.fn("GlobalStart.start")(
               close,
             })
           : undefined;
-        const provider = retained?.provider ?? (yield* prepareProvider(selectedProvider));
+        const { provider, replacement } =
+          retained ?? (yield* prepareGlobalReplacement(loaded.plan, selectedProvider));
         const selected = new Set(
           retained?.selectedIds ?? initiallySelected.map((service) => String(service.name)),
         );
@@ -184,6 +187,7 @@ export const globalStart = Effect.fn("GlobalStart.start")(
             provider,
             services,
             beforeApply: verifyAdmission,
+            ...(replacement === undefined ? {} : { replacement }),
             ...(options.preparedOverlays === undefined ? {} : { preparedOverlays: options.preparedOverlays }),
             ...(retained === undefined
               ? {}

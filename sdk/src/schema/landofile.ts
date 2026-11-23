@@ -803,7 +803,7 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
     }),
     packageRoot: Schema.optionalKey(Schema.String).annotate({
       description:
-        "App-root-relative source directory for project-file inputs: bare Node infers the Node version from .nvmrc and package.json engines, and catalog Node types select the package manager from package.json (packageManager or devEngines.packageManager). It changes neither mounts nor the container working directory. A custom image or replacement Compose build owns its toolchain and rejects an authored packageRoot.",
+        "App-root-relative source directory for project-file inputs: bare Node infers the Node version from .nvmrc and package.json engines, and catalog Node types select the package manager from package.json (packageManager or devEngines.packageManager). It does not move the app mount or the container working directory. A nested package root contributes a preset node_modules exclude, except under Yarn Plug'n'Play. A custom image or replacement Compose build owns its toolchain and rejects an authored packageRoot.",
     }),
     webroot: Schema.optionalKey(PortablePath).annotate({
       description:

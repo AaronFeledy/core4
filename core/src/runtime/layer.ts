@@ -269,7 +269,7 @@ export const prepareRuntime = (
     lifecycle,
     embeddingLayers: hostLayersResult.success,
     inputs: {
-      runtimeLayerFactory: { make: makeLandoRuntime },
+      runtimeLayerFactory: { make: makeLandoRuntime, makeProviderInventory },
       lifecycle,
       loggerMode: logging.loggerMode,
       logLevel: logging.logLevel,
@@ -357,6 +357,17 @@ export function makeLandoRuntime(options: unknown, snapshot?: GlobalConfigSnapsh
     ),
   );
 }
+
+const makeProviderInventory = (options: LandoRuntimeOptions, snapshot: GlobalConfigSnapshot["Service"]) =>
+  Layer.unwrap(
+    Effect.gen(function* () {
+      const invocation = yield* CliInvocation;
+      const prepared = prepareRuntime(options, snapshot, invocation);
+      if (Result.isFailure(prepared)) return yield* Effect.fail(prepared.failure);
+      const { makeProviderInventoryLayer } = yield* Effect.promise(() => import("./layers/provider.ts"));
+      return makeProviderInventoryLayer(prepared.success.inputs);
+    }),
+  );
 
 function buildLandoRuntime(
   options: unknown,

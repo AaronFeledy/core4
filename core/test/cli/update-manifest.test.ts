@@ -21,6 +21,7 @@ import {
   updateChannelForVersion,
 } from "@lando/engine/operations/update";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
+import { CORE_VERSION } from "@lando/engine/version";
 import { type UpdateChannel, UpdateManifestSchema } from "@lando/sdk/schema";
 import { ProcessRunner, StateStore, Telemetry } from "@lando/sdk/services";
 import * as StateStoreLayer from "@lando/state-store/service";
@@ -1318,6 +1319,7 @@ describe("update signed manifest", () => {
     const updateState = JSON.parse(await readFile(updateStatePath, "utf8"));
     expect(updateState).toEqual({
       version: 2,
+      writtenBy: CORE_VERSION,
       data: {
         stable: {
           latest: "4.4.0",

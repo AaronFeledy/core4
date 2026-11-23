@@ -150,6 +150,21 @@ describe("removeObservedContainer", () => {
 
     expect(exit._tag).toBe("Failure");
   });
+
+  test("refuses a peer data root before issuing any engine request", async () => {
+    const { api, calls } = recordingApi([]);
+    const peer = observed({ labels: { ...ownedLabels, "dev.lando.data-root": "/peer-data" } });
+
+    const exit = await Effect.runPromiseExit(
+      removeObservedContainer(peer, { api, ctx, dataRoot: "/local-data" }),
+    );
+
+    expect(exit).toMatchObject({
+      _tag: "Failure",
+      cause: { reasons: [{ error: { details: { label: "dev.lando.data-root" } } }] },
+    });
+    expect(calls).toEqual([]);
+  });
 });
 
 describe("removeObservedContainer ownership authorization", () => {

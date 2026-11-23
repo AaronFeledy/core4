@@ -3,7 +3,7 @@ import { layer as httpClientLayer } from "@lando/http-client/live";
 
 import { AbsolutePath, AppId, type AppPlan, ProviderId, type ScanPlan, ServiceName } from "@lando/sdk/schema";
 import { RuntimeProviderRegistry, type RuntimeProviderShape, UrlScanner } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { DateTime, Effect, Layer } from "effect";
 import * as ProviderUrlScanner from "../../../src/subsystems/scanner/live.ts";
 
@@ -90,12 +90,8 @@ const scanAgainst = (hostPort: number, scanner: ScanPlan) =>
       Effect.provide(
         Layer.succeed(
           RuntimeProviderRegistry,
-          RuntimeProviderRegistry.of({
+          makeTestRuntimeProviderRegistry({
             list: Effect.succeed([ProviderId.make("test")]),
-            capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-            appliedPlansFor: () => Effect.succeed([]),
-            resolveAppliedPlan: () => Effect.succeed(undefined),
-            resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
             select: () => Effect.succeed(providerAt(hostPort)),
           }),
         ),

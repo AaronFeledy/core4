@@ -9,7 +9,7 @@ import {
   type ServiceShutdownObservation,
 } from "@lando/sdk/schema";
 import { AppPlanner, LandofileService, RuntimeProviderRegistry } from "@lando/sdk/services";
-import { TestFileSyncEngine } from "@lando/sdk/test";
+import { TestFileSyncEngine, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { DateTime, Effect } from "effect";
 import { withResolvedCwd } from "../../src/landofile/app-resolution.ts";
 import { destroyApp } from "../../src/operations/destroy.ts";
@@ -78,47 +78,54 @@ test.each(["stop", "destroy", "renamed-destroy"] as const)(
                 }),
               ),
           }),
-          Effect.provideService(RuntimeProviderRegistry, {
-            ...harness.runtimeProviderRegistry,
-            select: () =>
-              Effect.succeed({
-                ...base,
-                inspectAppliedFileSync: (plan) =>
-                  Effect.succeed(
-                    plan.id === stale.id
-                      ? { status: "accelerated" as const, engineId: TestFileSyncEngine.id, sessions: [spec] }
-                      : { status: "ordinary" as const },
-                  ),
-                quiesceForFileSync: () => Effect.succeed({ shutdownObservations: [observed] }),
-                destroy: (ref, options) =>
-                  base.destroy(ref, options).pipe(
-                    Effect.map((outcome) =>
-                      outcome.kind === "destroyed"
+          Effect.provideService(
+            RuntimeProviderRegistry,
+            makeTestRuntimeProviderRegistry({
+              ...harness.runtimeProviderRegistry,
+              select: () =>
+                Effect.succeed({
+                  ...base,
+                  inspectAppliedFileSync: (plan) =>
+                    Effect.succeed(
+                      plan.id === stale.id
                         ? {
-                            ...outcome,
-                            volumesRemoved: {
-                              data: options.volumes ? 1 : 0,
-                              cache: options.purgeCaches ? 1 : 0,
-                            },
-                            ...(ref.app === stale.id
-                              ? {
-                                  shutdownObservations: [
-                                    {
-                                      appId: stale.id,
-                                      providerId: stale.provider,
-                                      service: worker.name,
-                                      status: "unknown" as const,
-                                      reason: "container-absent" as const,
-                                    },
-                                  ],
-                                }
-                              : {}),
+                            status: "accelerated" as const,
+                            engineId: TestFileSyncEngine.id,
+                            sessions: [spec],
                           }
-                        : outcome,
+                        : { status: "ordinary" as const },
                     ),
-                  ),
-              }),
-          }),
+                  quiesceForFileSync: () => Effect.succeed({ shutdownObservations: [observed] }),
+                  destroy: (ref, options) =>
+                    base.destroy(ref, options).pipe(
+                      Effect.map((outcome) =>
+                        outcome.kind === "destroyed"
+                          ? {
+                              ...outcome,
+                              volumesRemoved: {
+                                data: options.volumes ? 1 : 0,
+                                cache: options.purgeCaches ? 1 : 0,
+                              },
+                              ...(ref.app === stale.id
+                                ? {
+                                    shutdownObservations: [
+                                      {
+                                        appId: stale.id,
+                                        providerId: stale.provider,
+                                        service: worker.name,
+                                        status: "unknown" as const,
+                                        reason: "container-absent" as const,
+                                      },
+                                    ],
+                                  }
+                                : {}),
+                            }
+                          : outcome,
+                      ),
+                    ),
+                }),
+            }),
+          ),
           Effect.provideService(FileSyncResolver, {
             candidates: [],
             select: () => Effect.succeed(undefined),

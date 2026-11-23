@@ -10,7 +10,6 @@ export const assertManagedStorageResolved = async (
   exec: RuntimeExec,
   runtime: UninstallRuntime,
 ): Promise<void> => {
-  if (!runtime.managed) return;
   const usage = await runUninstallRuntime(exec, runtime, { args: ["system", "df", "--format", "json"] });
   const decoded = Schema.decodeUnknownResult(Usage)(usage.stdout);
   const retained: string[] = [];

@@ -1,24 +1,11 @@
-import type { AppId } from "@lando/sdk/schema";
 import {
   AbsolutePath,
+  type AppId,
   type FileSyncPlan,
   ServiceName,
   type ServicePlan,
   plannedFileSyncSessions,
 } from "@lando/sdk/schema";
-
-export const DEFAULT_APP_MOUNT_EXCLUDES = ["node_modules", "vendor", "tmp"] as const;
-
-export const mergeDefaultExcludes = (servicePlan: ServicePlan): ServicePlan => {
-  return {
-    ...servicePlan,
-    mounts: servicePlan.mounts.map((mount) =>
-      mount.type === "bind" && mount.role === "app"
-        ? { ...mount, excludes: [...new Set([...DEFAULT_APP_MOUNT_EXCLUDES, ...(mount.excludes ?? [])])] }
-        : mount,
-    ),
-  };
-};
 
 export const collectFileSyncEntries = (params: {
   readonly appId: ReturnType<typeof AppId.make>;

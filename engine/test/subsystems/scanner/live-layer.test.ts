@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { ProviderConfigError, ProviderUnavailableError, ScannerError } from "@lando/sdk/errors";
+import { ProviderUnavailableError, ScannerError } from "@lando/sdk/errors";
 import { AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
 import {
   RouterService,
@@ -7,7 +7,7 @@ import {
   type RuntimeProviderShape,
   UrlScanner,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider, makeTestRouterService } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRouterService, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect, Layer } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 
@@ -21,34 +21,29 @@ const worker = ServiceName.make("worker");
 const registryFor = (
   provider: RuntimeProviderShape,
   selected: Array<AppPlan | ProviderId | undefined> = [],
-  broken?: "select" | "appliedPlans",
+  offline?: ProviderUnavailableError,
 ) =>
-  RuntimeProviderRegistry.of({
+  makeTestRuntimeProviderRegistry({
     list: Effect.succeed(
-      broken === undefined
+      offline === undefined
         ? [ProviderId.make(provider.id)]
         : [ProviderId.make("broken"), ProviderId.make(provider.id)],
     ),
     capabilities: Effect.succeed(provider.capabilities),
-    appliedPlansFor: () => Effect.succeed([]),
-    resolveAppliedPlan: () => Effect.succeed(undefined),
-    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-    select: (target) => {
-      const failure = new ProviderUnavailableError({
-        providerId: "broken",
-        operation: "select",
-        message: "Unrelated provider is offline.",
-        remediation: "Repair the unrelated provider.",
-      });
-      if (target === "broken")
-        return broken === "select"
-          ? Effect.fail(failure)
-          : Effect.succeed({ ...TestRuntimeProvider, appliedPlans: Effect.fail(failure) });
-      return Effect.sync(() => {
+    appliedStateInventory: (id) =>
+      id === "broken" && offline !== undefined
+        ? Effect.fail(offline)
+        : (provider.appliedPlans ?? Effect.succeed([])).pipe(
+            Effect.catch((error) =>
+              error instanceof ProviderUnavailableError ? Effect.fail(error) : Effect.die(error),
+            ),
+            Effect.map((plans) => ({ plans, unreadable: [] })),
+          ),
+    select: (target) =>
+      Effect.sync(() => {
         selected.push(target);
         return provider;
-      });
-    },
+      }),
   });
 
 const provideScanner = Effect.fnUntraced(
@@ -64,82 +59,87 @@ const provideScanner = Effect.fnUntraced(
 );
 
 describe("ProviderUrlScanner.layer", () => {
-  test.each(["select", "appliedPlans"] as const)(
-    "scans the selected app past an unrelated provider's %s failure",
-    async (broken) => {
-      // Given two routed apps with no direct host publications.
-      const plans: readonly AppPlan[] = ["one", "two"].map((name) => ({
-        ...plan,
-        id: AppId.make(name),
-        services: {
-          [web]: { ...webPlan, endpoints: [{ kind: "internal", protocol: "http", port: 80 }] },
+  test("scans the selected app past an unrelated provider's inventory failure", async () => {
+    const offline = new ProviderUnavailableError({
+      providerId: "broken",
+      operation: "applied-state.list",
+      message: "Unrelated provider is offline.",
+      remediation: "Repair the unrelated provider.",
+    });
+    // Given two routed apps with no direct host publications.
+    const plans: readonly AppPlan[] = ["one", "two"].map((name) => ({
+      ...plan,
+      id: AppId.make(name),
+      services: {
+        [web]: { ...webPlan, endpoints: [{ kind: "internal", protocol: "http", port: 80 }] },
+      },
+      routes: [
+        {
+          hostname: `${name}.test`,
+          scheme: "https",
+          priority: 1,
+          service: web,
+          backend: { service: web, protocol: "http", port: 80 },
         },
-        routes: [
-          {
-            hostname: `${name}.test`,
-            scheme: "https",
-            priority: 1,
-            service: web,
-            backend: { service: web, protocol: "http", port: 80 },
+      ],
+    }));
+    const provider: RuntimeProviderShape = {
+      ...TestRuntimeProvider,
+      id: plan.provider,
+      appliedPlans: Effect.succeed(plans),
+      inspect: ({ app, service }) =>
+        Effect.succeed({
+          app,
+          service,
+          providerId: ProviderId.make("test"),
+          status: "running",
+          publications: { status: "present", bindings: [] },
+        }),
+    };
+    const router = RouterService.of({
+      ...makeTestRouterService(),
+      observeRoutes: (_owner, routes) =>
+        Effect.succeed({
+          configuredAuthorities: [],
+          observation: {
+            status: "present",
+            publications: routes.map((route) => ({
+              route,
+              authority: { hostname: route.hostname, scheme: "https", port: 38443 },
+            })),
           },
-        ],
-      }));
-      const provider: RuntimeProviderShape = {
-        ...TestRuntimeProvider,
-        appliedPlans: Effect.succeed(plans),
-        inspect: ({ app, service }) =>
-          Effect.succeed({
-            app,
-            service,
-            providerId: ProviderId.make("test"),
-            status: "running",
-            publications: { status: "present", bindings: [] },
-          }),
-      };
-      const router = RouterService.of({
-        ...makeTestRouterService(),
-        observeRoutes: (_owner, routes) =>
-          Effect.succeed({
-            configuredAuthorities: [],
-            observation: {
-              status: "present",
-              publications: routes.map((route) => ({
-                route,
-                authority: { hostname: route.hostname, scheme: "https", port: 38443 },
-              })),
-            },
-          }),
-      });
-      const http = requestSequence([httpStatus(200)]);
-      const selected: Array<AppPlan | ProviderId | undefined> = [];
-      // When the production layer discovers connections for collision checks and scans.
-      const result = await drive(
-        Effect.gen(function* () {
-          const scanner = yield* UrlScanner;
-          return {
-            collisions: yield* scanner.detectCollisions(plans.map((entry) => entry.id)),
-            scan: yield* scanner.scan(AppId.make("one")),
-          };
-        }).pipe(
-          Effect.provide(ProviderUrlScanner.layer),
-          Effect.provideService(RuntimeProviderRegistry, registryFor(provider, selected, broken)),
-          Effect.provideService(HttpClient.HttpClient, asHttpClient(http)),
-          Effect.provideService(RouterService, router),
-        ),
-      );
-      // Then shared ingress is not a direct-publication collision, but remains scannable.
-      expect(result.collisions).toEqual([]);
-      expect(selected).toContain(plans[0]);
-      expect(selected).toContain(plans[1]);
-      expect(selected).not.toContain(undefined);
-      expect(result.scan.endpoints.map((endpoint) => endpoint.url)).toEqual(["https://one.test:38443/"]);
-    },
-  );
+        }),
+    });
+    const http = requestSequence([httpStatus(200)]);
+    const selected: Array<AppPlan | ProviderId | undefined> = [];
+    // When the production layer discovers connections for collision checks and scans.
+    const result = await drive(
+      Effect.gen(function* () {
+        const scanner = yield* UrlScanner;
+        return {
+          collisions: yield* scanner.detectCollisions(plans.map((entry) => entry.id)),
+          scan: yield* scanner.scan(AppId.make("one")),
+        };
+      }).pipe(
+        Effect.provide(ProviderUrlScanner.layer),
+        Effect.provideService(RuntimeProviderRegistry, registryFor(provider, selected, offline)),
+        Effect.provideService(HttpClient.HttpClient, asHttpClient(http)),
+        Effect.provideService(RouterService, router),
+      ),
+    );
+    // Then shared ingress is not a direct-publication collision, but remains scannable.
+    expect(result.collisions).toEqual([]);
+    expect(selected).toContain(plans[0]);
+    expect(selected).toContain(plans[1]);
+    expect(selected).not.toContain(undefined);
+    expect(result.scan.endpoints.map((endpoint) => endpoint.url)).toEqual(["https://one.test:38443/"]);
+  });
 
   test("uses applied endpoint scan policy when no plan is supplied to the scanner", async () => {
     const http = requestSequence([httpStatus(418)]);
     const provider = {
       ...TestRuntimeProvider,
+      id: plan.provider,
       appliedPlans: Effect.succeed([
         {
           ...plan,
@@ -222,29 +222,39 @@ describe("ProviderUrlScanner.layer", () => {
     }
   });
 
-  test("keeps the provider's own failure when its applied plans cannot be inspected", async () => {
-    // Given a provider whose applied-plan inspection fails with a configuration error.
+  test("reports newer applied state instead of suggesting a first start", async () => {
     const http = requestSequence([httpStatus(200)]);
-    const original = new ProviderConfigError({
-      providerId: "test",
-      operation: "appliedPlans",
-      message: "DOCKER_HOST points at a missing socket.",
-      remediation: "Unset DOCKER_HOST or point it at a running daemon.",
+    const id = ProviderId.make("test");
+    const registry = makeTestRuntimeProviderRegistry({
+      list: Effect.succeed([id]),
+      appliedStateInventory: () =>
+        Effect.succeed({
+          plans: [],
+          unreadable: [
+            {
+              appId,
+              path: "/state/myapp.json",
+              reason: "newer-version",
+              storedVersion: 12,
+              supportedVersion: 11,
+            },
+          ],
+        }),
     });
-    const provider = {
-      ...TestRuntimeProvider,
-      appliedPlans: Effect.fail(original),
-    } satisfies RuntimeProviderShape;
-    // When the scanner selects the app's provider.
     const failure = failureOf(
-      await driveExit(provideScanner(provider, http).pipe(Effect.flatMap((scanner) => scanner.scan(appId)))),
+      await driveExit(
+        Effect.flatMap(UrlScanner, (scanner) => scanner.scan(appId)).pipe(
+          Effect.provide(ProviderUrlScanner.layer),
+          Effect.provideService(RuntimeProviderRegistry, registry),
+          Effect.provideService(HttpClient.HttpClient, asHttpClient(http)),
+        ),
+      ),
     );
-    // Then the scanner error carries that failure and its remediation, not a provider-unavailable relabel.
     expect(failure).toBeInstanceOf(ScannerError);
     if (failure instanceof ScannerError) {
-      expect(failure.message).toContain("DOCKER_HOST points at a missing socket.");
-      expect(failure.remediation).toBe("Unset DOCKER_HOST or point it at a running daemon.");
-      expect(failure.cause).toMatchObject({ name: "ProviderConfigError" });
+      expect(failure.cause).toMatchObject({ name: "AppliedStateVersionError" });
+      expect(failure.remediation).toContain("/state/myapp.json");
+      expect(failure.remediation).not.toMatch(/lando start/i);
     }
   });
 });

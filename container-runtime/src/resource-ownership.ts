@@ -5,6 +5,7 @@ import type { PluginStateStore } from "@lando/sdk/plugins";
 import {
   type AbsolutePath,
   type AppPlan,
+  ProviderId,
   type ResourceOwnership,
   landoOwnedNetworkNames,
   planAppIdentity,
@@ -13,10 +14,13 @@ import { Effect, Schema } from "effect";
 import { SCRATCH_ID_LABEL, scratchLabelsForPlan } from "./labels.ts";
 import { isSharedNetwork } from "./native-ownership.ts";
 import {
+  type AdoptionBatch,
   ResourceOwnershipInventory as Inventory,
   type OwnedResource,
+  RESOURCE_OWNERSHIP_NAMESPACE,
   RESOURCE_OWNERSHIP_VERSION,
   type ResourceInventory,
+  legacyResourceDigest,
   ownershipFailure,
   resourcesForPlan,
   validate,
@@ -31,22 +35,27 @@ export {
 } from "./resource-ownership-inventory.ts";
 
 const keyFor = (resource: OwnedResource) => resource.identityDigest;
+const inventoryKey = (root: AbsolutePath) => `${planAppIdentity({ root }).ownerKey}.json`;
 
 export const makeResourceOwnershipStore = (providerId: string, state?: PluginStateStore) => {
-  const open = (root: AbsolutePath) =>
+  const open = (key: string) =>
     state === undefined
       ? Effect.fail(ownershipFailure(providerId))
       : state
           .open({
-            namespace: "resource-ownership",
-            key: `${planAppIdentity({ root }).ownerKey}.json`,
+            namespace: RESOURCE_OWNERSHIP_NAMESPACE,
+            key,
             schema: Inventory,
             version: RESOURCE_OWNERSHIP_VERSION,
             codec: "json",
             mode: 0o600,
             lock: "advisory",
             onCorrupt: "fail",
-            onVersionMismatch: (_raw, version): ResourceInventory => {
+            onVersionMismatch: (raw, version): ResourceInventory => {
+              if (version === 1 || version === 2) {
+                const { adoptions: _adoptions, ...legacy } = Schema.decodeUnknownSync(Inventory)(raw);
+                return legacy;
+              }
               throw new StateStoreError({
                 reason: "version",
                 operation: "resource-ownership",
@@ -57,14 +66,19 @@ export const makeResourceOwnershipStore = (providerId: string, state?: PluginSta
             },
           })
           .pipe(mapFailures((cause) => ownershipFailure(providerId, cause)));
-  const load = Effect.fn("ResourceOwnership.load")(function* (root: AbsolutePath) {
-    const bucket = yield* open(root);
+  const loadRecord = Effect.fn("ResourceOwnership.loadRecord")(function* (key: string, root?: AbsolutePath) {
+    const bucket = yield* open(key);
     const value = yield* bucket.get.pipe(mapFailures((cause) => ownershipFailure(providerId, cause)));
     return yield* Effect.try({
-      try: () => (value === null ? undefined : validate(value, root, providerId)),
+      try: () => {
+        if (value === null) return undefined;
+        if (inventoryKey(value.appRoot) !== key) throw ownershipFailure(providerId);
+        return validate(value, root ?? value.appRoot, providerId);
+      },
       catch: (cause) => ownershipFailure(providerId, cause),
     });
   });
+  const load = (root: AbsolutePath) => loadRecord(inventoryKey(root), root);
   const prepare = Effect.fn("ResourceOwnership.prepare")(function* (plan: AppPlan, previous?: AppPlan) {
     const owner = planAppIdentity(plan);
     const root = owner.appRoot;
@@ -106,7 +120,7 @@ export const makeResourceOwnershipStore = (providerId: string, state?: PluginSta
         return yield* Effect.fail(ownershipFailure(providerId));
       resources.push(...resourcesForPlan(attempt));
     }
-    const bucket = yield* open(root);
+    const bucket = yield* open(inventoryKey(root));
     yield* bucket
       .modify((current) => {
         if (current !== null) validate(current, root, providerId);
@@ -162,7 +176,14 @@ export const makeResourceOwnershipStore = (providerId: string, state?: PluginSta
           }
           unionByKey.set(key, item);
         }
-        const union = [...unionByKey.values()];
+        const scoped = new Set(
+          [...unionByKey.values()]
+            .filter((item) => item.dataRoot === owner.dataRoot && item.dataRoot !== undefined)
+            .map(legacyResourceDigest),
+        );
+        const union = [...unionByKey.values()].filter(
+          (item) => item.dataRoot !== undefined || !scoped.has(item.identityDigest),
+        );
         return [
           undefined,
           {
@@ -171,6 +192,7 @@ export const makeResourceOwnershipStore = (providerId: string, state?: PluginSta
             providerId: plan.provider,
             appIds: [...new Set(union.map((item) => item.appId))],
             resources: union,
+            ...(current?.adoptions === undefined ? {} : { adoptions: current.adoptions }),
           },
         ];
       })
@@ -185,7 +207,7 @@ export const makeResourceOwnershipStore = (providerId: string, state?: PluginSta
     root: AbsolutePath,
     resource: OwnedResource,
   ) {
-    const bucket = yield* open(root);
+    const bucket = yield* open(inventoryKey(root));
     yield* bucket
       .modify((current) => {
         if (current === null) throw ownershipFailure(providerId);
@@ -193,25 +215,116 @@ export const makeResourceOwnershipStore = (providerId: string, state?: PluginSta
         const resources = current.resources.filter((item) => keyFor(item) !== keyFor(resource));
         return [
           undefined,
-          { ...current, resources, appIds: [...new Set(resources.map((item) => item.appId))] },
+          {
+            ...current,
+            resources,
+            appIds: [...new Set(resources.map((item) => item.appId))],
+            ...(current.adoptions === undefined
+              ? {}
+              : {
+                  adoptions: current.adoptions.map((batch) => ({
+                    ...batch,
+                    receipts: batch.receipts.filter(
+                      (receipt) =>
+                        receipt.kind !== resource.kind ||
+                        receipt.nativeName !== resource.nativeName ||
+                        receipt.appId !== resource.appId,
+                    ),
+                  })),
+                }),
+          },
+        ];
+      })
+      .pipe(mapFailures((cause) => ownershipFailure(providerId, cause)));
+  });
+  const recordAdoption = Effect.fn("ResourceOwnership.recordAdoption")(function* (
+    root: AbsolutePath,
+    batch: AdoptionBatch,
+    verifiedVolumes: readonly OwnedResource[],
+  ) {
+    const bucket = yield* open(inventoryKey(root));
+    yield* bucket
+      .modify((current) => {
+        const existing = current === null ? undefined : validate(current, root, providerId);
+        const adoptions = existing?.adoptions ?? [];
+        if (
+          existing !== undefined &&
+          adoptions.some(
+            (entry) => entry.dataRoot === batch.dataRoot && entry.previousAppId === batch.previousAppId,
+          )
+        ) {
+          return [undefined, existing];
+        }
+        const resources = [
+          ...new Map(
+            [...(existing?.resources ?? []), ...verifiedVolumes].map((item) => [keyFor(item), item]),
+          ).values(),
+        ];
+        return [
+          undefined,
+          validate(
+            {
+              appRoot: root,
+              ownerKey: planAppIdentity({ root }).ownerKey,
+              providerId: ProviderId.make(providerId),
+              ...existing,
+              appIds: [...new Set(resources.map((item) => item.appId))],
+              resources,
+              adoptions: [...adoptions, batch],
+            },
+            root,
+            providerId,
+          ),
         ];
       })
       .pipe(mapFailures((cause) => ownershipFailure(providerId, cause)));
   });
   return {
     load,
+    loadRecord,
     prepare,
     retire,
+    recordAdoption,
     summary: (root: AbsolutePath) =>
       load(root).pipe(
         Effect.map((inventory): ResourceOwnership | undefined =>
-          inventory === undefined || inventory.resources.length === 0
+          inventory === undefined ||
+          (inventory.resources.length === 0 &&
+            !inventory.adoptions?.some((batch) => batch.receipts.length > 0))
             ? undefined
             : {
                 appRoot: inventory.appRoot,
                 ownerKey: inventory.ownerKey,
                 providerId: inventory.providerId,
-                appIds: inventory.appIds,
+                appIds: [
+                  ...new Set([
+                    ...inventory.appIds,
+                    ...(inventory.adoptions ?? []).flatMap((batch) =>
+                      batch.receipts.map((receipt) => receipt.appId),
+                    ),
+                  ]),
+                ],
+                members: [
+                  ...inventory.resources.map((resource) => ({
+                    kind: resource.kind,
+                    nativeName: resource.nativeName,
+                    appId: resource.appId,
+                    ...(resource.kind === "container" ? { service: resource.service } : {}),
+                  })),
+                  ...(inventory.adoptions ?? []).flatMap((batch) =>
+                    batch.receipts.map((receipt) => ({
+                      kind: receipt.kind,
+                      nativeName: receipt.nativeName,
+                      appId: receipt.appId,
+                      dataRoot: receipt.dataRoot,
+                      ...(receipt.kind === "volume"
+                        ? receipt.volumeInstance === undefined
+                          ? {}
+                          : { volumeInstance: receipt.volumeInstance }
+                        : { nativeId: receipt.nativeId }),
+                    })),
+                  ),
+                ],
               },
         ),
       ),

@@ -1,4 +1,4 @@
-import { ProviderUnavailableError } from "@lando/sdk/errors";
+import { type AppliedStateVersionError, ProviderUnavailableError } from "@lando/sdk/errors";
 import type { AppId, AppPlan, ServiceName } from "@lando/sdk/schema";
 import { planDataId } from "@lando/sdk/schema";
 import type {
@@ -24,8 +24,12 @@ export { readAppEnvironment } from "./app-environment.ts";
 
 export interface ResolvedProviderOpsInput {
   readonly ctx: ProviderErrorContext;
-  readonly resolvePlan: (app: AppId) => Effect.Effect<AppPlan | undefined>;
-  readonly beforeMutation?: (app: AppId) => Effect.Effect<void, ProviderUnavailableError>;
+  readonly resolvePlan: (
+    app: AppId,
+  ) => Effect.Effect<AppPlan | undefined, ProviderUnavailableError | AppliedStateVersionError>;
+  readonly beforeMutation?: (
+    app: AppId,
+  ) => Effect.Effect<void, ProviderUnavailableError | AppliedStateVersionError>;
   readonly noPlanError: (app: AppId, operation: string) => ProviderError;
   readonly before?: (
     operation: ResolvedProviderOperation,
@@ -112,25 +116,29 @@ export const makeResolvedProviderOps = (input: ResolvedProviderOpsInput): Resolv
     operation: ResolvedProviderOperation,
     delegate: (plan: AppPlan) => Effect.Effect<A, E, R>,
   ): Effect.Effect<A, ProviderError | E, R> => {
-    const resolved = (
-      target.plan === undefined ? input.resolvePlan(target.app) : Effect.succeed(target.plan)
-    ).pipe(
+    const observational =
+      operation === "inspect" || operation === "waitForExit" || operation === "observeVolume";
+    const supplied = target.plan;
+    const read =
+      supplied === undefined || observational || input.beforeMutation === undefined
+        ? input.resolvePlan(target.app).pipe(Effect.map((recorded) => supplied ?? recorded))
+        : beforeMutation(target.app).pipe(Effect.as(supplied));
+    return read.pipe(
       Effect.flatMap((plan) =>
         plan === undefined
           ? Effect.fail(input.noPlanError(target.app, operation))
           : before(operation, plan, target.service).pipe(Effect.flatMap(() => delegate(plan))),
       ),
     );
-    return operation === "inspect" || operation === "waitForExit" || operation === "observeVolume"
-      ? resolved
-      : beforeMutation(target.app).pipe(Effect.andThen(resolved));
   };
-  const withOptionalPlan = (target: ExecTarget): Effect.Effect<ExecTarget> =>
-    target.plan === undefined
-      ? input
-          .resolvePlan(target.app)
-          .pipe(Effect.map((plan) => (plan === undefined ? target : { ...target, plan })))
-      : Effect.succeed(target);
+  const withOptionalPlan = (target: ExecTarget) =>
+    input
+      .resolvePlan(target.app)
+      .pipe(
+        Effect.map((plan) =>
+          target.plan !== undefined || plan === undefined ? target : { ...target, plan },
+        ),
+      );
   const resolveTargetStream = <A, E extends ProviderError, R>(
     target: AppSelector,
     operation: ResolvedProviderOperation,

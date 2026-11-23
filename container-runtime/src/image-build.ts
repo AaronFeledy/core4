@@ -96,6 +96,7 @@ const dockerfileForDerivedBuild = Effect.fnUntraced(function* (
 });
 
 export const BUILT_ARTIFACT_PREFIX = "lando-build-";
+export const BUILT_ARTIFACT_STORE_LABEL = "dev.lando.build-store";
 
 const requireBuildId = (result: { readonly id?: string }, providerId: string) =>
   result.id === undefined

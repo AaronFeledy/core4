@@ -6,8 +6,9 @@ import { layerWith as pluginRegistryLayer } from "@lando/engine/plugins/registry
 import * as AppPlannerLayer from "@lando/engine/services/planner";
 import { parseLandofile } from "@lando/landofile/parser";
 import { loadAuthoredDocuments } from "@lando/landofile/root-compile";
+import { makeLandoPaths } from "@lando/paths";
 import { ServiceName, landoAppStoreName, landoServiceStorageName } from "@lando/sdk/schema";
-import { AppPlanner } from "@lando/sdk/services";
+import { AppPlanner, PathsService } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect, Layer } from "effect";
 import { withCwd } from "../_support/temp-cwd.ts";
@@ -90,7 +91,13 @@ services:
         Effect.runPromise(
           Effect.flatMap(AppPlanner, (planner) =>
             planner.plan(compiled, { ...TestRuntimeProvider.capabilities, artifactBuild: true }),
-          ).pipe(Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(bundledCatalog)))),
+          ).pipe(
+            Effect.provide(
+              AppPlannerLayer.layer.pipe(
+                Layer.provide(Layer.mergeAll(bundledCatalog, Layer.succeed(PathsService, makeLandoPaths()))),
+              ),
+            ),
+          ),
         ),
       [root],
     );

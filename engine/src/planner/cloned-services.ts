@@ -231,6 +231,7 @@ const clonePlannedDraft = (
     // Log files belong to the parent's process. Following them would also append
     // the parent's redirect build steps after the request's own extra steps.
     logSources: { replace: [] },
+    plannedPort: "drop",
     routes: { replace: undefined },
     extensions: { replace: companionExtensions(parent.extensions ?? {}, resetStopSignal) },
     // The clone shares the parent's service-scoped stores: same files, same

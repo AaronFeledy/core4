@@ -1,6 +1,6 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { GuideFixtureNotFoundError, GuideFixtureSymlinkError, NotImplementedError } from "@lando/core/errors";
@@ -384,6 +384,22 @@ describe("withScenarioContext", () => {
       ["info"],
       ["version"],
     ]);
+  });
+
+  test("removes a testDir that holds a read-only directory", async () => {
+    const testDir = await Effect.runPromise(
+      withScenarioContext({ guideId: "drupal-cms", scenarioId: "locked-site" }, (context) =>
+        Effect.promise(async () => {
+          const locked = join(context.testDir, "web", "sites", "default");
+          await mkdir(locked, { recursive: true });
+          await writeFile(join(locked, "settings.php"), "<?php\n");
+          await chmod(locked, 0o555);
+          return context.testDir;
+        }),
+      ),
+    );
+
+    expect(existsSync(testDir)).toBe(false);
   });
 
   test("preserves testDir when KEEP_SCENARIO_DIRS=1", async () => {

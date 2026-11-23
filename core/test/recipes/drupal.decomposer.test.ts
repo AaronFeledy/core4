@@ -39,11 +39,8 @@ const authoringOf = (options: Readonly<Record<string, unknown>>) => {
   return authoring;
 };
 
-const scaffoldTooling = {
-  service: "appserver",
-  description: "Scaffold Drupal and project-local Drush into the mounted app root.",
-  arguments: false,
-  cmd: "lando-drupal-scaffold {{ recipe.drupal }}",
+const scaffoldAppStep = {
+  run: 'lando-drupal-scaffold 11 "$LANDO_WEBROOT" --testing=false',
 };
 
 describe("drupal decomposition", () => {
@@ -80,6 +77,7 @@ describe("drupal decomposition", () => {
           uploadDirs: ["sites/*/files"],
           port: 80,
           depends_on: ["database"],
+          build: { app: [scaffoldAppStep] },
           routes: [{ hostname: "{{ app.name }}.{{ proxy.defaultDomain }}", scheme: "both" }],
         },
         database: { type: "{{ recipe.database }}" },
@@ -115,7 +113,6 @@ describe("drupal decomposition", () => {
           wrapper: true,
           description: "Run PHPStan inside the appserver service.",
         },
-        "drupal-scaffold": scaffoldTooling,
       },
     });
   });
@@ -131,6 +128,7 @@ describe("drupal decomposition", () => {
       webroot: "{{ recipe.webroot }}",
       composer: "{{ recipe.composer }}",
       depends_on: ["database"],
+      build: { app: [{ run: 'lando-drupal-scaffold 10 "$LANDO_WEBROOT" --testing=false' }] },
     });
     expect(authoring.services.edge).toEqual({
       type: "nginx",
@@ -141,9 +139,17 @@ describe("drupal decomposition", () => {
     });
   });
 
-  test("names the container helper scaffold command and keeps the Drupal major in recipe scope", () => {
-    const authoring = authoringOf(alternatives) as { tooling: { "drupal-scaffold": { cmd: string } } };
-    expect(authoring.tooling["drupal-scaffold"].cmd).toBe("lando-drupal-scaffold {{ recipe.drupal }}");
+  test("pins the chosen major and enables testing in the generated scaffold", () => {
+    const authoring = authoringOf({ ...alternatives, drupal: "10", testing: true }) as {
+      services: { appserver: { build: { app: ReadonlyArray<{ run: string; user?: string }> } } };
+      tooling: Record<string, unknown>;
+    };
+    expect(authoring.services.appserver.build.app).toEqual([
+      { run: 'lando-drupal-scaffold 10 "$LANDO_WEBROOT" --testing=true' },
+    ]);
+    expect(authoring.services.appserver.build.app).toHaveLength(1);
+    expect(authoring.services.appserver.build.app[0]).not.toHaveProperty("user");
+    expect(authoring.tooling["drupal-scaffold"]).toBeUndefined();
   });
 
   test.each([

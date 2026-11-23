@@ -4,7 +4,7 @@ import {
   ServiceNotFoundError,
   ServiceStartError,
 } from "../errors/index.ts";
-import { effectiveReadiness } from "../schema/index.ts";
+import { LANDO_DATA_ROOT_LABEL, effectiveReadiness } from "../schema/index.ts";
 import type { RuntimeProviderShape, ServiceRuntimeFields, ServiceSelector } from "../services/index.ts";
 import { TEST_PROVIDER_ID } from "./_shared.ts";
 
@@ -96,6 +96,9 @@ export const makeTestProviderContainers = () => {
               : DateTime.toDateUtc(DateTime.makeUnsafe(now)),
           publications: { status: "unknown" },
           labels: {
+            ...(plan.identity?.dataRoot === undefined
+              ? {}
+              : { [LANDO_DATA_ROOT_LABEL]: plan.identity.dataRoot }),
             "dev.lando.app": plan.id,
             "dev.lando.app-root": plan.identity?.appRoot ?? plan.root,
             "dev.lando.service": service.name,

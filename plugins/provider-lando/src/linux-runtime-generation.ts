@@ -4,6 +4,7 @@ import { readLinuxBootId } from "@lando/container-runtime/podman/managed-status-
 import { redactDetails, standaloneSecretsRedactor } from "@lando/container-runtime/redact";
 import { mapFailures } from "@lando/sdk/command-result";
 import { ProviderUnavailableError, type StateStoreError } from "@lando/sdk/errors";
+import { storeErrorRemediation } from "@lando/state-store";
 import { Effect } from "effect";
 
 import { launchStatePath } from "./runtime-launch-state.ts";
@@ -57,7 +58,10 @@ const generationError = (message: string, details: object, cause?: unknown) =>
     providerId: "lando",
     operation: "setup",
     message,
-    remediation: "Verify the managed runtime directory and /proc are accessible, then retry the command.",
+    remediation: storeErrorRemediation(
+      cause,
+      "Verify the managed runtime directory and /proc are accessible, then retry the command.",
+    ),
     details: redactDetails(details, standaloneSecretsRedactor({ ...process.env })),
     ...(cause === undefined ? {} : { cause }),
   });

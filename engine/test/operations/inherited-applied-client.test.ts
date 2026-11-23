@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
+import { makeLandoPaths } from "@lando/paths";
 import { CurrentExecutableAppPlan, ServiceName } from "@lando/sdk/schema";
-import { AppPlanner, PluginRegistry } from "@lando/sdk/services";
+import { AppPlanner, PathsService, PluginRegistry } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect, Schema } from "effect";
 import { runAppEvent } from "../../src/operations/events.ts";
@@ -85,6 +86,7 @@ test("strict persisted service records select the child's own factory through fa
       return { plan, serviceType };
     }).pipe(
       Effect.provide(Planner.layer),
+      Effect.provideService(PathsService, makeLandoPaths()),
       Effect.provide(
         inheritedServiceRegistry("postgres", {}, (name, connection) => ({
           psql: {
@@ -124,6 +126,7 @@ test("a service that lost client precedence at creation retains its own applied 
       return { plan, serviceType };
     }).pipe(
       Effect.provide(Planner.layer),
+      Effect.provideService(PathsService, makeLandoPaths()),
       Effect.provide(
         inheritedServiceRegistry("postgres", {}, (name, facts) => ({
           psql: { service: name, cmd: ["losing-child-psql", "-p", String(facts.port)] },

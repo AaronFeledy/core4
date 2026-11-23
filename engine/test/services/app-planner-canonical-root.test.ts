@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AbsolutePath, type LandofileShape, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
 import { AppPlanner, RuntimeProviderRegistry } from "@lando/sdk/services";
-import { TestFileSyncEngine, TestRuntimeProvider } from "@lando/sdk/test";
+import { TestFileSyncEngine, TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect, Layer } from "effect";
 import { validateResolvedAppTarget } from "../../src/operations/applied-state-target.ts";
 import { FileSyncResolver } from "../../src/plugins/file-sync-resolver.ts";
@@ -13,6 +13,7 @@ import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import { HostProviderOverride } from "../../src/providers/host-provider.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";
 import { literalTestLandofile } from "../compiled-landofile.ts";
+import { pathsServiceLayer } from "../paths-service.ts";
 
 const slowBindCapabilities = {
   ...TestRuntimeProvider.capabilities,
@@ -34,7 +35,11 @@ test("uses the canonical Windows root when planning a teardown target", async ()
     // When: the real planner produces the root-bound plan consumed by teardown.
     const plan = await Effect.runPromise(
       Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, TestRuntimeProvider.capabilities)).pipe(
-        Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(PluginRegistryLayer.layer))),
+        Effect.provide(
+          AppPlannerLayer.layer.pipe(
+            Layer.provide(Layer.mergeAll(PluginRegistryLayer.layer, pathsServiceLayer())),
+          ),
+        ),
       ),
     );
 
@@ -46,14 +51,7 @@ test("uses the canonical Windows root when planning a teardown target", async ()
     const target = { plan, root: plan.root, app: { kind: "user" as const, id: plan.id, root: plan.root } };
     await Effect.runPromise(
       validateResolvedAppTarget(target).pipe(
-        Effect.provideService(RuntimeProviderRegistry, {
-          appliedPlansFor: () => Effect.succeed([]),
-          resolveAppliedPlan: () => Effect.succeed(undefined),
-          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-          list: Effect.succeed([]),
-          capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-          select: () => Effect.succeed(TestRuntimeProvider),
-        }),
+        Effect.provideService(RuntimeProviderRegistry, makeTestRuntimeProviderRegistry()),
       ),
     );
   } finally {
@@ -97,6 +95,7 @@ test("plans file-sync sessions and bind mounts on the canonical Windows root", a
                   { ...TestFileSyncEngine, id: "mutagen" },
                   { platform: ["linux", "darwin", "win32"] },
                 ),
+                pathsServiceLayer(),
               ),
             ),
           ),

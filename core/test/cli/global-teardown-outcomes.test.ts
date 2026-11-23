@@ -24,7 +24,10 @@ for (const evidence of ["absent", "applied", "destroyed", "volume", "preserved-v
           }
           const volume: VolumeInfo = {
             ref: { app: AppId.make("global"), store: "data" },
-            labels: { "dev.lando.scope": evidence === "preserved-volume" ? "global" : "app" },
+            labels: {
+              "dev.lando.scope": evidence === "preserved-volume" ? "global" : "app",
+              "dev.lando.data-root": dataRoot,
+            },
             identity: {
               ownerRoot: root,
               nativeName: "data",

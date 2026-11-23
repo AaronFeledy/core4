@@ -25,6 +25,7 @@ import { withdrawOwnerRoutes } from "../lifecycle/route-withdrawal.ts";
 import { removeServiceCertificates } from "../lifecycle/service-certificate-paths.ts";
 import { withDestroyProgress } from "../operations/destroy-progress.ts";
 import { removeSnapshots, scratchOwnedSnapshots } from "../operations/destroy-snapshots.ts";
+import { taggedErrorRemediation } from "../providers/managed.ts";
 import { BuildOwner } from "../services/build-owner.ts";
 import { clearAppBuildResults } from "../services/build-results.ts";
 import { removeAppBuildOutput, warnBuildOutputCleanupFailure } from "../services/build-transcript-cleanup.ts";
@@ -56,6 +57,16 @@ export const makeScratchReaper = Effect.gen(function* () {
       // The desired cache may miss after a frame bump; recover the matching applied plan
       // before planless orphan cleanup so snapshots and provider teardown still own the app.
       const lookupRoot = AbsolutePath.make(entry?.rootPath ?? join(String(input.instanceRoot), "root"));
+      const id = AppId.make(input.id);
+      if (input.plan === undefined) {
+        for (const provider of yield* providers.list) {
+          const inventory = yield* providers.appliedStateInventory(provider);
+          // The registry does not record which provider ran a scratch app, so a shared receipt
+          // protects it as well as a per-app receipt that names it, even with no runtime online.
+          if (inventory.unreadable.some((issue) => issue.appId === undefined || issue.appId === id))
+            yield* providers.readAppliedPlanStrict({ id, provider });
+        }
+      }
       const plan =
         input.plan ??
         (yield* providers
@@ -69,6 +80,7 @@ export const makeScratchReaper = Effect.gen(function* () {
             remediation: "Repair the scratch plan cache before retrying destroy.",
           }),
         );
+      if (plan !== undefined) yield* providers.readAppliedPlanStrict(plan);
       const app = {
         kind: "scratch" as const,
         id: input.id,
@@ -198,6 +210,7 @@ export const makeScratchReaper = Effect.gen(function* () {
             message: "Unable to destroy scratch resources.",
             cause,
             remediation:
+              taggedErrorRemediation(cause) ??
               "Repair the failed provider, snapshot, or route operation and retry scratch destroy.",
           }),
     ),

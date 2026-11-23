@@ -3,6 +3,7 @@ import { authoredInvocationSites, compileInvocationSites } from "@lando/landofil
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { PortablePath, ServiceName } from "@lando/sdk/schema";
 import { RuntimeProviderRegistry } from "@lando/sdk/services";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect, Result } from "effect";
 import { resolveConnectionClientTask } from "../../src/planner/connection-client-task.ts";
 import {
@@ -31,15 +32,18 @@ test("retains the provider lookup failure when refusing an applied connection cl
         task: {},
         sites: [],
       }).pipe(
-        Effect.provideService(RuntimeProviderRegistry, {
-          ...registry,
-          appliedPlansFor: () => Effect.fail(cause),
-        }),
+        Effect.provideService(
+          RuntimeProviderRegistry,
+          makeTestRuntimeProviderRegistry({
+            ...registry,
+            readAppliedPlanStrict: () => Effect.fail(cause),
+          }),
+        ),
       );
     }).pipe(Effect.provide(fixture.layer), Effect.result),
   );
   expect(Result.isFailure(result)).toBe(true);
-  if (Result.isFailure(result)) expect(result.failure.cause).toBe(cause);
+  if (Result.isFailure(result)) expect(result.failure).toBe(cause);
 });
 
 test("winning generated client provenance survives attachment without credentials or authored overrides", () => {

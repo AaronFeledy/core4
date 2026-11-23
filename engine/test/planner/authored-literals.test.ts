@@ -20,6 +20,7 @@ import * as Registry from "../../src/plugins/registry.ts";
 import * as FileSystem from "../../src/services/file-system.ts";
 import * as Planner from "../../src/services/planner.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
+import { pathsServiceLayer } from "../paths-service.ts";
 
 const withRoot = async (run: (root: string) => Promise<void>) => {
   const root = await mkdtemp(join(tmpdir(), "lando-plan-literal-"));
@@ -70,6 +71,7 @@ const runPlan = (
                 get: (key) => Effect.succeed(config[key]),
               }),
               options.cache ? Cache.layer : Layer.empty,
+              pathsServiceLayer(),
             ),
           ),
         ),

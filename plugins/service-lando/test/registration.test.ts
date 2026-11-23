@@ -2,11 +2,11 @@ import { describe, expect, test } from "bun:test";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
+import { makeLandoPaths } from "@lando/paths";
 import { AppPlan, LandofileShape, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
 import { MSSQL_DEFAULT_PASSWORD } from "@lando/sdk/secrets";
-import { AppPlanner, PluginRegistry } from "@lando/sdk/services";
+import { AppPlanner, PathsService, PluginRegistry } from "@lando/sdk/services";
 import { Effect, Layer, Schema } from "effect";
-
 import { globalServices, services } from "../src/index.ts";
 import { tcpProbe } from "../src/services/_tcp-probe.ts";
 import { TOMCAT_CATALOG } from "../src/services/generated/tomcat-catalog.ts";
@@ -58,7 +58,12 @@ const plan = (landofile: LandofileShape) =>
   Effect.runPromise(
     Effect.flatMap(AppPlanner, (appPlanner) =>
       appPlanner.plan(compileTestLandofile(landofile), providerCapabilities),
-    ).pipe(Effect.provide(AppPlannerLayer.layer), Effect.provide(registryLayer)),
+    ).pipe(
+      Effect.provide(
+        AppPlannerLayer.layer.pipe(Layer.provide(Layer.succeed(PathsService, makeLandoPaths()))),
+      ),
+      Effect.provide(registryLayer),
+    ),
   );
 
 describe("@lando/service-lando registration", () => {

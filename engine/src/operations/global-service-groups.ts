@@ -12,7 +12,11 @@ import {
   projectDebuggerOverlay,
 } from "../subsystems/start-overlay-registry.ts";
 import { withGlobalConsumerReservation } from "./global-consumer-lease.ts";
-import { type GlobalSiblingRemoval, advanceGlobalRecordedPlan } from "./global-retained-plan.ts";
+import {
+  type GlobalSiblingRemoval,
+  advanceGlobalRecordedPlan,
+  retireGlobalReplacement,
+} from "./global-retained-plan.ts";
 
 export const serviceGroups = (
   services: ReadonlyArray<ServicePlan>,
@@ -53,6 +57,7 @@ export const applyGlobalServiceGroups = Effect.fn("GlobalServices.applyGroups")(
   apply: {
     readonly provider: PreparedRuntimeProvider;
     readonly services: ReadonlyArray<ServicePlan>;
+    readonly replacement?: AppPlan;
     readonly options: Pick<ApplyOptions, "complete" | "reconcile" | "signal">;
     readonly recordedPlan?: AppPlan;
     readonly recordedDisabledIds?: ReadonlyArray<string>;
@@ -77,7 +82,7 @@ export const applyGlobalServiceGroups = Effect.fn("GlobalServices.applyGroups")(
     Effect.Success<ReturnType<typeof applyActivation>>["credentialChanges"]
   >[number][] = [];
   const outcomes = yield* Effect.forEach(
-    serviceGroups(apply.services, apply.bindings),
+    apply.replacement === undefined ? serviceGroups(apply.services, apply.bindings) : [apply.services],
     (group) =>
       Effect.gen(function* () {
         const names = new Set<string>(group.map((service) => service.name));
@@ -122,6 +127,8 @@ export const applyGlobalServiceGroups = Effect.fn("GlobalServices.applyGroups")(
                 completionPlan: candidateRecordedPlan,
                 beforeApply: Effect.gen(function* () {
                   if (apply.beforeApply !== undefined) yield* apply.beforeApply;
+                  if (apply.replacement !== undefined)
+                    yield* retireGlobalReplacement(apply.provider, apply.replacement, builtPlan);
                   for (const removal of removals)
                     yield* apply.provider.removeObservedService(removal.observation);
                 }),

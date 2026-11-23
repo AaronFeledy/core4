@@ -87,7 +87,7 @@ export const appStepDisposition = (
         failure: new BuildStepFailedError({
           step,
           message,
-          remediation: `Resolve the blocking failures (${blockedBy}), then rebuild step ${step.id}.`,
+          remediation: `Resolve the blocking failures (${blockedBy}), then run lando start.`,
         }),
       };
     }
@@ -101,8 +101,8 @@ export const appStepDisposition = (
       const kind = buildAppKind(input.plan);
       const baseRemediation =
         kind === "scratch"
-          ? `Fix step ${step.id}, and rebuild.`
-          : `Inspect the build transcript at ${attempt.transcriptPath}, fix step ${step.id}, and rebuild.`;
+          ? `Fix step ${step.id}, then run lando start.`
+          : `Inspect the build transcript at ${attempt.transcriptPath}, fix step ${step.id}, then run lando start.`;
       return {
         outcome: "failed",
         summary: `${step.id} failed`,

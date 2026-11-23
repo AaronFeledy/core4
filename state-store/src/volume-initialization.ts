@@ -109,20 +109,30 @@ export const planVolumeInitializationWrite = (
   }
 };
 
-/** Only the engine's verified creation-result consumer may call recordCreation. */
-export const volumeInitialization = Effect.fn("StateStore.volumeInitialization")(function* (
-  store: StateStoreShape,
-  identity: VolumeIdentity,
-) {
-  const bucket = yield* store.open({
+const openInitialization = (store: StateStoreShape, coordinationKey: string) =>
+  store.open({
     root: "userData",
     namespace: "volume-initialization",
-    key: `${physicalVolumeLockKey(identity.coordinationKey)}.json`,
+    key: `${physicalVolumeLockKey(coordinationKey)}.json`,
     schema: Schema.NullOr(VolumeInitializationRecord),
     version: VOLUME_INITIALIZATION_VERSION,
     lock: "advisory",
     onCorrupt: "fail",
   });
+
+export const readVolumeInitialization = Effect.fn("StateStore.readVolumeInitialization")(function* (
+  store: StateStoreShape,
+  coordinationKey: string,
+) {
+  return yield* (yield* openInitialization(store, coordinationKey)).get;
+});
+
+/** Only the engine's verified creation-result consumer may call recordCreation. */
+export const volumeInitialization = Effect.fn("StateStore.volumeInitialization")(function* (
+  store: StateStoreShape,
+  identity: VolumeIdentity,
+) {
+  const bucket = yield* openInitialization(store, identity.coordinationKey);
   const baseline = yield* bucket.get;
   return {
     read: bucket.get.pipe(Effect.map((current) => (matchesIdentity(current, identity) ? current : null))),

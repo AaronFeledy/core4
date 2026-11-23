@@ -236,7 +236,7 @@ These are facts the runtime reported, not a verdict. Exit `0` does not prove you
 
 ## Keep data across stop, restart, and destroy
 
-Database data stores, persistent homes, `node_modules` and `vendor` shadows, and caches use named volumes. The app lifecycle commands retain that storage unless you request its removal with `--volumes`, `--purge`, or `--purge-caches`. Bind mounts keep their files on the host instead.
+Database data stores, persistent homes, excluded directories such as `node_modules`, and caches use named volumes. The app lifecycle commands retain that storage unless you request its removal with `--volumes`, `--purge`, or `--purge-caches`. Bind mounts keep their files on the host instead.
 
 Images Lando built stay around too. `lando destroy` keeps the newest one for each service for up to seven days, so the next `lando start` reuses it without building. `--purge-caches` removes those images right away.
 
@@ -300,11 +300,23 @@ directory or breaking its config. Lando verifies the stored app root, owner, and
 provider before it touches anything.
 
 If that saved state is damaged or unreadable, `start`, `stop`, `restart`, and
-`destroy` refuse to change anything and name the state file, while `info` and
-`logs` keep working. Restore the file from a backup if you have one. Otherwise
-move it aside and run `lando destroy` again: Lando then finds the app's
-containers and volumes by their ownership labels. On Windows with accelerated
-file sync, changes that had not synced back yet can be lost that way.
+`destroy` refuse to change anything and name the state file. Restore the file
+from a backup if you have one. Otherwise move it aside and run `lando destroy`
+again: Lando then finds the app's containers and volumes by their ownership
+labels. On Windows with accelerated file sync, changes that had not synced
+back yet can be lost that way.
+
+If a newer Lando wrote that state in a format this binary cannot read, those
+same commands refuse with a version error that names the file and the stored
+and supported format versions. Run that newer Lando, or upgrade this one, and
+leave the file in place. Moving it aside or destroying it throws away ownership
+state the newer Lando still needs.
+
+`info` and `logs` keep working either way. When the saved state is damaged or
+newer-format, `info --format=json` adds an optional `appliedStateIssue` with
+the reason, path, message, and remediation (plus format versions for a
+newer-format record). Readable and missing state omit that field. If you use
+file sync, its applied settings are unknown until Lando can read the record.
 
 Teardown looks at what is actually running before it reads your config. An app
 that was never started reports `unchanged` and exits 0, even when its Landofile

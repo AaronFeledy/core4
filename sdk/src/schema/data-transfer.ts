@@ -92,6 +92,7 @@ const volumeLocatorFields = {
 export const VolumeLocator = Schema.Union([
   Schema.Struct({
     ...volumeLocatorFields,
+    labels: Schema.optionalKey(LabelMap).annotate({ description: "Native labels observed on the volume." }),
     presence: Schema.optionalKey(Schema.Literal("present")).annotate({
       description: "Explicit native presence; omission means presence was not established.",
     }),

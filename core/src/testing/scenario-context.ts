@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { chmodTreeUserWritable } from "@lando/engine/operations/uninstall-runtime-dir";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import { createStandaloneRedactor } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
@@ -99,6 +100,8 @@ export interface ScenarioRunResult {
 export interface ScenarioRunOptions {
   /** Prompt answers keyed by prompt name. */
   readonly answers?: Readonly<Record<string, string>>;
+  /** Hard timeout for a compiled CLI child. */
+  readonly timeoutMs?: number;
 }
 
 /**
@@ -239,6 +242,8 @@ export interface WithScenarioContextOptions {
   readonly vars?: ReadonlyMap<string, ScenarioVariable>;
   /** Runtime services to expose through the context. Defaults to provider bootstrap test runtime. */
   readonly runtime?: TestRuntime;
+  /** Complete child environment for compiled CLI scenarios. Defaults to the inherited environment. */
+  readonly e2eEnv?: Readonly<Record<string, string | undefined>>;
   /**
    * Optional CLI runner override used instead of the built-in runners.
    * @param command Parsed command arguments after scenario command normalization.
@@ -698,15 +703,19 @@ const createScenarioRunCli = (
     });
 };
 
-const compiledBinaryPath = (): string =>
-  process.env.LANDO_SCENARIO_E2E_BINARY ?? fileURLToPath(new URL("../../dist/lando", import.meta.url));
+const compiledBinaryPath = (env: Readonly<Record<string, string | undefined>>): string =>
+  resolve(env.LANDO_SCENARIO_E2E_BINARY ?? fileURLToPath(new URL("../../dist/lando", import.meta.url)));
 
 const createE2eRunCli =
-  (getWorkingDirectory: () => string, setWorkingDirectory: (path: string) => void): ArgvRunner =>
+  (
+    getWorkingDirectory: () => string,
+    setWorkingDirectory: (path: string) => void,
+    env: Readonly<Record<string, string | undefined>>,
+  ): ArgvRunner =>
   (command, options) =>
     runInterruptibleCli(async (signal) => {
       const args = appendInitAnswers(command, options?.answers);
-      const binary = compiledBinaryPath();
+      const binary = compiledBinaryPath(env);
       if (!(await Bun.file(binary).exists())) {
         return {
           command: args,
@@ -722,13 +731,14 @@ const createE2eRunCli =
         cmd: [binary, ...args],
         cwd,
         env: {
-          ...process.env,
+          ...env,
           BUN_BE_BUN: undefined,
           LANDO_DISALLOW_BUN_BE_BUN_REENTRY: undefined,
         },
         stdout: "pipe",
         stderr: "pipe",
         signal,
+        ...(options?.timeoutMs === undefined ? {} : { timeout: options.timeoutMs, killSignal: "SIGKILL" }),
       });
       const [exitCode, stdout, stderr] = await Promise.all([
         proc.exited,
@@ -755,7 +765,7 @@ const selectRunner = (
   setWorkingDirectory: (path: string) => void,
   env: Readonly<Record<string, string | undefined>>,
 ): ArgvRunner => {
-  if (runnerKind === "e2e") return createE2eRunCli(getWorkingDirectory, setWorkingDirectory);
+  if (runnerKind === "e2e") return createE2eRunCli(getWorkingDirectory, setWorkingDirectory, env);
   return createScenarioRunCli(events, getWorkingDirectory, setWorkingDirectory, env);
 };
 
@@ -870,6 +880,7 @@ const makeScenarioContext = (
     };
   });
 
+  const e2eEnv = options.e2eEnv ?? process.env;
   const context = ScenarioContext.of({
     guideId: options.guideId,
     scenarioId: options.scenarioId,
@@ -885,13 +896,15 @@ const makeScenarioContext = (
       getWorkingDirectory,
       setWorkingDirectory,
       runnerKind,
-      {
-        ...process.env,
-        LANDO_USER_DATA_ROOT: join(testDir, "host", "data"),
-        LANDO_USER_CACHE_ROOT: join(testDir, "host", "cache"),
-        LANDO_USER_CONF_ROOT: join(testDir, "host", "config"),
-        LANDO_SYSTEM_PLUGIN_ROOT: join(testDir, "host", "system-plugins"),
-      },
+      runnerKind === "e2e"
+        ? e2eEnv
+        : {
+            ...process.env,
+            LANDO_USER_DATA_ROOT: join(testDir, "host", "data"),
+            LANDO_USER_CACHE_ROOT: join(testDir, "host", "cache"),
+            LANDO_USER_CONF_ROOT: join(testDir, "host", "config"),
+            LANDO_SYSTEM_PLUGIN_ROOT: join(testDir, "host", "system-plugins"),
+          },
       options.runCli,
     ),
     shell: (command) => Effect.fail(shellNotImplemented(command)),
@@ -937,11 +950,18 @@ const makeScenarioContext = (
         ),
       );
       const url = yield* resolveFetchUrl(props.url, info);
-      const ca = url.protocol === "https:" ? yield* readScenarioCa(getWorkingDirectory()) : undefined;
+      const ca = url.protocol === "https:" ? yield* readScenarioCa(getWorkingDirectory(), e2eEnv) : undefined;
       return yield* requestScenarioRoute(url, props, ca);
     }),
   } satisfies E2eScenarioContext;
 };
+
+// Drupal can leave sites/default read-only, blocking recursive removal.
+const removeScenarioDir = (dir: string) =>
+  rm(dir, { recursive: true, force: true }).catch(async () => {
+    await chmodTreeUserWritable(dir);
+    await rm(dir, { recursive: true, force: true });
+  });
 
 const withScenarioContextInternal = <A, E, R>(
   options: WithScenarioContextOptions,
@@ -955,7 +975,7 @@ const withScenarioContextInternal = <A, E, R>(
       ),
       (testDir) => {
         if (process.env.KEEP_SCENARIO_DIRS !== "1") {
-          return Effect.promise(() => rm(testDir, { recursive: true, force: true }));
+          return Effect.promise(() => removeScenarioDir(testDir));
         }
         return process.env.LANDO_DOCS_SCENARIO_KEEP === "1"
           ? Console.log(`Scenario temp dir: ${testDir}`)

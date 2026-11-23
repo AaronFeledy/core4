@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { AppId } from "@lando/sdk/schema";
+import { AppId, LANDO_DATA_ROOT_LABEL } from "@lando/sdk/schema";
 import { Effect } from "effect";
 import { ScratchResourceScanner } from "../../src/scratch-app/scanner.ts";
 import {
@@ -104,6 +104,39 @@ test("ignores invalid prune IDs without observing providers", async () => {
   // When / Then
   await runScanner([provider], (scanner) => scanner.pruneScratch("registry.bin"));
 });
+
+test.each([false, true])(
+  "leaves peer scratch resources alone (peer after selection: %s)",
+  async (changes) => {
+    const peerLabels = { ...labels, [LANDO_DATA_ROOT_LABEL]: "/tmp/peer-scratch-data" };
+    const peer = fixture();
+    let atRemoval = !changes;
+    const provider = {
+      ...peer.provider,
+      list: () =>
+        Effect.sync(() =>
+          peer.services.map((entry) => ({ ...entry, labels: atRemoval ? peerLabels : labels })),
+        ),
+      listVolumes: () =>
+        Effect.sync(() => [{ ...peer.observedVolume, labels: atRemoval ? peerLabels : labels }]),
+    };
+
+    const ids = await runScanner([provider], (scanner) =>
+      Effect.gen(function* () {
+        const ids = yield* scanner.listScratchIds;
+        const prepared = yield* scanner.prepareScratch(scratchId, false);
+        atRemoval = true;
+        yield* prepared.stop;
+        yield* prepared.destroy;
+        return ids;
+      }),
+    );
+
+    expect(ids).toEqual(changes ? [scratchId] : []);
+    expect(peer.removedServices).toEqual([]);
+    expect(peer.removedVolumes).toEqual([]);
+  },
+);
 
 test("prevalidates volume identities on every provider before deleting any resource", async () => {
   // Given

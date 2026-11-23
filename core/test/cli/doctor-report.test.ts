@@ -21,7 +21,7 @@ import {
   StreamFrame,
 } from "@lando/sdk/schema";
 import { DeprecationService } from "@lando/sdk/services";
-import { yamlRoundTripCorpus, yamlRoundTripRecord } from "@lando/sdk/test";
+import { makeTestRuntimeProviderRegistry, yamlRoundTripCorpus, yamlRoundTripRecord } from "@lando/sdk/test";
 import { Cause, type Context, DateTime, Effect, Exit, Layer, Schema } from "effect";
 import { metaDoctorSpec } from "../../src/cli/command-specs/meta/doctor.ts";
 import type { DoctorOptions } from "../../src/cli/commands/doctor.ts";
@@ -68,10 +68,7 @@ const resultEnvelope = (ndjson: string) => {
 };
 
 const buildRegistry = (provider: typeof TestRuntimeProvider) =>
-  RuntimeProviderRegistry.of({
-    resolveAppliedPlan: () => Effect.succeed(undefined),
-    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-    appliedPlansFor: () => Effect.succeed([]),
+  makeTestRuntimeProviderRegistry({
     list: Effect.succeed([ProviderId.make(provider.id)]),
     capabilities: Effect.succeed(provider.capabilities),
     select: () => Effect.succeed(provider),
@@ -351,6 +348,7 @@ describe("meta:doctor combined report", () => {
       ["subsystems", "host-dns"],
       ["global-app", "global-app"],
       ["mcp", "mcp"],
+      ["state-compatibility", "state-compatibility"],
       ["legacy-snapshot-catalogs", "legacy-snapshot-catalogs"],
       ["filesystem-watch", "filesystem-watch"],
     ]);

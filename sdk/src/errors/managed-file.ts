@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import { StateStoreError } from "./state-store.ts";
 
 /**
  * The single tagged error raised by `ManagedFileService`.
@@ -53,7 +54,10 @@ export class ManagedFileTransactionError extends Schema.TaggedError<ManagedFileT
     ]),
     phase: Schema.Literals(["prepare", "commit", "inspect", "cleanup", "recover"]),
     path: Schema.String.pipe(Schema.check(Schema.isMaxLength(4096))),
-    cause: Schema.Literals(["filesystem", "invariant", "interrupted-checkpoint"]),
+    cause: Schema.Union([
+      Schema.Literals(["filesystem", "invariant", "interrupted-checkpoint"]),
+      StateStoreError,
+    ]),
     remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)).pipe(
       Schema.check(Schema.isMaxLength(256)),
     ),
