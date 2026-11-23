@@ -160,6 +160,10 @@ export const buildCompiledBinary = async (
       compile: {
         target: bunTargetFor(platform),
         outfile: options.outfile,
+        // Lando runs inside user projects: their .env and bunfig.toml must not configure Lando
+        // itself or run their preload scripts in its process.
+        autoloadDotenv: false,
+        autoloadBunfig: false,
         // Baked into the executable: eval(), new Function(), node:vm, data: imports, eval Workers
         // and source-returning plugins all throw. Lando has none; the jq engine is an AST
         // interpreter and .lando.ts / recipe.ts load through file-path import(). BUN_BE_BUN=1
