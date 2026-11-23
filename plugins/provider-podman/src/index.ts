@@ -50,6 +50,7 @@ import { exec, execStream } from "@lando/container-runtime/podman/exec";
 import { inspect } from "@lando/container-runtime/podman/inspect";
 import { containerConsoleLogs, logs } from "@lando/container-runtime/podman/logs";
 import type { MachineSshBridgeHost } from "@lando/container-runtime/podman/machine-ssh-bridge";
+import { evaluateLibpodCrunExecCompatibility } from "@lando/container-runtime/podman/oci-runtime-floor";
 import {
   MINIMUM_PODMAN_VERSION,
   podmanVersionMeetsFloor,
@@ -109,6 +110,7 @@ import {
   persistAppliedPlan,
   removeAppliedPlan,
 } from "./applied-state.ts";
+import { makeCrunRootlessExecCheck, publishCrunExecCompatibilityWarning } from "./crun-exec-compatibility.ts";
 import { resolvePodmanAgentBridge } from "./machine-bridge.ts";
 import { providerLandoSetupStatePath } from "./provider-lando-state.ts";
 
@@ -714,6 +716,7 @@ const assembleRuntimeProvider = (
           });
           return {
             serverVersion,
+            crunExecWarning: evaluateLibpodCrunExecCompatibility(info),
             capabilities: {
               ...capabilities,
               serviceLogSources: logSourceBinding.supported,
@@ -744,7 +747,12 @@ const assembleRuntimeProvider = (
   );
   return Effect.gen(function* () {
     yield* conflictCheck;
-    const { serverVersion, capabilities: resolvedCapabilities, logSourceBinding } = yield* gatedRuntime;
+    const {
+      serverVersion,
+      crunExecWarning,
+      capabilities: resolvedCapabilities,
+      logSourceBinding,
+    } = yield* gatedRuntime;
     const execHelper = {
       resolveContainerHelper: options.resolveContainerHelper,
       helperTarget: resolvedCapabilities.hostProxy?.containerTargets[0],
@@ -873,6 +881,7 @@ const assembleRuntimeProvider = (
         yield* planState.ownership.adopt(plan, yield* appliedPlans.resolveMutationPlan(plan.id), witness);
       }),
       apply: Effect.fn("RuntimeProvider.apply")(function* (plan, applyOptions) {
+        yield* publishCrunExecCompatibilityWarning(crunExecWarning, options.eventService);
         yield* validateHealthcheckExecution(plan, applyOptions.executeReadinessAttempt);
         const previous = yield* appliedPlans.resolveMutationPlan(plan.id);
         const adoptionReceipts = yield* planState.ownership.prepare(plan, previous);
@@ -1112,7 +1121,8 @@ export const plugin = definePlugin({
         appliedStateInventory: (ctx) => listAppliedPlans(ctx.stateStore),
         readAppliedPlanStrict: (ctx, appId) => loadAppliedPlanStrict(ctx.stateStore, appId),
         make: Effect.fn("RuntimeProvider.make")(function* (ctx) {
-          const { paths, platform, resolveContainerHelper, sanitizeAppliedPlan } = yield* providerHostInputs;
+          const { paths, platform, resolveContainerHelper, sanitizeAppliedPlan, eventService } =
+            yield* providerHostInputs;
           return yield* makeRuntimeProvider({
             platform,
             stateDir: `${paths.roots.userDataRoot}/providers`,
@@ -1120,12 +1130,24 @@ export const plugin = definePlugin({
             resolveContainerHelper,
             sanitizeAppliedPlan,
             userDataRoot: paths.roots.userDataRoot,
+            ...(eventService === undefined ? {} : { eventService }),
           });
         }),
       },
     ],
   ]),
-  doctorChecks: [conflictCheck],
+  doctorChecks: [
+    conflictCheck,
+    makeCrunRootlessExecCheck({
+      readInfo: (input) => {
+        try {
+          return makePodmanApiClient(resolvePodmanSocket({ platform: input.platform, env: input.env })).info;
+        } catch {
+          return Effect.succeed(undefined);
+        }
+      },
+    }),
+  ],
 });
 
 export type { PodmanApiClient } from "@lando/container-runtime/engine-api";
