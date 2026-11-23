@@ -19,7 +19,6 @@ import {
   EXTENSION_PATTERN,
   FIXTURE_PATH,
   NETWORK_SERVICE_CONFIGS,
-  REPO_ROOT,
   admitsDeclaredName,
   admitsExtensionKey,
   blankContextBody,
@@ -338,10 +337,12 @@ describe("closed x-* extension artifact repair", () => {
       "unsupported-keyword $.landofile.toolingDefaults.vars.additionalProperties",
     ]);
     expect(findings.every((finding) => finding.accepted === false)).toBe(true);
+    const reviewedFinding = findings.find((finding) => finding.path === "$.landofile.propertyNames");
+    if (reviewedFinding === undefined) throw new Error("expected the propertyNames finding");
     const exact: CompatibilityException = {
-      surface: "command:app:config",
+      fingerprint: reviewedFinding.fingerprint,
       changeKind: "unsupported-keyword",
-      path: "$.landofile.propertyNames",
+      locations: [{ surface: "command:app:config", path: "$.landofile.propertyNames" }],
       justification: CLOSED_EXTENSION_JUSTIFICATION,
     };
     const accepted = acceptCompatibilityExceptions("command:app:config", findings, [exact]);
@@ -352,11 +353,14 @@ describe("closed x-* extension artifact repair", () => {
         .every((finding) => !finding.accepted),
     ).toBe(true);
     const wrongPath = acceptCompatibilityExceptions("command:app:config", findings, [
-      { ...exact, path: "$.landofile.services.propertyNames" },
+      {
+        ...exact,
+        locations: [{ surface: "command:app:config", path: "$.landofile.services.propertyNames" }],
+      },
     ]);
     expect(wrongPath.every((finding) => finding.accepted === false)).toBe(true);
     const wrongSurface = acceptCompatibilityExceptions("command:app:config", findings, [
-      { ...exact, surface: "command:app:missing" },
+      { ...exact, locations: [{ surface: "command:app:missing", path: "$.landofile.propertyNames" }] },
     ]);
     expect(wrongSurface.every((finding) => finding.accepted === false)).toBe(true);
     const networks = schemaAt(await loadNormalizedArtifact("schema:DotnetServiceConfig"), "$.networks");
