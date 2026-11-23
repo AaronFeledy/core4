@@ -5,7 +5,9 @@ export {
   type AppliedPlanRead,
   appliedPlanPath,
   appliedPlansDir,
+  appliedStateInspectError,
   migrateAppliedPlan,
+  unreadableAppliedStateError,
 } from "@lando/container-runtime/applied-state";
 
 const store = makeAppliedPlanStore({ providerId: "lando", layout: "per-app" });

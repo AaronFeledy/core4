@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { makeLandoPaths } from "@lando/paths";
 import { GlobalConfig, ProviderId, ServiceName } from "@lando/sdk/schema";
 import { ConfigService, GlobalAppService, PathsService, RuntimeProviderRegistry } from "@lando/sdk/services";
-import { TestRuntimeProvider, makeTestRouterService } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRouterService, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { plugin as serviceLando } from "@lando/service-lando";
 import { Effect, Layer, Schema } from "effect";
 
@@ -35,14 +35,12 @@ test("global Mailpit preserves its expression in dist and replans it after a dom
     GlobalAppLayer.layer.pipe(Layer.provide(infrastructure)),
     PlannerLayer.layer.pipe(Layer.provide(Layer.mergeAll(registry, infrastructure))),
     BunFileSystem.layer,
-    Layer.succeed(RuntimeProviderRegistry, {
-      appliedPlansFor: () => Effect.succeed([]),
-      resolveAppliedPlan: () => Effect.succeed(undefined),
-      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-      list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
-      capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-      select: () => Effect.succeed(TestRuntimeProvider),
-    }),
+    Layer.succeed(
+      RuntimeProviderRegistry,
+      makeTestRuntimeProviderRegistry({
+        list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
+      }),
+    ),
   );
   const mail = ServiceName.make("mailpit");
   const contribution = serviceLando.globalServices?.get("mailpit");

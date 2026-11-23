@@ -1,3 +1,4 @@
+import { StateStoreError } from "@lando/sdk/errors";
 import { Schema } from "effect";
 
 const Remediation = Schema.NonEmptyString.check(Schema.isPattern(/\S/u));
@@ -70,15 +71,18 @@ export const acquisitionError = (
       ...(cause.actual === undefined ? {} : { actual: displaySource(cause.actual) }),
       ...(cause.phase === undefined ? {} : { phase: cause.phase }),
     });
-  const message = cause instanceof Error ? cause.message : String(cause);
+  const message =
+    cause instanceof StateStoreError ? cause.message : cause instanceof Error ? cause.message : String(cause);
   const strippedMessage = displaySource(message);
   const remediation =
-    typeof cause === "object" &&
-    cause !== null &&
-    "remediation" in cause &&
-    typeof cause.remediation === "string"
+    cause instanceof StateStoreError
       ? cause.remediation
-      : "Check the source coordinates, credentials and cache permissions, then retry.";
+      : typeof cause === "object" &&
+          cause !== null &&
+          "remediation" in cause &&
+          typeof cause.remediation === "string"
+        ? cause.remediation
+        : "Check the source coordinates, credentials and cache permissions, then retry.";
   const transportKind = causeKind(cause);
   let mappedKind: SourceAcquisitionError["kind"] = kind;
   let phase: SourceAcquisitionError["phase"];

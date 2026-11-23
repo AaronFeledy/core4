@@ -41,12 +41,15 @@ export const openSnapshot = Effect.fn("DataMover.openSnapshot")(function* (
       version: SNAPSHOT_INFO_VERSION,
       codec: "json",
       onCorrupt: "fail",
+      // Migrator receives only older envelopes; the store refuses newer before this runs.
       onVersionMismatch: (raw, version) => {
         if (version === 1) return Schema.decodeUnknownSync(SnapshotInfo)(raw);
         throw new StateStoreError({
           reason: "version",
           operation: "read-snapshot",
-          remediation: `Unsupported snapshot sidecar version ${version}; use a compatible Lando build.`,
+          storedVersion: version,
+          supportedVersion: SNAPSHOT_INFO_VERSION,
+          remediation: `Snapshot sidecar envelope version ${version} could not be migrated to ${SNAPSHOT_INFO_VERSION}.`,
         });
       },
     })

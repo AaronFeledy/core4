@@ -15,7 +15,7 @@ import {
   SecretStore,
   type ServiceType,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Effect, Layer, Schema, Stream } from "effect";
 import { runAppEvent } from "../../src/operations/events.ts";
@@ -101,14 +101,14 @@ const fixture = async (source: string, hostEvents: HostEvents = {}) => {
     Events.layer,
     Layer.succeed(PrivateFileAccessService, ownerOnlyFileAccess),
     resolver,
-    Layer.succeed(RuntimeProviderRegistry, {
-      appliedPlansFor: () => Effect.succeed([]),
-      resolveAppliedPlan: () => Effect.succeed(undefined),
-      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" }),
-      list: Effect.succeed([plan.provider]),
-      capabilities: Effect.succeed(provider.capabilities),
-      select: () => Effect.succeed(provider),
-    }),
+    Layer.succeed(
+      RuntimeProviderRegistry,
+      makeTestRuntimeProviderRegistry({
+        list: Effect.succeed([plan.provider]),
+        capabilities: Effect.succeed(provider.capabilities),
+        select: () => Effect.succeed(provider),
+      }),
+    ),
     Tooling.layer.pipe(Layer.provide(resolver)),
     Layer.succeed(EventCommandExecutor, {
       validate: () => Effect.void,

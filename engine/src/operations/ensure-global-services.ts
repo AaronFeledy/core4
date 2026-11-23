@@ -161,8 +161,7 @@ export const ensureGlobalServicesRunning = Effect.fnUntraced(
     const root = yield* canonicalAppRoot((yield* globalApp.paths).root);
     const cached = globalEnsureRecord(registry, root);
     if (cached !== undefined) {
-      yield* registry.assertAppliedStateReadable?.({ id: cached.plan.id, provider: cached.plan.provider }) ??
-        Effect.void;
+      yield* registry.readAppliedPlanStrict(cached.plan);
       const provider = yield* registry.select(yield* globalCreateProviderId());
       const inputs = yield* captureGlobalEnsureInputs(cached.plan, cached.landofile, provider);
       const names = Object.values(cached.plan.services);

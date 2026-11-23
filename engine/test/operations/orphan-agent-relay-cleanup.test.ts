@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { makeLandoPaths } from "@lando/paths";
-import { AbsolutePath, AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
+import { AbsolutePath, AppId, ProviderId, ServiceName } from "@lando/sdk/schema";
 import type { AppliedOrphanGroup } from "@lando/sdk/services";
 import {
   AppPlanner,
@@ -14,7 +14,7 @@ import {
   RuntimeProviderRegistry,
   StateStore,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Effect, Layer, Stream } from "effect";
 import { withResolvedCwd } from "../../src/landofile/app-resolution.ts";
@@ -89,12 +89,9 @@ const layerFor = (root: string) => {
       Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.die("desired planning must not run") })),
       Layer.succeed(
         RuntimeProviderRegistry,
-        RuntimeProviderRegistry.of({
-          appliedPlansFor: () => Effect.succeed([]),
+        makeTestRuntimeProviderRegistry({
           list: Effect.succeed([providerId]),
-          capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
           select: () => Effect.succeed(provider),
-          resolveAppliedPlan: () => Effect.succeed<AppPlan | undefined>(undefined),
           resolveTeardownEvidence: () =>
             Effect.succeed({ kind: "orphans" as const, groups: [orphanGroup(root)] }),
         }),

@@ -17,7 +17,7 @@ import {
   RuntimeProviderRegistry,
   ScratchAppService,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect, Layer, Stream } from "effect";
 
 const providerId = ProviderId.make("lando");
@@ -91,10 +91,8 @@ export const makePoweroffFixture = async (input: PoweroffFixtureInput) => {
     services: input.services ?? [],
     volumes: [],
   };
-  const registry = {
+  const registry = makeTestRuntimeProviderRegistry({
     list: Effect.succeed([providerId]),
-    capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-    appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
     observeRuntime: Effect.succeed([snapshot]),
     appliedPlansFor: (root: string, scope?: ProviderId) =>
       Effect.succeed(
@@ -102,7 +100,6 @@ export const makePoweroffFixture = async (input: PoweroffFixtureInput) => {
           ? plans.filter((plan) => plan.identity?.appRoot === root)
           : [],
       ),
-    resolveAppliedPlan: () => Effect.succeed(undefined),
     resolveTeardownEvidence: (root: string) => {
       const plan = plans.find((candidate) => candidate.identity?.appRoot === root);
       if (plan !== undefined) return Effect.succeed({ kind: "applied" as const, plan });
@@ -114,7 +111,7 @@ export const makePoweroffFixture = async (input: PoweroffFixtureInput) => {
     },
     resourceOwnership: () => Effect.succeed(undefined),
     select: () => Effect.succeed(provider),
-  };
+  });
   const scratch = Layer.succeed(
     ScratchAppService,
     ScratchAppService.of({

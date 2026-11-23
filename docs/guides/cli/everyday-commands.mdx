@@ -291,7 +291,12 @@ lando list --prune
 
 Pruning removes only the applied-plan and directory-cache records reported by
 the command. Missing or unreadable provider state is not enough evidence to
-delete a record.
+delete a record. When a prune candidate was written by a newer Lando, prune
+skips that candidate, leaves its bytes intact, lists it under `pruneFailures`
+with upgrade remediation, and continues with the rest. Only those protected
+candidates appear in `pruneFailures`; a newer-format record that is not a prune
+candidate is left alone and does not fail the run. A run that protected any
+candidate is a partial failure, not a clean prune.
 The `Pruned N` line ignores `--status` and `--path`; it counts every pruned
 record, not the filtered table.
 

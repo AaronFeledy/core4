@@ -108,15 +108,6 @@ export const providerInventoryFailure = (providerId: string, error: unknown) => 
   error,
 });
 
-export const unreadableAppliedState = (providerId: ProviderId, count: number) =>
-  new ProviderUnavailableError({
-    providerId,
-    operation: "applied-state.list",
-    message: `${count} applied-state records could not be read.`,
-    remediation:
-      "Restore a readable applied-state record from a trusted backup or remove the corrupt file, then retry `lando poweroff`.",
-  });
-
 export const unobservedRuntimeError = (providerId: ProviderId) =>
   new ProviderUnavailableError({
     providerId,

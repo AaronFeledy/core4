@@ -24,7 +24,7 @@ import {
   ToolingEngine,
   type ToolingInvocation,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Cause, Effect, Exit, Layer, Schema } from "effect";
 import { compileToolingCommands } from "../../src/cache/command-compiler.ts";
@@ -189,13 +189,9 @@ test("attaches effective tooling on fresh and cache-hit plans and keys service t
       Layer.succeed(LandofileService, LandofileService.of({ discover: compileTestLandofile(landofile) })),
       Layer.succeed(
         RuntimeProviderRegistry,
-        RuntimeProviderRegistry.of({
+        makeTestRuntimeProviderRegistry({
           appliedPlansFor: () => Effect.succeed([changed]),
-          resolveAppliedPlan: () => Effect.succeed(undefined),
-          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
           list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
-          capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-          select: () => Effect.succeed(TestRuntimeProvider),
         }),
       ),
       Layer.succeed(
@@ -460,13 +456,8 @@ test("fails runTooling reserved when a stale plan predates authored run", async 
         Layer.succeed(LandofileService, LandofileService.of({ discover: compileTestLandofile(landofile) })),
         Layer.succeed(
           RuntimeProviderRegistry,
-          RuntimeProviderRegistry.of({
-            appliedPlansFor: () => Effect.succeed([]),
-            resolveAppliedPlan: () => Effect.succeed(undefined),
-            resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+          makeTestRuntimeProviderRegistry({
             list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
-            capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-            select: () => Effect.succeed(TestRuntimeProvider),
           }),
         ),
         Layer.succeed(

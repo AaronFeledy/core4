@@ -18,6 +18,7 @@ import {
   InteractionService,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect, Layer, Schema, Stream } from "effect";
 import { setupSpec } from "../../src/cli/command-specs/meta/setup.ts";
 
@@ -82,10 +83,7 @@ const makeSetupLayer = async (sink: EventSink, stateDir: string) => {
       eventService: { publish: sink.publish },
     }),
   );
-  const registry = RuntimeProviderRegistry.of({
-    resolveAppliedPlan: () => Effect.succeed(undefined),
-    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-    appliedPlansFor: () => Effect.succeed([]),
+  const registry = makeTestRuntimeProviderRegistry({
     list: Effect.succeed([ProviderId.make("lando")]),
     capabilities: Effect.succeed(provider.capabilities),
     select: () => Effect.succeed(provider),
@@ -223,10 +221,7 @@ describe("meta:setup task tree progress", () => {
           eventService: { publish: sink.publish },
         }),
       );
-      const registry = RuntimeProviderRegistry.of({
-        resolveAppliedPlan: () => Effect.succeed(undefined),
-        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-        appliedPlansFor: () => Effect.succeed([]),
+      const registry = makeTestRuntimeProviderRegistry({
         list: Effect.succeed([ProviderId.make("lando")]),
         capabilities: Effect.succeed(provider.capabilities),
         select: () => Effect.succeed(provider),

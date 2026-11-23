@@ -14,6 +14,7 @@ import {
   UpdateManifestSemver,
 } from "@lando/sdk/schema";
 import { Downloader, StateStore, type StateWrite } from "@lando/sdk/services";
+import { isNewerVersionStoreError, storeErrorRemediation } from "@lando/state-store";
 import * as StateStoreLayer from "@lando/state-store/service";
 import { updateOutcomeFromError } from "@lando/telemetry/events";
 import { Cause, Context, Effect, Exit, Layer, Option, Result, Schema } from "effect";
@@ -425,17 +426,33 @@ const freshnessIoError = (path: string, operation: "read" | "write", cause: unkn
     ? new UpdateNetworkError({
         message: `Failed to read update manifest freshness state at ${path}.`,
         url: path,
-        remediation: `Fix permissions on ${path} or remove the corrupt freshness file, then retry \`lando update\`.`,
+        remediation: storeErrorRemediation(
+          cause,
+          `Fix permissions on ${path} or remove the corrupt freshness file, then retry \`lando update\`.`,
+        ),
         cause,
       })
     : new UpdateNetworkError({
         message: `Failed to write update manifest freshness state at ${path}.`,
         url: path,
-        remediation: `Ensure the parent of ${path} is writable, then retry \`lando update\`.`,
+        remediation: storeErrorRemediation(
+          cause,
+          `Ensure the parent of ${path} is writable, then retry \`lando update\`.`,
+        ),
         cause,
       });
 
+const freshnessNewerVersionError = (path: string, cause: StateStoreError): UpdateNetworkError =>
+  new UpdateNetworkError({
+    message: `Update manifest freshness state at ${path} was written by a newer Lando.`,
+    url: path,
+    remediation: cause.remediation,
+    cause,
+  });
+
 const mapFreshnessStoreError = (path: string, cause: StateStoreError): UpdateNetworkError => {
+  // Never report a newer-version frame as corrupt; keep the store upgrade diagnosis.
+  if (isNewerVersionStoreError(cause)) return freshnessNewerVersionError(path, cause);
   if (cause.reason === "decode" || cause.reason === "version") return freshnessCorruptError(path, cause);
   return freshnessIoError(
     path,
@@ -456,7 +473,8 @@ const updateManifestStateBucketSpec = (statePath: string) =>
     mode: 0o600,
     lock: "advisory" as const,
     onCorrupt: "fail" as const,
-    // Migration preserves both observations; unknown versions still fail closed.
+    // Migration preserves both observations. Newer stamps are store-refused before migration;
+    // unsupported older stamps still fail closed here.
     onVersionMismatch: (raw: unknown, fromVersion: number): UpdateManifestState => {
       if (fromVersion === 1) {
         const legacy = Schema.decodeUnknownSync(LegacyUpdateManifestStateSchema)(raw);

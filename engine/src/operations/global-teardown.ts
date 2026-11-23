@@ -39,6 +39,7 @@ export const resolveGlobalTeardown = Effect.fn("GlobalApp.resolveTeardown")(func
   const registry = yield* RuntimeProviderRegistry;
   const explicit = yield* TeardownProvider;
   const providerId = explicit ?? (yield* globalObserveProviderId);
+  yield* registry.readAppliedPlanStrict({ id: AppId.make("global"), provider: providerId });
   const provider = yield* registry.select(providerId);
   const resourceOwnership = registry.resourceOwnership;
   const ownership = yield* resourceOwnership?.(providerId, root) ?? Effect.succeed(undefined);

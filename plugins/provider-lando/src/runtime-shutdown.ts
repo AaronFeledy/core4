@@ -9,6 +9,7 @@ import { mapFailures } from "@lando/sdk/command-result";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import type { PluginStateStore } from "@lando/sdk/plugins";
 import { defineTransitions } from "@lando/sdk/transitions";
+import { storeErrorRemediation } from "@lando/state-store";
 import { Effect } from "effect";
 
 export const shutdownTransitions = defineTransitions<
@@ -23,7 +24,10 @@ const receiptError = (cause: unknown) =>
     providerId: "lando",
     operation: "runtimeShutdown",
     message: "Failed to read or update the managed runtime shutdown receipt.",
-    remediation: "Verify the provider-lando plugin state directory is writable, then retry.",
+    remediation: storeErrorRemediation(
+      cause,
+      "Verify the provider-lando plugin state directory is writable, then retry.",
+    ),
     cause,
   });
 

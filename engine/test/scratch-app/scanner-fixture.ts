@@ -2,7 +2,7 @@ import { expect } from "bun:test";
 import { ProviderUnavailableError, type ScratchAppError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, ProviderId, ServiceName } from "@lando/sdk/schema";
 import { RuntimeProviderRegistry, type RuntimeProviderShape } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect } from "effect";
 import { ScratchResourceScanner } from "../../src/scratch-app/scanner.ts";
 
@@ -89,12 +89,8 @@ export const runScanner = <A, E>(
       Effect.provide(ScratchResourceScanner.layer),
       Effect.provideService(
         RuntimeProviderRegistry,
-        RuntimeProviderRegistry.of({
-          appliedPlansFor: () => Effect.succeed([]),
-          resolveAppliedPlan: () => Effect.succeed(undefined),
-          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+        makeTestRuntimeProviderRegistry({
           list: Effect.succeed(providers.map((provider) => ProviderId.make(provider.id))),
-          capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
           select: (target) => {
             const id = typeof target === "string" ? target : target?.provider;
             const provider =

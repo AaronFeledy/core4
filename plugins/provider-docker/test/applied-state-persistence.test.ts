@@ -322,9 +322,19 @@ describe("provider-docker applied state persistence", () => {
         expect(await Effect.runPromise(loadAppliedPlan(state, plan.id))).toBeUndefined();
         expect(await Effect.runPromise(provider.appliedPlans ?? Effect.die("missing inventory"))).toEqual([]);
         expect(await Effect.runPromise(provider.list({ includeUnplanned: true }))).toEqual([]);
+        const expectedUnreadable =
+          damage === "migration"
+            ? {
+                appId: plan.id,
+                path,
+                reason: "newer-version" as const,
+                storedVersion: 99,
+                supportedVersion: APPLIED_STATE_VERSION,
+              }
+            : { appId: plan.id, path, reason: "unreadable" as const };
         expect(await Effect.runPromise(listAppliedPlans(state, stateDir))).toEqual({
           plans: [],
-          unreadable: [{ appId: plan.id, path }],
+          unreadable: [expectedUnreadable],
         });
       });
     });
@@ -428,7 +438,11 @@ describe("provider-docker applied state persistence", () => {
       expect(failure).toBeInstanceOf(ProviderUnavailableError);
       expect(failure?.operation).toBe("applied-state.remove");
       expect(failure?.cause).toBeInstanceOf(StateStoreError);
-      expect((failure?.cause as StateStoreError | undefined)?.operation).toBe("remove");
+      expect(failure?.cause).toMatchObject({
+        reason: "io",
+        operation: "remove",
+        path: appliedPlanPath(stateDir, plan.id),
+      });
       expect<AppPlan | undefined>(await Effect.runPromise(loadAppliedPlan(state, plan.id))).toEqual(plan);
     });
   });

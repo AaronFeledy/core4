@@ -63,9 +63,12 @@ for (const lock of [undefined, "none", "advisory"] as const) {
       // Then the lock encloses the IO and the result follows the mutation contract
       const io =
         operation === "remove"
-          ? [["remove", file]]
+          ? [
+              ["read", file, "remove"],
+              ["remove", file],
+            ]
           : [
-              ...(operation === "set" ? [] : [["read", file, "get"]]),
+              ["read", file, operation === "set" ? "set" : "get"],
               ["write", file, '{\n  "version": 2,\n  "data": 10\n}\n', "set", {}],
             ];
       expect(calls).toEqual([...(lock === "advisory" ? [["lock", file, operation]] : []), ...io]);

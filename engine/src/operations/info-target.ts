@@ -2,9 +2,9 @@ import { AbsolutePath, normalizeAppSlug } from "@lando/sdk/schema";
 import { LandofileService, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { Effect } from "effect";
 import { loadUserLandofile, userAppRef } from "../landofile/app-resolution.ts";
-import { resolveAppliedStateTarget, validateResolvedAppTarget } from "./applied-state-target.ts";
+import { resolveAppliedLogsTarget, validateResolvedAppTarget } from "./applied-state-target.ts";
 
-export const resolveInfoTarget = resolveAppliedStateTarget.pipe(
+export const resolveInfoTarget = resolveAppliedLogsTarget.pipe(
   Effect.catchTag("AppResolveError", (error) => {
     if (error.reason !== "ambiguous") return Effect.fail(error);
     return Effect.gen(function* () {

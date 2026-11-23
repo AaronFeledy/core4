@@ -12,6 +12,7 @@ import {
   RuntimeProviderRegistry,
 } from "@lando/core/services";
 import { TestDataset, TestRemoteSource, TestRuntimeProvider } from "@lando/core/testing";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect, Layer, Redacted } from "effect";
 import { withEnvVar } from "../_support/temp-cwd.ts";
 
@@ -19,13 +20,8 @@ const testProviderLayers = [
   Layer.succeed(RuntimeProvider, RuntimeProvider.of(TestRuntimeProvider)),
   Layer.succeed(
     RuntimeProviderRegistry,
-    RuntimeProviderRegistry.of({
-      resolveAppliedPlan: () => Effect.succeed(undefined),
-      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-      appliedPlansFor: () => Effect.succeed([]),
+    makeTestRuntimeProviderRegistry({
       list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
-      capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-      select: () => Effect.succeed(TestRuntimeProvider),
     }),
   ),
 ];

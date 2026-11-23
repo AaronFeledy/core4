@@ -73,6 +73,7 @@ export const pendingStartBucketSpec = (key: string) =>
     lock: "advisory",
     onCorrupt: "fail",
     onVersionMismatch: (raw: unknown, fromVersion: number): PendingStart => {
+      // Newer stamps are refused by the store before migration; this branch is older gaps only.
       if (fromVersion === 1) {
         const { recoveredFrom: _, ...record } = Schema.decodeUnknownSync(LegacyPendingStart)(raw);
         return { ...record, phase: record.phase === "retained" ? "apply-intent" : record.phase };

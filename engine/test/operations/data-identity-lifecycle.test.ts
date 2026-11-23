@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { AppDataIdentityError, ProviderUnavailableError } from "@lando/sdk/errors";
 import { AppPlanner, EventService, RuntimeProviderRegistry } from "@lando/sdk/services";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Deferred, Effect, Fiber } from "effect";
 import { appLockTarget, withAppMutationLock } from "../../src/operations/app-mutation-lock.ts";
 import { claimAppDataIdentity } from "../../src/operations/data-identity-claim.ts";
@@ -75,10 +76,13 @@ test.each(["scratch", "global"] as const)(
     const result = await Effect.runPromise(
       reconcileAppDataIdentity(target).pipe(
         Effect.provide(store.layer),
-        Effect.provideService(RuntimeProviderRegistry, {
-          ...identityRegistry(),
-          appliedPlansFor: () => Effect.die("must not read applied plans"),
-        }),
+        Effect.provideService(
+          RuntimeProviderRegistry,
+          makeTestRuntimeProviderRegistry({
+            ...identityRegistry(),
+            appliedPlansFor: () => Effect.die("must not read applied plans"),
+          }),
+        ),
         Effect.provideService(AppPlanner, identityPlanner(target.plan)),
       ),
     );

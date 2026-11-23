@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import type { AppPlan } from "@lando/sdk/schema";
 import { type ApplyOptions, RuntimeProviderRegistry } from "@lando/sdk/services";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect } from "effect";
 import { globalRebuild } from "../../src/operations/global-rebuild.ts";
 import { globalStart } from "../../src/operations/global-start.ts";
@@ -22,7 +23,7 @@ test.each(["start", "selected start", "rebuild"] as const)(
     const result = await Effect.runPromise(
       Effect.gen(function* () {
         const registry = yield* RuntimeProviderRegistry;
-        const guardedRegistry = RuntimeProviderRegistry.of({
+        const guardedRegistry = makeTestRuntimeProviderRegistry({
           ...registry,
           select: (target) =>
             registry.select(target).pipe(

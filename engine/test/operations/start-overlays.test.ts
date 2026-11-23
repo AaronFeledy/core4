@@ -1,6 +1,7 @@
 import { expect, spyOn, test } from "bun:test";
 import { type AppPlan, PortablePath } from "@lando/sdk/schema";
 import { BuildOrchestrator, RuntimeProviderRegistry } from "@lando/sdk/services";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect } from "effect";
 import { rebuildApp } from "../../src/operations/rebuild.ts";
 import { restartApp } from "../../src/operations/restart.ts";
@@ -117,21 +118,24 @@ for (const operation of ["start", "restart", "rebuild", "selected-restart", "sel
                   return value;
                 }),
             }),
-            Effect.provideService(RuntimeProviderRegistry, {
-              ...harness.runtimeProviderRegistry,
-              select: () =>
-                Effect.succeed({
-                  ...provider,
-                  capabilities: {
-                    ...capabilities,
-                    ...(failure.endsWith("capability")
-                      ? {}
-                      : { agentSocket: { delivery: "bind-directory" as const } }),
-                    hostReachability: "emulated",
-                    hostProxy: { containerTargets: [{ os: "linux", arch: "x64" }] },
-                  },
-                }),
-            }),
+            Effect.provideService(
+              RuntimeProviderRegistry,
+              makeTestRuntimeProviderRegistry({
+                ...harness.runtimeProviderRegistry,
+                select: () =>
+                  Effect.succeed({
+                    ...provider,
+                    capabilities: {
+                      ...capabilities,
+                      ...(failure.endsWith("capability")
+                        ? {}
+                        : { agentSocket: { delivery: "bind-directory" as const } }),
+                      hostReachability: "emulated",
+                      hostProxy: { containerTargets: [{ os: "linux", arch: "x64" }] },
+                    },
+                  }),
+              }),
+            ),
             Effect.provide(harness.layer),
             Effect.result,
           ),

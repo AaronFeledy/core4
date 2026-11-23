@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { APPLIED_STATE_VERSION } from "@lando/container-runtime/applied-state";
 import { makePluginStateStore } from "@lando/engine/plugins/context-state";
 import { ProviderUnavailableError, StateStoreError } from "@lando/sdk/errors";
 import type { PluginStateBucketSpec, PluginStateStore } from "@lando/sdk/plugins";
@@ -258,7 +259,7 @@ describe("provider-podman applied state", () => {
         expect(await Effect.runPromise(provider.list({ includeUnplanned: true }))).toEqual([]);
         expect(await Effect.runPromise(listAppliedPlans(state))).toEqual({
           plans: [],
-          unreadable: [{ path }],
+          unreadable: [{ path, reason: "unreadable" }],
         });
       });
     });
@@ -415,7 +416,10 @@ describe("provider-podman applied state", () => {
       const loaded = await Effect.runPromise(loadAppliedPlan(state, plan.id));
 
       expect(loaded).toBeUndefined();
-      expect(await Effect.runPromise(listAppliedPlans(state))).toEqual({ plans: [], unreadable: [{ path }] });
+      expect(await Effect.runPromise(listAppliedPlans(state))).toEqual({
+        plans: [],
+        unreadable: [{ path, reason: "unreadable" }],
+      });
     });
   });
 
@@ -430,7 +434,17 @@ describe("provider-podman applied state", () => {
       const loaded = await Effect.runPromise(loadAppliedPlan(state, plan.id));
 
       expect(loaded).toBeUndefined();
-      expect(await Effect.runPromise(listAppliedPlans(state))).toEqual({ plans: [], unreadable: [{ path }] });
+      expect(await Effect.runPromise(listAppliedPlans(state))).toEqual({
+        plans: [],
+        unreadable: [
+          {
+            path,
+            reason: "newer-version",
+            storedVersion: 99,
+            supportedVersion: APPLIED_STATE_VERSION,
+          },
+        ],
+      });
     });
   });
 
@@ -440,7 +454,10 @@ describe("provider-podman applied state", () => {
 
       const result = await Effect.runPromise(listAppliedPlans(stateFor(root)));
 
-      expect(result).toEqual({ plans: [], unreadable: [{ path: join(root, "applied-plans.json") }] });
+      expect(result).toEqual({
+        plans: [],
+        unreadable: [{ path: join(root, "applied-plans.json"), reason: "unreadable" }],
+      });
     });
   });
 });

@@ -17,7 +17,7 @@ import {
   type RuntimeProviderShape,
   UserAppResolver,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { DateTime, Effect, Layer } from "effect";
 
 import { spec } from "../src/commands/run.ts";
@@ -120,8 +120,7 @@ const makeRuntime = (
       });
     },
   };
-  const registry = RuntimeProviderRegistry.of({
-    list: Effect.succeed([]),
+  const registry = makeTestRuntimeProviderRegistry({
     capabilities: Effect.die("unused"),
     appliedPlansFor: () => Effect.die("unused"),
     select: () => Effect.succeed(provider),

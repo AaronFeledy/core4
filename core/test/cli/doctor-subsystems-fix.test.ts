@@ -17,6 +17,7 @@ import {
   TestRouterService,
   TestRuntimeProvider,
   makeTestRouterService,
+  makeTestRuntimeProviderRegistry,
   makeTestSshService,
 } from "@lando/sdk/test";
 // allow: SIZE_OK — Existing cross-subsystem recovery suite; keep its shared fixtures intact for this SSH-only change.
@@ -43,8 +44,7 @@ test("doctor --fix skips idle global router and sidecar readiness", async () => 
     subsystemDoctor({ fix: true, sshAgent: { globalConfig: { sshAgent: { sidecar: true } } } }).pipe(
       Effect.provideService(
         RuntimeProviderRegistry,
-        RuntimeProviderRegistry.of({
-          list: Effect.succeed([]),
+        makeTestRuntimeProviderRegistry({
           capabilities: Effect.succeed(provider.capabilities),
           appliedPlansFor: () => Effect.die("not requested"),
           resolveAppliedPlan: () => Effect.die("not requested"),
@@ -81,8 +81,7 @@ for (const fix of [false, true])
         subsystemDoctor({ fix }).pipe(
           Effect.provideService(
             RuntimeProviderRegistry,
-            RuntimeProviderRegistry.of({
-              list: Effect.succeed([]),
+            makeTestRuntimeProviderRegistry({
               capabilities: Effect.succeed(provider.capabilities),
               appliedPlansFor: () => Effect.die("not requested"),
               resolveAppliedPlan: () => Effect.die("not requested"),

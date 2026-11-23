@@ -34,7 +34,7 @@ import {
   type ServiceRuntimeInfo,
   StateStore,
 } from "@lando/sdk/services";
-import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRouterService, TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { DateTime, Effect, Layer, Schema, Stream } from "effect";
 import { startApp } from "../../src/operations/start.ts";
@@ -142,6 +142,7 @@ export const makeHarness = (
     readonly resolveAppliedPlan?: typeof RuntimeProviderRegistry.Service.resolveAppliedPlan;
     readonly resolveTeardownEvidence?: typeof RuntimeProviderRegistry.Service.resolveTeardownEvidence;
     readonly resourceOwnership?: typeof RuntimeProviderRegistry.Service.resourceOwnership;
+    readonly readAppliedPlanStrict?: typeof RuntimeProviderRegistry.Service.readAppliedPlanStrict;
     readonly stateStore?: ReturnType<typeof makeTestStateStore>;
     readonly applyEffect?: Effect.Effect<{ readonly changed: boolean }, ProviderUnavailableError>;
     /** Container-level outcome a fake apply reports; absent means the provider cannot report one. */
@@ -342,7 +343,18 @@ export const makeHarness = (
   // What a provider really hands back: a decoded record, never the planner's object, with no events.
   const resolveUserAppliedPlan =
     options.resolveAppliedPlan ?? (() => Effect.succeed(appliedPlanRecord(plannedApp)));
-  const runtimeProviderRegistry = {
+  const selectProvider = (target?: AppPlan | ProviderId) => {
+    const select = options.selectProvider;
+    return select === undefined
+      ? Effect.succeed(provider)
+      : select(target).pipe(Effect.map(globalAdmission.wrapProvider));
+  };
+  const runtimeProviderRegistry = makeTestRuntimeProviderRegistry({
+    appliedStateInventory: () => Effect.succeed({ plans: options.appliedPlans ?? [], unreadable: [] }),
+    readAppliedPlanStrict:
+      options.readAppliedPlanStrict ??
+      (({ id, provider }: Pick<AppPlan, "id" | "provider">) =>
+        Effect.succeed(options.appliedPlans?.find((plan) => plan.id === id && plan.provider === provider))),
     // Both lookups answer from one applied state, so placement sees the app `resolveAppliedPlan` reports.
     appliedPlansFor: (root: AbsolutePath) =>
       Effect.gen(function* () {
@@ -359,12 +371,7 @@ export const makeHarness = (
     ...(options.resourceOwnership === undefined ? {} : { resourceOwnership: options.resourceOwnership }),
     list: Effect.succeed([providerId]),
     capabilities: Effect.succeed(capabilities),
-    select: (target?: AppPlan | ProviderId) => {
-      const select = options.selectProvider;
-      return select === undefined
-        ? Effect.succeed(provider)
-        : select(target).pipe(Effect.map(globalAdmission.wrapProvider));
-    },
+    select: selectProvider,
     resolveAppliedPlan: (
       root: AbsolutePath,
       app?: Pick<AppRef, "kind" | "id">,
@@ -381,7 +388,7 @@ export const makeHarness = (
             plan === undefined ? { kind: "absent" as const } : { kind: "applied" as const, plan },
           ),
         )),
-  };
+  });
   const layer = Layer.mergeAll(
     emptySnapshotsLayer,
     BunFileSystem.layer,
@@ -498,6 +505,7 @@ export const makeHarness = (
     applyTreeStarted,
     stateStore,
     runtimeProviderRegistry,
+    selectProvider,
     userDataRoot,
     globalAdmission,
   };

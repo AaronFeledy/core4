@@ -11,7 +11,7 @@ import {
   ServiceName,
 } from "@lando/sdk/schema";
 import { ConfigService, GlobalAppService, RuntimeProviderRegistry } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect, Fiber, Schema } from "effect";
 import { TestClock } from "effect/testing";
 import { sshAgentPostureCheck } from "../../src/cli/commands/doctor-ssh-agent.ts";
@@ -81,10 +81,8 @@ test.each([
         Effect.provideService(GlobalAppService, globalApp),
         Effect.provideService(
           RuntimeProviderRegistry,
-          RuntimeProviderRegistry.of({
+          makeTestRuntimeProviderRegistry({
             resolveAppliedPlan: () => Effect.succeed(plan),
-            resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-            appliedPlansFor: () => Effect.succeed([]),
             list: Effect.succeed([provider.id]),
             capabilities: Effect.succeed(provider.capabilities),
             select: () => Effect.succeed(provider),
@@ -161,15 +159,16 @@ test.each([true, false])(
             load: Effect.succeed(config),
             get: (key) => Effect.succeed(config[key]),
           }),
-          Effect.provideService(RuntimeProviderRegistry, {
-            resolveAppliedPlan: () =>
-              Effect.succeed(globalPlanAt(root, converged && publishesReadiness ? readiness : undefined)),
-            resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-            appliedPlansFor: () => Effect.succeed([]),
-            list: Effect.succeed([provider.id]),
-            capabilities: Effect.succeed(provider.capabilities),
-            select: () => Effect.succeed(provider),
-          }),
+          Effect.provideService(
+            RuntimeProviderRegistry,
+            makeTestRuntimeProviderRegistry({
+              resolveAppliedPlan: () =>
+                Effect.succeed(globalPlanAt(root, converged && publishesReadiness ? readiness : undefined)),
+              list: Effect.succeed([provider.id]),
+              capabilities: Effect.succeed(provider.capabilities),
+              select: () => Effect.succeed(provider),
+            }),
+          ),
         ),
       );
       expect(check).toMatchObject({

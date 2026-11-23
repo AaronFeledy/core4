@@ -9,7 +9,7 @@ import {
   ServiceName,
 } from "@lando/sdk/schema";
 import { type CommandSpec, type ExecTarget, RuntimeProviderRegistry } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { DateTime, Effect, Layer, Stream } from "effect";
 import { makeDynamicToolingVarResolver } from "../../src/operations/tooling-dynamic-vars.ts";
 import { admitToolingTask } from "../../src/operations/tooling-input-admission.ts";
@@ -78,14 +78,14 @@ test.each([":host", "worker"])(
       testEnvironmentResolverLayer,
       ProviderExec.layer.pipe(Layer.provide(testEnvironmentResolverLayer)),
       Layer.succeed(HostExecutionDefaults, { cwd: "/project/subdir", env: {}, platform: "linux" }),
-      Layer.succeed(RuntimeProviderRegistry, {
-        appliedPlansFor: () => Effect.succeed([]),
-        resolveAppliedPlan: () => Effect.succeed(undefined),
-        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-        list: Effect.succeed([plan.provider]),
-        capabilities: Effect.succeed(provider.capabilities),
-        select: () => Effect.succeed(provider),
-      }),
+      Layer.succeed(
+        RuntimeProviderRegistry,
+        makeTestRuntimeProviderRegistry({
+          list: Effect.succeed([plan.provider]),
+          capabilities: Effect.succeed(provider.capabilities),
+          select: () => Effect.succeed(provider),
+        }),
+      ),
     );
     const task = {
       service,

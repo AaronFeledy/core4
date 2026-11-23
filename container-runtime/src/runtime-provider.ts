@@ -1,4 +1,4 @@
-import { ProviderUnavailableError } from "@lando/sdk/errors";
+import { type AppliedStateVersionError, ProviderUnavailableError } from "@lando/sdk/errors";
 import type { AppId, AppPlan, ServiceName } from "@lando/sdk/schema";
 import { planDataId } from "@lando/sdk/schema";
 import type {
@@ -25,7 +25,9 @@ export { readAppEnvironment } from "./app-environment.ts";
 export interface ResolvedProviderOpsInput {
   readonly ctx: ProviderErrorContext;
   readonly resolvePlan: (app: AppId) => Effect.Effect<AppPlan | undefined>;
-  readonly beforeMutation?: (app: AppId) => Effect.Effect<void, ProviderUnavailableError>;
+  readonly beforeMutation?: (
+    app: AppId,
+  ) => Effect.Effect<void, ProviderUnavailableError | AppliedStateVersionError>;
   readonly noPlanError: (app: AppId, operation: string) => ProviderError;
   readonly before?: (
     operation: ResolvedProviderOperation,
