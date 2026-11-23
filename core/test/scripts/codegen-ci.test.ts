@@ -1,12 +1,16 @@
 import { describe, expect, test } from "bun:test";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm } from "node:fs/promises";
 import { delimiter, dirname, resolve } from "node:path";
 import * as Schema from "effect/Schema";
 import { pinnedAction } from "../../../scripts/action-pins.ts";
+import { renderCiWorkflow } from "../../../scripts/build-ci-workflow.ts";
+import { renderNightlyWorkflow } from "../../../scripts/build-nightly-workflow.ts";
+import { renderProviderMatrixWorkflow } from "../../../scripts/build-provider-matrix-workflow.ts";
+import { renderReleaseWorkflow } from "../../../scripts/build-release-workflow.ts";
+import { renderRuntimeBundleWorkflow } from "../../../scripts/build-runtime-bundle-workflow.ts";
 import { CI_PLATFORMS, releaseBinaryFileName } from "../../../scripts/ci-platforms";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
-const packageJsonPath = resolve(repoRoot, "package.json");
 const workflowPath = resolve(repoRoot, ".github/workflows/ci.yml");
 const nightlyWorkflowPath = resolve(repoRoot, ".github/workflows/nightly.yml");
 const releaseWorkflowPath = resolve(repoRoot, ".github/workflows/release.yml");
@@ -62,25 +66,6 @@ const runCodegen = async (): Promise<string> => {
 
   expect({ exitCode, stdout, stderr }).toMatchObject({ exitCode: 0 });
   return stdout;
-};
-
-const changedLines = (
-  before: string,
-  after: string,
-): ReadonlyArray<{ readonly before: string; readonly after: string }> => {
-  const beforeLines = before.split("\n");
-  const afterLines = after.split("\n");
-  const count = Math.max(beforeLines.length, afterLines.length);
-  const changes: Array<{ readonly before: string; readonly after: string }> = [];
-
-  for (let index = 0; index < count; index += 1) {
-    const beforeLine = beforeLines[index] ?? "";
-    const afterLine = afterLines[index] ?? "";
-
-    if (beforeLine !== afterLine) changes.push({ before: beforeLine, after: afterLine });
-  }
-
-  return changes;
 };
 
 describe("ci workflow codegen", () => {
@@ -318,84 +303,29 @@ describe("ci workflow codegen", () => {
     codegenTestTimeout,
   );
 
-  test(
-    "uses .bun-version file as the Bun version source, not package.json engines.bun",
-    async () => {
-      await runCodegen();
+  test("uses .bun-version file as the Bun version source, not package.json engines.bun", async () => {
+    // Exercise the real renderers without rewriting package.json or regenerating unrelated files.
+    const workflows = [
+      [workflowPath, ciWorkflowGeneratorPath, renderCiWorkflow, 44],
+      [nightlyWorkflowPath, nightlyWorkflowGeneratorPath, renderNightlyWorkflow, 21],
+      [releaseWorkflowPath, releaseWorkflowGeneratorPath, renderReleaseWorkflow, 1],
+      [providerMatrixWorkflowPath, providerMatrixWorkflowGeneratorPath, renderProviderMatrixWorkflow, 4],
+      [runtimeBundleWorkflowPath, runtimeBundleWorkflowGeneratorPath, renderRuntimeBundleWorkflow, 3],
+    ] as const;
 
-      const workflow = await readFile(workflowPath, "utf8");
-      const nightlyWorkflow = await readFile(nightlyWorkflowPath, "utf8");
-      const releaseWorkflow = await readFile(releaseWorkflowPath, "utf8");
-      const providerMatrixWorkflow = await readFile(providerMatrixWorkflowPath, "utf8");
-      const runtimeBundleWorkflow = await readFile(runtimeBundleWorkflowPath, "utf8");
-      const ciWorkflowGenerator = await readFile(ciWorkflowGeneratorPath, "utf8");
-      const nightlyWorkflowGenerator = await readFile(nightlyWorkflowGeneratorPath, "utf8");
-      const releaseWorkflowGenerator = await readFile(releaseWorkflowGeneratorPath, "utf8");
-      const providerMatrixWorkflowGenerator = await readFile(providerMatrixWorkflowGeneratorPath, "utf8");
-      const runtimeBundleWorkflowGenerator = await readFile(runtimeBundleWorkflowGeneratorPath, "utf8");
-      const versionFileMatches = (workflow.match(/bun-version-file: .bun-version/g) ?? []).length;
-      expect(versionFileMatches).toBe(44);
-      expect(workflow).not.toContain("bun-version: ");
-      expect((nightlyWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length).toBe(21);
-      expect(nightlyWorkflow).not.toContain("bun-version: ");
-      expect((releaseWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length).toBe(1);
-      expect(releaseWorkflow).not.toContain("bun-version: ");
-      expect((providerMatrixWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length).toBe(4);
-      expect(providerMatrixWorkflow).not.toContain("bun-version: ");
-      expect((runtimeBundleWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length).toBe(3);
-      expect(runtimeBundleWorkflow).not.toContain("bun-version: ");
+    for (const [workflowFile, generatorFile, render, expectedSetupSteps] of workflows) {
+      const rendered = render();
+      expect(rendered).toBe(await readFile(workflowFile, "utf8"));
+      expect(rendered.match(/uses: oven-sh\/setup-bun@\S+/g) ?? []).toHaveLength(expectedSetupSteps);
+      expect(rendered.match(/bun-version-file: \.bun-version$/gm) ?? []).toHaveLength(expectedSetupSteps);
+      expect(rendered).not.toContain("bun-version: ");
+      expect(rendered).not.toContain("engines.bun");
 
-      for (const generatedWorkflow of [
-        workflow,
-        nightlyWorkflow,
-        releaseWorkflow,
-        providerMatrixWorkflow,
-        runtimeBundleWorkflow,
-      ]) {
-        const setupBunMatches = (generatedWorkflow.match(/uses: oven-sh\/setup-bun@\S+/g) ?? []).length;
-        const versionFileMatches = (generatedWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length;
-        const literalVersionMatches = (generatedWorkflow.match(/bun-version: /g) ?? []).length;
-
-        expect(versionFileMatches + literalVersionMatches).toBe(setupBunMatches);
-        expect(generatedWorkflow).not.toContain("engines.bun");
-      }
-
-      for (const generator of [
-        ciWorkflowGenerator,
-        nightlyWorkflowGenerator,
-        releaseWorkflowGenerator,
-        providerMatrixWorkflowGenerator,
-        runtimeBundleWorkflowGenerator,
-      ]) {
-        expect(generator).not.toContain("engines.bun");
-        expect(generator).not.toContain("packageJson.engines");
-      }
-
-      const originalPackageJson = await readFile(packageJsonPath, "utf8");
-      const mutatedPackageJson = originalPackageJson.replace(/"bun": ">=\d+\.\d+\.\d+"/u, '"bun": ">=9.8.7"');
-      expect(mutatedPackageJson).not.toBe(originalPackageJson);
-
-      try {
-        await writeFile(packageJsonPath, mutatedPackageJson);
-        await runCodegen();
-
-        const updatedWorkflow = await readFile(workflowPath, "utf8");
-        const updatedNightlyWorkflow = await readFile(nightlyWorkflowPath, "utf8");
-        const updatedReleaseWorkflow = await readFile(releaseWorkflowPath, "utf8");
-        const updatedProviderMatrixWorkflow = await readFile(providerMatrixWorkflowPath, "utf8");
-        const updatedRuntimeBundleWorkflow = await readFile(runtimeBundleWorkflowPath, "utf8");
-        expect(changedLines(workflow, updatedWorkflow)).toEqual([]);
-        expect(changedLines(nightlyWorkflow, updatedNightlyWorkflow)).toEqual([]);
-        expect(changedLines(releaseWorkflow, updatedReleaseWorkflow)).toEqual([]);
-        expect(changedLines(providerMatrixWorkflow, updatedProviderMatrixWorkflow)).toEqual([]);
-        expect(changedLines(runtimeBundleWorkflow, updatedRuntimeBundleWorkflow)).toEqual([]);
-      } finally {
-        await writeFile(packageJsonPath, originalPackageJson);
-        await runCodegen();
-      }
-    },
-    codegenTestTimeout,
-  );
+      const generator = await readFile(generatorFile, "utf8");
+      expect(generator).not.toContain("engines.bun");
+      expect(generator).not.toContain("packageJson.engines");
+    }
+  });
 
   test(
     "generates the committed schema fixture and bundled-codegen drift gates",
