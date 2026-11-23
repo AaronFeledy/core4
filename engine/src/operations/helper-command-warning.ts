@@ -4,7 +4,6 @@ import {
   helperBindCoveredBy,
 } from "@lando/container-runtime/container-helper";
 import type { AppPlan, CommandWarning } from "@lando/sdk/schema";
-import { publishCommandWarnings } from "../landofile/command-warnings.ts";
 import { HOST_PROXY_COMMAND_TARGETS } from "../subsystems/host-proxy/transport-feature.ts";
 import { serviceHasHostProxyFeature } from "../subsystems/host-proxy/worker-service-plan.ts";
 
@@ -35,6 +34,3 @@ export const selectHelperCommandWarnings = (plan: AppPlan): readonly CommandWarn
       },
     ];
   });
-
-export const publishHelperCommandWarnings = (plan: AppPlan) =>
-  publishCommandWarnings(selectHelperCommandWarnings(plan));

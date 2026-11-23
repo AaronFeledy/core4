@@ -66,8 +66,6 @@ import { fileSyncBundle } from "./file-sync-bundle.ts";
 import { resolveFileSyncMountPlan } from "./file-sync-plan.ts";
 import { withGlobalConsumerAdmission } from "./global-consumer-admission.ts";
 import { verifyGlobalConsumerAdmission } from "./global-consumer-lease.ts";
-import { publishHelperCommandWarnings } from "./helper-command-warning.ts";
-import { publishLowPortWarnings } from "./low-port-warning.ts";
 import { runPostStartScan, startupScanUrls } from "./post-start-scan.ts";
 import { prepareAcceleratedStart } from "./prepare-accelerated-start.ts";
 import { selectRebuildPlan } from "./service-selection.ts";
@@ -79,6 +77,7 @@ import { markStartMutation } from "./start-incomplete-notice.ts";
 import { projectDebuggerOverlay, withAcquiredStartOverlays } from "./start-overlays.ts";
 import { withApplyProgress, withGlobalStartProgress } from "./start-progress-phases.ts";
 import { retireUnusedSshAgentWorker } from "./start-ssh-agent.ts";
+import { publishStartWarnings } from "./start-warnings.ts";
 import type { StopAppPreflight } from "./stop-internal.ts";
 
 export type StartAppError = SdkStartAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
@@ -283,8 +282,7 @@ export const announceAppLaunch = Effect.fnUntraced(function* (input: {
   const proxy = yield* RouterService;
   const ref = target.app;
 
-  yield* publishLowPortWarnings(plan);
-  yield* publishHelperCommandWarnings(plan);
+  yield* publishStartWarnings(plan);
   yield* events.publish(
     PreAppStartEvent.make({
       eventName: "pre-app-start",

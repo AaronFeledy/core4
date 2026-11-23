@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import "../../src/runtime/engine-composition.ts";
 
+import { selectStartWarnings } from "@lando/engine/operations/start-warnings";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import { HostProviderOverride } from "@lando/engine/providers/host-provider";
 import { bundledFirstGlobalServiceLoader } from "@lando/engine/services/bundled-global-service-loader";
@@ -79,6 +80,8 @@ describe("bundled global services on bundled providers", () => {
         expect.arrayContaining(["traefik", "traefik-diagnostics", "ssh-agent", "mailpit"]),
       );
       expect([...planned].sort()).toEqual([...contributed].sort());
+      // Stock global services earn no start warnings, so every app start that ensures them stays quiet.
+      expect(selectStartWarnings(plan)).toEqual([]);
       expect(plan.networking?.perAppBridge).toBeNull();
       expect(plan.networking?.sharedNetworkMembership?.name).toBe(
         landoSharedCrossAppNetworkName(paths.roots.userDataRoot),

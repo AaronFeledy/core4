@@ -1,5 +1,4 @@
 import { type AppPlan, type CommandWarning, groupLogicalEndpoints } from "@lando/sdk/schema";
-import { publishCommandWarnings } from "../landofile/command-warnings.ts";
 
 export const selectLowPortWarnings = (plan: AppPlan): readonly CommandWarning[] =>
   Object.values(plan.services).flatMap((service) => {
@@ -24,5 +23,3 @@ export const selectLowPortWarnings = (plan: AppPlan): readonly CommandWarning[] 
         }),
       );
   });
-
-export const publishLowPortWarnings = (plan: AppPlan) => publishCommandWarnings(selectLowPortWarnings(plan));

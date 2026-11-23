@@ -66,6 +66,7 @@ import {
   captureGlobalConsumerAdmission,
   requireSelectableRouter,
 } from "../operations/global-consumer-admission.ts";
+import { publishStartWarnings } from "../operations/start-warnings.ts";
 import { ensureAppPlacement } from "../providers/app-placement.ts";
 import { prepareProvider } from "../providers/prepared.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
@@ -686,6 +687,12 @@ const makeScratchAppService = Effect.fnUntraced(function* (
     );
     const routeError = routeUrlRouterError(markedPlan, Option.getOrUndefined(proxy));
     if (routeError !== undefined) return yield* routeError;
+    yield* publishStartWarnings(markedPlan).pipe(
+      Effect.provideService(EventService, events),
+      mapFailures((cause) =>
+        scratchAppError("start", `Unable to report start warnings for scratch app ${scratchId}.`, cause),
+      ),
+    );
     const preparedOverlays = yield* prepareDebuggerOverlay(markedPlan);
     yield* ensureAppPlacement(
       { kind: "scratch", id: scratchId, root: markedPlan.root },

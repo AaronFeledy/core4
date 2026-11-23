@@ -43,12 +43,30 @@ export const commandWarningsUseMachineOutput: Effect.Effect<boolean> = Effect.se
   CommandWarnings,
 ).pipe(Effect.map((service) => (Option.isSome(service) ? service.value.machineOutput : false)));
 
-/** Records each warning for machine output and, for people, prints it as a warning message. */
+/** A warning's identity: its code plus the context naming its source, or its message without one. */
+const commandWarningKey = (warning: CommandWarning): string =>
+  JSON.stringify([
+    warning.code,
+    warning.context === undefined
+      ? warning.message
+      : Object.entries(warning.context).sort(([left], [right]) => left.localeCompare(right)),
+  ]);
+
+/**
+ * Records each warning for machine output and, for people, prints it as a warning message.
+ * A warning this command already recorded is skipped, so nested or resumed operations that
+ * publish for the same plan report it once.
+ */
 export const publishCommandWarnings = Effect.fnUntraced(function* (warnings: ReadonlyArray<CommandWarning>) {
-  const machineOutput = yield* commandWarningsUseMachineOutput;
+  const service = yield* Effect.serviceOption(CommandWarnings);
+  const machineOutput = Option.isSome(service) && service.value.machineOutput;
+  const seen = new Set(Option.isSome(service) ? (yield* service.value.list).map(commandWarningKey) : []);
   const events = yield* EventService;
   for (const warning of warnings) {
-    yield* recordCommandWarning(warning);
+    const key = commandWarningKey(warning);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    if (Option.isSome(service)) yield* service.value.add(warning);
     if (!machineOutput) {
       yield* events.publish(
         MessageWarnEvent.make({

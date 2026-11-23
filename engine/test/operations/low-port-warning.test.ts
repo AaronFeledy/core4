@@ -4,7 +4,8 @@ import { PortablePath, ServiceName } from "@lando/sdk/schema";
 import { EventService } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
 import { CommandWarnings, makeCommandWarnings } from "../../src/landofile/command-warnings.ts";
-import { publishLowPortWarnings, selectLowPortWarnings } from "../../src/operations/low-port-warning.ts";
+import { selectLowPortWarnings } from "../../src/operations/low-port-warning.ts";
+import { publishStartWarnings } from "../../src/operations/start-warnings.ts";
 import { EventPublicationObserver, layer } from "../../src/services/event-service.ts";
 import { plan, web } from "./start-progress-topology-support.ts";
 
@@ -110,7 +111,7 @@ for (const machineOutput of [true, false]) {
     // When
     const result = await Effect.runPromise(
       Effect.gen(function* () {
-        yield* publishLowPortWarnings(lowPortPlan);
+        yield* publishStartWarnings(lowPortPlan);
         const events = yield* EventService;
         return { warnings: yield* warnings.list, human: yield* events.query("message.warn") };
       }).pipe(
@@ -138,7 +139,7 @@ for (const machineOutput of [true, false]) {
 test("publishes a human advisory when embedding without CommandWarnings", async () => {
   // Given
   const operation = Effect.gen(function* () {
-    yield* publishLowPortWarnings(lowPortPlan);
+    yield* publishStartWarnings(lowPortPlan);
     return yield* (yield* EventService).query("message.warn");
   });
   // When
