@@ -1180,6 +1180,8 @@
     ],
     "./landofile/execution-sites": [
       "ExecutionSiteMatch",
+      "INVOCATION_SCOPES",
+      "executableExpressionPath",
       "executionSiteAt",
       "isServiceEnvironmentValuePath",
       "servicePortExpression"

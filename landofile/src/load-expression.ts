@@ -15,10 +15,15 @@ import {
   parseExpressionEither,
 } from "@lando/sdk/expressions";
 import { isLandofileOverride, isLandofileReset, override } from "@lando/sdk/landofile";
-import { executionSiteAt, servicePortExpression } from "@lando/sdk/landofile/execution-sites";
+import {
+  INVOCATION_SCOPES,
+  executableExpressionPath,
+  executionSiteAt,
+  servicePortExpression,
+} from "@lando/sdk/landofile/execution-sites";
 import type { ParsedPendingSite } from "@lando/sdk/schema";
 import { Effect, Predicate, Result } from "effect";
-import { INVOCATION_SCOPES, authoredSiteId, executableExpressionPath } from "./compiled-sites.ts";
+import { authoredSiteId } from "./compiled-sites.ts";
 import { recordExpressionEnvironment } from "./environment-dependencies.ts";
 import { compileExtraHostParts, deferredExtraHostKey, extraHostListPath } from "./extra-host-sites.ts";
 import { includeEntryPath } from "./include-condition-shape.ts";

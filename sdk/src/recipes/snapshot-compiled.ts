@@ -4,8 +4,6 @@ import type { ExpressionNode } from "../expressions/ast.ts";
 import { containsReservedBinding } from "../expressions/bindings.ts";
 import { evaluateExpressionEither, evaluateTemplateEither } from "../expressions/evaluator.ts";
 import { parseExpressionEither } from "../expressions/parser.ts";
-import { expressionInterpolationsTouchOnlyScopes } from "../expressions/scopes.ts";
-import { servicePortExpression } from "../landofile/execution-sites.ts";
 import {
   type CompilationContext,
   ComposedCompiledLandofile,
@@ -14,6 +12,7 @@ import {
 import { LandofileSourceValue } from "../schema/landofile-source.ts";
 import type { RecipeOptionValue } from "../schema/recipe-identity.ts";
 import type { RecipeSnapshot } from "../schema/recipe-snapshot.ts";
+import { recipeConfigExpressionAdmitted } from "../schema/recipe-source-literals.ts";
 import type { ValidationIssuePath } from "../schema/validation-issue.ts";
 import { SNAPSHOT_RENDER_BUDGET, renderRecipeSnapshot, validateSnapshotTemplate } from "./snapshot-render.ts";
 import { decodeSnapshotSourceLiterals } from "./snapshot-source.ts";
@@ -60,27 +59,7 @@ export const renderCompiledRecipeSnapshot = (
           bareShellParameters: "preserve",
         });
         if (Result.isFailure(parsed)) return Result.fail(fail(sourcePath, parsed.failure.message));
-        const self = servicePortExpression(parsed.success, path);
-        const bindingSite =
-          (path[0] === "services" &&
-            ((path[2] === "environment" && path.length === 4) ||
-              (path[2] === "creds" && (path[3] === "password" || path[3] === "rootPassword")))) ||
-          (path[0] === "tooling" && path.includes("env"));
-        if (
-          !expressionInterpolationsTouchOnlyScopes(parsed.success, [
-            "app",
-            "proxy",
-            "recipe",
-            "env",
-            "services",
-            ...(self === "supported" || self === "url" ? ["service"] : []),
-            ...(bindingSite ? ["secrets"] : []),
-          ]) ||
-          parsed.success.segments.some(
-            (segment) =>
-              segment.kind === "ShellParamSegment" || (segment.kind === "SecretRefSegment" && !bindingSite),
-          )
-        )
+        if (!recipeConfigExpressionAdmitted(parsed.success, path))
           return Result.fail(
             fail(sourcePath, "Unsupported authored snapshot expression at this destination."),
           );

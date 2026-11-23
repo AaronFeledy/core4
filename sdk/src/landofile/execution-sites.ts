@@ -61,6 +61,21 @@ export const executionSiteAt = (path: ReadonlyArray<string | number>): Execution
   return { site: match.site, relativePath: path.slice(match.index + 1) };
 };
 
+/** Scopes an executable tooling or event position reads when the task or step runs, never at load. */
+export const INVOCATION_SCOPES = ["event", "vars", "item", "key", "flags", "args", "raw", "task"] as const;
+
+/** Only executable declaration positions can retain invocation-time expressions. */
+export const executableExpressionPath = (path: readonly (string | number)[]): boolean => {
+  const [root, name, field] = path;
+  if (root === "events") return typeof name === "string" && typeof field === "number";
+  if (root === "toolingIncludes" || root === "includes") return field === "vars";
+  if (root !== "tooling" && root !== "toolingDefaults") return false;
+  const key = root === "tooling" ? field : name;
+  return (
+    key === undefined || ["cmd", "cmds", "service", "dir", "user", "env", "vars", "if"].includes(String(key))
+  );
+};
+
 export const isServiceEnvironmentValuePath = (path: readonly (string | number)[]): boolean =>
   path.length === 4 &&
   path[0] === "services" &&

@@ -21,6 +21,40 @@ test("carries the recipe's authored service port expressions to planning", () =>
   ]);
 });
 
+test("carries invocation reads in a recipe tool's command to the generated Landofile", () => {
+  // Given
+  const cmd = ["wp", "search-replace", "{{ args.from }}", "{{ services.web.url }}"];
+  const config = {
+    services: { web: { type: "nginx" } },
+    tooling: { replace: { service: "web", args: { from: { required: true } }, cmd } },
+  };
+  // When
+  const manifest = Result.getOrThrow(compileRecipeSource({ ...base, config }, context));
+  const compiled = Result.getOrThrow(renderCompiledRecipeSnapshot(manifest.snapshot, {}, renderContext));
+  // Then
+  expect(compiled.document).toEqual(config);
+  expect(compiled.pendingSites.map((site) => site.path)).toEqual([
+    ["tooling", "replace", "cmd", 2],
+    ["tooling", "replace", "cmd", 3],
+  ]);
+});
+
+test("rejects an invocation read outside an executable tooling or event position", () => {
+  // Given
+  const config = { tooling: { replace: { cmd: "echo", description: "{{ args.from }}" } } };
+  // When
+  const result = compileRecipeSource({ ...base, config }, context);
+  // Then
+  expect(result).toMatchObject({
+    _tag: "Failure",
+    failure: {
+      _tag: "RecipeSourceCompileError",
+      reason: "config-invalid",
+      path: ["tooling", "replace", "description"],
+    },
+  });
+});
+
 test.each([
   [{ port: "{{ service.port }}" }, ["port"]],
   [{ command: ["redis-server", "--port", "{{ service.name }}"] }, ["command", 2]],
