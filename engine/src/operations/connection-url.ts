@@ -19,6 +19,10 @@ export const primaryConcreteRoute = (
   return own.find((route) => route.scheme !== "http") ?? own[0];
 };
 
+/** The scheme a route's public URL uses: a `both` route is named by its HTTPS address. */
+export const routeUrlScheme = (route: RoutePlan): "http" | "https" =>
+  route.scheme === "http" ? "http" : "https";
+
 export const primaryRouteCandidates = (
   routes: readonly RoutePlan[],
   service: Pick<ServicePlan, "name" | "endpoints" | "certs">,

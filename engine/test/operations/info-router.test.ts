@@ -92,6 +92,7 @@ test("round trips actual info without redundant fields or runtime leakage", asyn
     "service",
     "status",
     "type",
+    "url",
   ]);
 });
 

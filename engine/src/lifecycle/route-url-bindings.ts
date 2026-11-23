@@ -9,7 +9,7 @@ import {
 } from "@lando/sdk/schema";
 import type { RouterServiceShape } from "@lando/sdk/services";
 import { Effect, Result } from "effect";
-import { primaryConcreteRoute, routeUrl } from "../operations/connection-url.ts";
+import { primaryConcreteRoute, routeUrl, routeUrlScheme } from "../operations/connection-url.ts";
 import { routeUrlConsumers } from "../planner/route-url-validation.ts";
 
 const preparedRouteUrls = Symbol("PreparedRouteUrls");
@@ -49,7 +49,7 @@ export const authorizedRouteUrl = (
   route: RoutePlan,
   authorities: readonly ProxyAuthority[],
 ): { readonly authority: ProxyAuthority; readonly url: string } | undefined => {
-  const scheme = route.scheme === "http" ? "http" : "https";
+  const scheme = routeUrlScheme(route);
   const authority = authorities.find(
     (candidate) =>
       candidate.scheme === scheme && candidate.hostname.toLowerCase() === route.hostname.toLowerCase(),
