@@ -112,6 +112,7 @@ const fixture = (
       RuntimeProviderRegistry,
       makeTestRuntimeProviderRegistry({
         resolveAppliedPlan: () => Effect.succeed(options.applied === true ? plan : undefined),
+        readAppliedPlanStrict: () => Effect.succeed(options.applied === true ? plan : undefined),
         list: Effect.succeed([providerId]),
         capabilities: Effect.succeed(provider.capabilities),
         select: () => Effect.succeed(provider),

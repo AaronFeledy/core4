@@ -36,14 +36,14 @@ test("retains the provider lookup failure when refusing an applied connection cl
           RuntimeProviderRegistry,
           makeTestRuntimeProviderRegistry({
             ...registry,
-            appliedPlansFor: () => Effect.fail(cause),
+            readAppliedPlanStrict: () => Effect.fail(cause),
           }),
         ),
       );
     }).pipe(Effect.provide(fixture.layer), Effect.result),
   );
   expect(Result.isFailure(result)).toBe(true);
-  if (Result.isFailure(result)) expect(result.failure.cause).toBe(cause);
+  if (Result.isFailure(result)) expect(result.failure).toBe(cause);
 });
 
 test("winning generated client provenance survives attachment without credentials or authored overrides", () => {

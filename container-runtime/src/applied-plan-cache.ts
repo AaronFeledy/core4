@@ -50,14 +50,6 @@ export const makeAppliedPlanCache = (options: AppliedPlanCacheOptions) => {
       Effect.tapError(() => Effect.sync(() => plans.delete(appId))),
     );
   };
-  // Observation reuses the cached plan (rememberPlan and forgetPlan keep it current);
-  // only mutation pays for a fresh strict read, and unreadable state observes as unknown.
-  const resolvePlan = (appId: AppId): Effect.Effect<AppliedAppPlan | undefined> => {
-    const cached = plans.get(appId);
-    if (cached !== undefined) return Effect.succeed(cached);
-    return resolveMutationPlan(appId).pipe(Effect.catch(() => Effect.succeed(undefined)));
-  };
-
   const rememberPlan = (
     plan: AppPlan,
     mode: { readonly complete?: boolean } = {},
@@ -91,5 +83,5 @@ export const makeAppliedPlanCache = (options: AppliedPlanCacheOptions) => {
       Effect.tap(() => Effect.sync(() => plans.delete(appId))),
     );
 
-  return { plans, resolvePlan, resolveMutationPlan, rememberPlan, forgetPlan };
+  return { plans, resolvePlan: resolveMutationPlan, resolveMutationPlan, rememberPlan, forgetPlan };
 };

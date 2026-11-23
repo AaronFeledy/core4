@@ -25,4 +25,12 @@ export const resolveInfoTarget = resolveAppliedLogsTarget.pipe(
       return yield* validateResolvedAppTarget({ plan, root: plan.root, app: userAppRef(plan), landofile });
     });
   }),
+  Effect.catchIf(
+    (error) =>
+      error instanceof AppliedStateVersionError ||
+      (error instanceof ProviderUnavailableError && error.operation === "applied-state.read"),
+    () => Effect.succeed(undefined),
+  ),
 );
+
+import { AppliedStateVersionError, ProviderUnavailableError } from "@lando/sdk/errors";

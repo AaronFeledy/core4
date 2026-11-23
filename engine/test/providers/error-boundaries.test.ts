@@ -33,7 +33,7 @@ test.each(Object.entries(evidenceCalls))(
     // Given
     const original = new ProviderUnavailableError(errorFields);
     const layer = registryLayer(TestRuntimeProvider, {
-      contribution: { appliedPlans: () => Effect.fail(original) },
+      contribution: { appliedStateInventory: () => Effect.fail(original) },
     });
     // When
     const result = await Effect.runPromise(
@@ -61,7 +61,7 @@ test.each(Object.entries(ownershipCalls))(
     const original = new ProviderUnavailableError(errorFields);
     const layer = registryLayer(TestRuntimeProvider, {
       contribution: {
-        appliedPlans: () => Effect.succeed([]),
+        appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
         resourceOwnership: () => Effect.fail(original),
       },
     });
@@ -121,7 +121,6 @@ test.each(Object.entries(contributionCalls))(
     const failure = Effect.failCause(cause);
     const layer = registryLayer(TestRuntimeProvider, {
       contribution: {
-        appliedPlans: () => failure,
         appliedStateInventory: () => failure,
         resourceOwnership: () => failure,
         make: () =>
@@ -196,7 +195,6 @@ test.each(Object.entries(contributionCalls))(
         Effect.provide(
           registryLayer(TestRuntimeProvider, {
             contribution: {
-              appliedPlans: () => pending,
               appliedStateInventory: () => pending,
               resourceOwnership: () => pending,
               make: () =>
@@ -225,7 +223,6 @@ test.each(["resolveAppliedPlan", "resolveTeardownEvidence"] as const)(
     const original = new ProviderUnavailableError(errorFields);
     const layer = registryLayer(TestRuntimeProvider, {
       contribution: {
-        appliedPlans: () => Effect.die("must use inventory"),
         appliedStateInventory: () => Effect.fail(original),
         make: () => Effect.die("must not initialize runtime"),
       },
@@ -261,7 +258,7 @@ test("contribution diagnostics fail closed when a detail value cannot be inspect
       Effect.provide(
         registryLayer(TestRuntimeProvider, {
           contribution: {
-            appliedPlans: () => Effect.fail(original),
+            appliedStateInventory: () => Effect.fail(original),
             make: () => Effect.die("must not initialize runtime"),
           },
         }),
@@ -286,7 +283,7 @@ test("contribution diagnostics suppress callable serialization hooks", async () 
       Effect.provide(
         registryLayer(TestRuntimeProvider, {
           contribution: {
-            appliedPlans: () => Effect.fail(original),
+            appliedStateInventory: () => Effect.fail(original),
             make: () => Effect.die("must not initialize runtime"),
           },
         }),
@@ -355,7 +352,7 @@ test("contribution diagnostics safely project adversarial structures", async () 
         Effect.provide(
           registryLayer(TestRuntimeProvider, {
             contribution: {
-              appliedPlans: () => Effect.fail(original),
+              appliedStateInventory: () => Effect.fail(original),
               make: () => Effect.die("must not initialize runtime"),
             },
           }),

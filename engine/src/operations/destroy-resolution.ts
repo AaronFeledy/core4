@@ -64,7 +64,10 @@ export const withMissingDestroyRoot = Effect.fn("AppOperation.withMissingDestroy
       const registry = yield* RuntimeProviderRegistry;
       const providerId = yield* TeardownProvider;
       const resolveAt = Effect.fnUntraced(function* (recorded: AbsolutePath) {
-        const plans = (yield* registry.appliedPlansFor(recorded, providerId)).filter(
+        const plans = (yield* registry.appliedPlansFor(
+          recorded,
+          providerId === undefined ? undefined : { providerId },
+        )).filter(
           (plan) =>
             (providerId === undefined || plan.provider === providerId) &&
             matchesAppPlanIdentity(plan, { kind: "user", id: "" }),

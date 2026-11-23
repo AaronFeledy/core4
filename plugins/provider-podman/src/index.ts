@@ -104,7 +104,6 @@ import { Effect, Layer, Schema, Stream } from "effect";
 
 import {
   listAppliedPlans,
-  listObservedPlans,
   loadAppliedPlanStrict,
   persistAppliedPlan,
   removeAppliedPlan,
@@ -834,7 +833,7 @@ const assembleRuntimeProvider = (
       appliedPlans:
         options.appliedPlanState === undefined
           ? Effect.succeed([])
-          : listObservedPlans(options.appliedPlanState),
+          : listAppliedPlans(options.appliedPlanState).pipe(Effect.map(({ plans }) => plans)),
       planSetup: Effect.fn("RuntimeProvider.planSetup")(() =>
         Effect.succeed({ providerId: ProviderId.make("podman"), changes: [] }),
       ),
@@ -943,10 +942,8 @@ const assembleRuntimeProvider = (
       ),
       logs: (target, logOptions) =>
         Stream.unwrap(
-          (target.plan === undefined
-            ? resolvePlan(target.app)
-            : Effect.succeed<AppPlan | undefined>(target.plan)
-          ).pipe(
+          resolvePlan(target.app).pipe(
+            Effect.map((recorded) => target.plan ?? recorded),
             Effect.map((plan) => {
               if (plan !== undefined)
                 return logs(plan, target, logOptions, {
@@ -978,7 +975,7 @@ const assembleRuntimeProvider = (
         const allPlans =
           options.appliedPlanState === undefined
             ? [...plans.values()]
-            : yield* listObservedPlans(options.appliedPlanState);
+            : (yield* listAppliedPlans(options.appliedPlanState)).plans;
 
         const inspected =
           filter.app === undefined ? allPlans : allPlans.filter((plan) => plan.id === filter.app);
@@ -1097,7 +1094,6 @@ export const plugin = definePlugin({
           makeResourceOwnershipStore(PROVIDER_ID, ctx.stateStore).summary(root),
         appliedStateInventory: (ctx) => listAppliedPlans(ctx.stateStore),
         readAppliedPlanStrict: (ctx, appId) => loadAppliedPlanStrict(ctx.stateStore, appId),
-        appliedPlans: (ctx) => listObservedPlans(ctx.stateStore),
         make: Effect.fn("RuntimeProvider.make")(function* (ctx) {
           const { paths, platform, resolveContainerHelper, sanitizeAppliedPlan } = yield* providerHostInputs;
           return yield* makeRuntimeProvider({

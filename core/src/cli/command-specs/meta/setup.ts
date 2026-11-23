@@ -1,6 +1,7 @@
 import { config as writeConfig } from "@lando/engine/operations/config";
 import {
   SetupProviderSwitchResultSchema,
+  preflightGlobalProviderSwitch,
   switchGlobalProviderForSetup,
 } from "@lando/engine/operations/setup-provider-switch";
 import { ensureAppPlacement } from "@lando/engine/providers/app-placement";
@@ -176,6 +177,9 @@ export const setupSpec: LandoCommandSpec<
 
     const shouldPersistProvider =
       (selection.source === "flag" || selection.source === "prompt") && selectedProvider !== config;
+    const checkedSwitch = yield* preflightGlobalProviderSwitch(selectedProvider).pipe(
+      Effect.tapError((cause) => recorder.recordFailure("provider", cause)),
+    );
 
     if (!inputBooleanFlag(input, "skip-provider")) {
       if (selectedProviderId in SYSTEM_RUNTIME_PROVIDERS) {
@@ -229,9 +233,9 @@ export const setupSpec: LandoCommandSpec<
       });
     }
 
-    const providerSwitch = yield* switchGlobalProviderForSetup(selectedProvider).pipe(
-      Effect.tapError((cause) => recorder.recordFailure("provider", cause)),
-    );
+    const providerSwitch = yield* switchGlobalProviderForSetup(selectedProvider, {
+      checked: checkedSwitch,
+    }).pipe(Effect.tapError((cause) => recorder.recordFailure("provider", cause)));
     if (!inputBooleanFlag(input, "skip-provider") && shouldPersistProvider) {
       yield* writeConfig({ subcommand: "set", key: "defaultProviderId", value: selectedProviderId }).pipe(
         Effect.tapError((cause) => recorder.recordFailure("provider", cause)),

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { ProviderUnavailableError, StateStoreError } from "@lando/sdk/errors";
+import { ProviderUnavailableError, StateStoreError, appliedStateVersionError } from "@lando/sdk/errors";
 import type { PluginStateStore } from "@lando/sdk/plugins";
 import { AppId, type AppPlan, type AppliedAppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
 import { Effect } from "effect";
@@ -65,7 +65,7 @@ describe("applied plan cache", () => {
         ),
       ).toBe(error);
       expect(writes).toBe(0);
-      expect(await Effect.runPromise(cache.resolvePlan(appId))).toBeUndefined();
+      expect(await Effect.runPromise(cache.resolvePlan(appId).pipe(Effect.flip))).toBe(error);
     },
   );
   test.each([false, true])(
@@ -103,29 +103,30 @@ describe("applied plan cache", () => {
       expect(desired.events?.["pre-stop"]).toHaveLength(1);
     },
   );
-  test("reuses the cached plan for observation and reads fresh state for mutation", async () => {
-    const stored = new Map([[appId, appPlan("stored", ["db"])]]);
-    let loads = 0;
+  test("a warm decision read diagnoses an external newer-version write", async () => {
+    const firstPlan = appPlan("stored", ["db"]);
+    let newer = false;
+    const protection = appliedStateVersionError({
+      providerId: "docker",
+      operation: "applied-state.read",
+      path: "/state/applied.json",
+      appId,
+      scope: "app",
+      storedVersion: 12,
+      supportedVersion: 11,
+    });
     const cache = makeAppliedPlanCache({
       providerId: ProviderId.make("docker"),
       providerName: "Docker",
       appliedPlanState: stateStore(false),
-      load: (_state, id) =>
-        Effect.sync(() => {
-          loads += 1;
-          return stored.get(id);
-        }),
+      load: () => Effect.suspend(() => (newer ? Effect.fail(protection) : Effect.succeed(firstPlan))),
       persist: () => Effect.void,
       remove: () => Effect.void,
     });
 
-    const first = await Effect.runPromise(cache.resolvePlan(appId));
-    const second = await Effect.runPromise(cache.resolvePlan(appId));
-    expect(second).toBe(first);
-    expect(loads).toBe(1);
-
-    await Effect.runPromise(cache.resolveMutationPlan(appId));
-    expect(loads).toBe(2);
+    expect(await Effect.runPromise(cache.resolvePlan(appId))).toBe(firstPlan);
+    newer = true;
+    expect(await Effect.runPromise(cache.resolvePlan(appId).pipe(Effect.flip))).toBe(protection);
   });
 
   test("merges and persists the sanitized plan when it does not name every service", async () => {

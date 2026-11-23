@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService } from "@lando/redaction/service";
-import { DataTransferError, ProviderConfigError } from "@lando/sdk/errors";
+import { DataTransferError, ProviderUnavailableError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, ProviderId, ServiceName } from "@lando/sdk/schema";
 import {
   DataMover,
@@ -10,7 +10,7 @@ import {
   RuntimeProviderRegistry,
   StateStore,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { makeTestStateStore } from "@lando/state-store/testing";
 import { Effect, Layer, Stream } from "effect";
 import { layer } from "../src/service.ts";
@@ -75,17 +75,16 @@ test("missing applied plans preserve the app identity and start remediation", as
 });
 
 test("an uninspectable provider keeps its own failure tag and remediation", async () => {
-  // Given the only provider fails applied-plan inspection with a configuration error.
-  const original = new ProviderConfigError({
+  const original = new ProviderUnavailableError({
     providerId: "docker",
-    operation: "appliedPlans",
+    operation: "applied-state.list",
     message: "DOCKER_HOST points at a missing socket.",
     remediation: "Unset DOCKER_HOST or point it at a running daemon.",
   });
   const registry = makeTestRuntimeProviderRegistry({
     list: Effect.succeed([ProviderId.make("docker")]),
     capabilities: Effect.die("No provider was selected"),
-    select: () => Effect.succeed({ ...TestRuntimeProvider, appliedPlans: Effect.fail(original) }),
+    appliedStateInventory: () => Effect.fail(original),
   });
   // When a transfer needs that app's provider.
   const result = await Effect.runPromise(

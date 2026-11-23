@@ -14,6 +14,7 @@ import {
   SqlSeedStateError,
   SqlServiceAmbiguousError,
   VolumeNotFoundError,
+  appliedStateVersionError,
 } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -53,6 +54,26 @@ const run = (
 ) => Effect.runPromiseExit(Effect.scoped(executeDbCommand(deps, input)));
 
 describe("executeDbCommand", () => {
+  test.each(["seed", "snapshots"] as const)(
+    "%s keeps the upgrade diagnosis for a protected source app",
+    async (action) => {
+      const protection = appliedStateVersionError({
+        providerId: "test",
+        operation: "applied-state.read",
+        path: "/state/sibling.json",
+        storedVersion: 12,
+        supportedVersion: 11,
+        scope: "app",
+        appId: "sibling",
+      });
+      const harness = makeSqlTestDeps({ password: SECRET, findAppliedSource: () => Effect.fail(protection) });
+      const exit = await run(harness.deps, { action, fromApp: "sibling", yes: false });
+      expect(
+        Exit.isFailure(exit) ? Option.getOrUndefined(Cause.findErrorOption(exit.cause)) : undefined,
+      ).toMatchObject({ remediation: protection.remediation });
+      expect(harness.snapshotFilters()).toEqual([]);
+    },
+  );
   test("maps app seed source flags at the command boundary", () => {
     // Given: command flags selecting a source app and service.
     const command = {
@@ -169,7 +190,11 @@ describe("executeDbCommand", () => {
     // Given: a path containing dot segments identifies an applied source root.
     const harness = makeSqlTestDeps({ password: SECRET });
     const source = sourcePlan(harness.root);
-    const deps = { ...harness.deps, appliedPlans: Effect.succeed([source]) };
+    const deps: SqlCommandDeps = {
+      ...harness.deps,
+      findAppliedSource: (selector) =>
+        Effect.succeed("root" in selector && selector.root === source.root ? source : undefined),
+    };
     // When: seeding by path instead of id.
     const exit = await run(deps, { action: "seed", fromPath: `${harness.root}/.`, yes: false });
     // Then: the source app id comes from the applied plan.

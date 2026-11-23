@@ -158,12 +158,17 @@ const harnessAt = (
     Layer.succeed(
       RuntimeProviderRegistry,
       makeTestRuntimeProviderRegistry({
-        readAppliedPlanStrict: ({ id, provider }) =>
-          id === appId && provider === providerId && input.receiptError !== undefined
+        readAppliedPlanStrict: ({ id, provider: selectedProvider }) =>
+          id === appId && selectedProvider === providerId && input.receiptError !== undefined
             ? Effect.fail(input.receiptError)
-            : Effect.succeed(undefined),
+            : Effect.map(provider.appliedPlans, (plans) => plans.find((plan) => plan.id === id)),
         appliedPlansFor: () =>
           Effect.map(provider.appliedPlans, (plans) => plans.filter((plan) => plan.provider === providerId)),
+        appliedStateInventory: (id) =>
+          Effect.map(provider.appliedPlans, (plans) => ({
+            plans: id === providerId ? plans : [],
+            unreadable: [],
+          })),
         list: Effect.succeed([providerId, ProviderId.make("docker")]),
         capabilities: Effect.succeed(provider.capabilities),
         select: (target) => {

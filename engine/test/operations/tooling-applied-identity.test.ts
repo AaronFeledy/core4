@@ -62,14 +62,10 @@ const enclosing = planAt("/tmp/tooling-exact", service({ name: "www-data", uid: 
 
 test("tooling identity never borrows an enclosing app's project user", async () => {
   const seen: ToolingInvocation[] = [];
-  const lookups: Array<string | undefined> = [];
   const registry = makeTestRuntimeProviderRegistry({
     capabilities: Effect.die("unused"),
     list: Effect.succeed([nested.provider]),
-    resolveAppliedPlan: (_root, _app, lookup) => {
-      lookups.push(lookup);
-      return lookup === "exact" ? Effect.succeed(undefined) : Effect.succeed(enclosing);
-    },
+    readAppliedPlanStrict: () => Effect.succeed(enclosing),
   });
   const engine = ToolingEngine.of({
     id: "test",
@@ -107,7 +103,6 @@ test("tooling identity never borrows an enclosing app's project user", async () 
     ),
   );
 
-  expect(lookups).toEqual(["exact"]);
   expect(seen.map(({ user }) => user)).toEqual([undefined]);
 });
 
@@ -155,7 +150,7 @@ test.each([
   const applied = planAt(nestedRoot, node(before, provider ?? "lando"));
   const registry = makeTestRuntimeProviderRegistry({
     list: Effect.succeed([plan.provider]),
-    resolveAppliedPlan: () => Effect.succeed(applied),
+    readAppliedPlanStrict: () => Effect.succeed(applied),
   });
   const warnings = makeCommandWarnings(true);
   const invocation: ToolingInvocation = {

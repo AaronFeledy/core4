@@ -292,6 +292,10 @@ export const globalTeardownHarness = async (
       RuntimeProviderRegistry,
       makeTestRuntimeProviderRegistry({
         appliedPlansFor: () => provider.appliedPlans,
+        appliedStateInventory: () =>
+          Effect.map(provider.appliedPlans, (plans) => ({ plans, unreadable: [] })),
+        readAppliedPlanStrict: ({ id }) =>
+          Effect.map(provider.appliedPlans, (plans) => plans.find((plan) => plan.id === id)),
         list: Effect.succeed([ProviderId.make("lando")]),
         capabilities: Effect.succeed(provider.capabilities),
         select: (target) => {
