@@ -1,4 +1,4 @@
-import { SnapshotId, type SnapshotInfo } from "@lando/sdk/schema";
+import { SnapshotId, type SnapshotInfo, snapshotInPruneBucket } from "@lando/sdk/schema";
 import { DateTime } from "effect";
 
 /** DataMover counts retained IDs within keepLatest, so reserve a slot for every protected snapshot. */
@@ -9,14 +9,14 @@ export const sqliteRetentionSelection = (
   recovery: boolean,
   retainIds: ReadonlyArray<string> = [],
 ) => {
-  const eligible = snapshots.filter((snapshot) => {
-    const manual =
-      snapshot.metadata?.recoveryReason === undefined || snapshot.metadata.recoveryReason === "manual";
-    return recovery ? !manual : manual;
-  });
+  const eligible = snapshots.filter((snapshot) => snapshotInPruneBucket(snapshot, recovery));
   const matching = eligible
     .filter((snapshot) => snapshot.metadata?.path === path)
-    .sort((left, right) => DateTime.toEpochMillis(right.createdAt) - DateTime.toEpochMillis(left.createdAt));
+    .sort(
+      (left, right) =>
+        DateTime.toEpochMillis(right.createdAt) - DateTime.toEpochMillis(left.createdAt) ||
+        left.id.localeCompare(right.id),
+    );
   const eligibleIds = new Set(eligible.map((snapshot) => snapshot.id));
   const protectedIds = new Set(retainIds.filter((id) => eligibleIds.has(id)));
   const protectedMatching = matching.filter((snapshot) => protectedIds.has(snapshot.id));
@@ -45,24 +45,25 @@ export const sqliteSnapshotCatalogKey = (snapshot: SnapshotInfo): string =>
     snapshot.id,
   ]);
 
-export const sqliteManualPruneSelection = (snapshots: ReadonlyArray<SnapshotInfo>, keepLatest: number) => {
-  const groups = new Map<string, SnapshotInfo[]>();
+/** `db:snapshots:prune` keeps the newest snapshots of the selected bucket per service and path. */
+export const sqlitePruneSelection = (
+  snapshots: ReadonlyArray<SnapshotInfo>,
+  keepLatest: number,
+  recovery: boolean,
+) => {
+  const groups = new Map<string, { readonly path: string; readonly snapshots: SnapshotInfo[] }>();
   for (const snapshot of snapshots) {
-    if (snapshot.metadata?.family !== "sqlite" || snapshot.metadata.recoveryReason !== "manual") continue;
-    const key = JSON.stringify([snapshot.metadata.service, snapshot.metadata.path]);
-    const group = groups.get(key) ?? [];
-    group.push(snapshot);
-    groups.set(key, group);
+    const metadata = snapshot.metadata;
+    // Server metadata's family is an open string, so `path` is what narrows to the SQLite shape.
+    if (metadata?.family !== "sqlite" || metadata.path === undefined) continue;
+    const key = JSON.stringify([metadata.service, metadata.path]);
+    const group = groups.get(key);
+    if (group === undefined) groups.set(key, { path: metadata.path, snapshots: [snapshot] });
+    else group.snapshots.push(snapshot);
   }
   return {
-    candidates: [...groups.values()].flatMap((group) =>
-      group
-        .sort(
-          (left, right) =>
-            DateTime.toEpochMillis(right.createdAt) - DateTime.toEpochMillis(left.createdAt) ||
-            left.id.localeCompare(right.id),
-        )
-        .slice(keepLatest),
+    candidates: [...groups.values()].flatMap(
+      (group) => sqliteRetentionSelection(group.snapshots, group.path, keepLatest, recovery).candidates,
     ),
   };
 };

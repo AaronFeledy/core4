@@ -558,6 +558,70 @@ describe("executeDbCommand", () => {
     ]);
   });
 
+  test("prune previews exactly the bucket the confirmed policy deletes", async () => {
+    // Given: manual, unclassified, and automatic recovery snapshots for the selected database.
+    const harness = makeSqlTestDeps({ password: SECRET });
+    const owner = planAppIdentity({ root: AbsolutePath.make(harness.root) });
+    const snapshot = (id: string, hour: number, recoveryReason?: "manual" | "import" | "restore") =>
+      SnapshotInfo.make({
+        id,
+        owner,
+        store: { app: AppId.make("sql-app"), store: "sql-app_database_data" },
+        digest: `sha256:${id}`,
+        sizeBytes: 12,
+        createdAt: DateTime.makeUnsafe(`2026-09-11T0${hour}:00:00Z`),
+        ...(recoveryReason === undefined
+          ? {}
+          : {
+              metadata: {
+                service: ServiceName.make("database"),
+                volumeInstanceId: "volume-instance:database",
+                family: "mysql",
+                version: "8.0",
+                imageIdentity: "sha256:mysql-runtime",
+                recoveryReason,
+              },
+            }),
+      });
+    const snapshots = [
+      snapshot("manual-new", 5, "manual"),
+      snapshot("unclassified", 4),
+      snapshot("restore-new", 3, "restore"),
+      snapshot("import-old", 2, "import"),
+      snapshot("manual-old", 1, "manual"),
+    ];
+    const policies: unknown[] = [];
+    const confirmations: string[] = [];
+    const deps = {
+      ...harness.deps,
+      listSnapshots: () => Effect.succeed(snapshots),
+      confirm: (message: string) =>
+        Effect.sync(() => {
+          confirmations.push(message);
+          return true;
+        }),
+      pruneSnapshots: (policy: unknown) =>
+        Effect.sync(() => {
+          policies.push(policy);
+          return [];
+        }),
+    };
+
+    // When: each bucket is pruned down to its newest snapshot.
+    const manual = await run(deps, { action: "prune", keepLatest: 1, yes: false });
+    const recovery = await run(deps, { action: "prune", keepLatest: 1, recovery: true, yes: false });
+
+    // Then: unclassified snapshots count as manual, and the policy names the same bucket.
+    if (!Exit.isSuccess(manual) || !Exit.isSuccess(recovery)) throw new Error("expected retention success");
+    expect(manual.value.pruneCandidates).toEqual(["unclassified", "manual-old"]);
+    expect(recovery.value.pruneCandidates).toEqual(["import-old"]);
+    expect(policies).toMatchObject([{ keepLatest: 1 }, { keepLatest: 1, recovery: true }]);
+    expect(policies[0]).not.toHaveProperty("recovery");
+    expect(confirmations).toHaveLength(2);
+    expect(confirmations[0]).toContain("delete 2 manual snapshot(s)");
+    expect(confirmations[1]).toContain("delete 1 recovery snapshot(s)");
+  });
+
   test("exports a single mysql service without --service via serviceCmd to hostPath", async () => {
     const harness = makeSqlTestDeps({ password: SECRET });
 

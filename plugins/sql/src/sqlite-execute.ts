@@ -5,6 +5,7 @@ import {
   type SnapshotId,
   type SnapshotInfo,
   snapshotHandle,
+  snapshotInPruneBucket,
 } from "@lando/sdk/schema";
 import { Effect, absurd } from "effect";
 
@@ -140,7 +141,7 @@ export const executeSqliteCommand = Effect.fn("Sql.executeSqliteCommand")(functi
             return (
               previous !== undefined &&
               snapshot.metadata?.family === "sqlite" &&
-              snapshot.metadata.recoveryReason === "manual" &&
+              snapshotInPruneBucket(snapshot, input.recovery === true) &&
               snapshot.digest === previous.digest &&
               snapshot.metadata.path === previous.metadata?.path
             );

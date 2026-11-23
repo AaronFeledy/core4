@@ -229,7 +229,14 @@ Doctor's filesystem-only `legacy-snapshot-catalogs` check lists the count and pa
 
 Before `db:import`, `db:reset`, or `db:restore` changes your data, Lando takes an automatic recovery snapshot. After a successful operation, Lando keeps the newest 3 recovery snapshots per database automatically, including the one just taken. Failed operations leave every recovery snapshot in place and report the snapshot ID you can restore. Retention stays within this app folder and database; another Git worktree's snapshots stay put.
 
-`lando db:snapshots:prune` handles manual snapshots created by `db:snapshot`, not automatic recovery snapshots. It keeps the newest 3 manual snapshots by default. Prune and purge delete native data through the recording provider before removing the catalog entry. If deletion fails, the snapshot stays listed so you can retry. If automatic retention warns that cleanup failed, your database operation still succeeded; older recovery snapshots may remain until a later successful operation retries cleanup.
+`lando db:snapshots:prune` handles manual snapshots created by `db:snapshot`. It keeps the newest 3 by default; `--keep-latest` changes that number. Add `--recovery` to prune the automatic recovery snapshots instead. A recovery snapshot holds a full copy of the database as it was before the change, so delete them when that copy shouldn't stay on disk, such as after importing production data. Preview first, then delete every recovery snapshot for the database:
+
+```sh
+lando db:snapshots:prune --recovery --keep-latest 0 --preview
+lando db:snapshots:prune --recovery --keep-latest 0 --yes
+```
+
+Prune and purge delete native data through the recording provider before removing the catalog entry. If deletion fails, the snapshot stays listed so you can retry. If automatic retention warns that cleanup failed, your database operation still succeeded; older recovery snapshots may remain until a later successful operation retries cleanup.
 
 ## Confirm destructive work
 
@@ -311,6 +318,41 @@ lando db:reset --yes
     </Step>
     <Step name="cleanup">
       <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="prune-recovery-bucket" render={false} reason="Regression for pruning automatic recovery snapshots">
+    <Step name="preview-and-confirm">
+      <UseFixture name="one-db" />
+      <Run command="lando start" />
+      <Run command="lando db:snapshots:prune --recovery --keep-latest 0 --preview --format=json" />
+      <Verify command="lando db:snapshots:prune --recovery --keep-latest 0 --preview --format=json" expect={{ stdout: { regex: "\"retentionApplied\":false" } }} />
+      <Run command="lando db:snapshots:prune --recovery --keep-latest 0 --format=json" expectExit={1} />
+      <Verify errorTag="SqlConfirmRequiredError" expect={{ regex: "recovery snapshot" }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="restore-label-and-prune-recovery" layer="e2e" render={false} reason="A reused label restores the newest snapshot and --recovery deletes only recovery snapshots">
+    <Step name="restore-reused-label">
+      <UseFixture name="one-db" />
+      <Verify command="lando start --format=json" expect={{ stdout: { regex: "\"ok\":true" } }} />
+      <Run command="lando db:snapshot --label baseline" />
+      <Run command="lando db:snapshot --label baseline" />
+      <Verify command="lando db:restore baseline --yes --format=json" expect={{ stdout: { regex: "\"ok\":true.*\"recoverySnapshotId\":" } }} />
+    </Step>
+    <Step name="prune-recovery">
+      <Run command="lando db:snapshots:prune --recovery --keep-latest 0 --preview" />
+      <Verify command="lando db:snapshots --format=json" expect={{ stdout: { regex: "\"recoveryReason\":\"restore\"" } }} />
+      <Run command="lando db:snapshots:prune --recovery --keep-latest 0 --yes" />
+      <Verify command="lando db:snapshots --format=json" expect={{ stdout: { not: { regex: "\"recoveryReason\":\"(import|reset|restore|seed)\"" } } }} />
+      <Verify command="lando db:snapshots --format=json" expect={{ stdout: { regex: "\"label\":\"baseline\"[\\s\\S]*\"label\":\"baseline\"" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes" />
     </Step>
   </Scenario>
 

@@ -2138,6 +2138,7 @@
       "serviceInternalAlias",
       "serviceListenerTarget",
       "snapshotHandle",
+      "snapshotInPruneBucket",
       "sqliteAppRelativePathIssue",
       "structuralDeprecationKey",
       "suggestionForUnknownKey",

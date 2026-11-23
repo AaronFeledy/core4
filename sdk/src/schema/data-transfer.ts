@@ -419,3 +419,17 @@ export const PrunePolicy = Schema.Struct({
   }),
 });
 export type PrunePolicy = typeof PrunePolicy.Type;
+
+/**
+ * The retention bucket `PrunePolicy.recovery` selects. Manual snapshots and snapshots with no
+ * recorded `recoveryReason` share the manual bucket; every other reason is an automatic recovery
+ * snapshot. Previews and deletions both use this so a confirmation lists exactly what is removed.
+ */
+export const snapshotInPruneBucket = (
+  snapshot: Pick<SnapshotInfo, "metadata">,
+  recovery: boolean,
+): boolean => {
+  const reason = snapshot.metadata?.recoveryReason;
+  const manual = reason === undefined || reason === "manual";
+  return recovery ? !manual : manual;
+};

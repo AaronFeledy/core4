@@ -47,6 +47,7 @@ import {
   type VolumeSnapshotRef,
   planDataId,
   snapshotHandle,
+  snapshotInPruneBucket,
 } from "@lando/sdk/schema";
 import {
   DataMover,
@@ -1744,11 +1745,7 @@ export const makeDataMoverService = (
           }
           const retained = new Set(policy.retainSnapshotIds?.map(String));
           return [...infos]
-            .filter((info) => {
-              const manual =
-                info.metadata?.recoveryReason === undefined || info.metadata.recoveryReason === "manual";
-              return policy.recovery === true ? !manual : manual;
-            })
+            .filter((info) => snapshotInPruneBucket(info, policy.recovery === true))
             .sort(
               (left, right) =>
                 Number(retained.has(String(right.id))) - Number(retained.has(String(left.id))) ||

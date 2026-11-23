@@ -26,7 +26,7 @@ export const spec = {
       type: "number",
       valueType: "integer",
       default: DEFAULT_SNAPSHOT_KEEP_LATEST,
-      description: "Number of newest manual snapshots to retain.",
+      description: "Number of newest snapshots to retain in the selected bucket.",
       parse: (input) => {
         const value = Number(input);
         if (!Number.isSafeInteger(value) || value < 0) {
@@ -34,6 +34,11 @@ export const spec = {
         }
         return value;
       },
+    },
+    recovery: {
+      type: "boolean",
+      default: false,
+      description: "Select automatic recovery snapshots instead of manual ones.",
     },
     preview: { type: "boolean", default: false, description: "Show deletions without removing snapshots." },
     yes: { type: "boolean", default: false, description: "Confirm snapshot deletion." },
