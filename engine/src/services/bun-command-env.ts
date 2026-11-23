@@ -76,12 +76,14 @@ export const createBunCommandEnv = async (
   },
   runtime: BunCommandRuntime = bunCommandRuntime(),
 ): Promise<{ readonly env: Record<string, string>; readonly [Symbol.asyncDispose]: () => Promise<void> }> => {
-  const effectivePath = commandPath(options.env, runtime.platform).value;
-  const fallback = runtime.standalone ? runtime.execPath : undefined;
-  const target =
-    options.command === "lando"
-      ? (Bun.which("lando", { PATH: effectivePath, cwd: options.cwd }) ?? fallback)
-      : fallback;
+  // A compiled Lando runs a nested `lando` as itself, so a different Lando on PATH, such as Lando 3,
+  // never answers for it. Source mode has no single executable and uses the `lando` on PATH.
+  const target = runtime.standalone
+    ? runtime.execPath
+    : options.command === "lando"
+      ? (Bun.which("lando", { PATH: commandPath(options.env, runtime.platform).value, cwd: options.cwd }) ??
+        undefined)
+      : undefined;
   if (target === undefined) return { env: { ...options.env }, [Symbol.asyncDispose]: async () => {} };
   const directory = await mkdtemp(join(options.tempRoot ?? tmpdir(), "lando-script-bin-"));
   const dispose = () => rm(directory, { recursive: true, force: true });
