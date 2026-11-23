@@ -7,7 +7,7 @@ tags: [docs, recipes, drupal, php, mariadb]
 
 # Run the Drupal recipe
 
-Create a local Drupal site with PHP and MariaDB. Run these commands from your host terminal, then scaffold Drupal and install the site below.
+Create a local Drupal site with PHP and MariaDB. Run these commands from your host terminal:
 
 ```sh
 lando init --recipe drupal --name=drupal-demo --yes
@@ -15,22 +15,23 @@ cd drupal-demo
 lando start
 ```
 
-The named init creates `drupal-demo/` and writes only `.lando.yml` there. Change into it before app commands. `--yes` keeps Drupal 11, PHP 8.4, Apache, MariaDB 11.4, Composer 2, and webroot `web`. Apache and MariaDB are up after start. Scaffold the project, install with Drush, then confirm with the tooling below.
+Init writes `.lando.yml` in `drupal-demo/`. `--yes` keeps Drupal 11, PHP 8.4, Apache, MariaDB 11.4, Composer 2, and webroot `web`.
 
 If something else owns 80 or 443, Lando falls back to the next free port, starting with `:8080` / `:8443`. `lando info` shows the URL it picked.
 
-## Scaffold Drupal and project-local Drush
+## Verify the first start
 
-Init only writes the Landofile. Pull `drupal/recommended-project`, project-local Drush, and the PHP lint tools into the app root:
+The first `lando start` scaffolds `drupal/recommended-project`, installs project-local Drush and the PHP lint tools, and brings up Apache and MariaDB. Check the tools and the database connection:
 
 ```sh
-lando drupal-scaffold
 lando drush --version
 lando composer --version
 lando mariadb -e 'SELECT 1 AS ok;'
 ```
 
-Scaffold runs `composer create-project 'drupal/recommended-project'` into a staging dir, requires `drush/drush`, and adds Drupal Coder and PHPStan with its Drupal extension as dev dependencies. It writes a `phpcs.xml.dist` and a `phpstan.neon.dist` for your custom code, then moves the project into the app root without overwriting anything already there, and checks for `composer.json`, the tools in `vendor/bin`, and `web/`. If a run is interrupted, running it again resumes. On a finished tree it fails on purpose.
+Scaffold installs Drupal, Drush, Drupal Coder, and PHPStan in a staging directory before publishing the project. The generated `phpcs.xml.dist` and `phpstan.neon.dist` target custom code under your webroot. To scaffold into `docroot/`, pass `--answer=webroot=docroot` at init. Use one directory name, not a nested path.
+
+If the first start is interrupted, run `lando start` again with the same Landofile. It resumes and will not replace an existing completed project. A later start with an intact site skips Composer.
 
 ## Install Drupal with Drush
 
@@ -62,7 +63,7 @@ lando open --print
 | --- | --- |
 | `appserver` | `php:8.4`, `framework: drupal`, webroot `web`, Composer `2`, Apache on port `80`, depends on `database` |
 | `database` | `type: mariadb:11.4` |
-| Tooling | `lando drush`, `lando composer`, `lando phpcs`, `lando phpcbf`, `lando phpstan`, and `lando drupal-scaffold` on `appserver`, plus `lando mariadb` from the database service |
+| Tooling | `lando drush`, `lando composer`, `lando phpcs`, `lando phpcbf`, and `lando phpstan` on `appserver`, plus `lando mariadb` from the database service |
 
 Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pass `--answer=php=8.5`, `--answer=webserver=nginx`, `--answer=database=mysql:8.0`, `--answer=database=postgres:16`, or `--answer=drupal=10` when you want those instead.
 
@@ -70,7 +71,7 @@ Nginx answers add an `edge` service in front of `appserver` (`via: fpm`). Both w
 
 ## Connect Drupal to the database
 
-`site:install` writes these into `web/sites/default/settings.php`. Use the same values when you bring an existing project's settings. They cover MariaDB and `mysql:8.0` answers:
+`site:install` writes these into `<webroot>/sites/default/settings.php`. Use the same values when you bring an existing project's settings. They cover MariaDB and `mysql:8.0` answers:
 
 | Setting | Value |
 | --- | --- |
@@ -126,7 +127,7 @@ Drush gets `status --format=json` and prints its own JSON. Lando's flags go befo
 
 ## Lint PHP
 
-`lando drupal-scaffold` installs Drupal Coder and PHPStan, so `lando phpcs`, `lando phpcbf`, and `lando phpstan` work as soon as the scaffold finishes. Write a custom module under `web/modules/custom`, then check and fix it:
+The first start installs Drupal Coder and PHPStan, so `lando phpcs`, `lando phpcbf`, and `lando phpstan` work as soon as start finishes. Write a custom module under `web/modules/custom`, then check and fix it:
 
 ```sh
 lando phpcs
@@ -192,7 +193,7 @@ lando init --recipe drupal --name=my-drupal-site --yes .
 lando start
 ```
 
-Point settings at host `database`, database name `my-drupal-site`, user `lando`, password `lando`. If the tree already has `composer.json`, `vendor/bin/drush`, and `web/`, skip scaffold. Otherwise run `lando drupal-scaffold` only on an empty app root. Then load the database:
+Point settings at host `database`, database name `my-drupal-site`, user `lando`, password `lando`. If the tree already has `composer.json`, Lando adopts it on start and leaves your files alone. An empty app root gets a fresh scaffold on first start. Then load the database:
 
 ```sh
 lando db:import site.sql.gz --yes
@@ -266,7 +267,6 @@ lando exec appserver -- php -v
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"phpcs\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"phpcbf\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"phpstan\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"drupal-scaffold\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
     </Step>
     <Step name="start">
       <Run command="lando start" />
@@ -284,7 +284,7 @@ lando exec appserver -- php -v
   <Scenario id="nginx-postgres" render>
     <Step name="init">
       <Variable name="appName" value="drupal-nginx" display="drupal-nginx" />
-      <Run command="lando init --recipe drupal --name={{appName}} --yes --answer=php=8.5 --answer=webserver=nginx --answer=database=postgres:16 --answer=composer=2 --answer=drupal=10 --answer=webroot=web" />
+      <Run command="lando init --recipe drupal --name={{appName}} --yes --answer=php=8.5 --answer=webserver=nginx --answer=database=postgres:16 --answer=composer=2 --answer=drupal=10 --answer=webroot=docroot" />
     </Step>
     <Step name="inspect">
       <Run command="lando app:config --format=json" />
@@ -301,9 +301,8 @@ lando exec appserver -- php -v
       <UseFixture name="drupal-lint" />
       <Run command="lando init . --recipe drupal --name=drupal-lint --yes" />
     </Step>
-    <Step name="scaffold">
+    <Step name="start">
       <Run command="lando start" />
-      <Run command="lando drupal-scaffold" />
       <Verify command="lando exec appserver -- test -f phpcs.xml.dist" />
       <Verify command="lando exec appserver -- test -f phpstan.neon.dist" />
     </Step>
@@ -334,12 +333,47 @@ lando exec appserver -- php -v
       <Run command="lando destroy -y --volumes" />
     </Step>
   </Scenario>
+  <Scenario id="refuse-nested-scaffold-root" layer="e2e" timeout={600000} render={false} reason="Existing-project paths are accepted at init but not for a fresh scaffold on start">
+    <Step name="validate-scaffold-root">
+      <Run command="lando init . --recipe drupal --name=drupal-nested-root --yes --answer=webroot=public/site" />
+      <Verify command="lando start --format=json" expectExit={1} expect={{ stdout: { regex: "^(?![\\s\\S]*create-project)(?=[\\s\\S]*\"_tag\":\\s*\"BuildPhaseFailedError\")(?=[\\s\\S]*\"_tag\":\\s*\"BuildStepFailedError\")[\\s\\S]*recipe\\.options\\.webroot" } }} />
+      <Verify command="lando exec appserver -- test -e composer.json" expectExit={1} />
+      <Verify command="lando exec appserver -- test -e composer.lock" expectExit={1} />
+      <Verify command="lando exec appserver -- test -e vendor/bin/drush" expectExit={1} />
+      <Verify command="lando exec appserver -- test -e public/site/index.php" expectExit={1} />
+      <Verify command="lando exec appserver -- test -e public/site/core" expectExit={1} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes" />
+    </Step>
+  </Scenario>
+  <Scenario id="warm-start-skips-scaffold" layer="e2e" timeout={1200000} render={false} reason="Stop then start leaves the scaffolded site and does not rerun Composer">
+    <Step name="first-start">
+      <Run command="lando init --recipe drupal --name=drupal-warm --yes" />
+      <Run command="lando start" />
+      <Verify command="lando exec appserver -- test -f /app/composer.json" />
+      <Verify command="lando exec appserver -- test -x /app/vendor/bin/drush" />
+    </Step>
+    <Hidden reason="Warm start after stop must not rerun Composer and must still serve">
+      <Step name="warm-restart">
+        <Run command="lando stop" />
+        <Verify command="lando start --format=json" expect={{ stdout: { regex: "^(?![\\s\\S]*(?:create-project|Installing dependencies))" } }} />
+        <Verify command="lando exec appserver -- test -f /app/composer.json" />
+        <Verify command="lando exec appserver -- test -x /app/vendor/bin/drush" />
+        <Fetch url="{{route:appserver}}/core/install.php" expect={{ status: 200 }} />
+      </Step>
+    </Hidden>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes" />
+    </Step>
+  </Scenario>
 </Guide>
 
 ## Run tests
 
-Install `drupal/core-dev` to run Unit tests inside `appserver`. Add the database and web-server
-settings for Kernel and Functional tests, then a browser service for FunctionalJavascript tests.
+Pass `--answer=testing=true` at init to install PHPUnit during the first start and configure the database, web server, and browser for Drupal's test suites.
 See [Run Drupal tests with PHPUnit and headless Chrome](./drupal-testing.mdx).
 
 ## Compile theme assets

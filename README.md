@@ -66,12 +66,11 @@ lando init
 
 Choose **Drupal**, use `drupal-demo` as the app name, and keep the remaining
 defaults for this example. Lando writes `.lando.yml` into the current directory.
-Start the services, download Drupal and its project-local Drush, then find the
-app URL:
+Run `lando start` to download Drupal and project-local Drush on first start.
+Run `lando info` to find the app URL:
 
 ```sh
 lando start
-lando drupal-scaffold
 lando info
 ```
 

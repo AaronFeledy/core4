@@ -480,7 +480,7 @@
     },
     {
       "fixture": "docs/guides/drupal-testing/fixtures/drupal-demo",
-      "digest": "e943469b0246b93eb9560b2e813c24fa04fae471b3e511cd3534459f8803fa26"
+      "digest": "bd1ceefdc4777e9b0047c2232b253e6020017717c48e854cfe0bb9b696e9de79"
     },
     {
       "fixture": "docs/guides/e2e-smoke-scenarios/fixtures/router-page",

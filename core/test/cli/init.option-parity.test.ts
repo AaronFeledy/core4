@@ -150,12 +150,21 @@ describe("recipe option parity", () => {
       expect(yaml).not.toContain("allowOverride:");
       expect(yaml).toContain('type: "{{ recipe.database }}"');
       expect(yaml).toContain('composer: "2"');
-      expect(yaml).toContain("lando-drupal-scaffold {{ recipe.drupal }}");
+      expect(yaml).toContain("lando-drupal-scaffold");
+      expect(yaml).not.toContain("drupal-scaffold:");
 
       const landofile = await discoverFrom(result.directory);
       expect(landofile.services?.[ServiceName.make("appserver")]?.type).toBe("php:8.5");
       expect(landofile.services?.[ServiceName.make("appserver")]?.composer).toBe("2");
-      expect(landofile.tooling?.["drupal-scaffold"]?.cmd).toBe("lando-drupal-scaffold 10");
+      const appserverBuild = landofile.services?.[ServiceName.make("appserver")]?.build as {
+        app?: ReadonlyArray<{ run?: string; user?: string }>;
+      };
+      expect(appserverBuild?.app).toEqual([
+        { run: 'lando-drupal-scaffold 10 "$LANDO_WEBROOT" --testing=false' },
+      ]);
+      expect(appserverBuild?.app).toHaveLength(1);
+      expect(appserverBuild?.app?.[0]).not.toHaveProperty("user");
+      expect(landofile.tooling?.["drupal-scaffold"]).toBeUndefined();
       expect(landofile.services?.[ServiceName.make("appserver")]?.via).toBe("fpm");
       expect(landofile.services?.[ServiceName.make("edge")]?.type).toBe("nginx");
       expect(landofile.services?.[ServiceName.make("edge")]?.uploadDirs).toEqual(["sites/*/files"]);
@@ -274,7 +283,20 @@ describe("recipe option parity", () => {
       expect(yaml).toContain("webroot: web");
       expect(Bun.YAML.parse(yaml)).toMatchObject({ tooling: { drush: { cmd: [":drupal-local", "drush"] } } });
       expect(yaml).toContain("lando-drupal-cms-scaffold");
+      expect(yaml).not.toContain("drupal-cms-scaffold:");
       expect(yaml).not.toContain("recommended-project");
+      const landofile = await discoverFrom(result.directory);
+      const appserverBuild = landofile.services?.[ServiceName.make("appserver")]?.build as {
+        app?: ReadonlyArray<{ run?: string; user?: string }>;
+        artifact?: ReadonlyArray<unknown>;
+      };
+      expect(appserverBuild?.app).toEqual([
+        { run: 'lando-drupal-cms-scaffold "$LANDO_WEBROOT" --testing=false' },
+      ]);
+      expect(appserverBuild?.app).toHaveLength(1);
+      expect(appserverBuild?.app?.[0]).not.toHaveProperty("user");
+      expect(appserverBuild?.artifact).toHaveLength(1);
+      expect(landofile.tooling?.["drupal-cms-scaffold"]).toBeUndefined();
     });
   });
 

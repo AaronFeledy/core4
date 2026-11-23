@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 
 import {
   DEFAULT_WORKFLOW_PERFORMANCE_SAMPLE_TIMEOUT_MS,
+  DRUPAL_JOURNEY_SAMPLE_TIMEOUT_MS,
+  DRUPAL_JOURNEY_START_TIMEOUT_MS,
   runWorkflowPerformanceCommand,
   timeoutMsForPerformanceCommand,
   workflowPerformanceDeadlineRunner,
@@ -97,6 +99,13 @@ describe("workflow performance command runner", () => {
     expect(timeoutMsForPerformanceCommand("prepare:snapshot")).toBe(120_000);
     expect(DEFAULT_WORKFLOW_PERFORMANCE_SAMPLE_TIMEOUT_MS).toBe(900_000);
     expect(DEFAULT_WORKFLOW_PERFORMANCE_SAMPLE_TIMEOUT_MS).toBeLessThan(360 * 60_000);
+    // Drupal scaffold-on-start is lane-local; global start and sample defaults stay put.
+    expect(timeoutMsForPerformanceCommand("start")).toBe(180_000);
+    expect(DRUPAL_JOURNEY_START_TIMEOUT_MS).toBe(900_000);
+    expect(DRUPAL_JOURNEY_START_TIMEOUT_MS).toBeGreaterThan(timeoutMsForPerformanceCommand("start"));
+    expect(DRUPAL_JOURNEY_SAMPLE_TIMEOUT_MS).toBe(1_800_000);
+    expect(DRUPAL_JOURNEY_SAMPLE_TIMEOUT_MS).toBeGreaterThan(DEFAULT_WORKFLOW_PERFORMANCE_SAMPLE_TIMEOUT_MS);
+    expect(DRUPAL_JOURNEY_SAMPLE_TIMEOUT_MS).toBeLessThan(360 * 60_000);
   });
 
   test("deadline runner uses the phase budget unless a command timeout is set", async () => {

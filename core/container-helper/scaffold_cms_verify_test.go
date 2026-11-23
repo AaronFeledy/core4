@@ -9,6 +9,8 @@ import (
 	"testing"
 )
 
+var verifyCmsProjection = (drupalSiteIntent{Webroot: "web"}).verifyCmsProjection
+
 type cmsVerifierFixture struct {
 	root      string
 	repo      string
