@@ -29,4 +29,4 @@ tooling:
     service: web
     dir: /app
     env:
-      __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS: "{{ url.parse(services.web.url).hostname }}"
+      __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS: "{{ services.web.hostname }}"

@@ -53,7 +53,7 @@ Serve through the proxy with the recipe's `dev` task:
 lando dev
 ```
 
-It runs `astro dev --host 0.0.0.0 --port 4321 --allowed-hosts <hostname>`. The all-interfaces bind and the recipe's port let the proxy reach Astro, and `--allowed-hosts` makes Vite accept the proxy's `Host` header. The hostname comes from `{{ url.parse(services.web.url).hostname }}`, the address Lando applied for `web` at the last `lando start`, so you don't copy it from `lando info`. See [Use the URL in tooling and events](../landofile/expressions.mdx#use-the-url-in-tooling-and-events).
+It runs `astro dev --host 0.0.0.0 --port 4321 --allowed-hosts <hostname>`. The all-interfaces bind and the recipe's port let the proxy reach Astro, and `--allowed-hosts` makes Vite accept the proxy's `Host` header. The hostname comes from `{{ services.web.hostname }}`, the address Lando applied for `web` at the last `lando start`, so you don't copy it from `lando info`. See [Use the URL in tooling and events](../landofile/expressions.mdx#use-the-url-in-tooling-and-events).
 
 Open the URL `lando info` prints. Prefer Node 22 with Postgres at init?
 

@@ -73,7 +73,7 @@ lando npm install
     <Hidden reason="Check that the scaffolded dev task lints clean and reads the published hostname">
       <Step name="confirm-dev-task">
         <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true,\\s*\"violations\":\\s*\\[\\s*\\]" } }} />
-        <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS\":\\s*\"\\{\\{ url\\.parse\\(services\\.web\\.url\\)\\.hostname \\}\\}\"" } }} />
+        <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS\":\\s*\"\\{\\{ services\\.web\\.hostname \\}\\}\"" } }} />
         <Verify command="lando app:config --format=json" expect={{ stdout: { not: { regex: "APP_URL" } } }} />
       </Step>
     </Hidden>
