@@ -31,7 +31,7 @@ export const haltAndRelaunchApp = Effect.fn("AppOperation.haltAndRelaunch")(func
 
   yield* markStartMutation(plan);
   const removedByHalt = yield* servicesHaltWillRemove(placement.plan, plan, admitted.provider);
-  yield* haltAppRuntime({}, target);
+  yield* haltAppRuntime(target);
   yield* publishRemovalNotice(events, removedByHalt);
   yield* managed?.onStopped ?? Effect.void;
 

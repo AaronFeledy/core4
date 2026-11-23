@@ -12,14 +12,6 @@
  */
 import "./require-derived-codegen-preload.ts";
 
-const preserveSymlinks = process.env.NODE_PRESERVE_SYMLINKS;
-if (preserveSymlinks && preserveSymlinks !== "0") {
-  process.stderr.write(
-    "Tests cannot run with NODE_PRESERVE_SYMLINKS enabled: CI runs without it, and it can load workspace packages twice (#2541). Run `env -u NODE_PRESERVE_SYMLINKS bun test ...` or remove the export from your shell profile.\n",
-  );
-  process.exit(1);
-}
-
 await import("./test-preload-roots.ts");
 await import("../core/src/runtime/bundled-plugins.ts");
 

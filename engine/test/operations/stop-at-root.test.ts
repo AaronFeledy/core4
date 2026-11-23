@@ -609,4 +609,50 @@ describe("stopAppAtRoot", () => {
       });
     },
   );
+  test.each([
+    { kind: "applied", rootExists: false },
+    { kind: "orphans", rootExists: false },
+    { kind: "orphans", rootExists: true },
+    { kind: "owned", rootExists: true },
+  ] as const)(
+    "selected stop refuses an unfinished start before touching writers ($kind, root exists: $rootExists)",
+    async ({ kind, rootExists }) => {
+      await withTempRoot(async (root) => {
+        const plan = acceleratedPlanAt(root);
+        const app = { kind: "user" as const, id: plan.id, root: plan.root };
+        const harness = makeHarness({
+          ...(kind === "applied" ? { appliedPlan: plan } : {}),
+          ...(kind === "orphans" ? { orphans: [orphanGroup(root, ["web"], app.id)] } : {}),
+          ...(kind === "owned" ? { ownership: [{ ...ownershipAt(root), appIds: [app.id] }] } : {}),
+        });
+        const layer = Layer.mergeAll(
+          harness.layer,
+          Layer.succeed(FileSyncResolver, {
+            candidates: [],
+            select: () => Effect.succeed(undefined),
+            acquire: () => Effect.succeed({ ...TestFileSyncEngine, id: "mutagen" }),
+          }),
+        );
+        await Effect.runPromise(
+          beginOrResumeAcceleratedStart(plan, app, [web.name]).pipe(Effect.asVoid, Effect.provide(layer)),
+        );
+        if (!rootExists) await rm(root, { recursive: true, force: true });
+        const before = await Effect.runPromise(readJournal(app).pipe(Effect.provide(layer)));
+
+        const stopped = await Effect.runPromise(
+          stopAppAtRoot(root, { services: [web.name] }).pipe(Effect.provide(layer), Effect.result),
+        );
+
+        expect(stopped).toMatchObject({ _tag: "Failure", failure: { _tag: "FileSyncStopError" } });
+        if (stopped._tag === "Failure") expect(stopped.failure.remediation).toContain("`lando start -s web`");
+        expect(harness.calls).toEqual([]);
+        expect(harness.destroyCalls).toEqual([]);
+        expect(harness.removalAttempts).toEqual([]);
+        expect(harness.cleanupRoots).toEqual([]);
+        expect((await Effect.runPromise(readJournal(app).pipe(Effect.provide(layer)))).pending).toEqual(
+          before.pending,
+        );
+      });
+    },
+  );
 });

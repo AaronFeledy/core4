@@ -163,6 +163,13 @@ describe("StopAppResult", () => {
       true,
     );
   });
+
+  test("preserves servicesKeptRunning only when present", () => {
+    const omitted = { app: "demo", outcome: "stopped" as const, servicesStopped: ["web"] };
+    expect(roundTrip(StopAppResult, omitted)).toStrictEqual(omitted);
+    const present = { ...omitted, servicesKeptRunning: ["redis"] };
+    expect(roundTrip(StopAppResult, present)).toEqual(present);
+  });
 });
 
 describe("DestroyAppResult", () => {

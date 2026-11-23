@@ -46,10 +46,9 @@ export const stringArrayFlag = (
       : [];
 };
 
+/** Empty names pass through so the operation rejects them instead of widening the selection. */
 export const serviceNamesFlag = (flags: Readonly<Record<string, unknown>>): ReadonlyArray<ServiceName> =>
-  stringArrayFlag(flags, "service")
-    .filter((value) => value.length > 0)
-    .map((value) => ServiceName.make(value));
+  stringArrayFlag(flags, "service").map((value) => ServiceName.make(value));
 
 export const formatFlag = <T extends string>(
   flags: Readonly<Record<string, unknown>>,
