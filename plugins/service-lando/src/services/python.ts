@@ -15,19 +15,11 @@ const PYTHON_ARTIFACTS = Object.fromEntries(
   SUPPORTED_PYTHON_VERSIONS.map((version) => [version, `python:${version}-slim`]),
 );
 
-// Debian's login profile resets PATH, so recover the shell's original value in profile.d.
 const UV_ARTIFACT_SCRIPT = `set -eu
 requirements=$(mktemp)
 trap 'rm -f "$requirements"' EXIT
 printf '%s\\n' 'uv==${PYTHON_UV_PIN.version} ${PYTHON_UV_PIN.hashes.map((hash) => `--hash=sha256:${hash}`).join(" ")}' > "$requirements"
-/usr/local/bin/python -m pip install --no-cache-dir --only-binary=:all: --require-hashes -r "$requirements"
-cat > /etc/profile.d/lando-python-venv.sh <<'EOF'
-lando_initial_path=$(/bin/grep -azm1 '^PATH=' "/proc/$$/environ" 2>/dev/null | /usr/bin/tr -d '\\000'; /usr/bin/printf '.')
-case "$lando_initial_path" in
-  PATH=*) lando_initial_path=\${lando_initial_path%.}; export PATH="\${lando_initial_path#PATH=}" ;;
-esac
-unset lando_initial_path
-EOF`;
+/usr/local/bin/python -m pip install --no-cache-dir --only-binary=:all: --require-hashes -r "$requirements"`;
 
 export const SUPPORTED_PYTHON_FRAMEWORKS = ["django", "fastapi", "flask", "none"] as const;
 export type SupportedPythonFramework = (typeof SUPPORTED_PYTHON_FRAMEWORKS)[number];

@@ -1,5 +1,7 @@
+import { MessageWarnEvent } from "@lando/sdk/events";
 import type { CommandWarning } from "@lando/sdk/schema";
-import { Context, Effect, Option } from "effect";
+import { EventService } from "@lando/sdk/services";
+import { Context, DateTime, Effect, Option } from "effect";
 
 export interface CommandWarningsShape {
   readonly machineOutput: boolean;
@@ -40,3 +42,20 @@ export const recordCommandWarning = (warning: CommandWarning): Effect.Effect<voi
 export const commandWarningsUseMachineOutput: Effect.Effect<boolean> = Effect.serviceOption(
   CommandWarnings,
 ).pipe(Effect.map((service) => (Option.isSome(service) ? service.value.machineOutput : false)));
+
+/** Records each warning for machine output and, for people, prints it as a warning message. */
+export const publishCommandWarnings = Effect.fnUntraced(function* (warnings: ReadonlyArray<CommandWarning>) {
+  const machineOutput = yield* commandWarningsUseMachineOutput;
+  const events = yield* EventService;
+  for (const warning of warnings) {
+    yield* recordCommandWarning(warning);
+    if (!machineOutput) {
+      yield* events.publish(
+        MessageWarnEvent.make({
+          body: `${warning.message} ${warning.remediation}`,
+          timestamp: yield* DateTime.now,
+        }),
+      );
+    }
+  }
+});

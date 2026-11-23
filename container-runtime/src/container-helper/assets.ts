@@ -12,9 +12,13 @@ import { Effect, Layer } from "effect";
 import {
   CONTAINER_HELPER_COMMANDS,
   CONTAINER_HELPER_FILE,
+  CONTAINER_HELPER_PROFILE_HOOK,
+  CONTAINER_HELPER_PROFILE_STUB,
   containerHelperCommandEnginePath,
   containerHelperCommandMount,
   containerHelperCommandShim,
+  containerHelperProfileHookPath,
+  containerHelperProfileStubPath,
 } from "../container-helper.ts";
 
 import { containerHelperNotices } from "./notices.ts";
@@ -135,33 +139,46 @@ export const extractEmbeddedContainerHelper = async (input: {
 
 const publishContainerHelperCommand = async (helper: ContainerHelperArtifact): Promise<void> => {
   const [first] = CONTAINER_HELPER_COMMANDS;
+  const hook = containerHelperProfileHookPath(helper);
   for (const directory of [
     dirname(containerHelperCommandMount(helper, first)),
     dirname(containerHelperCommandEnginePath(helper, first)),
+    dirname(hook),
   ]) {
     await mkdir(directory, { recursive: true, mode: 0o755 });
     await chmod(directory, 0o755);
   }
   for (const name of CONTAINER_HELPER_COMMANDS) {
-    await publishContainerHelperShim(containerHelperCommandMount(helper, name), name);
+    await publishHelperFile(containerHelperCommandMount(helper, name), {
+      content: containerHelperCommandShim(name),
+      mode: 0o755,
+    });
     await publishContainerHelperEngine(helper, name);
   }
   await publishContainerHelperEngine(helper, CONTAINER_HELPER_FILE);
+  await publishHelperFile(containerHelperProfileStubPath(helper), {
+    content: CONTAINER_HELPER_PROFILE_STUB,
+    mode: 0o644,
+  });
+  await publishHelperFile(hook, { content: CONTAINER_HELPER_PROFILE_HOOK, mode: 0o644 });
 };
 
 /**
- * The shim is immutable content at a stable path, so it publishes only when it is
- * missing or was written by an older format; a running container keeps an
- * identical copy.
+ * Each file lives at a fixed path and publishes only when it is missing or holds
+ * other bytes, through an atomic rename. Shims and the profile stub never change
+ * content, so a running container keeps an identical copy; the profile hook body
+ * changes in place, and containers source the new body at their next login.
  */
-const publishContainerHelperShim = async (path: string, name: string): Promise<void> => {
-  const content = containerHelperCommandShim(name);
+const publishHelperFile = async (
+  path: string,
+  file: { readonly content: string; readonly mode: number },
+): Promise<void> => {
   const existing = await readIfPresent(path);
-  if (existing !== undefined && new TextDecoder().decode(existing) === content) return;
+  if (existing !== undefined && new TextDecoder().decode(existing) === file.content) return;
   const staging = `${path}.lando-stage.${process.pid}.${randomUUID()}`;
   try {
-    await writeFile(staging, content, { flag: "wx", mode: 0o755 });
-    await chmod(staging, 0o755);
+    await writeFile(staging, file.content, { flag: "wx", mode: file.mode });
+    await chmod(staging, file.mode);
     await rename(staging, path);
   } finally {
     await rm(staging, { force: true });

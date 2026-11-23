@@ -6,7 +6,13 @@ import { ContainerHelperUnavailableError } from "@lando/sdk/errors";
 import { AbsolutePath, type ContainerHelperTarget, PortablePath } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
 import { engineInfoArchitecture, hostProxyContainerTargets } from "../../src/capabilities.ts";
-import { CONTAINER_HELPER_COMMANDS, containerHelperDelivery } from "../../src/container-helper.ts";
+import {
+  CONTAINER_HELPER_COMMANDS,
+  CONTAINER_HELPER_PROFILE_TARGET,
+  containerHelperDelivery,
+  containerHelperProfileStubPath,
+} from "../../src/container-helper.ts";
+import { prepareContainerHelperMounts } from "../../src/container-helper-mount.ts";
 import type { EngineHttpApi, EngineHttpRequest } from "../../src/engine-api.ts";
 import type { ResolveContainerHelper } from "../../src/log-source-binding.ts";
 import { commonContainerLabels } from "../../src/plan.ts";
@@ -39,16 +45,18 @@ export const fixtureHelperCommandMounts = CONTAINER_HELPER_COMMANDS.map((name) =
   readOnly: true,
   realization: "passthrough" as const,
 }));
+export const fixtureHelperProfileHookBind = `${containerHelperProfileStubPath(artifact)}:${CONTAINER_HELPER_PROFILE_TARGET}:ro`;
 
-export const fixtureContainerLabels: typeof commonContainerLabels = (plan, service) =>
-  commonContainerLabels(plan, {
-    ...service,
-    mounts: [
-      ...service.mounts,
-      { ...fixtureHelperMount, target: PortablePath.make(fixtureHelperMount.target) },
-      ...fixtureHelperCommandMounts,
-    ],
-  });
+/** Labels of a container created with the fixture helper, lowered by the provider's own mount preparation. */
+export const fixtureContainerLabels: typeof commonContainerLabels = (plan, service) => {
+  const prepared = Effect.runSync(
+    prepareContainerHelperMounts(
+      { ...plan, services: { [service.name]: service } },
+      { ...fixtureHelperOptions, ctx: { providerId: "podman", remediation: "Retry.", env: {} } },
+    ),
+  );
+  return commonContainerLabels(plan, prepared.services[service.name] ?? service);
+};
 
 export const fixtureHelperOptionsFor = (api: EngineHttpApi | undefined) => {
   if (api !== undefined && "info" in api && Effect.isEffect(api.info))

@@ -18,6 +18,34 @@ Lando starts `bash -l` if bash is on the container's `PATH`; otherwise, it start
 
 Commands you type in that shell run inside the service, not on your host.
 
+## Keep the service `PATH`
+
+Distribution login profiles, such as `/etc/profile` on Debian and Alpine, reset `PATH`. Lando puts it back: a login shell starts from the `PATH` the service runs with, which is the image's `PATH` or your `environment.PATH`, then appends any directories the profiles added that it doesn't already list. `go` in the stock Go image and `bundle` in the stock Ruby image work in `lando ssh` the same way they do in `lando exec`. Files that run later, such as your `~/.bash_profile`, can still put directories in front.
+
+This holds for every login shell in the service: `lando ssh`, `lando shell --service`, and a `bash -l` or `sh -l` you start yourself. Take this Alpine service with its own `PATH`:
+
+```yaml
+services:
+  tools:
+    type: compose
+    image: alpine:3.20
+    command: sleep infinity
+    environment:
+      PATH: /opt/tools/bin:/usr/local/bin:/usr/bin:/bin
+```
+
+A login shell keeps that `PATH` first, then adds the directories Alpine's profile wanted:
+
+```sh
+lando ssh --service tools -- sh -lc 'printenv PATH'
+```
+
+```text
+/opt/tools/bin:/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin
+```
+
+Lando does this with a small read-only file it mounts at `/etc/profile.d/zz-lando-service-path.sh`, which runs the current version of the script from Lando's helper directory. An updated Lando reaches running services at their next login, without recreating them. If your service binds its own `/etc/profile.d` or `/etc`, Lando keeps your mount and leaves the file out, so login shells use whatever `PATH` the image's profiles set.
+
 ## Pick a service or user
 
 The primary service is the default target.
@@ -74,6 +102,25 @@ If your service mounts its own `/etc/ssh/ssh_known_hosts` or an ancestor directo
     <Step name="check-shell-flags">
       <Run command="lando ssh --help" />
       <Verify command="lando ssh --help" expect={{ stdout: { regex: "--service" } }} />
+    </Step>
+  </Scenario>
+  <Scenario id="login-shell-path-live" layer="e2e" render={false} reason="Prove login shells keep image and authored PATH entries on Debian and Alpine">
+    <Step name="start">
+      <UseFixture name="login-path" />
+      <Run command="lando start --format=json" />
+    </Step>
+    <Step name="debian-image-path">
+      <Verify command={`lando ssh --service go --format=json -- bash -lc 'go_bin=$(command -v go) && printf "GO=%s;PATH=%s;" "$go_bin" "$PATH"'`} expect={{ stdout: { regex: "\"GO=/usr/local/go/bin/go;PATH=/go/bin:/usr/local/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin;\"" } }} />
+    </Step>
+    <Step name="alpine-authored-path">
+      <Verify command={`lando ssh --service tools --format=json -- sh -lc 'command -v busybox >/dev/null && printf "PATH=%s;" "$PATH"'`} expect={{ stdout: { regex: "\"PATH=/opt/tools/bin:/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin;\"" } }} />
+    </Step>
+    <Step name="documented-command">
+      <Verify command={`lando ssh --service tools -- sh -lc 'printenv PATH'`} expect={{ stdout: { regex: "^/opt/tools/bin:/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin\\s*$" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes" />
     </Step>
   </Scenario>
   <Scenario id="ssh-rejects-unknown-leading-flag" render={false} reason="An unknown flag before the command fails before Lando needs a running service.">

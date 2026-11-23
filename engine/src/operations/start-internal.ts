@@ -66,6 +66,7 @@ import { fileSyncBundle } from "./file-sync-bundle.ts";
 import { resolveFileSyncMountPlan } from "./file-sync-plan.ts";
 import { withGlobalConsumerAdmission } from "./global-consumer-admission.ts";
 import { verifyGlobalConsumerAdmission } from "./global-consumer-lease.ts";
+import { publishHelperCommandWarnings } from "./helper-command-warning.ts";
 import { publishLowPortWarnings } from "./low-port-warning.ts";
 import { runPostStartScan, startupScanUrls } from "./post-start-scan.ts";
 import { prepareAcceleratedStart } from "./prepare-accelerated-start.ts";
@@ -283,6 +284,7 @@ export const announceAppLaunch = Effect.fnUntraced(function* (input: {
   const ref = target.app;
 
   yield* publishLowPortWarnings(plan);
+  yield* publishHelperCommandWarnings(plan);
   yield* events.publish(
     PreAppStartEvent.make({
       eventName: "pre-app-start",

@@ -1,4 +1,5 @@
 import { posix, win32 } from "node:path";
+import { reservedHelperTargetConflict } from "@lando/container-runtime/container-helper";
 import { LandofileValidationError } from "@lando/sdk/errors";
 import type { MountPlan, ServiceConfig, ValidationIssuePath } from "@lando/sdk/schema";
 import { landoServiceStorageName } from "@lando/sdk/schema";
@@ -161,6 +162,11 @@ export const compileAuthoredMounts = (
     ...[...compose.values()].filter(({ mount }) => !lando.has(mount.target)),
     ...lando.values(),
   ];
+  for (const { mount, path } of selected) {
+    const conflict = reservedHelperTargetConflict(context.serviceName, mount);
+    if (conflict !== undefined)
+      return mountInputError(context, [path], conflict.message, conflict.remediation);
+  }
   const stores = new Map<string, AuthoredStorageInfo>();
   const storageByTarget = new Map<string, AuthoredStorageInfo>();
   for (const { mount, storage } of selected) {
@@ -184,8 +190,8 @@ export const compileAuthoredMounts = (
 
 /**
  * Checks that need only authored input, shared by `app:config:lint` and
- * planning: duplicate Lando destinations, mount syntax, tmpfs access modes,
- * bind-only excludes, and literal includes.
+ * planning: duplicate Lando destinations, Lando's reserved helper targets, mount
+ * syntax, tmpfs access modes, bind-only excludes, and literal includes.
  */
 export const validateAuthoredMounts = (
   context: MountAuthoringContext,
