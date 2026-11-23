@@ -110,20 +110,23 @@ export const runToolingStepProgramWith = <E, A>(
     Effect.gen(function* () {
       const deferred: Array<Effect.Effect<void, E | ToolingStepConditionError | ToolingStepExpressionError>> =
         [];
+      // Every failure of a leaf, its predicate included, is attributed to that leaf.
+      const attributed = <A2, E2>(
+        leaf: ToolingStepLeaf,
+        effect: Effect.Effect<A2, E2>,
+      ): Effect.Effect<A2, E | E2> =>
+        Effect.catch(
+          effect,
+          (error): Effect.Effect<never, E | E2> =>
+            Effect.fail(runners.mapLeafError === undefined ? error : runners.mapLeafError(leaf, error)),
+        );
       const executeLeaf = Effect.fnUntraced(
         function* (leaf: ToolingStepLeaf, leafContext: ExpressionContext, checkCondition: boolean) {
           if (checkCondition && !(yield* dependencies.conditionAllows(leaf.condition, leafContext))) return;
           const resolved = yield* dependencies.resolveLeaf(leaf, leafContext);
           yield* executeResolved(resolved.leaf, resolved.context, runners);
         },
-        (effect, leaf) =>
-          effect.pipe(
-            Effect.catch((error) =>
-              runners.mapLeafError === undefined
-                ? Effect.fail(error)
-                : Effect.fail(runners.mapLeafError(leaf, error)),
-            ),
-          ),
+        (effect, leaf) => attributed(leaf, effect),
       );
       const executeNode = (
         node: ToolingStepNode,
@@ -131,7 +134,7 @@ export const runToolingStepProgramWith = <E, A>(
       ): Effect.Effect<void, E | ToolingStepConditionError | ToolingStepExpressionError> => {
         if (node.kind === "leaf") return executeLeaf(node.leaf, nodeContext, true);
         if (node.kind === "defer") {
-          return dependencies.conditionAllows(node.leaf.condition, nodeContext).pipe(
+          return attributed(node.leaf, dependencies.conditionAllows(node.leaf.condition, nodeContext)).pipe(
             Effect.flatMap((allowed) =>
               Effect.sync(() => {
                 if (allowed) deferred.push(executeLeaf(node.leaf, nodeContext, false));
