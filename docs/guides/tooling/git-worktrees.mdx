@@ -113,7 +113,7 @@ lando db:snapshots
 lando db:restore before-migration --yes
 ```
 
-`db:restore` takes a label or the id `db:snapshots` prints first in each entry. Both resolve only within this app, owner, and database store. Reused a label in that scope? Restore fails with `SnapshotAmbiguousError` and lists the matching ids, newest first. Pass one of those.
+`db:restore` takes a label or the id `db:snapshots` prints first in each entry. Both resolve only within this app, owner, and database store. An exact id wins; a label reused in that scope restores the newest snapshot that carries it. To restore an older one, pass its id from `db:snapshots`.
 
 Snapshots belong to the source volume's verified owner root, not its app name. Each checkout has its own owner-keyed catalog, and `db:snapshots` shows that owner. To see what the main checkout has saved, list its snapshots from the worktree:
 

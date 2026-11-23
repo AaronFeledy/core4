@@ -17,7 +17,6 @@ import {
   DataTargetExistsError,
   DataTransferError,
   ProviderUnavailableError,
-  SnapshotAmbiguousError,
   SnapshotNotFoundError,
   SnapshotOwnershipError,
   StateStoreError,
@@ -2904,7 +2903,7 @@ describe("BunDataMover.layer", () => {
     });
   });
 
-  test("resolveSnapshot reports ambiguous labels with newest matching ids first", async () => {
+  test("resolveSnapshot resolves a shared label to the newest matching snapshot", async () => {
     await withTempDir(async (dir) => {
       // Given: two independently addressable snapshots sharing a label in scope.
       const dataRoot = join(dir, "data");
@@ -2932,7 +2931,7 @@ describe("BunDataMover.layer", () => {
                 { app, store: "data" },
                 { format: "tar", label: "baseline" },
               );
-              return [newer.id, older.id];
+              return { newer: newer.id, older: older.id };
             }),
           ).pipe(
             Effect.provide(BunDataMover.layer),
@@ -2942,7 +2941,8 @@ describe("BunDataMover.layer", () => {
           ),
         );
 
-        const exit = await Effect.runPromiseExit(
+        // When: the shared label is resolved.
+        const resolved = await Effect.runPromise(
           Effect.scoped(
             Effect.gen(function* () {
               const dataMover = yield* DataMover;
@@ -2955,18 +2955,9 @@ describe("BunDataMover.layer", () => {
           ),
         );
 
-        // Then: ambiguity is actionable with newest-first candidate ids.
-        expect(expectedIds).toHaveLength(2);
-        expect(exit._tag).toBe("Failure");
-        if (exit._tag === "Failure") {
-          const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
-          expect(error).toBeInstanceOf(SnapshotAmbiguousError);
-          expect(error).toMatchObject({
-            snapshotId: "baseline",
-            matchCount: 2,
-            candidateIds: expectedIds,
-          });
-        }
+        // Then: the newest snapshot with that label wins.
+        expect(expectedIds.newer).not.toBe(expectedIds.older);
+        expect(resolved.id).toBe(expectedIds.newer);
       } finally {
         if (previousDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
         else process.env.LANDO_USER_DATA_ROOT = previousDataRoot;

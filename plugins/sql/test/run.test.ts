@@ -3,7 +3,6 @@ import { chmodSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:f
 import { join } from "node:path";
 import { DATABASE_FAMILY_DEFAULT_PORTS } from "@lando/sdk/database-creds";
 import {
-  SnapshotAmbiguousError,
   SnapshotNotFoundError,
   SqlCommandFailedError,
   SqlConfirmRequiredError,
@@ -1258,8 +1257,8 @@ describe("executeDbCommand", () => {
       ]);
     });
 
-    test(`${action} reports ambiguous labels with newest matching ids first`, async () => {
-      // Given: two independently addressable snapshots sharing a label.
+    test(`${action} resolves a shared label to the newest matching snapshot`, async () => {
+      // Given: three snapshots sharing a label, listed out of creation order.
       const harness = makeSqlTestDeps({ password: SECRET });
       const [source] = await Effect.runPromise(harness.deps.listSnapshots({ id: "older" }));
       if (source === undefined) throw new Error("missing fixture snapshot");
@@ -1270,30 +1269,37 @@ describe("executeDbCommand", () => {
             filter.id !== undefined
               ? []
               : [
-                  { ...source, label: "baseline" },
+                  { ...source, label: "baseline", createdAt: DateTime.makeUnsafe("2026-09-11T00:00:00Z") },
                   {
                     ...source,
                     id: "newer",
                     label: "baseline",
                     createdAt: DateTime.makeUnsafe("2026-09-12T00:00:00Z"),
                   },
-                  { ...source, id: "unrelated", label: "other" },
+                  {
+                    ...source,
+                    id: "oldest",
+                    label: "baseline",
+                    createdAt: DateTime.makeUnsafe("2026-09-10T00:00:00Z"),
+                  },
+                  {
+                    ...source,
+                    id: "unrelated",
+                    label: "other",
+                    createdAt: DateTime.makeUnsafe("2026-09-13T00:00:00Z"),
+                  },
                 ],
           ),
       };
       // When: the shared label is selected.
       const exit = await run(deps, { action, snapshotId: "baseline", yes: true });
-      // Then: ambiguity is actionable and fails before any physical mutation.
-      expect(Exit.isFailure(exit)).toBe(true);
-      if (!Exit.isFailure(exit)) throw new Error("expected ambiguity");
-      const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
-      expect(error).toBeInstanceOf(SnapshotAmbiguousError);
-      expect(error).toMatchObject({
-        snapshotId: "baseline",
-        matchCount: 2,
-        candidateIds: ["newer", "older"],
-      });
-      expect(harness.lifecycle()).toEqual([]);
+      // Then: the newest labelled snapshot is the one applied and reported.
+      expect(Exit.isSuccess(exit)).toBe(true);
+      if (!Exit.isSuccess(exit)) throw new Error("expected success");
+      expect(harness.restores()).toHaveLength(1);
+      expect(harness.restores()[0]).toMatchObject({ id: "newer" });
+      // Restore reports the snapshot it applied; seed reports only its seed status.
+      if (action === "restore") expect(exit.value).toMatchObject({ snapshotId: "newer" });
     });
 
     test(`${action} reports unknown references as not found`, async () => {

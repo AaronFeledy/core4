@@ -897,7 +897,6 @@
       "ShellExecError",
       "ShellRequiresTtyError",
       "ShellScriptOutsideRootError",
-      "SnapshotAmbiguousError",
       "SnapshotNotFoundError",
       "SnapshotOwnershipError",
       "SqlCommandFailedError",
