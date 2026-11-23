@@ -12,21 +12,6 @@ describe("@lando/sdk package exports", () => {
     expect(() => decode({ mode: "override" })).toThrow();
   });
 
-  test("snapshot ambiguity preserves optional candidate ids through its public codec", async () => {
-    const { SnapshotAmbiguousError } = await import("@lando/sdk/errors");
-    const decode = Schema.decodeUnknownSync(SnapshotAmbiguousError);
-    const original = {
-      _tag: "SnapshotAmbiguousError" as const,
-      message: "Ambiguous snapshot",
-      snapshotId: "baseline",
-      matchCount: 2,
-      remediation: "List snapshots in this scope and retry with an unambiguous id.",
-    };
-    expect(decode(original).candidateIds).toBeUndefined();
-    const candidates = { ...original, candidateIds: ["newer", "older"] };
-    expect(Schema.encodeSync(SnapshotAmbiguousError)(decode(candidates))).toEqual(candidates);
-  });
-
   test("standard schema subpath resolves independently", async () => {
     const standard = await import("@lando/sdk/schema/standard");
     expect(await standard.LandofileStandardSchema["~standard"].validate({ name: "demo" })).toEqual({

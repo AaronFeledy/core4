@@ -28,6 +28,8 @@ Newer-format state protection (§5.5.2, §12.7.1) changes unreleased contracts i
 
 The unreleased `ToolingVarDefault` and `ToolingVarPrompt` schemas are removed without aliases or a deprecation cycle: a literal var replaces `{ default }`, and a declared flag or arg, or a `vars.<name>.sh` command, replaces `{ prompt }` (§8.5.3). The removal updates the public-surface fixture and schema artifacts.
 
+The unreleased `SnapshotAmbiguousError` is removed without an alias or a deprecation cycle: a reused snapshot label resolves to the newest match (§10.11). The removal updates the public-surface fixture.
+
 The unreleased structured diagnostic coordinates replace `RouteInputError.key` with `path` and `otherPath` (§6.6), `DataTreeOwnershipCapabilityError.option` with the array `path` (§6.12), and the string `RecipeSourceCompileError.path` with an array of segments (§8.8). Regenerate schema artifacts; do not add aliases, adapters, or a deprecation cycle. `LandofileWriteValidationError.path` continues to carry the raw selector string (§8.11.1).
 
 Endpoint and route-filter discriminators use `kind` on authored input, plans, and applied state (`EndpointPlan.kind`, `RouteFilter.kind`, `RouteFilterKind`). The unreleased spellings have no live aliases or deprecation cycle. Plugin `declareEndpoints` returns `EndpointDeclaration.Encoded` values; only plugin HTTP(S) objects accept authored `scan` (§6.11.0). The endpoint shorthand alias grammar does not narrow object names (§6.6). Applied-state v7 migrates to the v8 shape on read. See §5.5.2 for current reader versions and later migrations. The executable app-plan and scratch plan caches MUST reject older frames (§12.1).

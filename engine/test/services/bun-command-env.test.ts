@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { access, mkdtemp, rm } from "node:fs/promises";
+import { access, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { commandLauncher, createBunCommandEnv, launcherPathEnv } from "../../src/services/bun-command-env.ts";
@@ -70,6 +70,28 @@ test("standalone Lando fallback is scoped when PATH has no lando", async () => {
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test.skipIf(process.platform === "win32")(
+  "standalone Lando runs a nested lando as itself even when another lando is on PATH",
+  async () => {
+    // Given: a different lando, such as Lando 3, first on PATH.
+    const root = await mkdtemp(join(tmpdir(), "lando-other-on-path-"));
+    try {
+      await writeFile(join(root, "lando"), "#!/bin/sh\necho other-lando\n", { mode: 0o755 });
+      // When
+      await using launcher = await createBunCommandEnv(
+        { command: "lando", env: { PATH: root }, cwd: root },
+        { standalone: true, execPath: "/opt/lando/bin/lando", platform: process.platform },
+      );
+      // Then
+      const resolved = Bun.which("lando", { PATH: launcher.env.PATH ?? "" }) ?? "";
+      expect(dirname(resolved)).not.toBe(root);
+      expect(await Bun.file(resolved).text()).toContain("/opt/lando/bin/lando");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+);
 
 test("source mode host Bun environment needs no launcher", async () => {
   // Given

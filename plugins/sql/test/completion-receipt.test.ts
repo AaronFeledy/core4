@@ -63,6 +63,27 @@ for (const action of ["snapshot", "import", "reset", "restore"] as const) {
   );
 }
 
+for (const action of ["import", "reset", "restore"] as const) {
+  test(`${action} returns its recovery snapshot id on success`, async () => {
+    // Given a real sidecar catalog.
+    const fixture = await makeRetentionTestDeps();
+    const source = action === "restore" ? await Effect.runPromise(fixture.snapshot("manual")) : undefined;
+
+    // When the operation succeeds.
+    const result = await Effect.runPromise(
+      executeDbCommand(fixture.deps, {
+        action,
+        yes: true,
+        file: "dump.sql",
+        ...(source === undefined ? {} : { snapshotId: source.id }),
+      }),
+    );
+
+    // Then the result names the undo point it captured.
+    expect(result.recoverySnapshotId).toBe(fixture.captured[0]);
+  });
+}
+
 test.each(["task.complete", "task.tree.complete"])(
   "completion interruption at %s remains an interruption with its capture retained",
   async (eventTag) => {

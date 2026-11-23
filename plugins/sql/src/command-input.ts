@@ -166,6 +166,7 @@ export const dbInputFromCommand = (action: DbAction, input: ExecutableCommandInp
     ? { compressionLevel: input.flags["compression-level"] }
     : {}),
   ...(input.flags.preview === true ? { preview: true } : {}),
+  ...(input.flags.recovery === true ? { recovery: true } : {}),
   ...(input.flags.compression === "gzip" ||
   input.flags.compression === "zstd" ||
   input.flags.compression === "none"
