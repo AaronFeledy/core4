@@ -85,7 +85,7 @@ describe.serial("live git-worktree apps", () => {
               await mkdir(shop);
               await Bun.write(
                 join(shop, ".lando.yml"),
-                `name: ${name}\nruntime: 4\nprovider: lando\nrouter:\n  enabled: false\nservices:\n  web:\n    type: node:22\n    primary: true\n  database:\n    type: postgres\n`,
+                `name: ${name}\nruntime: 4\nprovider: lando\nrouter:\n  enabled: false\nservices:\n  web:\n    type: node:22\n    primary: true\n    appMount:\n      target: /app\n      excludes: [worktree-cache]\n  database:\n    type: postgres\n`,
               );
               await Bun.write(join(shop, ".gitignore"), ".lando.local.yml\n");
               for (const args of [
@@ -154,7 +154,7 @@ describe.serial("live git-worktree apps", () => {
             ).toBe(true);
             expect(
               mounts.some(
-                (fields) => fields[4] === "/app/node_modules" && fields[3]?.includes("/volumes/") === true,
+                (fields) => fields[4] === "/app/worktree-cache" && fields[3]?.includes("/volumes/") === true,
               ),
             ).toBe(true);
 

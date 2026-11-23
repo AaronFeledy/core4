@@ -1,3 +1,4 @@
+import { sanitizeStateWriter } from "@lando/sdk/errors";
 import type { StateCodec } from "@lando/sdk/services";
 import { Schema } from "effect";
 
@@ -12,6 +13,7 @@ export interface StateFrame {
    * therefore never triggers either version policy).
    */
   readonly version: number | null;
+  readonly writtenBy?: string;
 }
 
 export class FrameDecodeError extends Error {
@@ -35,6 +37,7 @@ export const encodeFrame = <A, I>(
   version: number,
   data: I,
   value: A,
+  writer?: string,
 ): string | Uint8Array => {
   if (codec !== undefined && typeof codec === "object") {
     return codec.encode(value);
@@ -47,7 +50,7 @@ export const encodeFrame = <A, I>(
     out.set(body, BINARY_HEADER_LEN);
     return out;
   }
-  return `${JSON.stringify({ version, data }, null, 2)}\n`;
+  return `${JSON.stringify({ version, writtenBy: sanitizeStateWriter(writer), data }, null, 2)}\n`;
 };
 
 /**
@@ -92,7 +95,8 @@ export const readFrame = <A, I>(codec: StateCodec<A, I> | undefined, raw: Uint8A
     throw new FrameDecodeError("Malformed state envelope.");
   }
   const { version, data } = envelope;
-  return { readPayload: () => data, version };
+  const writtenBy = sanitizeStateWriter("writtenBy" in envelope ? envelope.writtenBy : undefined);
+  return { readPayload: () => data, version, ...(writtenBy === undefined ? {} : { writtenBy }) };
 };
 
 export const isCustomCodec = <A, I>(

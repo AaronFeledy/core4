@@ -26,10 +26,6 @@ services:
     environment:
       DATABASE_URL: "postgresql://{{ url.encodeComponent(services.database.creds.user) }}:{{ url.encodeComponent(services.database.creds.password) }}@database:{{ services.database.port }}/{{ url.encodeComponent(services.database.creds.database) }}?serverVersion=16&charset=utf8"
       REDIS_URL: "redis://cache:6379"
-    appMount:
-      target: /app
-      includes:
-        - vendor
     depends_on:
       - database
       - cache
@@ -48,10 +44,6 @@ services:
     restart: unless-stopped
     environment:
       DATABASE_URL: "postgresql://{{ url.encodeComponent(services.database.creds.user) }}:{{ url.encodeComponent(services.database.creds.password) }}@database:{{ services.database.port }}/{{ url.encodeComponent(services.database.creds.database) }}?serverVersion=16&charset=utf8"
-    appMount:
-      target: /app
-      includes:
-        - vendor
     depends_on:
       database:
         condition: service_healthy

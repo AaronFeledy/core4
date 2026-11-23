@@ -59,6 +59,7 @@ export const AppsListPruneFailureSchema = Schema.Struct({
   appId: Schema.optionalKey(Schema.String),
   storedVersion: Schema.Int,
   supportedVersion: Schema.Int,
+  writtenBy: Schema.optionalKey(Schema.String),
   message: Schema.String,
   remediation: Schema.String,
 });
@@ -181,13 +182,14 @@ const listServicesInternal = Effect.fnUntraced(function* <E, R>(
   const persisted = yield* Effect.promise(async () => {
     try {
       return await readAppliedPlansFromUserData(userDataRoot, (issue) => {
-        const { providerId, path, storedVersion, supportedVersion, message, remediation } = issue;
+        const { providerId, path, storedVersion, supportedVersion, writtenBy, message, remediation } = issue;
         appliedStateIssues.push({
           reason: "newer-version",
           providerId,
           path,
           storedVersion,
           supportedVersion,
+          ...(writtenBy === undefined ? {} : { writtenBy }),
           message,
           remediation,
         });

@@ -252,7 +252,6 @@ test("newer envelope version fails with upgrade remediation and preserves bytes"
     _tag: "Failure",
     failure: {
       _tag: "UpdateNetworkError",
-      remediation: expect.stringMatching(/upgrade Lando/i),
       cause: { _tag: "StateStoreError", reason: "newer-version", storedVersion: 99 },
     },
   });

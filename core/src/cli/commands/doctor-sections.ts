@@ -23,6 +23,7 @@ import { DefaultMcpDoctorLayer, mcpDoctor } from "./doctor-mcp";
 import { missingAppRootsDoctor } from "./doctor-missing-app-roots";
 import { networkTrustDoctorStatus } from "./doctor-network-trust";
 import { orphanedSnapshotsDoctor } from "./doctor-orphaned-snapshots";
+import { stateCompatibilityDoctor } from "./doctor-state-compatibility";
 import { subsystemDoctor } from "./doctor-subsystems";
 import { appVersionConstraintsForReport } from "./doctor-version-constraint";
 
@@ -123,6 +124,10 @@ export const doctorSections = (input: {
     configSection({
       id: "accelerated-starts",
       run: acceleratedStartsDoctor(redact).pipe(Effect.map((checks): DoctorSectionResult => ({ checks }))),
+    }),
+    configSection({
+      id: "state-compatibility",
+      run: stateCompatibilityDoctor(redact).pipe(Effect.map((checks): DoctorSectionResult => ({ checks }))),
     }),
     runtimeSection({
       id: "missing-app-roots",

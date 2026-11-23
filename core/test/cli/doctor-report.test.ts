@@ -348,6 +348,7 @@ describe("meta:doctor combined report", () => {
       ["subsystems", "host-dns"],
       ["global-app", "global-app"],
       ["mcp", "mcp"],
+      ["state-compatibility", "state-compatibility"],
       ["legacy-snapshot-catalogs", "legacy-snapshot-catalogs"],
       ["filesystem-watch", "filesystem-watch"],
     ]);

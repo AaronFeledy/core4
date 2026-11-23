@@ -296,9 +296,8 @@ describe("recipe option parity", () => {
       const appserver = landofile.services?.[ServiceName.make("appserver")];
       expect(appserver?.webroot).toBe(PortablePath.make("/app/web"));
       expect(appserver?.mounts).toEqual(["site:/app"]);
-      expect(appserver?.appMount).toMatchObject({
+      expect(appserver?.appMount).toEqual({
         target: "/app/web/modules/custom/example",
-        includes: ["vendor", "node_modules", "tmp"],
       });
       expect(Object.keys(appserver?.environment ?? {})).toContain("SIMPLETEST_DB");
       expect(landofile.services?.[ServiceName.make("chrome")]?.image).toBe(

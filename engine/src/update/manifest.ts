@@ -20,6 +20,7 @@ import { updateOutcomeFromError } from "@lando/telemetry/events";
 import { Cause, Context, Effect, Exit, Layer, Option, Result, Schema } from "effect";
 import { resolveUserDataRoot } from "../config/roots";
 import * as LandoEventService from "../services/event-service";
+import { CORE_VERSION } from "../version.ts";
 import {
   UpdateDowngradeError,
   UpdateManifestReplayError,
@@ -504,7 +505,7 @@ const withDefaultStateStore = <A, E>(body: Effect.Effect<A, E, StateStore>): Eff
     Effect.flatMap((option) =>
       Option.isSome(option)
         ? body.pipe(Effect.provideService(StateStore, option.value))
-        : body.pipe(Effect.provide(StateStoreLayer.layer)),
+        : body.pipe(Effect.provide(StateStoreLayer.layerWith({ writer: CORE_VERSION }))),
     ),
   );
 

@@ -18,6 +18,7 @@ import * as HostPrivilegeService from "@lando/engine/services/privilege";
 import * as BunProcessRunner from "@lando/engine/services/process-runner";
 import * as RoutedSecretStore from "@lando/engine/services/secret-store-registry";
 import * as BunShellRunner from "@lando/engine/services/shell-runner";
+import { CORE_VERSION } from "@lando/engine/version";
 import * as LandoHttpClient from "@lando/http-client";
 import * as VerifiedDownloader from "@lando/http-client/downloader";
 import * as ManagedFileLayer from "@lando/managed-file/service";
@@ -85,7 +86,7 @@ export const makeMinimalBootstrapLayer = (inputs: BootstrapLayerInputs) => {
     ),
     HostPrivilegeService.layer,
     secretStoreLayer,
-    StateStoreLayer.layerWithPrivateFileAccess.pipe(
+    StateStoreLayer.layerWithPrivateFileAccessOptions({ writer: CORE_VERSION }).pipe(
       Layer.provide(Layer.mergeAll(privateFileAccessLayer, configLayer)),
     ),
     ManagedFileTransactionGuardLayer.layerWithPrivateFileAccess.pipe(

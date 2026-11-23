@@ -72,7 +72,6 @@ export const source = {
       when: "{{ options.worker }}",
       config: {
         services: {
-          appserver: { appMount: { target: "/app", includes: ["vendor"] } },
           worker: {
             type: "php:{{ recipe.php }}",
             framework: "laravel",
@@ -81,7 +80,6 @@ export const source = {
             restart: "unless-stopped",
             depends_on: ["cache"],
             environment: { DB_CONNECTION: "sqlite" },
-            appMount: { target: "/app", includes: ["vendor"] },
           },
         },
       },

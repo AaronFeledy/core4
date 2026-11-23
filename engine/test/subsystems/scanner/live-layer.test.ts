@@ -252,8 +252,9 @@ describe("ProviderUrlScanner.layer", () => {
     );
     expect(failure).toBeInstanceOf(ScannerError);
     if (failure instanceof ScannerError) {
-      expect(failure.remediation).toContain("upgrade Lando");
       expect(failure.cause).toMatchObject({ name: "AppliedStateVersionError" });
+      expect(failure.remediation).toContain("/state/myapp.json");
+      expect(failure.remediation).not.toMatch(/lando start/i);
     }
   });
 });

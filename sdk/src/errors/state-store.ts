@@ -21,6 +21,9 @@ export class StateStoreError extends Schema.TaggedError<StateStoreError>()("Stat
   timeoutMs: Schema.optional(Schema.Int),
   storedVersion: Schema.optional(Schema.Int),
   supportedVersion: Schema.optional(Schema.Int),
+  writtenBy: Schema.optionalKey(
+    Schema.String.annotate({ description: "Lando version that wrote the state file, when recorded." }),
+  ),
   cause: Schema.optional(Schema.Unknown),
   remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
 }) {
