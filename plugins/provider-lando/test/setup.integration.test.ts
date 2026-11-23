@@ -991,7 +991,7 @@ describe("provider-lando setup runtime bundle extraction", () => {
         setupProviderLando({
           platform: "linux",
           podmanCommand: podmanCommand("podman version 6.0.2"),
-          runtimeBundleDownloader: downloaderFor(archiveBytes, "2.0.0"),
+          runtimeBundleDownloader: downloaderFor(archiveBytes, "0.0.2"),
           runtimeBinDir,
           skipSocketProbe: true,
           managedRuntimeSetup: (progress) =>
@@ -1001,7 +1001,7 @@ describe("provider-lando setup runtime bundle extraction", () => {
         }),
       );
 
-      expect(observedVersion).toBe("2.0.0");
+      expect(observedVersion).toBe("0.0.2");
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -1229,14 +1229,14 @@ describe("provider-lando setup runtime bundle extraction", () => {
             ping: Effect.succeed(undefined),
           },
           podmanCommand: podmanCommand("podman version 6.0.2"),
-          runtimeBundleDownloader: downloaderFor(v1, "1.0.0"),
+          runtimeBundleDownloader: downloaderFor(v1, "0.0.1"),
           managedRuntimeSetup: () => Effect.void,
           runtimeBinDir,
         });
 
       await Effect.runPromise(setupV1());
       const markerPath = join(runtimeBinDir, ".runtime-installed-version");
-      expect((await readFile(markerPath, "utf8")).trim()).toBe("1.0.0");
+      expect((await readFile(markerPath, "utf8")).trim()).toBe("0.0.1");
       const firstMtime = statSync(markerPath).mtimeMs;
 
       await Effect.runPromise(setupV1());
@@ -1255,7 +1255,7 @@ describe("provider-lando setup runtime bundle extraction", () => {
             ping: Effect.succeed(undefined),
           },
           podmanCommand: podmanCommand("podman version 6.0.2"),
-          runtimeBundleDownloader: downloaderFor(v2, "2.0.0"),
+          runtimeBundleDownloader: downloaderFor(v2, "0.0.2"),
           managedRuntimeSetup: () => Effect.void,
           runtimeBinDir,
         }),
@@ -1263,7 +1263,7 @@ describe("provider-lando setup runtime bundle extraction", () => {
 
       expect(existsSync(join(runtimeBinDir, "old-only"))).toBe(false);
       expect(existsSync(join(runtimeBinDir, "new-only"))).toBe(true);
-      expect((await readFile(markerPath, "utf8")).trim()).toBe("2.0.0");
+      expect((await readFile(markerPath, "utf8")).trim()).toBe("0.0.2");
     } finally {
       await rm(runtimeBinDir, { recursive: true, force: true });
     }
