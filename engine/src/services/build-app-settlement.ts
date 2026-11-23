@@ -221,7 +221,7 @@ export const makeAppBuildSettlement = (input: AppBuildInput, steps: readonly App
         TaskTreeStartEvent.make({
           parentId,
           label: "Building app dependencies",
-          children: steps.map(({ step }) => step.id),
+          children: steps.map(({ step }) => ({ id: step.id, label: `Build ${String(step.service)}` })),
           mode: "list",
           timestamp: yield* DateTime.now,
         }),

@@ -1,6 +1,6 @@
+import type { TaskTreeChild } from "@lando/sdk/events";
 import {
   type ProgressEmitter,
-  type TaskSpec,
   type TaskTreeController,
   makeTaskTree,
   runWithTaskTree,
@@ -23,7 +23,7 @@ export const withDestroyProgress = <A, E, R>(input: {
   readonly children: DestroyProgressChildren;
   readonly work: (tree: TaskTreeController) => Effect.Effect<A, E, R>;
 }): Effect.Effect<A, E, R> => {
-  const children: TaskSpec[] = [
+  const children: TaskTreeChild[] = [
     ...(input.children.fileSync ? [{ id: "file-sync", label: "Stop file sync" }] : []),
     ...(input.children.snapshots ? [{ id: "snapshots", label: "Remove snapshots" }] : []),
     ...(input.children.provider === false ? [] : [{ id: "provider", label: "Destroy services" }]),

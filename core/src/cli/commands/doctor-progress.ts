@@ -6,6 +6,29 @@ import type { DoctorCheck, DoctorSectionId, DoctorSummary } from "./doctor-contr
 
 export const DOCTOR_TREE_ID = "doctor";
 
+/** Live-tree row labels; report output keeps the section ids. */
+export const DOCTOR_SECTION_LABELS = {
+  "global-config": "Global config",
+  provider: "Provider",
+  "app-listeners": "App listeners",
+  "database-credentials": "Database credentials",
+  "certificate-authority": "Certificate authority",
+  "network-trust": "Network trust",
+  subsystems: "Subsystems",
+  "global-app": "Global app",
+  mcp: "MCP",
+  "accelerated-starts": "Accelerated starts",
+  "state-compatibility": "State compatibility",
+  "missing-app-roots": "Missing app roots",
+  "orphaned-volume-snapshots": "Orphaned volume snapshots",
+  "legacy-snapshot-catalogs": "Legacy snapshot catalogs",
+  "filesystem-watch": "Filesystem watch",
+  "debugger-host": "Debugger host",
+  "app-version-constraints": "App version constraints",
+  deprecations: "Deprecations",
+  "app-config": "App config",
+} as const satisfies Record<DoctorSectionId, string>;
+
 export interface DoctorSectionOutcome {
   readonly summary?: string;
   readonly warned?: boolean;
@@ -37,12 +60,13 @@ export const checksOutcome = (
   if (failed > 0) {
     const remediation = firstCommand(checks);
     return {
-      summary: `${id} · ${plural(failed, "failure")}`,
+      summary: `${DOCTOR_SECTION_LABELS[id]} · ${plural(failed, "failure")}`,
       failed: true,
       ...(remediation === undefined ? {} : { remediation }),
     };
   }
-  if (warned > 0) return { summary: `${id} · ${plural(warned, "warning")}`, warned: true };
+  if (warned > 0)
+    return { summary: `${DOCTOR_SECTION_LABELS[id]} · ${plural(warned, "warning")}`, warned: true };
   return {};
 };
 
@@ -55,8 +79,7 @@ export const makeDoctorTree = (ids: ReadonlyArray<DoctorSectionId>): Effect.Effe
     makeTaskTree(Option.getOrUndefined(events), {
       parentId: DOCTOR_TREE_ID,
       label: "doctor",
-      // Pending placeholders use child ids, so keep running labels identical.
-      children: ids.map((id) => ({ id, label: id })),
+      children: ids.map((id) => ({ id, label: DOCTOR_SECTION_LABELS[id] })),
       mode: "list",
     }),
   );
@@ -66,7 +89,8 @@ export const settleDoctorSection = (
   id: DoctorSectionId,
   outcome: DoctorSectionOutcome,
 ): Effect.Effect<void> => {
-  if (outcome.skipped === true) return tree.infoTask(id, outcome.summary ?? `${id} · skipped`);
+  if (outcome.skipped === true)
+    return tree.infoTask(id, outcome.summary ?? `${DOCTOR_SECTION_LABELS[id]} · skipped`);
   if (outcome.failed === true)
     return tree.failTask(
       id,

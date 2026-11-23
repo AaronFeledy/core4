@@ -1533,7 +1533,10 @@ describe("lando start", () => {
 
     const treeStart = harness.taskEvents.find((event) => event._tag === "task.tree.start");
     expect(treeStart).toBeDefined();
-    expect((treeStart?.children ?? []) as ReadonlyArray<string>).toEqual(["web", "database"]);
+    expect(treeStart?.children).toEqual([
+      { id: "web", label: "Apply service web" },
+      { id: "database", label: "Apply service database" },
+    ]);
 
     const taskStarts = harness.taskEvents.filter((event) => event._tag === "task.start");
     expect(taskStarts.map((event) => event.taskId as string).sort()).toEqual(["database", "web"]);
@@ -1584,7 +1587,7 @@ describe("lando start", () => {
         harness.taskEvents.find(
           (event) => event._tag === "task.tree.start" && event.parentId === hostProxyParent,
         ),
-      ).toMatchObject({ children: [hostProxyTask] });
+      ).toMatchObject({ children: [{ id: hostProxyTask, label: "Start host-proxy session" }] });
       expect(
         harness.taskEvents.some((event) => event._tag === "task.start" && event.taskId === hostProxyTask),
       ).toBe(true);
@@ -2300,7 +2303,7 @@ describe("lando start", () => {
         const globalParent = `start-global-${String(userPlan.id)}`;
         expect(
           harness.events.find((event) => event._tag === "task.tree.start" && event.parentId === globalParent),
-        ).toMatchObject({ children: [`${globalParent}:traefik`] });
+        ).toMatchObject({ children: [{ id: `${globalParent}:traefik`, label: "Start global traefik" }] });
         const globalCompleteAt = harness.events.findIndex(
           (event) => event._tag === "task.tree.complete" && event.parentId === globalParent,
         );

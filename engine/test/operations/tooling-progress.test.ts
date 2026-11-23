@@ -43,7 +43,7 @@ describe("beginLiveToolingTree", () => {
     ]);
     expect(byTag(publisher.events, "task.tree.start")[0]).toMatchObject({
       parentId,
-      children: [taskId],
+      children: [{ id: taskId, label: "executing" }],
     });
     expect(byTag(publisher.events, "task.detail")).toEqual([]);
     expect(byTag(publisher.events, "task.complete")[0]).toMatchObject({

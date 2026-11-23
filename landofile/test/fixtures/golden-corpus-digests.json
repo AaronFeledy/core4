@@ -1580,6 +1580,10 @@
       "digest": "93e9ad142110fcf488b4c1d01a22945a858375972ab8f7bbaade9239d1ea69e0"
     },
     {
+      "fixture": "docs/guides/terminal-ui-polish/fixtures/task-tree-labels",
+      "digest": "dcc1f149e85108c5bdc62433998d4794411237e313190c4af356342f97b69235"
+    },
+    {
       "fixture": "docs/guides/timezone/fixtures/timezone-demo",
       "digest": "2d197f30db67a4d5f016750a5ebe9c902f9c1355037177d23842c0377c77b639"
     },

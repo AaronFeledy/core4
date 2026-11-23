@@ -141,7 +141,7 @@ describe("destroy progress topology", () => {
           { evidence: "retained", outcome: "destroyed" },
         ]);
         expect(byTag(harness.events, "task.tree.start")).toHaveLength(1);
-        expect(byTag(harness.events, "task.tree.start")[0]?.children).toEqual(
+        expect(byTag(harness.events, "task.tree.start")[0]?.children.map((child) => child.id)).toEqual(
           ["file-sync", "provider", "host-proxy", "routes"].map((id) =>
             startChildTaskId(destroyTreeId(retainedTarget.app.id), id),
           ),
@@ -198,9 +198,9 @@ describe("destroy progress topology", () => {
       parentId,
       label: "Destroy test-destroy",
       children: [
-        startChildTaskId(parentId, "provider"),
-        startChildTaskId(parentId, "host-proxy"),
-        startChildTaskId(parentId, "routes"),
+        { id: startChildTaskId(parentId, "provider"), label: "Destroy services" },
+        { id: startChildTaskId(parentId, "host-proxy"), label: "Clean host-proxy state" },
+        { id: startChildTaskId(parentId, "routes"), label: "Remove routes" },
       ],
     });
     expect(result.app).toBe("test-destroy");
@@ -217,7 +217,7 @@ describe("destroy progress topology", () => {
     const parentId = destroyTreeId(String(plan.id));
     const treeStart = byTag(harness.events, "task.tree.start");
     expect(treeStart).toHaveLength(1);
-    const children = treeStart[0]?.children ?? [];
+    const children = treeStart[0]?.children.map((child) => child.id) ?? [];
     expect(children).not.toContain(startChildTaskId(parentId, "file-sync"));
     expect(children).not.toContain(startChildTaskId(parentId, "snapshots"));
   });
@@ -237,7 +237,7 @@ describe("destroy progress topology", () => {
     // Then
     const parentId = destroyTreeId(String(plan.id));
     const fileSyncId = startChildTaskId(parentId, "file-sync");
-    expect(byTag(harness.events, "task.tree.start")[0]?.children[0]).toBe(fileSyncId);
+    expect(byTag(harness.events, "task.tree.start")[0]?.children[0]?.id).toBe(fileSyncId);
     expect(byTag(harness.events, "task.complete").map((event) => event.taskId)).toContain(fileSyncId);
   });
 
@@ -530,8 +530,8 @@ describe("destroy progress topology", () => {
     // Then
     const parentId = destroyTreeId(String(plan.id));
     expect(byTag(harness.events, "task.tree.start")[0]?.children).toEqual([
-      startChildTaskId(parentId, "provider"),
-      startChildTaskId(parentId, "host-proxy"),
+      { id: startChildTaskId(parentId, "provider"), label: "Destroy services" },
+      { id: startChildTaskId(parentId, "host-proxy"), label: "Clean host-proxy state" },
     ]);
     const warnings = byTag(harness.events, "message.warn");
     expect(warnings).toHaveLength(1);
@@ -618,7 +618,7 @@ describe("destroy progress topology", () => {
     const parentId = destroyTreeId(String(plan.id));
     const snapshots = startChildTaskId(parentId, "snapshots");
     const provider = startChildTaskId(parentId, "provider");
-    const children = byTag(harness.events, "task.tree.start")[0]?.children ?? [];
+    const children = byTag(harness.events, "task.tree.start")[0]?.children.map((child) => child.id) ?? [];
     expect(children.indexOf(snapshots)).toBeGreaterThanOrEqual(0);
     expect(children.indexOf(snapshots)).toBeLessThan(children.indexOf(provider));
     const completed = byTag(harness.events, "task.complete").map((event) => event.taskId);
@@ -641,9 +641,11 @@ describe("destroy progress topology", () => {
     // Then
     const parentId = destroyTreeId(String(plan.id));
     const snapshotId = startChildTaskId(parentId, "snapshots");
-    expect(byTag(defaultHarness.events, "task.tree.start")[0]?.children).not.toContain(snapshotId);
-    expect(byTag(purgeHarness.events, "task.tree.start")[0]?.children).not.toContain(snapshotId);
-    expect(byTag(volumesHarness.events, "task.tree.start")[0]?.children).not.toContain(snapshotId);
+    for (const harness of [defaultHarness, purgeHarness, volumesHarness]) {
+      expect(byTag(harness.events, "task.tree.start")[0]?.children.map((child) => child.id)).not.toContain(
+        snapshotId,
+      );
+    }
     expect(byTag(volumesHarness.events, "task.complete").map((event) => event.taskId)).not.toContain(
       snapshotId,
     );

@@ -2465,7 +2465,6 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "TaskTreeCompleteEvent.summary",
   "TaskTreeCompleteEvent.timestamp",
   "TaskTreeStartEvent._tag",
-  "TaskTreeStartEvent.children",
   "TaskTreeStartEvent.label",
   "TaskTreeStartEvent.mode",
   "TaskTreeStartEvent.parentId",

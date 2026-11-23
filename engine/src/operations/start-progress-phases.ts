@@ -1,6 +1,6 @@
+import type { TaskTreeChild } from "@lando/sdk/events";
 import {
   type ProgressEmitter,
-  type TaskSpec,
   type TaskTreeController,
   type TaskTreeSummaries,
   makeTaskTree,
@@ -52,7 +52,7 @@ const runPrefixedPhase = <A, E, R>(
   args: {
     readonly parentId: string;
     readonly label: string;
-    readonly children: ReadonlyArray<TaskSpec>;
+    readonly children: ReadonlyArray<TaskTreeChild>;
     readonly summaries: TaskTreeSummaries;
     readonly work: (tree: TaskTreeController) => Effect.Effect<A, E, R>;
   },
