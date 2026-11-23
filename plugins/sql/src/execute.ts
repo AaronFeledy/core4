@@ -475,6 +475,9 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
         ? { file }
         : {}),
       ...(snapshotId === undefined ? {} : { snapshotId }),
+      ...(completionReceipt === undefined || completionReceipt.operation === "snapshot"
+        ? {}
+        : { recoverySnapshotId: completionReceipt.recoverySnapshotId }),
       ...(listedSnapshots === undefined ? {} : { snapshots: listedSnapshots }),
       ...(pruneCandidates === undefined
         ? {}
