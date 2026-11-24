@@ -514,6 +514,18 @@ describe("ci workflow", () => {
     );
   });
 
+  test("cancels superseded pull request runs without grouping other events", async () => {
+    const workflow = await readWorkflow();
+    const concurrency = findIndentedBlock(workflow, "concurrency");
+
+    expect(concurrency).toContain("  group: ci-${{ github.event.pull_request.number || github.run_id }}");
+    expect(concurrency).toContain("  cancel-in-progress: ${{ github.event_name == 'pull_request' }}");
+    // A cancelled run must not start the summary job: it would fail on cancelled needs and invite a rerun.
+    expect(findIndentedBlock(findIndentedBlock(workflow, "jobs"), "ci", 2)).toContain(
+      "    if: ${{ !cancelled() }}",
+    );
+  });
+
   test("runs static checks for pushes and pull requests to main", async () => {
     const workflow = await readWorkflow();
     const triggers = findIndentedBlock(workflow, "on");

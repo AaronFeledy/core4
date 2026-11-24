@@ -991,6 +991,12 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# A new push to a pull request supersedes its running checks. Other events get
+# a group of their own, so every main commit keeps its run.
+concurrency:
+  group: ci-\${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: \${{ github.event_name == 'pull_request' }}
+
 defaults:
   run:
     shell: bash

@@ -544,7 +544,7 @@ describe("ci workflow codegen", () => {
         "LANDO_USER_CONF_ROOT=$RUNNER_TEMP/lando-conf",
       );
       expect(workflow.jobs.ci.needs.filter((id) => id === "process-signal-tests-darwin")).toHaveLength(1);
-      expect(workflow.jobs.ci.if).toBe("always()");
+      expect(workflow.jobs.ci.if).toBe("${{ !cancelled() }}");
     },
     codegenTestTimeout,
   );
