@@ -16,7 +16,7 @@ const treeStart = (label: string, children: ReadonlyArray<string>): LandoEvent =
     _tag: "task.tree.start",
     parentId: "frame",
     label,
-    children,
+    children: children.map((id) => ({ id, label: id })),
     timestamp: ts,
   });
 const start = (taskId: string, label: string): LandoEvent =>

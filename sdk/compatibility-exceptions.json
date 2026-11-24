@@ -3418,13 +3418,13 @@
     "surface": "schema:LandoEvent",
     "changeKind": "unsupported-construct",
     "path": "$.anyOf",
-    "justification": "LandoEvent members require destroy evidence/outcome and canonical RoutePlan hostname, domain, and path-prefix grammar."
+    "justification": "LandoEvent members require destroy evidence/outcome and canonical RoutePlan hostname, domain, and path-prefix grammar. TaskTreeStartEvent.children entries become { id, label } objects so renderers can paint pending children under their labels."
   },
   {
     "surface": "schema:RendererPanelContext",
     "changeKind": "unsupported-construct",
     "path": "$.event.anyOf",
-    "justification": "Renderer event payloads require destroy evidence/outcome and canonical RoutePlan hostname, domain, and path-prefix grammar."
+    "justification": "Renderer event payloads require destroy evidence/outcome and canonical RoutePlan hostname, domain, and path-prefix grammar. TaskTreeStartEvent.children entries become { id, label } objects so renderers can paint pending children under their labels."
   },
   {
     "surface": "schema:GlobalConfig",
@@ -8005,5 +8005,11 @@
     "changeKind": "unsupported-construct",
     "path": "$.anyOf",
     "justification": "Adds the optional writtenBy (the Lando version that wrote the record) to the newer-version arm of the applied-state issue; the arms and their required fields are unchanged (#2432)."
+  },
+  {
+    "surface": "schema:TaskTreeStartEvent",
+    "changeKind": "type-changed",
+    "path": "$.children.items",
+    "justification": "Each declared child is now an { id, label } object instead of a bare task id, so renderers can paint pending children under their labels. The event is unreleased and no persisted state stores it, so there is no compatibility path."
   }
 ]

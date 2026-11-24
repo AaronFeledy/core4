@@ -439,11 +439,11 @@ describe("provider-lando setup", () => {
       expect(treeStart?.parentId).toBe("provider-setup");
       expect(treeStart?.label).toBe("Setting up Lando runtime");
       expect(treeStart?.mode).toBe("list");
-      expect((treeStart?.children ?? []) as ReadonlyArray<string>).toEqual([
-        "bundle",
-        "podman",
-        "socket",
-        "state",
+      expect(treeStart?.children).toEqual([
+        { id: "bundle", label: "Verify runtime bundle" },
+        { id: "podman", label: "Detect Podman" },
+        { id: "socket", label: "Probe Podman API" },
+        { id: "state", label: "Persist setup state" },
       ]);
 
       const started = captured.filter((event) => event._tag === "task.start");
@@ -497,7 +497,7 @@ describe("provider-lando setup", () => {
     );
 
     const treeStart = captured[0];
-    expect((treeStart?.children ?? []) as ReadonlyArray<string>).toEqual(["podman"]);
+    expect(treeStart?.children).toEqual([{ id: "podman", label: "Detect Podman" }]);
 
     const startedIds = captured
       .filter((event) => event._tag === "task.start")
@@ -550,10 +550,10 @@ describe("provider-lando setup", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     expect(events.captured.find((event) => event._tag === "task.tree.start")?.children).toEqual([
-      "podman",
-      "prerequisites",
-      "launch",
-      "readiness",
+      { id: "podman", label: "Detect Podman" },
+      { id: "prerequisites", label: "Provision and preflight runtime prerequisites" },
+      { id: "launch", label: "Launch managed runtime" },
+      { id: "readiness", label: "Verify managed runtime readiness" },
     ]);
     expect(events.ids("task.start")).toEqual(["podman", "prerequisites"]);
     expect(events.ids("task.fail")).toEqual(["prerequisites"]);
@@ -618,8 +618,8 @@ describe("provider-lando setup", () => {
 
       expect(Exit.isFailure(exit)).toBe(true);
       expect(events.captured.find((event) => event._tag === "task.tree.start")?.children).toEqual([
-        "podman",
-        "helpers",
+        { id: "podman", label: "Detect Podman" },
+        { id: "helpers", label: "Prepare runtime helpers" },
       ]);
       expect(events.ids("task.complete")).toEqual(["podman"]);
       expect(events.ids("task.fail")).toEqual(["helpers"]);
@@ -654,11 +654,11 @@ describe("provider-lando setup", () => {
 
       expect(Exit.isFailure(exit)).toBe(true);
       expect(events.captured.find((event) => event._tag === "task.tree.start")?.children).toEqual([
-        "podman",
-        "prerequisites",
-        "helpers",
-        "launch",
-        "readiness",
+        { id: "podman", label: "Detect Podman" },
+        { id: "prerequisites", label: "Provision and preflight runtime prerequisites" },
+        { id: "helpers", label: "Prepare runtime helpers" },
+        { id: "launch", label: "Launch managed runtime" },
+        { id: "readiness", label: "Verify managed runtime readiness" },
       ]);
       expect(events.ids("task.start")).toEqual(["podman", "prerequisites", "helpers"]);
       expect(events.ids("task.fail")).toEqual(["helpers"]);
@@ -918,7 +918,7 @@ describe("provider-lando setup", () => {
     );
 
     const treeStart = captured[0];
-    expect((treeStart?.children ?? []) as ReadonlyArray<string>).toContain("machine");
+    expect(treeStart?.children).toContainEqual({ id: "machine", label: "Ensure Podman machine" });
 
     const completedIds = captured
       .filter((event) => event._tag === "task.complete")

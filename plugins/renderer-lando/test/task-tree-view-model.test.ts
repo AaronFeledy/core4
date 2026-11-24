@@ -35,7 +35,7 @@ const treeStart = (parentId: string, label: string, children: ReadonlyArray<stri
     _tag: "task.tree.start",
     parentId,
     label,
-    children,
+    children: children.map((id) => ({ id, label: id })),
     timestamp: ts,
   });
 
@@ -120,17 +120,32 @@ describe("TaskTreeViewModel — apply + frameLines content", () => {
     },
   );
 
-  test("apply(tree.start) yields a skeleton with parent line and pending placeholders; no control bytes", () => {
+  test("apply(tree.start) paints pending placeholders under their declared labels; no control bytes", () => {
     const vm = new TaskTreeViewModel({ color: true });
-    vm.apply(treeStart("build", "Building", ["web", "db", "cache"]));
+    vm.apply(
+      Schema.decodeUnknownSync(TaskTreeStartEvent)({
+        _tag: "task.tree.start",
+        parentId: "build",
+        label: "Building",
+        children: [
+          { id: "web", label: "Build web" },
+          { id: "db", label: "Build db" },
+          { id: "cache", label: "Build cache" },
+        ],
+        timestamp: ts,
+      }),
+    );
     const styled = vm.frameLines();
     assertNoControlBytes(styled);
     const plain = styled.map(stripAnsi);
     expect(plain[0]).toBe("╭─ Building");
     expect(plain.at(-1)).toBe("╰─ 0/3 running");
     const placeholders = plain.filter((line) => line.includes("◌"));
-    expect(placeholders).toHaveLength(3);
-    expect(placeholders[0]).toContain("◌ web");
+    expect(placeholders.map((line) => line.slice(line.indexOf("◌")))).toEqual([
+      "◌ Build web",
+      "◌ Build db",
+      "◌ Build cache",
+    ]);
   });
 
   test("snapshot() logical frame is unstyled and carries active running task ids", () => {

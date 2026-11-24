@@ -366,7 +366,7 @@ describe("runTooling — CLI rendering", () => {
     expect(events.find((event) => event._tag === "task.tree.start")).toMatchObject({
       parentId: "tooling:composer",
       label: "composer",
-      children: ["tooling:composer:exec"],
+      children: [{ id: "tooling:composer:exec", label: "executing" }],
     });
     expect(events.filter((event) => event._tag === "task.detail")).toEqual([]);
     expect(events.find((event) => event._tag === "task.complete")).toMatchObject({

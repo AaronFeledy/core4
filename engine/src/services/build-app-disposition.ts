@@ -48,7 +48,7 @@ export const failedAppStepDisposition = (
   const detail = failure.kind === "typed" ? taggedErrorJson(failure.error).message : undefined;
   return {
     outcome: "failed",
-    summary: detail ?? `${appStep.step.id} ${Cause.hasInterruptsOnly(cause) ? "interrupted" : "failed"}`,
+    summary: detail ?? `${appStep.subject} ${Cause.hasInterruptsOnly(cause) ? "interrupted" : "failed"}`,
     durationMs,
   };
 };
@@ -75,14 +75,15 @@ export const appStepDisposition = (
   appStep: AppStep,
   outcome: AppStepOutcome,
 ): AppStepDisposition => {
-  const { step } = appStep;
+  const { step, subject } = appStep;
   switch (outcome._tag) {
     case "blocked": {
       const blockedBy = outcome.labels.join(", ");
-      const message = `Build step ${step.id} for service ${String(step.service)} did not run: blocked by ${blockedBy}${outcome.detail === undefined ? "" : `: ${outcome.detail}`}.`;
+      const reason = `blocked by ${blockedBy}${outcome.detail === undefined ? "" : `: ${outcome.detail}`}`;
+      const message = `Build step ${step.id} for service ${String(step.service)} did not run: ${reason}.`;
       return {
         outcome: "blocked",
-        summary: message,
+        summary: `${subject} did not run: ${reason}`,
         durationMs: 0,
         failure: new BuildStepFailedError({
           step,
@@ -92,12 +93,12 @@ export const appStepDisposition = (
       };
     }
     case "reused":
-      return { outcome: "succeeded", summary: `${step.id} cached`, durationMs: 0 };
+      return { outcome: "succeeded", summary: `${subject} cached`, durationMs: 0 };
     case "ran": {
       const { result, attempt } = outcome;
       const failure = result.providerFailure;
       if (failure === undefined && (result.exitCode === undefined || result.exitCode === 0))
-        return { outcome: "succeeded", summary: `${step.id} complete`, durationMs: result.durationMs };
+        return { outcome: "succeeded", summary: `Built ${subject}`, durationMs: result.durationMs };
       const kind = buildAppKind(input.plan);
       const baseRemediation =
         kind === "scratch"
@@ -105,7 +106,7 @@ export const appStepDisposition = (
           : `Inspect the build transcript at ${attempt.transcriptPath}, fix step ${step.id}, then run lando start.`;
       return {
         outcome: "failed",
-        summary: `${step.id} failed`,
+        summary: `${subject} failed`,
         durationMs: result.durationMs,
         failure: new BuildStepFailedError({
           step,

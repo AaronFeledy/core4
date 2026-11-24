@@ -1,4 +1,4 @@
-{"_tag":"task.tree.start","parentId":"init:node-postgres","label":"Initialize mvp","children":["render","postinit"],"mode":"list","timestamp":"2026-05-19T12:00:00.000Z"}
+{"_tag":"task.tree.start","parentId":"init:node-postgres","label":"Initialize mvp","children":[{"id":"render","label":"Render recipe files (4)"},{"id":"postinit","label":"Run post-init actions (2)"}],"mode":"list","timestamp":"2026-05-19T12:00:00.000Z"}
 {"_tag":"task.start","taskId":"render","parentId":"init:node-postgres","label":"Render recipe files (4)","timestamp":"2026-05-19T12:00:00.010Z"}
 {"_tag":"task.complete","taskId":"render","summary":"Rendered 4 files","durationMs":85,"timestamp":"2026-05-19T12:00:00.095Z"}
 {"_tag":"task.start","taskId":"postinit","parentId":"init:node-postgres","label":"Run post-init actions (2)","timestamp":"2026-05-19T12:00:00.100Z"}

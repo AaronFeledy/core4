@@ -130,7 +130,7 @@ describe("lando init: task tree progress", () => {
       const treeStart = sink.events[0];
       expect(treeStart?._tag).toBe("task.tree.start");
       if (treeStart?._tag === "task.tree.start") {
-        expect(treeStart.children).toContain("render");
+        expect(treeStart.children).toContainEqual(expect.objectContaining({ id: "render" }));
       }
 
       const renderStart = sink.events.find(
@@ -159,7 +159,7 @@ describe("lando init: task tree progress", () => {
           expect(postinitComplete.summary).toBe("Ran 1 action");
         }
         if (treeStart?._tag === "task.tree.start") {
-          expect(treeStart.children).toContain("postinit");
+          expect(treeStart.children).toContainEqual(expect.objectContaining({ id: "postinit" }));
         }
         const renderCompleteIdx = sink.events.findIndex(
           (event) => event._tag === "task.complete" && event.taskId === "render",

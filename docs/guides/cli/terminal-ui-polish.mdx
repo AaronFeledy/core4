@@ -24,6 +24,8 @@ The TTY `lando` frame uses the terminal default background and foreground. The p
 
 Glyphs: `◌` pending, spinner or `·` running, `✓` success, `–` skipped, `✗` failed.
 
+A pending row shows its step's label, such as `Launch managed runtime` during `lando setup`, before that step starts, so the tree reads as the plan of what runs next. `task.tree.start` declares each child's task id and label, so machine consumers see the same plan.
+
 Titles are identity-only. Footers use `done`, nonzero `ok` / `failed` counts, or a running ratio. Cached and skipped stay on the row as `cached` and `skipped`.
 
 Layout tokens:
@@ -55,3 +57,15 @@ Subscriber registration uses metadata without discovering an app or loading its 
 `notify.enabled: false` silences desktop notification policy. Environment overrides `LANDO_NOTIFY_ENABLED`, `LANDO_NOTIFY_THRESHOLD_MS`, and `LANDO_NOTIFY_COMMANDS` map to `notify.enabled`, `notify.thresholdMs`, and the JSON-array `notify.commands` value.
 
 Only the outer invocation (`parentInvocationId` absent) may publish one success or failure notification. Nested events carry `parentInvocationId` and stay observable, but they never independently trigger foreground presentation. The renderer decides presentation through `renderer.capabilities.notifications`. The default `lando` renderer publishes all four capabilities as true when stderr is a terminal at construction, except `color`, which is false under the [color opt-out](#color-opt-out). It does this without importing OpenTUI or probing the terminal. Notifications use OSC 99 on stderr immediately; terminals without OSC 99 support ignore them. Non-terminal stderr publishes all four capabilities as false and drops desktop notifications.
+
+<Guide>
+  <Scenario id="tree-start-declares-child-labels" render={false} reason="A task tree declares each child label before the child starts">
+    <Step name="declare-labelled-children">
+      <UseFixture name="task-tree-labels" />
+      <Verify command="lando gen --renderer=verbose" expect={{ stdout: "done\n", stderr: { regex: ".id.:.tooling:app:gen:exec.,.label.:.executing." } }} />
+    </Step>
+    <Step name="cleanup-labelled-children">
+      <Cleanup />
+    </Step>
+  </Scenario>
+</Guide>

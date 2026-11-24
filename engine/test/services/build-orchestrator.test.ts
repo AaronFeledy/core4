@@ -518,7 +518,10 @@ describe("BuildOrchestratorLayer.layer", () => {
       const treeStart = events.find((event) => event._tag === "task.tree.start");
       expect(treeStart).toMatchObject({
         parentId: `build-artifact-${String(plan.id)}`,
-        children: [String(web.name), String(db.name)],
+        children: [web, db].map((service) => ({
+          id: String(service.name),
+          label: `Build ${String(service.name)}`,
+        })),
       });
       const starts = events.filter((event) => event._tag === "task.start");
       expect(starts).toHaveLength(2);
@@ -589,7 +592,10 @@ describe("BuildOrchestratorLayer.layer", () => {
       cause: cacheFailure,
     });
     expect(result.events.find((event) => event._tag === "task.tree.start")).toMatchObject({
-      children: ["web", "db"],
+      children: [
+        { id: "web", label: "Build web" },
+        { id: "db", label: "Build db" },
+      ],
     });
     expect(
       result.events

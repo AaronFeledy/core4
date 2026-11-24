@@ -64,7 +64,7 @@ const project = (events: ReadonlyArray<LandoEvent>) =>
     }
   });
 const opening = [
-  ["task.tree.start", parentId, `Checking ${plan.name}`, [taskId]],
+  ["task.tree.start", parentId, `Checking ${plan.name}`, [{ id: taskId, label }]],
   ["task.start", taskId, label],
 ];
 
@@ -143,14 +143,23 @@ describe("runPostStartScan", () => {
     await Effect.runPromise(
       runPostStartScan({ scanner: scannerReturning(endpoints), plan, events, urls: endpoints }),
     );
-    const ids = [taskId, `${parentId}:web-2`, `${parentId}:api-1`];
+    const ids = [taskId, `${parentId}:web-2`, `${parentId}:api-1`] as const;
     const summaries = [
       `${label} · 200`,
       `web ${url}yellow · web server returned 502`,
       `api ${url}red · unreachable: connection refused`,
     ];
     expect(project(events.published)).toEqual([
-      ["task.tree.start", parentId, `Checking ${plan.name}`, ids],
+      [
+        "task.tree.start",
+        parentId,
+        `Checking ${plan.name}`,
+        [
+          { id: ids[0], label },
+          { id: ids[1], label: `web ${url}yellow` },
+          { id: ids[2], label: `api ${url}red` },
+        ],
+      ],
       ["task.start", ids[0], label],
       ["task.complete", ids[0], summaries[0], undefined],
       ["task.start", ids[1], `web ${url}yellow`],
@@ -206,7 +215,15 @@ describe("runPostStartScan", () => {
       runPostStartScan({ scanner, plan, events, urls: [target, { ...target, url: `${url}ready` }] }),
     );
     expect(project(events.published)).toEqual([
-      ["task.tree.start", parentId, `Checking ${plan.name}`, [taskId, `${parentId}:web-2`]],
+      [
+        "task.tree.start",
+        parentId,
+        `Checking ${plan.name}`,
+        [
+          { id: taskId, label },
+          { id: `${parentId}:web-2`, label: `web ${url}ready` },
+        ],
+      ],
       ["task.start", taskId, label],
       ["task.complete", taskId, `${label} · unreachable: scan blew up`, "warn"],
       ["message.warn", `Lando could not reach ${url}: scan blew up`],

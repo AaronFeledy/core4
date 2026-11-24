@@ -1,5 +1,6 @@
 import { csi } from "@lando/renderer/palette";
 
+import type { TaskTreeStartEvent } from "@lando/sdk/events";
 import { AbsolutePath } from "@lando/sdk/schema";
 import type { LandoEvent } from "@lando/sdk/services";
 import { Schema } from "effect";
@@ -17,6 +18,11 @@ import {
 export { TASK_DETAIL_TAIL_CAPACITY, TaskDetailRing, csi };
 
 const DEFAULT_EXPANDED_LINE_LIMIT = 1000;
+
+/** EventService delivery validates every known tag against its schema, so the tag identifies the shape. */
+export const isTaskTreeStartEvent = (event: LandoEvent): event is TaskTreeStartEvent =>
+  event._tag === "task.tree.start";
+
 const asString = (value: unknown): string | undefined => (typeof value === "string" ? value : undefined);
 const asNumber = (value: unknown): number | undefined => (typeof value === "number" ? value : undefined);
 const asTreeOutcome = (value: unknown): "failure" | "interrupted" | undefined =>
@@ -85,26 +91,22 @@ export class TaskTreeViewModel implements TaskTreeInteractionModel {
   apply(event: LandoEvent): void {
     switch (event._tag) {
       case "task.tree.start": {
+        if (!isTaskTreeStartEvent(event)) return;
         this.#resetTreeState();
-        const uniqueChildren = Array.isArray(event.children)
-          ? [...new Set(event.children.filter((child): child is string => typeof child === "string"))]
-          : [];
+        const uniqueChildren = [...new Map(event.children.map((child) => [child.id, child])).values()];
         this.#tree = {
-          parentId: asString(event.parentId) ?? "tree",
+          parentId: event.parentId,
           childCount: uniqueChildren.length,
-          label: asString(event.label) ?? "tasks",
+          label: event.label,
           done: false,
           summary: undefined,
           succeeded: 0,
           failed: 0,
           durationMs: undefined,
         };
-        for (const childId of uniqueChildren) {
-          this.#order.push(childId);
-          this.#tasks.set(
-            childId,
-            this.#newTask({ id: childId, label: childId, status: "pending", transcriptPath: undefined }),
-          );
+        for (const { id, label } of uniqueChildren) {
+          this.#order.push(id);
+          this.#tasks.set(id, this.#newTask({ id, label, status: "pending", transcriptPath: undefined }));
         }
         return;
       }

@@ -19,7 +19,7 @@ const publishStartupTasks = Effect.gen(function* () {
     _tag: "task.tree.start",
     parentId: "app:start",
     label: "Starting",
-    children: ["app:start:web"],
+    children: [{ id: "app:start:web", label: "app:start:web" }],
     timestamp: "2026-06-04T00:00:00.000Z",
   });
   yield* events.publish({
