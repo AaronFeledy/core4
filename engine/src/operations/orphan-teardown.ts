@@ -38,16 +38,16 @@ import { ownedCleanupChanged, prepareOwnedResourceCleanup } from "./owned-resour
 import { withShutdownObservations } from "./shutdown-observations.ts";
 
 /** A damaged or newer-format applied record protects its app's resources from the sweep. */
-const isProtectedAppliedState = <E extends { readonly _tag: string }>(
+export const isProtectedAppliedState = <E extends { readonly _tag: string }>(
   error: E,
 ): error is Extract<E, ProviderUnavailableError | AppliedStateVersionError> =>
   error._tag === "AppliedStateVersionError" ||
   (error instanceof ProviderUnavailableError && error.operation === "applied-state.read");
 
 export interface OrphanTeardownOptions {
-  /** Remove the data volumes recorded against the root; `stop` never does. */
+  /** Remove the data volumes recorded against the root. */
   readonly volumes: boolean;
-  /** Remove the cache volumes recorded against the root; `stop` never does. */
+  /** Remove the cache volumes recorded against the root. */
   readonly purgeCaches: boolean;
 }
 
@@ -74,9 +74,9 @@ const now = () => DateTime.nowUnsafe();
  * `RuntimeProviderRegistry.select` resolves a provider from `plan.provider` alone, and the app
  * mutation lock is keyed on the app being torn down, so an orphan group still needs a plan-shaped
  * value for both even though no plan survives. It describes no resources: every container and
- * volume here is removed by the identity the provider itself observed.
+ * volume here is acted on by the identity the provider itself observed.
  */
-const selectionPlan = (group: AppliedOrphanGroup, root: AbsolutePath): AppPlan => ({
+export const orphanSelectionPlan = (group: AppliedOrphanGroup, root: AbsolutePath): AppPlan => ({
   id: group.appId,
   name: String(group.appId),
   slug: String(group.appId),
@@ -116,7 +116,7 @@ export const tearDownOrphans = Effect.fnUntraced(function* (input: {
       const observationSources: Array<readonly ServiceShutdownObservation[] | undefined> = [];
       const volumesRemoved: { data: number; cache: number } = { ...noVolumesRemoved };
       for (const group of input.groups) {
-        const plan = selectionPlan(group, input.root);
+        const plan = orphanSelectionPlan(group, input.root);
         const ref = { id: group.appId, root: input.root };
         let protectedState = false;
         yield* withAppMutationLock(
@@ -172,7 +172,9 @@ export const tearDownOrphans = Effect.fnUntraced(function* (input: {
                 protectedState = isProtectedAppliedState(error);
               }),
             ),
-            Effect.ensuring(Effect.suspend(() => (protectedState ? Effect.void : cleanupAppWorkers(ref)))),
+            Effect.ensuring(
+              Effect.suspend(() => (protectedState ? Effect.void : cleanupAppWorkers(ref, "retire"))),
+            ),
           ),
         ).pipe(
           Effect.catchIf(isProtectedAppliedState, (error) =>

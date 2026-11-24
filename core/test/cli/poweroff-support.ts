@@ -4,6 +4,7 @@ import { LandofileValidationError, ProviderUnavailableError, ScratchAppError } f
 import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
 import type {
   AppliedOrphanGroup,
+  BringDownOptions,
   ProviderRuntimeSnapshot,
   ScratchSummary,
   ServiceRuntimeInfo,
@@ -60,9 +61,11 @@ export const makePoweroffFixture = async (input: PoweroffFixtureInput) => {
     appliedPlans: Effect.succeed([]),
     list: () => Effect.succeed([]),
     listVolumes: () => Effect.succeed([]),
-    bringDown: (target: { readonly app: string; readonly plan?: AppPlan }) =>
+    bringDown: (target: { readonly app: string; readonly plan?: AppPlan }, options: BringDownOptions) =>
       Effect.gen(function* () {
-        calls.push(`destroy:${String(target.plan?.root ?? target.app)}`);
+        calls.push(
+          `${options.containers === "stop" ? "stop" : "destroy"}:${String(target.plan?.root ?? target.app)}`,
+        );
         if (input.destroyFailureRoot !== undefined && String(target.plan?.root) === input.destroyFailureRoot)
           return yield* Effect.fail(
             new ProviderUnavailableError({
@@ -72,7 +75,19 @@ export const makePoweroffFixture = async (input: PoweroffFixtureInput) => {
               remediation: "Restore provider access and retry `lando poweroff`.",
             }),
           );
-        return { kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } };
+        if (options.containers === "remove")
+          return { kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } };
+        // Stop answers for the app's observed containers, as a real provider does.
+        return {
+          kind: "stopped" as const,
+          containers: (input.services ?? [])
+            .filter((service) => service.appRoot === target.plan?.root)
+            .map((service) => ({
+              service: service.service,
+              ...(service.containerId === undefined ? {} : { containerId: service.containerId }),
+              action: "stopped" as const,
+            })),
+        };
       }),
     bringDownObserved: (service: ServiceRuntimeInfo) =>
       Effect.sync(() => {

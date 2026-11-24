@@ -247,8 +247,17 @@ const makeStopLayer = (
     bringDown: (target, options) =>
       Effect.sync(() => {
         destroyCalls.push({ target, options });
+        if (options.containers === "remove")
+          return { kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } };
+        const containers = Object.values(plannedApp.services)
+          .reverse()
+          .map((service) => ({
+            service: service.name,
+            containerId: `${service.name}-container`,
+            action: stopped.has(service.name) ? ("already-stopped" as const) : ("stopped" as const),
+          }));
         for (const service of Object.values(plannedApp.services)) stopped.add(service.name);
-        return { kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } };
+        return { kind: "stopped" as const, containers };
       }),
     exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
     execStream: () => Stream.die("not used"),
@@ -338,7 +347,7 @@ describe("lando stop", () => {
     expect(harness.destroyCalls).toEqual([]);
     expect(renderStopAppResult(result)).toBe("stopped: test-stop (runtime idle; nothing was running)");
   });
-  test("plans the app, destroys provider-lando without volumes, publishes stop events, and renders stopped services", async () => {
+  test("plans the app, stops provider-lando containers without removing anything, publishes stop events, and renders stopped services", async () => {
     const harness = makeStopLayer();
     const result = await Effect.runPromise(stopApp().pipe(Effect.provide(harness.layer)));
 
@@ -357,13 +366,14 @@ describe("lando stop", () => {
     ]);
     expect(harness.destroyCalls).toHaveLength(1);
     expect(harness.destroyCalls[0]?.target).toEqual({ app: plan.id, plan: harness.currentPlan });
-    expect(harness.destroyCalls[0]?.options).toEqual({
-      containers: "remove",
-      volumes: false,
-      removeState: false,
-    });
+    expect(harness.destroyCalls[0]?.options).toEqual({ containers: "stop" });
     expect(harness.volumes.has("test_stop_database_data")).toBe(true);
+    expect(result.outcome).toBe("stopped");
     expect(result.servicesStopped).toEqual(["database", "web"]);
+    expect(result.containers).toEqual([
+      { service: ServiceName.make("database"), containerId: "database-container", action: "stopped" },
+      { service: ServiceName.make("web"), containerId: "web-container", action: "stopped" },
+    ]);
     expect(renderStopAppResult(result)).toBe("stopped: test-stop - database, web");
   });
 
@@ -419,14 +429,23 @@ describe("lando stop", () => {
     }
   });
 
-  test("succeeds when the app is already stopped", async () => {
+  test("a second stop is unchanged and keeps every container", async () => {
     const harness = makeStopLayer();
 
     await Effect.runPromise(stopApp().pipe(Effect.provide(harness.layer)));
     const second = await Effect.runPromise(stopApp().pipe(Effect.provide(harness.layer)));
 
-    expect(second.servicesStopped).toEqual(["database", "web"]);
-    expect(harness.destroyCalls).toHaveLength(2);
+    expect(second.outcome).toBe("unchanged");
+    expect(second.servicesStopped).toEqual([]);
+    expect(second.containers?.map((container) => container.action)).toEqual([
+      "already-stopped",
+      "already-stopped",
+    ]);
+    expect(harness.destroyCalls.map((call) => call.options)).toEqual([
+      { containers: "stop" },
+      { containers: "stop" },
+    ]);
+    expect(renderStopAppResult(second)).toBe("unchanged: test-stop - already stopped: database, web");
   });
 
   test("does not auto-stop global services when the app plan declares global requirements", async () => {

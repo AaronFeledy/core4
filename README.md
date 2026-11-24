@@ -80,7 +80,7 @@ Drupal site is not installed yet. Continue with the
 [Drupal guide](./docs/guides/recipes/drupal-workflow.mdx) to install the site or
 bring in an existing project's data.
 
-When you finish, stop the environment without deleting its data:
+When you finish, stop the environment. Its containers and data stay, and the next `lando start` picks up where you left off:
 
 ```sh
 lando stop

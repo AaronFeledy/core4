@@ -305,7 +305,7 @@ A service with `pull_policy: build` builds its image on every start. See [Contro
 
 ### After the containers are replaced
 
-A `build.app` step's result is good only for the container it ran in. `lando stop`, bare `lando restart`, and `lando destroy` all remove the app's containers, so the start that follows runs every `build.app` step again in the new ones. So does a `lando start` that recreates one service's container for a Landofile change, for that service. `lando restart -s <service>` runs no build steps when it keeps the container. When it replaces the container, that service's `build.app` steps run again. [When a step runs again](./build-steps.mdx#when-a-step-runs-again) has the full list.
+A `build.app` step's result is good only for the container it ran in. `lando destroy` removes the app's containers, so the start that follows runs every `build.app` step again in the new ones. So does a `lando start` or bare `lando restart` that recreates one service's container for a Landofile change, for that service. `lando stop` and bare `lando restart` otherwise keep the containers, so their steps stay cached. `lando restart -s <service>` runs no build steps when it keeps the container. When it replaces the container, that service's `build.app` steps run again. [When a step runs again](./build-steps.mdx#when-a-step-runs-again) has the full list.
 
 A successful `lando destroy` also removes the app's saved build output. This is the start after a destroy:
 

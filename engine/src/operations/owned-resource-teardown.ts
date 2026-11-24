@@ -1,4 +1,3 @@
-import { basename } from "node:path";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import {
   type AbsolutePath,
@@ -12,24 +11,21 @@ import {
 import { type OwnedResourcesCleanupOptions, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { Effect } from "effect";
 import { runAllAndMergeFailures } from "../lifecycle/failure-compensation.ts";
-import { withAppMutationLock } from "./app-mutation-lock.ts";
 
 export const prepareOwnedResourceCleanup = Effect.fnUntraced(function* (
   root: AbsolutePath,
   options: OwnedResourcesCleanupOptions,
-  intent: "stop" | "destroy" = "destroy",
 ) {
   const registry = yield* RuntimeProviderRegistry;
   const evidence = yield* registry.resolveTeardownEvidence(root);
   const ownership = evidence.kind !== "absent" ? (evidence.ownership ?? []) : [];
-  return yield* prepareOwnedResourceCleanupFrom(ownership, root, options, intent);
+  return yield* prepareOwnedResourceCleanupFrom(ownership, root, options);
 });
 
 export const prepareOwnedResourceCleanupFrom = Effect.fnUntraced(function* (
   ownership: ReadonlyArray<ResourceOwnership>,
   root: AbsolutePath,
   options: OwnedResourcesCleanupOptions,
-  intent: "stop" | "destroy" = "destroy",
 ) {
   const registry = yield* RuntimeProviderRegistry;
   const providers = yield* Effect.forEach(ownership, (hints) =>
@@ -45,14 +41,7 @@ export const prepareOwnedResourceCleanupFrom = Effect.fnUntraced(function* (
             remediation: "Restore the owning provider before retrying teardown.",
           }),
         );
-      if ((yield* provider.getStatus).state === "idle") {
-        if (intent === "stop")
-          return () =>
-            Effect.succeed<OwnedResourcesCleanupResult>({
-              servicesRemoved: [],
-              networksRemoved: 0,
-              volumesRemoved: { ...noVolumesRemoved },
-            });
+      if ((yield* provider.getStatus).state === "idle")
         return yield* Effect.fail(
           new ProviderUnavailableError({
             providerId: hints.providerId,
@@ -61,7 +50,6 @@ export const prepareOwnedResourceCleanupFrom = Effect.fnUntraced(function* (
             remediation: "Inspect the runtime readiness failure with `lando doctor`, then retry destroy.",
           }),
         );
-      }
       return (root: AbsolutePath, options: OwnedResourcesCleanupOptions) =>
         cleanup(root, { ...options, appIds: hints.appIds });
     }),
@@ -95,23 +83,6 @@ export const prepareOwnedResourceCleanupFrom = Effect.fnUntraced(function* (
     const { skipped, ...removed } = result;
     return { ...removed, ...(skipped.length === 0 ? {} : { skipped }) };
   });
-});
-
-export const tearDownOwnedResources = Effect.fnUntraced(function* (
-  root: AbsolutePath,
-  options: OwnedResourcesCleanupOptions,
-  intent: "stop" | "destroy" = "destroy",
-) {
-  const registry = yield* RuntimeProviderRegistry;
-  const evidence = yield* registry.resolveTeardownEvidence(root);
-  const ownership = evidence.kind !== "absent" ? (evidence.ownership ?? []) : [];
-  return yield* withAppMutationLock(
-    { id: ownership[0]?.appIds[0] ?? basename(root), root },
-    Effect.gen(function* () {
-      const cleanup = yield* prepareOwnedResourceCleanup(root, options, intent);
-      return yield* cleanup;
-    }),
-  );
 });
 
 export const ownedCleanupChanged = (result: OwnedResourcesCleanupResult): boolean =>

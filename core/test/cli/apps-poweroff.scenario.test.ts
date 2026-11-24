@@ -115,7 +115,7 @@ describe("apps:poweroff command", () => {
     });
     const result = await Effect.runPromise(poweroff().pipe(Effect.provide(fixture.layer)));
     expect(fixture.calls.slice(0, 3)).toEqual([
-      `destroy:${dataRoot}`,
+      `stop:${dataRoot}`,
       "scratch:scratch-1",
       "scratch-reason:scratch-1",
     ]);
@@ -211,7 +211,7 @@ describe("apps:poweroff command", () => {
     const result = await Effect.runPromise(
       poweroff({ keepGlobal: true, keepScratch: true }).pipe(Effect.provide(fixture.layer)),
     );
-    expect(fixture.calls).toEqual([`destroy:${dataRoot}`]);
+    expect(fixture.calls).toEqual([`stop:${dataRoot}`]);
     expect(result.apps.filter((app) => app.kind === "user")).toHaveLength(1);
     expect(result.keptGlobalApp).toBe(true);
     expect(result.keptScratchApps).toBe(1);

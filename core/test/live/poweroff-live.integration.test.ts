@@ -124,7 +124,7 @@ const containers = Schema.decodeUnknownSync(
 );
 
 test.skipIf(!liveEnabled)(
-  "poweroff stops active apps with their hooks, removes scratch and orphan resources, and continues after a failed stop",
+  "poweroff stops active apps with their hooks, stops orphaned roots in place, removes scratch, and continues after a failed stop",
   async () => {
     // The managed socket is tied to the test data root provisioned by the live job.
     for (const key of ["LANDO_USER_DATA_ROOT", "LANDO_USER_CONF_ROOT", "LANDO_USER_CACHE_ROOT"] as const) {
@@ -254,7 +254,9 @@ test.skipIf(!liveEnabled)(
       expect(result.apps.some(({ appId }) => appId === b.id)).toBe(false);
       expect(await hookCount(bLog)).toBe(bBefore);
       expect(result.apps.find(({ appId }) => appId === c.id)).toMatchObject({ outcome: "stopped" });
-      expect(await containerInventory(`${APP_ROOT_LABEL}=${c.root}`)).toEqual([]);
+      expect((await containerInventory(`${APP_ROOT_LABEL}=${c.root}`)).map(({ State }) => State)).toEqual([
+        "exited",
+      ]);
       expect(await volume()).toBe(`${c.id}-data`);
       expect(await Bun.file(routeFile).exists()).toBe(false);
       expect(result.apps.find(({ appId }) => appId === scratch.id)).toMatchObject({ outcome: "destroyed" });

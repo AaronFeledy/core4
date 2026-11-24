@@ -97,10 +97,10 @@ A `build.app` step did its work inside one container, so its result counts only 
 | What you ran | `build.app` steps |
 | --- | --- |
 | `lando start` again, container kept | Cached |
+| `lando stop`, then `lando start` | Cached. Stop keeps the container, and so does the step's work |
+| `lando restart` | Cached, for every container it keeps |
 | `lando restart -s <service>`, container kept | Not run. The container stays, and so does the step's work |
-| `lando restart -s <service>` that replaces or creates the container | Run again, for that service only |
-| `lando stop`, then `lando start` | Run again |
-| `lando restart` | Run again |
+| `lando restart` or `lando restart -s <service>` that replaces or creates a container | Run again, for that service only |
 | `lando destroy`, then `lando start` | Run again |
 | `lando start` after a Landofile change that recreates a container, such as a new image, command, environment, or mount | Run again, for the recreated service only |
 | `lando rebuild` | Run again, always |
@@ -113,12 +113,12 @@ An interrupted `build.app` step needs no cleanup. Press Ctrl-C during `lando sta
 
 Because `build.app` steps repeat, write them so a second run is harmless. `npm ci`, `composer install`, and the `ln -sf` above already are. Your app mount and named volumes outlive the container, so a rerun step finds the files its last run left there. A step that appends to a file in your project should check before it appends.
 
-Put anything that belongs to the image in `build.artifact`: system packages and global tools. The image keeps them across `lando stop`, and nothing has to run again.
+Put anything that belongs to the image in `build.artifact`: system packages and global tools. The image keeps them when Lando replaces a container, and nothing has to run again.
 
 Two limits:
 
 - Lando doesn't read the files a `build.app` step uses. Editing `package-lock.json` doesn't rerun `npm ci` in a container that stayed. Run `lando rebuild` for that.
-- A `tmpfs` mount is emptied whenever its container stops, including a `lando restart -s <service>` that keeps the container, and the step isn't rerun to fill it.
+- A `tmpfs` mount is emptied whenever its container stops, including `lando stop` and `lando restart`, which keep the container, and the step isn't rerun to fill it.
 
 ## Read step output and failures
 

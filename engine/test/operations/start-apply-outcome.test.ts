@@ -67,16 +67,25 @@ describe("apply outcome notices", () => {
     expect(result.servicesStarted[0]?.container).toBeUndefined();
   });
 
-  test("a bare restart announces nothing but reports what apply did", async () => {
-    // Given apply replaced every container after the halt.
+  test("a bare restart announces a replacement like start, since its halt keeps containers", async () => {
+    // Given apply replaced a drifted container after the stop-only halt.
     const harness = makeHarness({
-      applyOutcome: outcome({ web: { action: "replaced", reason: "reconcile" } }),
+      applyOutcome: outcome({ web: { action: "replaced", reason: "config" } }),
     });
     // When the whole app restarts.
     const result = await Effect.runPromise(restartApp({}, target()).pipe(Effect.provide(harness.layer)));
-    // Then the designed recreation is not narrated, but the result still says what happened.
+    // Then the replacement is announced and reported, as an ordinary start does.
+    expect(noticeBodies(harness)).toEqual([
+      "Lando replaced web's container because its configuration changed.",
+    ]);
+    expect(result.servicesStarted[0]?.container).toEqual({ action: "replaced", reason: "config" });
+  });
+
+  test("a bare restart announces nothing when it started the kept containers in place", async () => {
+    const harness = makeHarness({ applyOutcome: outcome({ web: { action: "started" } }) });
+    const result = await Effect.runPromise(restartApp({}, target()).pipe(Effect.provide(harness.layer)));
     expect(noticeBodies(harness)).toEqual([]);
-    expect(result.servicesStarted[0]?.container).toEqual({ action: "replaced", reason: "reconcile" });
+    expect(result.servicesStarted[0]?.container).toEqual({ action: "started" });
   });
 
   test("a whole-app rebuild announces nothing but reports what apply did", async () => {

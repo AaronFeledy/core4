@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
-import { AppId, ProviderId, appIdentityKey } from "@lando/sdk/schema";
+import { AppId, ProviderId, ServiceName, appIdentityKey } from "@lando/sdk/schema";
 import type { ServiceRuntimeInfo } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect } from "effect";
@@ -70,7 +70,93 @@ test("selected internal stop preserves the non-teardown orphan refusal", async (
   expect(removals).toBe(0);
 });
 
-for (const operation of ["stop", "destroy"] as const) {
+test("stop never touches the ownership inventory", async () => {
+  // Given an applied app on provider A and an inventory record for a failed app on provider B
+  const applied = {
+    ...plan,
+    identity: { appRoot: plan.root, ownerKey: appIdentityKey("owner", plan.root) },
+  };
+  const calls: string[] = [];
+  const a = {
+    ...TestRuntimeProvider,
+    id: "lando",
+    appliedPlans: Effect.succeed([applied]),
+    isAvailable: Effect.succeed(true),
+    bringDown: () =>
+      Effect.sync(() => {
+        calls.push("a");
+        return {
+          kind: "stopped" as const,
+          containers: [
+            { service: ServiceName.make("web"), containerId: "web-1", action: "stopped" as const },
+          ],
+        };
+      }),
+  };
+  const b = {
+    ...TestRuntimeProvider,
+    id: "docker",
+    appliedPlans: Effect.succeed([]),
+    isAvailable: Effect.succeed(true),
+    resourceOwnership: () =>
+      Effect.succeed({
+        ...applied.identity,
+        providerId: ProviderId.make("docker"),
+        appIds: [AppId.make("failed-b")],
+      }),
+    canCleanupOwnedResources: Effect.succeed(true),
+    cleanupOwnedResources: () => Effect.die("stop must not clean up the ownership inventory"),
+  };
+  const harness = makeHarness({
+    plannedApp: applied,
+    providerOverrides: a,
+    selectProvider: (target) =>
+      Effect.succeed((typeof target === "string" ? target : target?.provider) === "docker" ? b : a),
+    resolveAppliedPlan: () => Effect.succeed(applied),
+    resolveTeardownEvidence: (root) => resolveTeardownEvidence(root, [a, b]),
+  });
+  // When
+  const result = await Effect.runPromise(
+    withResolvedCwd(plan.root, stopApp()).pipe(Effect.provide(harness.layer)),
+  );
+  // Then only the applied app's containers were stopped
+  expect(calls).toEqual(["a"]);
+  expect(result).toMatchObject({ outcome: "stopped", servicesStopped: ["web"] });
+});
+
+test("stop at a root with only ownership records reports unchanged without cleanup", async () => {
+  // Given
+  const hints = {
+    appRoot: plan.root,
+    ownerKey: appIdentityKey("owner", plan.root),
+    providerId: plan.provider,
+    appIds: [plan.id],
+  };
+  const provider = {
+    ...TestRuntimeProvider,
+    id: "lando",
+    isAvailable: Effect.succeed(true),
+    cleanupOwnedResources: () => Effect.die("stop must not clean up the ownership inventory"),
+  };
+  const harness = makeHarness({
+    selectProvider: () => Effect.succeed(provider),
+    appliedPlans: [],
+    resolveAppliedPlan: () => Effect.succeed(undefined),
+    resolveTeardownEvidence: () => Effect.succeed({ kind: "owned", ownership: [hints] }),
+  });
+  const target = {
+    plan,
+    root: plan.root,
+    app: { kind: "user" as const, id: plan.id, root: plan.root },
+    landofile: literalTestLandofile({ name: plan.name, services: {} }),
+  };
+  // When
+  const result = await Effect.runPromise(stopAppForTarget({}, target).pipe(Effect.provide(harness.layer)));
+  // Then
+  expect(result).toMatchObject({ outcome: "unchanged", servicesStopped: [] });
+});
+
+for (const operation of ["destroy"] as const) {
   test(`${operation} refuses hints from a host-supported but stopped provider`, async () => {
     // Given
     let mutations = 0;
@@ -104,10 +190,7 @@ for (const operation of ["stop", "destroy"] as const) {
     });
     // When
     const exit = await Effect.runPromiseExit(
-      withResolvedCwd(
-        plan.root,
-        operation === "stop" ? stopApp().pipe(Effect.asVoid) : destroyApp().pipe(Effect.asVoid),
-      ).pipe(Effect.provide(harness.layer)),
+      withResolvedCwd(plan.root, destroyApp().pipe(Effect.asVoid)).pipe(Effect.provide(harness.layer)),
     );
     // Then
     expect(exit._tag).toBe("Failure");
@@ -146,14 +229,14 @@ for (const operation of ["stop", "destroy"] as const) {
     };
     // When
     const outcome = await Effect.runPromise(
-      (operation === "stop"
-        ? stopAppForTarget({}, target).pipe(Effect.map((result) => result.outcome))
-        : destroyAppForTarget({}, target).pipe(Effect.map((result) => result.outcome))
-      ).pipe(Effect.provide(harness.layer)),
+      destroyAppForTarget({}, target).pipe(
+        Effect.map((result) => result.outcome),
+        Effect.provide(harness.layer),
+      ),
     );
     // Then
     expect(cleaned).toBe(true);
-    expect(outcome).toBe(operation === "stop" ? "stopped" : "destroyed");
+    expect(outcome).toBe("destroyed");
   });
   test(`${operation} cleans failed provider B alongside applied provider A`, async () => {
     // Given
@@ -201,16 +284,13 @@ for (const operation of ["stop", "destroy"] as const) {
     });
     // When
     const outcome = await Effect.runPromise(
-      withResolvedCwd(
-        plan.root,
-        operation === "stop"
-          ? stopApp().pipe(Effect.map((result) => result.outcome))
-          : destroyApp().pipe(Effect.map((result) => result.outcome)),
-      ).pipe(Effect.provide(harness.layer)),
+      withResolvedCwd(plan.root, destroyApp().pipe(Effect.map((result) => result.outcome))).pipe(
+        Effect.provide(harness.layer),
+      ),
     );
     // Then
     expect(calls).toEqual(["a", "b"]);
-    expect(outcome).toBe(operation === "stop" ? "stopped" : "destroyed");
+    expect(outcome).toBe("destroyed");
   });
 
   test(`${operation} reports unchanged when every ownership hint is already absent`, async () => {
@@ -237,12 +317,9 @@ for (const operation of ["stop", "destroy"] as const) {
     });
     // When
     const outcome = await Effect.runPromise(
-      withResolvedCwd(
-        plan.root,
-        operation === "stop"
-          ? stopApp().pipe(Effect.map((result) => result.outcome))
-          : destroyApp().pipe(Effect.map((result) => result.outcome)),
-      ).pipe(Effect.provide(harness.layer)),
+      withResolvedCwd(plan.root, destroyApp().pipe(Effect.map((result) => result.outcome))).pipe(
+        Effect.provide(harness.layer),
+      ),
     );
     // Then
     expect(retired).toBe(true);

@@ -9,6 +9,7 @@ import {
   AbsolutePath,
   AppId,
   type AppPlan,
+  type BringDownOptions,
   LANDO_DATA_ROOT_LABEL,
   ProviderId,
   ServiceName,
@@ -160,12 +161,24 @@ const makeHarness = async (input: {
         calls.push(`remove:${service.appRoot}`);
         return { service: service.service, action: "removed" as const };
       }),
-    bringDown: (target: { readonly app: string; readonly plan?: AppPlan }) =>
+    bringDown: (target: { readonly app: string; readonly plan?: AppPlan }, options: BringDownOptions) =>
       Effect.gen(function* () {
         calls.push(`destroy:${target.plan?.root ?? "global"}`);
         const failure = target.plan === undefined ? undefined : failures.get(String(target.plan.root));
         if (failure !== undefined) return yield* Effect.fail(failure);
-        return { kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } };
+        if (options.containers === "remove")
+          return { kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } };
+        // Stop answers for the app's observed container, as a real provider does.
+        return {
+          kind: "stopped" as const,
+          containers: services
+            .filter((service) => service.appRoot === target.plan?.root && service.app === target.app)
+            .map((service) => ({
+              service: service.service,
+              ...(service.containerId === undefined ? {} : { containerId: service.containerId }),
+              action: service.status === "exited" ? ("already-stopped" as const) : ("stopped" as const),
+            })),
+        };
       }),
   };
   const registry = makeTestRuntimeProviderRegistry({

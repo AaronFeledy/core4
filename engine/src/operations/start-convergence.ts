@@ -18,17 +18,6 @@ const removalNotice = (services: ReadonlyArray<string>): string => {
   return `${names} ${one ? "is" : "are"} no longer defined in the Landofile, so Lando removed ${one ? "its container" : "their containers"}. Named volumes were kept.`;
 };
 
-/** Announces the services a halt removed because the Landofile no longer defines them. */
-export const publishRemovalNotice = Effect.fnUntraced(function* (
-  events: EventService["Service"],
-  services: ReadonlyArray<string>,
-) {
-  if (services.length === 0) return;
-  yield* events.publish(
-    MessageInfoEvent.make({ body: removalNotice(services), timestamp: DateTime.nowUnsafe() }),
-  );
-});
-
 /** The deduplicated, sorted union of every removed-service list an operation collected. */
 export const mergeRemovedServices = (
   ...groups: ReadonlyArray<ReadonlyArray<string> | undefined>
@@ -43,33 +32,6 @@ const ownershipRefusal = (plan: AppPlan, observation: ServiceRuntimeInfo) => {
     remediation: `Inspect container ${container} with your container runtime and remove it if it is a leftover, then retry \`lando start\`.`,
   });
 };
-
-/**
- * Services the applied plan dropped whose containers a halt is about to remove. Observing first
- * proves each container exists; the provider is asked only when the applied plan names a drop.
- */
-export const servicesHaltWillRemove = Effect.fn("AppOperation.servicesHaltWillRemove")(function* (
-  applied: AppPlan | undefined,
-  desired: AppPlan,
-  provider: Pick<RuntimeProviderShape, "list">,
-): Effect.fn.Return<ReadonlyArray<string>, ProviderError> {
-  if (applied === undefined) return [];
-  const dropped = Object.keys(applied.services).filter((name) => !Object.hasOwn(desired.services, name));
-  if (dropped.length === 0) return [];
-  const appRoot = planAppIdentity(applied).appRoot;
-  const observed = yield* provider.list({ app: applied.id, includeUnplanned: true });
-  const present = new Set(
-    observed
-      .filter(
-        (observation) =>
-          observation.containerId !== undefined &&
-          observation.app === applied.id &&
-          observation.appRoot === appRoot,
-      )
-      .map((observation) => String(observation.service)),
-  );
-  return dropped.filter((name) => present.has(name)).sort();
-});
 
 /**
  * Removes service containers this app owns that its desired plan no longer names.
@@ -105,8 +67,8 @@ export const convergeRemovedServices = Effect.fn("AppOperation.convergeRemovedSe
   const candidates = observations
     .filter(
       (observation) =>
-        // A service still in the applied record whose container is already gone (after a stop or a
-        // restart's halt) has nothing to remove; the complete apply drops it from the record.
+        // A service still in the applied record whose container is already gone has nothing to
+        // remove; the complete apply drops it from the record.
         observation.containerId !== undefined &&
         observation.app === plan.id &&
         observation.appRoot === appRoot &&

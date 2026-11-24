@@ -10,15 +10,25 @@ import { HOST_PROXY_CREDENTIALS_NAME } from "./run-directory.ts";
 import type { HostProxyInFlightRequest } from "./transport-handler.ts";
 import type { HostProxySessionPaths } from "./transport-session.ts";
 
+/**
+ * Ends the app's host-proxy worker. `stop` keeps the container-facing directory and its generation
+ * so the app's stopped containers start again in place; `retire` removes the whole run directory.
+ */
 export const cleanupHostProxyRunLandoState = Effect.fnUntraced(
   function* (
     app: Pick<AppRef, "id" | "root">,
-    paths?: RootOverrides,
+    paths: RootOverrides | undefined,
+    intent: "stop" | "retire",
   ): Effect.fn.Return<void, never, PrivateFileAccessService> {
     const privateFileAccess = yield* PrivateFileAccessService;
-    const { removeOwnedHostProxyWorkerState } = yield* Effect.promise(() => import("./worker-ownership.ts"));
-    yield* removeOwnedHostProxyWorkerState(app, paths, {
+    const ownership = yield* Effect.promise(() => import("./worker-ownership.ts"));
+    if (intent === "retire") {
+      yield* ownership.removeOwnedHostProxyWorkerState(app, paths, { privateFileAccess });
+      return;
+    }
+    yield* ownership.stopOwnedHostProxyWorker(app, {
       privateFileAccess,
+      ...(paths === undefined ? {} : { paths }),
     });
   },
   Effect.catch(() => Effect.void),
