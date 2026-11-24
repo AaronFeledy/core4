@@ -42,16 +42,23 @@ lando init --recipe sveltekit --name=my-sveltekit --yes \
 
 The scaffold writes only `.lando.yml`. It declares a `web` service on `node:<node>` with an HTTP endpoint on port 5173 and your adapter choice exposed as the `SVELTEKIT_ADAPTER` environment variable. Pick `postgres` or `mariadb` and the Landofile adds a `database` service of that type that `web` waits on. Keep `none` and there is no `database` service at all.
 
-Lando sets `PORT` from `port:` (default `5173` here), but Vite does not read it automatically. Configure Vite's `server.host` as `0.0.0.0`, `server.port` as `Number(process.env.PORT)`, and `server.allowedHosts` with the hostname from `lando info`. Then run your project's dev script with `lando npm run dev`. An authored `environment.PORT` must match `port:` or planning fails. `lando start` keeps the Node service idle; it does not start Vite.
+`lando start` keeps the Node service idle; it does not start Vite. The Landofile declares a `dev` task for that. After installing your app and starting it, run:
 
-The Landofile declares `lando svelte`, and the `web` service adds `lando npm` and `lando npx`. All of them run inside `web`:
+{/* lando-lint: not-e2e the dev server runs in the foreground until interrupted */}
+```sh
+lando dev
+```
+
+`lando dev` runs `vite dev --host 0.0.0.0 --port 5173 --strictPort`, so the proxy can reach Vite on the recipe's port without any `server` settings in `vite.config`. It also sets Vite's `__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS` variable to the hostname Lando publishes for `web`, so Vite accepts requests through the proxy and still rejects every other hostname. It needs a started app. Change the `--port` value in `tooling.dev` when you change `port:`. An authored `environment.PORT` must match `port:` or planning fails.
+
+The Landofile also declares `lando svelte`, and the `web` service adds `lando npm` and `lando npx`. All of them run inside `web`:
 
 ```sh
 lando svelte --help
 lando npm install
 ```
 
-`lando svelte` runs the `svelte-kit` binary your project installed, through the project's package manager, so `lando svelte sync` runs the SvelteKit CLI in the container, not on your host. It never downloads SvelteKit, so install your dependencies first. A project that declares Yarn or pnpm in `package.json` gets `lando yarn`, or `lando pnpm` and `lando pnpx`, in place of `lando npm` and `lando npx`.
+`lando svelte` runs the `svelte-kit` binary your project installed, through the project's package manager, so `lando svelte sync` runs the SvelteKit CLI in the container, not on your host. `lando dev` runs the project's `vite` binary the same way. Neither downloads anything, so install your dependencies first. A project that declares Yarn or pnpm in `package.json` gets `lando yarn`, or `lando pnpm` and `lando pnpx`, in place of `lando npm` and `lando npx`.
 
 `lando start` prints the app URL at `https://<app-name>.lndo.site`. `lando info` repeats it.
 
@@ -63,6 +70,13 @@ lando npm install
       <Variable name="appName" value="sveltekit" display="my-sveltekit" />
       <Run command="lando init --recipe sveltekit --name={{appName}} --yes" />
     </Step>
+    <Hidden reason="Check that the scaffolded dev task lints clean and reads the published hostname">
+      <Step name="confirm-dev-task">
+        <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true,\\s*\"violations\":\\s*\\[\\s*\\]" } }} />
+        <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS\":\\s*\"\\{\\{ url\\.parse\\(services\\.web\\.url\\)\\.hostname \\}\\}\"" } }} />
+        <Verify command="lando app:config --format=json" expect={{ stdout: { not: { regex: "APP_URL" } } }} />
+      </Step>
+    </Hidden>
     <Step name="start">
       <Run command="lando start" />
       <Verify event="post-start" />

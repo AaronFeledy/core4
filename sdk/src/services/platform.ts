@@ -65,7 +65,10 @@ export class RouterService extends Context.Service<
      * `setup`: it acquires no ports, starts no services, and takes no Scope.
      */
     readonly revalidateStartup: Effect.Effect<void, ProxyError | RouterWatcherError>;
-    /** Externally visible authorities from the current acquisition, without mutating the router. */
+    /**
+     * Externally visible authorities from the router's recorded port acquisition, without mutating
+     * the router or probing ports. Empty when no acquisition is recorded; never a guessed default.
+     */
     readonly routeAuthorities?: (
       routes: ReadonlyArray<RoutePlan>,
     ) => Effect.Effect<ReadonlyArray<ProxyAuthority>, ProxyError>;

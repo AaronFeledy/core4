@@ -9,6 +9,7 @@ import { isPlainRecord } from "@lando/sdk/landofile";
 import { LandofileSourceValue, type ParsedPendingSite, SecretRef } from "@lando/sdk/schema";
 import { Schema } from "effect";
 import { templateSource } from "./expression-source.ts";
+import { serviceUrlReadPath } from "./service-url-reads.ts";
 
 const STATIC_SCOPES = new Set([
   "env",
@@ -37,6 +38,14 @@ export const captureTemplate = (site: ParsedPendingSite, context: ExpressionCont
   const segments = (parts: readonly PathSegment[]): readonly PathSegment[] =>
     parts.map((part) => (part.type === "dynamic" ? { ...part, expr: node(part.expr) } : part));
   const node = (value: ExpressionNode): ExpressionNode => {
+    // A public URL comes from the applied routes when the command runs, never from a capture.
+    const url = serviceUrlReadPath(value);
+    if (url !== undefined)
+      return {
+        kind: "Path",
+        head: "services",
+        segments: [{ type: "key", key: url.service }, { type: "prop", name: "url" }, ...segments(url.rest)],
+      };
     switch (value.kind) {
       case "Literal":
         return value;

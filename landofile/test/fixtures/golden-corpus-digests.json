@@ -77,7 +77,7 @@
     },
     {
       "fixture": "docs/guides/bun-shell-scripts/fixtures/scripts-demo",
-      "digest": "5d9430ae3101cc9c235fb83376a77bd7f6ba7ad82fa6ffdcf4348a56215a0cce"
+      "digest": "11fe427cdb5fbba8502a2c3688914f5a5b473613ffba114d1a1563481c392884"
     },
     {
       "fixture": "docs/guides/bun-shell-scripts/fixtures/service-front-matter",
@@ -601,8 +601,27 @@
       }
     },
     {
+      "fixture": "docs/guides/expressions/fixtures/expressions-url-event-phase",
+      "digest": "f03cba8f28d8ff5b6e7f9dfa7ea4d50be48a9dcbf57ca66a016087739312afdf"
+    },
+    {
       "fixture": "docs/guides/expressions/fixtures/expressions-url-no-route",
       "digest": "ae39c675777924609f85fe9470b92a30a96fe661533f254c7e164c02b72c21fd"
+    },
+    {
+      "fixture": "docs/guides/expressions/fixtures/expressions-url-tooling-live",
+      "digest": "0656876144d7fe8fbe116e47dab701515921b6adb33b2360e9694e755fc6407d"
+    },
+    {
+      "fixture": "docs/guides/expressions/fixtures/expressions-url-tooling-refused",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileLoadError"
+      }
+    },
+    {
+      "fixture": "docs/guides/expressions/fixtures/expressions-url-tooling",
+      "digest": "aa4fdb27b3b763a1b7872274abc5ef0651b20226e364bed8f6845f455ed62e8a"
     },
     {
       "fixture": "docs/guides/external-access/fixtures/external-access-demo",
@@ -1048,11 +1067,11 @@
     },
     {
       "fixture": "docs/guides/node-tanstack-start/fixtures/tanstack-start-demo",
-      "digest": "e1c970304aa7f411ae1b5689119ce49c8331f1ba1a2d75f3f1f489b229ed9c0b"
+      "digest": "e0acb0307496e3deafafbd3bd39717a4b2e9c84cebef11b4f34f86f6998472f3"
     },
     {
       "fixture": "docs/guides/node-tanstack-start/fixtures/tanstack-start-serve",
-      "digest": "54d9d70156f8a71ce995ecb1bf7f7e799c897b306803dd707f6ca113b9789a7b"
+      "digest": "fab529bf8a479cac887845326dc94e7c4d47200eacc7b4c80d9ba500633ab679"
     },
     {
       "fixture": "docs/guides/node-theme-assets/fixtures/php-theme-child",
@@ -1937,9 +1956,9 @@
         "digest": "60703b62deb60584757dd423b60c7ca8d39da5f0350e6a3fc1621c1ae19f0705"
       },
       "after": {
-        "digest": "67eb620f6dbb2c94dbab8b1ae5559b31bfd77abcfdec9d08e22a780048ac771f"
+        "digest": "7430ffa717b04e79daca1d812352667cb62f94012857a19028ccd2c8648ce00c"
       },
-      "reason": "The PHP images now compile bcmath, so the MageOS guide fixture no longer installs it in its artifact build step. The fixture also gained a schedule: job on appserver that runs Magento cron every minute as www-data, replacing the guide's host-terminal cron loop. The encoded document drops bcmath from that one install command and adds that one schedule entry. Composer now declares wrapper: true and describes its customized superuser environment and working directory (#2401)."
+      "reason": "The PHP images now compile bcmath, so the MageOS guide fixture no longer installs it in its artifact build step. The fixture also gained a schedule: job on appserver that runs Magento cron every minute as www-data, replacing the guide's host-terminal cron loop. The encoded document drops bcmath from that one install command and adds that one schedule entry. Composer now declares wrapper: true and describes its customized superuser environment and working directory (#2401). The fixture also gained a magento-install wrapper task whose base URL arguments read services.appserver.url (#2542)."
     },
     "docs/guides/migrating-recipes/fixtures/bare-recipe": {
       "before": {

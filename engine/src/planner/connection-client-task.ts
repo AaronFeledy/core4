@@ -15,6 +15,26 @@ import { Effect, Option } from "effect";
 import { canonicalMissingAppRoot } from "../operations/app-mutation-lock.ts";
 import { connectionClientsForPlan } from "./effective-tooling.ts";
 
+/**
+ * The applied plan recorded for this app, or undefined when none is recorded or the record belongs
+ * to another app, provider, or root. Filesystem-only: it never contacts the provider.
+ */
+export const readOwnAppliedPlan = Effect.fnUntraced(function* <E>(
+  registry: RuntimeProviderRegistry["Service"],
+  plan: AppPlan,
+  rootFailure: (cause: unknown) => E,
+) {
+  const root = AbsolutePath.make(yield* canonicalMissingAppRoot(plan.root).pipe(mapFailures(rootFailure)));
+  const recorded = yield* registry.readAppliedPlanStrict(plan);
+  return recorded !== undefined &&
+    recorded.id === plan.id &&
+    recorded.provider === plan.provider &&
+    planAppIdentity(recorded).appRoot === root &&
+    planAppIdentity(recorded).ownerKey === appIdentityKey("owner", root)
+    ? recorded
+    : undefined;
+});
+
 export const resolveConnectionClientTask = Effect.fnUntraced(function* (input: {
   readonly plan: AppPlan;
   readonly name: string;
@@ -38,16 +58,7 @@ export const resolveConnectionClientTask = Effect.fnUntraced(function* (input: {
   const registry = yield* Effect.serviceOption(RuntimeProviderRegistry);
   const plugins = yield* Effect.serviceOption(PluginRegistry);
   if (Option.isNone(registry) || Option.isNone(plugins)) return yield* Effect.fail(refused);
-  const root = AbsolutePath.make(yield* canonicalMissingAppRoot(input.plan.root).pipe(mapFailures(refusal)));
-  const recorded = yield* registry.value.readAppliedPlanStrict(input.plan);
-  const applied =
-    recorded !== undefined &&
-    recorded.id === input.plan.id &&
-    recorded.provider === input.plan.provider &&
-    planAppIdentity(recorded).appRoot === root &&
-    planAppIdentity(recorded).ownerKey === appIdentityKey("owner", root)
-      ? recorded
-      : undefined;
+  const applied = yield* readOwnAppliedPlan(registry.value, input.plan, refusal);
   const service = applied?.services[owner];
   const desired = input.plan.services[owner];
   if (

@@ -305,17 +305,12 @@ export const makeTraefikRouterService = (
     ...RouterService.of({
       ...ROUTER_IDENTITY,
       observeRoutes: makeRouteObserver(dependencies, pendingReload),
+      // Only a recorded acquisition proves the ports; a guessed default could name the wrong port.
       routeAuthorities: Effect.fn("RouterService.routeAuthorities")(function* (routes) {
         const acquisition = yield* readAcquisitionState(dependencies.fileSystem, dependencies.paths);
-        return authoritiesFor(
-          routes,
-          acquisition === undefined
-            ? DEFAULT_AUTHORITY_PORTS
-            : {
-                http: acquisition.httpPort,
-                https: acquisition.httpsPort,
-              },
-        );
+        return acquisition === undefined
+          ? []
+          : authoritiesFor(routes, { http: acquisition.httpPort, https: acquisition.httpsPort });
       }),
       prepare: Effect.fn("RouterService.prepare")(
         (config) =>

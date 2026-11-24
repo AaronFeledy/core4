@@ -20,9 +20,16 @@ import { type InvocationProgram, evaluateInvocationSite, siteExpression } from "
 import type { AuthoredOrigin } from "./provenance.ts";
 import { ROUTE_URL_SITE_REMEDIATION, isServiceEnvironmentValuePath } from "./route-url-expression.ts";
 import { eligibleBindingPath } from "./secret-reference.ts";
+import { readsServiceUrl } from "./service-url-reads.ts";
 
 export * from "./invocation-sites.ts";
-export { dynamicToolingNames, dynamicToolingReferenceIssues } from "./tooling-dynamic-references.ts";
+export { routeUrlSiteError } from "./route-url-expression.ts";
+export { serviceUrlReads } from "./service-url-reads.ts";
+export {
+  dynamicToolingNames,
+  dynamicToolingReferenceIssues,
+  serviceUrlPlacementIssues,
+} from "./tooling-dynamic-references.ts";
 export { consumedToolingInputs, toolingInvocationIssues } from "./tooling-invocation-input.ts";
 export { readsToolingData, toolingDataNames } from "./tooling-provenance.ts";
 export { bindToolingShellSite } from "./tooling-shell-binding.ts";
@@ -133,7 +140,14 @@ export const consumeSites = (input: {
   let document = input.document;
   const pendingSites: ParsedPendingSite[] = [];
   for (const site of input.pendingSites) {
-    const selfName = isServiceEnvironmentValuePath(site.path) ? site.path[1] : undefined;
+    const environmentSite = isServiceEnvironmentValuePath(site.path);
+    // Load admits URL reads outside a service environment only at invocation sites, where the
+    // applied route table supplies them when the command runs; keep the whole expression for then.
+    if (!environmentSite && readsServiceUrl(site.template)) {
+      pendingSites.push(site);
+      continue;
+    }
+    const selfName = environmentSite ? site.path[1] : undefined;
     const self = typeof selfName === "string" ? input.context.services?.[selfName] : undefined;
     const selfUrl = isPlainRecord(self) ? { url: self.url } : undefined;
     const plannerSelf = isPlainRecord(input.context.service) ? input.context.service : undefined;
@@ -214,7 +228,7 @@ export const consumeSites = (input: {
       input.renderText && typeof value === "number" && Number.isFinite(value) ? String(value) : value;
     // Load refuses a literal URL reference outside a service environment; a computed member
     // access can still produce the descriptor, so the destination is checked on the value too.
-    const misplacedRoute = containsRouteText(rendered) && !isServiceEnvironmentValuePath(site.path);
+    const misplacedRoute = containsRouteText(rendered) && !environmentSite;
     if (misplacedRoute || (input.renderText && !Schema.is(EnvironmentValue)(rendered)))
       return Result.fail(
         new ConfigExpressionError({

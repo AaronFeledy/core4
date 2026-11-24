@@ -9,7 +9,7 @@ import {
 } from "@lando/sdk/schema";
 import type { RouterServiceShape } from "@lando/sdk/services";
 import { Effect, Result } from "effect";
-import { primaryRouteCandidates, routeUrl } from "../operations/connection-url.ts";
+import { primaryConcreteRoute, routeUrl } from "../operations/connection-url.ts";
 import { routeUrlConsumers } from "../planner/route-url-validation.ts";
 
 const preparedRouteUrls = Symbol("PreparedRouteUrls");
@@ -44,6 +44,19 @@ const unsupported = (service: string) =>
     remediation: "Select a router that reports its published authorities and run `lando start`.",
   });
 
+/** The URL a router authority gives a route, or undefined when the router reports none for it. */
+export const authorizedRouteUrl = (
+  route: RoutePlan,
+  authorities: readonly ProxyAuthority[],
+): { readonly authority: ProxyAuthority; readonly url: string } | undefined => {
+  const scheme = route.scheme === "http" ? "http" : "https";
+  const authority = authorities.find(
+    (candidate) =>
+      candidate.scheme === scheme && candidate.hostname.toLowerCase() === route.hostname.toLowerCase(),
+  );
+  return authority === undefined ? undefined : { authority, url: routeUrl(route, scheme, authority.port) };
+};
+
 export const prepareRouteUrlBindings = Effect.fn("Activation.prepareRouteUrlBindings")(function* (input: {
   readonly plan: AppPlan;
   readonly routes: readonly RoutePlan[];
@@ -62,33 +75,25 @@ export const prepareRouteUrlBindings = Effect.fn("Activation.prepareRouteUrlBind
   const { router } = input;
   if (router?.routeAuthorities === undefined) return yield* unsupported(first);
   const available = yield* router.routeAuthorities(input.routes);
-  const services = new Map([
-    ...Object.entries(input.appliedPlan?.services ?? {}),
-    ...Object.entries(input.plan.services),
+  const known = new Set([
+    ...Object.keys(input.appliedPlan?.services ?? {}),
+    ...Object.keys(input.plan.services),
   ]);
   const authorities = new Map<string, ProxyAuthority>();
   const urls = new Map<string, string>();
   for (const service of targets) {
-    const target = services.get(service);
-    const route =
-      target === undefined
-        ? undefined
-        : primaryRouteCandidates(input.routes, target, { concreteOnly: true })[0];
+    const route = known.has(service) ? primaryConcreteRoute(input.routes, service) : undefined;
     if (route === undefined) {
       if (input.retainedTargets?.has(service)) continue;
       return yield* noRoute(service);
     }
-    const scheme = route.scheme === "http" ? "http" : "https";
-    const authority = available.find(
-      (candidate) =>
-        candidate.scheme === scheme && candidate.hostname.toLowerCase() === route.hostname.toLowerCase(),
-    );
-    if (authority === undefined) {
+    const authorized = authorizedRouteUrl(route, available);
+    if (authorized === undefined) {
       if (input.retainedTargets?.has(service)) continue;
       return yield* unsupported(service);
     }
-    authorities.set(service, authority);
-    urls.set(service, routeUrl(route, scheme, authority.port));
+    authorities.set(service, authorized.authority);
+    urls.set(service, authorized.url);
   }
   return { [preparedRouteUrls]: true, routes: input.routes, authorities, urls } satisfies PreparedRouteUrls;
 });

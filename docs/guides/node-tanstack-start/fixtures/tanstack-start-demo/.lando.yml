@@ -23,3 +23,10 @@ tooling:
     description: Run npx inside the web service.
     service: web
     dir: /app
+  dev:
+    cmd: [npm, run, dev]
+    description: Run the dev script with the published hostname allowed in Vite.
+    service: web
+    dir: /app
+    env:
+      __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS: "{{ url.parse(services.web.url).hostname }}"

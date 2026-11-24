@@ -2,7 +2,7 @@ import type { ToolingStepConditionError } from "@lando/sdk/errors";
 import type { ExpressionContext } from "@lando/sdk/expressions";
 import type { ToolingVarLiteral } from "@lando/sdk/schema";
 import { Effect, Exit } from "effect";
-import { isEventBoundaryError } from "./event-errors.ts";
+import { isEventBoundaryError, isServiceUrlRefusal } from "./event-errors.ts";
 
 import type {
   ToolingStepIteration,
@@ -25,7 +25,7 @@ interface StepExecutionDependencies {
   readonly conditionAllows: (
     condition: ToolingStepLeaf["condition"],
     context: ExpressionContext,
-  ) => Effect.Effect<boolean, ToolingStepConditionError>;
+  ) => Effect.Effect<boolean, ToolingStepConditionError | ToolingStepExpressionError>;
   readonly resolveLeaf: (
     leaf: ToolingStepLeaf,
     context: ExpressionContext,
@@ -93,9 +93,14 @@ const executeResolved = <E, A>(
   const presented = run.pipe(
     Effect.flatMap((result) => (leaf.silent ? Effect.void : runners.present({ leaf, context, result }))),
   );
+  // `ignoreError` tolerates a step that ran and failed. A step refused because a URL it reads
+  // cannot be resolved never ran, on every path: a direct command resolves it before this point,
+  // while an inline task or canonical command resolves it inside its runner.
   return leaf.ignoreError
     ? presented.pipe(
-        Effect.catch((error) => (isEventBoundaryError(error) ? Effect.fail(error) : Effect.void)),
+        Effect.catch((error) =>
+          isEventBoundaryError(error) || isServiceUrlRefusal(error) ? Effect.fail(error) : Effect.void,
+        ),
       )
     : presented;
 };

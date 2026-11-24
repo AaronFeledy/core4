@@ -1,7 +1,7 @@
 import { ConfigExpressionError } from "@lando/sdk/errors";
 import type { AppPlan } from "@lando/sdk/schema";
 import { Effect } from "effect";
-import { primaryRouteCandidates } from "../operations/connection-url.ts";
+import { primaryConcreteRoute } from "../operations/connection-url.ts";
 
 export const routeUrlConsumers = (plan: Pick<AppPlan, "services">) =>
   Object.values(plan.services).flatMap((consumer) =>
@@ -34,8 +34,7 @@ export const validateRouteUrls = Effect.fn("AppPlanner.validateRouteUrls")(funct
             message: "the router is disabled",
             remediation: "Enable the router for this app.",
           }
-        : target === undefined ||
-            primaryRouteCandidates(input.plan.routes, target, { concreteOnly: true }).length === 0
+        : target === undefined || primaryConcreteRoute(input.plan.routes, service) === undefined
           ? {
               message: input.plan.routes.some((route) => route.service === service)
                 ? "the service has only wildcard routes"
