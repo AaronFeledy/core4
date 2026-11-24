@@ -125,6 +125,8 @@ export const makeFakeMkcertRunner = (options: {
   readonly issue?: { readonly certificate: string; readonly privateKey: string };
   /** Runs after each issuance writes its files, before mkcert reports success. */
   readonly afterIssue?: () => Promise<void>;
+  /** Answers `brew postinstall ca-certificates`; Homebrew is absent when unset. */
+  readonly brewPostinstall?: () => Promise<ProcessResult>;
 }): FakeProcessRunner => {
   const calls: RunCall[] = [];
   const run = async (input: ProcessSpawnOptions): Promise<ProcessResult> => {
@@ -134,6 +136,10 @@ export const makeFakeMkcertRunner = (options: {
       ...(input.env === undefined ? {} : { env: { ...input.env } }),
     });
     if (input.args[0] === "-CAROOT") return okResult(`${options.caRoot}\n`);
+    if (input.args[0] === "postinstall") {
+      if (options.brewPostinstall === undefined) throw new Error(`unexpected brew run: ${input.cmd}`);
+      return options.brewPostinstall();
+    }
     if (input.args[0] === "-install") {
       await createRootWhenMissing(input.env?.CAROOT ?? options.caRoot);
       const exitCode = options.installExitCode ?? 0;
@@ -213,7 +219,11 @@ export const makeCaHarness = async (): Promise<CaHarness> => {
 export const makeCa = (
   harness: CaHarness,
   runner: FakeProcessRunner,
-  overrides: { readonly arch?: string } = {},
+  overrides: {
+    readonly arch?: string;
+    readonly env?: Readonly<Record<string, string | undefined>>;
+    readonly hostTrustsPem?: (pem: string) => boolean;
+  } = {},
 ): { readonly ca: CertificateAuthorityShape; readonly downloadCalls: () => number } => {
   const downloader = makeFakeDownloader();
   downloader.serve(SOURCE_URL, MKCERT_BIN);
@@ -227,6 +237,9 @@ export const makeCa = (
       privateFileAccess: { enforce: async () => undefined, verify: async () => undefined },
       platform: "linux",
       arch: overrides.arch ?? "x64",
+      // No Homebrew unless a test supplies one, whatever the host has installed.
+      env: overrides.env ?? { PATH: "" },
+      hostTrustsPem: overrides.hostTrustsPem,
     }),
     downloadCalls: downloader.downloadCalls,
   };

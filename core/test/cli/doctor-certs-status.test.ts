@@ -48,6 +48,30 @@ describe("certificate authority doctor status", () => {
     expect(status).toEqual({ _tag: "selected", id: "mkcert", trusted: true });
   });
 
+  test("carries the root's stale bundles with redacted paths", async () => {
+    // Given
+    const authority = {
+      ...makeTestCertificateAuthority(),
+      id: "mkcert",
+      root: Effect.succeed({
+        certificate: "pem",
+        trusted: true,
+        staleBundles: [{ owner: "Homebrew", path: "/home/secret/.linuxbrew/etc/ca-certificates/cert.pem" }],
+      }),
+    };
+
+    // When
+    const status = await resolveStatus(Effect.succeed(authority));
+
+    // Then
+    expect(status).toEqual({
+      _tag: "selected",
+      id: "mkcert",
+      trusted: true,
+      staleBundles: [{ owner: "Homebrew", path: "/home/[redacted]/.linuxbrew/etc/ca-certificates/cert.pem" }],
+    });
+  });
+
   test("reports an unreadable root without setup or issuance", async () => {
     // Given an authority whose root fails and whose setup would be observable.
     const calls: string[] = [];
@@ -57,6 +81,7 @@ describe("certificate authority doctor status", () => {
       setup: () =>
         Effect.sync(() => {
           calls.push("setup");
+          return { refreshedBundles: [], warnings: [] };
         }),
       root: Effect.fail(
         new CaError({

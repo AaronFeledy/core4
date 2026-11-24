@@ -31,7 +31,7 @@ describe("deferred proxy certificate authority", () => {
         resolutions += 1;
         return {
           id: "test-ca",
-          setup: () => Effect.void,
+          setup: () => Effect.succeed({ refreshedBundles: [], warnings: [] }),
           root: Effect.succeed({ certificate: TEST_CERTIFICATES.rootA, trusted: true }),
           issueCert: () =>
             Effect.succeed({
@@ -77,7 +77,7 @@ describe("deferred proxy certificate authority", () => {
         resolutions += 1;
         return {
           id: "test-ca",
-          setup: () => Effect.void,
+          setup: () => Effect.succeed({ refreshedBundles: [], warnings: [] }),
           root: Effect.succeed({ certificate: TEST_CERTIFICATES.rootA, trusted: true }),
           issueCert: () =>
             Effect.succeed({

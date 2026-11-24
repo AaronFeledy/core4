@@ -149,7 +149,7 @@
       "id:string",
       "issueCert:(spec:CertificateSpec) => Effect.Effect<IssuedCertificate,CaError>",
       "root:Effect.Effect<CaRootCertificate,CaError>",
-      "setup:(options:CaSetupOptions) => Effect.Effect<void,CaError>"
+      "setup:(options:CaSetupOptions) => Effect.Effect<CaSetupResult,CaError>"
     ],
     "CommandFramework": ["id:string"],
     "CommandRegistry": ["list:Effect.Effect<ReadonlyArray<RegisteredCommand>,never>"],

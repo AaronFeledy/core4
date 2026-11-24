@@ -444,6 +444,44 @@ describe("certificate-authority check findings", () => {
     expect(certs?.context.certsTrusted).toBe("true");
   });
 
+  test("warns about a stale CA bundle while the host trusts the root, and never fixes it", async () => {
+    const certs = await certsFinding(
+      {
+        _tag: "selected",
+        id: "mkcert",
+        trusted: true,
+        staleBundles: [{ owner: "Homebrew", path: "/opt/homebrew/etc/ca-certificates/cert.pem" }],
+      },
+      true,
+    );
+
+    expect(certs?.status).toBe("warn");
+    expect(certs?.recovery).toBe("manual");
+    expect(certs?.context).toEqual({
+      subsystem: "certs",
+      subsystemId: "mkcert",
+      ready: "true",
+      certsTrusted: "true",
+      certsReason: "stale-bundle",
+      certsStaleBundles: ["/opt/homebrew/etc/ca-certificates/cert.pem"],
+      fixOutcome: "skipped-manual",
+    });
+    expect(certs?.solutions).toEqual([
+      { kind: "manual", description: expect.any(String), command: "lando setup" },
+    ]);
+  });
+
+  test("an untrusted root wins over stale CA bundles", async () => {
+    const certs = await certsFinding({
+      _tag: "selected",
+      id: "mkcert",
+      trusted: false,
+      staleBundles: [{ owner: "Homebrew", path: "/opt/homebrew/etc/ca-certificates/cert.pem" }],
+    });
+
+    expect(certs?.context.certsReason).toBe("untrusted");
+  });
+
   test("warns when the local root is not in the host trust store", async () => {
     const certs = await certsFinding({ _tag: "selected", id: "mkcert", trusted: false }, true);
 

@@ -498,6 +498,7 @@ describe("meta:setup command", () => {
       setup: () =>
         Effect.sync(() => {
           calls.push("ca");
+          return { refreshedBundles: [], warnings: [] };
         }),
     };
     const proxy = {
@@ -1457,6 +1458,7 @@ describe("meta:setup command", () => {
       setup: (options: unknown) =>
         Effect.sync(() => {
           caSetupOptions.push(options);
+          return { refreshedBundles: [], warnings: [] };
         }),
     });
 
@@ -2506,6 +2508,7 @@ describe("meta:setup command", () => {
         Effect.sync(() => {
           caSetupOptions.push(opts);
           calls.push("ca");
+          return { refreshedBundles: [], warnings: [] };
         }),
     };
     const proxy = {
@@ -2875,7 +2878,10 @@ describe("meta:setup command", () => {
               buildSetupLayersWithHostIntegrations(
                 registry,
                 {
-                  ca: { ...makeTestCertificateAuthority(), setup: () => observe },
+                  ca: {
+                    ...makeTestCertificateAuthority(),
+                    setup: () => Effect.as(observe, { refreshedBundles: [], warnings: [] }),
+                  },
                   proxy: { ...makeTestRouterService(), setup: () => observe },
                   ssh: { ...makeTestSshService(), setup: () => observe },
                   fileSync: { ...TestFileSyncEngine, setup: () => observe },

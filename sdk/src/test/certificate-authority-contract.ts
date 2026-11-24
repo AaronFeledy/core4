@@ -3,6 +3,7 @@ import { certificatePairIsCurrent } from "../certificates/index.ts";
 import { mapFailures } from "../command-result/failure.ts";
 import type {
   CaSetupOptions,
+  CaSetupResult,
   CertificateAuthorityShape,
   CertificateSpec,
   IssuedCertificate,
@@ -25,7 +26,14 @@ export const runCaContract = Effect.fnUntraced(function* (
 ): Effect.fn.Return<void, ContractFailure> {
   yield* requireCaContract(typeof ca.id === "string" && ca.id.length > 0, "id is a non-empty string", ca.id);
 
-  yield* ca.setup({ force: false }).pipe(mapFailures((d) => caContractFailure("setup resolves", d)));
+  const setup = yield* ca
+    .setup({ force: false })
+    .pipe(mapFailures((d) => caContractFailure("setup resolves", d)));
+  yield* requireCaContract(
+    Array.isArray(setup.refreshedBundles) && Array.isArray(setup.warnings),
+    "setup reports refreshed bundles and warnings",
+    setup,
+  );
 
   const root = yield* ca.root.pipe(mapFailures((d) => caContractFailure("root resolves", d)));
   yield* requireCaContract(
@@ -33,6 +41,11 @@ export const runCaContract = Effect.fnUntraced(function* (
     "root is a non-empty PEM certificate",
   );
   yield* requireCaContract(typeof root.trusted === "boolean", "root reports whether the host trusts it");
+  yield* requireCaContract(
+    root.staleBundles === undefined || Array.isArray(root.staleBundles),
+    "root reports stale bundles as a list when it reports them",
+    root.staleBundles,
+  );
 
   const spec = { cn: "test.lndo.site", sans: ["*.test.lndo.site"] };
   const issued = yield* ca
@@ -78,6 +91,8 @@ export const runCaContract = Effect.fnUntraced(function* (
     .pipe(mapFailures((d) => caContractFailure("setup with skipTrustInstall resolves", d)));
 });
 
+const NO_SETUP_CHANGES: CaSetupResult = { refreshedBundles: [], warnings: [] };
+
 /**
  * A recording authority that returns fixed, real material from `TEST_CERTIFICATES`: the contract
  * leaf (`test.lndo.site`, `*.test.lndo.site`) under rootA, whatever the request names. It issues
@@ -98,6 +113,7 @@ export const makeTestCertificateAuthority = (): CertificateAuthorityShape & {
     setup: (opts) =>
       Effect.sync(() => {
         calls.push({ op: "setup", opts });
+        return NO_SETUP_CHANGES;
       }),
     root: Effect.succeed({ certificate: TEST_CERTIFICATES.rootA, trusted: true }),
     issueCert: (spec) =>

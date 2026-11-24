@@ -28,7 +28,7 @@ const notInstalled = new CaError({
 
 const unavailableCa = CertificateAuthority.of({
   id: "fake",
-  setup: () => Effect.void,
+  setup: () => Effect.succeed({ refreshedBundles: [], warnings: [] }),
   root: Effect.fail(notInstalled),
   issueCert: () => Effect.fail(notInstalled),
 });

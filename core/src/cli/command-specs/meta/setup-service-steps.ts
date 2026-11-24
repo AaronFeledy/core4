@@ -9,6 +9,10 @@
 
 import { resolveProxyDefaultDomain } from "@lando/engine/config/proxy-default-domain";
 import { resolveRouterConfigForApp } from "@lando/engine/config/router-config";
+import {
+  commandWarningsUseMachineOutput,
+  recordCommandWarning,
+} from "@lando/engine/landofile/command-warnings";
 import { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
 import {
   SSH_SIDECAR_READINESS_POLICY,
@@ -17,6 +21,7 @@ import {
 import { SshAgentUnavailableError } from "@lando/sdk/errors";
 import { MessageInfoEvent, MessageWarnEvent } from "@lando/sdk/events";
 import {
+  type CaTrustBundle,
   CertificateAuthority,
   EventService,
   type PrivilegeService,
@@ -35,6 +40,8 @@ type SetupPrivilegeOptions = {
 };
 
 const SKIP_CA_TRUST_EVIDENCE = "Certificate authority trust installation skipped by --skip-install-ca.";
+
+const NO_REFRESHED_BUNDLES: ReadonlyArray<CaTrustBundle> = [];
 
 const recordAbsentHostIntegration = (
   recorder: SetupReadinessRecorder,
@@ -68,7 +75,7 @@ export const runCaSetupStep = Effect.fn("SetupCommand.runCaSetupStep")(function*
     } else {
       yield* recordAbsentHostIntegration(recorder, selectedProviderId, "ca", "Certificate authority");
     }
-    return;
+    return NO_REFRESHED_BUNDLES;
   }
   const ca =
     resolver._tag === "Some"
@@ -102,33 +109,52 @@ export const runCaSetupStep = Effect.fn("SetupCommand.runCaSetupStep")(function*
       : authority._tag === "Some"
         ? authority.value
         : undefined;
-  if (ca !== undefined) {
-    if (platform === "win32" && !skipTrustInstall) {
-      const events = yield* Effect.serviceOption(EventService);
-      if (events._tag === "Some") {
-        yield* events.value
-          .publish(
-            MessageInfoEvent.make({
-              body: "Installing local certificate trust.\nWindows may open a Security Warning. Approve it to continue.\n--yes cannot answer Windows security prompts.",
-              timestamp: yield* DateTime.now,
-            }),
-          )
-          .pipe(Effect.ignore);
-      }
-    }
-    yield* ca
-      .setup({
-        force: false,
-        ...privilegeOptions,
-        ...(skipTrustInstall ? { skipTrustInstall: true } : {}),
-      })
-      .pipe(Effect.tapError((cause) => recorder.recordFailure("ca", cause)));
-    yield* recorder.record({
-      id: "ca",
-      status: skipTrustInstall ? "skipped" : "satisfied",
-      evidence: skipTrustInstall ? SKIP_CA_TRUST_EVIDENCE : "Certificate authority setup completed.",
-    });
+  if (ca === undefined) return NO_REFRESHED_BUNDLES;
+  const events = yield* Effect.serviceOption(EventService);
+  // Narration is best-effort: a renderer failure must not fail the step it describes.
+  const narrate = (event: MessageInfoEvent | MessageWarnEvent) =>
+    events._tag === "Some" ? events.value.publish(event).pipe(Effect.ignore) : Effect.void;
+  if (platform === "win32" && !skipTrustInstall) {
+    yield* narrate(
+      MessageInfoEvent.make({
+        body: "Installing local certificate trust.\nWindows may open a Security Warning. Approve it to continue.\n--yes cannot answer Windows security prompts.",
+        timestamp: yield* DateTime.now,
+      }),
+    );
   }
+  const { refreshedBundles, warnings } = yield* ca
+    .setup({
+      force: false,
+      ...privilegeOptions,
+      ...(skipTrustInstall ? { skipTrustInstall: true } : {}),
+    })
+    .pipe(Effect.tapError((cause) => recorder.recordFailure("ca", cause)));
+  const refreshed = refreshedBundles.map(
+    (bundle) =>
+      `Refreshed ${bundle.owner}'s CA bundle at ${bundle.path} so tools that read it trust the local CA.`,
+  );
+  for (const body of refreshed)
+    yield* narrate(MessageInfoEvent.make({ body, timestamp: yield* DateTime.now }));
+  // Machine output carries warnings in the result envelope; people read them as they happen.
+  for (const warning of warnings) yield* recordCommandWarning(warning);
+  if (!(yield* commandWarningsUseMachineOutput)) {
+    for (const { message, remediation } of warnings) {
+      const body = remediation === undefined ? message : `${message} ${remediation}`;
+      yield* narrate(MessageWarnEvent.make({ body, timestamp: yield* DateTime.now }));
+    }
+  }
+  const firstWarning = warnings[0];
+  yield* recorder.record({
+    id: "ca",
+    status: skipTrustInstall ? "skipped" : "satisfied",
+    evidence: [
+      skipTrustInstall ? SKIP_CA_TRUST_EVIDENCE : "Certificate authority setup completed.",
+      ...refreshed,
+      ...warnings.map(({ message }) => message),
+    ].join(" "),
+    ...(firstWarning?.remediation === undefined ? {} : { remediation: firstWarning.remediation }),
+  });
+  return refreshedBundles;
 });
 
 export const runProxySetupStep = Effect.fn("SetupCommand.runProxySetupStep")(function* (

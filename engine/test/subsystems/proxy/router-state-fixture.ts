@@ -6,7 +6,7 @@ import pem from "./router-certificates.json";
 
 export const routerCertificateAuthority = {
   id: "router-fixture",
-  setup: () => Effect.void,
+  setup: () => Effect.succeed({ refreshedBundles: [], warnings: [] }),
   root: Effect.succeed({ certificate: pem.root, trusted: true }),
   issueCert: () =>
     Effect.succeed({

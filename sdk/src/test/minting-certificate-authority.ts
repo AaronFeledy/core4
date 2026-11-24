@@ -23,7 +23,7 @@ export const makeMintingCertificateAuthority = (
   const root: CaRootCertificate = { certificate: authority.rootCertificate, trusted: true };
   return {
     id: options.id ?? "test-minting",
-    setup: () => Effect.void,
+    setup: () => Effect.succeed({ refreshedBundles: [], warnings: [] }),
     root: Effect.succeed(root),
     issueCert: (spec) =>
       Effect.gen(function* () {

@@ -48,7 +48,7 @@ const restartAfterIssuing = async (rootAfterStart: "kept" | "rotated") => {
     };
     const ca = CertificateAuthority.of({
       id: "fake",
-      setup: () => Effect.void,
+      setup: () => Effect.succeed({ refreshedBundles: [], warnings: [] }),
       root: Effect.sync(() => ({ certificate: authority.root, trusted: true })),
       issueCert: () =>
         Effect.sync(() => ({

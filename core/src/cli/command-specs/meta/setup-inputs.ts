@@ -35,6 +35,12 @@ export const SetupResultSchema = Schema.Struct({
     description:
       "Host-global CA injection configuration: true when setup resolved at least one host CA file and network.ca.injectIntoServices is enabled, so configured host CAs are set to inject into eligible type: lando services. This is setup-level configuration, not the CA set of any particular service; content de-duplication and per-service security.inheritNetworkCa opt-out are resolved when an app is planned.",
   }),
+  refreshedCaBundles: Schema.optionalKey(
+    Schema.Array(Schema.Struct({ owner: Schema.String, path: Schema.String })),
+  ).annotate({
+    description:
+      "CA bundles that tools keep apart from the host trust store, such as Homebrew's, that setup rebuilt so they include the local CA. Absent when setup rebuilt none; bundles setup could not rebuild are reported as CA_BUNDLE_STALE warnings.",
+  }),
 });
 
 export const sourceInstallDir = (): string =>

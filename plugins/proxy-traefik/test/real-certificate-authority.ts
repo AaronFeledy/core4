@@ -16,7 +16,7 @@ export const issueFixturePair = (spec: CertificateSpec) => {
 
 export const realCertificateAuthority = {
   id: "fixture-ca",
-  setup: () => Effect.void,
+  setup: () => Effect.succeed({ refreshedBundles: [], warnings: [] }),
   root: Effect.succeed({ certificate: rootPem, trusted: true }),
   issueCert: (spec: CertificateSpec) =>
     Effect.sync(() => {

@@ -6,6 +6,7 @@ import type {
   NoCertificateAuthorityError,
   PluginLoadError,
 } from "@lando/sdk/errors";
+import type { CaRootCertificate, CaTrustBundle } from "@lando/sdk/services";
 import { Cause, Effect, Exit, Option } from "effect";
 
 import { passCheckNamed, warnCheck } from "./doctor-check-builders";
@@ -14,7 +15,13 @@ import { CERTS_SPEC, buildDegradedCheck } from "./doctor-subsystem-checks";
 
 export type CertsDoctorStatus =
   | { readonly _tag: "unresolved" }
-  | { readonly _tag: "selected"; readonly id: string; readonly trusted: boolean }
+  | {
+      readonly _tag: "selected";
+      readonly id: string;
+      readonly trusted: boolean;
+      /** Bundles that lack the trusted root, with redacted paths. */
+      readonly staleBundles?: ReadonlyArray<CaTrustBundle>;
+    }
   | {
       readonly _tag: "root-unavailable";
       readonly id: string;
@@ -87,13 +94,22 @@ const isCaError = (error: unknown): error is CaError =>
 const statusFromRoot = Effect.fnUntraced(function* (
   authority: {
     readonly id: string;
-    readonly root: Effect.Effect<{ readonly certificate: string; readonly trusted: boolean }, CaError>;
+    readonly root: Effect.Effect<CaRootCertificate, CaError>;
   },
   redact: (value: string) => string,
 ) {
   const rooted = yield* Effect.exit(authority.root);
-  if (Exit.isSuccess(rooted))
-    return { _tag: "selected", id: authority.id, trusted: rooted.value.trusted } as const;
+  if (Exit.isSuccess(rooted)) {
+    const { trusted, staleBundles = [] } = rooted.value;
+    return {
+      _tag: "selected",
+      id: authority.id,
+      trusted,
+      ...(staleBundles.length === 0
+        ? {}
+        : { staleBundles: staleBundles.map(({ owner, path }) => ({ owner, path: redact(path) })) }),
+    } as const;
+  }
   if (Cause.hasInterrupts(rooted.cause)) return yield* Effect.interrupt;
   const failure = Cause.findErrorOption(rooted.cause);
   if (Option.isSome(failure) && isCaError(failure.value)) {
@@ -114,10 +130,37 @@ const statusFromRoot = Effect.fnUntraced(function* (
 const UNTRUSTED_CA =
   "Browsers will warn on HTTPS URLs until this machine trusts the local CA. Run `lando setup` without `--skip-install-ca`.";
 
+const staleBundleSentence = ({ owner, path }: CaTrustBundle): string =>
+  `${owner}'s CA bundle at ${path} does not include the local CA, so tools that read it reject Lando HTTPS URLs.`;
+
+const RESTORE_BUNDLES = "Run `lando setup` without `--skip-install-ca`.";
+
 export const certsSubsystemCheck = Effect.fnUntraced(function* (
   status: CertsDoctorStatus,
   fix: boolean,
 ): Effect.fn.Return<DoctorFinding | undefined, never> {
+  if (status._tag === "selected" && status.trusted && status.staleBundles !== undefined) {
+    return warnCheck({
+      name: "certs",
+      recovery: "manual",
+      context: {
+        subsystem: "certs",
+        subsystemId: status.id,
+        ready: "true",
+        certsTrusted: "true",
+        certsReason: "stale-bundle",
+        certsStaleBundles: status.staleBundles.map(({ path }) => path),
+        ...(fix ? { fixOutcome: "skipped-manual" } : {}),
+      },
+      solutions: [
+        {
+          kind: "manual",
+          description: `${status.staleBundles.map(staleBundleSentence).join(" ")} ${RESTORE_BUNDLES}`,
+          command: "lando setup",
+        },
+      ],
+    });
+  }
   if (status._tag === "selected" && status.trusted) {
     return passCheckNamed({
       name: "certs",

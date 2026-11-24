@@ -69,7 +69,7 @@ describe("definePlugin", () => {
       CertificateAuthority,
       CertificateAuthority.of({
         id: "test-ca",
-        setup: () => Effect.void,
+        setup: () => Effect.succeed({ refreshedBundles: [], warnings: [] }),
         root: Effect.die("not exercised"),
         issueCert: () => Effect.die("not exercised"),
       }),

@@ -241,7 +241,12 @@ export const setupSpec: LandoCommandSpec<
         Effect.tapError((cause) => recorder.recordFailure("provider", cause)),
       );
     }
-    yield* runCaSetupStep(input, privilegeOptions, recorder, selectedProviderId).pipe(withHostProvider);
+    const refreshedCaBundles = yield* runCaSetupStep(
+      input,
+      privilegeOptions,
+      recorder,
+      selectedProviderId,
+    ).pipe(withHostProvider);
     yield* runProxySetupStep(input, recorder, selectedProviderId).pipe(withHostProvider);
     yield* runShellServiceSetupStep(input, recorder, selectedProviderId).pipe(withHostProvider);
 
@@ -314,6 +319,7 @@ export const setupSpec: LandoCommandSpec<
       fileSyncStatus,
       networkCaInjectionConfigured,
       ...(providerSwitch === undefined ? {} : { providerSwitch }),
+      ...(refreshedCaBundles.length === 0 ? {} : { refreshedCaBundles }),
     };
   }, Effect.scoped),
   render: (result, _input, ctx) => {

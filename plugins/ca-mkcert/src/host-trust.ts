@@ -19,9 +19,12 @@ const hostTrustPems = (): readonly string[] => {
   return [...new Set([...reader.getCACertificates("default"), ...reader.getCACertificates("system")])];
 };
 
-/** True when `pem` is already in the host trust store. Does not install anything. */
-export const hostTrustsPem = (pem: string): boolean => {
-  const root = fingerprint(pem);
-  if (root === undefined) return false;
-  return hostTrustPems().some((candidate) => fingerprint(candidate) === root);
+/** True when `pems` holds `root`, compared by SHA-256 fingerprint. Unparsable entries never match. */
+export const pemsContainRoot = (pems: ReadonlyArray<string>, root: string): boolean => {
+  const wanted = fingerprint(root);
+  if (wanted === undefined) return false;
+  return pems.some((candidate) => fingerprint(candidate) === wanted);
 };
+
+/** True when `pem` is already in the host trust store. Does not install anything. */
+export const hostTrustsPem = (pem: string): boolean => pemsContainRoot(hostTrustPems(), pem);
