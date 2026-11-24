@@ -118,6 +118,9 @@ export const landoAppStoreName = (slug: string, source: string): string =>
 const CACHE_STORE_PREFIX = `${PREFIX}cache-`;
 const GLOBAL_APP_VOLUME_PREFIX = `${PREFIX}global`;
 
+/** Canonical key for the shared Node package-manager download cache. */
+export const NODE_PACKAGE_CACHE_KEY = "node-packages" as const;
+
 /** Cache keys deliberately share a namespace across apps. */
 export const landoCacheStoreName = (key: string): string => `${CACHE_STORE_PREFIX}${canonicalOrHashed(key)}`;
 

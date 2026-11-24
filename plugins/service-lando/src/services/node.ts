@@ -12,7 +12,13 @@ import { type Effect, Schema } from "effect";
 import { LANGUAGE_EXTRA_ARGS_REMEDIATION } from "./_extra-args.ts";
 import { ServiceConfigIssue, rootIdentity, serviceTypeResolve } from "./_feature-helpers.ts";
 import { normalizeNpmGlobals } from "./_package-specs.ts";
-import { NODE_FEATURE_ID, artifactFor, nodePlannedPort } from "./node-feature.ts";
+import {
+  NODE_FEATURE_ID,
+  NODE_PACKAGE_CACHE,
+  artifactFor,
+  nodePlannedPort,
+  usesNodePackageCache,
+} from "./node-feature.ts";
 import { resolveNodeInference } from "./node-inference.ts";
 import { applyProvisionedGlobals, packageManagerConfigFor } from "./node-package-manager.ts";
 import { resolveNodePackageManager } from "./node-package-manager-declaration.ts";
@@ -28,7 +34,18 @@ export {
   NODE_FEATURE_PRIORITY,
   NODE_GLOBALS_STEP_ID,
   NODE_LISTENER,
+  NODE_PACKAGE_CACHE,
+  NODE_PACKAGE_CACHE_CATALOG_UIDS,
+  NODE_PACKAGE_CACHE_KEY,
+  NODE_PACKAGE_CACHE_PREPARE,
+  NODE_PACKAGE_CACHE_STEP_ID,
+  NODE_PACKAGE_CACHE_TARGET,
+  nodePackageCacheEnvironment,
+  nodePackageCachePaths,
+  nodePackageCacheUid,
   nodeServiceFeature,
+  ownsNodeToolchain,
+  usesNodePackageCache,
 } from "./node-feature.ts";
 export const APP_MOUNT_TARGET = "/app";
 
@@ -103,7 +120,13 @@ const resolveCatalogNode = (
     }));
     return {
       base: "lando" as const,
-      normalizedConfig: { ...input.service, type: `node:${selected.version}` },
+      normalizedConfig: {
+        ...input.service,
+        type: `node:${selected.version}`,
+        ...(usesNodePackageCache(input.service, selected.version)
+          ? { storage: [NODE_PACKAGE_CACHE, ...(input.service.storage ?? [])] }
+          : {}),
+      },
       features: [
         {
           id: NODE_FEATURE_ID,

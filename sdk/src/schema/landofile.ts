@@ -805,6 +805,15 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
       description:
         "App-root-relative source directory for project-file inputs: bare Node infers the Node version from .nvmrc and package.json engines, and catalog Node types select the package manager from package.json (packageManager or devEngines.packageManager). It does not move the app mount or the container working directory. A nested package root contributes a preset node_modules exclude, except under Yarn Plug'n'Play. A custom image or replacement Compose build owns its toolchain and rejects an authored packageRoot.",
     }),
+    packageCache: Schema.optionalKey(
+      Schema.Literal(false).annotate({
+        description:
+          "Set false to skip Lando's shared Node package-manager download cache on a catalog-owned stock Node service. Omitted keeps the cache.",
+      }),
+    ).annotate({
+      description:
+        "Set false to skip Lando's shared Node package-manager download cache on a catalog-owned stock Node service. Omitted keeps the cache.",
+    }),
     webroot: Schema.optionalKey(PortablePath).annotate({
       description:
         "Root whose meaning and defaults are determined by the selected features: webservers use it as their document root; Ruby provides context only and does not start a server. An explicit value requires a final feature declaration of support. Relative paths resolve against the app mount. Built-in Ruby context is unavailable with appMount: false, while a webserver can still use an absolute container root without an app mount.",

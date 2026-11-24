@@ -30,6 +30,7 @@ import {
 import { evolveHistoricalExtraArgs } from "./x-extension-extra-args-proof.ts";
 import { evolveHistoricalNativeInit } from "./x-extension-native-init-proof.ts";
 import { evolveHistoricalNetworks } from "./x-extension-networks-proof.ts";
+import { evolveHistoricalPackageCache } from "./x-extension-package-cache-proof.ts";
 import { evolveHistoricalProbePort, evolveHistoricalServicePort } from "./x-extension-port-proof.ts";
 import { evolveHistoricalProjectUser } from "./x-extension-project-user-proof.ts";
 import { evolveHistoricalReadiness } from "./x-extension-readiness-proof.ts";
@@ -213,14 +214,16 @@ test.each([
       ),
     ),
   );
-  const expected = evolveHistoricalRouteMember(
-    evolveSchemaParity(
-      evolveHistoricalExtraArgs(
-        evolveHistoricalRouteText(
-          evolveHistoricalServiceKeys(evolveHistoricalEndpointKind(historical, "bare")),
+  const expected = evolveHistoricalPackageCache(
+    evolveHistoricalRouteMember(
+      evolveSchemaParity(
+        evolveHistoricalExtraArgs(
+          evolveHistoricalRouteText(
+            evolveHistoricalServiceKeys(evolveHistoricalEndpointKind(historical, "bare")),
+          ),
         ),
+        "bare",
       ),
-      "bare",
     ),
   );
   const current = schemaAt(await loadNormalizedArtifact("schema:TemplateRenderContext"), "$.landofile");

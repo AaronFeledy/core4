@@ -7,6 +7,7 @@ import { Effect, Schema } from "effect";
 import {
   NODE_FEATURE_ID,
   NODE_GLOBALS_STEP_ID,
+  NODE_PACKAGE_CACHE_STEP_ID,
   node22ServiceType,
   nodeServiceFeature,
   nodeServiceType,
@@ -440,7 +441,7 @@ describe("node package manager provisioning", () => {
     const ids = buildStepsFor(plan)
       .map((step) => step.id)
       .filter((id) => id?.startsWith("service-lando.node:"));
-    expect(ids).toEqual([NODE_GLOBALS_STEP_ID, NODE_PACKAGE_MANAGER_STEP_ID]);
+    expect(ids).toEqual([NODE_PACKAGE_CACHE_STEP_ID, NODE_GLOBALS_STEP_ID, NODE_PACKAGE_MANAGER_STEP_ID]);
   });
 
   test.each(["npm@10.9.2", "bun@1.2.0"])("records %s provenance without a build step", async (spec) => {

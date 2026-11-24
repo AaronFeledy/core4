@@ -1686,6 +1686,7 @@
       "MountPlan",
       "MssqlServiceConfig",
       "MysqlServiceConfig",
+      "NODE_PACKAGE_CACHE_KEY",
       "NetworkCaConfig",
       "NetworkConfig",
       "NetworkProxyConfig",

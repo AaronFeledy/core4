@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { sha256Hex } from "@lando/sdk/digest";
 import {
   AbsolutePath,
+  NODE_PACKAGE_CACHE_KEY,
   PHYSICAL_VOLUME_LOCK_TIER,
   defaultRouteHostname,
   landoAppStoreName,
@@ -197,9 +198,10 @@ describe("derived stores", () => {
   );
 
   test("keeps canonical caches shared and app sources app-scoped", () => {
-    expect(["nuget", "composer"].map(landoCacheStoreName)).toEqual([
+    expect(["nuget", "composer", NODE_PACKAGE_CACHE_KEY].map(landoCacheStoreName)).toEqual([
       "lando-cache-nuget",
       "lando-cache-composer",
+      "lando-cache-node-packages",
     ]);
     expect(landoAppStoreName("foo", "bar-web")).toBe("lando-foo_bar-web");
     expect(landoAppStoreName("foo", "bar-web")).not.toBe(landoAppStoreName("foo-bar", "web"));

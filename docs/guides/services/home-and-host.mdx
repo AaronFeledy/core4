@@ -7,7 +7,7 @@ tags: [docs, service, home, host]
 
 # Keep a service home across rebuilds and reach your host
 
-A service's home directory is where tools keep files such as `~/.npm`, `~/.ssh`, and shell history. Lando puts that directory on a persistent store so a rebuild does not throw it away. Home persistence is on by default whenever Lando knows where the planned user's home is. When it doesn't, for example because you supplied the image yourself, Lando plans no home store and moves on; set `home.path` if you want one anyway. Stock PHP services keep Composer downloads in a [separate shared cache](../tooling/php-composer-workflows.mdx).
+A service's home directory is where tools keep files such as `~/.npm`, `~/.ssh`, and shell history. Lando puts that directory on a persistent store so a rebuild does not throw it away. Home persistence is on by default whenever Lando knows where the planned user's home is. When it doesn't, for example because you supplied the image yourself, Lando plans no home store and moves on; set `home.path` if you want one anyway. Stock PHP services keep Composer downloads in a [separate shared cache](../tooling/php-composer-workflows.mdx). Stock Node services keep npm, pnpm, and Yarn downloads in another; see [Share package downloads across apps](./node.mdx#share-package-downloads-across-apps).
 
 For shell and client history, including how to leave history off disk for one `shell --service` or `ssh` session, see [Keep shell and client history across rebuilds](../tooling/lando-shell.mdx#keep-shell-and-client-history-across-rebuilds).
 

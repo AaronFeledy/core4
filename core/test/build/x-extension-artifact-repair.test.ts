@@ -47,6 +47,7 @@ import { includeChecksumDelta } from "./x-extension-include-checksum-proof.ts";
 import { includeWhenDelta } from "./x-extension-include-when-proof.ts";
 import { evolveHistoricalNativeInit } from "./x-extension-native-init-proof.ts";
 import { evolveHistoricalNetworks } from "./x-extension-networks-proof.ts";
+import { evolveHistoricalPackageCache } from "./x-extension-package-cache-proof.ts";
 import {
   CURRENT_SERVICE_PORT,
   evolveHistoricalProbePort,
@@ -142,7 +143,7 @@ const beforeSchemaParity = (): JsonSchema =>
   );
 
 const expectedLandofile = (): JsonSchema =>
-  evolveHistoricalRouteMember(evolveSchemaParity(beforeSchemaParity(), "bare"));
+  evolveHistoricalPackageCache(evolveHistoricalRouteMember(evolveSchemaParity(beforeSchemaParity(), "bare")));
 
 describe("closed x-* extension artifact repair", () => {
   test("pins the independently reviewed tooling sensitivity delta and source provenance", async () => {
