@@ -41,3 +41,15 @@ tooling:
     dir: /app
     user: www-data
     description: Run bin/magento inside the appserver service.
+  magento-install:
+    service: appserver
+    cmd:
+      - php
+      - bin/magento
+      - setup:install
+      - "--base-url={{ services.appserver.url }}/"
+      - "--base-url-secure={{ services.appserver.url }}/"
+    dir: /app
+    user: www-data
+    wrapper: true
+    description: Install the store at the URL Lando publishes.

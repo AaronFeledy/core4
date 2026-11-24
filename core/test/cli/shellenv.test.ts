@@ -16,9 +16,10 @@ import {
   shellenvBinDir,
   shellenvCurrentExecutablePath,
 } from "../../src/cli/commands/shellenv.ts";
+import { ensureCompiledCli } from "../_support/compiled-cli.ts";
 
 const coreRoot = resolve(import.meta.dirname, "../..");
-const binaryPath = resolve(coreRoot, "dist/lando");
+let binaryPath = "";
 
 interface RunResult {
   readonly exitCode: number;
@@ -55,8 +56,7 @@ describe.skipIf(!["linux", "win32"].includes(process.platform) || process.arch !
   "compiled CLI shellenv command",
   () => {
     beforeAll(async () => {
-      const build = await runCommand([process.execPath, "run", "build"]);
-      expect(build.exitCode).toBe(0);
+      binaryPath = await ensureCompiledCli();
     }, 120_000);
 
     for (const shellArgs of [[], ["--shell=posix"], ["--shell=powershell"]]) {

@@ -216,7 +216,7 @@ describe("start progress topology", () => {
     expect(treeStarts.map((event) => event.parentId)).toEqual([applyTreeId(String(plan.id)), parentId]);
     expect(treeStarts[1]).toMatchObject({
       parentId,
-      children: [startChildTaskId(parentId, "apply")],
+      children: [{ id: startChildTaskId(parentId, "apply"), label: "Apply routes" }],
     });
     const applyCompleteIndex = harness.events.findIndex(
       (event) => event._tag === "task.tree.complete" && event.parentId === applyTreeId(String(plan.id)),
@@ -359,7 +359,7 @@ describe("start progress topology", () => {
     const parentId = applyTreeId(String(plan.id));
     expect(byTag(harness.events, "task.tree.start")[0]).toMatchObject({
       parentId,
-      children: ["web"],
+      children: [{ id: "web", label: "Apply service web" }],
     });
     expect(byTag(harness.events, "task.start").map((event) => event.taskId)).toContain("web");
     expect(byTag(harness.events, "task.fail").map((event) => event.taskId)).toContain("web");

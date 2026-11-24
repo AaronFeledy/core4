@@ -1,42 +1,59 @@
 import { Schema } from "effect";
 
 import { LockWaitEvent, type LockWaitHolder } from "../events/lock.ts";
+import type { LandoEvent as KnownLandoEvent } from "../events/union.ts";
 import type { LandoEvent } from "../services/index.ts";
 
-type RenderableEvent = LandoEvent & { readonly _tag: string };
+const TASK_TREE_TAGS = [
+  "task.tree.start",
+  "task.tree.complete",
+  "task.start",
+  "task.complete",
+  "task.fail",
+  "task.detail",
+] as const;
+const MESSAGE_TAGS = ["message.info", "message.warn", "message.error"] as const;
+const OTHER_RENDERABLE_TAGS = [
+  "paint.banner",
+  "image-pull-progress",
+  "notify.desktop",
+  "code.snippet",
+  "diff.render",
+  "markdown.block",
+] as const;
+const RENDERABLE_TAGS: ReadonlySet<string> = new Set([
+  ...TASK_TREE_TAGS,
+  ...MESSAGE_TAGS,
+  ...OTHER_RENDERABLE_TAGS,
+]);
 
-const isTaskTreeEvent = (event: LandoEvent): boolean =>
-  event._tag === "task.tree.start" ||
-  event._tag === "task.tree.complete" ||
-  event._tag === "task.start" ||
-  event._tag === "task.complete" ||
-  event._tag === "task.fail" ||
-  event._tag === "task.detail";
+type RenderableEvent =
+  | Extract<
+      KnownLandoEvent,
+      {
+        readonly _tag:
+          | (typeof TASK_TREE_TAGS)[number]
+          | (typeof MESSAGE_TAGS)[number]
+          | (typeof OTHER_RENDERABLE_TAGS)[number];
+      }
+    >
+  | LockWaitEvent;
 
-const isMessageEvent = (event: LandoEvent): boolean =>
-  event._tag === "message.info" || event._tag === "message.warn" || event._tag === "message.error";
+const hasTag =
+  (tags: ReadonlyArray<string>) =>
+  (event: LandoEvent): boolean =>
+    tags.includes(event._tag);
 
+const isTaskTreeEvent = hasTag(TASK_TREE_TAGS);
+const isMessageEvent = hasTag(MESSAGE_TAGS);
 const isPaintBannerEvent = (event: LandoEvent): boolean => event._tag === "paint.banner";
-const isImagePullProgressEvent = (event: LandoEvent): boolean => event._tag === "image-pull-progress";
-const isNotifyDesktopEvent = (event: LandoEvent): boolean => event._tag === "notify.desktop";
 export const isLockWaitEvent = Schema.is(LockWaitEvent);
-const isCodeSnippetEvent = (event: LandoEvent): boolean => event._tag === "code.snippet";
-const isDiffRenderEvent = (event: LandoEvent): boolean => event._tag === "diff.render";
-const isMarkdownBlockEvent = (event: LandoEvent): boolean => event._tag === "markdown.block";
-const isRichRenderEvent = (event: LandoEvent): boolean =>
-  isCodeSnippetEvent(event) || isDiffRenderEvent(event) || isMarkdownBlockEvent(event);
 
-const isRenderableEvent = (event: LandoEvent): boolean =>
-  isTaskTreeEvent(event) ||
-  isMessageEvent(event) ||
-  isPaintBannerEvent(event) ||
-  isImagePullProgressEvent(event) ||
-  isNotifyDesktopEvent(event) ||
-  isLockWaitEvent(event) ||
-  isRichRenderEvent(event);
+// EventService delivery validates every known tag against its schema, so the tag identifies the shape.
+const isRenderableEvent = (event: LandoEvent): event is RenderableEvent =>
+  RENDERABLE_TAGS.has(event._tag) || isLockWaitEvent(event);
 
 const asString = (value: unknown): string | undefined => (typeof value === "string" ? value : undefined);
-const asNumber = (value: unknown): number | undefined => (typeof value === "number" ? value : undefined);
 
 export const formatDurationSuffix = (durationMs: number | undefined): string => {
   if (durationMs === undefined) return "";
@@ -84,76 +101,48 @@ export const formatLockWaitNotice = (event: LockWaitEvent): string =>
 
 export const formatPlainEvent = (event: RenderableEvent): string | null => {
   switch (event._tag) {
-    case "message.info": {
-      const body = asString(event.body) ?? "";
-      return `ℹ ${body}`;
-    }
-    case "message.warn": {
-      const body = asString(event.body) ?? "";
-      return `⚠ ${body}`;
-    }
+    case "message.info":
+      return `ℹ ${event.body}`;
+    case "message.warn":
+      return `⚠ ${event.body}`;
     case "message.error": {
-      const body = asString(event.body) ?? "";
-      const remediation = asString(event.remediation);
-      const main = `✗ ${body}`;
-      return remediation === undefined ? main : `${main}\n  ↳ ${remediation}`;
+      const main = `✗ ${event.body}`;
+      return event.remediation === undefined ? main : `${main}\n  ↳ ${event.remediation}`;
     }
     case "task.tree.start": {
-      const label = asString(event.label) ?? "tasks";
-      const children = Array.isArray(event.children) ? event.children : [];
-      return `▼ ${label} (${children.length} ${children.length === 1 ? "step" : "steps"})`;
+      const count = event.children.length;
+      return `▼ ${event.label} (${count} ${count === 1 ? "step" : "steps"})`;
     }
-    case "task.start": {
-      const taskId = asString(event.taskId) ?? "task";
-      const label = asString(event.label) ?? taskId;
-      return `[${taskId}] start: ${label}`;
-    }
+    case "task.start":
+      return `[${event.taskId}] start: ${event.label}`;
     case "task.detail": {
-      const taskId = asString(event.taskId) ?? "task";
-      const line = asString(event.line) ?? "";
-      const stream = asString(event.stream);
-      const prefix = stream === "stderr" ? `[${taskId}] !` : `[${taskId}]`;
-      return `${prefix} ${line}`;
+      const prefix = event.stream === "stderr" ? `[${event.taskId}] !` : `[${event.taskId}]`;
+      return `${prefix} ${event.line}`;
     }
     case "task.complete": {
-      const taskId = asString(event.taskId) ?? "task";
-      const summary = asString(event.summary);
-      const tail = summary === undefined ? "" : `: ${summary}`;
-      const outcome = asString(event.outcome);
-      const glyph = outcome === "info" ? "•" : outcome === "warn" ? "⚠" : "✓";
-      return `[${taskId}] ${glyph} complete${tail}${formatDurationSuffix(asNumber(event.durationMs))}`;
+      const tail = event.summary === undefined ? "" : `: ${event.summary}`;
+      const glyph = event.outcome === "info" ? "•" : event.outcome === "warn" ? "⚠" : "✓";
+      return `[${event.taskId}] ${glyph} complete${tail}${formatDurationSuffix(event.durationMs)}`;
     }
     case "task.fail": {
-      const taskId = asString(event.taskId) ?? "task";
-      const summary = asString(event.summary);
-      const remediation = asString(event.remediation);
-      const exitCode = asNumber(event.exitCode);
-      const tail = summary === undefined ? "" : `: ${summary}`;
-      const exitSuffix = exitCode === undefined ? "" : ` (exit ${exitCode})`;
-      const main = `[${taskId}] ✗ fail${tail}${exitSuffix}${formatDurationSuffix(asNumber(event.durationMs))}`;
-      return remediation === undefined ? main : `${main}\n[${taskId}]   ↳ ${remediation}`;
+      const tail = event.summary === undefined ? "" : `: ${event.summary}`;
+      const exitSuffix = event.exitCode === undefined ? "" : ` (exit ${event.exitCode})`;
+      const main = `[${event.taskId}] ✗ fail${tail}${exitSuffix}${formatDurationSuffix(event.durationMs)}`;
+      return event.remediation === undefined ? main : `${main}\n[${event.taskId}]   ↳ ${event.remediation}`;
     }
     case "task.tree.complete": {
-      const summary = asString(event.summary);
-      const succeeded = asNumber(event.succeeded) ?? 0;
-      const failed = asNumber(event.failed) ?? 0;
       // An unsummarized failed tree must not read as complete.
-      const outcome = asString(event.outcome);
-      const label = summary ?? (outcome === "failure" ? "failed" : (outcome ?? "complete"));
-      return `▶ ${label} (${succeeded} ✓ · ${failed} ✗)${formatDurationSuffix(asNumber(event.durationMs))}`;
+      const label = event.summary ?? (event.outcome === "failure" ? "failed" : (event.outcome ?? "complete"));
+      return `▶ ${label} (${event.succeeded} ✓ · ${event.failed} ✗)${formatDurationSuffix(event.durationMs)}`;
     }
     case "paint.banner": {
       return null;
     }
-    case "lock.wait": {
-      if (!isLockWaitEvent(event)) return null;
+    case "lock.wait":
       return `${event.reminder ? "ℹ" : "⚠"} ${formatLockWaitNotice(event)}`;
-    }
     case "image-pull-progress": {
-      const reference = asString(event.reference) ?? "image";
-      const stream = asString(event.stream)?.trim();
-      const current = asNumber(event.current);
-      const total = asNumber(event.total);
+      const { reference, current, total } = event;
+      const stream = event.stream?.trim();
       if (
         stream === "Starting to pull artifact" ||
         stream === "Pulling artifact" ||
@@ -167,26 +156,22 @@ export const formatPlainEvent = (event: RenderableEvent): string | null => {
       return `↓ Pulling ${reference}${message}${progress}`;
     }
     case "code.snippet": {
-      const code = asString(event.code) ?? "";
-      const language = asString(event.language);
+      const { code, language } = event;
       if (language === undefined || language.length === 0) return code;
       return `\`\`\`${language}\n${code}\n\`\`\``;
     }
-    case "diff.render": {
-      return asString(event.unified) ?? "";
-    }
-    case "markdown.block": {
-      return asString(event.markdown) ?? "";
-    }
+    case "diff.render":
+      return event.unified;
+    case "markdown.block":
+      return event.markdown;
     default:
       return null;
   }
 };
 
 export const renderPlainLine = (event: LandoEvent): string | null => {
-  const record = event as unknown as Record<string, unknown>;
-  if (record._tag === "log.line") {
-    return asString(record.line) ?? asString(record.message) ?? "";
+  if (event._tag === "log.line") {
+    return asString(event.line) ?? asString(event.message) ?? "";
   }
   if (!isRenderableEvent(event)) return null;
   return formatPlainEvent(event);
@@ -216,13 +201,12 @@ const orderedKeys: ReadonlyArray<string> = [
 ];
 
 const stableStringify = (event: LandoEvent): string => {
-  const record = event as unknown as Record<string, unknown>;
   const result: Record<string, unknown> = {};
   for (const key of orderedKeys) {
-    if (Object.hasOwn(record, key)) result[key] = record[key];
+    if (Object.hasOwn(event, key)) result[key] = event[key];
   }
-  for (const key of Object.keys(record)) {
-    if (!Object.hasOwn(result, key)) result[key] = record[key];
+  for (const key of Object.keys(event)) {
+    if (!Object.hasOwn(result, key)) result[key] = event[key];
   }
   return JSON.stringify(result);
 };
@@ -240,11 +224,8 @@ export const renderJsonLine = (event: LandoEvent): string | null => {
  */
 export const renderVerboseLine = (event: LandoEvent): string => {
   const payload = stableStringify(event);
-  const human = formatPlainEvent(event as RenderableEvent);
-  if (human === null) {
-    const tag = (event as { readonly _tag?: string })._tag ?? "event";
-    return `· ${tag} ${payload}`;
-  }
+  const human = isRenderableEvent(event) ? formatPlainEvent(event) : null;
+  if (human === null) return `· ${event._tag} ${payload}`;
   return `${human}\n  ⋯ ${payload}`;
 };
 

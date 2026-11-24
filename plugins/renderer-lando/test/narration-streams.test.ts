@@ -24,7 +24,7 @@ test.each(["alpha\nbeta\n", "no-newline"])(
           _tag: "task.tree.start",
           parentId: "tooling:gen",
           label: "gen",
-          children: ["tooling:gen:exec"],
+          children: [{ id: "tooling:gen:exec", label: "tooling:gen:exec" }],
           timestamp,
         });
         yield* events.publish({

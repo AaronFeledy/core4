@@ -155,3 +155,38 @@ describe("test preload roots", () => {
     expect(roots.every((root) => root.startsWith(join(tmpdir(), "lando-test-roots-")))).toBe(true);
   });
 });
+
+describe("test preload engine composition", () => {
+  test("loads bundled plugins only when a test first reads the composition, keeping a value a test installed", () => {
+    const roots = mkdtempSync(join(tmpdir(), "lando-test-composition-"));
+    tempRoots.add(roots);
+    const bundled = join(repoRoot, "core/src/runtime/bundled-plugins.ts");
+    const composition = join(repoRoot, "engine/src/composition.ts");
+    const script = `await import(${JSON.stringify(preload)});
+const loaded = () => require.resolve(${JSON.stringify(bundled)}) in require.cache;
+const before = loaded();
+const lazy = globalThis.__landoEngineCompositionInputs;
+const installed = { bundledPluginModules: [] };
+globalThis.__landoEngineCompositionInputs = installed;
+const plugins = lazy.bundledPluginModules.length;
+const kept = globalThis.__landoEngineCompositionInputs === installed;
+globalThis.__landoEngineCompositionInputs = lazy;
+const { bundledPluginModules } = await import(${JSON.stringify(composition)});
+console.log(JSON.stringify({ before, after: loaded(), plugins, kept, read: bundledPluginModules().length }));`;
+    const env: Record<string, string | undefined> = { ...process.env };
+    for (const key of rootEnvKeys) env[key] = join(roots, key.toLowerCase());
+    const child = Bun.spawnSync([process.execPath, "-e", script], {
+      cwd: repoRoot,
+      env,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    expect(child.exitCode, child.stderr.toString()).toBe(0);
+    const result = JSON.parse(child.stdout.toString());
+    expect(result.before).toBe(false);
+    expect(result.after).toBe(true);
+    expect(result.plugins).toBeGreaterThan(0);
+    expect(result.kept).toBe(true);
+    expect(result.read).toBe(result.plugins);
+  });
+});

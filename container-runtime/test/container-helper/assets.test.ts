@@ -96,7 +96,7 @@ describe("resolveContainerHelper", () => {
     );
     expect(error._tag).toBe("ContainerHelperUnavailableError");
     expect(error.message).toContain("linux-x64/lando-container-helper");
-    expect(error.remediation).toContain("build:container-helper");
+    expect(error.remediation).toContain("bun run bootstrap");
   });
 
   test("resolves replacement bytes at the same helper path after a successful resolution", async () => {

@@ -17,7 +17,11 @@ import { loadNormalizedArtifact, repairClosedExtension, schemaAt } from "./x-ext
 import { evolveHistoricalConsolePort } from "./x-extension-console-port-proof.ts";
 import { evolveHistoricalEndpointKind } from "./x-extension-endpoint-kind-proof.ts";
 import { evolveHistoricalEndpointMetadata } from "./x-extension-endpoint-metadata-proof.ts";
-import { evolveHistoricalEnvironment, evolveHistoricalRouteText } from "./x-extension-environment-proof.ts";
+import {
+  evolveHistoricalEnvironment,
+  evolveHistoricalRouteMember,
+  evolveHistoricalRouteText,
+} from "./x-extension-environment-proof.ts";
 import { evolveHistoricalExtraArgs } from "./x-extension-extra-args-proof.ts";
 import { evolveHistoricalNetworks } from "./x-extension-networks-proof.ts";
 import { evolveHistoricalPackageCache } from "./x-extension-package-cache-proof.ts";
@@ -194,7 +198,9 @@ test.each(mutations)(
       await loadNormalizedArtifact("schema:ConfigTranslateEncodeInput"),
       "$.context.services",
     );
-    const evolved = evolveHistoricalPackageCache(evolveSchemaParity(expected, "services"));
+    const evolved = evolveHistoricalPackageCache(
+      evolveHistoricalRouteMember(evolveSchemaParity(expected, "services"), "authoring"),
+    );
     expect(jsonEquals(evolved, current)).toBe(true);
     const changed = mutateFirst(current, change);
     expect(changed).not.toBe(current);

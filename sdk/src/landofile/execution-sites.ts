@@ -1,6 +1,7 @@
 import { SchemaAST as AST, Schema } from "effect";
 import type { ExpressionTemplate } from "../expressions/ast.ts";
 import { expressionScopeMembers } from "../expressions/scopes.ts";
+import { PUBLIC_ROUTE_FACTS } from "../schema/environment-value.ts";
 import { ExecutionSite, getExecutionSite } from "../schema/execution-site.ts";
 import { LandofileShape } from "../schema/landofile.ts";
 import { ValidationIssuePath } from "../schema/validation-issue.ts";
@@ -61,6 +62,21 @@ export const executionSiteAt = (path: ReadonlyArray<string | number>): Execution
   return { site: match.site, relativePath: path.slice(match.index + 1) };
 };
 
+/** Scopes an executable tooling or event position reads when the task or step runs, never at load. */
+export const INVOCATION_SCOPES = ["event", "vars", "item", "key", "flags", "args", "raw", "task"] as const;
+
+/** Only executable declaration positions can retain invocation-time expressions. */
+export const executableExpressionPath = (path: readonly (string | number)[]): boolean => {
+  const [root, name, field] = path;
+  if (root === "events") return typeof name === "string" && typeof field === "number";
+  if (root === "toolingIncludes" || root === "includes") return field === "vars";
+  if (root !== "tooling" && root !== "toolingDefaults") return false;
+  const key = root === "tooling" ? field : name;
+  return (
+    key === undefined || ["cmd", "cmds", "service", "dir", "user", "env", "vars", "if"].includes(String(key))
+  );
+};
+
 export const isServiceEnvironmentValuePath = (path: readonly (string | number)[]): boolean =>
   path.length === 4 &&
   path[0] === "services" &&
@@ -68,16 +84,30 @@ export const isServiceEnvironmentValuePath = (path: readonly (string | number)[]
   path[2] === "environment" &&
   typeof path[3] === "string";
 
+const SELF_ROUTE_FACTS: ReadonlySet<string> = new Set(PUBLIC_ROUTE_FACTS);
+
+/**
+ * How an expression reads its own service: `route-fact` when a map-form environment value reads
+ * only `service.url`, `service.hostname`, or `service.origin`; `supported` when it reads the
+ * direct `service.port` at a site that has one (an environment value may mix it with route facts).
+ */
 export const servicePortExpression = (template: ExpressionTemplate, path: ReadonlyArray<string | number>) => {
-  if (isServiceEnvironmentValuePath(path)) {
+  const environment = isServiceEnvironmentValuePath(path);
+  if (environment) {
     const self = expressionScopeMembers(template, "service");
-    if ((self.members.has("url") && self.members.size === 1) || (!self.analyzable && self.members.size === 0))
-      return "url";
+    if (
+      (self.members.size > 0 && [...self.members].every((member) => SELF_ROUTE_FACTS.has(member))) ||
+      (!self.analyzable && self.members.size === 0)
+    )
+      return "route-fact";
   }
   const self = expressionScopeMembers(template, "service", "direct-property");
   if (!self.analyzable) return "unsupported-member";
   if (self.members.size === 0) return "absent";
-  if (self.members.size !== 1 || !self.members.has("port")) return "unsupported-member";
+  const members = environment
+    ? [...self.members].filter((member) => !SELF_ROUTE_FACTS.has(member))
+    : [...self.members];
+  if (members.length !== 1 || members[0] !== "port") return "unsupported-member";
   if (path[0] !== "services") return "unsupported-site";
   if (isServiceEnvironmentValuePath(path)) return "supported";
   const match = executionSiteAt(path);

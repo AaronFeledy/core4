@@ -26,12 +26,14 @@ export const makeReadinessProgress = Effect.fnUntraced(function* (
   let opened = false;
   let hasRestarting = false;
   let openedAt = 0;
-  const startRow = (name: string) =>
-    publishTaskStart(events, {
-      parentId,
-      taskId: startChildTaskId(parentId, name),
-      label: `Wait for ${name}`,
-    });
+  const readinessChild = (name: string) => ({
+    id: startChildTaskId(parentId, name),
+    label: `Wait for ${name}`,
+  });
+  const startRow = (name: string) => {
+    const { id, label } = readinessChild(name);
+    return publishTaskStart(events, { parentId, taskId: id, label });
+  };
   const show = Effect.sleep("100 millis").pipe(
     Effect.andThen(
       mutex.withPermits(1)(
@@ -43,7 +45,7 @@ export const makeReadinessProgress = Effect.fnUntraced(function* (
           yield* publishTreeStart(events, {
             parentId,
             label: `Readiness ${plan.name}`,
-            children: [...visible].map((name) => startChildTaskId(parentId, name)),
+            children: [...visible].map(readinessChild),
             mode: "list",
           });
           for (const name of visible) yield* startRow(name);

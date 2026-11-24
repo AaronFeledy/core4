@@ -25,7 +25,11 @@ export const expressionSource = (node: ExpressionNode): string => {
     case "Path":
       return node.head + segmentsSource(node.segments);
     case "Access":
-      return `(${expressionSource(node.target)})${segmentsSource(node.segments)}`;
+      // A call already ends in `)`, so member access on it needs no grouping. Every other target
+      // keeps its parentheses: a grouped path forces access semantics, and the rest need them.
+      return node.target.kind === "Call"
+        ? `${expressionSource(node.target)}${segmentsSource(node.segments)}`
+        : `(${expressionSource(node.target)})${segmentsSource(node.segments)}`;
     case "ArrayLiteral":
       return `[${node.elements.map(expressionSource).join(", ")}]`;
     case "ObjectLiteral":

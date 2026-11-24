@@ -46,7 +46,7 @@ describe("tooling live status", () => {
     const start = TaskTreeStartEvent.make({
       parentId: "tooling:composer",
       label: "composer",
-      children: ["tooling:composer:exec"],
+      children: [{ id: "tooling:composer:exec", label: "Run composer" }],
       timestamp: DateTime.makeUnsafe("2026-08-27T00:00:00.000Z"),
     });
     const complete = TaskTreeCompleteEvent.make({

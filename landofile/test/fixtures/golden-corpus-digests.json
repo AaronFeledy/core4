@@ -77,7 +77,7 @@
     },
     {
       "fixture": "docs/guides/bun-shell-scripts/fixtures/scripts-demo",
-      "digest": "5d9430ae3101cc9c235fb83376a77bd7f6ba7ad82fa6ffdcf4348a56215a0cce"
+      "digest": "11fe427cdb5fbba8502a2c3688914f5a5b473613ffba114d1a1563481c392884"
     },
     {
       "fixture": "docs/guides/bun-shell-scripts/fixtures/service-front-matter",
@@ -557,15 +557,15 @@
     },
     {
       "fixture": "docs/guides/expressions/fixtures/expressions-plan-time",
-      "digest": "356b7260d10d8f13ac2a85aceb7f4ee600cba7be8b55efcac7c0713088ed6fde"
+      "digest": "cab2941976da6c68771118712f7662c58624a28ac81e014f390bac62aa7cec1d"
     },
     {
       "fixture": "docs/guides/expressions/fixtures/expressions-public-url-live",
-      "digest": "82c2a2facf3f8cb9555b8dc46208f2001c73434d55fb4ea8d5c427372f01a9e3"
+      "digest": "188c17af79fe099ea2d0e22bdff6d7ca0b0fcae92140bdd4bb31618ccb7ffa2d"
     },
     {
       "fixture": "docs/guides/expressions/fixtures/expressions-public-url",
-      "digest": "350f208855066c7942221686e103f79319abf1da51ba728d87fe1710ffdade86"
+      "digest": "7f7ede7212d723dbd387236b9c68a207040c38f484c6cfbb51da14f7e05980e8"
     },
     {
       "fixture": "docs/guides/expressions/fixtures/expressions-service-creds",
@@ -601,8 +601,27 @@
       }
     },
     {
+      "fixture": "docs/guides/expressions/fixtures/expressions-url-event-phase",
+      "digest": "f03cba8f28d8ff5b6e7f9dfa7ea4d50be48a9dcbf57ca66a016087739312afdf"
+    },
+    {
       "fixture": "docs/guides/expressions/fixtures/expressions-url-no-route",
       "digest": "ae39c675777924609f85fe9470b92a30a96fe661533f254c7e164c02b72c21fd"
+    },
+    {
+      "fixture": "docs/guides/expressions/fixtures/expressions-url-tooling-live",
+      "digest": "71224a384de9bb76f1157c4a7f636081213dc4737a3b567fa0153425424717de"
+    },
+    {
+      "fixture": "docs/guides/expressions/fixtures/expressions-url-tooling-refused",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileLoadError"
+      }
+    },
+    {
+      "fixture": "docs/guides/expressions/fixtures/expressions-url-tooling",
+      "digest": "9d02b0782b6517d38b5ea7a54b95630b5515ffb538ad289a31111b98e10963cf"
     },
     {
       "fixture": "docs/guides/external-access/fixtures/external-access-demo",
@@ -1048,11 +1067,11 @@
     },
     {
       "fixture": "docs/guides/node-tanstack-start/fixtures/tanstack-start-demo",
-      "digest": "e1c970304aa7f411ae1b5689119ce49c8331f1ba1a2d75f3f1f489b229ed9c0b"
+      "digest": "d8de5ef818900ae4127d01725e5e0d436e269793914d45aef8ecb74967fa6b6b"
     },
     {
       "fixture": "docs/guides/node-tanstack-start/fixtures/tanstack-start-serve",
-      "digest": "54d9d70156f8a71ce995ecb1bf7f7e799c897b306803dd707f6ca113b9789a7b"
+      "digest": "40ac068f48510799f1f1a33b950cd5e80e1d1c4e2d39a05d7d4563a8b2d46da7"
     },
     {
       "fixture": "docs/guides/node-theme-assets/fixtures/php-theme-child",
@@ -1580,6 +1599,10 @@
       "digest": "93e9ad142110fcf488b4c1d01a22945a858375972ab8f7bbaade9239d1ea69e0"
     },
     {
+      "fixture": "docs/guides/terminal-ui-polish/fixtures/task-tree-labels",
+      "digest": "dcc1f149e85108c5bdc62433998d4794411237e313190c4af356342f97b69235"
+    },
+    {
       "fixture": "docs/guides/timezone/fixtures/timezone-demo",
       "digest": "2d197f30db67a4d5f016750a5ebe9c902f9c1355037177d23842c0377c77b639"
     },
@@ -1692,7 +1715,7 @@
     },
     {
       "fixture": "docs/guides/wordpress-vite/fixtures/wordpress-vite",
-      "digest": "2ca78acb2785dab169f9cb64e0c950ba1b2605e82e61a13f7cf09c7a452728c1"
+      "digest": "dec4715bdf80d32cdefa77dfce8b5d2580b66571f60c4590b53333b7d52ced0c"
     },
     {
       "fixture": "docs/guides/xdebug-phpstorm/fixtures/xdebug-custom-image",
@@ -1933,9 +1956,9 @@
         "digest": "60703b62deb60584757dd423b60c7ca8d39da5f0350e6a3fc1621c1ae19f0705"
       },
       "after": {
-        "digest": "67eb620f6dbb2c94dbab8b1ae5559b31bfd77abcfdec9d08e22a780048ac771f"
+        "digest": "7430ffa717b04e79daca1d812352667cb62f94012857a19028ccd2c8648ce00c"
       },
-      "reason": "The PHP images now compile bcmath, so the MageOS guide fixture no longer installs it in its artifact build step. The fixture also gained a schedule: job on appserver that runs Magento cron every minute as www-data, replacing the guide's host-terminal cron loop. The encoded document drops bcmath from that one install command and adds that one schedule entry. Composer now declares wrapper: true and describes its customized superuser environment and working directory (#2401)."
+      "reason": "The PHP images now compile bcmath, so the MageOS guide fixture no longer installs it in its artifact build step. The fixture also gained a schedule: job on appserver that runs Magento cron every minute as www-data, replacing the guide's host-terminal cron loop. The encoded document drops bcmath from that one install command and adds that one schedule entry. Composer now declares wrapper: true and describes its customized superuser environment and working directory (#2401). The fixture also gained a magento-install wrapper task whose base URL arguments read services.appserver.url (#2542)."
     },
     "docs/guides/migrating-recipes/fixtures/bare-recipe": {
       "before": {

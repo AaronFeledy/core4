@@ -140,7 +140,7 @@ export const assertPhpViaKeys = (via: PhpVia, service: ServiceConfig): void => {
       `Remove allowOverride: from this ${via} service. ${VIA_REMEDIATION}`,
     );
   }
-  if (via === "cli" && service.routes !== undefined) {
+  if (via === "cli" && (service.routes?.length ?? 0) > 0) {
     throw new ServiceConfigIssue(
       ["routes"],
       "HTTP routes: are not valid for via: cli.",

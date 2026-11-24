@@ -1180,6 +1180,8 @@
     ],
     "./landofile/execution-sites": [
       "ExecutionSiteMatch",
+      "INVOCATION_SCOPES",
+      "executableExpressionPath",
       "executionSiteAt",
       "isServiceEnvironmentValuePath",
       "servicePortExpression"
@@ -1698,6 +1700,7 @@
       "ObservedServiceRemoval",
       "OwnedResourcesCleanupResult",
       "PHYSICAL_VOLUME_LOCK_TIER",
+      "PUBLIC_ROUTE_FACTS",
       "PanelView",
       "ParsedPendingSite",
       "PerAppBridgePlan",
@@ -2129,6 +2132,7 @@
       "reset",
       "resolveLifecycleCommandId",
       "routeListenerPreference",
+      "routeUrlPartFact",
       "routerPortPairFromAcquisition",
       "sameImageReference",
       "sameRecipeFamily",

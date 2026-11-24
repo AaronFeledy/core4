@@ -35,8 +35,10 @@ import { EventStepCompileError, compileEventStepProgram } from "../tooling/step-
 import type { ToolingCommandStepLeaf } from "../tooling/step-program.ts";
 import { runToolingStepProgram } from "../tooling/step-runner.ts";
 import { runCanonicalCommand, withinEventInvocation } from "./event-invocation.ts";
+import { eventStepFailure } from "./event-step-failure.ts";
 import { eventStepFile, eventStepLabel } from "./event-step-identity.ts";
 import { type EventRedactionSources, makeEventStepRunners } from "./event-step-runtime.ts";
+import { resolveInvocationServiceUrls } from "./invocation-service-urls.ts";
 
 interface EventRedactor {
   readonly redactString: (value: string) => string;
@@ -65,23 +67,14 @@ const eventError = (
       ? { index: error.authoredIndex, kind: error.kind }
       : { index: sourceIndex, kind: authoredStepKind(step) };
   const failure = error instanceof EventStepCompileError ? error.cause : error;
-  const label = eventStepLabel(
-    event,
-    error instanceof EventStepCompileError ? error.source : source,
-    identity.index,
+  const stepSource = error instanceof EventStepCompileError ? error.source : source;
+  // Failures that reach this point happened outside a step's process: compiling the program or
+  // evaluating a predicate or selector. None of them has an exit code.
+  return eventStepFailure(
+    { event, label: eventStepLabel(event, stepSource, identity.index), ...identity },
+    failure,
+    redactor,
   );
-  return new LandofileEventStepFailedError({
-    message: `Event ${label} failed.`,
-    event,
-    index: identity.index,
-    kind: identity.kind,
-    exitCode: 1,
-    outputTail: redactor.redactString(failure instanceof Error ? failure.message : String(failure)),
-    remediation:
-      failure instanceof ToolingCompileError
-        ? redactor.redactString(failure.remediation)
-        : `Fix ${label}, then rerun the lifecycle command.`,
-  });
 };
 
 const publishInfo = Effect.fnUntraced(function* (body: string) {
@@ -206,7 +199,6 @@ export const runAppEvent = Effect.fn("AppOperation.runEvent")(function* (
             event,
             index: first.sourceIndex,
             kind: authoredStepKind(first.step),
-            exitCode: 1,
             outputTail: "",
             remediation: "Run the lifecycle command with the app bootstrap layer.",
           }),
@@ -308,6 +300,14 @@ export const runAppEvent = Effect.fn("AppOperation.runEvent")(function* (
           redactorFor,
           runCanonical: (leaf, redactionTokens) => runCanonicalCommand(plan, leaf, redactionTokens),
         }),
+        // Event steps have no defaults expansion, so a site's authored path is its effective path.
+        (sites) =>
+          resolveInvocationServiceUrls({
+            plan,
+            tool: event,
+            sites,
+            effectivePath: (site) => site.source.path,
+          }),
       ).pipe(mapFailureErrors((error) => eventError(error, event, first.step, redactor, first.source)));
     }),
   );

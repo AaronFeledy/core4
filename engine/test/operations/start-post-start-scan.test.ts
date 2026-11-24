@@ -95,7 +95,7 @@ test.each([{ selected: false }, { selected: true }])(
     );
     expect(trees.find((tree) => tree.parentId === scanTreeId)).toMatchObject({
       label: `Checking ${plan.name}`,
-      children: [`${scanTreeId}:web-1`],
+      children: [expect.objectContaining({ id: `${scanTreeId}:web-1` })],
     });
     expect(
       byTag(harness.events, "task.tree.complete").find((tree) => tree.parentId === scanTreeId),

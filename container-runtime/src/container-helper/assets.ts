@@ -225,7 +225,7 @@ const unavailable = (target: ContainerHelperTarget, cause: unknown, standalone: 
     message: causeMessage(cause),
     remediation: standalone
       ? "Reinstall Lando. Its embedded container helper is missing or damaged."
-      : "Run `bun run --filter='@lando/core' build:container-helper` to build it with Lando, or point LANDO_CONTAINER_HELPER_DIR at prebuilt binaries.",
+      : "Run `bun run bootstrap` to restore the helper built for these sources from the per-user cache, or `bun run bootstrap --build-helper` to build it with Lando, or point LANDO_CONTAINER_HELPER_DIR at prebuilt binaries.",
     ...(cause instanceof HelperResolveFailure ? {} : { cause }),
   });
 

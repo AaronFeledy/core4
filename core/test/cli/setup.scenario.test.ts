@@ -161,7 +161,12 @@ describe("meta:setup task tree progress", () => {
       if (treeStart?._tag !== "task.tree.start") {
         throw new Error("expected task.tree.start as first event");
       }
-      expect(treeStart.children).toEqual(["bundle", "podman", "socket", "state"]);
+      expect(treeStart.children).toEqual([
+        { id: "bundle", label: "Verify runtime bundle" },
+        { id: "podman", label: "Detect Podman" },
+        { id: "socket", label: "Probe Podman API" },
+        { id: "state", label: "Persist setup state" },
+      ]);
 
       const childTaskStarts = sink.events.filter((event) => event._tag === "task.start");
       const childTaskIds = childTaskStarts.map((event) =>

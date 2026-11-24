@@ -655,7 +655,11 @@ const expectRecordedBracket = (
     ids.map((id) => ({ app: { id }, evidence, outcome: expected.outcome })),
   );
   expect(harness.publishedEvents.filter((event) => event._tag === "task.tree.start")).toMatchObject([
-    { children: expected.children.map((id) => startChildTaskId(`destroy-${ids[0]}`, id)) },
+    {
+      children: expected.children.map((id) =>
+        expect.objectContaining({ id: startChildTaskId(`destroy-${ids[0]}`, id) }),
+      ),
+    },
   ]);
   expect(harness.events.indexOf("pre-destroy")).toBeLessThan(harness.events.indexOf("task.tree.start"));
   expect(harness.events.indexOf("task.tree.complete")).toBeLessThan(harness.events.indexOf("post-destroy"));

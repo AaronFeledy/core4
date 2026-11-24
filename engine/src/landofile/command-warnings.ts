@@ -39,6 +39,30 @@ export const recordCommandWarning = (warning: CommandWarning): Effect.Effect<voi
     Effect.flatMap((service) => (Option.isSome(service) ? service.value.add(warning) : Effect.void)),
   );
 
+const sameWarning = (left: CommandWarning, right: CommandWarning): boolean =>
+  left.code === right.code &&
+  Object.entries(left.context ?? {}).length === Object.entries(right.context ?? {}).length &&
+  Object.entries(left.context ?? {}).every(([key, value]) => right.context?.[key] === value);
+
+/**
+ * Record a warning unless this command already recorded one with the same code and context.
+ * True when it was recorded, so the caller tells people about it only once per command. Without a
+ * command scope there is nothing to dedupe against, so it reports true.
+ */
+export const recordCommandWarningOnce = (warning: CommandWarning): Effect.Effect<boolean> =>
+  Effect.serviceOption(CommandWarnings).pipe(
+    Effect.flatMap((service) => {
+      if (Option.isNone(service)) return Effect.succeed(true);
+      return service.value.list.pipe(
+        Effect.flatMap((recorded) =>
+          recorded.some((entry) => sameWarning(entry, warning))
+            ? Effect.succeed(false)
+            : service.value.add(warning).pipe(Effect.as(true)),
+        ),
+      );
+    }),
+  );
+
 export const commandWarningsUseMachineOutput: Effect.Effect<boolean> = Effect.serviceOption(
   CommandWarnings,
 ).pipe(Effect.map((service) => (Option.isSome(service) ? service.value.machineOutput : false)));

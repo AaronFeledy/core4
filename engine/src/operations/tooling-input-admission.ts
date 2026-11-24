@@ -1,6 +1,7 @@
 import {
   consumedToolingInputs,
   dynamicToolingReferenceIssues,
+  serviceUrlPlacementIssues,
   toolingInvocationIssues,
 } from "@lando/landofile/compiled-sites";
 import {
@@ -107,6 +108,7 @@ export const admitToolingTask = Effect.fnUntraced(function* (input: {
   const issues = [
     ...toolingInvocationIssues(input.task, sites),
     ...dynamicToolingReferenceIssues(input.task, sites),
+    ...serviceUrlPlacementIssues(sites),
   ];
   const [first, ...rest] = issues;
   const checked =
