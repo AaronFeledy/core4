@@ -12,12 +12,13 @@
  * Every trust store the authority manages (the system store, each Linux
  * browser NSS database, each Homebrew CA bundle, and the Windows store under
  * WSL) is reported as a row. `setup` inspects them before and after installing
- * and marks the ones it made trust the root; a store it could not repair is
- * reported untrusted, not failed. `trustStores` only inspects. The system row
- * is a fresh read, never Bun's per-process snapshot that `root.trusted` uses,
- * so setup can verify its own install. mkcert itself only writes the system
- * store (`TRUST_STORES=system`): Lando writes the browser databases so it can
- * report each one, and mkcert's Java keystore install is not used.
+ * and marks the ones it took from untrusted to trusted; a store it could not
+ * repair is reported untrusted, not failed. It skips `mkcert -install` when the
+ * system store already trusts the root. `trustStores` only inspects. The system
+ * row is a fresh read, never Bun's per-process snapshot that `root.trusted`
+ * uses, so setup can verify its own install. mkcert itself only writes the
+ * system store (`TRUST_STORES=system`): Lando writes the browser databases so
+ * it can report each one, and mkcert's Java keystore install is not used.
  *
  * Any issuing mkcert run creates a root when `CAROOT` has none, without
  * locking, and every Lando data root on a host shares one `CAROOT`. Only
@@ -161,7 +162,8 @@ export const makeMkcertCertificateAuthority = (
       if (setupOptions.skipTrustInstall === true) {
         return { trustStores: markChanges(before.rows, before.rows) };
       }
-      yield* installTrust(caroot, setupOptions.privilege);
+      // A system store that already trusts the root needs no `mkcert -install`, so reruns never prompt.
+      if (before.system.state !== "trusted") yield* installTrust(caroot, setupOptions.privilege);
       return { trustStores: markChanges(before.rows, yield* stores.repair(caroot, root, before)) };
     }),
     root: currentRoot.pipe(

@@ -5,7 +5,8 @@
  * so `brew postinstall ca-certificates` rebuilds it. Homebrew does not exist on Windows.
  */
 import { readFile, stat } from "node:fs/promises";
-import { dirname, isAbsolute, join } from "node:path";
+import { dirname, isAbsolute, join, resolve } from "node:path";
+import { isErrnoCode } from "@lando/sdk/errors";
 import type { TrustStoreStatus } from "@lando/sdk/schema";
 import type { ProcessResult, ProcessRunner } from "@lando/sdk/services";
 import { type Context, Effect, Result } from "effect";
@@ -30,12 +31,17 @@ const exists = (path: string): Promise<boolean> =>
     () => false,
   );
 
-/** `HOMEBREW_PREFIX`, then the prefix of the `brew` on PATH. The brew path is not resolved: on Linux it links into the repository, not the prefix. */
+/**
+ * `HOMEBREW_PREFIX`, then the prefix of the `brew` on PATH, normalized so one prefix spelled two ways
+ * yields one row. Links are not resolved: on Linux `bin/brew` links into the repository, not the prefix.
+ */
 const homebrewPrefixes = (env: HostEnv): ReadonlyArray<string> => {
   const brew = Bun.which("brew", { PATH: env.PATH ?? "" });
   const candidates = [env.HOMEBREW_PREFIX, brew === null ? undefined : dirname(dirname(brew))];
   return [
-    ...new Set(candidates.flatMap((prefix) => (prefix !== undefined && isAbsolute(prefix) ? [prefix] : []))),
+    ...new Set(
+      candidates.flatMap((prefix) => (prefix !== undefined && isAbsolute(prefix) ? [resolve(prefix)] : [])),
+    ),
   ];
 };
 
@@ -49,11 +55,21 @@ const locateBundles = async (env: HostEnv, platform: string): Promise<ReadonlyAr
   return bundles;
 };
 
-/** A bundle that is missing or unreadable counts as lacking the root: rebuilding it is the repair. */
-const bundleHasRoot = (path: string, root: string): Promise<boolean> =>
+/** What a read of the bundle shows. A missing bundle lacks the root; rebuilding it is the repair. */
+type BundleContents =
+  | { readonly _tag: "has-root" }
+  | { readonly _tag: "lacks-root" }
+  | { readonly _tag: "unreadable"; readonly message: string };
+
+const readBundle = (path: string, root: string): Promise<BundleContents> =>
   readFile(path, "utf8").then(
-    (text) => pemsContainRoot(text.match(PEM_BLOCK) ?? [], root),
-    () => false,
+    (text): BundleContents => ({
+      _tag: pemsContainRoot(text.match(PEM_BLOCK) ?? [], root) ? "has-root" : "lacks-root",
+    }),
+    (cause: unknown): BundleContents => {
+      if (isErrnoCode(cause, "ENOENT")) return { _tag: "lacks-root" };
+      return { _tag: "unreadable", message: cause instanceof Error ? cause.message : String(cause) };
+    },
   );
 
 const row = (
@@ -68,6 +84,34 @@ const missing = (detail: string, remediation: string) =>
 
 const refreshFailed = (detail: string, remediation: string) =>
   ({ state: "untrusted", reason: "refresh-failed", detail, remediation }) as const;
+
+const inspectionFailed = (located: HomebrewBundle, message: string) =>
+  ({
+    state: "unknown",
+    reason: "inspection-failed",
+    detail: `Lando could not read the bundle: ${message}`,
+    remediation: `Make ${located.path} readable, then run \`lando setup\` again.`,
+  }) as const;
+
+const assertNever = (value: never): never => value;
+
+/** The row for a bundle read, with the untrusted state a bundle that lacks the root gets. */
+const bundleRow = (
+  located: HomebrewBundle,
+  contents: BundleContents,
+  lacking: ReturnType<typeof missing>,
+): TrustStoreStatus => {
+  switch (contents._tag) {
+    case "has-root":
+      return row(located, TRUSTED);
+    case "lacks-root":
+      return row(located, lacking);
+    case "unreadable":
+      return row(located, inspectionFailed(located, contents.message));
+    default:
+      return assertNever(contents);
+  }
+};
 
 const LACKS_ROOT = "The bundle does not include the local CA.";
 
@@ -124,9 +168,9 @@ export const makeHomebrewTrust = ({ processRunner, env, platform }: HomebrewTrus
         ),
       );
     }
-    if (yield* Effect.promise(() => bundleHasRoot(located.path, root))) return row(located, TRUSTED);
-    return row(
+    return bundleRow(
       located,
+      yield* Effect.promise(() => readBundle(located.path, root)),
       missing(
         "Homebrew rebuilt it without the local CA.",
         "Check that the system trust store includes the local CA with `lando doctor`, then run `lando setup` again.",
@@ -135,8 +179,8 @@ export const makeHomebrewTrust = ({ processRunner, env, platform }: HomebrewTrus
   });
 
   const inspectBundle = (located: HomebrewBundle, root: string) =>
-    Effect.promise(() => bundleHasRoot(located.path, root)).pipe(
-      Effect.map((has) => row(located, has ? TRUSTED : missing(LACKS_ROOT, INSTALL_TRUST_REMEDIATION))),
+    Effect.promise(() => readBundle(located.path, root)).pipe(
+      Effect.map((contents) => bundleRow(located, contents, missing(LACKS_ROOT, INSTALL_TRUST_REMEDIATION))),
     );
 
   const located = Effect.promise(() => locateBundles(env, platform));
@@ -146,15 +190,17 @@ export const makeHomebrewTrust = ({ processRunner, env, platform }: HomebrewTrus
     inspect: (root: string): Effect.Effect<ReadonlyArray<TrustStoreStatus>> =>
       Effect.flatMap(located, (bundles) => Effect.all(bundles.map((bundle) => inspectBundle(bundle, root)))),
     /**
-     * Rebuild each bundle that lacks `root`. A bundle rebuilt from a system store that does not trust
-     * the root would still lack it, so nothing is rebuilt unless `systemTrusted`. Failures become
-     * untrusted rows, never setup failures.
+     * Rebuild each bundle verified to lack `root`; one Lando cannot read stays unknown. A bundle rebuilt
+     * from a system store that does not trust the root would still lack it, so nothing is rebuilt
+     * unless `systemTrusted`. Failures become untrusted rows, never setup failures.
      */
     refresh: Effect.fn("Homebrew.refreshCaBundles")(function* (root: string, systemTrusted: boolean) {
       const rows: TrustStoreStatus[] = [];
       for (const bundle of yield* located) {
         const inspected = yield* inspectBundle(bundle, root);
-        rows.push(inspected.state === "trusted" || !systemTrusted ? inspected : yield* rebuild(bundle, root));
+        rows.push(
+          inspected.state === "untrusted" && systemTrusted ? yield* rebuild(bundle, root) : inspected,
+        );
       }
       return rows;
     }),

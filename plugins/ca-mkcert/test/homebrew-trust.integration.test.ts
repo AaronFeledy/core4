@@ -19,19 +19,26 @@ import { DateTime, Duration, Effect, Schema, Stream } from "effect";
 /**
  * Proves `lando setup` makes Homebrew's own curl trust the local CA on a Linuxbrew host.
  *
+ * This is a compiled-CLI live suite rather than a guide scenario because the journey needs a host
+ * with Homebrew on it: a Homebrew container, Homebrew's own `ca-certificates` bundle, and its curl
+ * and OpenSSL, none of which a guide scenario's isolated temp cwd can provide.
+ *
  * Everything runs in one `ghcr.io/homebrew/brew` container reached only through the
  * answering Podman socket. The compiled CLI is bind-mounted from `LANDO_SCENARIO_E2E_BINARY`;
  * the socket may belong to a remote or VM-backed Podman host, so that path must live on a
  * disk the Podman host shares with this one (CI builds it under `$GITHUB_WORKSPACE`).
+ *
+ * Local runs that configure neither prerequisite skip. Nightly configures both, so configuring
+ * only one is a broken setup and fails rather than silently skipping.
  */
 const socket = resolveLiveProviderSocket();
 const binary = process.env.LANDO_SCENARIO_E2E_BINARY;
-const skipReason =
-  socket === undefined
-    ? "LANDO_TEST_PODMAN_SOCKET does not name an answering Podman socket"
-    : binary === undefined || binary.length === 0
-      ? "LANDO_SCENARIO_E2E_BINARY is unset; build the compiled CLI and point it there"
-      : undefined;
+const hasBinary = binary !== undefined && binary.length > 0;
+const missing = [
+  ...(socket === undefined ? ["LANDO_TEST_PODMAN_SOCKET does not name an answering Podman socket"] : []),
+  ...(hasBinary ? [] : ["LANDO_SCENARIO_E2E_BINARY is unset; build the compiled CLI and point it there"]),
+];
+const skipReason = missing.length === 2 ? missing.join("; ") : undefined;
 if (skipReason !== undefined) console.info(`[homebrew-trust] skipped: ${skipReason}`);
 
 const IMAGE = "ghcr.io/homebrew/brew:latest";
@@ -107,7 +114,11 @@ const plan: AppPlan = {
 test.skipIf(skipReason !== undefined)(
   "lando setup makes Homebrew curl trust the local CA and reruns as a no-op",
   async () => {
-    if (socket === undefined || binary === undefined) throw new TypeError(skipReason);
+    if (socket === undefined || binary === undefined || !hasBinary) {
+      throw new Error(
+        `[homebrew-trust] half-configured: ${missing.join("; ")}. Configure both prerequisites, or neither to skip.`,
+      );
+    }
     const ctx = { providerId: "lando", remediation: "Check the live test runtime.", env: {} };
     const api = makePodmanApiClient(socket.socketPath, ctx);
     const request = api.request;

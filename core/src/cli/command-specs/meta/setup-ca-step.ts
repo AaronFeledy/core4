@@ -35,7 +35,12 @@ const trustIncompleteWarning = (store: TrustStoreChange): CommandWarning => {
     code: "CA_TRUST_INCOMPLETE",
     message: sentence(`${store.name}${where} does not trust the local CA${why}`),
     ...(store.remediation === undefined ? {} : { remediation: store.remediation }),
-    context: { store: store.id, ...(store.location === undefined ? {} : { location: store.location }) },
+    context: {
+      store: store.id,
+      ...(store.location === undefined ? {} : { location: store.location }),
+      state: store.state,
+      ...(store.reason === undefined ? {} : { reason: store.reason }),
+    },
   };
 };
 
@@ -117,8 +122,9 @@ export const runCaSetupStep = Effect.fn("SetupCommand.runCaSetupStep")(function*
       ...(skipTrustInstall ? { skipTrustInstall: true } : {}),
     })
     .pipe(Effect.tapError((cause) => recorder.recordFailure("ca", cause)));
-  for (const { name, location } of trustStores.filter(({ changed }) => changed)) {
-    const body = `Trusted the local CA in ${name}${location === undefined ? "" : ` (${location})`}.`;
+  for (const { name, location, detail } of trustStores.filter(({ changed }) => changed)) {
+    const where = location === undefined ? "" : ` (${location})`;
+    const body = `Trusted the local CA in ${name}${where}.${detail === undefined ? "" : ` ${detail}`}`;
     yield* narrate(MessageInfoEvent.make({ body, timestamp: yield* DateTime.now }));
   }
   // Skipping trust installation leaves stores untrusted on purpose; only an installing run warns.

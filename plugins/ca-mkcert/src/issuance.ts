@@ -8,7 +8,7 @@ import { CertificateSpec } from "@lando/sdk/schema";
 import type { CaRootCertificate, IssuedCertificate } from "@lando/sdk/services";
 import { Effect, Redacted, Schema } from "effect";
 
-import { CA_ID, type MkcertContext, caError, failureDetail } from "./mkcert-command.ts";
+import { CA_ID, type MkcertContext, NO_TRUST_STORES, caError, failureDetail } from "./mkcert-command.ts";
 
 /** Run mkcert for `names` into a private temporary directory that is removed afterwards. */
 export const makeIssueInto =
@@ -33,7 +33,7 @@ export const makeIssueInto =
           const files = { certificate: join(dir, "cert.pem"), privateKey: join(dir, "key.pem") };
           const issued = yield* runMkcert(
             ["-cert-file", files.certificate, "-key-file", files.privateKey, "--", ...names],
-            { CAROOT: caroot },
+            { CAROOT: caroot, ...NO_TRUST_STORES },
           );
           if (issued.exitCode !== 0) {
             return yield* Effect.fail(

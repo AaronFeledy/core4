@@ -1,8 +1,8 @@
 /**
  * Every trust store the mkcert authority manages, in one stable order: the system store, each Linux
  * browser (NSS) database, each Homebrew CA bundle, then the Windows store under WSL. `inspect` only
- * reads. `repair` runs after `mkcert -install` has written the system store: it re-reads that store,
- * adds the root to browser databases that lack it, rebuilds Homebrew bundles, and re-reads the
+ * reads. `repair` runs after `mkcert -install` has written the system store (or was skipped because
+ * the store already trusted the root, whose row it then reuses): it re-reads that store, adds the root to browser databases that lack it, rebuilds Homebrew bundles, and re-reads the
  * Windows store, which Lando never writes.
  */
 import type { TrustStoreChange, TrustStoreStatus } from "@lando/sdk/schema";
@@ -16,15 +16,15 @@ import { type WindowsTrustPaths, makeWindowsTrust } from "./windows-trust.ts";
 
 const storeKey = ({ id, location }: TrustStoreStatus): string => JSON.stringify([id, location ?? null]);
 
-/** `after`, each row marked changed when setup took it from not trusted to trusted. */
+/** `after`, each row marked changed only when setup took it from verified untrusted to trusted. */
 export const markChanges = (
   before: ReadonlyArray<TrustStoreStatus>,
   after: ReadonlyArray<TrustStoreStatus>,
 ): ReadonlyArray<TrustStoreChange> => {
-  const trustedBefore = new Set(before.filter(({ state }) => state === "trusted").map(storeKey));
+  const untrustedBefore = new Set(before.filter(({ state }) => state === "untrusted").map(storeKey));
   return after.map((row) => ({
     ...row,
-    changed: row.state === "trusted" && !trustedBefore.has(storeKey(row)),
+    changed: row.state === "trusted" && untrustedBefore.has(storeKey(row)),
   }));
 };
 
@@ -37,6 +37,7 @@ export interface TrustStoresOptions {
 }
 
 export interface TrustStoresSnapshot {
+  readonly system: TrustStoreStatus;
   readonly rows: ReadonlyArray<TrustStoreStatus>;
   readonly nss: ReadonlyArray<NssInspection>;
 }
@@ -59,6 +60,7 @@ export const makeTrustStores = ({
     const homebrewRows = yield* homebrew.inspect(root);
     const windowsRows = yield* windows.inspect(caroot, root);
     return {
+      system: systemRow,
       rows: [systemRow, ...nssRows.map(({ status }) => status), ...homebrewRows, ...windowsRows],
       nss: nssRows,
     } satisfies TrustStoresSnapshot;
@@ -68,10 +70,14 @@ export const makeTrustStores = ({
     snapshot,
     /** Every managed store. Reads only. */
     inspect: (caroot: string, root: string) => Effect.map(snapshot(caroot, root), ({ rows }) => rows),
-    /** The stores after setup's repairs; `before` is the snapshot taken before `mkcert -install`. */
+    /**
+     * The stores after setup's repairs; `before` is the snapshot taken before `mkcert -install`. A
+     * system store that already trusted the root was not installed into, so its row is reused.
+     */
     repair: Effect.fnUntraced(function* (caroot: string, root: string, before: TrustStoresSnapshot) {
       // mkcert can exit 0 without the system store trusting the root; that is reported, not fatal.
-      const systemRow = yield* system.inspect(caroot, root);
+      const systemRow =
+        before.system.state === "trusted" ? before.system : yield* system.inspect(caroot, root);
       const nssRows = yield* nss.install(caroot, root, before.nss);
       const homebrewRows = yield* homebrew.refresh(root, systemRow.state === "trusted");
       const windowsRows = yield* windows.inspect(caroot, root);
