@@ -89,7 +89,8 @@ describe("mkcert CertificateAuthority setup", () => {
       const installCalls = runner.calls().filter((call) => call.args[0] === "-install");
       expect(installCalls).toHaveLength(1);
       expect(installCalls[0]?.cmd).toBe(mkcertInstallPath(harness.binDir, "linux"));
-      expect(installCalls[0]?.env?.CAROOT).toBe(harness.caRoot);
+      // mkcert writes only the system store; Lando owns the browser databases.
+      expect(installCalls[0]?.env).toEqual({ CAROOT: harness.caRoot, TRUST_STORES: "system" });
     });
   });
 
@@ -155,7 +156,13 @@ describe("mkcert CertificateAuthority setup", () => {
       const privilege = makeFakePrivilege();
       await Effect.runPromise(ca.setup({ force: false, privilege: privilege.service }));
       expect(privilege.calls()).toEqual([
-        ["env", `CAROOT=${harness.caRoot}`, mkcertInstallPath(harness.binDir, "linux"), "-install"],
+        [
+          "env",
+          `CAROOT=${harness.caRoot}`,
+          "TRUST_STORES=system",
+          mkcertInstallPath(harness.binDir, "linux"),
+          "-install",
+        ],
       ]);
     });
   });
@@ -310,13 +317,13 @@ describe("mkcert CertificateAuthority issuance", () => {
       // When: setup creates the root and installs it, then a leaf is issued
       await Effect.runPromise(ca.setup({ force: false }));
       await Effect.runPromise(ca.issueCert(SPEC));
-      // Then: the -CAROOT query and every issuance name no store; -install keeps mkcert's default
+      // Then: the -CAROOT query and every issuance name no store; -install names only the system store
       const trustStores = runner.calls().map(({ args, env }) => [args[0], env?.TRUST_STORES]);
       expect(new Set(trustStores.map(([command]) => command))).toEqual(
         new Set(["-CAROOT", "-cert-file", "-install"]),
       );
       for (const [command, stores] of trustStores)
-        expect({ command, stores }).toEqual({ command, stores: command === "-install" ? undefined : "none" });
+        expect({ command, stores }).toEqual({ command, stores: command === "-install" ? "system" : "none" });
     });
   });
 

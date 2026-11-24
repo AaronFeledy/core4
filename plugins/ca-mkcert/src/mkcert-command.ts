@@ -29,7 +29,7 @@ export const caError = (
 /**
  * mkcert v1.4.4 inspects every trust store it knows (system, NSS, Java) on each run unless
  * `TRUST_STORES` lists others. Naming none keeps the `-CAROOT` query and issuance away from the
- * stores; only `-install` runs without it.
+ * stores; only `-install` names one (`system`).
  */
 export const NO_TRUST_STORES = { TRUST_STORES: "none" } as const;
 
