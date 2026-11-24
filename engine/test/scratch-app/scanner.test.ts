@@ -173,7 +173,7 @@ test.each(["list", "listVolumes"] as const)(
   },
 );
 
-test.each(["list", "listVolumes", "removeObservedService", "removeVolume"] as const)(
+test.each(["list", "listVolumes", "bringDownObserved", "removeVolume"] as const)(
   "surfaces %s failures when pruning",
   async (operation) => {
     // Given

@@ -170,7 +170,7 @@ test("destroy reports unchanged when the provider returns no-op and nothing else
             select: () =>
               Effect.succeed({
                 ...provider,
-                destroy: () =>
+                bringDown: () =>
                   Effect.sync(() => {
                     destroys += 1;
                     return { kind: "no-op", reason: "no-applied-plan" } as const;

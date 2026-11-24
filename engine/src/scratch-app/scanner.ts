@@ -214,14 +214,14 @@ export class ScratchResourceScanner extends Context.Service<
                           service.app === id &&
                           services.some((candidate) => candidate.containerId === service.containerId),
                       ),
-                      (service) => provider.removeObservedService(service),
+                      (service) => provider.bringDownObserved(service, "remove"),
                       { concurrency: "unbounded" },
                     ),
                   ),
                 ),
           { concurrency: "unbounded" },
         ).pipe(
-          Effect.map((results) => results.flat().some((result) => result.kind === "removed")),
+          Effect.map((results) => results.flat().some((result) => result.action === "removed")),
           mapFailures((cause) =>
             scannerError("gc", `Unable to prune provider resources for scratch app ${id}.`, cause),
           ),

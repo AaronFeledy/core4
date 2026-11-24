@@ -106,19 +106,19 @@ const harnessAt = (
     appliedPlans: Effect.succeed(input.plan === undefined ? [] : [input.plan]),
     list: () => Effect.succeed(input.services ?? []),
     listVolumes: () => Effect.succeed(input.volumes ?? []),
-    removeObservedService: (service: ServiceRuntimeInfo) =>
+    bringDownObserved: (service: ServiceRuntimeInfo) =>
       Effect.sync(() => {
         removedServices.push(service);
-        return { kind: "removed" as const };
+        return { service: service.service, action: "removed" as const };
       }),
     removeVolume: (ref: VolumeInfo["ref"]) =>
       Effect.sync(() => {
         removedVolumes.push(ref.store);
       }),
-    destroy: (target: { readonly plan?: AppPlan }) =>
+    bringDown: (target: { readonly plan?: AppPlan }) =>
       Effect.sync(() => {
         if (target.plan !== undefined) destroyed.push(target.plan);
-        return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
+        return { kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } };
       }),
   };
   const layer = Layer.mergeAll(

@@ -129,7 +129,7 @@ test.skipIf(liveSocket === undefined)(
       } finally {
         await Effect.runPromise(
           provider
-            .destroy({ app: plan.id, plan }, { volumes: true })
+            .bringDown({ app: plan.id, plan }, { containers: "remove", volumes: true })
             .pipe(Effect.provide(makeTestStateStore().layer)),
         );
       }

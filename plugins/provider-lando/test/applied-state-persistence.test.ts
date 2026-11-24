@@ -181,10 +181,10 @@ describe("provider-lando applied state persistence", () => {
             operation === "apply" || operation === "reconcile"
               ? provider.apply(plan, { reconcile: operation === "reconcile" })
               : operation === "stop"
-                ? provider.stop(target)
+                ? provider.bringDown(target, { containers: "stop" })
                 : operation === "restart"
                   ? provider.restart(target)
-                  : provider.destroy(target, { volumes: true });
+                  : provider.bringDown(target, { containers: "remove", volumes: true });
           const failure = await Effect.runPromise(action.pipe(Effect.flip, Effect.scoped));
           expect(failure).toMatchObject({
             _tag: "ProviderUnavailableError",

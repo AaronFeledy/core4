@@ -230,7 +230,9 @@ test("destroy of a partial apply is a no-op and ownership inventory removes reta
     expect(networks.has(privateNetwork)).toBe(true);
 
     // When: destroy without applied plan is a no-op for planful teardown.
-    const destroyed = await Effect.runPromise(provider.destroy({ app: desired.id }, { volumes: false }));
+    const destroyed = await Effect.runPromise(
+      provider.bringDown({ app: desired.id }, { containers: "remove", volumes: false }),
+    );
     expect(destroyed).toMatchObject({ kind: "no-op", reason: "no-applied-plan" });
     expect(containers.has(containerName)).toBe(true);
     expect(networks.has(privateNetwork)).toBe(true);

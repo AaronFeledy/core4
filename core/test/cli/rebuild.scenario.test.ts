@@ -33,7 +33,7 @@ import * as BunFileSystem from "@lando/engine/services/file-system";
 import * as BunProcessRunner from "@lando/engine/services/process-runner";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
-import type { AppSelector, DestroyOptions, RuntimeProviderShape } from "@lando/sdk/services";
+import type { AppSelector, BringDownOptions, RuntimeProviderShape } from "@lando/sdk/services";
 import { ContainerHelperAssets } from "@lando/sdk/services";
 import { TestRouterService, TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
@@ -246,7 +246,7 @@ const requiredStartServicesLayer = Layer.mergeAll(
 
 const makeRebuildLayer = (plannedApp: AppPlan = plan) => {
   const lifecycleOrder: string[] = [];
-  const destroyCalls: Array<{ readonly target: AppSelector; readonly options: DestroyOptions }> = [];
+  const destroyCalls: Array<{ readonly target: AppSelector; readonly options: BringDownOptions }> = [];
   const applyCalls: Array<{
     readonly reconcile: boolean;
     readonly services: ReadonlyArray<string>;
@@ -271,16 +271,29 @@ const makeRebuildLayer = (plannedApp: AppPlan = plan) => {
           recordedServices: Object.keys((options.recordedPlan ?? appliedPlan).services),
         });
       }).pipe(Effect.as({ changed: true })),
-    stop: (target) =>
+    list: () =>
+      Effect.succeed(
+        Object.values(plannedApp.services).map((service) => ({
+          app: plannedApp.id,
+          appRoot: plannedApp.identity?.appRoot ?? plannedApp.root,
+          service: service.name,
+          providerId: plannedApp.provider,
+          containerId: `cid-${String(service.name)}`,
+          status: "running" as const,
+          publications: { status: "unknown" as const },
+        })),
+      ),
+    bringDownObserved: (observed) =>
       Effect.sync(() => {
-        lifecycleOrder.push(`stop:${String(target.service)}`);
-        stopCalls.push(target.service);
+        lifecycleOrder.push(`stop:${String(observed.service)}`);
+        stopCalls.push(observed.service);
+        return { service: observed.service, action: "stopped" as const };
       }),
-    destroy: (target, options) =>
+    bringDown: (target, options) =>
       Effect.sync(() => {
         lifecycleOrder.push("destroy");
         destroyCalls.push({ target, options });
-        return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
+        return { kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } };
       }),
     inspect: (target) =>
       Effect.succeed({
@@ -378,11 +391,11 @@ const makeCachedBuildLayer = () => {
         applied = { ...plan, identity: { appRoot: plan.root, ownerKey: appIdentityKey("owner", plan.root) } };
         return { changed: true };
       }),
-    destroy: () =>
+    bringDown: () =>
       Effect.sync(() => {
         containerGeneration += 1;
         applied = undefined;
-        return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
+        return { kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } };
       }),
     inspect: (target) =>
       Effect.succeed({
@@ -461,7 +474,11 @@ describe("lando rebuild", () => {
     const result = await Effect.runPromise(rebuildApp().pipe(Effect.provide(harness.layer)));
 
     expect(harness.destroyCalls).toHaveLength(1);
-    expect(harness.destroyCalls[0]?.options).toEqual({ volumes: false, removeState: false });
+    expect(harness.destroyCalls[0]?.options).toEqual({
+      containers: "remove",
+      volumes: false,
+      removeState: false,
+    });
     expect(harness.applyCalls).toEqual([{ reconcile: true, services: ["web"], recordedServices: ["web"] }]);
     expect(
       harness.lifecycleOrder.filter((entry) =>

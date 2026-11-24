@@ -73,7 +73,8 @@ export const selectedStopRefusal = (
 };
 
 /** Containers of this app on this provider, matched by the plan's identity. */
-const ownedContainers = (plan: AppPlan, observed: ReadonlyArray<ServiceRuntimeInfo>) =>
+/** Observed containers of this app at its root on its provider, each addressable by native id. */
+export const ownedContainers = (plan: AppPlan, observed: ReadonlyArray<ServiceRuntimeInfo>) =>
   observed.filter(
     (service) =>
       service.app === plan.id &&
@@ -204,16 +205,18 @@ export const stopSelectedAppServices = Effect.fn("AppOperation.stopSelection")(f
       }),
     );
     for (const container of containers) {
-      const result = yield* provider.removeObservedService(container);
+      const result = yield* provider.bringDownObserved(container, "remove");
       observationSources.push(result.shutdownObservations);
-      switch (result.kind) {
+      switch (result.action) {
         case "removed":
+        case "stopped":
           if (!servicesStopped.includes(String(service.name))) servicesStopped.push(String(service.name));
           break;
+        case "already-stopped":
         case "absent":
           break;
         default:
-          return result satisfies never;
+          return result.action satisfies never;
       }
     }
     yield* events.publish(

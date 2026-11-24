@@ -52,8 +52,8 @@ test.each([
         listVolumes: () => Effect.die("stop must not list idle runtime volumes"),
         resourceOwnership: () => Effect.succeed(kind === "absent" ? undefined : ownership),
         cleanupOwnedResources: () => Effect.die("stop must not clean idle runtime resources"),
-        destroy: () => Effect.die("stop must not destroy idle runtime resources"),
-        removeObservedService: () => Effect.die("stop must not remove idle orphan containers"),
+        bringDown: () => Effect.die("stop must not destroy idle runtime resources"),
+        bringDownObserved: () => Effect.die("stop must not remove idle orphan containers"),
       };
       const harness = makeHarness({
         plannedApp: desired,

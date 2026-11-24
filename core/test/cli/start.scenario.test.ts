@@ -629,20 +629,18 @@ const makeStartLayer = (
           }),
         ),
       ),
-    start: () => Effect.void,
-    stop: () => Effect.void,
     restart: () => Effect.void,
     waitForExit: () => Effect.succeed({ exitCode: 0 }),
-    destroy: (target, destroyOptions) =>
+    bringDown: (target, destroyOptions) =>
       Effect.sync(() => {
         destroyCalls.push({
           app: String(target.app),
-          volumes: destroyOptions.volumes,
+          volumes: destroyOptions.volumes === true,
           removeState: destroyOptions.removeState ?? false,
         });
       }).pipe(
         Effect.andThen(options.destroyEffect ?? Effect.void),
-        Effect.as({ kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } }),
+        Effect.as({ kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } }),
       ),
     exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
     execStream: () => Stream.die("not used"),
@@ -980,8 +978,6 @@ const makeAutoStartLayer = async (options: {
           }),
         ),
       ),
-    start: () => Effect.void,
-    stop: () => Effect.void,
     restart: () => Effect.void,
     waitForExit: () => Effect.succeed({ exitCode: 0 }),
     exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
@@ -2522,8 +2518,6 @@ describe("lando start", () => {
           order.push("apply");
           return { changed: true };
         }),
-      start: () => Effect.void,
-      stop: () => Effect.void,
       restart: () => Effect.void,
       waitForExit: () => Effect.succeed({ exitCode: 0 }),
       exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
@@ -2688,8 +2682,6 @@ describe("lando start", () => {
       removeArtifact: () => Effect.succeed({ kind: "absent" as const }),
       listArtifacts: () => Effect.succeed([]),
       apply: () => Effect.succeed({ changed: true }),
-      start: () => Effect.void,
-      stop: () => Effect.void,
       restart: () => Effect.void,
       waitForExit: () => Effect.succeed({ exitCode: 0 }),
       exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
@@ -2844,8 +2836,6 @@ describe("lando start", () => {
       removeArtifact: () => Effect.succeed({ kind: "absent" as const }),
       listArtifacts: () => Effect.succeed([]),
       apply: () => Effect.succeed({ changed: true }),
-      start: () => Effect.void,
-      stop: () => Effect.void,
       restart: () => Effect.void,
       waitForExit: () => Effect.succeed({ exitCode: 0 }),
       exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
@@ -3004,14 +2994,12 @@ describe("lando start", () => {
       removeArtifact: () => Effect.succeed({ kind: "absent" as const }),
       listArtifacts: () => Effect.succeed([]),
       apply: () => Effect.succeed({ changed: true }),
-      start: () => Effect.void,
-      stop: () => Effect.void,
       restart: () => Effect.void,
       waitForExit: () => Effect.succeed({ exitCode: 0 }),
-      destroy: (_target, options) =>
+      bringDown: (_target, options) =>
         Effect.sync(() => {
           destroyCalls.push(`${options.volumes}:${options.removeState ?? false}`);
-          return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
+          return { kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } };
         }),
       exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
       execStream: () => Stream.die("not used"),
@@ -3178,14 +3166,12 @@ describe("lando start", () => {
       removeArtifact: () => Effect.succeed({ kind: "absent" as const }),
       listArtifacts: () => Effect.succeed([]),
       apply: () => Effect.succeed({ changed: true }),
-      start: () => Effect.void,
-      stop: () => Effect.void,
       restart: () => Effect.void,
       waitForExit: () => Effect.succeed({ exitCode: 0 }),
-      destroy: (_target, options) =>
+      bringDown: (_target, options) =>
         Effect.sync(() => {
           destroyCalls.push(`${options.volumes}:${options.removeState ?? false}`);
-          return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
+          return { kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } };
         }),
       exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
       execStream: () => Stream.die("not used"),
@@ -3385,11 +3371,9 @@ describe("lando start", () => {
       removeArtifact: () => Effect.succeed({ kind: "absent" as const }),
       listArtifacts: () => Effect.succeed([]),
       apply: () => Effect.succeed({ changed: true }),
-      start: () => Effect.void,
-      stop: () => Effect.void,
       restart: () => Effect.void,
       waitForExit: () => Effect.succeed({ exitCode: 0 }),
-      destroy: Effect.fnUntraced(function* (_target, options) {
+      bringDown: Effect.fnUntraced(function* (_target, options) {
         callLog.push(`destroy:${options.volumes}:${options.removeState ?? false}`);
         return yield* Effect.fail(
           new ProviderUnavailableError({
@@ -3580,14 +3564,12 @@ describe("lando start", () => {
       removeArtifact: () => Effect.succeed({ kind: "absent" as const }),
       listArtifacts: () => Effect.succeed([]),
       apply: () => Effect.succeed({ changed: true }),
-      start: () => Effect.void,
-      stop: () => Effect.void,
       restart: () => Effect.void,
       waitForExit: () => Effect.succeed({ exitCode: 0 }),
-      destroy: (_target, options) =>
+      bringDown: (_target, options) =>
         Effect.sync(() => {
           callLog.push(`destroy:${options.volumes}:${options.removeState ?? false}`);
-          return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
+          return { kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } };
         }),
       exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
       execStream: () => Stream.die("not used"),

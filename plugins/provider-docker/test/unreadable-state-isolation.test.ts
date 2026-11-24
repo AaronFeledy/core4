@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { writeFile } from "node:fs/promises";
 import { AppId, ServiceName } from "@lando/sdk/schema";
-import { Effect, Stream } from "effect";
+import { Effect, type Scope, Stream } from "effect";
 import { listAppliedPlans, persistAppliedPlan } from "../src/applied-state.ts";
 import { makeRuntimeProvider } from "../src/index.ts";
 import { webFor, withInventory } from "./resource-ownership-support.ts";
@@ -57,16 +57,18 @@ for (const operation of ["stop", "destroy", "inspect", "logs"] as const) {
         }),
       );
       const target = { app: b.id, service: ServiceName.make("web") };
-      const action =
+      const action: Effect.Effect<unknown, unknown, Scope.Scope> =
         operation === "stop"
-          ? provider.stop(target)
+          ? provider.bringDown({ app: b.id }, { containers: "stop" })
           : operation === "destroy"
-            ? provider.destroy({ app: b.id }, { volumes: false })
+            ? provider.bringDown({ app: b.id }, { containers: "remove", volumes: false })
             : operation === "inspect"
               ? provider.inspect(target)
               : Stream.runCollect(provider.logs(target, { follow: false, tail: 10 }));
       await Effect.runPromise(action.pipe(Effect.scoped));
-      const refusal = await Effect.runPromise(provider.stop({ ...target, app: a.id }).pipe(Effect.flip));
+      const refusal = await Effect.runPromise(
+        provider.bringDown({ app: a.id }, { containers: "stop" }).pipe(Effect.flip),
+      );
       expect(refusal).toMatchObject({ _tag: "ProviderUnavailableError", operation: "applied-state.read" });
       expect(refusal.message).toContain(path);
     });

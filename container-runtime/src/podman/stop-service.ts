@@ -1,19 +1,24 @@
 import { mapFailures } from "@lando/sdk/command-result";
 import { ProviderInternalError } from "@lando/sdk/errors";
 import { PostServiceStopEvent, PreServiceStopEvent } from "@lando/sdk/events";
-import { type AppPlan, ProviderId, type ServicePlan } from "@lando/sdk/schema";
+import { type AppPlan, type ContainerDisposition, ProviderId, type ServicePlan } from "@lando/sdk/schema";
 import type { EventService } from "@lando/sdk/services";
 import { type Context, DateTime, Effect } from "effect";
 import type { AdoptionReceipt } from "../data-root-ownership.ts";
 import type { EngineHttpApi, ProviderErrorContext } from "../engine-api.ts";
 import { containerOwnershipLabels, inspectOwnedNativeId } from "../native-ownership.ts";
 import { serviceContainerName } from "../plan.ts";
-import { retainShutdownObservations, stopAndRemoveContainer } from "../stop-container.ts";
+import { bringDownContainer, retainShutdownObservations } from "../stop-container.ts";
 
+/**
+ * Brings down the container behind one planned service name, inspected with the adoption receipts so
+ * a foreign container at that name is never touched, between the service stop lifecycle events.
+ */
 export const stopService = Effect.fnUntraced(function* (
   plan: AppPlan,
   service: ServicePlan,
   options: {
+    readonly containers: ContainerDisposition;
     readonly api: EngineHttpApi;
     readonly ctx: ProviderErrorContext;
     readonly eventService?: Pick<Context.Service.Shape<typeof EventService>, "publish">;
@@ -54,17 +59,18 @@ export const stopService = Effect.fnUntraced(function* (
     },
     options.ctx,
   );
-  const result = yield* stopAndRemoveContainer(
+  const result = yield* bringDownContainer(
     {
       appId: plan.id,
       providerId,
       service: service.name,
       ...(containerId === undefined ? {} : { containerId }),
     },
+    options.containers,
     options,
   );
   yield* publish(
     PostServiceStopEvent.make({ ...fields, eventName: "post-service-stop", timestamp: yield* DateTime.now }),
   ).pipe(mapFailures((error) => retainShutdownObservations(error, result.shutdownObservations)));
-  return result;
+  return { ...result, ...(containerId === undefined ? {} : { containerId }) };
 });

@@ -32,11 +32,11 @@ import {
   type AppPlanner,
   type AppSelector,
   type ApplyOptions,
+  type BringDownOptions,
   type BuildOptions,
   BuildOrchestrator,
   type CacheService,
   type ConfigService,
-  type DestroyOptions,
   EventService,
   type FileSystem,
   GlobalAppService,
@@ -96,7 +96,7 @@ interface ApplyCall {
 
 interface DestroyCall {
   readonly target: AppSelector;
-  readonly options: DestroyOptions;
+  readonly options: BringDownOptions;
 }
 
 interface InspectCall {
@@ -422,7 +422,7 @@ const makeHarness = async (
               );
         }),
       ),
-    destroy: (target, destroyOptions) =>
+    bringDown: (target, destroyOptions) =>
       options.failDestroy
         ? Effect.fail(
             new ProviderUnavailableError({
@@ -437,11 +437,12 @@ const makeHarness = async (
             runningServices.clear();
             if (destroyOptions.removeState) appliedPlan = undefined;
             return {
-              kind: "destroyed" as const,
+              kind: "removed" as const,
+              containers: [],
               volumesRemoved: options.destroyedVolumes ?? { data: 0, cache: 0 },
             };
           }),
-    removeObservedService: (service) =>
+    bringDownObserved: (service) =>
       options.failRemove || options.failRemoveServices?.includes(String(service.service))
         ? Effect.fail(
             new ProviderUnavailableError({
@@ -454,7 +455,7 @@ const makeHarness = async (
         : Effect.sync(() => {
             calls.removed.push(String(service.service));
             runningServices.delete(service.service);
-            return { kind: "removed" as const };
+            return { service: service.service, action: "removed" as const };
           }),
     inspect: (target) => {
       calls.inspect.push({ target });
@@ -1068,6 +1069,7 @@ describe("meta:global command effects", () => {
             expect(harness.calls.destroy).toHaveLength(1);
             expect(harness.calls.destroy[0]?.target.plan).toEqual(applied);
             expect(harness.calls.destroy[0]?.options).toEqual({
+              containers: "remove",
               volumes: false,
               removeState: command === "destroy",
             });
@@ -1708,7 +1710,11 @@ describe("meta:global command effects", () => {
 
       expect(harness.calls.destroy).toHaveLength(1);
       expect(String(harness.calls.destroy[0]?.target.app)).toBe("global");
-      expect(harness.calls.destroy[0]?.options).toEqual({ volumes: false, removeState: false });
+      expect(harness.calls.destroy[0]?.options).toEqual({
+        containers: "remove",
+        volumes: false,
+        removeState: false,
+      });
       expect(result.materialized).toBe(true);
       expect(result.servicesStopped).toEqual(["proxy"]);
     });
@@ -1911,7 +1917,11 @@ describe("meta:global command effects", () => {
       const result = await Effect.runPromise(globalDestroy({}).pipe(Effect.provide(harness.layer)));
 
       expect(harness.calls.destroy).toHaveLength(1);
-      expect(harness.calls.destroy[0]?.options).toEqual({ volumes: false, removeState: true });
+      expect(harness.calls.destroy[0]?.options).toEqual({
+        containers: "remove",
+        volumes: false,
+        removeState: true,
+      });
       expect(result.materialized).toBe(true);
       expect(result.dataVolumesRemoved).toBe(false);
       expect(result.cacheVolumesRemoved).toBe(false);
@@ -1927,7 +1937,11 @@ describe("meta:global command effects", () => {
           globalDestroy({ volumes: true }).pipe(Effect.provide(harness.layer)),
         );
 
-        expect(harness.calls.destroy[0]?.options).toEqual({ volumes: true, removeState: true });
+        expect(harness.calls.destroy[0]?.options).toEqual({
+          containers: "remove",
+          volumes: true,
+          removeState: true,
+        });
         expect(result.dataVolumesRemoved).toBe(true);
         expect(result.cacheVolumesRemoved).toBe(false);
       },
@@ -1944,7 +1958,11 @@ describe("meta:global command effects", () => {
           globalDestroy({ purge: true }).pipe(Effect.provide(harness.layer)),
         );
 
-        expect(harness.calls.destroy[0]?.options).toEqual({ volumes: true, removeState: true });
+        expect(harness.calls.destroy[0]?.options).toEqual({
+          containers: "remove",
+          volumes: true,
+          removeState: true,
+        });
         expect(result.dataVolumesRemoved).toBe(true);
       },
       { destroyedVolumes: { data: 1, cache: 0 } },
@@ -3731,7 +3749,11 @@ describe("meta:global command effects", () => {
       expect(harness.calls.buildOptions).toEqual([{ refresh: true }, { refresh: true }]);
 
       expect(harness.calls.destroy).toHaveLength(1);
-      expect(harness.calls.destroy[0]?.options).toEqual({ volumes: false, removeState: false });
+      expect(harness.calls.destroy[0]?.options).toEqual({
+        containers: "remove",
+        volumes: false,
+        removeState: false,
+      });
       expect(harness.calls.build).toHaveLength(2);
       expect(harness.calls.apply).toHaveLength(2);
       expect(harness.calls.apply[0]?.options.reconcile).toBe(true);

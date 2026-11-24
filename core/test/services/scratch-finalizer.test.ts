@@ -195,18 +195,16 @@ const makeRecordingLayer = (
               : Effect.succeed({ changed: true }),
           ),
         )),
-    start: () => die("start"),
-    stop: () => die("stop"),
     restart: () => die("restart"),
     waitForExit: () => Effect.succeed({ exitCode: 0 }),
-    destroy: (target, options) =>
+    bringDown: (target, options) =>
       Effect.sync(() => {
         destroyCalls.push({
           app: String(target.app),
-          volumes: options.volumes,
+          volumes: options.volumes === true,
           removeState: options.removeState,
         });
-        return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
+        return { kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } };
       }),
     exec: () => die("exec"),
     execStream: () => Stream.die("scratch finalizer test provider should not call execStream"),

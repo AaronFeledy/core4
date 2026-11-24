@@ -33,7 +33,6 @@ import {
 } from "@lando/container-runtime/log-source-binding";
 import { serviceContainerName } from "@lando/container-runtime/plan";
 import { makePodmanApiClient as makeRuntimePodmanApiClient } from "@lando/container-runtime/podman/api-client";
-import { bringDown } from "@lando/container-runtime/podman/bring-down";
 import {
   type BringUpOptions,
   bringUp,
@@ -56,7 +55,6 @@ import {
 } from "@lando/container-runtime/podman/version-floor";
 import {
   bindResolvedProviderOps,
-  forgetAppliedPlanUnlessKept,
   makeProviderPlanState,
   makeResourceOwnershipStore,
   noPlanErrorFactory,
@@ -73,10 +71,9 @@ import {
 import { inspectEngineResourceNames } from "@lando/container-runtime/resource-names";
 import { readAppEnvironment } from "@lando/container-runtime/runtime-provider";
 import {
-  DESTROY_NO_OP,
+  BRING_DOWN_NO_OP,
   postExactServiceLifecycle,
   postServiceLifecycle,
-  removeObservedContainer,
 } from "@lando/container-runtime/service-lifecycle";
 import { waitForExit } from "@lando/container-runtime/wait-for-exit";
 import { mapFailures } from "@lando/sdk/command-result";
@@ -790,6 +787,7 @@ const assembleRuntimeProvider = (
       persist: persistAppliedPlan,
       remove: removeAppliedPlan,
     });
+    const providerBringDown = planState.bringDownWith({ api: podmanApi });
     const { appliedPlans } = planState;
     const plans = appliedPlans.plans;
     const resolvePlan = appliedPlans.resolvePlan;
@@ -800,8 +798,8 @@ const assembleRuntimeProvider = (
       ctx: PODMAN_CTX,
       noPlanError: makeNoPlanError,
       service: {
-        lifecycle: (plan, target, action) =>
-          postServiceLifecycle(plan, target, action, { api: podmanApi, ctx: PODMAN_CTX }),
+        restart: (plan, target) =>
+          postServiceLifecycle(plan, target, "restart", { api: podmanApi, ctx: PODMAN_CTX }),
         resume: (target, identity) =>
           postExactServiceLifecycle(target, identity, "start", { api: podmanApi, ctx: PODMAN_CTX }),
         suspend: (target, identity) =>
@@ -919,44 +917,13 @@ const assembleRuntimeProvider = (
         );
       }),
       cleanupOwnedResources: planState.cleanupOwnedResources,
-      destroy: Effect.fn("RuntimeProvider.destroy")(function* (target, destroyOptions) {
+      bringDown: Effect.fn("RuntimeProvider.bringDown")(function* (target, bringDownOptions) {
         const previous = yield* appliedPlans.resolveMutationPlan(target.app);
         const plan = target.plan ?? previous;
-        if (plan === undefined) return DESTROY_NO_OP;
-        const { shutdownObservations, volumesRemoved, skipped } = yield* bringDown(plan, {
-          adoptionReceipts: yield* planState.ownership.receiptsFor(plan),
-          api: podmanApi,
-          endpointNamespace: socketPath.startsWith("/") ? `unix://${socketPath}` : socketPath,
-          ctx: PODMAN_CTX,
-          volumes: destroyOptions.volumes,
-          ...(destroyOptions.purgeCaches === undefined ? {} : { purgeCaches: destroyOptions.purgeCaches }),
-        });
-        yield* forgetAppliedPlanUnlessKept(appliedPlans, target.app, destroyOptions);
-        return {
-          kind: "destroyed",
-          volumesRemoved,
-          shutdownObservations,
-          ...(skipped === undefined ? {} : { skipped }),
-        };
+        if (plan === undefined) return BRING_DOWN_NO_OP;
+        return yield* providerBringDown.app({ app: target.app, plan, options: bringDownOptions });
       }),
-      removeObservedService: Effect.fn("RuntimeProvider.removeObservedService")((observed) =>
-        appliedPlans.resolveMutationPlan(observed.app).pipe(
-          Effect.flatMap(
-            Effect.fnUntraced(function* (plan) {
-              const receipts =
-                observed.appRoot !== undefined && observed.nativeName !== undefined
-                  ? yield* planState.ownership.receiptsAt(observed.appRoot)
-                  : [];
-              return yield* removeObservedContainer(observed, {
-                api: podmanApi,
-                ctx: PODMAN_CTX,
-                dataRoot: options.userDataRoot ?? plan?.identity?.dataRoot,
-                receipts,
-              });
-            }),
-          ),
-        ),
-      ),
+      bringDownObserved: providerBringDown.observed,
       logs: (target, logOptions) =>
         Stream.unwrap(
           resolvePlan(target.app).pipe(

@@ -5,7 +5,7 @@ import { join } from "node:path";
 
 import { makeLandoPaths } from "@lando/paths";
 import { AbsolutePath, AppId, ProviderId, ServiceName } from "@lando/sdk/schema";
-import type { AppliedOrphanGroup } from "@lando/sdk/services";
+import type { AppliedOrphanGroup, ServiceRuntimeInfo } from "@lando/sdk/services";
 import {
   AppPlanner,
   EventService,
@@ -68,7 +68,8 @@ const layerFor = (root: string) => {
   const provider = {
     ...TestRuntimeProvider,
     id: "lando",
-    removeObservedService: () => Effect.succeed({ kind: "removed" as const }),
+    bringDownObserved: (observed: ServiceRuntimeInfo) =>
+      Effect.succeed({ service: observed.service, action: "removed" as const }),
     removeVolume: () => Effect.void,
   };
   return {

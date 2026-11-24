@@ -43,9 +43,10 @@ import { CommandResultEnvelope, SnapshotInfo, appIdentityKey } from "@lando/sdk/
 import type {
   AppSelector,
   AppliedFileSyncInspection,
-  DestroyOptions,
+  BringDownOptions,
   FileSyncEngineShape,
   RuntimeProviderShape,
+  ServiceRuntimeInfo,
 } from "@lando/sdk/services";
 import { DataMover, RuntimeProvider, StateStore } from "@lando/sdk/services";
 import { startChildTaskId } from "@lando/sdk/task-progress";
@@ -232,7 +233,7 @@ const makeDestroyLayer = (
 
   const events: string[] = [];
   const publishedEvents: Array<{ readonly _tag: string; readonly [key: string]: unknown }> = [];
-  const destroyCalls: Array<{ readonly target: AppSelector; readonly options: DestroyOptions }> = [];
+  const destroyCalls: Array<{ readonly target: AppSelector; readonly options: BringDownOptions }> = [];
   const artifactRemovals: string[] = [];
   const evidenceRoots: string[] = [];
   const volumes = new Set(plannedApp.stores.map((store) => store.name));
@@ -263,10 +264,10 @@ const makeDestroyLayer = (
     capabilities,
     ...(options.orphanEvidence === true || options.leftoverOrphans === true
       ? {
-          removeObservedService: () =>
+          bringDownObserved: (observed: ServiceRuntimeInfo) =>
             Effect.sync(() => {
               mutations.push("remove:orphan");
-              return { kind: "removed" as const };
+              return { service: observed.service, action: "removed" as const };
             }),
         }
       : {}),
@@ -310,11 +311,9 @@ const makeDestroyLayer = (
     ...(options.quiesceEffect === undefined
       ? {}
       : { quiesceForFileSync: () => (options.quiesceEffect ?? Effect.void).pipe(Effect.as({})) }),
-    start: () => Effect.void,
-    stop: () => Effect.void,
     restart: () => Effect.void,
     waitForExit: () => Effect.succeed({ exitCode: 0 }),
-    destroy: (target, destroyOptions) =>
+    bringDown: (target, destroyOptions) =>
       Effect.sync(() => {
         destroyCalls.push({ target, options: destroyOptions });
         const removed: { data: number; cache: number } = { data: 0, cache: 0 };
@@ -330,7 +329,8 @@ const makeDestroyLayer = (
       }).pipe(
         Effect.tap(() => options.providerDestroyEffect ?? Effect.void),
         Effect.map((removed) => ({
-          kind: "destroyed" as const,
+          kind: "removed" as const,
+          containers: [],
           volumesRemoved: removed,
           ...(options.sharedCacheInUse && destroyOptions.purgeCaches
             ? { skipped: [{ appId: plannedApp.id, resource: "lando-cache-npm", reason: "in use" }] }
@@ -1026,7 +1026,11 @@ describe("lando destroy", () => {
     expect(harness.mutations.indexOf("inventory")).toBeLessThan(harness.mutations.indexOf("post-destroy"));
     expect(harness.destroyCalls).toHaveLength(1);
     expect(harness.destroyCalls[0]?.target).toEqual({ app: plan.id, plan });
-    expect(harness.destroyCalls[0]?.options).toEqual({ volumes: false, removeState: true });
+    expect(harness.destroyCalls[0]?.options).toEqual({
+      containers: "remove",
+      volumes: false,
+      removeState: true,
+    });
     expect(harness.volumes.has("test_destroy_database_data")).toBe(true);
     expect(harness.volumes.has("lando-cache-npm")).toBe(true);
     expect(result.servicesDestroyed).toEqual(["database", "web"]);
@@ -1089,7 +1093,11 @@ describe("lando destroy", () => {
     const harness = makeDestroyLayer();
     const result = await Effect.runPromise(destroyApp({ volumes: true }).pipe(Effect.provide(harness.layer)));
 
-    expect(harness.destroyCalls[0]?.options).toEqual({ volumes: true, removeState: true });
+    expect(harness.destroyCalls[0]?.options).toEqual({
+      containers: "remove",
+      volumes: true,
+      removeState: true,
+    });
     expect(harness.volumes.has("test_destroy_database_data")).toBe(false);
     expect(harness.volumes.has("lando-cache-npm")).toBe(true);
     expect(result).toMatchObject({ dataVolumesRemoved: true, cacheVolumesRemoved: false });
@@ -1102,6 +1110,7 @@ describe("lando destroy", () => {
     );
 
     expect(harness.destroyCalls[0]?.options).toEqual({
+      containers: "remove",
       volumes: false,
       purgeCaches: true,
       removeState: true,

@@ -69,6 +69,15 @@ const makeRuntimeProvider = (options: Parameters<typeof runtimeProviderFactory>[
   }).pipe(Effect.map(withTestVolumeLocks));
 
 const appId = AppId.make("myapp");
+const CreateLabels = Schema.Struct({
+  Labels: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+});
+// A listed container reports the labels it was created with, as the Docker list endpoint does.
+const createdLabels = (config: unknown): Readonly<Record<string, string>> =>
+  Option.match(Schema.decodeUnknownOption(CreateLabels)(config), {
+    onNone: () => ({}),
+    onSome: (created) => created.Labels ?? {},
+  });
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
 
@@ -427,6 +436,7 @@ const makeFakeApi = () => {
             Labels: {
               "dev.lando.app": appId,
               "dev.lando.service": serviceName,
+              ...createdLabels(configs.get(name)),
             },
           }));
           return { status: 200, body: JSON.stringify(containers) };
@@ -996,6 +1006,7 @@ const makeFakeApiWithHooks = (hooks: FakeDockerApiHooks = {}) => {
             Labels: {
               "dev.lando.app": appId,
               "dev.lando.service": name.includes("-db") ? dbServiceName : serviceName,
+              ...createdLabels(configs.get(name)),
             },
           }));
           return { status: 200, body: JSON.stringify(containers) };
@@ -1280,7 +1291,7 @@ describe("provider-docker RuntimeProvider contract", () => {
         Effect.map((chunks) => Array.from(chunks)),
       ),
     );
-    await Effect.runPromise(provider.destroy({ app: appId }, { volumes: true }));
+    await Effect.runPromise(provider.bringDown({ app: appId }, { containers: "remove", volumes: true }));
 
     expect(inspected.status).toBe("running");
     // Actual daemon bindings are reported as observed, never decorated with the planned HTTP endpoint.
@@ -1851,7 +1862,7 @@ describe("provider-docker RuntimeProvider contract", () => {
         Effect.map((chunks) => Array.from(chunks)),
       ),
     );
-    await Effect.runPromise(provider.destroy({ app: appId }, { volumes: true }));
+    await Effect.runPromise(provider.bringDown({ app: appId }, { containers: "remove", volumes: true }));
 
     expect(inspected.status).toBe("running");
     expect(inspected.publications).toEqual({
@@ -2108,7 +2119,7 @@ describe("provider-docker RuntimeProvider contract", () => {
       RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ platform: "linux", dockerApi: fake1.api }))),
     );
     await Effect.runPromise(Effect.scoped(provider1.apply(plan, { reconcile: true })));
-    await Effect.runPromise(provider1.destroy({ app: appId }, { volumes: false }));
+    await Effect.runPromise(provider1.bringDown({ app: appId }, { containers: "remove", volumes: false }));
 
     expect(fake1.volumes.has("myapp_db_data")).toBe(true);
     expect(fake1.volumes.has("lando-cache-npm")).toBe(true);
@@ -2121,7 +2132,7 @@ describe("provider-docker RuntimeProvider contract", () => {
       RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ platform: "linux", dockerApi: fake2.api }))),
     );
     await Effect.runPromise(Effect.scoped(provider2.apply(plan, { reconcile: true })));
-    await Effect.runPromise(provider2.destroy({ app: appId }, { volumes: true }));
+    await Effect.runPromise(provider2.bringDown({ app: appId }, { containers: "remove", volumes: true }));
 
     expect(fake2.volumes.has("myapp_db_data")).toBe(false);
     expect(fake2.volumes.has("lando-cache-npm")).toBe(true);
@@ -2134,7 +2145,9 @@ describe("provider-docker RuntimeProvider contract", () => {
       RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ platform: "linux", dockerApi: fake3.api }))),
     );
     await Effect.runPromise(Effect.scoped(provider3.apply(plan, { reconcile: true })));
-    await Effect.runPromise(provider3.destroy({ app: appId }, { volumes: false, purgeCaches: true }));
+    await Effect.runPromise(
+      provider3.bringDown({ app: appId }, { containers: "remove", volumes: false, purgeCaches: true }),
+    );
 
     expect(fake3.volumes.has("myapp_db_data")).toBe(true);
     expect(fake3.volumes.has("lando-cache-npm")).toBe(false);
@@ -2149,7 +2162,7 @@ describe("provider-docker RuntimeProvider contract", () => {
     await Effect.runPromise(Effect.scoped(provider.apply(plan, { reconcile: true })));
     fake.volumeLabels.set("myapp_db_data", { "dev.lando.volume-owner": "/tmp/another-app" });
 
-    await Effect.runPromise(provider.destroy({ app: appId }, { volumes: true }));
+    await Effect.runPromise(provider.bringDown({ app: appId }, { containers: "remove", volumes: true }));
 
     expect(fake.volumes.has("myapp_db_data")).toBe(true);
   });

@@ -9,5 +9,27 @@
       }
     ],
     "justification": "Doctor findings gain a CertificateTrustDetails member ({ trustStores }) so the certs check carries typed per-store trust rows. Existing members are unchanged; consumers that switch on the known shapes keep working and can ignore the new one."
+  },
+  {
+    "fingerprint": "sha256:e3a31ff71c2a207813701620699e6980c4e87a21848f7dff4b5e48eb571d1e85",
+    "changeKind": "surface-removed",
+    "locations": [
+      {
+        "surface": "schema:DestroyOutcome",
+        "path": "$"
+      }
+    ],
+    "justification": "RuntimeProvider.destroy is replaced by bringDown; its receipt is BringDownOutcome, whose removed arm carries the same volume counts, skipped volumes, and shutdown observations plus per-container receipts. No persisted state or command result embeds DestroyOutcome."
+  },
+  {
+    "fingerprint": "sha256:43430e15d11d83ee90f5aa79ac01074420307ccec3d6137498ccc0d0c8a1ccb6",
+    "changeKind": "surface-removed",
+    "locations": [
+      {
+        "surface": "schema:ObservedServiceRemoval",
+        "path": "$"
+      }
+    ],
+    "justification": "RuntimeProvider.removeObservedService is replaced by bringDownObserved; its receipt is ObservedBringDown, which reports the per-container action with the same optional shutdown observations. No persisted state or command result embeds ObservedServiceRemoval."
   }
 ]

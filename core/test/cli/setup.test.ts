@@ -1234,11 +1234,11 @@ describe("meta:setup command", () => {
         id: "podman",
         appliedPlans: Effect.succeed([globalPlan, userPlan]),
         list: () => Effect.succeed([]),
-        destroy: () =>
+        bringDown: () =>
           Effect.sync(() => {
             calls.push("retire");
             globalApplied = false;
-            return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
+            return { kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } };
           }),
       };
       const registry = makeTestRuntimeProviderRegistry({

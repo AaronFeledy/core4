@@ -132,7 +132,7 @@ export const applyGlobalServiceGroups = Effect.fn("GlobalServices.applyGroups")(
                   if (apply.replacement !== undefined)
                     yield* retireGlobalReplacement(apply.provider, apply.replacement, builtPlan);
                   for (const removal of removals)
-                    yield* apply.provider.removeObservedService(removal.observation);
+                    yield* apply.provider.bringDownObserved(removal.observation, "remove");
                 }),
               }),
               [...(apply.exclusive ?? []).filter((id) => names.has(id)), ...removalIds],

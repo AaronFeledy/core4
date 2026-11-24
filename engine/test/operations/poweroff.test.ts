@@ -155,17 +155,17 @@ const makeHarness = async (input: {
       : Effect.succeed({ state: input.idle === true ? ("idle" as const) : ("running" as const) }),
     list: () => Effect.succeed(globalServices),
     listVolumes: () => Effect.succeed([]),
-    removeObservedService: (service: ServiceRuntimeInfo) =>
+    bringDownObserved: (service: ServiceRuntimeInfo) =>
       Effect.sync(() => {
         calls.push(`remove:${service.appRoot}`);
-        return { kind: "removed" as const };
+        return { service: service.service, action: "removed" as const };
       }),
-    destroy: (target: { readonly app: string; readonly plan?: AppPlan }) =>
+    bringDown: (target: { readonly app: string; readonly plan?: AppPlan }) =>
       Effect.gen(function* () {
         calls.push(`destroy:${target.plan?.root ?? "global"}`);
         const failure = target.plan === undefined ? undefined : failures.get(String(target.plan.root));
         if (failure !== undefined) return yield* Effect.fail(failure);
-        return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
+        return { kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } };
       }),
   };
   const registry = makeTestRuntimeProviderRegistry({

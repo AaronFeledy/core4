@@ -503,7 +503,7 @@ test.each(["effect", "stream"] as const)(
     const cause = Cause.combine(Cause.die(providerDefect), Cause.die(crash));
     const provider = {
       ...TestRuntimeProvider,
-      start: () => Effect.failCause(cause),
+      restart: () => Effect.failCause(cause),
       exportArtifact: () => Stream.failCause(cause),
     };
     // When
@@ -514,7 +514,7 @@ test.each(["effect", "stream"] as const)(
           const selected = yield* (yield* RuntimeProviderRegistry).select(plan);
           return yield* Effect.exit(
             kind === "effect"
-              ? selected.start(target)
+              ? selected.restart(target)
               : Stream.runDrain(selected.exportArtifact({ providerId: plan.provider, ref: "image" })),
           );
         }),
@@ -534,12 +534,12 @@ test.each(["effect", "stream"] as const)(
 
 test("interruption remains interruption", async () => {
   // Given
-  const provider = { ...TestRuntimeProvider, start: () => Effect.interrupt };
+  const provider = { ...TestRuntimeProvider, restart: () => Effect.interrupt };
   // When
   const exit = await Effect.runPromise(
     Effect.gen(function* () {
       const selected = yield* (yield* RuntimeProviderRegistry).select(plan);
-      return yield* Effect.exit(selected.start(target));
+      return yield* Effect.exit(selected.restart(target));
     }).pipe(Effect.provide(registryLayer(provider))),
   );
   // Then
@@ -555,8 +555,8 @@ test("the original cause is debug-only and untouched", async () => {
     Effect.gen(function* () {
       yield* (yield* RedactionService).registerValues([canary]);
       const selected = yield* (yield* RuntimeProviderRegistry).select(plan);
-      return yield* Effect.result(selected.start(target));
-    }).pipe(Effect.provide(registryLayer({ ...TestRuntimeProvider, start: () => Effect.fail(original) }))),
+      return yield* Effect.result(selected.restart(target));
+    }).pipe(Effect.provide(registryLayer({ ...TestRuntimeProvider, restart: () => Effect.fail(original) }))),
   );
   // Then
   if (Result.isSuccess(result) || !(result.failure instanceof ProviderUnavailableError))
@@ -570,13 +570,13 @@ test.each(["live", "retained"] as const)(
   async (mode) => {
     // Given
     const original = new ProviderUnavailableError(errorFields);
-    const provider = { ...TestRuntimeProvider, start: () => Effect.fail(original) };
+    const provider = { ...TestRuntimeProvider, restart: () => Effect.fail(original) };
     // When
     const result = await Effect.runPromise(
       Effect.gen(function* () {
         const selected = yield* (yield* RuntimeProviderRegistry).select(plan);
         yield* (yield* RedactionService).registerValues([canary]);
-        return yield* Effect.result(selected.start(target));
+        return yield* Effect.result(selected.restart(target));
       }).pipe(
         Effect.provide(
           registryLayer(provider, mode === "retained" ? { redaction: makeRedactionService() } : {}),
@@ -598,10 +598,10 @@ test("the live redactor includes explicitly registered resolved values", async (
   const result = await Effect.runPromise(
     Effect.gen(function* () {
       const selected = yield* (yield* RuntimeProviderRegistry).select(plan);
-      return yield* Effect.result(selected.start(target));
+      return yield* Effect.result(selected.restart(target));
     }).pipe(
       Effect.provide(
-        registryLayer({ ...TestRuntimeProvider, start: () => Effect.fail(original) }, { redaction }),
+        registryLayer({ ...TestRuntimeProvider, restart: () => Effect.fail(original) }, { redaction }),
       ),
     ),
   );

@@ -66,20 +66,16 @@ export const memberCalls = {
   quiesceRetainedFileSync: (p) => required(p.quiesceRetainedFileSync)(plan),
   disposeFileSyncTargets: (p) => required(p.disposeFileSyncTargets)(plan),
   apply: (p) => p.apply(plan, { reconcile: true }),
-  start: (p) => p.start(target),
-  stop: (p) => p.stop(target),
   restart: (p) => p.restart(target),
   resume: (p) => required(p.resume)(target, identity),
   suspend: (p) => required(p.suspend)(target, identity),
   waitForExit: (p) => p.waitForExit(target),
-  destroy: (p) => p.destroy(target, { volumes: false }),
-  removeObservedService: (p) =>
-    p.removeObservedService({
-      ...target,
-      providerId: plan.provider,
-      status: "running",
-      publications: { status: "unknown" },
-    }),
+  bringDown: (p) => p.bringDown(target, { containers: "remove", volumes: false }),
+  bringDownObserved: (p) =>
+    p.bringDownObserved(
+      { ...target, providerId: plan.provider, status: "running", publications: { status: "unknown" } },
+      "remove",
+    ),
   quiesceForFileSync: (p) => required(p.quiesceForFileSync)(target),
   readAppEnvironment: (p) => p.readAppEnvironment(target, {}),
   exec: (p) => p.exec(target, command),

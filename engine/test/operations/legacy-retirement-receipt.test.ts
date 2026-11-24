@@ -96,10 +96,10 @@ test.each(["stop", "destroy", "renamed-destroy"] as const)(
                         : { status: "ordinary" as const },
                     ),
                   quiesceForFileSync: () => Effect.succeed({ shutdownObservations: [observed] }),
-                  destroy: (ref, options) =>
-                    base.destroy(ref, options).pipe(
+                  bringDown: (ref, options) =>
+                    base.bringDown(ref, options).pipe(
                       Effect.map((outcome) =>
-                        outcome.kind === "destroyed"
+                        outcome.kind === "removed"
                           ? {
                               ...outcome,
                               volumesRemoved: {

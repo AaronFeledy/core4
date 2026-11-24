@@ -178,7 +178,7 @@ describe("provider-podman applied state", () => {
               },
             }),
           );
-          await Effect.runPromise(provider.start({ app: plan.id, service: serviceName, plan }));
+          await Effect.runPromise(provider.restart({ app: plan.id, service: serviceName, plan }));
           requests.length = 0;
           const encoded = Schema.encodeSync(AppPlan)(plan);
           const broken = {
@@ -208,14 +208,14 @@ describe("provider-podman applied state", () => {
             operation === "apply" || operation === "reconcile"
               ? provider.apply(plan, { reconcile: operation === "reconcile" })
               : operation === "stop"
-                ? provider.stop(target)
+                ? provider.bringDown({ app: plan.id }, { containers: "stop" })
                 : operation === "stop-supplied"
-                  ? provider.stop({ ...target, plan })
+                  ? provider.bringDown({ app: plan.id, plan }, { containers: "stop" })
                   : operation === "restart"
                     ? provider.restart({ ...target, plan })
-                    : provider.destroy(
+                    : provider.bringDown(
                         { app: plan.id, ...(operation === "destroy-supplied" ? { plan } : {}) },
-                        { volumes: true },
+                        { containers: "remove", volumes: true },
                       );
           const failure = await Effect.runPromise(action.pipe(Effect.flip, Effect.scoped));
           expect(failure).toBeInstanceOf(ProviderUnavailableError);

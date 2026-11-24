@@ -43,12 +43,16 @@ test.each(["legacy", "scoped", "failed-build"] as const)(
             registry.select(target).pipe(
               Effect.map((provider) => ({
                 ...provider,
-                destroy: (target, options) =>
+                bringDown: (target, options) =>
                   Effect.sync(() => {
                     mutations.push({ retired: target.plan, options });
                     if (options.volumes)
                       for (const entry of target.plan?.stores ?? []) volumes.delete(entry.name);
-                    return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
+                    return {
+                      kind: "removed" as const,
+                      containers: [],
+                      volumesRemoved: { data: 0, cache: 0 },
+                    };
                   }),
                 apply: (plan, options) =>
                   Effect.sync(() => {
@@ -99,7 +103,12 @@ test.each(["legacy", "scoped", "failed-build"] as const)(
       expect(Result.isSuccess(result.outcome)).toBe(true);
       expect(result.mutations).toEqual([
         ...(kind === "legacy"
-          ? [{ retired: result.recorded, options: { removeState: true, volumes: false } }]
+          ? [
+              {
+                retired: result.recorded,
+                options: { containers: "remove", removeState: true, volumes: false },
+              },
+            ]
           : []),
         { applied: result.native },
       ]);

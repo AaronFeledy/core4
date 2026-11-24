@@ -102,14 +102,14 @@ const runningContainer = () => {
   const providerOverrides = {
     list: (filter: ListFilter) =>
       Effect.succeed(containers.filter((entry) => filter.app === undefined || entry.app === filter.app)),
-    removeObservedService: (observation: ServiceRuntimeInfo) =>
+    bringDownObserved: (observation: ServiceRuntimeInfo) =>
       Effect.sync(() => {
         removed.push(String(observation.service));
         containers.splice(
           containers.findIndex((entry) => entry.containerId === observation.containerId),
           1,
         );
-        return { kind: "removed" as const };
+        return { service: observation.service, action: "removed" as const };
       }),
   };
   return { containers, removed, providerOverrides };
@@ -243,10 +243,10 @@ test("a removed service still in the record without a container is dropped, not 
     plannedApp: desired,
     providerOverrides: {
       list: () => Effect.succeed([absent]),
-      removeObservedService: (observation: ServiceRuntimeInfo) =>
+      bringDownObserved: (observation: ServiceRuntimeInfo) =>
         Effect.sync(() => {
           removed.push(String(observation.service));
-          return { kind: "absent" as const };
+          return { service: observation.service, action: "absent" as const };
         }),
     },
     onApply: (appliedPlan, options) =>
@@ -279,7 +279,7 @@ test("a failed removal stops the sweep, keeps earlier removals, and still announ
     plannedApp: desired,
     providerOverrides: {
       list: () => Effect.succeed([removedService("worker"), removedService("cache"), observedAdminer()]),
-      removeObservedService: (observation: ServiceRuntimeInfo) =>
+      bringDownObserved: (observation: ServiceRuntimeInfo) =>
         Effect.sync(() => attempted.push(String(observation.service))).pipe(
           Effect.andThen(
             String(observation.service) === "cache"
@@ -293,7 +293,7 @@ test("a failed removal stops the sweep, keeps earlier removals, and still announ
                 )
               : Effect.sync(() => {
                   removed.push(String(observation.service));
-                  return { kind: "removed" as const };
+                  return { service: observation.service, action: "removed" as const };
                 }),
           ),
         ),
@@ -330,10 +330,10 @@ test("fails closed before removing anything when a candidate's labels contradict
     plannedApp: desired,
     providerOverrides: {
       list: () => Effect.succeed([foreign]),
-      removeObservedService: (observation) =>
+      bringDownObserved: (observation) =>
         Effect.sync(() => {
           removals.push(String(observation.service));
-          return { kind: "removed" as const };
+          return { service: observation.service, action: "removed" as const };
         }),
     },
     onApply: (appliedPlan) =>
@@ -512,10 +512,10 @@ test("an unfinished accelerated journal refuses a changed mount plan before prun
             listed += 1;
             return Effect.succeed([observedAdminer()]);
           },
-          removeObservedService: (observation) =>
+          bringDownObserved: (observation) =>
             Effect.sync(() => {
               removals.push(String(observation.service));
-              return { kind: "removed" as const };
+              return { service: observation.service, action: "removed" as const };
             }),
         },
       },

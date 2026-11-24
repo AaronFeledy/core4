@@ -35,8 +35,8 @@ const providerLayers = () => {
       TestRuntimeProvider.apply(plan, options).pipe(
         Effect.tap(() => Effect.sync(() => void plans.set(plan.root, options?.recordedPlan ?? plan))),
       ),
-    destroy: (target, options) =>
-      TestRuntimeProvider.destroy(target, options).pipe(
+    bringDown: (target, options) =>
+      TestRuntimeProvider.bringDown(target, options).pipe(
         Effect.tap(() =>
           Effect.sync(() => {
             if (options.removeState !== false && target.plan !== undefined) plans.delete(target.plan.root);

@@ -200,16 +200,18 @@ export const executeGlobalStopSelection = Effect.fn("GlobalApp.stopSelection")(f
   const services: string[] = [];
   const observationSources: Array<readonly ServiceShutdownObservation[] | undefined> = [];
   for (const service of selection.services) {
-    const result = yield* resolved.provider.removeObservedService(service);
+    const result = yield* resolved.provider.bringDownObserved(service, "remove");
     observationSources.push(result.shutdownObservations);
-    switch (result.kind) {
+    switch (result.action) {
       case "removed":
+      case "stopped":
         services.push(String(service.service));
         break;
+      case "already-stopped":
       case "absent":
         break;
       default: {
-        const unreachable: never = result;
+        const unreachable: never = result.action;
         return unreachable;
       }
     }

@@ -664,11 +664,13 @@ export const makeTestRuntimeProvider = (): RuntimeProviderShape => {
         ),
       ),
     waitForExit: (_target) => Effect.succeed({ exitCode: 0 }),
-    destroy: (target, options) =>
-      containers.destroy(target, options).pipe(
+    bringDown: (target, options) =>
+      containers.bringDown(target, options).pipe(
         Effect.map((outcome) => {
-          const applied = testAppliedEnvironments.delete(target.app);
-          return applied ? { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } } : outcome;
+          if (options.containers === "stop" || !testAppliedEnvironments.delete(target.app)) return outcome;
+          return outcome.kind === "removed"
+            ? outcome
+            : { kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } };
         }),
       ),
 

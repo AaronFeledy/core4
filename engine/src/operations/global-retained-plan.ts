@@ -118,7 +118,10 @@ export const retireGlobalReplacement = Effect.fn("GlobalApp.retireReplacement")(
         }),
       );
   }
-  yield* provider.destroy({ app: retirement.id, plan: retirement }, { volumes: false, removeState: true });
+  yield* provider.bringDown(
+    { app: retirement.id, plan: retirement },
+    { containers: "remove", volumes: false, removeState: true },
+  );
 });
 
 export const reconcileGlobalSiblings = Effect.fn("GlobalApp.reconcileSiblings")(function* (

@@ -91,17 +91,18 @@ export const makeGlobalLifecycleFixture = (
           mounts: { status: "missing" },
         };
       }),
-    removeObservedService: (row: ServiceRuntimeInfo) =>
+    bringDownObserved: (row: ServiceRuntimeInfo) =>
       Effect.sync(() => {
         const current = containers.get(row.service);
-        if (current?.containerId !== row.containerId || current === undefined)
-          return { kind: "absent" as const };
+        const containerId = row.containerId;
+        if (containerId === undefined || current?.containerId !== containerId)
+          return { service: row.service, action: "absent" as const };
         containers.delete(row.service);
         removed.push(String(row.service));
-        return { kind: "removed" as const };
+        return { service: row.service, containerId, action: "removed" as const };
       }),
     ensureReady: Effect.die("Policy operations must not initialize providers"),
-    destroy: () => Effect.die("Selected cleanup must retain applied state and volumes"),
+    bringDown: () => Effect.die("Selected cleanup must retain applied state and volumes"),
   };
   const registry = makeTestRuntimeProviderRegistry({
     list: Effect.succeed([providerId]),

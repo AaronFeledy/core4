@@ -95,9 +95,9 @@ export const makeScenarioProvider = () => {
       testProvider
         .apply(plan, options)
         .pipe(Effect.tap(() => rememberAppliedPlan(appliedPlanCache, plan, options))),
-    destroy: (target, options) =>
+    bringDown: (target, options) =>
       testProvider
-        .destroy(target, options)
+        .bringDown(target, options)
         .pipe(Effect.tap(() => forgetAppliedPlanUnlessKept(appliedPlanCache, target.app, options))),
   };
   const registry = makeTestRuntimeProviderRegistry({

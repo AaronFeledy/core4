@@ -38,11 +38,7 @@ export interface ResolvedProviderOpsInput {
   ) => Effect.Effect<void, ProviderError>;
   readonly readAppEnvironment: RuntimeProviderShape["readAppEnvironment"];
   readonly service: {
-    readonly lifecycle: (
-      plan: AppPlan,
-      target: ServiceSelector,
-      action: "start" | "stop" | "restart",
-    ) => Effect.Effect<void, ProviderError>;
+    readonly restart: (plan: AppPlan, target: ServiceSelector) => Effect.Effect<void, ProviderError>;
     readonly resume?: NonNullable<RuntimeProviderShape["resume"]>;
     readonly suspend?: NonNullable<RuntimeProviderShape["suspend"]>;
     readonly waitForExit: (
@@ -70,8 +66,6 @@ export interface ResolvedProviderOpsInput {
 
 export type ResolvedProviderOps = Pick<
   RuntimeProviderShape,
-  | "start"
-  | "stop"
   | "restart"
   | "resume"
   | "suspend"
@@ -159,16 +153,8 @@ export const makeResolvedProviderOps = (input: ResolvedProviderOpsInput): Resolv
 
   return {
     readAppEnvironment: input.readAppEnvironment,
-    start: Effect.fn("RuntimeProvider.start")(function* (target) {
-      return yield* resolveTarget(target, "start", (plan) => input.service.lifecycle(plan, target, "start"));
-    }),
-    stop: Effect.fn("RuntimeProvider.stop")(function* (target) {
-      return yield* resolveTarget(target, "stop", (plan) => input.service.lifecycle(plan, target, "stop"));
-    }),
     restart: Effect.fn("RuntimeProvider.restart")(function* (target) {
-      return yield* resolveTarget(target, "restart", (plan) =>
-        input.service.lifecycle(plan, target, "restart"),
-      );
+      return yield* resolveTarget(target, "restart", (plan) => input.service.restart(plan, target));
     }),
     resume: Effect.fn("RuntimeProvider.resume")(function* (target, identity) {
       return yield* resolveTarget(target, "resume", () => {

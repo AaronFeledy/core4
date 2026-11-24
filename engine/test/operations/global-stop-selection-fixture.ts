@@ -116,16 +116,15 @@ export const harness = (
     isAvailable: Effect.succeed(options.online ?? true),
     getStatus: Effect.succeed({ state: options.online === false ? ("idle" as const) : ("running" as const) }),
     list: () => (options.online === false ? Effect.die("offline list") : Effect.sync(observed)),
-    stop: () => Effect.die("selected stop must remove by exact observed identity"),
-    removeObservedService: (observation: ServiceRuntimeInfo) =>
+    bringDownObserved: (observation: ServiceRuntimeInfo) =>
       Effect.sync(() => {
         states.delete(String(observation.service));
         removedIds.add(observation.containerId);
-        if (options.race) return { kind: "absent" as const };
+        if (options.race) return { service: observation.service, action: "absent" as const };
         removed.push(observation);
-        return { kind: "removed" as const };
+        return { service: observation.service, action: "removed" as const };
       }),
-    destroy: () => Effect.die("selected stop must preserve volumes, network and applied state"),
+    bringDown: () => Effect.die("selected stop must preserve volumes, network and applied state"),
     ensureReady: Effect.die("stop must not start runtime"),
   };
   const resolved: Resolved = {

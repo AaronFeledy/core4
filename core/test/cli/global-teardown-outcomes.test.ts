@@ -41,7 +41,7 @@ for (const evidence of ["absent", "applied", "destroyed", "volume", "preserved-v
             volumes: evidence === "volume" || evidence === "preserved-volume" ? [volume] : [],
             destroyOutcome:
               evidence === "destroyed"
-                ? { kind: "destroyed", volumesRemoved: { data: 0, cache: 0 } }
+                ? { kind: "removed", containers: [], volumesRemoved: { data: 0, cache: 0 } }
                 : { kind: "no-op", reason: "no-applied-plan" },
           });
           // When stop preserves volumes or destroy requests purge.

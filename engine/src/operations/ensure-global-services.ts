@@ -333,7 +333,8 @@ export const ensureGlobalServicesRunning = Effect.fnUntraced(
           yield* verifyAdmission;
           if (retained.replacement !== undefined)
             yield* retireGlobalReplacement(provider, retained.replacement, builtPlan);
-          for (const removal of retained.removals) yield* provider.removeObservedService(removal.observation);
+          for (const removal of retained.removals)
+            yield* provider.bringDownObserved(removal.observation, "remove");
         }),
       }),
       [...retained.joinedIds, ...removalIds],

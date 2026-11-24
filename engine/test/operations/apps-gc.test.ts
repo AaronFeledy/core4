@@ -72,7 +72,7 @@ const fixture = (names: readonly string[] = ["one", "two"], retainData = false, 
       launches++;
       running = true;
     }),
-    destroy: (target: Parameters<typeof TestRuntimeProvider.destroy>[0]) =>
+    bringDown: (target: Parameters<typeof TestRuntimeProvider.bringDown>[0]) =>
       Effect.suspend(() => {
         if (interrupt.has(target.app)) return Effect.interrupt;
         if (fail.has(target.app))
@@ -86,7 +86,11 @@ const fixture = (names: readonly string[] = ["one", "two"], retainData = false, 
           );
         destroyed.push(target.app);
         plans = plans.filter((plan) => plan.id !== target.app);
-        return Effect.succeed({ kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } });
+        return Effect.succeed({
+          kind: "removed" as const,
+          containers: [],
+          volumesRemoved: { data: 0, cache: 0 },
+        });
       }),
   };
   const registry = makeTestRuntimeProviderRegistry({
@@ -445,10 +449,10 @@ test("an owner that cannot start does not block another owner's confirmation", a
             running = true;
           })
         : Effect.fail(launchFailure),
-    destroy: (target: Parameters<typeof TestRuntimeProvider.destroy>[0]) =>
+    bringDown: (target: Parameters<typeof TestRuntimeProvider.bringDown>[0]) =>
       Effect.sync(() => {
         plans = plans.filter((plan) => plan.id !== target.app);
-        return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
+        return { kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } };
       }),
   });
   const registry = makeTestRuntimeProviderRegistry({

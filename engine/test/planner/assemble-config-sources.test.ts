@@ -63,12 +63,12 @@ test("changes the derived plan cache key when config bytes change", () =>
 test("rejects an escaping config source before provider action", () =>
   withTempCwd(async () => {
     // Given
-    const start = spyOn(TestRuntimeProvider, "start");
+    const restart = spyOn(TestRuntimeProvider, "restart");
     try {
       // When
       const result = await Effect.runPromise(
         plan({ server: "../outside.conf" }).pipe(
-          Effect.tap((app) => TestRuntimeProvider.start({ app: app.id, service: ServiceName.make("db") })),
+          Effect.tap((app) => TestRuntimeProvider.restart({ app: app.id, service: ServiceName.make("db") })),
           Effect.result,
         ),
       );
@@ -78,9 +78,9 @@ test("rejects an escaping config source before provider action", () =>
         expect(result.failure).toBeInstanceOf(LandofileValidationError);
         expect(result.failure).toMatchObject({ issues: [{ path: ["services", "db", "config", "server"] }] });
       }
-      expect(start).not.toHaveBeenCalled();
+      expect(restart).not.toHaveBeenCalled();
     } finally {
-      start.mockRestore();
+      restart.mockRestore();
     }
   }));
 

@@ -86,7 +86,7 @@ export const convergeRemovedServices = Effect.fn("AppOperation.convergeRemovedSe
   ReceiptError,
 >(
   plan: AppPlan,
-  provider: Pick<RuntimeProviderShape, "removeObservedService">,
+  provider: Pick<RuntimeProviderShape, "bringDownObserved">,
   execution: {
     readonly app: AppRef;
     readonly events: EventService["Service"];
@@ -139,8 +139,8 @@ export const convergeRemovedServices = Effect.fn("AppOperation.convergeRemovedSe
             timestamp: DateTime.nowUnsafe(),
           }),
         );
-        const result = yield* provider.removeObservedService(observation);
-        if (result.kind === "removed") removed.push(String(observation.service));
+        const result = yield* provider.bringDownObserved(observation, "remove");
+        if (result.action === "removed") removed.push(String(observation.service));
         yield* execution.events.publish(
           PostServiceStopEvent.make({
             ...serviceEvent,

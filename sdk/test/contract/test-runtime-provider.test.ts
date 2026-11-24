@@ -139,7 +139,7 @@ test("apply observes only its services, preserves a running start time and isola
   expect(result.again.lastStartedAt).toEqual(result.first.lastStartedAt);
 });
 
-test.each(["start", "restart"] as const)("%s resumes a stopped container", async (operation) => {
+test("restart resumes a container that bring-down stopped", async () => {
   const provider = makeTestRuntimeProvider();
   const result = await Effect.runPromise(
     Effect.scoped(
@@ -147,9 +147,9 @@ test.each(["start", "restart"] as const)("%s resumes a stopped container", async
         yield* apply(provider);
         const first = yield* provider.inspect(target);
         yield* TestClock.adjust("1 second");
-        yield* provider.stop(target);
+        yield* provider.bringDownObserved(first, "stop");
         const stopped = yield* provider.inspect(target);
-        yield* provider[operation](target);
+        yield* provider.restart(target);
         return { first, stopped, resumed: yield* provider.inspect(target) };
       }),
     ).pipe(Effect.provide(TestClock.layer())),
@@ -191,16 +191,23 @@ test("removal requires the observed generation and destroy affects only its app"
   const provider = makeTestRuntimeProvider();
   await Effect.runPromise(Effect.scoped(apply(provider)));
   const observed = await Effect.runPromise(provider.inspect(target));
+  const containerId = observed.containerId;
+  if (containerId === undefined) throw new Error("fixture requires an observed container id");
+  const absent = { service: target.service, action: "absent" } as const;
   expect(
-    await Effect.runPromise(provider.removeObservedService({ ...observed, containerId: "other" })),
-  ).toEqual({ kind: "absent" });
-  expect(await Effect.runPromise(provider.removeObservedService(observed))).toEqual({ kind: "removed" });
-  expect(await Effect.runPromise(provider.removeObservedService(observed))).toEqual({ kind: "absent" });
+    await Effect.runPromise(provider.bringDownObserved({ ...observed, containerId: "other" }, "remove")),
+  ).toEqual(absent);
+  expect(await Effect.runPromise(provider.bringDownObserved(observed, "remove"))).toEqual({
+    service: target.service,
+    containerId,
+    action: "removed",
+  });
+  expect(await Effect.runPromise(provider.bringDownObserved(observed, "remove"))).toEqual(absent);
   await Effect.runPromise(Effect.scoped(apply(provider)));
-  expect(await Effect.runPromise(provider.removeObservedService(observed))).toEqual({ kind: "absent" });
+  expect(await Effect.runPromise(provider.bringDownObserved(observed, "remove"))).toEqual(absent);
   const other = { ...plan, id: AppId.make("other") };
   await Effect.runPromise(Effect.scoped(provider.apply(other, { reconcile: true })));
-  await Effect.runPromise(provider.destroy(target, { volumes: false }));
+  await Effect.runPromise(provider.bringDown(target, { containers: "remove", volumes: false }));
   expect((await Effect.runPromise(provider.list({}))).map((info) => info.app)).toEqual([other.id]);
 });
 

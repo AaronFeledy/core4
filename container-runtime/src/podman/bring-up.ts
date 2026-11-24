@@ -121,8 +121,8 @@ import { realizePodmanComposeKnobs } from "./compose-knobs.ts";
 import { type ExecOptions, exec, execStream } from "./exec.ts";
 import { containerConsoleLogs } from "./logs.ts";
 import {
+  bringDownStaleServiceContainers,
   listLabeledServiceContainers,
-  removeStaleServiceContainers,
   selectStaleServiceContainers,
 } from "./stale-service-containers.ts";
 import { startObservation } from "./start-observation.ts";
@@ -1544,7 +1544,10 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
     containers,
     options.adoptionReceipts,
   );
-  const staleNameChanged = (yield* removeStaleServiceContainers(api, options.ctx, plan, stales)).changed;
+  const staleNameChanged = (yield* bringDownStaleServiceContainers(api, options.ctx, plan, {
+    containers: stales,
+    disposition: "remove",
+  })).changed;
 
   for (const service of Object.values(plan.services)) {
     const inspected = yield* inspectContainer(deps, containerName(plan, service));
