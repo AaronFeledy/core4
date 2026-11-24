@@ -1,8 +1,9 @@
 /**
  * The uninstall step for the mkcert local CA. Every Lando data root on a host shares one mkcert
  * `CAROOT`, and so does mkcert itself, so Lando cannot prove the CA is its own and never removes it.
- * The step names the exact trust entries mkcert v1.4.4 and Lando's setup created for this CA and the
- * OS commands that remove them; none of them needs Lando's mkcert binary, which purge deletes. Planning only reads
+ * The step names the exact trust entries mkcert v1.4.4 and Lando's setup created for this CA in the stores
+ * Lando knows about, and the OS commands that remove them; none of them needs Lando's mkcert binary, which
+ * purge deletes. Planning only reads
  * files: the uninstall contract offers no subprocesses.
  */
 import { X509Certificate } from "node:crypto";
@@ -15,6 +16,7 @@ import { Effect } from "effect";
 
 import { type HostEnv, locateBundles } from "./homebrew-trust.ts";
 import { discoverNssDatabases } from "./nss-databases.ts";
+import { javaKeystoreCommand } from "./uninstall-java.ts";
 
 export const LOCAL_CA_MAINTAINER_ID = "local-ca";
 export const LOCAL_CA_TRUST_STEP_ID = "trust";
@@ -122,7 +124,10 @@ const systemStoreCommands = (
         run(`sudo security delete-certificate -Z ${ca.sha1} /Library/Keychains/System.keychain`),
       ];
     case "win32":
-      return [run(`certutil -user -delstore Root ${ca.sha1}`)];
+      return [
+        run(`certutil -user -delstore Root ${ca.sha1}`),
+        `If the CA was added for all users, also run \`certutil -delstore Root ${ca.sha1}\` from an elevated prompt.`,
+      ];
     case "linux":
     case "wsl": {
       const fileName = ca.nickname.replaceAll(" ", "_");
@@ -136,7 +141,9 @@ const systemStoreCommands = (
           : anchors.map(({ file, refresh }) => run(`sudo rm -f ${file} && sudo ${refresh}`));
       const windows =
         platform === "wsl" || access.exists(WSL_INTEROP)
-          ? [`On the Windows side, run \`certutil.exe -user -delstore Root ${ca.sha1}\`.`]
+          ? [
+              `On the Windows side, run \`certutil.exe -user -delstore Root ${ca.sha1}\`; if the CA was added for all users, also run \`certutil.exe -delstore Root ${ca.sha1}\` from an elevated prompt.`,
+            ]
           : [];
       return [...linux, ...windows];
     }
@@ -166,19 +173,19 @@ const manualDetail = Effect.fnUntraced(function* (host: Host, caroot: string, pe
   const brew = (yield* Effect.promise(() => locateBundles(host.access.env, host.platform))).map(
     ({ prefix }) => run(`${quote(posix.join(prefix, "bin", "brew"))} postinstall ca-certificates`),
   );
+  const java = javaKeystoreCommand(host.platform, host.access, ca.nickname);
   return [
     `Lando leaves this local CA (SHA-256 ${ca.sha256}) trusted because every Lando installation on this machine and mkcert itself share it.`,
-    "After uninstalling every Lando installation, remove it with your OS tools:",
+    "After uninstalling every Lando installation, remove it from the trust stores Lando knows about with your OS tools:",
     ...systemStoreCommands(host, caroot, ca),
     ...nss,
+    ...(java === undefined ? [] : [run(java)]),
     ...(brew.length === 0 ? [] : ["Once the system store no longer trusts it:", ...brew]),
     finish,
   ].join(" ");
 });
 
-const step = (
-  fields: Pick<HostUninstallStep, "target" | "status" | "detail" | "preserveOnKeepData">,
-): HostUninstallStep => ({
+const step = (fields: Pick<HostUninstallStep, "target" | "status" | "detail">): HostUninstallStep => ({
   id: LOCAL_CA_TRUST_STEP_ID,
   label: "local CA trust",
   destructive: false,
@@ -200,7 +207,6 @@ const planTrustStep = Effect.fnUntraced(function* (host: Host) {
     return step({
       target: caroot,
       status: "manual",
-      preserveOnKeepData: true,
       detail: `Lando could not read ${rootPath} (${reason}). Remove the local CA from your trust stores with your OS tools, then delete ${caroot} unless another tool uses it.`,
     });
   }
@@ -208,7 +214,7 @@ const planTrustStep = Effect.fnUntraced(function* (host: Host) {
     return step({ target: caroot, status: "skipped", detail: `No local CA in ${caroot}.` });
   }
   const detail = yield* manualDetail(host, caroot, pem);
-  return step({ target: caroot, status: "manual", preserveOnKeepData: true, detail });
+  return step({ target: caroot, status: "manual", detail });
 });
 
 const listDirs = (path: string): ReadonlyArray<string> => {

@@ -92,7 +92,7 @@ sudo systemctl daemon-reload
 
 Uninstall leaves the local CA that `lando setup` created in place and trusted, in both `--keep-data` and `--purge`. Every Lando installation on this machine shares that CA, and so does `mkcert` if you use it directly, so uninstalling one installation can't tell whether anything else still needs it.
 
-The plan lists the CA as a manual step with everything you need to remove it yourself: its fingerprint, the directory that holds it and its private key, and one command for each trust store on this machine that may hold it. That covers the system trust store, browser certificate databases, Homebrew's CA bundle, and the Windows store under WSL. The commands use your operating system's tools, not Lando, so they still work after `--purge` removes Lando. Preview them with:
+The plan lists the CA as a manual step in both modes, with what you need to remove it from the trust stores Lando knows about: its fingerprint, the directory that holds it and its private key, and one command for each of those stores on this machine that may hold it. That covers the system trust store (on Windows and under WSL, both your user store and, if the CA was added for all users, the machine store), browser certificate databases, Homebrew's CA bundle, and the Java keystore older Lando setups wrote when `JAVA_HOME` is set. If you added the CA anywhere else by hand, such as a browser's own certificate settings, remove it there too. The commands use your operating system's tools, not Lando, so they still work after `--purge` removes Lando. Preview them with:
 
 ```sh
 lando uninstall --purge --dry-run

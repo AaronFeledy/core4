@@ -86,9 +86,10 @@ describe("local CA uninstall step", () => {
     expect(step).toMatchObject({
       status: "manual",
       target: caroot,
-      preserveOnKeepData: true,
       destructive: false,
     });
+    // Advisory: the step removes nothing, so keep-data has nothing to preserve.
+    expect(step.preserveOnKeepData).toBeUndefined();
     expect(step.detail).toContain(SHA256);
     expect(step.detail).toContain(
       "`sudo rm -f /usr/local/share/ca-certificates/mkcert_development_CA_4096.crt && sudo update-ca-certificates`",
@@ -117,6 +118,7 @@ describe("local CA uninstall step", () => {
     await writeFile(join(caroot, "rootCA.pem"), TEST_CERTIFICATES.rootA);
     const step = await plan("wsl", { env: { CAROOT: caroot, PATH: "" } });
     expect(step.detail).toContain(`\`certutil.exe -user -delstore Root ${SHA1}\``);
+    expect(step.detail).toContain(`\`certutil.exe -delstore Root ${SHA1}\``);
   });
 
   test("darwin removes the trust setting and the System keychain entry", async () => {
@@ -134,7 +136,63 @@ describe("local CA uninstall step", () => {
     await writeFile(join(caroot, "rootCA.pem"), TEST_CERTIFICATES.rootA);
     const step = await plan("win32", { env: { CAROOT: caroot } });
     expect(step.detail).toContain(`\`certutil -user -delstore Root ${SHA1}\``);
+    expect(step.detail).toContain(`\`certutil -delstore Root ${SHA1}\``);
     expect(step.detail).not.toContain("sudo");
+  });
+
+  describe("legacy Java keystore", () => {
+    const keytoolDelete = (keytool: string, keystore: string) =>
+      `${keytool} -delete -alias '${NICKNAME}' -keystore ${keystore} -storepass changeit`;
+
+    test.each<[string, Record<string, string>, ReadonlyArray<string>, string]>([
+      [
+        "a root-owned JDK needs sudo",
+        { JAVA_HOME: "/usr/lib/jvm/java-17", HOME: "/home/u" },
+        ["/usr/lib/jvm/java-17/lib/security/cacerts"],
+        `sudo ${keytoolDelete("/usr/lib/jvm/java-17/bin/keytool", "/usr/lib/jvm/java-17/lib/security/cacerts")}`,
+      ],
+      [
+        "a JDK under HOME does not",
+        { JAVA_HOME: "/home/u/jdk", HOME: "/home/u" },
+        ["/home/u/jdk/lib/security/cacerts"],
+        keytoolDelete("/home/u/jdk/bin/keytool", "/home/u/jdk/lib/security/cacerts"),
+      ],
+      [
+        "the JDK 8 jre keystore wins like mkcert",
+        { JAVA_HOME: "/home/u/jdk8", HOME: "/home/u" },
+        ["/home/u/jdk8/lib/security/cacerts", "/home/u/jdk8/jre/lib/security/cacerts"],
+        keytoolDelete("/home/u/jdk8/bin/keytool", "/home/u/jdk8/jre/lib/security/cacerts"),
+      ],
+    ])("%s", async (_name, env, keystores, command) => {
+      await writeFile(join(caroot, "rootCA.pem"), TEST_CERTIFICATES.rootA);
+      const present = new Set(keystores);
+      const step = await plan("linux", {
+        env: { CAROOT: caroot, PATH: "", ...env },
+        exists: (path) => present.has(path),
+      });
+      expect(step.detail).toContain(`Run \`${command}\`.`);
+    });
+
+    test("windows quotes keytool paths and the alias for cmd", async () => {
+      await writeFile(join(caroot, "rootCA.pem"), TEST_CERTIFICATES.rootA);
+      const javaHome = "C:\\Program Files\\Java\\jdk-17";
+      const step = await plan("win32", {
+        env: { CAROOT: caroot, JAVA_HOME: javaHome },
+        exists: (path) => path === `${javaHome}\\lib\\security\\cacerts`,
+      });
+      expect(step.detail).toContain(
+        `\`"${javaHome}\\bin\\keytool.exe" -delete -alias "${NICKNAME}" -keystore "${javaHome}\\lib\\security\\cacerts" -storepass changeit\``,
+      );
+    });
+
+    test.each<[string, Record<string, string>]>([
+      ["JAVA_HOME is unset", {}],
+      ["JAVA_HOME has no keystore", { JAVA_HOME: "/usr/lib/jvm/none" }],
+    ])("is omitted when %s", async (_name, env) => {
+      await writeFile(join(caroot, "rootCA.pem"), TEST_CERTIFICATES.rootA);
+      const step = await plan("linux", { env: { CAROOT: caroot, PATH: "", ...env } });
+      expect(step.detail).not.toContain("keytool");
+    });
   });
 
   test("execute reports the planned manual detail", async () => {
