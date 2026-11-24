@@ -11,20 +11,6 @@ import { Effect, Result, Schema } from "effect";
 import { templateSource } from "./expression-source.ts";
 import { captureTemplate } from "./invocation-captures.ts";
 
-export const INVOCATION_SCOPES = ["event", "vars", "item", "key", "flags", "args", "raw", "task"] as const;
-
-/** Only executable declaration positions can retain invocation-time expressions. */
-export const executableExpressionPath = (path: readonly (string | number)[]): boolean => {
-  const [root, name, field] = path;
-  if (root === "events") return typeof name === "string" && typeof field === "number";
-  if (root === "toolingIncludes" || root === "includes") return field === "vars";
-  if (root !== "tooling" && root !== "toolingDefaults") return false;
-  const key = root === "tooling" ? field : name;
-  return (
-    key === undefined || ["cmd", "cmds", "service", "dir", "user", "env", "vars", "if"].includes(String(key))
-  );
-};
-
 export const InvocationSite = Schema.Struct({
   ...ParsedPendingSite.fields,
   template: ExpressionTemplate,

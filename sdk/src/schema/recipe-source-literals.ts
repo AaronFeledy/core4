@@ -1,12 +1,49 @@
 import { Result } from "effect";
-import type { ExpressionNode } from "../expressions/ast.ts";
+import type { ExpressionNode, ExpressionTemplate } from "../expressions/ast.ts";
 import { evaluateExpressionEither } from "../expressions/evaluator.ts";
 import { parseExpressionEither } from "../expressions/parser.ts";
 import { expressionInterpolationsTouchOnlyScopes, expressionScopeMembers } from "../expressions/scopes.ts";
-import { servicePortExpression } from "../landofile/execution-sites.ts";
+import {
+  INVOCATION_SCOPES,
+  executableExpressionPath,
+  servicePortExpression,
+} from "../landofile/execution-sites.ts";
 import type { LandofileSourceValue } from "./landofile-source.ts";
 import type { RecipeSource } from "./recipe-source.ts";
 import { type RecipeSourceCompileError, recipeSourceFailure } from "./recipe-source-error.ts";
+
+/**
+ * Whether an authored recipe config string at `path` reads only scopes the resulting Landofile admits
+ * there: load and plan scopes everywhere, invocation scopes at executable tooling and event positions,
+ * the self `service` fact where a service process may read it, and secrets only at binding sites.
+ */
+export const recipeConfigExpressionAdmitted = (
+  template: ExpressionTemplate,
+  path: readonly (string | number)[],
+): boolean => {
+  const self = servicePortExpression(template, path);
+  const bindingSite =
+    (path[0] === "services" &&
+      ((path[2] === "environment" && path.length === 4) ||
+        (path[2] === "creds" && (path[3] === "password" || path[3] === "rootPassword")))) ||
+    (path[0] === "tooling" && path.includes("env"));
+  return (
+    expressionInterpolationsTouchOnlyScopes(template, [
+      "app",
+      "recipe",
+      "env",
+      "services",
+      "proxy",
+      ...(executableExpressionPath(path) ? INVOCATION_SCOPES : []),
+      ...(self === "supported" || self === "url" ? ["service"] : []),
+      ...(bindingSite ? ["secrets"] : []),
+    ]) &&
+    !template.segments.some(
+      (segment) =>
+        segment.kind === "ShellParamSegment" || (segment.kind === "SecretRefSegment" && !bindingSite),
+    )
+  );
+};
 
 export const validateSourceConfig = (
   source: RecipeSource,
@@ -20,28 +57,7 @@ export const validateSourceConfig = (
       bareShellParameters: "preserve",
     });
     if (Result.isFailure(parsed)) return fail();
-    const self = servicePortExpression(parsed.success, path);
-    const bindingSite =
-      (path[0] === "services" &&
-        ((path[2] === "environment" && path.length === 4) ||
-          (path[2] === "creds" && (path[3] === "password" || path[3] === "rootPassword")))) ||
-      (path[0] === "tooling" && path.includes("env"));
-    if (
-      !expressionInterpolationsTouchOnlyScopes(parsed.success, [
-        "app",
-        "recipe",
-        "env",
-        "services",
-        "proxy",
-        ...(self === "supported" || self === "url" ? ["service"] : []),
-        ...(bindingSite ? ["secrets"] : []),
-      ]) ||
-      parsed.success.segments.some(
-        (segment) =>
-          segment.kind === "ShellParamSegment" || (segment.kind === "SecretRefSegment" && !bindingSite),
-      )
-    )
-      return fail();
+    if (!recipeConfigExpressionAdmitted(parsed.success, path)) return fail();
     const references = expressionScopeMembers(parsed.success, "recipe");
     if (
       !references.analyzable ||

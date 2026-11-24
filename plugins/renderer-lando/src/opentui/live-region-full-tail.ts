@@ -1,5 +1,5 @@
 import { ansiToNativeStyledText } from "./ansi-styled-text.ts";
-import { acquireLiveRegionSubstrate, closeRenderer } from "./live-region-substrate.ts";
+import { acquireLiveRegionSubstrate } from "./live-region-substrate.ts";
 import type {
   LiveRegionControllerDeps,
   LiveRegionControllerOptions,
@@ -19,6 +19,7 @@ export type FullTailSession<TRenderer extends LiveRegionRendererLike = LiveRegio
   readonly module: OpenTuiLiveRegionModuleLike<TRenderer>;
   readonly renderer: TRenderer;
   readonly resizeListener: () => void;
+  readonly close: () => Promise<void>;
   readonly noColor: boolean;
   footer: FullTailFooter | undefined;
 };
@@ -33,7 +34,7 @@ export const acquireFullTail = async <TRenderer extends LiveRegionRendererLike>(
   deps: LiveRegionControllerDeps<TRenderer>,
   onTerminalResize: (width: number, height: number) => void,
 ): Promise<FullTailSession<TRenderer>> => {
-  const { module, renderer } = await acquireLiveRegionSubstrate(options, deps);
+  const { module, renderer, close } = await acquireLiveRegionSubstrate(options, deps);
   const resizeListener = (): void => {
     onTerminalResize(renderer.terminalWidth, renderer.terminalHeight);
   };
@@ -42,11 +43,11 @@ export const acquireFullTail = async <TRenderer extends LiveRegionRendererLike>(
     renderer.on("resize", resizeListener);
     renderer.externalOutputMode = "passthrough";
     renderer.screenMode = "alternate-screen";
-    return { footer: undefined, module, renderer, resizeListener, noColor: options.noColor === true };
+    return { footer: undefined, module, renderer, resizeListener, close, noColor: options.noColor === true };
   } catch (cause) {
     try {
       renderer.off("resize", resizeListener);
-      await closeRenderer(renderer);
+      await close();
     } catch (cleanupCause) {
       recordOpenTuiSubstrateFailure(cleanupCause);
     }
@@ -143,5 +144,5 @@ export const leaveFullTail = async (session: FullTailSession): Promise<void> => 
     session.renderer.externalOutputMode = "passthrough";
     removeFullTailFooter(session);
   }
-  await closeRenderer(session.renderer);
+  await session.close();
 };

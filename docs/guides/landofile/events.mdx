@@ -103,7 +103,7 @@ Every non-internal tooling task also gets `pre-<task>` and `post-<task>`. See [R
 
 A failed `pre-*` step prevents the lifecycle operation from running. If the operation itself fails, its `post-*` steps do not run.
 
-A failed `post-start`, `post-stop`, or `post-destroy` step produces a warning with remediation and the step's redacted output tail, if available. The completed operation still succeeds. Other `post-*` failures fail the command with `LandofileEventStepFailedError` and a redacted output tail. Event output uses Lando's normal secret redaction.
+A failed `post-start`, `post-stop`, or `post-destroy` step produces a warning with remediation and the step's redacted output tail, if available. The completed operation still succeeds. Other `post-*` failures fail the command with `LandofileEventStepFailedError` and a redacted output tail. A step Lando refuses before it starts, for example because its `if` isn't a boolean, has no exit code and no output tail: the error's `message` says why it did not run, and `issues` locates the refusal when Lando has one. Event output uses Lando's normal secret redaction.
 
 ## Change stop and destroy hooks
 
