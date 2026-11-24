@@ -69,7 +69,9 @@ The first command prints the app URL without opening a browser. Container `lando
 
 Each call runs a fresh Lando process that reads current global config and installed plugins. The worker keeps the host environment from the start that launched it; in-memory config or plugins supplied by an embedding host are not reproduced in children. An invalid global config fails the call with remediation rather than keeping an older config active.
 
-Running `lando start` on a running app keeps its host-proxy session, socket, and credentials, even after you edit the Landofile or global config. Lando replaces the session only when the worker is unhealthy or its Lando roots, provider, or Lando install changed; it then recreates the affected containers so they get the new session.
+Running `lando start` on a running app keeps its host-proxy session, socket, and credentials, even after you edit the Landofile or global config. Lando replaces the session only when the worker is unhealthy or its Lando roots, provider, or Lando install changed. Each service reaches the proxy through a directory Lando mounts at `/run/lando/host-proxy`, and a replacement session publishes its socket and credentials into that same directory. Running containers pick it up in place, so `lando start` keeps them and any files you changed inside them.
+
+Lando recreates a host-proxy service's container only when what the container sees of the proxy changes, such as a new in-container client after a Lando upgrade, or when you turn the proxy on or off for that service. On Windows each session gets its own endpoint, so replacing the session there still recreates the host-proxy service containers.
 
 ## Troubleshoot the host-proxy session
 
