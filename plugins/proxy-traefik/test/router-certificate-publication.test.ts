@@ -24,6 +24,7 @@ test.each(["wrong-key", "wrong-name", "wrong-root"] as const)(
       ...f.dependencies,
       certificateAuthority: {
         ...f.dependencies.certificateAuthority,
+        trustStores: Effect.succeed([]),
         issueCert: (spec) =>
           spec.cn.startsWith("*.")
             ? f.dependencies.certificateAuthority.issueCert(spec)

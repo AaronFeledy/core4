@@ -23,8 +23,9 @@ export const makeMintingCertificateAuthority = (
   const root: CaRootCertificate = { certificate: authority.rootCertificate, trusted: true };
   return {
     id: options.id ?? "test-minting",
-    setup: () => Effect.void,
+    setup: () => Effect.succeed({ trustStores: [] }),
     root: Effect.succeed(root),
+    trustStores: Effect.succeed([]),
     issueCert: (spec) =>
       Effect.gen(function* () {
         const leaf = issueX509Leaf(authority, spec, yield* Clock.currentTimeMillis);

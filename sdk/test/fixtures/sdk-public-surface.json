@@ -149,7 +149,8 @@
       "id:string",
       "issueCert:(spec:CertificateSpec) => Effect.Effect<IssuedCertificate,CaError>",
       "root:Effect.Effect<CaRootCertificate,CaError>",
-      "setup:(options:CaSetupOptions) => Effect.Effect<void,CaError>"
+      "setup:(options:CaSetupOptions) => Effect.Effect<CaSetupReport,CaError>",
+      "trustStores:Effect.Effect<ReadonlyArray<TrustStoreStatus>,CaError>"
     ],
     "CommandFramework": ["id:string"],
     "CommandRegistry": ["list:Effect.Effect<ReadonlyArray<RegisteredCommand>,never>"],
@@ -1966,6 +1967,9 @@
       "TranscriptInspectFrame",
       "TranscriptRunFrame",
       "TranscriptVerifyFrame",
+      "TrustStoreChange",
+      "TrustStoreState",
+      "TrustStoreStatus",
       "TunnelCapabilities",
       "TunnelServiceContribution",
       "TunnelSession",

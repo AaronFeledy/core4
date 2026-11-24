@@ -305,6 +305,21 @@ describe("mkcert CertificateAuthority issuance", () => {
     });
   });
 
+  test("only mkcert -install inspects trust stores", async () => {
+    await withCa({}, async ({ runner, ca }) => {
+      // When: setup creates the root and installs it, then a leaf is issued
+      await Effect.runPromise(ca.setup({ force: false }));
+      await Effect.runPromise(ca.issueCert(SPEC));
+      // Then: the -CAROOT query and every issuance name no store; -install keeps mkcert's default
+      const trustStores = runner.calls().map(({ args, env }) => [args[0], env?.TRUST_STORES]);
+      expect(new Set(trustStores.map(([command]) => command))).toEqual(
+        new Set(["-CAROOT", "-cert-file", "-install"]),
+      );
+      for (const [command, stores] of trustStores)
+        expect({ command, stores }).toEqual({ command, stores: command === "-install" ? undefined : "none" });
+    });
+  });
+
   test("satisfies the CertificateAuthority contract suite", async () => {
     await withCa({ issue: TEST_CERTIFICATES.contract }, async ({ harness, ca }) => {
       // Real leaf material under the root CAROOT holds.

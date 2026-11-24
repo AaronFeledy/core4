@@ -583,6 +583,7 @@ import {
   ToolingInvocationInput,
 } from "./tooling-input.ts";
 import { ToolingRunSummary, ToolingRunTarget } from "./tooling-run-summary.ts";
+import { TrustStoreChange, TrustStoreState, TrustStoreStatus } from "./trust-store.ts";
 import {
   ShareStopAppResult,
   TunnelCapabilities,
@@ -1166,6 +1167,9 @@ const basePublicSchemaRegistry = schemaRegistry({
   CommandResultFormat,
   FailureRole,
   CommandWarning,
+  TrustStoreState,
+  TrustStoreStatus,
+  TrustStoreChange,
   CommandResultEnvelope,
   CommandCompletion,
   CommandOutput,

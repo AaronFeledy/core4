@@ -1,1 +1,13 @@
-[]
+[
+  {
+    "fingerprint": "sha256:2c9904508e4c224016e2ad2f981048bac6e51153cc45bd901fa366abeeb9ac4d",
+    "changeKind": "union-widened",
+    "locations": [
+      {
+        "surface": "command:meta:doctor",
+        "path": "$.checks.items.details.anyOf"
+      }
+    ],
+    "justification": "Doctor findings gain a CertificateTrustDetails member ({ trustStores }) so the certs check carries typed per-store trust rows. Existing members are unchanged; consumers that switch on the known shapes keep working and can ignore the new one."
+  }
+]

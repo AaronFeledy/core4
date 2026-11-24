@@ -277,7 +277,7 @@ describe("doctor progress events", () => {
               },
             ],
           }),
-          { _tag: "selected", id: "mkcert", trusted: true },
+          { _tag: "selected", id: "mkcert", trusted: true, trustStores: [] },
         ),
       }).pipe(Effect.provide(Layer.mergeAll(recorder.layer, configService, healthyFilesystemWatch))),
     );
@@ -325,6 +325,7 @@ describe("doctor progress events", () => {
           _tag: "selected",
           id: "mkcert",
           trusted: true,
+          trustStores: [],
         }),
       }).pipe(Effect.provide(Layer.mergeAll(recorder.layer, configService, healthyFilesystemWatch))),
     );
@@ -356,7 +357,7 @@ describe("doctor progress events", () => {
               }),
             ],
           }),
-          { _tag: "selected", id: "mkcert", trusted: true },
+          { _tag: "selected", id: "mkcert", trusted: true, trustStores: [] },
         ),
       }).pipe(Effect.provide(Layer.mergeAll(recorder.layer, configService, healthyFilesystemWatch))),
     );
@@ -401,7 +402,7 @@ describe("restored doctor progress outcomes", () => {
       collectDoctorReport({
         options: { env: {} },
         contexts: {},
-        table: progressTable(undefined, { _tag: "selected", id: "mkcert", trusted: true }),
+        table: progressTable(undefined, { _tag: "selected", id: "mkcert", trusted: true, trustStores: [] }),
       }).pipe(Effect.provide(Layer.mergeAll(trusted.layer, configService, healthyFilesystemWatch))),
     );
     const selected = trusted.events.find(

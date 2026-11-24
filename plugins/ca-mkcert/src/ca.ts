@@ -9,6 +9,14 @@
  * explicitly on that retry because elevation does not preserve the invoking
  * user's environment.
  *
+ * Every trust store the authority manages (the system store, then each
+ * Homebrew CA bundle) is reported as a row. `setup` inspects them before and
+ * after installing and marks the ones it took from untrusted to trusted; a
+ * store it could not repair is reported untrusted, not failed. It skips
+ * `mkcert -install` when the system store already trusts the root. `trustStores` only
+ * inspects. The system row is a fresh read, never Bun's per-process snapshot
+ * that `root.trusted` uses, so setup can verify its own install.
+ *
  * Any issuing mkcert run creates a root when `CAROOT` has none, without
  * locking, and every Lando data root on a host shares one `CAROOT`. Only
  * `setup` creates the root, under an advisory lock inside `CAROOT`; `root` and
@@ -20,6 +28,7 @@
 
 import { mapFailures } from "@lando/sdk/command-result";
 import { CaError } from "@lando/sdk/errors";
+import type { TrustStoreChange, TrustStoreStatus } from "@lando/sdk/schema";
 import type {
   CaSetupOptions,
   CertificateAuthorityShape,
@@ -31,12 +40,29 @@ import { type ToolError, resolveHostKey } from "@lando/sdk/tool-provisioning";
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
 import { type Context, Effect } from "effect";
 
+import { type HostEnv, makeHomebrewTrust } from "./homebrew-trust.ts";
+import { hostTrustsPem } from "./host-trust.ts";
 import { makeIssueCert, makeIssueInto } from "./issuance.ts";
 import { CA_ID, type MkcertContext, caError, failureDetail, makeRunMkcert } from "./mkcert-command.ts";
 import { MKCERT_TOOL_VERSION, mkcertInstallPath, provisionMkcert } from "./provision.ts";
 import { makeMkcertRoot } from "./root.ts";
+import { makeSystemTrust } from "./system-trust.ts";
 
 export { CA_ID } from "./mkcert-command.ts";
+
+const storeKey = ({ id, location }: TrustStoreStatus): string => JSON.stringify([id, location ?? null]);
+
+/** `after`, each row marked changed only when setup took it from verified untrusted to trusted. */
+const markChanges = (
+  before: ReadonlyArray<TrustStoreStatus>,
+  after: ReadonlyArray<TrustStoreStatus>,
+): ReadonlyArray<TrustStoreChange> => {
+  const untrustedBefore = new Set(before.filter(({ state }) => state === "untrusted").map(storeKey));
+  return after.map((row) => ({
+    ...row,
+    changed: row.state === "trusted" && untrustedBefore.has(storeKey(row)),
+  }));
+};
 
 export interface MkcertCertificateAuthorityOptions {
   readonly binDir: string;
@@ -46,6 +72,12 @@ export interface MkcertCertificateAuthorityOptions {
   readonly privateFileAccess: PrivateFileAccess;
   readonly platform?: string | undefined;
   readonly arch?: string | undefined;
+  /** Environment used to find Homebrew; defaults to `process.env`. */
+  readonly env?: HostEnv | undefined;
+  /** Whether the system store this process loaded holds a PEM; defaults to Bun's system snapshot. */
+  readonly hostTrustsPem?: ((pem: string) => boolean) | undefined;
+  /** Linux system bundle candidates for the fresh trust check; defaults to the distro paths. */
+  readonly linuxSystemBundles?: ReadonlyArray<string> | undefined;
 }
 
 export const makeMkcertCertificateAuthority = (
@@ -65,7 +97,21 @@ export const makeMkcertCertificateAuthority = (
     runMkcert,
   };
   const issueInto = makeIssueInto(context);
-  const { caRoot, currentRoot, ensureRoot } = makeMkcertRoot(context, issueInto);
+  const homebrew = makeHomebrewTrust({
+    processRunner: options.processRunner,
+    env: options.env ?? process.env,
+    platform,
+  });
+  const systemTrust = makeSystemTrust({
+    processRunner: options.processRunner,
+    platform,
+    linuxBundles: options.linuxSystemBundles,
+  });
+  const { caRoot, currentRoot, ensureRoot } = makeMkcertRoot(
+    context,
+    issueInto,
+    options.hostTrustsPem ?? hostTrustsPem,
+  );
 
   const provisionError = (cause: ToolError): CaError =>
     cause._tag === "ToolManifestError"
@@ -111,16 +157,41 @@ export const makeMkcertCertificateAuthority = (
 
   const issueCert = makeIssueCert(currentRoot, issueInto);
 
+  /** Every managed store, system first, in a stable order. Reads only. */
+  const inspect = Effect.fnUntraced(function* (caroot: string, root: string) {
+    const system = yield* systemTrust.inspect(caroot, root);
+    return { system, rows: [system, ...(yield* homebrew.inspect(root))] };
+  });
+
   return CertificateAuthority.of({
     id: CA_ID,
     setup: Effect.fn("CertificateAuthority.setup")(function* (setupOptions: CaSetupOptions) {
       yield* provision(setupOptions.force);
       const caroot = yield* caRoot;
-      yield* ensureRoot(caroot);
-      if (setupOptions.skipTrustInstall === true) return;
-      yield* installTrust(caroot, setupOptions.privilege);
+      const root = yield* ensureRoot(caroot);
+      const before = yield* inspect(caroot, root);
+      if (setupOptions.skipTrustInstall === true)
+        return { trustStores: markChanges(before.rows, before.rows) };
+      // A system store that already trusts the root needs no `mkcert -install`, so reruns never prompt.
+      const system =
+        before.system.state === "trusted"
+          ? before.system
+          : yield* installTrust(caroot, setupOptions.privilege).pipe(
+              // mkcert can exit 0 without the system store trusting the root; that is reported, not fatal.
+              Effect.andThen(systemTrust.inspect(caroot, root)),
+            );
+      const homebrewRows = yield* homebrew.refresh(root, system.state === "trusted");
+      return { trustStores: markChanges(before.rows, [system, ...homebrewRows]) };
     }),
-    root: Effect.map(currentRoot, ({ root }) => root).pipe(Effect.withSpan("CertificateAuthority.root")),
+    root: currentRoot.pipe(
+      Effect.map(({ root }) => root),
+      Effect.withSpan("CertificateAuthority.root"),
+    ),
+    trustStores: currentRoot.pipe(
+      Effect.flatMap(({ caroot, root }) => inspect(caroot, root.certificate)),
+      Effect.map(({ rows }) => rows),
+      Effect.withSpan("CertificateAuthority.trustStores"),
+    ),
     issueCert,
   });
 };
