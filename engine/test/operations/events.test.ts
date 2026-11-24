@@ -581,9 +581,10 @@ describe("runAppEvent tooling-step kernel", () => {
     // Then
     expect(error).toBeInstanceOf(LandofileEventStepFailedError);
     if (error._tag !== "LandofileEventStepFailedError") throw error;
-    expect(error.outputTail).toContain("$1 is not bound to forwarded arguments");
-    expect(error.remediation).toContain("Fix pre-start step 1, then rerun the lifecycle command.");
-    expect(error.remediation).toContain("The step runs in Bun Shell.");
+    // The step never ran, so it has no exit code or output, only the refusal.
+    expect(error.message).toContain("$1 is not bound to forwarded arguments");
+    expect(error.exitCode).toBeUndefined();
+    expect(error.outputTail).toBe("");
     expect(error.remediation).toContain("forwarded arguments");
     expect(hostCommands).toEqual([]);
     expect(invocations).toEqual([]);
@@ -755,14 +756,14 @@ describe("runAppEvent tooling-step kernel", () => {
     // Then
     expect(error).toBeInstanceOf(LandofileEventStepFailedError);
     if (error._tag !== "LandofileEventStepFailedError") throw error;
-    expect({ index: error.index, kind: error.kind, outputTail: error.outputTail }).toEqual({
+    expect({ index: error.index, kind: error.kind, message: error.message }).toEqual({
       index: 1,
       kind: "command",
-      outputTail: "Unknown canonical command missing.",
+      message: "Event pre-start step 2 did not run: Unknown canonical command missing.",
     });
   });
 
-  test("preserves lookup detail and remediation in the failure output tail", async () => {
+  test("preserves lookup detail and remediation in the failure message", async () => {
     // Given
     const invocations: ToolingInvocation[] = [];
     const plan = withProjectEvents(eventPlan(), {
@@ -787,11 +788,11 @@ describe("runAppEvent tooling-step kernel", () => {
     // Then
     expect(error).toBeInstanceOf(LandofileEventStepFailedError);
     if (error._tag !== "LandofileEventStepFailedError") throw error;
-    expect(error.outputTail).toContain("Unknown canonical command app:confgi.");
-    expect(error.outputTail).toContain("Did you mean app:config?");
+    expect(error.message).toContain("Unknown canonical command app:confgi.");
+    expect(error.message).toContain("Did you mean app:config?");
   });
 
-  test("appends wrapped ToolingCompileError remediation and names Bun Shell for :host leaves", async () => {
+  test("reports a :host step refused at compile time with its diagnostic and no exit code", async () => {
     // Given a :host event cmd that fails the Bun Shell dialect check at compile time
     const invocations: ToolingInvocation[] = [];
     const plan = withProjectEvents(eventPlan(), {
@@ -810,11 +811,11 @@ describe("runAppEvent tooling-step kernel", () => {
     // Then
     expect(error).toBeInstanceOf(LandofileEventStepFailedError);
     if (error._tag !== "LandofileEventStepFailedError") throw error;
-    expect(error.remediation).toContain("Fix pre-start step 1, then rerun the lifecycle command.");
-    expect(error.remediation).toContain("The step runs in Bun Shell.");
     expect(error.remediation).toMatch(/Branch on the exit status|&&|\|\|/u);
     expect(error.service).toBe(":host");
-    expect(error.outputTail).toContain("Bun Shell");
+    expect(error.message).toContain("Bun Shell");
+    expect(error.exitCode).toBeUndefined();
+    expect(error.outputTail).toBe("");
     expect(invocations).toHaveLength(0);
   });
 
@@ -1227,7 +1228,10 @@ describe("hostEvents runtime", () => {
     );
     // Then
     if (error._tag !== "LandofileEventStepFailedError") throw error;
-    expect(error.message).toBe("Event pre-start step 1 failed.");
+    expect(error.message).toBe(
+      "Event pre-start step 1 did not run: The sources selector is unavailable for root event tooling steps.",
+    );
+    expect(error).not.toHaveProperty("exitCode");
     expect(error.remediation).not.toContain("config.yml");
     expect(invocations).toEqual([]);
   });

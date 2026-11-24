@@ -1280,7 +1280,8 @@ describe("lando start", () => {
     // Then
     expect(failureOf(exit)).toMatchObject({
       _tag: "LandofileEventStepFailedError",
-      outputTail: "Unknown event tooling task missing-task.",
+      message: "Event pre-start step 1 did not run: Unknown event tooling task missing-task.",
+      outputTail: "",
     });
   });
 

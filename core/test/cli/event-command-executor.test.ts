@@ -186,7 +186,8 @@ describe("EventCommandExecutorLayer.layer", () => {
         _tag: "LandofileEventStepFailedError",
         event,
         kind: "command",
-        outputTail: expect.stringContaining("Database credential changes cannot run"),
+        message: expect.stringContaining("Database credential changes cannot run"),
+        outputTail: "",
         remediation: expect.stringContaining("Run `lando db:creds:apply` directly"),
       });
     },
