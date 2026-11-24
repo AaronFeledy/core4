@@ -50,10 +50,6 @@ import {
   exec as runtimeExec,
   execStream as runtimeExecStream,
 } from "@lando/container-runtime/podman/exec";
-import {
-  type WaitForServiceHealthOptions,
-  waitForServiceHealth as runtimeWaitForServiceHealth,
-} from "@lando/container-runtime/podman/health";
 import { type InspectOptions, inspect as runtimeInspect } from "@lando/container-runtime/podman/inspect";
 import { type LogsOptions, logs as runtimeLogs } from "@lando/container-runtime/podman/logs";
 import {
@@ -152,13 +148,21 @@ import { managedConmonPath, reapLingeringExecConmons } from "./exec-conmon.ts";
 import { makeWindowsHostProxyBridge } from "./host-proxy-bridge.ts";
 import { rejectIntelMacHost } from "./host-support.ts";
 import type { RuntimeGenerationStore } from "./linux-runtime-generation.ts";
+import { readRuntimePid } from "./linux-runtime-reaper.ts";
 import { managedResourceControl } from "./managed-resource-control.ts";
 import { makeManagedRuntimeCgroupCheck } from "./managed-runtime-cgroup-check.ts";
+import { makeManagedRuntimeCurrentCheck } from "./managed-runtime-current-check.ts";
 import { managedRuntimePodmanArgv0 } from "./managed-runtime-service.ts";
 import {
   makeManagedRuntimeSocketPathCheck,
   validateManagedSocketPathLength,
 } from "./managed-runtime-socket-path.ts";
+import {
+  managedNativeHealthScheduling,
+  runtimeSchedulesNativeHealth,
+  serviceSchedulesNativeHealth,
+  withNativeHealth,
+} from "./native-health-runtime.ts";
 import { makePluginArtifactDownload, makePluginRuntimeState } from "./plugin-runtime.ts";
 import {
   type PodmanServiceRunner,
@@ -179,6 +183,7 @@ import {
   makeSystemRootlessProbes,
 } from "./rootless-preflight.ts";
 import { type ArtifactDownload, makeDefaultRuntimeBundleDownloader } from "./runtime-bundle.ts";
+import { readInstalledVersion } from "./runtime-extract.ts";
 import type { RuntimeShutdownStore } from "./runtime-shutdown.ts";
 import { teardownManagedRuntime } from "./runtime-shutdown-teardown.ts";
 import {
@@ -239,7 +244,6 @@ export type { BringUpOptions, StartFailureRemediation } from "@lando/container-r
 export type { EmitComposeOptions, EmitComposeResult } from "@lando/container-runtime/podman/compose";
 export type { ContainerDiedEventsOptions } from "@lando/container-runtime/podman/container-events";
 export type { ExecOptions } from "@lando/container-runtime/podman/exec";
-export type { WaitForServiceHealthOptions } from "@lando/container-runtime/podman/health";
 export type { InspectOptions } from "@lando/container-runtime/podman/inspect";
 export type { LogsOptions } from "@lando/container-runtime/podman/logs";
 export type { PodmanVersionNumbers } from "@lando/container-runtime/podman/version-floor";
@@ -511,13 +515,6 @@ export const pullImage = <E = never>(
     ctx: providerContextForEnv({ ...process.env }),
     dialect: libpodPullDialect,
   });
-
-export const waitForServiceHealth = (
-  plan: AppPlan,
-  target: Parameters<typeof runtimeWaitForServiceHealth>[1],
-  options: Omit<WaitForServiceHealthOptions, "ctx">,
-) =>
-  runtimeWaitForServiceHealth(plan, target, { ...options, ctx: providerContextForEnv({ ...process.env }) });
 
 export const getContainerDiedEvents = (
   api: PodmanApiClient,
@@ -891,28 +888,56 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
   return Effect.gen(function* () {
     const shouldProbeCapabilities = options.podmanApi !== undefined || externalSocketPath !== undefined;
     const delegatedScopeHost = family === "linux" ? options.delegatedScopeHost : undefined;
-    const capabilities =
+    const managedServiceSpec = canEnsure
+      ? buildPodmanServiceArgs({
+          podmanBin,
+          storageDir: options.runtimeStorageDir,
+          runRoot: options.runtimeRunDir,
+          configDir: options.runtimeConfigDir,
+          socketPath: ensureSocketPath,
+          privateRuntimeDir: undefined,
+        })
+      : undefined;
+    const baseCapabilities =
       shouldProbeCapabilities && podmanApi !== undefined
         ? introspectProviderCapabilities(podmanApi, platform)
-        : canEnsure && delegatedScopeHost !== undefined
+        : canEnsure && managedServiceSpec !== undefined && delegatedScopeHost !== undefined
           ? managedResourceControl({
               platform,
               host: delegatedScopeHost,
               pidPath: options.providerPidPath,
-              spec: buildPodmanServiceArgs({
-                podmanBin,
-                storageDir: options.runtimeStorageDir,
-                runRoot: options.runtimeRunDir,
-                configDir: options.runtimeConfigDir,
-                socketPath: ensureSocketPath,
-                privateRuntimeDir: undefined,
-              }),
+              spec: managedServiceSpec,
               serviceRunner,
               podmanApi,
             }).pipe(
               Effect.map((control) => withResourceControl(mvpProviderCapabilities(platform, arch), control)),
             )
           : Effect.succeed(mvpProviderCapabilities(platform, arch));
+    // Only the managed Linux service can be vouched for; an external socket keeps `serviceHealth: none`.
+    const { runtimeRunDir, providerPidPath } = options;
+    const capabilities =
+      !shouldProbeCapabilities &&
+      family === "linux" &&
+      runtimeBinDir !== undefined &&
+      runtimeRunDir !== undefined &&
+      providerPidPath !== undefined &&
+      managedServiceSpec !== undefined
+        ? Effect.zipWith(
+            baseCapabilities,
+            readInstalledVersion(runtimeBinDir).pipe(
+              Effect.flatMap((installedVersion) =>
+                managedNativeHealthScheduling({
+                  installedVersion,
+                  runRoot: runtimeRunDir,
+                  pidPath: providerPidPath,
+                  spec: managedServiceSpec,
+                  serviceRunner,
+                }),
+              ),
+            ),
+            withNativeHealth,
+          )
+        : baseCapabilities;
     const { capabilities: resolvedCapabilities, logSourceBinding } = yield* capabilities.pipe(
       Effect.map((resolved) => {
         const logSourceBinding = makeProviderLogSourceBinding({
@@ -1702,6 +1727,20 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
                       );
                     }
                     yield* ensureEffectFor(progress, progress.runtimeBundleVersion, true);
+                    const { runtimeRunDir: runRoot, providerPidPath: pidPath } = options;
+                    const setupScheduledHealth =
+                      family === "linux" &&
+                      runRoot !== undefined &&
+                      pidPath !== undefined &&
+                      runtimeSchedulesNativeHealth(progress.runtimeBundleVersion)
+                        ? readRuntimePid(pidPath).pipe(
+                            Effect.flatMap((pid) =>
+                              pid === undefined
+                                ? Effect.succeed(false)
+                                : serviceSchedulesNativeHealth({ runRoot, pidPath }, pid, serviceRunner),
+                            ),
+                          )
+                        : Effect.succeed(false);
                     if (smokeEnabled) {
                       yield* progress.run(
                         "smoke",
@@ -1711,6 +1750,9 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
                             resourceLimits:
                               resolvedCapabilities.composeKnobs?.supported.includes("deploy.resources") ===
                               true,
+                            // Judged on the runtime setup just installed and launched, which must
+                            // also have acknowledged that it schedules checks.
+                            scheduledHealth: yield* setupScheduledHealth,
                             ...(options.smokeRetryPolicy === undefined
                               ? {}
                               : { retryPolicy: options.smokeRetryPolicy }),
@@ -2054,6 +2096,7 @@ export const plugin = definePlugin({
     makeWslMountPropagationCheck(),
     makeManagedRuntimeSocketPathCheck(),
     makeManagedRuntimeCgroupCheck(),
+    makeManagedRuntimeCurrentCheck(),
   ],
   hostMaintainers: [
     {

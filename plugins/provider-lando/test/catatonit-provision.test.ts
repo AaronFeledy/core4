@@ -36,6 +36,15 @@ describe("verified managed native init", () => {
     expect(CATATONIT_MANIFEST.recipeRuntimeVersion).not.toBe(LEGACY_NATIVE_INIT_BRIDGE_VERSION);
   });
 
+  test("every runtime from the first helper-bearing payload on ships the helper", () => {
+    expect(["0.1.7", "0.1.8", "0.1.9", "0.1.10"].map(runtimeRecipeIncludesNativeInitHelper)).toEqual([
+      false,
+      true,
+      true,
+      true,
+    ]);
+  });
+
   test("supports an owner-controlled runtime under a symlinked home directory", () =>
     withRoot(async (root) => {
       const fixture = catatonitFixture();

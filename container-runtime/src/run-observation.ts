@@ -1,4 +1,5 @@
 import type { ServiceHealthObservation, ServiceRunObservation } from "@lando/sdk/schema";
+import { DateTime, Option } from "effect";
 
 /**
  * The engine-spelling to {@link ServiceRunObservation} boundary shared by every Docker-compatible
@@ -36,12 +37,43 @@ export interface EngineContainerState {
   readonly Paused?: boolean | undefined;
   readonly Restarting?: boolean | undefined;
   readonly ExitCode?: number | undefined;
-  readonly Health?: { readonly Status?: string | undefined } | undefined;
+  readonly StartedAt?: string | undefined;
+  readonly Health?:
+    | {
+        readonly Status?: string | undefined;
+        // `Output` is never read: a check's output can carry secrets.
+        readonly Log?: ReadonlyArray<{ readonly Start?: string; readonly End?: string }> | null | undefined;
+      }
+    | undefined;
 }
 
 const healthFromEngine = (state: EngineContainerState): ServiceHealthObservation | undefined => {
   const status = state.Health?.Status?.trim().toLowerCase();
   return status === "healthy" || status === "starting" || status === "unhealthy" ? status : undefined;
+};
+
+const epochMillis = (timestamp: string | undefined): number | undefined => {
+  if (timestamp === undefined) return undefined;
+  const parsed = DateTime.make(timestamp);
+  return Option.isNone(parsed) ? undefined : DateTime.toEpochMillis(parsed.value);
+};
+
+/**
+ * When the engine last finished a check in the current run: the `End` of the newest health-log
+ * entry that started at or after `StartedAt`, as a UTC ISO-8601 string with millisecond precision.
+ * Docker keeps the previous run's log across a restart, so an older entry is not evidence about
+ * this run. Podman stamps entries in the host's local offset, so the engine spelling is not kept.
+ */
+const healthCheckedAtFromEngine = (state: EngineContainerState): string | undefined => {
+  const startedAt = epochMillis(state.StartedAt);
+  if (startedAt === undefined) return undefined;
+  const ends = (state.Health?.Log ?? []).flatMap((entry) => {
+    const start = epochMillis(entry.Start);
+    const end = entry.End === undefined ? Option.none() : DateTime.make(entry.End);
+    return start !== undefined && start >= startedAt && Option.isSome(end) ? [end.value] : [];
+  });
+  const last = ends.at(-1);
+  return last === undefined ? undefined : DateTime.formatIso(last);
 };
 
 /** Only a positive flag is evidence; `Running: false` alone does not prove the container exited. */
@@ -56,7 +88,7 @@ const runStatusFromFlags = (state: EngineContainerState): ServiceRunObservation[
  * Normalizes a container-inspect `State` block. `Status` is authoritative when the engine sent it;
  * the boolean flags only stand in when it is absent. `health` survives only for a running
  * container and `exitCode` only for an exited one. A dead container's retained code is not
- * evidence of successful completion.
+ * evidence of successful completion. `healthCheckedAt` accompanies `health` only.
  */
 export const runObservationFromInspectState = (
   state: EngineContainerState | undefined,
@@ -69,7 +101,9 @@ export const runObservationFromInspectState = (
   switch (status) {
     case "running": {
       const health = healthFromEngine(state);
-      return health === undefined ? { status } : { status, health };
+      if (health === undefined) return { status };
+      const healthCheckedAt = healthCheckedAtFromEngine(state);
+      return healthCheckedAt === undefined ? { status, health } : { status, health, healthCheckedAt };
     }
     case "exited":
       return typeof state.ExitCode === "number" && Number.isInteger(state.ExitCode)

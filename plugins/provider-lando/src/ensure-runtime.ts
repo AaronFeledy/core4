@@ -23,6 +23,7 @@ import {
 } from "./linux-runtime-health.ts";
 import { reapStaleLinuxRuntime } from "./linux-runtime-reaper.ts";
 import { validateManagedSocketPathLength } from "./managed-runtime-socket-path.ts";
+import { runtimeSchedulesNativeHealth } from "./native-health-runtime.ts";
 import { ensureManagedNft } from "./nft-provision.ts";
 import {
   type PodmanServiceScope,
@@ -39,6 +40,7 @@ import {
 } from "./rootless-preflight.ts";
 import type { ArtifactDownload } from "./runtime-bundle.ts";
 import { writeManagedRuntimeContainersConf } from "./runtime-config.ts";
+import { readInstalledVersion } from "./runtime-extract.ts";
 import { writeLaunchState } from "./runtime-launch-state.ts";
 import { type PodmanMachineRunner, ensureMacOSPodmanMachine, ensureWindowsPodmanMachine } from "./setup.ts";
 
@@ -143,8 +145,13 @@ const mapLaunchLockError = (
       })
     : cause;
 
+interface InstalledRuntime {
+  /** Version marker of the runtime installed in the runtime bin directory, read once per ensure. */
+  readonly installedRuntimeVersion?: string | undefined;
+}
+
 const launchRuntime = Effect.fn("ProviderLando.launchRuntime")(function* (
-  deps: EnsureRuntimeDeps & LinuxRuntimeHealthDeps,
+  deps: EnsureRuntimeDeps & LinuxRuntimeHealthDeps & InstalledRuntime,
   scope: PodmanServiceScope | undefined,
 ): Effect.fn.Return<number, ProviderUnavailableError> {
   const spec = buildPodmanServiceArgs({
@@ -154,6 +161,7 @@ const launchRuntime = Effect.fn("ProviderLando.launchRuntime")(function* (
     configDir: deps.configDir,
     socketPath: deps.socketPath,
     privateRuntimeDir: deps.privateRuntimeDir,
+    ...(deps.serviceHealthchecks === true ? { serviceHealthchecks: true } : {}),
   });
 
   yield* deps.admit ?? Effect.void;
@@ -167,7 +175,7 @@ const launchRuntime = Effect.fn("ProviderLando.launchRuntime")(function* (
 
   const recordLaunch =
     deps.recordLaunch?.(pid, spec) ??
-    writeLaunchState(deps.pidPath, pid, spec, deps.runtimeBundleVersion).pipe(
+    writeLaunchState(deps.pidPath, pid, spec, deps.runtimeBundleVersion ?? deps.installedRuntimeVersion).pipe(
       Effect.andThen(writePidFile(deps.pidPath, pid)),
     );
   yield* recordLaunch.pipe(
@@ -230,10 +238,22 @@ const verifyRuntimeReachable = (deps: EnsureRuntimeDeps): Effect.Effect<void, Pr
   );
 
 const ensureLinuxRuntime = Effect.fn("ProviderLando.ensureLinuxRuntime")(function* (
-  deps: EnsureRuntimeDeps & LinuxRuntimeHealthDeps,
+  input: EnsureRuntimeDeps & LinuxRuntimeHealthDeps,
 ): Effect.fn.Return<void, ProviderUnavailableError> {
-  const socketPathError = validateManagedSocketPathLength(deps.socketPath);
+  const socketPathError = validateManagedSocketPathLength(input.socketPath);
   if (socketPathError !== undefined) return yield* Effect.fail(socketPathError);
+  // Every owned launch records the installed version, and only a scheduler-bearing runtime opts
+  // its service in. An older runtime's launch identity stays unchanged, so it is never relaunched.
+  const installedRuntimeBinDir =
+    input.runtimeBinDir ?? (input.podmanBin.includes("/") ? dirname(input.podmanBin) : undefined);
+  const installedRuntimeVersion =
+    installedRuntimeBinDir === undefined ? undefined : yield* readInstalledVersion(installedRuntimeBinDir);
+  const serviceHealthchecks = runtimeSchedulesNativeHealth(installedRuntimeVersion);
+  const deps: EnsureRuntimeDeps & LinuxRuntimeHealthDeps & InstalledRuntime = {
+    ...input,
+    installedRuntimeVersion,
+    serviceHealthchecks,
+  };
   const helpers = Effect.gen(function* () {
     if (deps.catatonitProvision !== undefined) {
       yield* ensureManagedCatatonit(deps.catatonitProvision);
@@ -243,6 +263,7 @@ const ensureLinuxRuntime = Effect.fn("ProviderLando.ensureLinuxRuntime")(functio
       yield* writeManagedRuntimeContainersConf({
         runtimeBinDir,
         runtimeConfigDir: deps.configDir,
+        serviceHealthchecks,
       });
     }
     if (deps.nftProvision !== undefined) {

@@ -159,8 +159,8 @@ const dockerChecks = [
   },
 ] as const satisfies readonly ProviderAcceptanceCheckPlan[];
 
-const dockerLatestChecks = [
-  ...dockerChecks,
+// Features only a current Docker Engine has. The workflow asserts each passed, though the cell is advisory.
+const dockerLatestFeatureChecks = [
   {
     id: "exec-umask-mode",
     label: "lando exec creates 0644 files",
@@ -169,6 +169,23 @@ const dockerLatestChecks = [
       "lando exec creates 0644 files",
     ),
   },
+  {
+    id: "health-start-interval",
+    label: "Docker Engine API 1.44+ honors healthcheck start_interval",
+    command: bunTest(
+      "plugins/provider-docker/test/healthcheck-start-interval.integration.test.ts",
+      "honors healthcheck start_interval",
+    ),
+  },
+] as const satisfies readonly ProviderAcceptanceCheckPlan[];
+
+export const DOCKER_LATEST_ASSERTED_CHECK_IDS: readonly string[] = dockerLatestFeatureChecks.map(
+  (check) => check.id,
+);
+
+const dockerLatestChecks = [
+  ...dockerChecks,
+  ...dockerLatestFeatureChecks,
 ] as const satisfies readonly ProviderAcceptanceCheckPlan[];
 
 export const PROVIDER_ACCEPTANCE_CELLS: readonly ProviderAcceptanceCellPlan[] = [

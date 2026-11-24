@@ -1,0 +1,7 @@
+{
+  "_comment": "Patch-set identity (runtimeBundlePatchSetDigest in scripts/runtime-bundle-sources.ts) of every runtimeVersion. A published runtime is immutable: changing any sourcePatches entry or patch file needs a new runtimeVersion in plugins/provider-lando/runtime-bundle-sources.json and a new entry here. Never edit the entry of a published version. Enforced by core/test/scripts/runtime-bundle-patch-sets.test.ts.",
+  "patchSets": {
+    "0.1.8": "fafa07229b2337411c0c9d1938c4401cb86d3dfec296ee727a7eaff6bc7c295e",
+    "0.1.9": "66a185e0b3ab4f1b61467e64bd11e292a1261e98a452480aed0edad8c6b11210"
+  }
+}

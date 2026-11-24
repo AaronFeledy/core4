@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, lstat, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -13,7 +13,10 @@ import {
   LinuxPasstSourceBuild,
   type RuntimeBundleBinaryComponent,
   type RuntimeBundleComponent,
+  type RuntimeBundleSourcePatch,
   isLinuxRuntimeBundle,
+  runtimeBundlePatchPath,
+  sourcePatchesOf,
 } from "./runtime-bundle-sources.ts";
 
 export const PodmanSourceBuild = {
@@ -21,6 +24,8 @@ export const PodmanSourceBuild = {
   sourceDateEpoch: "1783532707",
   goflags: "-trimpath -buildvcs=false",
   extraLdflags: "-buildid=",
+  /** Shown as `podman version` Build Origin when Lando's carried patches are applied. */
+  patchedBuildOrigin: "lando-runtime (patched)",
 } as const;
 
 const PodmanSourceBuildOutputs = [
@@ -28,51 +33,64 @@ const PodmanSourceBuildOutputs = [
   { source: "bin/rootlessport", installName: "bin/rootlessport", mode: 0o755 },
 ] as const;
 
-export const NETAVARK_SYSTEMD_USER_BUS_PATCH_PATH = join(
-  import.meta.dir,
-  "patches",
-  "netavark-v2.0.0-systemd-user-bus.patch",
-);
-/** Repo patch the source build applies to `component`, if any; notices link the same file. */
-export const sourcePatchFor = (component: RuntimeBundleComponent): string | undefined =>
-  "sourceBuild" in component &&
-  component.sourceBuild === LinuxNetavarkSourceBuild &&
-  component.version === "2.0.0"
-    ? NETAVARK_SYSTEMD_USER_BUS_PATCH_PATH
-    : undefined;
-const NETAVARK_AARDVARK_SOURCE_SHA256 = "0cc2090fc5124a68f69da60215a2b7a85023d1c495d2e5685e83ccf20ecd3823";
-const NETAVARK_AARDVARK_PATCHED_SHA256 = "f01cefaf9a960ead28008b6bddb9d76811dbbb44b339e70c64fff66a5c3c969d";
-
-interface VerifiedSourcePatchOptions {
-  readonly sourceDir: string;
-  readonly sourcePath: string;
-  readonly patchPath: string;
-  readonly expectedSourceSha256: string;
-  readonly expectedPatchedSha256: string;
-  readonly execute: BundleCommandRunner;
-}
-
 const fileSha256 = async (path: string): Promise<string> =>
   createHash("sha256")
     .update(await readFile(path))
     .digest("hex");
 
-export const applyVerifiedSourcePatch = async (options: VerifiedSourcePatchOptions): Promise<void> => {
-  const sourceSha256 = await fileSha256(options.sourcePath);
-  if (sourceSha256 !== options.expectedSourceSha256) {
-    throw new Error(
-      `assemble-runtime-bundle: source SHA-256 mismatch before patching ${options.sourcePath}: expected ${options.expectedSourceSha256}, received ${sourceSha256}`,
-    );
-  }
-  await options.execute(
-    ["patch", "--batch", "--forward", "--fuzz=0", "--reject-file=-", "-p1", "-i", options.patchPath],
-    options.sourceDir,
+const fileExists = (path: string): Promise<boolean> =>
+  lstat(path).then(
+    () => true,
+    () => false,
   );
-  const patchedSha256 = await fileSha256(options.sourcePath);
-  if (patchedSha256 !== options.expectedPatchedSha256) {
-    throw new Error(
-      `assemble-runtime-bundle: patched source SHA-256 mismatch for ${options.sourcePath}: expected ${options.expectedPatchedSha256}, received ${patchedSha256}`,
+
+/**
+ * Applies `patches` in order with zero fuzz. Each patch file must match its pinned SHA-256, every
+ * file it modifies must match its pinned pre-image, every file it creates must be absent, and every
+ * touched file must match its pinned post-image afterwards.
+ */
+export const applyVerifiedSourcePatches = async (options: {
+  readonly sourceDir: string;
+  readonly patches: readonly RuntimeBundleSourcePatch[];
+  readonly execute: BundleCommandRunner;
+}): Promise<void> => {
+  for (const patch of options.patches) {
+    const patchPath = runtimeBundlePatchPath(patch);
+    const patchSha256 = await fileSha256(patchPath);
+    if (patchSha256 !== patch.sha256) {
+      throw new Error(
+        `assemble-runtime-bundle: patch SHA-256 mismatch for ${patch.file}: expected ${patch.sha256}, received ${patchSha256}`,
+      );
+    }
+    for (const file of patch.files) {
+      const path = join(options.sourceDir, file.path);
+      if (file.sourceSha256 === undefined) {
+        if (await fileExists(path)) {
+          throw new Error(
+            `assemble-runtime-bundle: ${patch.file} creates ${file.path}, which already exists`,
+          );
+        }
+        continue;
+      }
+      const sourceSha256 = await fileSha256(path);
+      if (sourceSha256 !== file.sourceSha256) {
+        throw new Error(
+          `assemble-runtime-bundle: source SHA-256 mismatch before patching ${file.path}: expected ${file.sourceSha256}, received ${sourceSha256}`,
+        );
+      }
+    }
+    await options.execute(
+      ["patch", "--batch", "--forward", "--fuzz=0", "--reject-file=-", "-p1", "-i", patchPath],
+      options.sourceDir,
     );
+    for (const file of patch.files) {
+      const patchedSha256 = await fileSha256(join(options.sourceDir, file.path));
+      if (patchedSha256 !== file.patchedSha256) {
+        throw new Error(
+          `assemble-runtime-bundle: patched source SHA-256 mismatch for ${file.path}: expected ${file.patchedSha256}, received ${patchedSha256}`,
+        );
+      }
+    }
   }
 };
 
@@ -115,16 +133,11 @@ export const buildLinuxHelperFromSource = async (options: LinuxHelperSourceBuild
   try {
     await options.execute(["tar", "-xf", inputPath(options.artifactPaths, "source"), "-C", workDir]);
     const sourceDir = join(workDir, sourceDirName(options.component));
-    if (sourcePatchFor(options.component) !== undefined) {
-      await applyVerifiedSourcePatch({
-        sourceDir,
-        sourcePath: join(sourceDir, "src", "dns", "aardvark.rs"),
-        patchPath: NETAVARK_SYSTEMD_USER_BUS_PATCH_PATH,
-        expectedSourceSha256: NETAVARK_AARDVARK_SOURCE_SHA256,
-        expectedPatchedSha256: NETAVARK_AARDVARK_PATCHED_SHA256,
-        execute: options.execute,
-      });
-    }
+    await applyVerifiedSourcePatches({
+      sourceDir,
+      patches: sourcePatchesOf(options.component),
+      execute: options.execute,
+    });
     if (
       options.component.sourceBuild === LinuxNetavarkSourceBuild ||
       options.component.sourceBuild === LinuxAardvarkDnsSourceBuild
@@ -166,6 +179,8 @@ export const buildLinuxPodmanFromSource = async (
   try {
     await execute(["tar", "-xzf", artifactPath, "-C", workDir]);
     const sourceDir = join(workDir, `podman-${component.version}`);
+    const patches = sourcePatchesOf(component);
+    await applyVerifiedSourcePatches({ sourceDir, patches, execute });
     await execute(
       [
         "make",
@@ -177,6 +192,7 @@ export const buildLinuxPodmanFromSource = async (
         `GOFLAGS=${PodmanSourceBuild.goflags}`,
         "BUILDTAGS=grpcnotrace libsqlite3 systemd seccomp containers_image_openpgp",
         `EXTRA_LDFLAGS=${PodmanSourceBuild.extraLdflags}`,
+        ...(patches.length > 0 ? [`BUILD_ORIGIN=${PodmanSourceBuild.patchedBuildOrigin}`] : []),
       ],
       sourceDir,
     );

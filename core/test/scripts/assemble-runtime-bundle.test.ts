@@ -328,9 +328,9 @@ describe("committed runtime-bundle-sources.json", () => {
     expect(sources.runtimeVersion).toMatch(/^\d+\.\d+\.\d+$/u);
   });
 
-  test("recipe runtimeVersion is 0.1.8 while published pins stay independently versioned", async () => {
+  test("recipe runtimeVersion is 0.1.9 while published pins stay independently versioned", async () => {
     const sources = await readCommitted();
-    expect(sources.runtimeVersion).toBe("0.1.8");
+    expect(sources.runtimeVersion).toBe("0.1.9");
   });
 
   test("pins typed Debian catatonit components for both Linux architectures", async () => {

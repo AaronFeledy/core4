@@ -1591,7 +1591,13 @@ describe("provider-docker RuntimeProvider contract", () => {
       ),
     );
 
-    expect(provider.capabilities).toEqual({ ...linuxDockerCapabilities, serviceLogSources: false });
+    // Live introspection without API 1.44 evidence withholds start_interval with the upgrade step.
+    const { composePreservedPaths: _offlineOnly, ...liveMatrix } = linuxDockerCapabilities;
+    const { composePreservedPaths, ...liveCapabilities } = provider.capabilities;
+    expect(liveCapabilities).toEqual({ ...liveMatrix, serviceLogSources: false });
+    expect(composePreservedPaths?.withheld?.map((entry) => entry.key)).toEqual([
+      "healthcheck.start_interval",
+    ]);
     expect(provider.capabilities.bindMountPerformance).not.toBe("slow");
     expect(provider.capabilities.sharedCrossAppNetwork).toBe(true);
   });

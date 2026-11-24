@@ -217,18 +217,81 @@ test.each([
 );
 
 test("info projection uses the current observation instead of a contradictory prior state", () => {
-  const projected = projectServiceObservation(web, {
-    name: "web",
-    state: "completed",
-    runtime: {
-      app: plan.id,
-      service: web.name,
-      providerId: plan.provider,
-      status: "running",
-      health: "unhealthy",
-      publications: { status: "unknown" },
+  const projected = projectServiceObservation(
+    web,
+    {
+      name: "web",
+      state: "completed",
+      runtime: {
+        app: plan.id,
+        service: web.name,
+        providerId: plan.provider,
+        status: "running",
+        health: "unhealthy",
+        publications: { status: "unknown" },
+      },
     },
-  });
+    "lando",
+  );
   expect(projected.status).toBe("running");
   expect(projected.health?.state).toBe("unhealthy");
+});
+
+const CHECKED_AT = "2026-11-23T21:00:21.300000003Z";
+
+const projectNativeHealth = (
+  service: ServicePlan,
+  health: "starting" | "healthy",
+  serviceHealth: "native" | "lando" | "none",
+) =>
+  projectServiceObservation(
+    service,
+    {
+      name: "web",
+      state: "running",
+      runtime: {
+        app: plan.id,
+        service: service.name,
+        providerId: plan.provider,
+        status: "running",
+        health,
+        healthCheckedAt: CHECKED_AT,
+        publications: { status: "unknown" },
+      },
+    },
+    serviceHealth,
+  ).health;
+
+const projectHealth = (
+  service: ServicePlan,
+  health: "starting" | "healthy",
+  serviceHealth: "native" | "lando" | "none",
+) => projectNativeHealth(service, health, serviceHealth)?.state;
+
+test.each(["starting", "healthy"] as const)(
+  "a %s native health nothing schedules is unknown, not evidence",
+  (health) => {
+    // Given a declared healthcheck on a provider whose serviceHealth is none
+    const checked = { ...web, healthcheck: probe };
+    // When / Then the inspected engine state is not reported
+    expect(projectHealth(checked, health, "none")).toBe("unknown");
+    expect(projectHealth(checked, health, "native")).toBe(health);
+    expect(projectHealth(checked, health, "lando")).toBe(health);
+  },
+);
+
+test("an explicit none healthcheck stays not-monitored whatever schedules native health", () => {
+  const disabled = { ...web, healthcheck: { ...probe, kind: "none" as const } };
+  expect(projectHealth(disabled, "healthy", "none")).toBe("not-monitored");
+  expect(projectHealth(disabled, "healthy", "lando")).toBe("not-monitored");
+});
+
+test("the last check time accompanies only an observed native verdict", () => {
+  const checked = { ...web, healthcheck: probe };
+  expect(projectNativeHealth(checked, "healthy", "native")?.checkedAt).toBe(CHECKED_AT);
+  expect(projectNativeHealth(checked, "starting", "native")?.checkedAt).toBe(CHECKED_AT);
+  // A check nothing schedules may have run once by hand; its time would look like monitoring.
+  expect(projectNativeHealth(checked, "healthy", "none")).not.toHaveProperty("checkedAt");
+  const disabled = { ...web, healthcheck: { ...probe, kind: "none" as const } };
+  expect(projectNativeHealth(disabled, "healthy", "native")).not.toHaveProperty("checkedAt");
 });

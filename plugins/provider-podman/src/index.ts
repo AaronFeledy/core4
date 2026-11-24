@@ -378,6 +378,9 @@ export const podmanCapabilitiesForPlatform = (
         : ("host-ids" as const);
   return buildProviderCapabilities({
     bindMounts: true,
+    // Stock Podman schedules checks through systemd timers. Offline, Lando assumes the usual systemd
+    // user session; live introspection narrows this to what the engine reports (`podmanServiceHealth`).
+    serviceHealth: "native",
     artifactBuild: true,
     artifactPull: true,
     bindMountPerformance: bindMountPerformanceForPlatform(platform),
@@ -407,6 +410,18 @@ export const podmanCapabilitiesForPlatform = (
 export const linuxPodmanCapabilities: ProviderCapabilities = podmanCapabilitiesForPlatform("linux");
 export const macosPodmanCapabilities: ProviderCapabilities = podmanCapabilitiesForPlatform("darwin");
 export const windowsPodmanCapabilities: ProviderCapabilities = podmanCapabilitiesForPlatform("win32");
+
+/**
+ * Who schedules native healthchecks on a live Podman. Stock Podman arms each check as a systemd
+ * timer, and an engine that manages cgroups without systemd (`cgroupfs`, or a response that does
+ * not say) has no timers, so nothing runs the checks.
+ */
+const podmanServiceHealth = (info: unknown): ProviderCapabilities["serviceHealth"] => {
+  const host = typeof info === "object" && info !== null && "host" in info ? info.host : undefined;
+  const cgroupManager =
+    typeof host === "object" && host !== null && "cgroupManager" in host ? host.cgroupManager : undefined;
+  return cgroupManager === "systemd" ? "native" : "none";
+};
 
 interface ProviderLandoSetupState {
   readonly podmanVersion?: string;
@@ -716,6 +731,7 @@ const assembleRuntimeProvider = (
             serverVersion,
             capabilities: {
               ...capabilities,
+              serviceHealth: podmanServiceHealth(info),
               serviceLogSources: logSourceBinding.supported,
             },
             logSourceBinding,

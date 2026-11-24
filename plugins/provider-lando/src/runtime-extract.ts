@@ -345,7 +345,8 @@ const stringJoin = (base: string, relativePath: string): string => {
 
 const markerPath = (runtimeBinDir: string): string => stringJoin(runtimeBinDir, MARKER_FILE);
 
-const readInstalledVersion = (runtimeBinDir: string): Effect.Effect<string | undefined, never> =>
+/** Version recorded by the last runtime extraction into `runtimeBinDir`, if any. */
+export const readInstalledVersion = (runtimeBinDir: string): Effect.Effect<string | undefined, never> =>
   Effect.promise(() =>
     readFile(markerPath(runtimeBinDir), "utf8").then(
       (content) => content.trim(),
