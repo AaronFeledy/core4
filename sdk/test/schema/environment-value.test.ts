@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  AppliedAppPlan,
   type BoundText,
   DatabaseConnection,
   Environment,
@@ -7,6 +8,7 @@ import {
   EventCmdStep,
   ServiceConfig,
   ServiceCredsDisplay,
+  ServiceName,
   ToolingEnvironment,
   ToolingTaskShape,
   encodeUriComponent,
@@ -133,5 +135,66 @@ describe("environment values", () => {
     // Then
     expect(encoded).toBe("p%20%21%27%28%29%2A%3A%2F%40%C3%A9%F0%9F%98%80");
     expect(encodeUriComponent("AZaz09-._~")).toBe("AZaz09-._~");
+  });
+});
+
+describe("applied route text", () => {
+  // Applied state version 12 persists service environments: a record written before route facts
+  // gained `member` and one written after must both decode strictly and encode back unchanged.
+  const appliedPlan = (environment: Record<string, unknown>) => ({
+    id: "demo",
+    name: "demo",
+    slug: "demo",
+    root: "/app",
+    provider: "lando",
+    services: {
+      web: {
+        name: "web",
+        type: "nginx",
+        provider: "lando",
+        primary: true,
+        environment,
+        mounts: [],
+        endpoints: [],
+        routes: [],
+        dependsOn: [],
+        hostAliases: [],
+        metadata: { resolvedAt: "2026-01-01T00:00:00Z", source: "/app/.lando.yml", runtime: 4 },
+        extensions: {},
+      },
+    },
+    routes: [],
+    stores: [],
+    fileSync: [],
+    metadata: { resolvedAt: "2026-01-01T00:00:00Z", source: "/app/.lando.yml", runtime: 4 },
+    extensions: {},
+  });
+
+  test.each([
+    { name: "before route facts", parts: [{ service: "web", encoding: "raw" }, "/api"] },
+    {
+      name: "with route facts",
+      parts: [
+        { service: "web", member: "hostname", encoding: "raw" },
+        ",",
+        { service: "web", member: "origin", encoding: "uri-component" },
+      ],
+    },
+  ])("decodes and re-encodes a record written $name", ({ parts }) => {
+    // Given
+    const record = appliedPlan({ APP: { _tag: "RouteText", parts } });
+    // When
+    const decoded = Schema.decodeUnknownSync(AppliedAppPlan)(record, { onExcessProperty: "error" });
+    const encoded = Schema.encodeSync(AppliedAppPlan)(decoded);
+    // Then
+    expect(decoded.services[ServiceName.make("web")]?.environment.APP).toEqual({ _tag: "RouteText", parts });
+    expect(Schema.decodeUnknownSync(AppliedAppPlan)(encoded, { onExcessProperty: "error" })).toEqual(decoded);
+  });
+
+  test("refuses an unknown route fact member", () => {
+    const record = appliedPlan({
+      APP: { _tag: "RouteText", parts: [{ service: "web", member: "port", encoding: "raw" }] },
+    });
+    expect(Result.isFailure(Schema.decodeUnknownResult(AppliedAppPlan)(record))).toBe(true);
   });
 });

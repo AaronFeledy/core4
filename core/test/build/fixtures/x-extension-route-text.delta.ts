@@ -40,3 +40,16 @@ export const routeTextDeltas = environmentDeltas.map(({ mode }, index) => ({
   before: environmentProjection(previous[index % 2 === 0 ? 0 : 1], mode, reviewedSlot),
   after: environmentProjection(next[index % 2 === 0 ? 0 : 1], mode, reviewedSlot),
 }));
+
+// Reviewed later: a part may name the route fact it reads (hostname or origin) instead of the URL.
+const memberRoutePart = Schema.Struct({
+  service: Schema.String,
+  member: Schema.optionalKey(Schema.Literals(["hostname", "origin"])),
+  encoding: Schema.Literals(["raw", "uri-component"]),
+});
+
+export const routeMemberDeltas = environmentDeltas.map(({ mode }) => ({
+  mode,
+  before: environmentProjection(routePart, mode, reviewedSlot),
+  after: environmentProjection(memberRoutePart, mode, reviewedSlot),
+}));

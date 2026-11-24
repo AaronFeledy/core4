@@ -160,14 +160,15 @@ export const runHealthSmokeProbe = (deps: SmokeProbeDeps, image: string) =>
         },
       });
       yield* startSmokeContainer(deps, "health", name);
-      yield* smokeApiRequest(deps, "health", {
-        method: "GET",
-        path: `/libpod/containers/${encodeURIComponent(name)}/healthcheck`,
-      }).pipe(
-        Effect.flatMap((response) =>
-          expectSmokeSuccess("health", response, "Podman could not run the health smoke container check."),
-        ),
-      );
+      if (deps.scheduledHealth !== true)
+        yield* smokeApiRequest(deps, "health", {
+          method: "GET",
+          path: `/libpod/containers/${encodeURIComponent(name)}/healthcheck`,
+        }).pipe(
+          Effect.flatMap((response) =>
+            expectSmokeSuccess("health", response, "Podman could not run the health smoke container check."),
+          ),
+        );
       let lastHealth = "invalid";
       const result = yield* runProbe(
         {

@@ -65,26 +65,39 @@ export const BoundText = Schema.Struct({
 });
 export type BoundText = typeof BoundText.Type;
 
+/** The public route facts a service publishes: its URL, hostname, and origin. */
+export const PUBLIC_ROUTE_FACTS = ["url", "hostname", "origin"] as const;
+export type PublicRouteFact = (typeof PUBLIC_ROUTE_FACTS)[number];
+
 export const RouteUrlPart = Schema.Struct({
-  service: Schema.String.annotate({ description: "Name of the service whose public URL is read." }),
+  service: Schema.String.annotate({ description: "Name of the service whose public route is read." }),
+  member: Schema.optionalKey(
+    Schema.Literals(["hostname", "origin"]).annotate({
+      description:
+        "Route fact read instead of the URL: the route hostname, or the scheme, hostname, and port origin.",
+    }),
+  ),
   encoding: Schema.Literals(["raw", "uri-component"]).annotate({
-    description: "Encoding applied to the public URL.",
+    description: "Encoding applied to the public route fact.",
   }),
 }).annotate({
   identifier: "RouteUrlPart",
-  description: "One deferred public service URL.",
+  description: "One deferred public service route fact; the URL when no member is named.",
   [SchemaNotCredentialAnnotationId]: true,
 });
 export type RouteUrlPart = typeof RouteUrlPart.Type;
 
+/** The route fact a part reads. */
+export const routeUrlPartFact = (part: RouteUrlPart): PublicRouteFact => part.member ?? "url";
+
 export const RouteText = Schema.Struct({
   _tag: Schema.Literal("RouteText").annotate({ description: "Public route text discriminator." }),
   parts: layerMerge(Schema.Array(Schema.Union([Schema.String, RouteUrlPart])), { kind: "replace" })
-    .annotate({ description: "Literal and public URL parts in output order, limited to 10000 parts." })
+    .annotate({ description: "Literal and public route fact parts in output order, limited to 10000 parts." })
     .check(Schema.isMaxLength(10_000)),
 }).annotate({
   identifier: "RouteText",
-  description: "Deferred text containing literal bytes and public service URLs.",
+  description: "Deferred text containing literal bytes and public service route facts.",
 });
 export type RouteText = typeof RouteText.Type;
 

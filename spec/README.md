@@ -91,7 +91,7 @@ If you are looking for a public surface or policy:
 | Container create-config identity and ordinary apply recreate | 05 | §5.3.2 |
 | Shutdown observations: `ServiceShutdownObservation`, `FileSyncQuiesceResult`, optional `shutdownObservations` on teardown receipts, no graceful/forced verdict | 05 | §5.3.3 |
 | Durable ownership manifest and verified teardown cleanup | 05 + 12 | §5.3.1 + §12.4.2 |
-| `AppPlan` and `ServicePlan` schema families; applied-state v1–v11 readers, v7-to-v8 `kind` migration, v9 `keepAlive` intent, v10 `RouteText` environments, v11 event-intent removal, strict applied-map writers, newer-format protection on the stamp alone (`AppliedStateVersionError`), required contribution and registry inventory and targeted strict read | 05 | §5.3.1 + §5.5 + §5.5.2 |
+| `AppPlan` and `ServicePlan` schema families; applied-state v1–v13 readers, v7-to-v8 `kind` migration, v9 `keepAlive` intent, v10 `RouteText` environments, v11 event-intent removal, v12 planned ports, v13 route-fact members, strict applied-map writers, newer-format protection on the stamp alone (`AppliedStateVersionError`), required contribution and registry inventory and targeted strict read | 05 | §5.3.1 + §5.5 + §5.5.2 |
 | Runtime-owned helper creation mount, logical/applied-plan exclusion, non-root cache permissions, and file-log delivery | 05 + 06 + 12 | §5.5 + §6.2.1 + §6.4 + §6.14.3 + §12.1 |
 | Environment values and executable-plan eligibility | 05 + 07 | §5.5.2 + §7.3.1 |
 | Provider extensions and error family, including `AppliedStateVersionError` | 05 | §5.6 + §5.7 |
@@ -108,7 +108,7 @@ If you are looking for a public surface or policy:
 | Logical endpoint identity, authored endpoint shorthand and `kind` objects, plan and applied `kind` discriminators, mandatory endpoint normalization with route-declared numeric HTTP listeners, hostnames, routes, `RouteFilter.kind`, and cross-app priority | 06 | §6.6 |
 | Independent native healthcheck and lifecycle readiness authoring, defaults, disabling, terminal dependency evidence, observed listener diagnosis, and start-failure retention | 06 | §6.7 |
 | Engine readiness-attempt delegation, provider start-graph ownership, and private bounded capture | 05 + 11 | §5.3 + §10.5.1 |
-| Native-health observations and readiness configuration metadata, without last-proof inference | 06 | §6.10 |
+| Native-health observations (including who schedules native checks, `serviceHealth`, and the managed Linux runtime's in-service scheduler) and readiness configuration metadata, without last-proof inference | 05 + 06 | §5.4 + §5.8.1 + §6.10 |
 | Certificates and trust injection | 06 | §6.8 |
 | Reserved service environment variables and agent context | 06 | §6.9 |
 | `ServiceInfo`, scoped `ServiceConnection`, and connection observation/projection | 06 | §6.10 |
@@ -135,7 +135,7 @@ If you are looking for a public surface or policy:
 | MinIO console ports and effective Mailpit/MailHog secondary listeners | 06 | §6.12.1 |
 | Explicit MinIO BYO image/build and typed mail wildcard-bind reachability | 06 | §6.12.1 |
 | `BuildOrchestrator`, `BuildPlan`, owner-scoped results and transcripts, app-step settlement, container-bound app-step reuse, and errors | 06 + 05 + 12 | §6.13 + §5.3 + §12.1 |
-| Whole-app and selected start, convergence, failure warning, restart, rebuild, and physical-volume lock policy | 06 | §6.15 |
+| Whole-app and selected start, convergence, failure warning, restart, rebuild, selected stop, and physical-volume lock policy | 06 | §6.15 |
 | Early conditional non-root low-port warning without runtime probing | 06 | §6.15 |
 | User-app admission order, single admission for whole-app restart and rebuild, and the activation applier | 06 + 11 | §6.15 + §10.3 |
 | Pathless console aliases, pipe selection, file followers, and PHP Apache/FPM routing | 06 | §6.10 + §6.14 |
@@ -145,7 +145,7 @@ If you are looking for a public surface or policy:
 | Compilation carrier and evaluation stages | 07 | §7.2.1 |
 | External file loading, expressions, and templates | 07 | §7.3 |
 | Landofile self-port scope, planner text rendering, and deferred list-form `extra_hosts` | 07 | §7.3.1 |
-| Landofile self port, public service URL bindings, and activation evidence | 06 + 07 + 12 + 19 | §6.11 + §7.3.1 + §12.1 + §21.9 |
+| Landofile self port, public service route facts, and activation evidence | 06 + 07 + 12 + 19 | §6.11 + §7.3.1 + §7.3.1.1 + §12.1 + §21.9 |
 | Top-level Landofile and Compose-subset keys, per-folder data identity, and rename reconciliation | 07 | §7.4 |
 | Config translation contracts, diagnostics, and Lando 3 proxy selector lowering | 07 | §7.4.1 |
 | Translation sources, `translate:` refresh, and drift | 07 | §7.4.2 |
@@ -211,7 +211,7 @@ If you are looking for a public surface or policy:
 | Probe, healthcheck, and app-check contracts | 11 | §10.5 |
 | Endpoint-scoped URL scan defaults, explicit override precedence and global disable policy | 06 + 11 | §6.6 + §10.5.3 |
 | File-sync engine and Mutagen implementation | 11 | §10.6 |
-| Scope-aware accelerated-start journal, resume, and stop/destroy from any phase | 11 + 05 | §10.6.3 + §5.3.1 |
+| Scope-aware accelerated-start journal, resume, whole-app stop/destroy from any phase, and selected-stop refusal | 11 + 05 | §10.6.3 + §5.3.1 |
 | Setup and host integration | 11 | §10.8 |
 | Doctor diagnostics and resilience | 11 | §10.9 |
 | Host-proxy protocol and errors | 11 | §10.10 |
@@ -258,6 +258,7 @@ If you are looking for a public surface or policy:
 | Global service, lifecycle, CLI, networking, and storage | 18 | §20.5 + §20.9 |
 | Global restart/rebuild and router startup revalidation | 18 | §20.6.5 |
 | Selected global stop and its orphan fail-closed rule | 18 | §20.7 |
+| Selected user-app stop: admission order, file-sync preflight, routes, workers, and result fields | 06 + 05 + 11 | §6.15 + §5.3.1 + §10.6.3 |
 | Global proxy realization, error family, and non-goals | 18 | §20.10 + §20.14 |
 | Scratch identity, roots, sources, service, and applied-plan fallback at teardown | 19 | §21.2 + §21.5 |
 | Scratch lifecycle, isolation, storage, and routes | 19 | §21.6 + §21.9 |

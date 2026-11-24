@@ -204,36 +204,54 @@ describe("runtime license live checker", () => {
       );
     },
   );
-  const netavark = (version: string) => {
+  const netavark = (sourcePatches: readonly unknown[]) => {
     const parsed = parseRuntimeBundleSources(
       document({
         name: "netavark",
-        version,
-        license: fixtureLicense(version),
+        version: "2.0.0",
+        license: fixtureLicense("2.0.0"),
         sourceBuild: "netavark-linux-native",
         inputs: [
           {
             name: "source",
-            url: `https://example.test/netavark-${version}.tar.gz`,
-            sha256: fixtureLicense(version).texts[0]?.sha256,
+            url: "https://example.test/netavark-2.0.0.tar.gz",
+            sha256: fixtureLicense("2.0.0").texts[0]?.sha256,
             archive: "tar.gz",
           },
         ],
         outputs: [{ source: "netavark", installName: "bin/netavark", mode: 0o755 }],
+        ...(sourcePatches.length > 0 ? { sourcePatches } : {}),
       }),
     );
     const entry = parsed.bundles["darwin-arm64"]?.components[0];
     if (entry === undefined) throw new Error("missing fixture");
     return entry;
   };
-  test("links netavark's patch only for the version the build patches", () => {
-    expect(runtimeBundleRecipeUrls(netavark("2.0.0"), "9.9.9", "AaronFeledy/core4")).toEqual([
+  const patch = (name: string) => ({
+    file: `scripts/patches/${name}`,
+    sha256: "a".repeat(64),
+    files: [{ path: "src/a.rs", patchedSha256: "b".repeat(64) }],
+  });
+  test("links every patch the source build applies, in order", () => {
+    expect(
+      runtimeBundleRecipeUrls(
+        netavark([patch("one.patch"), patch("two.patch")]),
+        "9.9.9",
+        "AaronFeledy/core4",
+      ),
+    ).toEqual([
       "https://github.com/AaronFeledy/core4/tree/runtime-v9.9.9/scripts",
-      "https://github.com/AaronFeledy/core4/tree/runtime-v9.9.9/scripts/patches/netavark-v2.0.0-systemd-user-bus.patch",
+      "https://github.com/AaronFeledy/core4/tree/runtime-v9.9.9/scripts/patches/one.patch",
+      "https://github.com/AaronFeledy/core4/tree/runtime-v9.9.9/scripts/patches/two.patch",
     ]);
-    expect(runtimeBundleRecipeUrls(netavark("2.1.0"), "9.9.9", "AaronFeledy/core4")).toEqual([
+    expect(runtimeBundleRecipeUrls(netavark([]), "9.9.9", "AaronFeledy/core4")).toEqual([
       "https://github.com/AaronFeledy/core4/tree/runtime-v9.9.9/scripts",
     ]);
+  });
+  test("rejects source patches on a component that is not source-built", () => {
+    expect(() =>
+      parseRuntimeBundleSources(document({ ...component(), sourcePatches: [patch("one.patch")] })),
+    ).toThrow(/source patches without a source build/u);
   });
 });
 

@@ -12,6 +12,7 @@ import {
 const capabilities = (overrides: Partial<ProviderCapabilities> = {}): ProviderCapabilities => ({
   ...buildProviderCapabilities({
     bindMounts: true,
+    serviceHealth: "native",
     bindMountPerformance: "native",
     tlsCertificates: "lando",
     rootless: true,
@@ -38,7 +39,7 @@ const base = (overrides: Partial<AppPlanCacheKeyInput> = {}): AppPlanCacheKeyInp
 
 describe("deriveAppPlanCacheKey project-user facts", () => {
   test("bumps the schema version for the new plan fields", () => {
-    expect(APP_PLAN_CACHE_SCHEMA_VERSION).toBe(69n);
+    expect(APP_PLAN_CACHE_SCHEMA_VERSION).toBe(70n);
   });
 
   test("mapping support changes the key", () => {

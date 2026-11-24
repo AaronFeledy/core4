@@ -85,7 +85,7 @@ test.each(["in-flight acquisition", "active input", "disposal failure"] as const
         _tag: "task.tree.start",
         parentId: "acquire",
         label: "Acquiring scratch",
-        children: ["ready"],
+        children: [{ id: "ready", label: "ready" }],
         timestamp,
       }),
       Schema.decodeUnknownSync(TaskStartEvent)({

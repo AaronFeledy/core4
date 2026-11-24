@@ -126,6 +126,7 @@ export const buildInfoSummary = (result: InfoAppResult): SummaryDocument => {
         { label: "provider", value: service.provider },
         ...planMetadataFields(service),
         ...probeFields(service),
+        ...(service.url === undefined ? [] : [{ label: "URL", value: service.url }]),
         ...connectionFields(service.connections),
         ...storageFields(service),
         ...homeFields(service),
@@ -257,8 +258,10 @@ const renderPlainInfoAppResult = (result: InfoAppResult): string => {
     const probes = probeFields(service).map(
       (field) => `${escapeDiagnosticText(service.service)}\t${field.label}\t${field.value}`,
     );
+    const urlRows = service.url === undefined ? [] : [`${service.service}\turl\t${service.url}`];
     return [
       base,
+      ...urlRows,
       ...metadataRows,
       ...probes,
       ...plainStorageRows(service),

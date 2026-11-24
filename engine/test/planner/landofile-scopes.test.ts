@@ -73,6 +73,11 @@ test("advances recorded identity and connection sites without rescanning produce
           services: {
             db: {
               url: { _tag: "RouteText", parts: [{ service: "db", encoding: "raw" }] },
+              hostname: {
+                _tag: "RouteText",
+                parts: [{ service: "db", member: "hostname", encoding: "raw" }],
+              },
+              origin: { _tag: "RouteText", parts: [{ service: "db", member: "origin", encoding: "raw" }] },
               creds: { user: "lando", database: "app", password: { _tag: "SecretRef", reference: "DB" } },
               port: 5544,
             },
@@ -140,6 +145,8 @@ test("reconstructs trusted scope only from persisted connection facts including 
   const scope = serviceCredsScopeForPlan(plan);
   expect(scope.db).toEqual({
     url: { _tag: "RouteText", parts: [{ service: "db", encoding: "raw" }] },
+    hostname: { _tag: "RouteText", parts: [{ service: "db", member: "hostname", encoding: "raw" }] },
+    origin: { _tag: "RouteText", parts: [{ service: "db", member: "origin", encoding: "raw" }] },
     creds: { user: "lando", database: "app", password: { _tag: "SecretRef", reference: "DB" } },
     port: 5544,
   });
@@ -177,6 +184,8 @@ test("rehydrates the peer listen port recorded on the plan when it has no connec
   });
   expect(serviceCredsScopeForPlan(plan).edge).toEqual({
     url: { _tag: "RouteText", parts: [{ service: "edge", encoding: "raw" }] },
+    hostname: { _tag: "RouteText", parts: [{ service: "edge", member: "hostname", encoding: "raw" }] },
+    origin: { _tag: "RouteText", parts: [{ service: "edge", member: "origin", encoding: "raw" }] },
     port: 8080,
   });
 });
@@ -248,6 +257,11 @@ test("locates forbidden binding helpers at the canonical destination", async () 
           services: {
             db: {
               url: { _tag: "RouteText", parts: [{ service: "db", encoding: "raw" }] },
+              hostname: {
+                _tag: "RouteText",
+                parts: [{ service: "db", member: "hostname", encoding: "raw" }],
+              },
+              origin: { _tag: "RouteText", parts: [{ service: "db", member: "origin", encoding: "raw" }] },
               creds: { user: "lando", database: "app", password: { _tag: "SecretRef", reference: "DB" } },
               port: 5432,
             },

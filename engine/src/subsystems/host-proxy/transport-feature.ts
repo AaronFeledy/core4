@@ -13,6 +13,12 @@ export const HOST_PROXY_CONTAINER_SOCKET = "/run/lando/host-proxy.sock";
 export const HOST_PROXY_CONTAINER_LANDO = "/usr/local/bin/lando";
 export { HOST_PROXY_TRANSPORT_EXTENSION_KEY } from "@lando/container-runtime/labels";
 export const HOST_PROXY_CONTAINER_CREDENTIALS = "/run/lando/host-proxy/credentials";
+/** Commands bound to the host-proxy client shim. */
+export const HOST_PROXY_COMMAND_TARGETS: ReadonlyArray<string> = [
+  HOST_PROXY_CONTAINER_LANDO,
+  "/usr/local/bin/xdg-open",
+  "/usr/local/bin/open",
+];
 
 export interface HostProxyRunLandoFeatureSession extends HostProxyRunLandoConnectionSession {
   readonly shimPath: string;
@@ -68,7 +74,7 @@ export const hostProxyRunLandoFeature = (session: HostProxyRunLandoFeatureSessio
       realization: "passthrough",
     });
     service.addEnv("LANDO_HOST_PROXY_DEPTH", "0");
-    for (const target of [HOST_PROXY_CONTAINER_LANDO, "/usr/local/bin/xdg-open", "/usr/local/bin/open"])
+    for (const target of HOST_PROXY_COMMAND_TARGETS)
       service.addMount({
         type: "bind",
         origin: "integration",
@@ -83,9 +89,7 @@ export const hostProxyRunLandoFeature = (session: HostProxyRunLandoFeatureSessio
 export const HOST_PROXY_MOUNT_TARGETS: ReadonlySet<string> = new Set([
   HOST_PROXY_CONTAINER_SOCKET,
   HOST_PROXY_CONTAINER_CREDENTIALS,
-  HOST_PROXY_CONTAINER_LANDO,
-  "/usr/local/bin/xdg-open",
-  "/usr/local/bin/open",
+  ...HOST_PROXY_COMMAND_TARGETS,
 ]);
 
 const stripHostProxyService = (service: ServicePlan): ServicePlan => ({

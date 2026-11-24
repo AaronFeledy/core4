@@ -4,7 +4,7 @@ import { Predicate } from "effect";
 import type { HostProxyMountInfo } from "./cwd-remap.ts";
 
 const SERVICE_FEATURES_EXTENSION_KEY = "@lando/core/service-features";
-const HOST_PROXY_FEATURE_ID = "lando.host-proxy";
+export const HOST_PROXY_FEATURE_ID = "lando.host-proxy";
 
 export const serviceHasHostProxyFeature = (service: ServicePlan): boolean => {
   const extension = service.extensions[SERVICE_FEATURES_EXTENSION_KEY];

@@ -577,6 +577,12 @@ Stop the current Lando app.
 
 Aliases: `lando stop`
 
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--service, -s` | Service to stop, without stopping its dependents (repeatable) |
+
 ## `lando apps:gc`
 
 Report or clean up user apps whose folders no longer exist.
@@ -953,8 +959,9 @@ Flags:
 | --- | --- |
 | `--from-app` | Explicit sibling source app id. |
 | `--from-path` | Explicit canonical source app root. |
-| `--keep-latest` | Number of newest manual snapshots to retain. |
+| `--keep-latest` | Number of newest snapshots to retain in the selected bucket. |
 | `--preview` | Show deletions without removing snapshots. |
+| `--recovery` | Select automatic recovery snapshots instead of manual ones. |
 | `--service` | Database service to prune. |
 | `--yes, -y` | Confirm snapshot deletion. |
 

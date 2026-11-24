@@ -8,3 +8,5 @@ services:
         scheme: both
     environment:
       APP_URL: "{{ services.web.url }}"
+      APP_HOST: "{{ service.hostname }}"
+      APP_ORIGIN: "{{ service.origin }}"

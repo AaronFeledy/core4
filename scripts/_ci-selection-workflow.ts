@@ -65,7 +65,7 @@ ${selected}
     needs: [selection, ${Object.keys(CI_JOB_TIERS)
       .filter((id) => id !== "bun-install-isolated-experiment")
       .join(", ")}]
-    if: always()
+    if: \${{ !cancelled() }}
     runs-on: ${LINUX_X64_TEST_RUNNER}
     timeout-minutes: 5
 ${ciResultSteps}`;

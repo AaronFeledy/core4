@@ -1,5 +1,6 @@
 import { Cause, Effect, Exit } from "effect";
 
+import type { TaskTreeChild } from "../events/task.ts";
 import type { AbsolutePath } from "../schema/primitives.ts";
 import {
   type ProgressEmitter,
@@ -13,11 +14,6 @@ import {
 } from "./publish.ts";
 
 export const startChildTaskId = (parentId: string, localId: string): string => `${parentId}:${localId}`;
-
-export interface TaskSpec {
-  readonly id: string;
-  readonly label: string;
-}
 
 export interface TaskTreeSummaries {
   readonly success: string;
@@ -59,7 +55,7 @@ export interface TaskTreeController {
 export interface MakeTaskTreeArgs {
   readonly parentId: string;
   readonly label: string;
-  readonly children: ReadonlyArray<TaskSpec>;
+  readonly children: ReadonlyArray<TaskTreeChild>;
   readonly mode?: "list" | "grid";
   readonly prefixChildIds?: boolean;
   readonly now?: () => number;
@@ -150,7 +146,7 @@ export const makeTaskTree = (
       });
     });
 
-  const unsettled = (child: TaskSpec): boolean => !succeeded.has(child.id) && !failed.has(child.id);
+  const unsettled = (child: TaskTreeChild): boolean => !succeeded.has(child.id) && !failed.has(child.id);
 
   // Success settles every declared child: the work ran to completion.
   const completeRemaining: Effect.Effect<void> = Effect.suspend(() =>
@@ -182,7 +178,7 @@ export const makeTaskTree = (
         publishTreeStart(events, {
           parentId: args.parentId,
           label: args.label,
-          children: args.children.map((child) => childId(child.id)),
+          children: args.children.map((child) => ({ id: childId(child.id), label: child.label })),
           ...(args.mode === undefined ? {} : { mode: args.mode }),
         }),
       ),

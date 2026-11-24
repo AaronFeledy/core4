@@ -17,6 +17,8 @@ import { opentuiNativeCatalog } from "../../../scripts/generated/opentui-native/
 import { stubContainerHelperDir } from "./fixtures/container-helper-stubs.ts";
 
 const STRICT_CODEGEN_EXEC_ARGV = ["--disallow-code-generation-from-strings=strict"];
+// The binary runs inside user projects; their .env and bunfig.toml must not configure it.
+const ISOLATED_FROM_PROJECT_CONFIG = { autoloadDotenv: false, autoloadBunfig: false };
 
 const releaseTargets = Object.entries(opentuiNativeCatalog.targetToNativeRoot);
 const fixtureShimAssets = async (): Promise<readonly [string, string]> => [
@@ -105,6 +107,7 @@ describe("compiled binary OpenTUI native pruning", () => {
     expect<unknown>(received?.compile).toEqual({
       target: `bun-${target}`,
       outfile: `./dist/lando-${target}`,
+      ...ISOLATED_FROM_PROJECT_CONFIG,
       execArgv: STRICT_CODEGEN_EXEC_ARGV,
     });
     expect(received?.plugins).toHaveLength(1);
@@ -166,6 +169,7 @@ describe("compiled binary OpenTUI native pruning", () => {
     expect(received?.compile).toEqual({
       target: `bun-${target}`,
       outfile: "./dist/lando.exe",
+      ...ISOLATED_FROM_PROJECT_CONFIG,
       execArgv: STRICT_CODEGEN_EXEC_ARGV,
     });
   });
@@ -187,6 +191,7 @@ describe("compiled binary OpenTUI native pruning", () => {
     expect(received?.compile).toEqual({
       target: "bun-linux-x64",
       outfile: "./dist/lando",
+      ...ISOLATED_FROM_PROJECT_CONFIG,
       execArgv: STRICT_CODEGEN_EXEC_ARGV,
     });
   });

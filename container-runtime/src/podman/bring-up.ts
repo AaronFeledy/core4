@@ -40,11 +40,13 @@ import type { ApplyOptions, ApplyResult, EventService, ProviderError } from "@la
 import { Cause, Context, DateTime, Duration, Effect, Exit, Option, Schema, Stream } from "effect";
 import { prepareContainerHelperMounts } from "../container-helper-mount.ts";
 import { removeRuntimeContainer } from "../container-removal.ts";
+import { nativeStartIntervalNs } from "../create-values.ts";
 import { sharedNetworkLabels } from "../data-root-labels.ts";
 import { type AdoptionReceipt, dataRootRefusal, decideDataRootOwnership } from "../data-root-ownership.ts";
 import { completionIntentServices } from "../dependency-gates.ts";
 import { type LifecycleDialect, libpodLifecycleDialect } from "../dialect.ts";
 import type {
+  DockerFeatureApiVersion,
   EngineHttpApi,
   EngineHttpRequest,
   EngineHttpResponse,
@@ -441,10 +443,14 @@ const createContainerRequest = (
   };
   const searchParams = new URLSearchParams({ name, ...knobs.query });
   const path: EngineHttpRequest["path"] = `/containers/create?${searchParams.toString()}`;
+  const minimumApiVersions: ReadonlyArray<DockerFeatureApiVersion> = [
+    ...(gatewayPriority ? (["1.48"] as const) : []),
+    ...(nativeStartIntervalNs(service) === undefined ? [] : (["1.44"] as const)),
+  ];
   return {
     body,
     path,
-    ...(gatewayPriority ? { minimumApiVersion: "1.48" as const } : {}),
+    ...(minimumApiVersions.length === 0 ? {} : { minimumApiVersions }),
   };
 };
 

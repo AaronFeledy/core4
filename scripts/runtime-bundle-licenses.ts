@@ -1,8 +1,7 @@
 import { createHash } from "node:crypto";
 import { chmod, mkdir, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
-import { sourcePatchFor } from "./linux-podman-source-build.ts";
-import type { RuntimeBundleComponent } from "./runtime-bundle-sources.ts";
+import { type RuntimeBundleComponent, sourcePatchesOf } from "./runtime-bundle-sources.ts";
 
 export const runtimeBundleRecipeUrls = (
   component: RuntimeBundleComponent,
@@ -11,8 +10,7 @@ export const runtimeBundleRecipeUrls = (
 ): readonly string[] => {
   if (!("sourceBuild" in component) || component.sourceBuild === undefined) return [];
   const root = `https://github.com/${repository}/tree/runtime-v${runtimeVersion}/scripts`;
-  const patch = sourcePatchFor(component);
-  return patch === undefined ? [root] : [root, `${root}/patches/${basename(patch)}`];
+  return [root, ...sourcePatchesOf(component).map((patch) => `${root}/patches/${basename(patch.file)}`)];
 };
 
 export const stageRuntimeBundleLicenses = async (options: {

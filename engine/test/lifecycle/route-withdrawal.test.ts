@@ -4,7 +4,7 @@ import { AppId, appIdentityKey } from "@lando/sdk/schema";
 import { EventService, type LandoEvent, RouterService, type RouterServiceShape } from "@lando/sdk/services";
 import { makeTestRouterService } from "@lando/sdk/test";
 import { Effect, Result, Stream } from "effect";
-import { withdrawOwnerRoutes } from "../../src/lifecycle/route-withdrawal.ts";
+import { republishRetainedRoutes, withdrawOwnerRoutes } from "../../src/lifecycle/route-withdrawal.ts";
 import { makeUnavailableRouter } from "../../src/subsystems/proxy/api.ts";
 
 const owner = { id: AppId.make("demo"), ownerKey: appIdentityKey("owner", "/apps/demo") };
@@ -54,6 +54,29 @@ test("an unavailable router with no installed router skips withdrawal with a war
   expect(warnings[0]).toContain(owner.id);
   expect(warnings[0]).toContain(reason.message);
   expect(warnings[0]).toContain(reason.remediation);
+});
+
+test("a runtime without a router service warns when selected stop cannot republish routes", async () => {
+  const events: LandoEvent[] = [];
+  await Effect.runPromise(
+    republishRetainedRoutes([], owner, ["web"]).pipe(
+      Effect.provideService(
+        EventService,
+        EventService.of({
+          publish: (event) => Effect.sync(() => void events.push(event)),
+          subscribe: () => Stream.die("unused subscription"),
+          subscribeQueue: Effect.die("unused queue"),
+          waitFor: () => Effect.never,
+          subscribeWithHistory: () => Effect.never,
+          waitForAny: () => Effect.never,
+          query: () => Effect.succeed([]),
+        }),
+      ),
+    ),
+  );
+  expect(events.flatMap((event) => (event._tag === "message.warn" ? [event.body] : []))).toEqual([
+    expect.stringContaining("were not updated after stopping web because no router is available"),
+  ]);
 });
 
 test("a runtime without a router service skips withdrawal with a warning", async () => {

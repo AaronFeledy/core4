@@ -112,7 +112,7 @@ test.each([false, true])("retained destroy purges before disposal (purge fails=%
   );
   // Then: one file-sync task spans quiescence, snapshot purge, and disposal.
   const child = (id: string) => startChildTaskId(destroyTreeId(target.app.id), id);
-  expect(byTag(harness.events, "task.tree.start")[0]?.children).toEqual(
+  expect(byTag(harness.events, "task.tree.start")[0]?.children.map((entry) => entry.id)).toEqual(
     ["file-sync", "snapshots", "provider", "host-proxy", "routes"].map(child),
   );
   expect(

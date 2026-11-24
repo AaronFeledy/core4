@@ -32,6 +32,7 @@ import { haltAndRelaunchApp } from "./app-relaunch.ts";
 import { publishAndRunAppEvent } from "./events.ts";
 import { relaunchSelectedServices } from "./selected-relaunch.ts";
 import type { StartManagedScope } from "./start-file-sync.ts";
+import { publishStartWarnings } from "./start-warnings.ts";
 import { publishPlacementVolumeTransitionNotices } from "./volume-transition-notice.ts";
 
 export type RebuildAppError = SdkRebuildAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
@@ -79,6 +80,8 @@ export const rebuildApp = Effect.fn("AppOperation.rebuild")(function* (
         app: ref,
         timestamp: DateTime.nowUnsafe(),
       });
+      // A whole relaunch announces its launch again; the publisher skips the repeats.
+      yield* publishStartWarnings(selectedPlan);
       yield* publishAndRunAppEvent(plan, "pre-rebuild", preRebuild);
       yield* publishPlacementVolumeTransitionNotices(placement, selectedPlan);
       const start: StartAppResult =

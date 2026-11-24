@@ -1119,8 +1119,8 @@ describe("file-sync session reconciliation", () => {
     expect(tree?._tag).toBe("task.tree.start");
     if (tree?._tag === "task.tree.start") {
       expect(tree.children).toEqual([
-        "start-file-sync-test-start:web/app-mount",
-        "start-file-sync-test-start:database/app-mount",
+        { id: "start-file-sync-test-start:web/app-mount", label: "Sync web/app-mount" },
+        { id: "start-file-sync-test-start:database/app-mount", label: "Sync database/app-mount" },
       ]);
     }
     expect(started).toEqual([

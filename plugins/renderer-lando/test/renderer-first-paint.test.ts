@@ -67,7 +67,7 @@ const treeStart = (parentId: string, label: string, children: ReadonlyArray<stri
     _tag: "task.tree.start",
     parentId,
     label,
-    children,
+    children: children.map((id) => ({ id, label: id })),
     timestamp: ts,
   });
 

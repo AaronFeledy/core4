@@ -122,6 +122,14 @@ describe("stop summary line", () => {
     expect(renderStopAppResult({ app: "shop", outcome: "unchanged", servicesStopped: [] })).toBe(
       "unchanged: shop - no services",
     );
+    expect(
+      renderStopAppResult({
+        app: "shop",
+        outcome: "stopped",
+        servicesStopped: ["redis"],
+        servicesKeptRunning: ["web"],
+      }),
+    ).toBe("stopped: shop - redis; still running: web");
   });
 
   test("follows each stopped service with its observed exit code in the original order", () => {

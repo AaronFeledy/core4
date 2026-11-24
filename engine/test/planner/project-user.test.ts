@@ -9,6 +9,7 @@ import { resolveProjectUser } from "../../src/planner/project-user.ts";
 
 const baseCapabilities = buildProviderCapabilities({
   bindMounts: true,
+  serviceHealth: "native",
   bindMountPerformance: "native",
   tlsCertificates: "lando",
   rootless: true,

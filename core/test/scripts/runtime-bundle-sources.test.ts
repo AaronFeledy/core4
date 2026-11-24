@@ -59,6 +59,34 @@ describe("runtime-bundle source pins", () => {
     expect(() => parseRuntimeBundleSources(sourcePins(runtimeVersion))).toThrow();
   });
 
+  const withPatch = (damage: object): unknown => {
+    const pins = sourcePins("9.9.9-fixture") as { bundles: { "linux-x64": { components: object[] } } };
+    const [passt] = pins.bundles["linux-x64"].components;
+    const patch = {
+      file: "scripts/patches/passt.patch",
+      sha256: sha256("patch"),
+      files: [{ path: "src/passt.c", sourceSha256: sha256("a"), patchedSha256: sha256("b") }],
+      ...damage,
+    };
+    pins.bundles["linux-x64"].components = [{ ...passt, sourcePatches: [patch] }];
+    return pins;
+  };
+
+  test("accepts a source patch pinned under scripts/patches", () => {
+    expect(() => parseRuntimeBundleSources(withPatch({}))).not.toThrow();
+  });
+
+  test.each([
+    ["a patch outside scripts/patches", { file: "scripts/../etc/x.patch" }],
+    [
+      "a patched path that climbs out of the source tree",
+      { files: [{ path: "src/../../go.mod", patchedSha256: sha256("x") }] },
+    ],
+    ["a patch that pins no file", { files: [] }],
+  ])("rejects %s", (_name, damage) => {
+    expect(() => parseRuntimeBundleSources(withPatch(damage))).toThrow();
+  });
+
   test("rejects vendor source-build inputs with archives the builder cannot extract", () => {
     expect(() =>
       parseRuntimeBundleSources({
@@ -98,7 +126,7 @@ describe("runtime-bundle source pins", () => {
   test("Linux catatonit pins composite SPDX with verified static glibc license texts", async () => {
     const { readRuntimeBundleSources } = await import("../../../scripts/runtime-bundle-sources.ts");
     const sources = await readRuntimeBundleSources();
-    expect(sources.runtimeVersion).toBe("0.1.8");
+    expect(sources.runtimeVersion).toBe("0.1.9");
     for (const hostKey of ["linux-x64", "linux-arm64"] as const) {
       const catatonit = sources.bundles[hostKey]?.components.find(
         (component) => component.name === "catatonit",

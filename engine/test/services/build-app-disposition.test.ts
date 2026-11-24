@@ -16,7 +16,7 @@ const step = Schema.decodeUnknownSync(BuildStep)({
   buildKey: "test",
 });
 
-const appStep = { step, command: { command: ["build"] } };
+const appStep = { step, command: { command: ["build"] }, subject: "web" };
 
 const input = {
   plan: {
@@ -81,6 +81,6 @@ test("a reused app step reports cached success without a failure", () => {
   // When disposition is computed for reuse
   const disposition = appStepDisposition(input, appStep, { _tag: "reused", entry });
   // Then the step is succeeded/cached and carries no failure
-  expect(disposition).toEqual({ outcome: "succeeded", summary: `${step.id} cached`, durationMs: 0 });
+  expect(disposition).toEqual({ outcome: "succeeded", summary: "web cached", durationMs: 0 });
   expect(disposition.failure).toBeUndefined();
 });

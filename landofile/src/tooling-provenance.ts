@@ -1,8 +1,10 @@
 import { type ExpressionNode, type ExpressionTemplate, expressionScopeMembers } from "@lando/sdk/expressions";
 import type { ParsedPendingSite, ToolingTaskShape } from "@lando/sdk/schema";
+import { readsServiceUrl } from "./service-url-reads.ts";
 import { dynamicToolingNames, readsDynamicToolingVar } from "./tooling-dynamic-references.ts";
 
 const DATA_SCOPES = ["flags", "args", "raw", "task", "event", "item", "key"] as const;
+/** Invocation inputs, shell-computed vars, and router-derived public URLs are data, never command text. */
 export const readsToolingData = (
   expression: ExpressionTemplate | ExpressionNode,
   names: ReadonlySet<string>,
@@ -10,7 +12,9 @@ export const readsToolingData = (
   DATA_SCOPES.some((scope) => {
     const reads = expressionScopeMembers(expression, scope);
     return !reads.analyzable || reads.members.size > 0;
-  }) || readsDynamicToolingVar(expression, names);
+  }) ||
+  readsServiceUrl(expression) ||
+  readsDynamicToolingVar(expression, names);
 
 /** Definitions retain their recorded ASTs; rendered text is never parsed again. */
 export const toolingDataNames = (

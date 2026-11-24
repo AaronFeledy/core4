@@ -15,10 +15,15 @@ import {
   parseExpressionEither,
 } from "@lando/sdk/expressions";
 import { isLandofileOverride, isLandofileReset, override } from "@lando/sdk/landofile";
-import { executionSiteAt, servicePortExpression } from "@lando/sdk/landofile/execution-sites";
+import {
+  INVOCATION_SCOPES,
+  executableExpressionPath,
+  executionSiteAt,
+  servicePortExpression,
+} from "@lando/sdk/landofile/execution-sites";
 import type { ParsedPendingSite } from "@lando/sdk/schema";
 import { Effect, Predicate, Result } from "effect";
-import { INVOCATION_SCOPES, authoredSiteId, executableExpressionPath } from "./compiled-sites.ts";
+import { authoredSiteId } from "./compiled-sites.ts";
 import { recordExpressionEnvironment } from "./environment-dependencies.ts";
 import { compileExtraHostParts, deferredExtraHostKey, extraHostListPath } from "./extra-host-sites.ts";
 import { includeEntryPath } from "./include-condition-shape.ts";
@@ -114,7 +119,7 @@ export const resolveLandofileLoadExpressions = (
         const suggestion =
           shell === undefined
             ? scopeRoots.some((root) => root === "info" || root === "service")
-              ? "Read a public URL with `{{ service.url }}` or `{{ services.<name>.url }}` in a service's map-form environment."
+              ? "Read a public route fact with `{{ services.<name>.url }}`, `.hostname`, or `.origin` in a service's map-form environment, a tooling command, env value, or var, or an event step; `{{ service.url }}`, `{{ service.hostname }}`, and `{{ service.origin }}` work only in a service's map-form environment."
               : "Use {{ env.NAME }} for host values, $${NAME} for literal shell text, or a supported deferred scope."
             : shellParameterSuggestion(path, shell.name);
         throw new LandofileValidationError({
@@ -267,7 +272,7 @@ export const resolveLandofileLoadExpressions = (
           const admittedScopes = [
             ...scopes,
             ...(executableExpressionPath(path) ? INVOCATION_SCOPES : []),
-            ...(self === "supported" || self === "url" ? ["service"] : []),
+            ...(self === "supported" || self === "route-fact" ? ["service"] : []),
           ];
           if (expressionInterpolationsTouchOnlyScopes(parsed.success, admittedScopes)) {
             if (

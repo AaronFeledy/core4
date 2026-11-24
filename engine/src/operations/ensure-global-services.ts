@@ -61,6 +61,7 @@ import {
   reconcileGlobalSiblings,
   retireGlobalReplacement,
 } from "./global-retained-plan.ts";
+import { publishStartWarnings } from "./start-warnings.ts";
 
 const now = () => DateTime.nowUnsafe();
 
@@ -300,9 +301,9 @@ export const ensureGlobalServicesRunning = Effect.fnUntraced(
     const beforeStartup = yield* captureGlobalEnsureInputs(plan, loaded.landofile, provider);
     const builds = yield* BuildOrchestrator;
     // Managed global service configuration is generated locally and has no sync session lifecycle.
-    const { plan: realizedPlan, certificates } = yield* prepareServiceCertificates(
-      withOrdinaryMounts(planToApply),
-    );
+    const ordinaryPlan = withOrdinaryMounts(planToApply);
+    yield* publishStartWarnings(ordinaryPlan);
+    const { plan: realizedPlan, certificates } = yield* prepareServiceCertificates(ordinaryPlan);
     const preparedOverlays = yield* prepareDebuggerOverlay(realizedPlan);
     const builtPlan = yield* withBuildProvider(builds.build(realizedPlan), provider);
     const runtimePlan = projectDebuggerOverlay(builtPlan, preparedOverlays);

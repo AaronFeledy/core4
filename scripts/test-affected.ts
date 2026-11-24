@@ -4,12 +4,13 @@ import { existsSync } from "node:fs";
  * Local, source-based unit-test selection. This is a review aid; CI still runs
  * its complete selected shards. Paths and witnesses are repository-relative.
  */
-import { dirname, isAbsolute, relative, resolve } from "node:path";
+import { dirname, extname, isAbsolute, relative, resolve } from "node:path";
 import ts from "@typescript/typescript6";
 
 import { loadWorkspacePackages, resolveFile, resolveWorkspaceSpecifier } from "./boundary/graph.ts";
 import { scanLiterals } from "./boundary/literals.ts";
 import { scanModuleEdgesFromSource } from "./module-edge-scan.ts";
+import { modelPreloads } from "./test-affected-preload.ts";
 import { collectShardedTestFiles } from "./test-shards.ts";
 
 const ROOT = resolve(import.meta.dirname, "..");
@@ -167,6 +168,24 @@ const literalDynamic = (source: ts.SourceFile): readonly number[] => {
   return uncertain;
 };
 
+/** Trailing literal segments of `join(...)`/`resolve(...)` calls, such as `join(repo, "core", "bin", "lando.ts")`. */
+const joinedLiterals = (source: ts.SourceFile): readonly string[] => {
+  const joined: string[] = [];
+  const visit = (node: ts.Node): void => {
+    if (ts.isCallExpression(node) && /(?:^|\.)(?:join|resolve)$/u.test(node.expression.getText(source))) {
+      const segments: string[] = [];
+      for (const argument of [...node.arguments].reverse()) {
+        if (!ts.isStringLiteral(argument) && !ts.isNoSubstitutionTemplateLiteral(argument)) break;
+        segments.unshift(argument.text);
+      }
+      if (segments.length > 1) joined.push(segments.join("/"));
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return joined;
+};
+
 const fixtureApp = (path: string): string | undefined => {
   const match = /^(.+?\/fixtures\/[^/]+|recipes\/[^/]+)(?:\/|$)/u.exec(path);
   return match?.[1];
@@ -211,6 +230,7 @@ export interface Selection {
   readonly fixtureTests: readonly string[];
   readonly priorTests: readonly string[];
   readonly sharedPreloadTests: readonly string[];
+  readonly preloadGlobalTests: readonly string[];
   readonly unmatched: readonly string[];
   readonly uncertain: readonly string[];
   readonly broadReason?: string;
@@ -249,10 +269,35 @@ export const selectAffectedTests = async (options: {
   for (const test of eligible) {
     for (const preload of preloads.roots) addEdge(resolve(root, test), preload);
   }
+  const sources = new Map<string, ts.SourceFile>();
+  const importBase = (file: string, specifier: string): string | undefined =>
+    specifier.startsWith(".")
+      ? resolve(dirname(file), specifier)
+      : resolveWorkspaceSpecifier(specifier, packages);
+  const resolveImport = (file: string, specifier: string): string | undefined => {
+    const target = importBase(file, specifier);
+    return target && resolveFile(target, files);
+  };
+  const packageDirectories = [...packages.values()].map((entry) => entry.directory);
+  // A test-side literal naming a source file means the test may run it in a
+  // child process (`bun core/bin/lando.ts`, `bun -e`) or read it, which no
+  // import shows. Production code reaches its spawned entries through imports.
+  const entryReference = (file: string, value: string): string | undefined => {
+    if (!/(?:^|\/)test\//u.test(norm(relative(root, file)))) return undefined;
+    if (!SOURCE.test(value) || value.includes("://")) return undefined;
+    // A template part such as `${repo}/core/bin/lando.ts` starts with a slash.
+    const path = isAbsolute(value) ? value.replace(/^\/+/u, "") : value;
+    const owner = packageDirectories.find((directory) => file.startsWith(`${directory}/`));
+    for (const base of [dirname(file), root, ...(owner ? [owner] : [])]) {
+      const target = resolve(base, path);
+      if (target !== file && files.has(target)) return target;
+    }
+    return undefined;
+  };
   const scan = (file: string, sourceText: string, prior = false): readonly string[] => {
     const source = parseSource(file, sourceText);
-    if (!prior && resourcePaths.length > 0) {
-      const literals = scanLiterals(source);
+    const literals = prior ? [] : scanLiterals(source);
+    if (resourcePaths.length > 0) {
       for (const path of resourcePaths) {
         if (!literals.some((literal) => referenceMatches(literal.value, path, file, root))) continue;
         const sources = fixtureSources.get(path) ?? [];
@@ -261,13 +306,21 @@ export const selectAffectedTests = async (options: {
       }
     }
     const targets: string[] = [];
+    if (!prior) sources.set(file, source);
+    for (const value of [
+      ...literals.map((literal) => literal.value),
+      ...(prior ? [] : joinedLiterals(source)),
+    ]) {
+      const target = entryReference(file, norm(value));
+      if (!target) continue;
+      addEdge(file, target);
+      targets.push(target);
+    }
     for (const line of literalDynamic(source))
       uncertain.add(`${norm(relative(root, file))}:${line}: computed import/require`);
     for (const edge of scanModuleEdgesFromSource(source)) {
       const specifier = edge.specifier;
-      const targetBase = specifier.startsWith(".")
-        ? resolve(dirname(file), specifier)
-        : resolveWorkspaceSpecifier(specifier, packages);
+      const targetBase = importBase(file, specifier);
       if (!targetBase) {
         if (
           specifier.startsWith("@lando/") ||
@@ -284,6 +337,10 @@ export const selectAffectedTests = async (options: {
         addEdge(file, target);
         if (prior) priorEdges.add(`${file}\0${target}`);
         targets.push(target);
+      } else if (!SOURCE.test(targetBase) && extname(targetBase) && existsSync(targetBase)) {
+        // A data import (JSON, text, TOML) is a leaf: Bun loads it, nothing is scanned.
+        addEdge(file, targetBase);
+        if (prior) priorEdges.add(`${file}\0${targetBase}`);
       } else
         uncertain.add(`${norm(relative(root, file))}:${edge.line}: unresolved local module ${specifier}`);
     }
@@ -308,19 +365,21 @@ export const selectAffectedTests = async (options: {
       if (result.code === 0) scan(resolve(root, path), result.out, true);
     }
   }
+  const preloadModel = modelPreloads({ roots: preloads.roots, sources, resolveImport });
+  for (const [from, to] of preloadModel.edges) addEdge(from, to);
 
   const witnesses = new Map<string, readonly string[]>();
   const matched = new Set<string>();
   const fixtureTests = new Set<string>();
   const priorTests = new Set<string>();
   const sharedPreloadTests = new Set<string>();
+  const preloadGlobalTests = new Set<string>();
   const eligibleSet = new Set(eligible);
+  const crosses = (witness: readonly string[], edges: ReadonlySet<string>): boolean =>
+    witness.some((entry, index) => index > 0 && edges.has(`${entry}\0${witness[index - 1]}`));
   for (const changedPath of changed) {
     const rootPath = resolve(root, changedPath);
-    const queue: string[][] = [
-      [rootPath],
-      ...(fixtureSources.get(changedPath) ?? []).map((file) => [rootPath, file]),
-    ];
+    const queue: string[][] = [[rootPath]];
     const reached = new Set<string>();
     for (let head = 0; head < queue.length; head++) {
       const witness = queue[head];
@@ -336,20 +395,26 @@ export const selectAffectedTests = async (options: {
             path,
             witness.map((entry) => norm(relative(root, entry))),
           );
-          if (witness.length > 1 && fixtureSources.get(changedPath)?.includes(witness[1] ?? "")) {
+          const first = witness[1];
+          if (
+            first &&
+            !reverse.get(rootPath)?.has(first) &&
+            fixtureSources.get(changedPath)?.includes(first)
+          ) {
             fixtureTests.add(path);
           }
-          if (
-            witness.some((entry, index) => index > 0 && priorEdges.has(`${entry}\0${witness[index - 1]}`))
-          ) {
-            priorTests.add(path);
-          }
+          if (crosses(witness, priorEdges)) priorTests.add(path);
+          if (crosses(witness, preloadModel.globalEdges)) preloadGlobalTests.add(path);
           if (preloads.roots.includes(witness[witness.length - 2] ?? "")) {
             sharedPreloadTests.add(path);
           }
         }
       }
-      for (const importer of sorted(reverse.get(node) ?? [])) queue.push([...witness, importer]);
+      for (const importer of sorted(reverse.get(node) ?? [])) {
+        if (!preloadModel.lazyImports.has(`${importer}\0${node}`)) queue.push([...witness, importer]);
+      }
+      // Literal references come after import edges so an import witness wins.
+      if (head === 0) queue.push(...(fixtureSources.get(changedPath) ?? []).map((file) => [rootPath, file]));
     }
   }
   if (broadReason) {
@@ -360,6 +425,7 @@ export const selectAffectedTests = async (options: {
     fixtureTests.clear();
     priorTests.clear();
     sharedPreloadTests.clear();
+    preloadGlobalTests.clear();
   }
   const unmatched = broadReason ? [] : changed.filter((path) => !matched.has(path));
   return {
@@ -370,6 +436,7 @@ export const selectAffectedTests = async (options: {
     fixtureTests: sorted(fixtureTests),
     priorTests: sorted(priorTests),
     sharedPreloadTests: sorted(sharedPreloadTests),
+    preloadGlobalTests: sorted(preloadGlobalTests),
     unmatched,
     uncertain: sorted(uncertain),
     ...(broadReason ? { broadReason } : {}),
@@ -416,7 +483,11 @@ const main = async (): Promise<void> => {
   for (const test of result.selected) {
     const label = result.fixtureTests.includes(test) ? " (fixture reference heuristic)" : "";
     const prior = result.priorTests.includes(test) ? " (includes base edge)" : "";
-    const preload = result.sharedPreloadTests.includes(test) ? " (shared test preload)" : "";
+    const preload = result.sharedPreloadTests.includes(test)
+      ? " (shared test preload)"
+      : result.preloadGlobalTests.includes(test)
+        ? " (reads a preload-installed global)"
+        : "";
     console.log(`  ${test}${label}${prior}${preload}: ${result.witnesses.get(test)?.join(" -> ")}`);
   }
   console.log(`[test-affected] unmatched changed paths=${result.unmatched.length}`);

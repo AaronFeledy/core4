@@ -22,6 +22,8 @@ export const buildPodmanServiceArgs = (p: {
   readonly configDir: string;
   readonly socketPath: string;
   readonly privateRuntimeDir: string | undefined;
+  /** The installed runtime schedules healthchecks inside the service; opt the service in. */
+  readonly serviceHealthchecks?: boolean;
 }): PodmanServiceSpec => {
   const runtimeBinDir = runtimeBinDirFromPodman(p.podmanBin);
   // Always prepend the runtime bin so netavark can exec the bundled nft helper.
@@ -33,6 +35,7 @@ export const buildPodmanServiceArgs = (p: {
       ...(runtimeBinDir === undefined ? {} : { runtimeBinDir }),
       ...(p.privateRuntimeDir === undefined ? {} : { privateRuntimeDir: p.privateRuntimeDir }),
       ...(process.env.PATH === undefined ? {} : { hostPath: process.env.PATH }),
+      ...(p.serviceHealthchecks === true ? { serviceHealthchecks: true } : {}),
     }),
     args: buildManagedRuntimeServiceArgs({
       runtimeStorageDir: p.storageDir,

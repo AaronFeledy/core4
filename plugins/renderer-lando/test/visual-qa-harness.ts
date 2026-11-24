@@ -121,7 +121,7 @@ const treeStart = (label: string, children: ReadonlyArray<string>): LandoEvent =
     _tag: "task.tree.start",
     parentId: "visual-fixture",
     label,
-    children,
+    children: children.map((id) => ({ id, label: id })),
     timestamp: ts,
   });
 

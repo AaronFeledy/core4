@@ -236,7 +236,10 @@ describe("ci workflow", () => {
     expect(providerContracts).toContain('              docker pull "$image"');
     expect(providerContracts).toContain("      - name: Run structured provider acceptance cell");
     expect(providerContracts).toContain("        if: always()");
-    expect(providerContracts).toContain("      - name: Assert Docker latest exec creates 0644 files");
+    expect(providerContracts).toContain("      - name: Assert Docker latest feature checks passed");
+    expect(providerContracts).toContain(
+      '            for (const id of ["exec-umask-mode","health-start-interval"]) {',
+    );
     expect(providerContracts).toContain("        if: ${{ matrix.cell == 'docker-engine-linux-latest' }}");
     expect(providerContracts).toContain(
       "          bun run scripts/provider-matrix-acceptance.ts --cell '${{ matrix.cell }}' --report-dir provider-matrix-reports",
@@ -514,6 +517,18 @@ describe("ci workflow", () => {
     );
   });
 
+  test("cancels superseded pull request runs without grouping other events", async () => {
+    const workflow = await readWorkflow();
+    const concurrency = findIndentedBlock(workflow, "concurrency");
+
+    expect(concurrency).toContain("  group: ci-${{ github.event.pull_request.number || github.run_id }}");
+    expect(concurrency).toContain("  cancel-in-progress: ${{ github.event_name == 'pull_request' }}");
+    // A cancelled run must not start the summary job: it would fail on cancelled needs and invite a rerun.
+    expect(findIndentedBlock(findIndentedBlock(workflow, "jobs"), "ci", 2)).toContain(
+      "    if: ${{ !cancelled() }}",
+    );
+  });
+
   test("runs static checks for pushes and pull requests to main", async () => {
     const workflow = await readWorkflow();
     const triggers = findIndentedBlock(workflow, "on");
@@ -690,7 +705,7 @@ describe("ci workflow", () => {
           fetch-depth: 0`);
     expect(schemaSnapshot).toContain("      - name: Check schema compatibility");
     expect(schemaSnapshot).toContain(
-      "          LANDO_SCHEMA_COMPATIBILITY_BASE_REF: origin/${{ github.event_name == 'pull_request' && github.base_ref || 'main' }}",
+      "          LANDO_SCHEMA_COMPATIBILITY_BASE_REF: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || 'origin/main' }}",
     );
     expect(findIndentedBlock(findIndentedBlock(workflow, "on"), "pull_request", 2)).not.toContain(
       "branches:",

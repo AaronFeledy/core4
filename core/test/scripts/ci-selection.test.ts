@@ -306,7 +306,7 @@ describe("CI selection", () => {
     }
   });
 
-  test("generates a direct always-running final gate and explicit selection on every required job", () => {
+  test("generates a final gate that runs unless the run is cancelled and explicit selection on every required job", () => {
     const workflow = Schema.decodeUnknownSync(
       Schema.Struct({
         jobs: Schema.Record(
@@ -318,7 +318,7 @@ describe("CI selection", () => {
         ),
       }),
     )(Bun.YAML.parse(renderCiWorkflow()));
-    expect(workflow.jobs.ci?.if).toBe("always()");
+    expect(workflow.jobs.ci?.if).toBe("${{ !cancelled() }}");
     expect(workflow.jobs.ci?.needs).toEqual([
       "selection",
       ...Object.keys(CI_JOB_TIERS).filter((id) => id !== "bun-install-isolated-experiment"),

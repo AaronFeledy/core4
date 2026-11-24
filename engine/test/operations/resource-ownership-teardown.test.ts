@@ -57,15 +57,12 @@ test("selected internal stop preserves the non-teardown orphan refusal", async (
   });
   // When
   const exit = await Effect.runPromiseExit(
-    haltAppRuntime(
-      {},
-      {
-        plan,
-        root: plan.root,
-        app: { kind: "user", id: plan.id, root: plan.root },
-        landofile: literalTestLandofile({ name: plan.name, services: {} }),
-      },
-    ).pipe(Effect.provide(harness.layer)),
+    haltAppRuntime({
+      plan,
+      root: plan.root,
+      app: { kind: "user", id: plan.id, root: plan.root },
+      landofile: literalTestLandofile({ name: plan.name, services: {} }),
+    }).pipe(Effect.provide(harness.layer)),
   );
   // Then
   expect(exit._tag).toBe("Failure");

@@ -1,11 +1,6 @@
 import { requiresProvider } from "@lando/landofile/tooling-normalize";
 import { mapFailures } from "@lando/sdk/command-result";
-import {
-  LandofileEventStepFailedError,
-  ToolingCompileError,
-  ToolingDisabledError,
-  causeMessage,
-} from "@lando/sdk/errors";
+import { LandofileEventStepFailedError, ToolingCompileError } from "@lando/sdk/errors";
 import type { ExpressionContext } from "@lando/sdk/expressions";
 import type { AppPlan, LandofileEventName, ToolingTaskShape } from "@lando/sdk/schema";
 import { LANDO_HOST_EVENT_ENV } from "@lando/sdk/schema";
@@ -35,6 +30,7 @@ import type {
   ToolingStepRunners,
 } from "../tooling/step-runner.ts";
 import { publishEventOutputProgress } from "./event-output-progress.ts";
+import { eventStepFailure, stepRetryRemediation } from "./event-step-failure.ts";
 import { eventStepLabel } from "./event-step-identity.ts";
 import {
   type EventStepOutputTail,
@@ -97,24 +93,6 @@ interface EventLeafResult {
 
 type EventLeafError = EventRuntimeError;
 
-const failureExitCode = (error: unknown): number => {
-  if (
-    typeof error === "object" &&
-    error !== null &&
-    "exitCode" in error &&
-    typeof error.exitCode === "number"
-  ) {
-    return error.exitCode;
-  }
-  return 1;
-};
-
-const wrappedRemediation = (error: unknown): string | undefined => {
-  if (typeof error !== "object" || error === null || !("remediation" in error)) return undefined;
-  const value = error.remediation;
-  return typeof value === "string" && /\S/u.test(value) ? value : undefined;
-};
-
 const leafTargetsHost = (
   leaf: ToolingStepLeaf | ResolvedToolingStepLeaf,
   result?: ToolingEngineResult,
@@ -124,44 +102,23 @@ const leafTargetsHost = (
   return false;
 };
 
-const lifecycleRemediation = (
-  options: EventRuntimeOptions,
-  leaf: ToolingStepLeaf | ResolvedToolingStepLeaf,
-  error?: unknown,
-  result?: ToolingEngineResult,
-): string => {
-  if (error instanceof ToolingDisabledError) {
-    return options.redactor.redactString(error.remediation);
-  }
-  const label = eventStepLabel(options.event, leaf.source, leaf.authoredIndex);
-  let remediation = `Fix ${label}, then rerun the lifecycle command.`;
-  if (leafTargetsHost(leaf, result)) {
-    remediation += " The step runs in Bun Shell.";
-  }
-  const wrapped = error === undefined ? undefined : wrappedRemediation(error);
-  if (wrapped !== undefined) {
-    remediation += ` ${options.redactor.redactString(wrapped)}`;
-  }
-  return remediation;
-};
-
 const stepFailure = (
   options: EventRuntimeOptions,
   leaf: ToolingStepLeaf | ResolvedToolingStepLeaf,
   error: unknown,
-): LandofileEventStepFailedError => {
-  const label = eventStepLabel(options.event, leaf.source, leaf.authoredIndex);
-  return new LandofileEventStepFailedError({
-    message: `Event ${label} failed.`,
-    event: options.event,
-    index: leaf.authoredIndex,
-    kind: leaf.kind,
-    ...(leaf.kind === "cmd" && leaf.service !== undefined ? { service: leaf.service } : {}),
-    exitCode: failureExitCode(error),
-    outputTail: options.redactor.redactString(causeMessage(error)),
-    remediation: lifecycleRemediation(options, leaf, error),
-  });
-};
+): LandofileEventStepFailedError =>
+  eventStepFailure(
+    {
+      event: options.event,
+      label: eventStepLabel(options.event, leaf.source, leaf.authoredIndex),
+      index: leaf.authoredIndex,
+      kind: leaf.kind,
+      ...(leaf.kind === "cmd" && leaf.service !== undefined ? { service: leaf.service } : {}),
+      hostShell: leafTargetsHost(leaf),
+    },
+    error,
+    options.redactor,
+  );
 
 const nonzeroFailure = (
   options: EventRuntimeOptions,
@@ -178,7 +135,7 @@ const nonzeroFailure = (
     ...(String(result.service) === "" ? {} : { service: String(result.service) }),
     exitCode: result.exitCode,
     outputTail,
-    remediation: lifecycleRemediation(options, leaf, undefined, result),
+    remediation: stepRetryRemediation(label, leafTargetsHost(leaf, result)),
   });
 };
 

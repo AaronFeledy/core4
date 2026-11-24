@@ -9,6 +9,7 @@ import {
   fixtureHelperMount,
   fixtureHelperOptions,
   fixtureHelperOptionsFor,
+  fixtureHelperProfileStubBind,
   installSupervisedExecFixture,
   resolveBuiltContainerHelperForTest,
   supervisedExecFixtureOptions,
@@ -1307,6 +1308,7 @@ describe("provider-docker RuntimeProvider contract", () => {
           "My-App-web-mount-cace0001:/cache:ro",
           `${fixtureHelperMount.source}:/run/lando/helper:ro`,
           ...fixtureHelperCommandMounts.map((mount) => `${mount.source}:${mount.target}:ro`),
+          fixtureHelperProfileStubBind,
         ],
         PortBindings: { "31080/tcp": [{ HostIp: "127.0.0.1", HostPort: "31080" }] },
       },
@@ -1589,7 +1591,13 @@ describe("provider-docker RuntimeProvider contract", () => {
       ),
     );
 
-    expect(provider.capabilities).toEqual({ ...linuxDockerCapabilities, serviceLogSources: false });
+    // Live introspection without API 1.44 evidence withholds start_interval with the upgrade step.
+    const { composePreservedPaths: _offlineOnly, ...liveMatrix } = linuxDockerCapabilities;
+    const { composePreservedPaths, ...liveCapabilities } = provider.capabilities;
+    expect(liveCapabilities).toEqual({ ...liveMatrix, serviceLogSources: false });
+    expect(composePreservedPaths?.withheld?.map((entry) => entry.key)).toEqual([
+      "healthcheck.start_interval",
+    ]);
     expect(provider.capabilities.bindMountPerformance).not.toBe("slow");
     expect(provider.capabilities.sharedCrossAppNetwork).toBe(true);
   });

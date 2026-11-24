@@ -1,5 +1,5 @@
 import type { StartAppOptions } from "@lando/sdk/app";
-import { type AppPlan, type PreparedFileSyncTarget, isIdleRunStatus } from "@lando/sdk/schema";
+import { type AppPlan, type PreparedFileSyncTarget, isDownRunStatus } from "@lando/sdk/schema";
 import { BuildOrchestrator, EventService, RouterService } from "@lando/sdk/services";
 import { Effect } from "effect";
 import { routerEnabled } from "../config/router-config.ts";
@@ -166,7 +166,7 @@ export const launchAdmittedSelectedStart = Effect.fnUntraced(function* (
             );
             const stayedDown = unselected.filter((name) => {
               const status = observed.get(name)?.status;
-              return status !== undefined && (isIdleRunStatus(status) || status === "paused");
+              return status !== undefined && isDownRunStatus(status);
             });
             return {
               app: target.plan.name,

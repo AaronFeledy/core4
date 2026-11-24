@@ -1,0 +1,262 @@
+---
+id: drupal-production-copy
+provider: test
+tags: [docs, recipes, drupal, drush, mariadb, sanitize]
+---
+
+# Copy a production Drupal database into Lando
+
+A production database carries real users' email addresses and password hashes, plus whatever your own modules store. Stream it straight from the server into `lando db:import`, so the raw dump never lands in your project, then scrub it with `lando drush sql:sanitize` before you run updates, log in, or share it.
+
+This page starts from a site on the Drupal recipe, such as the one [Run the Drupal recipe](./drupal-workflow.mdx) builds, on Drupal 10 or 11. Run the commands from the app directory on your host, in a POSIX shell such as bash or zsh.
+
+## Catch outgoing mail first
+
+Add a Mailpit service before the import, so mail Drupal sends through PHP lands in a local inbox:
+
+```sh
+lando app:config:set services.inbox '{"type":"mailpit"}' --type json
+lando start
+```
+
+Start installs `msmtp` in `appserver` and points PHP's `sendmail_path` at `inbox`. See [Capture outgoing mail](./drupal-workflow.mdx#capture-outgoing-mail) for the inbox URL.
+
+## Snapshot your local database
+
+Take a snapshot while the database still holds your own local data, so you can come back to it later:
+
+```sh
+lando db:snapshot --label before-prod
+```
+
+## Stream the production dump into Lando
+
+Run Drush on the production server over SSH and pipe its output into `lando db:import`:
+
+```sh
+ssh prod.example.com "cd /var/www/site && vendor/bin/drush sql:dump --gzip --structure-tables-list='cache,cache_*,sessions,watchdog'" | lando db:import - --yes
+```
+
+Replace `prod.example.com` with your server's SSH host and `/var/www/site` with the site's project root there. Drush writes the compressed dump to stdout, so nothing lands on the server's disk. `--structure-tables-list` keeps the table definitions for caches, sessions, and the log but skips their rows, which you don't need locally.
+
+`-` tells `db:import` to read the dump from stdin, and `--yes` answers the confirmation prompt it can't show while stdin carries the dump. Lando decompresses the dump into a private file in its cache directory, checks that it's complete, imports it into the recipe's `database` service, and deletes the file. If SSH fails or the connection drops, the dump ends early and the import fails before it changes your database. A Drush dump drops and recreates every table it contains, so your local content in those tables is replaced.
+
+If your team has a vetted export that was sanitized before it left production, import that file by its path with `lando db:import` instead, and still run the steps below.
+
+## Point mail and cron at local settings
+
+The copy also brings production settings that live in the database. Switch those first, before `sql:sanitize`, `updatedb`, or a login runs Drupal code that could mail a real user or call a production service:
+
+```sh
+lando drush config:get system.mail interface.default
+lando drush config:set system.mail interface.default php_mail --yes
+lando drush config:set automated_cron.settings interval 0 --yes
+```
+
+`config:get` shows the mail plugin production used. Anything other than `php_mail`, such as `symfony_mailer` with an SMTP server in `mailer_dsn`, can send through a real mail server. Automated Cron skips its run when `interval` is `0`. Check your own modules' settings for production API keys, endpoints, and accounts the same way, and switch them to test values or turn them off.
+
+## Scrub user emails and passwords
+
+```sh
+lando drush sql:sanitize --yes
+lando drush sql:query "SELECT uid, mail FROM users_field_data"
+```
+
+Drush lists the operations before it runs them. By default it replaces every user's email with `user+<uid>@localhost.localdomain` and every password with the same random one, so no production password works. The query shows the new addresses, for example `user+1@localhost.localdomain` for the first account.
+
+## Check what Drush doesn't scrub
+
+`sql:sanitize` only cleans user data that Drush and your installed modules tell it about. A table your own code creates keeps its rows. For example, a table of contact form leads:
+
+```sh
+lando drush sql:query "SELECT COUNT(*) FROM app_leads"
+lando drush sql:query "TRUNCATE app_leads"
+```
+
+Replace `app_leads` with your own tables, and clear or mask every one that holds personal data.
+
+## Update, then log in
+
+```sh
+lando drush updatedb --yes
+lando drush cache:rebuild
+lando drush user:login --name=admin
+```
+
+`updatedb` runs any database updates your local code has that production hasn't applied yet. It prints `No pending updates.` when the two match.
+
+Nobody knows the new password, so `user:login` prints a one-time login link instead. It starts with your app's URL, including the fallback port, such as `:8443`, when Lando picked one, followed by `/user/reset/1/`. Open it in your browser to land on the admin account's edit page. Replace `admin` with the production admin's user name.
+
+## Pull again with one command
+
+Once these steps work for your site, save them as a tooling task, so everyone on your team runs them in the same order. Add this to `.lando.yml`:
+
+```yaml
+tooling:
+  pull-prod:
+    service: ":host"
+    description: Copy the production database and scrub it
+    cmds:
+      - ssh prod.example.com "cd /var/www/site && vendor/bin/drush sql:dump --gzip --structure-tables-list='cache,cache_*,sessions,watchdog'" | lando db:import - --yes
+      - lando drush config:set system.mail interface.default php_mail --yes
+      - lando drush config:set automated_cron.settings interval 0 --yes
+      - lando drush sql:sanitize --yes
+      - lando drush sql:query "TRUNCATE app_leads"
+      - lando drush updatedb --yes
+      - lando drush cache:rebuild
+```
+
+Then pull a fresh copy:
+
+```sh
+lando pull-prod
+```
+
+`service: ":host"` runs each line on your host, in order, and stops at the first one that fails. A dump cut short fails the import, so the scrub steps never run against a half-imported database. Keep the `before-prod` snapshot out of the task: on a second pull it would save the previous production copy instead of your local data.
+
+## Share the scrubbed copy
+
+Export the database only after the scrub and checks:
+
+```sh
+lando db:export drupal-scrubbed.sql.gz
+```
+
+The file lands in your app directory. Keep it out of git and send it the same way you'd send any other private file.
+
+## Go back to your local database
+
+```sh
+lando db:restore before-prod --yes
+```
+
+`db:restore` brings back the snapshot you took before the first pull. Lando stops the database while it copies the volume, then starts it again. If you've taken more than one `before-prod` snapshot, it restores the newest. `lando db:snapshots` lists them all, and `lando db:restore <id>` picks another.
+
+Each import and restore first saves a recovery snapshot of the database it replaces, and prints the `lando db:restore` command that undoes it. The one the restore saved holds the scrubbed production copy. Once you don't need to undo anything, delete them:
+
+```sh
+lando db:snapshots:prune --recovery --keep-latest 0 --preview
+lando db:snapshots:prune --recovery --keep-latest 0 --yes
+```
+
+`--keep-latest 0` selects every recovery snapshot for this database. `--preview` lists them, and `--yes` deletes them. Your `before-prod` snapshot stays, because it's a manual snapshot.
+
+<Guide>
+  <Scenario id="copy-and-sanitize" layer="e2e" timeout={600000} tags={["@smoke"]} render={false} reason="Prove the streamed import, scrub, data checks, mail capture, one-time login, the pull-prod task, export, restore, and recovery cleanup on a real Drupal site">
+    <Step name="site">
+      <Run command="lando init --recipe drupal --name=drupal-prod-copy --yes" />
+      <Run command="lando start" />
+      <Run command="lando drush site:install standard --db-url=mysql://lando:lando@database/drupal-prod-copy --site-name=Prod --account-name=admin --account-mail=admin@example.com -y" />
+      <Run command="lando drush user:create editor --mail=editor@example.com --password=editor-e2e-only" />
+    </Step>
+    <Hidden reason="Stand in for production: a custom table sql:sanitize does not know about, and a mailer that is not PHP mail">
+      <Step name="production-data">
+        <Run command={`lando drush sql:query "CREATE TABLE app_leads (email VARCHAR(64)); INSERT INTO app_leads VALUES ('lead@example.com')"`} />
+        <Run command="lando drush config:set system.mail interface.default symfony_mailer --yes" />
+      </Step>
+    </Hidden>
+    <Step name="mail">
+      <Run command={`lando app:config:set services.inbox '{"type":"mailpit"}' --type json`} />
+      <Run command="lando start" />
+      <Verify command={`lando exec appserver -- php -r 'echo ini_get("sendmail_path");'`} expect={{ stdout: { regex: "--host=inbox" } }} />
+    </Step>
+    <Hidden reason="Stand in for the production server: run the documented Drush dump to stdout, keep it in appserver outside the /app mount, then change the local site so the import is visible. It runs after the Mailpit start, which recreates appserver">
+      <Step name="production-dump">
+        <Run command={`lando exec appserver -- sh -c "vendor/bin/drush sql:dump --gzip --structure-tables-list='cache,cache_*,sessions,watchdog' > /tmp/prod.sql.gz"`} />
+        <Run command="lando drush user:cancel editor --delete-content -y" />
+        <Run command={`lando app:config:set tooling.stream-prod '{"service":":host","cmd":"lando exec appserver -- cat /tmp/prod.sql.gz | lando db:import - --yes"}' --type json`} />
+      </Step>
+    </Hidden>
+    <Step name="snapshot">
+      <Run command="lando db:snapshot --label before-prod" />
+    </Step>
+    <Hidden reason="A dump cut short in the pipe fails the import and leaves the local database as it was">
+      <Step name="truncated-stream">
+        <Run command={`lando app:config:set tooling.broken-pull '{"service":":host","cmd":"lando exec appserver -- head -c 3000 /tmp/prod.sql.gz | lando db:import - --yes"}' --type json`} />
+        <Verify command="lando broken-pull" expectExit={1} expect={{ stderr: { regex: "SqlDump(Compression|Incomplete)Error" } }} />
+        <Verify command={`lando drush sql:query "SELECT CONCAT('editors=', COUNT(*)) FROM users_field_data WHERE name='editor'"`} expect={{ stdout: { regex: "editors=0" } }} />
+      </Step>
+    </Hidden>
+    <Hidden reason="Stand in for the ssh pipe: stream the production dump through a host pipe into db:import from stdin">
+      <Step name="stream">
+        <Run command="lando stream-prod" />
+      </Step>
+    </Hidden>
+    <Step name="isolate">
+      <Verify command="lando drush config:get system.mail interface.default" expect={{ stdout: { regex: "symfony_mailer" } }} />
+      <Run command="lando drush config:set system.mail interface.default php_mail --yes" />
+      <Run command="lando drush config:set automated_cron.settings interval 0 --yes" />
+      <Verify command="lando drush config:get automated_cron.settings interval" expect={{ stdout: { regex: "interval': 0\\s*$" } }} />
+    </Step>
+    <Step name="import-check">
+      <Verify command={`lando drush sql:query "SELECT mail FROM users_field_data WHERE name='editor'"`} expect={{ stdout: { regex: "editor@example\\.com" } }} />
+    </Step>
+    <Step name="sanitize">
+      <Run command="lando drush sql:sanitize --yes" />
+      <Verify command={`lando drush sql:query "SELECT uid, mail FROM users_field_data"`} expect={{ stdout: { regex: "user\\+1@localhost\\.localdomain[\\s\\S]*user\\+2@localhost\\.localdomain" } }} />
+      <Verify command={`lando drush sql:query "SELECT CONCAT('distinct=', COUNT(DISTINCT pass)) FROM users_field_data WHERE uid > 0"`} expect={{ stdout: { regex: "distinct=1" } }} />
+    </Step>
+    <Step name="custom-tables">
+      <Verify command={`lando drush sql:query "SELECT email FROM app_leads"`} expect={{ stdout: { regex: "lead@example\\.com" } }} />
+      <Verify command={`lando drush sql:query "SELECT COUNT(*) FROM app_leads"`} expect={{ stdout: { regex: "^1\\s*$" } }} />
+      <Run command={`lando drush sql:query "TRUNCATE app_leads"`} />
+      <Verify command={`lando drush sql:query "SELECT COUNT(*) FROM app_leads"`} expect={{ stdout: { regex: "^0\\s*$" } }} />
+    </Step>
+    <Hidden reason="Send a Drupal password reset mail and read it back from Mailpit to prove mail stays local">
+      <Step name="mail-lands-in-inbox">
+        <Run command={`lando drush php:eval "_user_mail_notify('password_reset', \\Drupal\\user\\Entity\\User::load(1));"`} />
+        <Verify command="lando exec appserver -- curl -fsS http://inbox:8025/api/v1/messages" expect={{ stdout: { regex: "user\\+1@localhost\\.localdomain" } }} />
+      </Step>
+    </Hidden>
+    <Step name="update-and-login">
+      <Verify command="lando drush updatedb --yes" expect={{ stderr: { regex: "No pending updates" } }} />
+      <Verify command="lando drush cache:rebuild" />
+      <Verify command="lando drush user:login --name=admin" expect={{ stdout: { regex: "/user/reset/1/" } }} />
+    </Step>
+    <Hidden reason="Follow a one-time link inside appserver and read the admin edit page to prove the login works">
+      <Step name="login-request">
+        <Verify command={`lando exec appserver -- sh -c 'curl -s -o /dev/null -c /tmp/jar "$(vendor/bin/drush user:login --name=admin --uri=http://127.0.0.1 --no-browser)" && curl -s -b /tmp/jar http://127.0.0.1/user/1/edit'`} expect={{ stdout: { regex: "user\\+1@localhost\\.localdomain" } }} />
+      </Step>
+    </Hidden>
+    <Hidden reason="Stand in for the pull-prod task: the documented steps with the ssh pipe replaced by the production dump stand-in">
+      <Step name="pull-prod-task">
+        <Run command={`lando app:config:set tooling.pull-prod '{"service":":host","description":"Copy the production database and scrub it","cmds":["lando exec appserver -- cat /tmp/prod.sql.gz | lando db:import - --yes","lando drush config:set system.mail interface.default php_mail --yes","lando drush config:set automated_cron.settings interval 0 --yes","lando drush sql:sanitize --yes","lando drush sql:query \\"TRUNCATE app_leads\\"","lando drush updatedb --yes","lando drush cache:rebuild"]}' --type json`} />
+      </Step>
+    </Hidden>
+    <Step name="pull-again">
+      <Run command="lando pull-prod" />
+      <Verify command="lando drush config:get system.mail interface.default" expect={{ stdout: { regex: "php_mail" } }} />
+      <Verify command={`lando drush sql:query "SELECT mail FROM users_field_data WHERE name='editor'"`} expect={{ stdout: { regex: "user\\+2@localhost\\.localdomain" } }} />
+      <Verify command={`lando drush sql:query "SELECT COUNT(*) FROM app_leads"`} expect={{ stdout: { regex: "^0\\s*$" } }} />
+    </Step>
+    <Step name="share">
+      <Run command="lando db:export drupal-scrubbed.sql.gz" />
+    </Step>
+    <Hidden reason="The shared export holds no original user email and no lead rows">
+      <Step name="share-check">
+        <Verify command="lando exec appserver -- sh -c 'test -s drupal-scrubbed.sql.gz && ! zgrep -q -e editor@example.com -e lead@example.com drupal-scrubbed.sql.gz'" />
+      </Step>
+    </Hidden>
+    <Step name="restore">
+      <Run command="lando db:restore before-prod --yes" />
+      <Verify command={`lando drush sql:query "SELECT CONCAT('editors=', COUNT(*)) FROM users_field_data WHERE name='editor'"`} expect={{ stdout: { regex: "editors=0" } }} />
+      <Verify command={`lando drush sql:query "SELECT mail FROM users_field_data WHERE uid=1"`} expect={{ stdout: { regex: "admin@example\\.com" } }} />
+    </Step>
+    <Step name="prune-recovery">
+      <Verify command="lando db:snapshots --format=json" expect={{ stdout: { regex: "\"recoveryReason\":\\s*\"restore\"" } }} />
+      <Run command="lando db:snapshots:prune --recovery --keep-latest 0 --preview" />
+      <Run command="lando db:snapshots:prune --recovery --keep-latest 0 --yes" />
+      <Verify command="lando db:snapshots --format=json" expect={{ stdout: { regex: "^(?![\\s\\S]*\"recoveryReason\":\\s*\"(import|restore)\")[\\s\\S]*\"label\":\\s*\"before-prod\"" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y --purge" />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Next
+
+- [Import and export app databases](../tooling/db-import-export.mdx) for streaming dumps and snapshot details
+- [Run the Drupal recipe](./drupal-workflow.mdx)
+- [Capture outgoing mail](./drupal-workflow.mdx#capture-outgoing-mail) with Mailpit

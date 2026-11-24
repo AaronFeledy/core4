@@ -201,8 +201,12 @@ export class LiveRegionController<TRenderer extends LiveRegionRendererLike = Liv
         const session = this.fullTail;
         this.fullTail = undefined;
         if (session !== undefined) await leaveFullTail(session).catch(recordOpenTuiSubstrateFailure);
-        const drained = await this.deferred.drain();
-        for (const source of drained) this.inline.commitAbove(source);
+        await this.deferred.flush(
+          (source) => this.inline.commitAbove(source),
+          () => {
+            this.enteringFullTail = false;
+          },
+        );
         if (this.footerLines.length > 0) this.inline.paint(this.footerLines);
         throw cause;
       } finally {
@@ -219,10 +223,12 @@ export class LiveRegionController<TRenderer extends LiveRegionRendererLike = Liv
         await this.closeFullTail(session);
       } finally {
         // Rows stay deferred until OpenTUI has restored the main screen; written earlier, they land in the alternate screen.
-        const drained = await this.deferred.drain().finally(() => {
-          this.leavingFullTail = false;
-        });
-        for (const source of drained) this.inline.commitAbove(source);
+        await this.deferred.flush(
+          (source) => this.inline.commitAbove(source),
+          () => {
+            this.leavingFullTail = false;
+          },
+        );
         if (this.footerLines.length > 0 && !this.openLine) this.inline.paint(this.footerLines);
       }
     });

@@ -14,6 +14,7 @@ import {
 } from "@lando/container-runtime/container-helper/source";
 import { Effect } from "effect";
 
+import { preservedSymlinksMessage } from "../core/bin/preserve-symlinks.ts";
 import { CI_PLATFORMS, type CiPlatform, isWindowsCiPlatform } from "./ci-platforms.ts";
 import { compiledBinaryBundleConfig } from "./compiled-binary-bundle.ts";
 import { CompiledBinaryVersionError, resolveCompiledBinaryVersion } from "./compiled-binary-version.ts";
@@ -160,6 +161,10 @@ export const buildCompiledBinary = async (
       compile: {
         target: bunTargetFor(platform),
         outfile: options.outfile,
+        // Lando runs inside user projects: their .env and bunfig.toml must not configure Lando
+        // itself or run their preload scripts in its process.
+        autoloadDotenv: false,
+        autoloadBunfig: false,
         // Baked into the executable: eval(), new Function(), node:vm, data: imports, eval Workers
         // and source-returning plugins all throw. Lando has none; the jq engine is an AST
         // interpreter and .lando.ts / recipe.ts load through file-path import(). BUN_BE_BUN=1
@@ -238,13 +243,10 @@ export const parseCompiledBinaryArgs = (
 };
 
 if (import.meta.main) {
-  // Bun keeps symlinked workspace paths under this flag, so the bundle gets a second copy of
-  // @lando/sdk and errors from one copy fail `instanceof` checks against the other.
-  const preserveSymlinks = process.env.NODE_PRESERVE_SYMLINKS;
-  if (preserveSymlinks !== undefined && preserveSymlinks !== "" && preserveSymlinks !== "0") {
-    console.error(
-      "Compiled builds cannot run with NODE_PRESERVE_SYMLINKS enabled: it bundles workspace packages twice. Run `env -u NODE_PRESERVE_SYMLINKS bun run build` or remove the export from your shell profile.",
-    );
+  // Package scripts run this from core/, where the repo-root bunfig preload does not apply.
+  const preservedSymlinks = preservedSymlinksMessage(process.env, process.execArgv);
+  if (preservedSymlinks !== undefined) {
+    console.error(preservedSymlinks);
     process.exit(1);
   }
   try {

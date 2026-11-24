@@ -388,6 +388,53 @@ axes:
     expect(output?.markdown).not.toContain("justification");
   });
 
+  test("drops MDX comments such as lint waivers from the scaffold Markdown", () => {
+    const mdx = `---
+id: waiver-recipe
+provider: test
+---
+
+Start the dev server:
+
+{/* lando-lint: not-e2e foreground dev server never exits */}
+
+\`\`\`sh
+lando dev
+\`\`\`
+
+<Guide>
+  <Scenario id="reader-path" render>
+    <Step name="version">
+      <Run command="lando version" />
+    </Step>
+  </Scenario>
+</Guide>
+`;
+    const [output] = stripRecipeReadme("recipes/waiver-recipe/README.mdx", mdx);
+    expect(output?.markdown).toContain("```sh\nlando dev\n```");
+    expect(output?.markdown).not.toContain("lando-lint");
+  });
+
+  test("drops MDX comments placed directly inside <Guide>", () => {
+    const mdx = `---
+id: guide-comment-recipe
+provider: test
+---
+
+<Guide>
+  {/* lando-lint: not-e2e illustrative */}
+  <Scenario id="reader-path" render>
+    <Step name="version">
+      <Run command="lando version" />
+    </Step>
+  </Scenario>
+</Guide>
+`;
+    const [output] = stripRecipeReadme("recipes/guide-comment-recipe/README.mdx", mdx);
+    expect(output?.markdown).toContain("lando version");
+    expect(output?.markdown).not.toContain("lando-lint");
+  });
+
   test("renders library Run as a TS fence of displayCode, not code or empty bash", () => {
     const mdx = `---
 id: library-run-recipe

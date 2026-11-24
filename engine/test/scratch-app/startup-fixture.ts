@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { makeLandoPaths } from "@lando/paths";
 import type { ScratchAppError } from "@lando/sdk/errors";
-import { AbsolutePath, AppId, type AppPlan } from "@lando/sdk/schema";
+import { AbsolutePath, AppId, type AppPlan, type ServicePlan } from "@lando/sdk/schema";
 import {
   AppPlanner,
   EventService,
@@ -40,6 +40,8 @@ interface StartupFixtureOptions {
   readonly registration?: Effect.Effect<void, ScratchAppError>;
   /** Publishes a route for `web` and starts through this router. */
   readonly router?: RouterServiceShape;
+  /** Fields merged into the source app's `web` service. */
+  readonly web?: Partial<Pick<ServicePlan, "user" | "endpoints">>;
 }
 
 export const withStartupFixture = async (
@@ -74,7 +76,7 @@ export const withStartupFixture = async (
 const makeFixture = async (
   root: string,
   overrides: Partial<RuntimeProviderShape>,
-  { registration = Effect.void, router, onEvent }: StartupFixtureOptions,
+  { registration = Effect.void, router, onEvent, web: webOverrides }: StartupFixtureOptions,
 ) => {
   const sourceRoot = AbsolutePath.make(join(root, "source"));
   await mkdir(sourceRoot);
@@ -103,6 +105,7 @@ const makeFixture = async (
     services: {
       [web.name]: {
         ...web,
+        ...webOverrides,
         healthcheck: {
           kind: "command",
           command: ["probe"],

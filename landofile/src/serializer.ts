@@ -2,7 +2,7 @@ export * from "@lando/sdk/landofile";
 
 import { isEnvironmentBinding } from "@lando/sdk/expressions";
 import { LandofileEmitError, emitLandofileYaml, isPlainRecord } from "@lando/sdk/landofile";
-import type { CompiledLandofile, ValidationIssuePath } from "@lando/sdk/schema";
+import { type CompiledLandofile, type ValidationIssuePath, routeUrlPartFact } from "@lando/sdk/schema";
 import { literalSource, templateSource } from "./expression-source.ts";
 
 export const compiledLandofileSource = (compiled: CompiledLandofile): Record<string, unknown> => {
@@ -28,7 +28,7 @@ export const compiledLandofileSource = (compiled: CompiledLandofile): Record<str
           return `{{ concat(${value.parts
             .map((part) => {
               if (typeof part === "string") return JSON.stringify(part);
-              const expression = `services[${JSON.stringify(part.service)}].url`;
+              const expression = `services[${JSON.stringify(part.service)}].${routeUrlPartFact(part)}`;
               return part.encoding === "raw" ? expression : `url.encodeComponent(${expression})`;
             })
             .join(", ")}) }}`;

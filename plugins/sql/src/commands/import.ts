@@ -2,6 +2,7 @@ import type { ExecutableCommandSpec } from "@lando/sdk/plugins";
 
 import { dbCommandRedactionTokens, dbInputFromCommand, runDbCommand } from "../run.ts";
 import { type DbCommandResult, DbCommandResult as DbCommandResultSchema } from "../schemas.ts";
+import { render } from "./recovery-hint.ts";
 
 export const spec = {
   id: "db:import",
@@ -17,4 +18,5 @@ export const spec = {
   resultSchema: DbCommandResultSchema,
   redactionTokens: dbCommandRedactionTokens,
   run: (input) => runDbCommand(dbInputFromCommand("import", input)),
+  render,
 } as const satisfies ExecutableCommandSpec<DbCommandResult>;

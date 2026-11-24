@@ -25,6 +25,7 @@ import {
 import { Effect, Result, Schema } from "effect";
 
 import { resolveAgentEnvAudit } from "../config/agent-env-policy.ts";
+import { routerEnabled } from "../config/router-config.ts";
 import { type ResolvedAppTarget, loadUserLandofileAt, planDesiredApp } from "../landofile/app-resolution.ts";
 import { observedAppPlan } from "../providers/app-placement.ts";
 import { hostProxyPlanExtension } from "../subsystems/host-proxy/plan-extension.ts";
@@ -37,6 +38,7 @@ import { projectServiceObservation } from "./info-probes.ts";
 import { projectServiceMounts } from "./info-storage.ts";
 import { resolveInfoTarget } from "./info-target.ts";
 import { plannedServiceArtifact } from "./planned-service-artifact.ts";
+import { primaryRouteConnectionUrl } from "./route-connections.ts";
 import { selectInfoPlan } from "./service-selection.ts";
 
 export type InfoAppError = SdkInfoAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
@@ -157,6 +159,10 @@ export const infoForPlan = Effect.fn("AppOperation.infoForPlan")(function* (
         },
   );
   const rows = yield* collectObservedConnections(plan, observations);
+  // The service URL follows the routes Lando last applied, as `{{ services.<name>.url }}` does; an
+  // unreadable applied state leaves that unknown, and a disabled router publishes no URL.
+  const urlPlan = appliedStateIssue === undefined ? (applied ?? plan) : undefined;
+  const urlRoutes = urlPlan !== undefined && routerEnabled(urlPlan) ? urlPlan.routes : [];
   const services = rows.map((row) => {
     const service = Object.values(plan.services).find((service) => String(service.name) === row.name);
     if (service === undefined) throw new TypeError(`Missing service plan for ${row.name}`);
@@ -165,13 +171,15 @@ export const infoForPlan = Effect.fn("AppOperation.infoForPlan")(function* (
     const desiredOnly = options.desiredOnly?.has(row.name) === true;
     const mounts = desiredOnly ? undefined : projectServiceMounts(plan, service, observed.runtime);
     const appMount = serviceAppMount(service);
+    const url = desiredOnly ? undefined : primaryRouteConnectionUrl(urlRoutes, row.name, row.connections);
     return ServiceInfoConsistent.make({
       ...serviceInfoMetadata(plan, service, provider.capabilities),
-      ...projectServiceObservation(service, observed),
+      ...projectServiceObservation(service, observed, provider.capabilities.serviceHealth),
       ...(desiredOnly && observed.state === "stopped" && observed.runtime.status !== "absent"
         ? { status: "unknown" as const }
         : {}),
       connections: desiredOnly ? [] : row.connections,
+      ...(url === undefined ? {} : { url }),
       ...(mounts === undefined ? {} : { mounts }),
       ...(appMount === undefined ? {} : { appMount }),
     });

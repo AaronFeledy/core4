@@ -13,6 +13,8 @@ export interface CompatibilityFinding {
   readonly changeKind: string;
   readonly path: string;
   readonly message: string;
+  /** Digest of the change kind plus the normalized before/after values the finding judged. */
+  readonly fingerprint: string;
   readonly accepted: boolean;
   readonly justification?: string;
 }
@@ -30,10 +32,16 @@ export interface PersistedStateRef {
   readonly version: number;
 }
 
-export interface CompatibilityException {
+export interface CompatibilityLocation {
   readonly surface: string;
-  readonly changeKind: string;
   readonly path: string;
+}
+
+/** One reviewed change, accepted only at the listed surface paths. */
+export interface CompatibilityException {
+  readonly fingerprint: string;
+  readonly changeKind: string;
+  readonly locations: ReadonlyArray<CompatibilityLocation>;
   readonly justification: string;
   readonly persistedState?: PersistedStateRef | ReadonlyArray<PersistedStateRef>;
 }

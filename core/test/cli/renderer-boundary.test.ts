@@ -90,7 +90,7 @@ describe("runWithRendererHandling", () => {
           _tag: "task.tree.start",
           parentId: "app:start",
           label: "Starting",
-          children: ["app:start:web"],
+          children: [{ id: "app:start:web", label: "app:start:web" }],
           timestamp: "2026-06-04T00:00:00.000Z",
         });
         yield* events.publish({
@@ -140,7 +140,7 @@ describe("runWithRendererHandling", () => {
           _tag: "task.tree.start",
           parentId: "tooling:composer",
           label: "Tooling: composer",
-          children: ["tooling:composer:appserver"],
+          children: [{ id: "tooling:composer:appserver", label: "tooling:composer:appserver" }],
           timestamp: "2026-06-04T00:00:00.000Z",
         });
         yield* events.publish({
@@ -243,7 +243,7 @@ describe("runWithRendererHandling", () => {
           _tag: "task.tree.start",
           parentId: "json-gate-tree",
           label: "JsonTree",
-          children: ["json-gate"],
+          children: [{ id: "json-gate", label: "json-gate" }],
           timestamp: "2026-07-18T00:00:00.001Z",
         });
       }),
