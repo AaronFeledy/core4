@@ -87,7 +87,25 @@ const listenTcp = (server: Server): Promise<number> =>
     });
   });
 
-const UNDECLARED_COMPOSE_CAPABILITY_FIELDS = ["composePreservedPaths", "fileSyncTargets"];
+// The offline declaration carries `composePreservedPaths` only to withhold `start_interval`.
+const UNDECLARED_COMPOSE_CAPABILITY_FIELDS = ["fileSyncTargets"];
+
+const withoutPreservedPaths = ({ composePreservedPaths: _paths, ...rest }: ProviderCapabilities) => rest;
+
+const expectStartIntervalAwaitsLiveEvidence = (capabilities: ProviderCapabilities) => {
+  expect(capabilities.composePreservedPaths?.supported).toEqual([]);
+  expect(capabilities.composePreservedPaths?.withheld).toMatchObject([
+    { key: "healthcheck.start_interval", remediation: expect.stringContaining("API 1.44") },
+  ]);
+};
+
+// A live endpoint below API 1.44 withholds start_interval with the upgrade or the unpin step.
+const expectStartIntervalNeedsNewerApi = (capabilities: ProviderCapabilities) => {
+  expect(capabilities.composePreservedPaths?.supported).toEqual([]);
+  expect(capabilities.composePreservedPaths?.withheld).toMatchObject([
+    { key: "healthcheck.start_interval", remediation: expect.stringContaining("DOCKER_API_VERSION") },
+  ]);
+};
 
 const EXPECTED_CAPABILITY_FIELDS = Object.keys(ProviderCapabilities.fields)
   .filter((field) => !UNDECLARED_COMPOSE_CAPABILITY_FIELDS.includes(field))
@@ -177,32 +195,30 @@ describe("provider-docker capabilities", () => {
     expect(macos.bindMounts).toBe(true);
     expect(linux.sharedCrossAppNetwork).toBe(true);
     expect(macos.sharedCrossAppNetwork).toBe(true);
-    expect(linux.composePreservedPaths).toBeUndefined();
-    expect(macos.composePreservedPaths).toBeUndefined();
+    expectStartIntervalAwaitsLiveEvidence(linux);
+    expectStartIntervalAwaitsLiveEvidence(macos);
     expect(linux.composeProjectFields).toEqual({ supported: ["configs"] });
     expect(macos.composeProjectFields).toEqual({ supported: ["configs"] });
   });
 
   test.each([
-    ["1.44", ["healthcheck.start_interval"]],
-    ["1.48", ["healthcheck.start_interval"]],
-    ["1.43", undefined],
-    [undefined, undefined],
+    ["1.44", true],
+    ["1.48", true],
+    ["1.43", false],
+    [undefined, false],
   ] as const)(
-    "declares healthcheck.start_interval from live requests at API %s: %o",
-    async (version, supported) => {
+    "declares healthcheck.start_interval from live requests at API %s: %p",
+    async (version, honored) => {
       // Given a live endpoint whose start-interval requests would use this API version
       const api = { info: Effect.succeed({}), requestApiVersion: () => version };
       // When capabilities are introspected
       const capabilities = await Effect.runPromise(introspectProviderCapabilities(api, "linux"));
-      // Then only an endpoint that honors StartInterval declares it
-      expect(capabilities.composePreservedPaths?.supported).toEqual(supported);
+      // Then only an endpoint that honors StartInterval declares it; an older one names the fix
+      if (honored)
+        expect(capabilities.composePreservedPaths).toEqual({ supported: ["healthcheck.start_interval"] });
+      else expectStartIntervalNeedsNewerApi(capabilities);
     },
   );
-
-  test("the offline declaration needs live evidence for healthcheck.start_interval", () => {
-    expect(dockerCapabilitiesForPlatform("linux").composePreservedPaths).toBeUndefined();
-  });
 
   test("leaves native healthchecks to the Docker daemon", () => {
     expect(dockerCapabilitiesForHost("linux", "unix:///var/run/docker.sock").serviceHealth).toBe("native");
@@ -264,8 +280,15 @@ describe("provider-docker capabilities", () => {
       ),
     );
 
-    expect(linuxProvider.capabilities).toEqual({ ...linuxDockerCapabilities, serviceLogSources: false });
-    expect(macosProvider.capabilities).toEqual({ ...macosDockerCapabilities, serviceLogSources: false });
+    // A live endpoint without API 1.44 evidence withholds start_interval with the upgrade step.
+    expectStartIntervalNeedsNewerApi(linuxProvider.capabilities);
+    expect(withoutPreservedPaths(linuxProvider.capabilities)).toEqual(
+      withoutPreservedPaths({ ...linuxDockerCapabilities, serviceLogSources: false }),
+    );
+    expectStartIntervalNeedsNewerApi(macosProvider.capabilities);
+    expect(withoutPreservedPaths(macosProvider.capabilities)).toEqual(
+      withoutPreservedPaths({ ...macosDockerCapabilities, serviceLogSources: false }),
+    );
   });
 
   test("falls back to static capabilities when default Docker API construction cannot inspect info", async () => {
@@ -494,7 +517,7 @@ describe("provider-docker capabilities", () => {
     expect(windows.bindMountPerformance).toBe("slow");
     expect(windows.bindMounts).toBe(true);
     expect(windows.sharedCrossAppNetwork).toBe(true);
-    expect(windows.composePreservedPaths).toBeUndefined();
+    expectStartIntervalAwaitsLiveEvidence(windows);
     expect(windows.composeProjectFields).toEqual({ supported: ["configs"] });
     expect(windows).toEqual(windowsDockerCapabilities);
   });
@@ -554,7 +577,10 @@ describe("provider-docker capabilities", () => {
       ),
     );
 
-    expect(windowsProvider.capabilities).toEqual({ ...windowsDockerCapabilities, serviceLogSources: false });
+    expectStartIntervalNeedsNewerApi(windowsProvider.capabilities);
+    expect(withoutPreservedPaths(windowsProvider.capabilities)).toEqual(
+      withoutPreservedPaths({ ...windowsDockerCapabilities, serviceLogSources: false }),
+    );
     expect(windowsProvider.capabilities.bindMountPerformance).toBe("slow");
   });
 

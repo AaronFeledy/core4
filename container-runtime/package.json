@@ -98,7 +98,6 @@
     "./podman/managed-status-io": "./src/podman/managed-status-io.ts",
     "./podman/runtime-shutdown": "./src/podman/runtime-shutdown.ts",
     "./podman/container-events": "./src/podman/container-events.ts",
-    "./podman/health": "./src/podman/health.ts",
     "./podman/version-floor": "./src/podman/version-floor.ts",
     "./provider-assembly": "./src/provider-assembly.ts",
     "./project-user-realization": "./src/project-user-realization.ts"

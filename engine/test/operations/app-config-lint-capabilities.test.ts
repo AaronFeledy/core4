@@ -270,6 +270,39 @@ test.each([
   }
 });
 
+test("lint and planning lead a withheld preserved path with the provider's step", async () => {
+  // Given a selected provider that withholds healthcheck.start_interval until a host step is taken.
+  const root = await mkdtemp(join(tmpdir(), "lando-preserved-path-withheld-"));
+  try {
+    await writeFile(
+      join(root, ".lando.yml"),
+      'name: startfix\nservices:\n  web:\n    type: compose\n    image: alpine\n    home: false\n    healthcheck:\n      test: [CMD, "true"]\n      start_interval: 1s\n',
+    );
+    const selected = {
+      ...TestRuntimeProvider.capabilities,
+      composePreservedPaths: {
+        supported: [],
+        withheld: [{ key: "healthcheck.start_interval" as const, remediation: "Run `lando setup`." }],
+      },
+    };
+
+    // When
+    const result = await lint(root, selected);
+    const planned = await planWith(root, selected, () => selected);
+
+    // Then
+    const finding = result.violations.find(
+      (issue) => issue.path.join(".") === "services.web.healthcheck.start_interval",
+    );
+    expect(finding?.suggestion).toStartWith("Run `lando setup`. ");
+    if (!Result.isFailure(planned) || planned.failure._tag !== "CapabilityError")
+      throw new Error("Expected a capability failure");
+    expect(finding?.suggestion).toBe(planned.failure.remediation);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test.each(["always", "never"])(
   "lint and planning reject pull_policy: %s without artifact pull",
   async (policy) => {

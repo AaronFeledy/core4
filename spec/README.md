@@ -108,7 +108,7 @@ If you are looking for a public surface or policy:
 | Logical endpoint identity, authored endpoint shorthand and `kind` objects, plan and applied `kind` discriminators, mandatory endpoint normalization with route-declared numeric HTTP listeners, hostnames, routes, `RouteFilter.kind`, and cross-app priority | 06 | §6.6 |
 | Independent native healthcheck and lifecycle readiness authoring, defaults, disabling, terminal dependency evidence, observed listener diagnosis, and start-failure retention | 06 | §6.7 |
 | Engine readiness-attempt delegation, provider start-graph ownership, and private bounded capture | 05 + 11 | §5.3 + §10.5.1 |
-| Native-health observations (including who schedules native checks, `serviceHealth`) and readiness configuration metadata, without last-proof inference | 05 + 06 | §5.4 + §6.10 |
+| Native-health observations (including who schedules native checks, `serviceHealth`, and the managed Linux runtime's in-service scheduler) and readiness configuration metadata, without last-proof inference | 05 + 06 | §5.4 + §5.8.1 + §6.10 |
 | Certificates and trust injection | 06 | §6.8 |
 | Reserved service environment variables and agent context | 06 | §6.9 |
 | `ServiceInfo`, scoped `ServiceConnection`, and connection observation/projection | 06 | §6.10 |

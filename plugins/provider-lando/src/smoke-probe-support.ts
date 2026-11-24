@@ -51,6 +51,11 @@ export interface SmokeProbeDeps {
   readonly retryPolicy?: RetryPolicy;
   /** Verify `deploy.resources` mappings inside a container; set when the provider declares the knob. */
   readonly resourceLimits?: boolean;
+  /**
+   * The runtime service schedules healthchecks itself, so the health probe waits for it instead of
+   * triggering the check, which proves the scheduling.
+   */
+  readonly scheduledHealth?: boolean;
 }
 
 export const smokeRemediation = (operation: SmokeOperation): string => {

@@ -1,5 +1,6 @@
 import {
   type HostProxyContainerTarget,
+  type PreservedPathVerdict,
   buildProviderCapabilities,
   decodeProviderCapabilitiesFor,
   engineInfoArchitecture,
@@ -7,6 +8,7 @@ import {
   engineInfoUsernsRemap,
   hostProxyCapabilities,
   hostProxyContainerTargets,
+  withPreservedPathVerdict,
 } from "@lando/container-runtime/capabilities";
 import { volumeCreationLabels } from "@lando/container-runtime/data-plane";
 import { preflightDataRootPurge } from "@lando/container-runtime/data-root-purge";
@@ -273,9 +275,29 @@ export interface DockerEngineFacts {
   readonly containerTargets?: ReadonlyArray<HostProxyContainerTarget>;
   readonly rootless?: boolean;
   readonly usernsRemap?: boolean;
-  /** The request API version in use reaches 1.44, where Docker honors `Healthcheck.StartInterval`. */
+  /**
+   * The request API version in use reaches 1.44, where Docker honors `Healthcheck.StartInterval`.
+   * Omitted when no live endpoint answered, so the declaration cannot know yet.
+   */
   readonly healthStartInterval?: boolean;
 }
+
+const healthStartIntervalLiveRemediation =
+  "Lando declares `start_interval` only after it verifies live that Docker Engine speaks API 1.44 or newer (Docker Engine 25 and later); start Docker and rerun the command.";
+
+const healthStartIntervalOldApiRemediation =
+  "Upgrade to Docker Engine 25 or newer (API 1.44), or unset DOCKER_API_VERSION when it pins an older API.";
+
+const healthStartIntervalVerdict = (healthStartInterval: boolean | undefined): PreservedPathVerdict => {
+  switch (healthStartInterval) {
+    case true:
+      return { _tag: "supported" };
+    case undefined:
+      return { _tag: "withheld", remediation: healthStartIntervalLiveRemediation };
+    case false:
+      return { _tag: "withheld", remediation: healthStartIntervalOldApiRemediation };
+  }
+};
 
 export const dockerCapabilitiesForHost = (
   platform: HostPlatform,
@@ -298,7 +320,7 @@ export const dockerCapabilitiesForHost = (
         : ("host-ids" as const);
   const projectUserMapping =
     vmMediated || usernsRemap || rootless ? ("unsupported" as const) : ("image-renumber" as const);
-  return buildProviderCapabilities({
+  const capabilities = buildProviderCapabilities({
     bindMounts: true,
     serviceHealth: "native",
     artifactBuild: true,
@@ -320,15 +342,17 @@ export const dockerCapabilitiesForHost = (
     composeServiceFields: { supported: ["labels", "configs"] },
     authoredNetworks: true,
     composeProjectFields: { supported: ["configs"] },
-    ...(facts.healthStartInterval === true
-      ? { composePreservedPaths: { supported: ["healthcheck.start_interval"] } }
-      : {}),
     providerExtensions: [],
     hostProxy: hostProxyCapabilities(platform, containerTargets, "host.docker.internal"),
     agentSocket: {
       delivery: isVmMediatedDockerHost(platform, dockerHost) ? "volume-relay" : "bind-directory",
     },
   });
+  return withPreservedPathVerdict(
+    capabilities,
+    "healthcheck.start_interval",
+    healthStartIntervalVerdict(facts.healthStartInterval),
+  );
 };
 
 export const dockerCapabilitiesForPlatform = (platform: HostPlatform): ProviderCapabilities =>
