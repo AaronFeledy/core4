@@ -42,6 +42,11 @@ A failed `post-stop` step does not prevent poweroff from continuing or change it
     <Step name="poweroff">
       <Verify command="lando poweroff -y --format=json" expect={{ stdout: { regex: "\"outcome\":\\s*\"stopped\"" } }} />
     </Step>
+    <Hidden reason="A second poweroff finds every kept container already stopped, global services included">
+      <Step name="poweroff-again">
+        <Verify command="lando poweroff -y --format=json" expect={{ stdout: { not: { regex: "\"outcome\":\\s*\"stopped\"" } } }} />
+      </Step>
+    </Hidden>
     <Step name="cleanup">
       <Cleanup />
       <Run command="lando destroy -y" />
