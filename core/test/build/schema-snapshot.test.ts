@@ -218,8 +218,11 @@ const runGenerator = (): void => {
     timeout: generatorTimeoutMs,
   });
 
+  // A runner too loaded to finish within the bound shows as exitedDueToTimeout, not a bare null exit code.
   expect({
     exitCode: proc.exitCode,
+    signalCode: proc.signalCode,
+    exitedDueToTimeout: proc.exitedDueToTimeout ?? false,
     stdout: proc.stdout.toString(),
     stderr: proc.stderr.toString(),
   }).toMatchObject({ exitCode: 0 });
