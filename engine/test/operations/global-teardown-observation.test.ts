@@ -120,14 +120,19 @@ for (const command of ["stop", "destroy"] as const) {
         ]);
         expect(harness.calls).toContain(mode === "applied" ? "bringDown" : "bringDownObserved");
         if (mode === "applied") {
-          expect(harness.destroyed).toEqual([plan]);
-          expect(harness.destroyed[0]?.identity).toEqual({
+          const actedOn = command === "stop" ? harness.stoppedPlans : harness.destroyed;
+          expect(actedOn).toEqual([plan]);
+          expect(actedOn[0]?.identity).toEqual({
             appRoot: root,
             ownerKey: appIdentityKey("owner", root),
           });
+        } else if (command === "stop") {
+          expect(harness.stopped.map((service) => service.appRoot)).toEqual([root]);
         } else {
           expect(harness.selectedRoots.at(-1)).toBe(root);
         }
+        if (command === "stop") expect(harness.destroyed).toEqual([]);
+        if (command === "stop") expect(harness.removed).toEqual([]);
         if (command === "stop") expect(harness.eventRoots).toEqual([root, root]);
         expect(harness.calls).not.toContain("ensureReady");
       });

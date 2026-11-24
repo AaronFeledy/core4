@@ -11,6 +11,7 @@ import {
   planAppIdentity,
 } from "@lando/sdk/schema";
 import {
+  type ContainerDisposition,
   PathsService,
   PluginRegistry,
   RouterService,
@@ -92,6 +93,7 @@ export const harness = (
   } = {},
 ) => {
   const removed: ServiceRuntimeInfo[] = [];
+  const stopped: ServiceRuntimeInfo[] = [];
   const removedIds = new Set<string | undefined>();
   const states = new Map<string, "running" | "exited">(
     ["mail", "database", "sibling"].map((name) => [name, "running"]),
@@ -116,13 +118,26 @@ export const harness = (
     isAvailable: Effect.succeed(options.online ?? true),
     getStatus: Effect.succeed({ state: options.online === false ? ("idle" as const) : ("running" as const) }),
     list: () => (options.online === false ? Effect.die("offline list") : Effect.sync(observed)),
-    bringDownObserved: (observation: ServiceRuntimeInfo) =>
+    bringDownObserved: (observation: ServiceRuntimeInfo, containers: ContainerDisposition) =>
       Effect.sync(() => {
-        states.delete(String(observation.service));
-        removedIds.add(observation.containerId);
-        if (options.race) return { service: observation.service, action: "absent" as const };
-        removed.push(observation);
-        return { service: observation.service, action: "removed" as const };
+        const name = String(observation.service);
+        const containerId = observation.containerId;
+        if (options.race || containerId === undefined) {
+          states.delete(name);
+          removedIds.add(containerId);
+          return { service: observation.service, action: "absent" as const };
+        }
+        if (containers === "remove") {
+          states.delete(name);
+          removedIds.add(containerId);
+          removed.push(observation);
+          return { service: observation.service, containerId, action: "removed" as const };
+        }
+        if (states.get(name) !== "running")
+          return { service: observation.service, containerId, action: "already-stopped" as const };
+        states.set(name, "exited");
+        stopped.push(observation);
+        return { service: observation.service, containerId, action: "stopped" as const };
       }),
     bringDown: () => Effect.die("selected stop must preserve volumes, network and applied state"),
     ensureReady: Effect.die("stop must not start runtime"),
@@ -218,5 +233,5 @@ export const harness = (
         return yield* executeGlobalStopSelection(resolved, selection);
       }).pipe(Effect.provideService(RouterService, router), Effect.provide(layer)),
     );
-  return { resolved, removed, states, published, run, observed, layer };
+  return { resolved, removed, stopped, states, published, run, observed, layer };
 };

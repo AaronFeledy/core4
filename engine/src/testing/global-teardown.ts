@@ -20,6 +20,7 @@ import type { LandoEvent, RuntimeProviderShape } from "@lando/sdk/services";
 import {
   type BringDownOptions,
   type BringDownOutcome,
+  type ContainerDisposition,
   EventService,
   FileSystem,
   GlobalAppService,
@@ -80,6 +81,7 @@ export const globalTeardownHarness = async (
     readonly orphanRoot?: AbsolutePath;
     readonly volumes?: ReadonlyArray<VolumeInfo>;
     readonly destroyOutcome?: BringDownOutcome;
+    readonly stopOutcome?: BringDownOutcome;
     readonly availability?: Effect.Effect<boolean, ProviderUnavailableError>;
     readonly status?: RuntimeProviderShape["getStatus"];
     readonly inspectAppliedFileSync?: RuntimeProviderShape["inspectAppliedFileSync"];
@@ -105,6 +107,8 @@ export const globalTeardownHarness = async (
   const destroyOptions: BringDownOptions[] = [];
   const destroyed: AppPlan[] = [];
   const removed: ServiceRuntimeInfo[] = [];
+  const stopped: ServiceRuntimeInfo[] = [];
+  const stoppedPlans: AppPlan[] = [];
   const eventRoots: string[] = [];
   const selectedRoots: string[] = [];
   const routeRoots: string[] = [];
@@ -170,22 +174,46 @@ export const globalTeardownHarness = async (
       Effect.sync((): BringDownOutcome => {
         calls.push("bringDown");
         destroyOptions.push(options);
+        if (options.containers === "stop") {
+          if (target.plan !== undefined) stoppedPlans.push(target.plan);
+          return (
+            input.stopOutcome ?? {
+              kind: "stopped",
+              containers: Object.values(target.plan?.services ?? {}).map((service) => ({
+                service: service.name,
+                containerId: `${service.name}-container`,
+                action: "stopped" as const,
+              })),
+            }
+          );
+        }
         if (target.plan !== undefined) destroyed.push(target.plan);
         return (
           input.destroyOutcome ?? { kind: "removed", containers: [], volumesRemoved: { data: 0, cache: 0 } }
         );
       }),
-    bringDownObserved: Effect.fnUntraced(function* (service: ServiceRuntimeInfo) {
+    bringDownObserved: Effect.fnUntraced(function* (
+      service: ServiceRuntimeInfo,
+      containers: ContainerDisposition,
+    ) {
       calls.push("bringDownObserved");
       if (input.stopFailure)
         return yield* Effect.fail(
           new ProviderUnavailableError({
-            message: "remove failed",
+            message: "bring-down failed",
             providerId: "lando",
             operation: "bringDownObserved",
-            remediation: "Remove failed",
+            remediation: "Bring-down failed",
           }),
         );
+      const containerId = service.containerId;
+      if (containers === "stop") {
+        if (containerId === undefined) return { service: service.service, action: "absent" as const };
+        if (service.status !== "running")
+          return { service: service.service, containerId, action: "already-stopped" as const };
+        stopped.push(service);
+        return { service: service.service, containerId, action: "stopped" as const };
+      }
       removed.push(service);
       return { service: service.service, action: "removed" as const };
     }),
@@ -338,6 +366,8 @@ export const globalTeardownHarness = async (
     destroyOptions,
     destroyed,
     removed,
+    stopped,
+    stoppedPlans,
     eventRoots,
     selectedRoots,
     routeRoots,

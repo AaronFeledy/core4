@@ -118,7 +118,7 @@ test("selected global stop retries failed route cleanup after its container was 
   }
 });
 
-test("selected global stop without a selectable router removes the service and warns instead of republishing", async () => {
+test("selected global stop without a selectable router stops the service and warns instead of republishing", async () => {
   // Given: a routed global app and a router that cannot be selected.
   const dataRoot = await mkdtemp(join(tmpdir(), "lando-global-stop-unavailable-router-"));
   try {
@@ -166,9 +166,10 @@ test("selected global stop without a selectable router removes the service and w
       ),
     );
 
-    // Then: the selected container is removed and the skipped route update is reported.
+    // Then: the selected container is stopped and kept, and the skipped route update is reported.
     expect(result).toMatchObject({ outcome: "stopped", servicesStopped: ["ssh-agent"] });
-    expect(harness.removed.map((removed) => removed.containerId)).toEqual(["ssh-agent-container"]);
+    expect(harness.stopped.map((stopped) => stopped.containerId)).toEqual(["ssh-agent-container"]);
+    expect(harness.removed).toEqual([]);
     const warnings = harness.events.flatMap((event) => (event._tag === "message.warn" ? [event.body] : []));
     expect(warnings).toHaveLength(1);
     expect(warnings[0]).toContain("not updated");

@@ -47,8 +47,9 @@ test.each([false, true])("targets discovery with route failure=%s", async (route
     );
 
     expect(result._tag).toBe(routeFailure ? "Failure" : "Success");
-    expect(configured.destroyed).toEqual([plan]);
-    expect(configured.destroyOptions).toEqual([{ containers: "remove", volumes: false, removeState: false }]);
+    expect(configured.stoppedPlans).toEqual([plan]);
+    expect(configured.destroyed).toEqual([]);
+    expect(configured.destroyOptions).toEqual([{ containers: "stop" }]);
     expect(configured.events[0]).toMatchObject({
       _tag: "pre-global-stop",
       app: { root: actualRoot },
@@ -59,6 +60,8 @@ test.each([false, true])("targets discovery with route failure=%s", async (route
     expect(configured.calls).toEqual([
       "pre-global-stop",
       "bringDown",
+      // Whole stop also looks for owned containers the applied plan no longer names.
+      "list",
       "removeRoutes",
       ...(routeFailure ? [] : ["post-global-stop"]),
     ]);
@@ -68,7 +71,8 @@ test.each([false, true])("targets discovery with route failure=%s", async (route
     const configuredReceipt = await Effect.runPromise(
       readGlobalReconciliation().pipe(Effect.provide(configured.layer)),
     );
-    expect(actualReceipt.pending).toEqual(routeFailure ? pending : [pending[2]]);
+    // Stop proves only route cleanup: kept containers leave container removal pending.
+    expect(actualReceipt.pending).toEqual(routeFailure ? pending : [pending[0], pending[2]]);
     expect(configuredReceipt.pending).toEqual(pending);
     expect(await readdir(actualData)).toContain(`.lando-global-${appMutationLockKey("global", actualRoot)}`);
     expect(await readdir(configuredData)).not.toContain(
@@ -119,18 +123,20 @@ test.each([
     // Then: an installed router withdraws the discovered root's routes and cleanup proof is recorded;
     // with none installed, withdrawal is skipped with a warning and routes stay pending.
     expect(result.outcome).toBe("stopped");
-    expect(configured.destroyed).toEqual([plan]);
+    expect(configured.stoppedPlans).toEqual([plan]);
+    expect(configured.destroyed).toEqual([]);
     expect(configured.builtRoots).toEqual(withdrawn ? [actualRoot] : []);
     expect(configured.routeRoots).toEqual(withdrawn ? [actualRoot] : []);
     expect(configured.routeOwners).toEqual(withdrawn ? [routeOwnerFromPlan(plan)] : []);
     expect(configured.calls).toEqual([
       "pre-global-stop",
       "bringDown",
+      "list",
       withdrawn ? "removeRoutes" : "message.warn",
       "post-global-stop",
     ]);
     const receipt = await Effect.runPromise(readGlobalReconciliation().pipe(Effect.provide(actual.layer)));
-    expect(receipt.pending).toEqual(withdrawn ? [] : pending);
+    expect(receipt.pending).toEqual(withdrawn ? [pending[0]] : pending);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -176,7 +182,7 @@ test("rebinds a router selected at bootstrap to the discovered root", async () =
     expect(configured.builtRoots).toEqual([join(configuredData, "global"), actualRoot]);
     expect(configured.routeOwners).toEqual([routeOwnerFromPlan(plan)]);
     const receipt = await Effect.runPromise(readGlobalReconciliation().pipe(Effect.provide(actual.layer)));
-    expect(receipt.pending).toEqual([pending[2]]);
+    expect(receipt.pending).toEqual([pending[0], pending[2]]);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

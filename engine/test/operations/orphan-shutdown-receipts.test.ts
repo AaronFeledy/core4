@@ -104,7 +104,7 @@ test("orphan teardown preserves attributed observations when service names repea
   expect(result.shutdownObservations).toEqual([obsA, obsB, absent]);
 });
 
-test("global selected stop preserves absent removal observations", async () => {
+test("global selected stop preserves absent stop observations", async () => {
   // Given
   const absent: ServiceShutdownObservation = {
     appId: globalId,
@@ -144,5 +144,10 @@ test("global selected stop preserves absent removal observations", async () => {
     ),
   );
   // Then
-  expect(receipt).toEqual({ changed: false, services: [], shutdownObservations: [absent] });
+  expect(receipt).toEqual({
+    changed: false,
+    services: [],
+    containers: [{ service: ServiceName.make("mail"), action: "absent" }],
+    shutdownObservations: [absent],
+  });
 });
