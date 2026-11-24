@@ -682,6 +682,13 @@ describe("php serving modes (via:)", () => {
     expect(plan.environment.APACHE_DOCUMENT_ROOT).toBeUndefined();
   });
 
+  test("via cli accepts an empty routes list", async () => {
+    const plan = await composePhpPlan(php82ServiceType, { type: "php:8.2", via: "cli", routes: [] });
+
+    expect(plan.endpoints).toEqual([]);
+    expect(plan.command).toEqual(["tail", "-f", "/dev/null"]);
+  });
+
   test("rejects unknown via with remediation", async () => {
     await expectRejectsToThrow(
       composePhpPlan(php82ServiceType, { type: "php:8.2", via: "nginx" }),
