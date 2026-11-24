@@ -17,11 +17,11 @@ import {
 } from "@lando/sdk/schema";
 import { Effect, Predicate, Schema, SchemaTransformation } from "effect";
 import * as AST from "effect/SchemaAST";
+import { buildSchemaSnapshot } from "../../../scripts/build-schema-snapshot.ts";
 import compiledCommands from "../../src/cli/compiled-commands.ts";
 import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
-const generatorPath = resolve(repoRoot, "scripts/build-schema-snapshot.ts");
 const bundledPluginManifestsPath = resolve(repoRoot, "sdk/test/fixtures/bundled-plugin-manifests.json");
 const commandSchemaIndexPath = resolve(repoRoot, "dist/command-schemas/index.json");
 const deprecationNoticeArtifactPath = resolve(repoRoot, "dist/schemas/deprecation-notice.json");
@@ -206,30 +206,12 @@ const unexplainedNullPaths = (schema: Schema.Top, document: unknown): readonly s
   return [...unexplained.values()];
 };
 
-// Generation can take 5–9 seconds on slower runners. Bound both the child
-// and the hook/test that owns it without raising the suite's default timeout.
-const generatorTimeoutMs = 15_000;
-const generatorTestTimeoutMs = 20_000;
-const runGenerator = (): void => {
-  const proc = Bun.spawnSync([process.execPath, generatorPath], {
-    cwd: repoRoot,
-    stdout: "pipe",
-    stderr: "pipe",
-    timeout: generatorTimeoutMs,
-  });
-
-  // A runner too loaded to finish within the bound shows as exitedDueToTimeout, not a bare null exit code.
-  expect({
-    exitCode: proc.exitCode,
-    signalCode: proc.signalCode,
-    exitedDueToTimeout: proc.exitedDueToTimeout ?? false,
-    stdout: proc.stdout.toString(),
-    stderr: proc.stderr.toString(),
-  }).toMatchObject({ exitCode: 0 });
-};
+// One generator run takes 8-16 s on loaded runners. These bounds only catch a hung
+// run; a budget near the run time fails on runner load, not on generator behavior.
+const generatorTimeoutMs = 120_000;
 
 describe("schema snapshot artifact-set gate", () => {
-  beforeAll(runGenerator, generatorTestTimeoutMs);
+  beforeAll(buildSchemaSnapshot, generatorTimeoutMs);
 
   test("authored-input artifacts advertise null only where the encoded source accepts it", async () => {
     // Given the emitted authored-input artifact families, including registered lockfiles.
@@ -936,12 +918,12 @@ describe("schema snapshot artifact-set gate", () => {
         generatedPaths.map(async (path) => [path, await readFile(resolve(repoRoot, path), "utf8")] as const),
       );
 
-      runGenerator();
+      await buildSchemaSnapshot();
       const after = await Promise.all(
         generatedPaths.map(async (path) => [path, await readFile(resolve(repoRoot, path), "utf8")] as const),
       );
       expect(after).toEqual(before);
     },
-    generatorTestTimeoutMs,
+    generatorTimeoutMs,
   );
 });

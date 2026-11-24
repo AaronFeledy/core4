@@ -1694,8 +1694,20 @@
       "digest": "3dc4ef3e61a3dcd96edb28a5880c84c5be9757616556b65a42d963b1a40c5807"
     },
     {
+      "fixture": "docs/guides/wait-for-your-app/fixtures/native-health",
+      "digest": "79a2578f095934e8a716aa89d565f70227ff98c8098f7d50b1a60b8dd2f0b511"
+    },
+    {
       "fixture": "docs/guides/wait-for-your-app/fixtures/native-host-invalid",
       "digest": "bcc4567082628a6d0c5a64c4b948451281715d8ae951c7d969ef5891d8e86478"
+    },
+    {
+      "fixture": "docs/guides/wait-for-your-app/fixtures/native-start-interval-cadence",
+      "digest": "6aea421df8c4dfafc04679538a1ac4c8ffb2fa2d19e2f3916b2205f6159cf421"
+    },
+    {
+      "fixture": "docs/guides/wait-for-your-app/fixtures/native-start-interval",
+      "digest": "e171da42cc4ffb02addb593a6fda0f71f54f87ef0905f60072e585df9be0ebdb"
     },
     {
       "fixture": "docs/guides/wait-for-your-app/fixtures/native-user-invalid",

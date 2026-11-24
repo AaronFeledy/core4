@@ -14,6 +14,10 @@ export type ServiceHealthObservation = typeof ServiceHealthObservation.Type;
 const RunningServiceRun = Schema.Struct({
   status: Schema.Literal("running"),
   health: Schema.optionalKey(ServiceHealthObservation),
+  healthCheckedAt: Schema.optionalKey(Schema.String).annotate({
+    description:
+      "UTC ISO-8601 time (`YYYY-MM-DDTHH:mm:ss.sssZ`), on the engine's clock, when the engine last finished a native healthcheck in this run.",
+  }),
   exitCode: Schema.optionalKey(Schema.Never),
 });
 
@@ -21,17 +25,19 @@ const ExitedServiceRun = Schema.Struct({
   status: Schema.Literal("exited"),
   exitCode: Schema.optionalKey(Schema.Number.check(Schema.isInt())),
   health: Schema.optionalKey(Schema.Never),
+  healthCheckedAt: Schema.optionalKey(Schema.Never),
 });
 
 const IdleServiceRun = Schema.Struct({
   status: Schema.Literals(["absent", "created", "paused", "restarting", "dead", "removing", "unknown"]),
   health: Schema.optionalKey(Schema.Never),
+  healthCheckedAt: Schema.optionalKey(Schema.Never),
   exitCode: Schema.optionalKey(Schema.Never),
 });
 
 /**
- * One closed run-state observation, normalized once at the provider boundary. `health` is only
- * representable while `running` and `exitCode` only once the container has `exited`,
+ * One closed run-state observation, normalized once at the provider boundary. `health` and
+ * `healthCheckedAt` are only representable while `running` and `exitCode` only once the container has `exited`,
  * so a record cannot claim a stopped-but-healthy or running-with-exit-code container.
  *
  * - `absent`: the provider found no container for the service.

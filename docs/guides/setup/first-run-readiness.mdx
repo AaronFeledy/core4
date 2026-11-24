@@ -57,6 +57,8 @@ When the runtime is positively identified as idle, `lando stop` completes host-s
 
 On Linux, the `managed-runtime-container-cgroups` check reports whether the managed runtime gives each container its own cgroup, which `deploy.resources` limits need. Lando starts the runtime in a systemd user scope when your user has a systemd user session; without one the check warns and names the step that enables it, such as `loginctl enable-linger $USER`. For a running runtime the check reports where the runtime runs now and how many running containers still share its cgroup because they were created before it moved into the scope; recreate those with `lando rebuild`. For an idle runtime it reports what the next launch will do. When the `lando` provider applies `deploy.resources`, `lando setup --smoke` also starts a limited container and checks that its cgroup holds the memory, process, CPU, and memory-reservation values it asked for.
 
+On Linux, the `managed-runtime-current` check compares the installed runtime with the one this Lando build installs. When yours is older it warns and names `lando setup`, which updates it; an older runtime keeps working. The check also reports whether the runtime's service schedules native healthchecks, which [Make start wait for your app](../services/wait-for-your-app.mdx#inspect-configuration-without-claiming-readiness) explains.
+
 If doctor reports an orphaned runtime process, follow the printed remediation. A rootless child of the verified managed service is part of that service, not an orphan. Doctor gives no kill advice when it cannot read the process ancestry.
 
 ## Verify
@@ -83,6 +85,19 @@ expect(report.result.checks).toContainEqual(expect.objectContaining({
   name: "setup-readiness",
   status: "warn",
   context: expect.objectContaining({ lastFailedStep: "shell", stepShell: "unavailable" }),
+}));`} />
+    </Step>
+  </Scenario>
+  <Scenario id="older-managed-runtime" platforms={["linux"]} render={false} reason="Check that doctor warns with lando setup when the installed managed runtime is older than this build's.">
+    <Step name="read-older-runtime">
+      <Run runtime="library" displayCode="lando doctor --section provider --format=json" code={`yield* Effect.promise(() => Bun.write(context.testDir + "/host/data/runtime/bin/.runtime-installed-version", "0.1.0\n"));
+const run = yield* context.runCli(["doctor", "--section", "provider", "--format=json"]);
+const report = JSON.parse(run.stdout);
+expect(report.result.checks).toContainEqual(expect.objectContaining({
+  name: "managed-runtime-current",
+  status: "warn",
+  context: expect.objectContaining({ installedVersion: "0.1.0" }),
+  solutions: [expect.objectContaining({ description: expect.stringContaining("lando setup") })],
 }));`} />
     </Step>
   </Scenario>

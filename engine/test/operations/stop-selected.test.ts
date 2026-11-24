@@ -727,7 +727,12 @@ describe("selected app stop", () => {
 
   test("does not report or warn about a paused sibling as still running", async () => {
     const plannedApp = twoServicePlan();
-    const { health: _health, exitCode: _exitCode, ...webRuntime } = runtimeFor(plannedApp, web.name);
+    const {
+      health: _health,
+      healthCheckedAt: _healthCheckedAt,
+      exitCode: _exitCode,
+      ...webRuntime
+    } = runtimeFor(plannedApp, web.name);
     const containers = new Map<string, ServiceRuntimeInfo>([
       ["web", { ...webRuntime, status: "paused" }],
       ["redis", runtimeFor(plannedApp, redis.name)],

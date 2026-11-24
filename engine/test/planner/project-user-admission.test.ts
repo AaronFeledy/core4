@@ -10,6 +10,7 @@ const capabilities = (
 ): ProviderCapabilities => ({
   ...buildProviderCapabilities({
     bindMounts: true,
+    serviceHealth: "native",
     bindMountPerformance: "native",
     tlsCertificates: "lando",
     rootless: true,

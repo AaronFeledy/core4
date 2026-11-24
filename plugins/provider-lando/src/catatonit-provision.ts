@@ -181,7 +181,7 @@ export const ensureManagedCatatonit = Effect.fn("ProviderLando.ensureManagedCata
   if (prepared.installedVersion !== LEGACY_NATIVE_INIT_BRIDGE_VERSION) {
     return yield* Effect.fail(
       provisionError(
-        prepared.installedVersion === CATATONIT_MANIFEST.recipeRuntimeVersion
+        runtimeRecipeIncludesNativeInitHelper(prepared.installedVersion)
           ? prepared.helperReady
             ? `The helper-bearing runtime ${prepared.installedVersion} is missing verified native init license notices; Debian fallback is not allowed.`
             : `The helper-bearing runtime ${prepared.installedVersion} is missing a verified native init helper; Debian fallback is not allowed.`

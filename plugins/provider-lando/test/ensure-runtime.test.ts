@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import type { PodmanApiClient } from "@lando/container-runtime/engine-api";
@@ -740,6 +740,72 @@ describe("ensureRuntime", () => {
       expect(terminatedPidSet(calls)).toEqual([4321]);
       expect(launchCount(calls)).toBe(1);
       await expectPersistedLaunchState(p, 9999, "2.0.0");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a runtime without the healthcheck scheduler keeps its running service's launch identity", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-ensure-runtime-pre-scheduler-"));
+    try {
+      // Given: runtime 0.1.8 is installed and its owned service runs with the launch env it got.
+      const calls: Call[] = [];
+      const p = paths(dir);
+      const runtimeBinDir = join(dir, "bin");
+      await mkdir(runtimeBinDir, { recursive: true });
+      await writeFile(join(runtimeBinDir, ".runtime-installed-version"), "0.1.8\n");
+      await writeFile(p.pidPath, "4321");
+      await writeLaunchState(p, 4321);
+
+      // When: an ordinary command ensures the runtime.
+      await Effect.runPromise(
+        ensureRuntime({
+          platform: "linux",
+          podmanApi: reachableApi(),
+          serviceRunner: serviceRunner(calls, true),
+          runtimeBinDir,
+          ...p,
+        }),
+      );
+
+      // Then: the service is reused, and nothing opts it into healthcheck scheduling.
+      expect(terminatedPidSet(calls)).toEqual([]);
+      expect(launchCount(calls)).toBe(0);
+      expect(await readFile(join(p.configDir, "containers.conf"), "utf8")).not.toContain(
+        "healthcheck_events",
+      );
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a scheduler-bearing runtime launches its service opted in and records the installed version", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-ensure-runtime-scheduler-"));
+    try {
+      const calls: Call[] = [];
+      const p = paths(dir);
+      const runtimeBinDir = join(dir, "bin");
+      await mkdir(runtimeBinDir, { recursive: true });
+      await writeFile(join(runtimeBinDir, ".runtime-installed-version"), "0.1.9\n");
+
+      await Effect.runPromise(
+        ensureRuntime({
+          platform: "linux",
+          podmanApi: apiReachableAfterLaunch(calls),
+          serviceRunner: serviceRunner(calls, true),
+          runtimeBinDir,
+          ...p,
+        }),
+      );
+
+      expect(launchCount(calls)).toBe(1);
+      const record = JSON.parse(await readFile(`${p.pidPath}.launch.json`, "utf8"));
+      expect(record).toMatchObject({ pid: 9999, runtimeBundleVersion: "0.1.9" });
+      expect(record.env.PODMAN_SERVICE_HEALTHCHECKS).toBe("1");
+      expect(record.env.DISABLE_HC_SYSTEMD).toBe("true");
+      expect(await readFile(join(p.configDir, "containers.conf"), "utf8")).toContain(
+        "healthcheck_events = false\n",
+      );
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

@@ -17,12 +17,18 @@ export type ProviderErrorContext = {
   }) => Effect.Effect<Redactor>;
 };
 
+/** Docker Engine API floors of request fields: 1.44 honors `Healthcheck.StartInterval`, 1.48 endpoint `GwPriority`. */
+export type DockerFeatureApiVersion = "1.44" | "1.48";
+
 export interface EngineHttpRequest {
   readonly method: "GET" | "POST" | "PUT" | "DELETE";
   readonly path: `/${string}`;
   readonly body?: unknown;
-  /** Docker-only feature opt-in; uses the negotiated prefix unless advertised support is known. */
-  readonly minimumApiVersion?: "1.48";
+  /**
+   * Docker-only feature floors this request's fields need. Docker raises the request to the highest
+   * one the daemon advertises; other engines ignore it.
+   */
+  readonly minimumApiVersions?: ReadonlyArray<DockerFeatureApiVersion>;
   readonly headers?: Readonly<Record<string, string>>;
   readonly signal?: AbortSignal;
   readonly stdin?: AsyncIterable<Uint8Array>;

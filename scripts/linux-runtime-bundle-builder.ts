@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import type { LinuxBundleBuildEngine } from "./linux-runtime-bundle-engines.ts";
 import { runWithCleanup } from "./runtime-bundle-cleanup.ts";
+import { readRuntimeBundleSources, sourcePatchesOf } from "./runtime-bundle-sources.ts";
 
 const repoRoot = resolve(import.meta.dir, "..");
 const recipeRoot = join(repoRoot, "scripts", "runtime-bundle-builder");
@@ -64,8 +65,12 @@ const stageLinuxRuntimeBundleContext = async (context: string): Promise<void> =>
   const sources = "plugins/provider-lando/runtime-bundle-sources.json";
   await mkdir(dirname(join(context, sources)), { recursive: true });
   await copyFile(join(repoRoot, sources), join(context, sources));
-  const patch = "netavark-v2.0.0-systemd-user-bus.patch";
-  await copyFile(join(repoRoot, "scripts", "patches", patch), join(scriptsDir, "patches", patch));
+  const patches = new Set(
+    Object.values((await readRuntimeBundleSources()).bundles)
+      .flatMap((group) => group.components.flatMap(sourcePatchesOf))
+      .map((patch) => patch.file),
+  );
+  for (const file of patches) await copyFile(join(repoRoot, file), join(context, file));
 };
 
 /** SHA-256 over the platform, build arguments, and every staged context file's path and bytes. */

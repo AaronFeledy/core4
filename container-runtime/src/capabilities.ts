@@ -3,6 +3,7 @@ import { ProviderCapabilityError } from "@lando/sdk/errors";
 import {
   type AgentSocketDelivery,
   type AgentSocketProviderCapabilities,
+  type ComposePreservedPathKey,
   type HostPlatform,
   ProviderCapabilities,
   type ProviderCapabilities as ProviderCapabilitiesShape,
@@ -104,12 +105,51 @@ export const engineInfoUsernsRemap = (info: unknown): boolean | undefined => {
   );
 };
 
+/** A provider's verdict on one preserved path: realized, or withheld with the step that enables it. */
+export type PreservedPathVerdict =
+  | { readonly _tag: "supported" }
+  | { readonly _tag: "withheld"; readonly remediation: string };
+
+/**
+ * Records one preserved path's verdict on a declaration. Entries for every other path, supported
+ * or withheld, stay as the declaration had them.
+ */
+export const withPreservedPathVerdict = (
+  capabilities: ProviderCapabilitiesShape,
+  key: ComposePreservedPathKey,
+  verdict: PreservedPathVerdict,
+): ProviderCapabilitiesShape => {
+  const supported = (capabilities.composePreservedPaths?.supported ?? []).filter((entry) => entry !== key);
+  const withheld = (capabilities.composePreservedPaths?.withheld ?? []).filter((entry) => entry.key !== key);
+  switch (verdict._tag) {
+    case "supported":
+      return {
+        ...capabilities,
+        composePreservedPaths: {
+          supported: [...supported, key],
+          ...(withheld.length === 0 ? {} : { withheld }),
+        },
+      };
+    case "withheld":
+      return {
+        ...capabilities,
+        composePreservedPaths: {
+          supported,
+          withheld: [...withheld, { key, remediation: verdict.remediation }],
+        },
+      };
+    default:
+      return verdict satisfies never;
+  }
+};
+
 export interface ProviderCapabilityConstants {
   readonly bindMounts: ProviderCapabilitiesShape["bindMounts"];
   readonly bindMountPerformance: ProviderCapabilitiesShape["bindMountPerformance"];
   readonly volumeSnapshot?: ProviderCapabilitiesShape["volumeSnapshot"];
   readonly volumeArchive?: ProviderCapabilitiesShape["volumeArchive"];
   readonly serviceFileCopy?: ProviderCapabilitiesShape["serviceFileCopy"];
+  readonly serviceHealth: ProviderCapabilitiesShape["serviceHealth"];
   readonly artifactBuild?: ProviderCapabilitiesShape["artifactBuild"];
   readonly artifactPull?: ProviderCapabilitiesShape["artifactPull"];
   readonly artifactExport?: ProviderCapabilitiesShape["artifactExport"];
@@ -145,7 +185,7 @@ export const buildProviderCapabilities = (
     serviceInit: true,
     serviceLogs: true,
     serviceLogSources: true,
-    serviceHealth: "lando",
+    serviceHealth: constants.serviceHealth,
     hostReachability: "emulated",
     sharedCrossAppNetwork: true,
     ...(constants.authoredNetworks === undefined ? {} : { authoredNetworks: constants.authoredNetworks }),
