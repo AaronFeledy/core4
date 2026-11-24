@@ -22,7 +22,7 @@ Run this from any directory on your host:
 lando poweroff -y
 ```
 
-Each app stops through the same lifecycle as `lando stop` from its own app root, so its Landofile stop steps, file-sync drain, and route withdrawal still run. An app whose applied record is gone is stopped anyway: Lando removes the containers it can prove belong to that root and keeps their named volumes. Apps whose containers have already exited are skipped, so their stop steps do not run again.
+Each app stops through the same lifecycle as `lando stop` from its own app root, so its Landofile stop steps, file-sync drain, and route withdrawal still run. An app whose applied record is gone is stopped anyway: Lando stops the containers it can prove belong to that root and keeps them and their named volumes. Like `lando stop`, poweroff keeps every user app's containers, so the next `lando start` starts them again in place. Apps whose containers have already exited are skipped, so their stop steps do not run again.
 
 The summary lists apps that stopped under `Powered off`. If Lando checked an app and found nothing to stop, it lists that app under `Nothing to stop`.
 
@@ -40,7 +40,6 @@ A failed `post-stop` step does not prevent poweroff from continuing or change it
       <Verify event="post-start" />
     </Step>
     <Step name="poweroff">
-      <Run command="lando poweroff -y --format=json" />
       <Verify command="lando poweroff -y --format=json" expect={{ stdout: { regex: "\"outcome\":\\s*\"stopped\"" } }} />
     </Step>
     <Step name="cleanup">

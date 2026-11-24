@@ -321,7 +321,7 @@ This command checks PHP style, not whether the module works or its XML is valid.
 
 ## Stop or remove the local app
 
-To pause the app without removing containers, run `lando stop`. The cron sidecar stops with it. To remove its containers and networks, run:
+To pause the app, run `lando stop`. It keeps the containers, and the cron sidecar stops with them. To remove its containers and networks, run:
 
 ```sh
 lando destroy -y
