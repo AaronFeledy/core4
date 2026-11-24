@@ -39,7 +39,10 @@ const homebrewPrefixes = (env: HostEnv): ReadonlyArray<string> => {
   ];
 };
 
-const locateBundles = async (env: HostEnv, platform: string): Promise<ReadonlyArray<HomebrewBundle>> => {
+export const locateBundles = async (
+  env: HostEnv,
+  platform: string,
+): Promise<ReadonlyArray<HomebrewBundle>> => {
   if (platform === "win32") return [];
   const bundles: HomebrewBundle[] = [];
   for (const prefix of homebrewPrefixes(env)) {

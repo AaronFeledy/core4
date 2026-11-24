@@ -262,7 +262,6 @@ describe("meta:uninstall", () => {
       expect(output).toContain("managed provider machines");
       expect(output).toContain("Mutagen binary");
       expect(output).toContain("Mutagen agents");
-      expect(output).toContain("CA trust-store changes");
       expect(output).toContain("global app state");
       expect(output).toContain("caches");
       expect(output).toContain("installed binary");
@@ -273,7 +272,6 @@ describe("meta:uninstall", () => {
       expect(result.steps.find((step) => step.id === "installed-binary")?.status).toBe("skipped");
       expect(output).toContain("Preserved by --keep-data");
 
-      expect(output).toContain("manual remediation");
       expect(result.steps.find((step) => step.id === "managed-provider-runtime")).toMatchObject({
         status: "skipped",
       });

@@ -88,6 +88,18 @@ sudo rm -- /etc/systemd/system/user@.service.d/delegate.conf
 sudo systemctl daemon-reload
 ```
 
+## Remove the local CA
+
+Uninstall leaves the local CA that `lando setup` created in place and trusted, in both `--keep-data` and `--purge`. Every Lando installation on this machine shares that CA, and so does `mkcert` if you use it directly, so uninstalling one installation can't tell whether anything else still needs it.
+
+The plan lists the CA as a manual step with everything you need to remove it yourself: its fingerprint, the directory that holds it and its private key, and one command for each trust store on this machine that may hold it. That covers the system trust store, browser certificate databases, Homebrew's CA bundle, and the Windows store under WSL. The commands use your operating system's tools, not Lando, so they still work after `--purge` removes Lando. Preview them with:
+
+```sh
+lando uninstall --purge --dry-run
+```
+
+Run them after you've uninstalled every Lando installation that uses the CA. Then delete the directory the step names, unless another tool uses it.
+
 ## Shell profile entries
 
 `lando setup` can write a `# >>> LANDO4 shellenv >>>` block to your POSIX shell profile. Each block exports the `LANDO_USER_DATA_ROOT` it was written for. `--purge` strips only the block written for the data root you are uninstalling. Blocks for other installs stay, and the plan names their data roots as `user-owned`. A block whose data root is missing or unreadable is a `manual` step: remove it by hand if it belongs to this install. `--keep-data` leaves every block in place.
