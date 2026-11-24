@@ -258,7 +258,7 @@ service, site sync, and tooling. They do not download Drupal:
     <Step name="test-and-lint">
       <Run command="lando start" />
       <Verify command="lando phpunit --filter ExampleUnitTest tests/src/Unit" expect={{ stdout: { regex: "OK \\(1 test" } }} />
-      <Verify command="lando phpunit tests/src/Kernel" expect={{ stdout: { regex: "OK \\(1 test" } }} />
+      <Verify command="lando phpunit tests/src/Kernel" expect={{ stdout: { regex: "(?:^|\\r?\\n)(?:OK \\(1 test, 1 assertion\\)|OK, but there were issues!\\r?\\nTests: 1, Assertions: 1, Deprecations: 1\\.)(?:\\r?\\n|$)" } }} />
       <Verify command="lando phpunit tests/src/FunctionalJavascript" expect={{ stdout: { regex: "OK \\(1 test" } }} />
       <Verify command="lando phpcs" />
       <Verify command="lando phpstan analyse --no-progress" />
