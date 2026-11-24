@@ -37,7 +37,8 @@ test("transport shutdown leaves the parent claim intact without waiting for its 
       withWorkerRecordLock(app, paths, () => Effect.promise(() => session.close()), privateFileAccess),
     );
     expect(await Bun.file(recordPath).text()).toBe("parent-owned-claim");
-    expect(await readdir(join(recordPath, ".."))).toEqual(["worker.json"]);
+    // Session shutdown keeps the container-facing directory running containers bind.
+    expect((await readdir(join(recordPath, ".."))).sort()).toEqual(["container", "worker.json"]);
     await Effect.runPromise(terminateOwnedHostProxyWorker(app, { paths, privateFileAccess }));
     expect(await Bun.file(recordPath).exists()).toBe(false);
   } finally {

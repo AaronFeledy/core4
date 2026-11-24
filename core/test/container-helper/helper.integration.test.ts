@@ -7,6 +7,10 @@ import { logFileHelperExecArgv } from "@lando/container-runtime/container-helper
 import { resolveContainerHelper } from "@lando/container-runtime/container-helper/assets";
 import { AGENT_CONTEXT_ENV_ALLOWLIST } from "@lando/engine/config/agent-env";
 import type { HostProxyRunLandoExecutorInput } from "@lando/engine/subsystems/host-proxy/dispatch";
+import {
+  HOST_PROXY_CREDENTIALS_NAME,
+  hostProxyContainerDirectory,
+} from "@lando/engine/subsystems/host-proxy/run-directory";
 import { createHostProxyRunLandoSession } from "@lando/engine/subsystems/host-proxy/transport";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { AbsolutePath } from "@lando/sdk/schema";
@@ -270,7 +274,10 @@ describe.skipIf(process.platform !== "linux")("host-proxy client against a real 
         cwd: "/tmp",
         env: {
           LANDO_HOST_PROXY_SOCKET: session.socketPath ?? "",
-          LANDO_HOST_PROXY_CREDENTIALS_FILE: join(dirname(session.shimPath), "credentials"),
+          LANDO_HOST_PROXY_CREDENTIALS_FILE: join(
+            hostProxyContainerDirectory(dirname(session.shimPath)),
+            HOST_PROXY_CREDENTIALS_NAME,
+          ),
           LANDO_HOST_PROXY_CALLER: "web",
           LANG: "C.UTF-8",
           OPENCODE: "1",

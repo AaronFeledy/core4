@@ -11,7 +11,7 @@ const session: HostProxyRunLandoSession = {
   sessionId: "session",
   token: "token",
   controlToken: "control",
-  socketPath: "/host/proxy.sock",
+  socketPath: "/host/container/sock",
   shimPath: "/host/shim",
   transport: "unix-socket",
   close: () => Promise.resolve(),
@@ -43,8 +43,7 @@ test("host-proxy mounts are sorted with existing mounts", async () => {
   const result = await Effect.runPromise(withHostProxyRunLando(input, session));
   // Then helper mounts precede the deeper user mount.
   expect(result.services[web.name]?.mounts.map((mount) => mount.target)).toEqual([
-    PortablePath.make("/run/lando/host-proxy.sock"),
-    PortablePath.make("/run/lando/host-proxy/credentials"),
+    PortablePath.make("/run/lando/host-proxy"),
     PortablePath.make("/usr/local/bin/lando"),
     PortablePath.make("/usr/local/bin/open"),
     PortablePath.make("/usr/local/bin/xdg-open"),
@@ -53,12 +52,12 @@ test("host-proxy mounts are sorted with existing mounts", async () => {
   expect(result.services[web.name]?.environment).toEqual({
     KEEP: "yes",
     LANDO_HOST_PROXY_TRANSPORT: "unix-socket",
-    LANDO_HOST_PROXY_SOCKET: "/run/lando/host-proxy.sock",
+    LANDO_HOST_PROXY_SOCKET: "/run/lando/host-proxy/sock",
     LANDO_HOST_PROXY_DEPTH: "0",
   });
 });
 
-test.each(["/usr/local/bin/lando", "/run/lando/host-proxy/credentials"])(
+test.each(["/usr/local/bin/lando", "/run/lando/host-proxy"])(
   "host-proxy rejects a collision with a user mount at %s",
   async (target) => {
     // Given a user mount at a helper destination.
@@ -90,7 +89,7 @@ test.each(["/usr/local/bin/lando", "/run/lando/host-proxy/credentials"])(
   },
 );
 
-test("host-proxy skips its command binds beneath an authored mount and keeps its socket binds", async () => {
+test("host-proxy skips its command binds beneath an authored mount and keeps its directory bind", async () => {
   // Given a user bind that owns /usr/local/bin.
   const input: AppPlan = {
     ...plan,
@@ -114,9 +113,8 @@ test("host-proxy skips its command binds beneath an authored mount and keeps its
   const result = await Effect.runPromise(withHostProxyRunLando(input, session));
   // Then no command mountpoint lands inside the user's host directory.
   expect(result.services[web.name]?.mounts.map((mount) => mount.target)).toEqual([
-    PortablePath.make("/run/lando/host-proxy.sock"),
+    PortablePath.make("/run/lando/host-proxy"),
     PortablePath.make("/usr/local/bin"),
-    PortablePath.make("/run/lando/host-proxy/credentials"),
   ]);
 });
 

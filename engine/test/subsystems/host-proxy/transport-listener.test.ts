@@ -55,13 +55,14 @@ for (const kind of ["private", "permissive", "symlink", "foreign"] as const) {
             await chown(directory, 65534, 65534);
             break;
         }
-        const socketPath = join(directory, "proxy.sock");
+        const socketPath = join(directory, "container", "proxy.sock");
         // When binding the listener.
         const result = await Effect.runPromiseExit(
           listenHostProxyServer(
             server,
             {
               stateDir: directory,
+              containerDir: join(directory, "container"),
               socketPath,
               shimPath: join(directory, "lando"),
               platform: process.platform,

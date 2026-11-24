@@ -53,7 +53,9 @@ test("a child exiting independently leaves a dead claim which the next start rep
     if (child === undefined || before === undefined) throw new TypeError("Worker was not published");
     await child.terminate();
     const path = workerStatePath(app, options.paths);
-    expect(await readdir(dirname(path))).toEqual(["worker.json"]);
+    // The exiting child keeps the container-facing directory that running containers bind.
+    expect((await readdir(dirname(path))).sort()).toEqual(["container", "worker.json"]);
+    expect(await readdir(join(dirname(path), "container"))).toEqual([".generation"]);
     expect(await Effect.runPromise(readWorkerRecord(app, options.paths))).toEqual(before);
     expect(await Effect.runPromise(probeWorker(before))).toBe("dead");
     const second = await Effect.runPromise(startDetachedHostProxyWorker(options));

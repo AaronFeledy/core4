@@ -2,7 +2,6 @@ import { expect, spyOn, test } from "bun:test";
 import { chmod, mkdir, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { dirname, join } from "node:path";
-import { sha256Hex } from "@lando/sdk/digest";
 import { AppPlan, ServiceName } from "@lando/sdk/schema";
 import { PathsService } from "@lando/sdk/services";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
@@ -52,7 +51,7 @@ test("selected rebuild overlays the running host-proxy session and requests adop
       sessionId: "running-session",
       token: "running-bearer",
       controlToken: "running-control",
-      socketPath: "/running/host-proxy.sock",
+      socketPath: "/running/container/sock",
       shimPath: "/running/lando",
       transport: "unix-socket",
       closed: new Promise(() => undefined),
@@ -77,24 +76,18 @@ test("selected rebuild overlays the running host-proxy session and requests adop
     expect(ensure.mock.calls[0]?.[0]).toMatchObject({ plan: selected, reusePolicy: "adopt" });
     expect(Object.keys(applied[0]?.services ?? {})).toEqual([web.name]);
     expect(applied[0]?.services[web.name]?.environment).toMatchObject({
-      LANDO_HOST_PROXY_SOCKET: "/run/lando/host-proxy.sock",
+      LANDO_HOST_PROXY_SOCKET: "/run/lando/host-proxy/sock",
     });
     expect(applied[0]?.services[web.name]?.environment.LANDO_HOST_PROXY_TOKEN).toBeUndefined();
     expect(applied[0]?.services[web.name]?.extensions["@lando/core/host-proxy-transport"]).toEqual({
-      sessionDigest: sha256Hex("running-session").slice(0, 16),
+      contractDigest: expect.stringMatching(/^[a-f0-9]{16}$/u),
     });
     expect(applied[0]?.services[web.name]?.mounts).toContainEqual(
       expect.objectContaining({
-        source: "/running/credentials",
-        target: "/run/lando/host-proxy/credentials",
-        readOnly: true,
-      }),
-    );
-    expect(applied[0]?.services[web.name]?.mounts).toContainEqual(
-      expect.objectContaining({
         type: "bind",
-        source: "/running/host-proxy.sock",
-        target: "/run/lando/host-proxy.sock",
+        source: "/running/container",
+        target: "/run/lando/host-proxy",
+        readOnly: true,
       }),
     );
     expect(JSON.stringify(harness.events)).not.toContain("running-bearer");
@@ -145,7 +138,7 @@ test.each(["existing", "missing", "failed-adopt", "failed-fresh", "configure-rej
       const sessionId = `session-${spawns}`;
       const token = `bearer-${spawns}`;
       const controlToken = `control-${spawns}`;
-      const socketPath = join(dirname(workerStatePath(app, paths.roots)), "host-proxy.sock");
+      const socketPath = join(dirname(workerStatePath(app, paths.roots)), "container", "sock");
       let configDigest = "";
       const server = createServer((request, response) => {
         if (
@@ -199,6 +192,8 @@ test.each(["existing", "missing", "failed-adopt", "failed-fresh", "configure-rej
             JSON.parse(value),
           ).configDigest;
           await mkdir(dirname(socketPath), { recursive: true, mode: 0o700 });
+          await chmod(dirname(socketPath), 0o711);
+          await Bun.write(join(dirname(workerStatePath(app, paths.roots)), "lando"), "shim");
           await new Promise<void>((resolve, reject) => {
             server.once("error", reject);
             server.listen(socketPath, resolve);
@@ -212,7 +207,8 @@ test.each(["existing", "missing", "failed-adopt", "failed-fresh", "configure-rej
           token,
           controlToken,
           socketPath,
-          shimPath: shim,
+          // A real worker installs its shim in the run directory beside the container-facing one.
+          shimPath: join(dirname(workerStatePath(app, paths.roots)), "lando"),
           transport: "unix-socket",
         }),
         terminate: async () => {
@@ -259,13 +255,12 @@ test.each(["existing", "missing", "failed-adopt", "failed-fresh", "configure-rej
       );
       expect(Exit.isFailure(exit)).toBe(state.startsWith("failed"));
       expect(applied[0]?.services[web.name]?.environment.LANDO_HOST_PROXY_TOKEN).toBeUndefined();
+      // Every session at these paths shares one contract; the record below names the session.
       expect(applied[0]?.services[web.name]?.extensions["@lando/core/host-proxy-transport"]).toEqual({
-        sessionDigest: sha256Hex(
-          state === "configure-rejected" ? "session-2" : (before?.sessionId ?? "session-1"),
-        ).slice(0, 16),
+        contractDigest: expect.stringMatching(/^[a-f0-9]{16}$/u),
       });
       expect(applied[0]?.services[web.name]?.environment.LANDO_HOST_PROXY_SOCKET).toBe(
-        "/run/lando/host-proxy.sock",
+        "/run/lando/host-proxy/sock",
       );
       expect(spawns).toBe(state === "configure-rejected" ? 2 : 1);
       expect(terminations).toBe(0);

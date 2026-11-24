@@ -6,6 +6,7 @@ import { errnoCode } from "@lando/sdk/errors";
 import type { AppRef } from "@lando/sdk/schema";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Effect, Fiber } from "effect";
+import { HOST_PROXY_CREDENTIALS_NAME } from "./run-directory.ts";
 import type { HostProxyInFlightRequest } from "./transport-handler.ts";
 import type { HostProxySessionPaths } from "./transport-session.ts";
 
@@ -25,7 +26,9 @@ export const cleanupHostProxyRunLandoState = Effect.fnUntraced(
 
 export const removeSessionState = (paths: HostProxySessionPaths, socketOwned: boolean): Effect.Effect<void> =>
   Effect.promise(async () => {
-    await rm(join(paths.stateDir, "credentials"), { force: true });
+    // The container-facing directory stays: running containers bind it, and the next session
+    // publishes its socket and credentials into that same directory.
+    await rm(join(paths.containerDir, HOST_PROXY_CREDENTIALS_NAME), { force: true });
     await rm(paths.shimPath, { force: true });
     if (socketOwned && paths.transport === "unix-socket" && paths.socketPath !== undefined) {
       await rm(paths.socketPath, { force: true });

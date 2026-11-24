@@ -253,7 +253,7 @@ test("an overlaid plan applied through provider-podman is persisted without the 
   expect(overlaid.services[serviceName]?.environment.SSH_AUTH_SOCK).toBe("/run/lando/ssh-agent/agent.sock");
   expect(overlaid.services[serviceName]?.environment.LANDO_HOST_PROXY_TOKEN).toBeUndefined();
   expect(overlaid.services[serviceName]?.mounts).toContainEqual(
-    expect.objectContaining({ target: "/run/lando/host-proxy/credentials", readOnly: true }),
+    expect.objectContaining({ source: "/tmp/container", target: "/run/lando/host-proxy", readOnly: true }),
   );
   expect(overlaid.services[serviceName]?.environment.GNUPGHOME).toBe("/tmp/lando-gnupg");
   expect<AppPlan | undefined>(persisted).toEqual(basePlan);

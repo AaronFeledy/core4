@@ -112,8 +112,8 @@ const hostProxyPlan: AppPlan = {
       mounts: [
         {
           type: "bind",
-          source: "/tmp/host-proxy.sock",
-          target: PortablePath.make(HOST_PROXY_CONTAINER_SOCKET),
+          source: "/tmp/run/container",
+          target: PortablePath.make("/run/lando/host-proxy"),
           readOnly: true,
           realization: "passthrough",
         },
@@ -397,6 +397,7 @@ describe("provider-lando cross-process state", () => {
       expect(persisted).not.toContain("LANDO_HOST_PROXY_SOCKET");
       expect(persisted).not.toContain("LANDO_HOST_PROXY_DEPTH");
       expect(persisted).not.toContain("host-proxy.sock");
+      expect(persisted).not.toContain("/tmp/run/container");
       expect(persisted).not.toContain(HOST_PROXY_CONTAINER_LANDO);
 
       const createdBodies = fake.calls

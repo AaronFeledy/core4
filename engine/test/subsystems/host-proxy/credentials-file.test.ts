@@ -8,10 +8,11 @@ import { writeHostProxyCredentials } from "../../../src/subsystems/host-proxy/cr
 
 const credentials = { app: "demo", session: "session-value", token: "token-value" };
 
-test("publishes complete read-only credentials atomically inside a private directory", async () => {
+test("publishes complete read-only credentials atomically in the container-facing directory", async () => {
   const root = await mkdtemp(join(tmpdir(), "lando-credentials-"));
   const directory = join(root, "session");
-  const path = join(directory, "credentials");
+  const containerDirectory = join(directory, "container");
+  const path = join(containerDirectory, "credentials");
   try {
     await Effect.runPromise(writeHostProxyCredentials(directory, credentials));
     const previous = await open(path, "r");
@@ -25,8 +26,11 @@ test("publishes complete read-only credentials atomically inside a private direc
     const directoryStat = await lstat(directory);
     expect(directoryStat.mode & 0o777).toBe(0o700);
     expect(directoryStat.uid).toBe(process.getuid?.() ?? -1);
+    // Containers bind only the traversable container-facing directory inside the private one.
+    expect((await lstat(containerDirectory)).mode & 0o777).toBe(0o711);
     expect((await lstat(path)).mode & 0o777).toBe(0o444);
-    expect(await readdir(directory)).toEqual(["credentials"]);
+    expect(await readdir(directory)).toEqual(["container"]);
+    expect((await readdir(containerDirectory)).sort()).toEqual([".generation", "credentials"]);
     expect(await Bun.file(path).text()).not.toContain("controlToken");
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -49,7 +53,7 @@ test.each(["permissive", "symlink"] as const)(
       }
       const result = await Effect.runPromiseExit(writeHostProxyCredentials(directory, credentials));
       expect(result._tag).toBe("Failure");
-      expect(await Bun.file(join(directory, "credentials")).exists()).toBe(false);
+      expect(await Bun.file(join(directory, "container", "credentials")).exists()).toBe(false);
       expect(await Bun.file(join(target, "sentinel")).text()).toBe("untouched");
     } finally {
       await rm(root, { recursive: true, force: true });
@@ -79,7 +83,7 @@ test.each([false, true])(
       );
       expect(calls).toEqual([`enforce:${directory}`, `verify:${directory}`]);
       expect(result._tag).toBe(deny ? "Failure" : "Success");
-      expect(await Bun.file(join(directory, "credentials")).exists()).toBe(!deny);
+      expect(await Bun.file(join(directory, "container", "credentials")).exists()).toBe(!deny);
       expect(JSON.stringify(result)).not.toContain(credentials.token);
     } finally {
       await rm(root, { recursive: true, force: true });
