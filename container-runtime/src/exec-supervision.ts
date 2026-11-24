@@ -5,6 +5,7 @@ import type { CommandSpec, ExecChunk, ExecTarget, ProviderError } from "@lando/s
 import { type Cause, Deferred, Effect, Exit, Fiber, Queue, Schema, type Scope, Stream } from "effect";
 import { containerHelperDelivery } from "./container-helper.ts";
 import type { EngineHttpApi, ProviderErrorContext } from "./engine-api.ts";
+import { serviceNotRunning } from "./engine-errors.ts";
 import { cancelWedgedExec } from "./exec-cancellation.ts";
 import { execDataFrames, execEofFrame, execSignalFrame } from "./exec-control.ts";
 import type { ResolveContainerHelper } from "./log-source-binding.ts";
@@ -65,14 +66,7 @@ export const supervisedExecStream = (
           ...(cause === undefined ? {} : { cause }),
         });
       const notRunning = (containerState: string) =>
-        new ServiceExecError({
-          providerId: options.ctx.providerId,
-          operation: "exec",
-          service: target.service,
-          message: `Service ${target.service} is not running.`,
-          details: { containerState },
-          remediation: "Run lando start, then retry.",
-        });
+        serviceNotRunning(options.ctx, target.service, containerState);
       const { api, resolveContainerHelper, helperTarget } = options;
       if (
         api?.request === undefined ||

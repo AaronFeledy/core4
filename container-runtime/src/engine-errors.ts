@@ -1,4 +1,9 @@
-import { ProviderInternalError, ProviderUnavailableError, ServiceNotFoundError } from "@lando/sdk/errors";
+import {
+  ProviderInternalError,
+  ProviderUnavailableError,
+  ServiceExecError,
+  ServiceNotFoundError,
+} from "@lando/sdk/errors";
 import type { ServiceSelector } from "@lando/sdk/services";
 import { Effect } from "effect";
 
@@ -25,6 +30,32 @@ export const missingService = (ctx: ProviderErrorContext, target: ServiceSelecto
     service: target.service,
     message: `Service ${target.service} is not present in the app plan.`,
     remediation: `Add service ${target.service} to the Landofile or correct the service name, then re-run the command.`,
+  });
+
+/** A stopped, created, or absent service container cannot run a command until the app starts. */
+export const serviceNotRunning = (
+  ctx: ProviderErrorContext,
+  service: ServiceSelector["service"],
+  containerState: string,
+) =>
+  new ServiceExecError({
+    providerId: ctx.providerId,
+    operation: "exec",
+    service,
+    message: `Service ${service} is not running.`,
+    details: { containerState },
+    remediation: "Run `lando start`, then retry.",
+  });
+
+/** A service whose container is gone has nothing to run a command in until the app starts. */
+export const serviceContainerAbsent = (ctx: ProviderErrorContext, service: ServiceSelector["service"]) =>
+  new ServiceExecError({
+    providerId: ctx.providerId,
+    operation: "exec",
+    service,
+    message: `Service ${service} has no container.`,
+    details: { containerState: "absent" },
+    remediation: "Run `lando start`, then retry.",
   });
 
 export const missingRequest = (ctx: ProviderErrorContext, operation: string, message: string) =>
