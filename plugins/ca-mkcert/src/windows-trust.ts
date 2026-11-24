@@ -38,6 +38,12 @@ const STORE = {
   location: "CurrentUser\\Root",
 };
 
+/** certutil.exe scope flags and the store each probes; the user store is where remediation adds the root. */
+const SCOPES: ReadonlyArray<readonly [scope: ReadonlyArray<string>, location: string]> = [
+  [["-user"], STORE.location],
+  [[], "LocalMachine\\Root"],
+];
+
 const INTEROP_REMEDIATION =
   "Make sure WSL can run Windows programs (interop is enabled and `certutil.exe` is reachable), then run `lando doctor`.";
 
@@ -93,11 +99,13 @@ export const makeWindowsTrust = ({ processRunner, env, platform, paths }: Window
       }
       const sha1 = sha1Hex(root);
       if (sha1 === undefined) return [unavailable("The local CA is not a readable certificate.")];
-      for (const scope of [["-user"], []]) {
+      for (const [scope, location] of SCOPES) {
         const ran = yield* run(located.certutil, [...scope, "-store", "Root", sha1]);
         if (Result.isFailure(ran))
           return [unavailable(`Lando could not run certutil.exe: ${ran.failure.message}`)];
-        if (ran.success.exitCode === 0) return [{ ...STORE, state: "trusted" } satisfies TrustStoreStatus];
+        if (ran.success.exitCode === 0) {
+          return [{ ...STORE, location, state: "trusted" } satisfies TrustStoreStatus];
+        }
       }
       return [
         {

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { TEST_CERTIFICATES } from "@lando/sdk/test";
@@ -97,6 +97,37 @@ describe("NSS database discovery", () => {
       { name: "Firefox (default-release)", dir: join(firefoxDir(), "abc.default-release") },
       { name: "Firefox (work)", dir: absolute },
     ]);
+  });
+
+  test("Firefox ignores profiles whose real directory leaves the home or enters a Snap sandbox", async () => {
+    // Given: an absolute profile outside HOME and a relative one that symlinks into ~/snap, both with cert9.db
+    const outside = await mkdtemp(join(tmpdir(), "lando-nss-outside-"));
+    const snapProfile = join(home, "snap", "firefox", "common", ".mozilla", "firefox", "s.default");
+    try {
+      for (const dir of [outside, snapProfile]) {
+        await mkdir(dir, { recursive: true });
+        await writeFile(join(dir, "cert9.db"), "");
+      }
+      await mkdir(firefoxDir(), { recursive: true });
+      await symlink(snapProfile, join(firefoxDir(), "linked.default"));
+      await writeFile(
+        join(firefoxDir(), "profiles.ini"),
+        [
+          "[Profile0]",
+          "Name=outside",
+          "IsRelative=0",
+          `Path=${outside}`,
+          "[Profile1]",
+          "Name=snap",
+          "IsRelative=1",
+          "Path=linked.default",
+        ].join("\n"),
+      );
+      // Then
+      expect(await names({ HOME: home })).toEqual([]);
+    } finally {
+      await rm(outside, { recursive: true, force: true });
+    }
   });
 
   test("finds nothing without a home directory or off Linux", async () => {
@@ -257,6 +288,41 @@ describe("NSS trust", () => {
           "Close Chrome or Chromium if it reports the database is locked, then run `lando setup` again.",
       },
     ]);
+  });
+
+  test("a database too large to search fully is unknown and never written", async () => {
+    // Given: 21 TLS-trusted foreign roots listed before the local CA, one past the search cap
+    await mkdir(legacyChromium(), { recursive: true });
+    await writeFile(join(home, "rootCA.pem"), rootA);
+    const certutil = makeFakeCertutil({
+      [legacyChromium()]: [
+        ...Array.from({ length: 21 }, (_, index) => ({
+          nickname: `Other ${index}`,
+          trust: "C,,",
+          pem: rootB,
+        })),
+        { nickname: "Lando", trust: "C,,", pem: rootA },
+      ],
+    });
+    const trust = nss(certutil, await onPath("certutil"));
+    // When
+    const after = await Effect.runPromise(
+      trust.install(home, rootA, await Effect.runPromise(trust.inspect(rootA))),
+    );
+    // Then
+    expect(after.map(({ status }) => status)).toEqual([
+      {
+        ...CHROMIUM,
+        location: legacyChromium(),
+        state: "unknown",
+        reason: "inspection-incomplete",
+        detail:
+          "The database holds 22 certificates; Lando checked 20 and did not find the local CA, leaving 2 unchecked.",
+        remediation:
+          "Check whether Chrome or Chromium's certificate settings trust the local CA, then run `lando doctor`.",
+      },
+    ]);
+    expect(certutil.calls().filter(({ args }) => args[0] === "-A")).toEqual([]);
   });
 
   test("a database certutil cannot read is unknown", async () => {

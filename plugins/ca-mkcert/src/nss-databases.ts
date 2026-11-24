@@ -5,7 +5,7 @@
  * are legacy `cert8.db` (DBM) databases, which current browsers no longer read.
  */
 import { readFile, realpath, stat } from "node:fs/promises";
-import { basename, isAbsolute, join } from "node:path";
+import { basename, isAbsolute, join, sep } from "node:path";
 
 import type { HostEnv } from "./homebrew-trust.ts";
 
@@ -90,20 +90,37 @@ const firefoxDatabases = async (home: string): Promise<ReadonlyArray<NssDatabase
   return databases;
 };
 
-/** Every browser database for the user whose home is `env.HOME`, each directory once. None off Linux. */
+const within = (path: string, dir: string): boolean => path === dir || path.startsWith(`${dir}${sep}`);
+
+/**
+ * Whether a database's real directory is the user's own: inside the real home, outside the Snap
+ * (`~/snap`) and Flatpak (`~/.var`) sandboxes, and not under `/etc`.
+ */
+const inScope = (real: string, realHome: string): boolean =>
+  within(real, realHome) &&
+  !within(real, join(realHome, "snap")) &&
+  !within(real, join(realHome, ".var")) &&
+  !within(real, "/etc");
+
+/**
+ * Every in-scope browser database for the user whose home is `env.HOME`, each real directory once.
+ * None off Linux.
+ */
 export const discoverNssDatabases = async (
   env: HostEnv,
   platform: string,
 ): Promise<ReadonlyArray<NssDatabase>> => {
   const home = env.HOME;
   if (platform !== "linux" || home === undefined || !isAbsolute(home)) return [];
+  const realHome = await realpath(home).catch(() => undefined);
+  if (realHome === undefined) return [];
   const chromium = await chromiumDatabase(home, env);
   const found = [...(chromium === undefined ? [] : [chromium]), ...(await firefoxDatabases(home))];
   const seen = new Set<string>();
   const unique: NssDatabase[] = [];
   for (const database of found) {
-    const real = await realpath(database.dir).catch(() => database.dir);
-    if (seen.has(real)) continue;
+    const real = await realpath(database.dir).catch(() => undefined);
+    if (real === undefined || !inScope(real, realHome) || seen.has(real)) continue;
     seen.add(real);
     unique.push(database);
   }
