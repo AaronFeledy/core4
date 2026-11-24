@@ -15,6 +15,7 @@ import { Cause, type Context, Effect, Exit, Stream } from "effect";
 
 import { makeMkcertCertificateAuthority } from "../src/ca.ts";
 import { MKCERT_TOOL_MANIFEST } from "../src/provision.ts";
+import type { WindowsTrustPaths } from "../src/windows-trust.ts";
 import { makeFakeDownloader, sha256Hex } from "./support/fake-downloader.ts";
 
 export const text = (value: string): Uint8Array<ArrayBuffer> => new TextEncoder().encode(value);
@@ -239,6 +240,8 @@ export const makeCa = (
     readonly hostTrustsPem?: (pem: string) => boolean;
     /** System bundle candidates; none exist unless a test supplies them, whatever the host has. */
     readonly linuxSystemBundles?: ReadonlyArray<string>;
+    /** WSL markers and certutil.exe fallback; absent unless a test supplies them, whatever the host is. */
+    readonly windowsTrustPaths?: WindowsTrustPaths;
   } = {},
 ): { readonly ca: CertificateAuthorityShape; readonly downloadCalls: () => number } => {
   const downloader = makeFakeDownloader();
@@ -257,6 +260,10 @@ export const makeCa = (
       env: overrides.env ?? { PATH: "" },
       hostTrustsPem: overrides.hostTrustsPem,
       linuxSystemBundles: overrides.linuxSystemBundles ?? [join(harness.root, "no-system-bundle.pem")],
+      windowsTrustPaths: overrides.windowsTrustPaths ?? {
+        interop: [join(harness.root, "no-wsl-interop")],
+        certutil: join(harness.root, "no-certutil.exe"),
+      },
     }),
     downloadCalls: downloader.downloadCalls,
   };
