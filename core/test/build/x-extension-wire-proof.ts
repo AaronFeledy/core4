@@ -1,4 +1,3 @@
-import type { CompatibilityException } from "../../../scripts/schema-compatibility/classifier.ts";
 import {
   type JsonSchema,
   type JsonValue,
@@ -6,9 +5,6 @@ import {
 } from "../../../scripts/schema-compatibility/model.ts";
 
 export const TYPED_EXPRESSION_PATTERN = "^\\{\\{-?(?:(?!\\{\\{|\\}\\})[\\s\\S])+?-?\\}\\}(?![\\s\\S])";
-
-export const DIRECTIVE_TRANSPORT_JUSTIFICATION =
-  "Repairs the closed x-* artifact (patternProperties instead of propertyNames) and widens authoring members to override/reset wire envelopes. Reserved envelope-shaped opaque mappings now require LandofileLiteral escaping to retain literal meaning; native encoding escapes them recursively. Service map inputs derive through their JSON codec projection. This is a transport change, not unchanged decoding for every previous fragment.";
 
 export const WIRE_TARGETS = [
   ["ConfigTranslateDocumentSetInput", "$.currentLowerV4Fragments.items.fragment", "fragment"],
@@ -20,14 +16,6 @@ export const WIRE_TARGETS = [
   ["ConfigTranslateResult", "$.outputs.items.fragment", "fragment"],
   ["RecipeDecomposeResult", "$.fragment", "fragment"],
 ] as const;
-
-export const expectedWireExceptions = (): readonly CompatibilityException[] =>
-  WIRE_TARGETS.map(([id, path]) => ({
-    surface: `schema:${id}`,
-    changeKind: "unsupported-construct",
-    path: `${path}.anyOf`,
-    justification: DIRECTIVE_TRANSPORT_JUSTIFICATION,
-  }));
 
 export const wireObject = (value: unknown): JsonSchema => {
   if (!isJsonObject(value)) throw new Error("Expected captured wire schema object");

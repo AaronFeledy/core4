@@ -42,13 +42,7 @@ import {
 import { evolveHistoricalToolingVars } from "./x-extension-tooling-vars-proof.ts";
 import { typedCaptured } from "./x-extension-typed-checkpoint.ts";
 import { evolveHistoricalUploadDirs } from "./x-extension-upload-dirs-proof.ts";
-import {
-  WIRE_TARGETS,
-  atWirePath,
-  expectedWireExceptions,
-  tightenWireString,
-  wireObject,
-} from "./x-extension-wire-proof.ts";
+import { WIRE_TARGETS, atWirePath, tightenWireString, wireObject } from "./x-extension-wire-proof.ts";
 
 const capture = wireObject(
   await Bun.file(resolve(import.meta.dirname, "fixtures/x-extension-wire.base.json")).json(),
@@ -288,17 +282,22 @@ describe("embedded wire closed x-* artifact repair", () => {
           },
         ]);
         expect(findings).toHaveLength(1);
-        const exact = expectedWireExceptions().filter(
-          (entry) => entry.surface === surface && entry.path === `${path}.anyOf`,
+        const exact = (location: { readonly surface: string; readonly path: string }) => [
+          {
+            fingerprint: findings[0]?.fingerprint ?? "",
+            changeKind: "unsupported-construct",
+            locations: [location],
+            justification: "Reviewed directive transport change.",
+          },
+        ];
+        const reviewedAt = exact({ surface, path: `${path}.anyOf` });
+        expect(acceptCompatibilityExceptions(surface, findings, reviewedAt)[0]?.accepted).toBe(true);
+        expect(acceptCompatibilityExceptions(`${surface}:wrong`, findings, reviewedAt)[0]?.accepted).toBe(
+          false,
         );
-        expect(acceptCompatibilityExceptions(surface, findings, exact)[0]?.accepted).toBe(true);
-        expect(acceptCompatibilityExceptions(`${surface}:wrong`, findings, exact)[0]?.accepted).toBe(false);
         expect(
-          acceptCompatibilityExceptions(
-            surface,
-            findings,
-            exact.map((entry) => ({ ...entry, path: `${entry.path}.wrong` })),
-          )[0]?.accepted,
+          acceptCompatibilityExceptions(surface, findings, exact({ surface, path: `${path}.anyOf.wrong` }))[0]
+            ?.accepted,
         ).toBe(false);
       },
       WIRE_TEST_TIMEOUT_MS,

@@ -1,4 +1,5 @@
 import { compareEnum } from "./enum-classifier.ts";
+import { finding } from "./fingerprint.ts";
 import {
   type CompatibilityFinding,
   type JsonSchema,
@@ -58,13 +59,6 @@ const HANDLED_KEYS = new Set([
   ...UNSUPPORTED_CONSTRUCTS,
 ]);
 
-const finding = (
-  verdict: CompatibilityFinding["verdict"],
-  changeKind: string,
-  path: string,
-  message: string,
-): CompatibilityFinding => ({ verdict, changeKind, path, message, accepted: false });
-
 const childPath = (path: string, key: string): string =>
   /^[A-Za-z_$][A-Za-z0-9_$-]*$/.test(key) ? `${path}.${key}` : `${path}[${JSON.stringify(key)}]`;
 
@@ -86,23 +80,29 @@ interface CompareContext {
   readonly unionProof?: boolean;
 }
 
+/** A property as its parent constrains it: its schema plus requiredness. */
+const member = (schema: JsonSchema | undefined, required: boolean): JsonValue =>
+  schema === undefined ? { required } : { required, schema };
+
 const requirednessFinding = (
   path: string,
-  nowRequired: boolean,
+  change: { readonly before: JsonValue; readonly after: JsonValue; readonly nowRequired: boolean },
   polarity: CompareContext["polarity"],
 ): CompatibilityFinding =>
-  nowRequired
+  change.nowRequired
     ? finding(
         polarity === "output" ? "compatible" : "breaking",
         "property-required",
         path,
         "An optional property became required.",
+        change,
       )
     : finding(
         polarity === "input" ? "compatible" : "breaking",
         "property-optional",
         path,
         "A required property became optional.",
+        change,
       );
 
 const compareProperties = (
@@ -123,6 +123,7 @@ const compareProperties = (
         "unsupported-construct",
         context.path,
         "Required keys without property schemas need explicit review.",
+        { before, after },
       ),
     ];
   }
@@ -131,7 +132,11 @@ const compareProperties = (
     const propertyPath = childPath(context.path, property);
     const afterProperty = afterProperties[property];
     if (afterProperty === undefined) {
-      findings.push(finding("breaking", "property-removed", propertyPath, "A public property was removed."));
+      findings.push(
+        finding("breaking", "property-removed", propertyPath, "A public property was removed.", {
+          before: member(beforeProperties[property], beforeRequired.has(property)),
+        }),
+      );
       continue;
     }
     const beforeProperty = beforeProperties[property];
@@ -139,7 +144,17 @@ const compareProperties = (
       findings.push(...compareNode(beforeProperty, afterProperty, { ...context, path: propertyPath }));
     }
     if (beforeRequired.has(property) !== afterRequired.has(property)) {
-      findings.push(requirednessFinding(propertyPath, afterRequired.has(property), context.polarity));
+      findings.push(
+        requirednessFinding(
+          propertyPath,
+          {
+            before: member(beforeProperty, beforeRequired.has(property)),
+            after: member(afterProperty, afterRequired.has(property)),
+            nowRequired: afterRequired.has(property),
+          },
+          context.polarity,
+        ),
+      );
     }
   }
 
@@ -148,7 +163,15 @@ const compareProperties = (
     if (beforeProperties[property] !== undefined || afterProperties[property] !== undefined) continue;
     if (beforeRequired.has(property) === afterRequired.has(property)) continue;
     findings.push(
-      requirednessFinding(childPath(context.path, property), afterRequired.has(property), context.polarity),
+      requirednessFinding(
+        childPath(context.path, property),
+        {
+          before: member(undefined, beforeRequired.has(property)),
+          after: member(undefined, afterRequired.has(property)),
+          nowRequired: afterRequired.has(property),
+        },
+        context.polarity,
+      ),
     );
   }
 
@@ -170,6 +193,7 @@ const compareProperties = (
         "property-added",
         childPath(context.path, property),
         `A ${required ? "required" : "optional"} property was added.`,
+        { after: member(afterProperties[property], required) },
       ),
     );
   }
@@ -190,6 +214,7 @@ const compareDefinitions = (
         "ref-graph-changed",
         childPath(context.path, "$defs"),
         "The local reference graph changed and cannot be classified safely.",
+        { before: before.$defs, after: after.$defs },
       ),
     ];
   }
@@ -240,6 +265,8 @@ const compareNode = (
           "unsupported-construct",
           childPath(context.path, keyword),
           `${keyword} changed and requires explicit review.`,
+          // Later keywords of this node go unclassified, so bind the whole node.
+          { before, after },
         ),
       ];
     }
@@ -247,17 +274,26 @@ const compareNode = (
   if (!jsonEquals(before.$ref, after.$ref)) {
     return [
       ...findings,
-      finding("unknown", "ref-changed", childPath(context.path, "$ref"), "A JSON Schema reference changed."),
+      finding("unknown", "ref-changed", childPath(context.path, "$ref"), "A JSON Schema reference changed.", {
+        before,
+        after,
+      }),
     ];
   }
   if (!jsonEquals(before.type, after.type)) {
-    return [...findings, finding("breaking", "type-changed", context.path, "The JSON Schema type changed.")];
+    return [
+      ...findings,
+      finding("breaking", "type-changed", context.path, "The JSON Schema type changed.", { before, after }),
+    ];
   }
   if (!jsonEquals(before.enum, after.enum)) {
     if (!Array.isArray(before.enum) || !Array.isArray(after.enum)) {
       return [
         ...findings,
-        finding("breaking", "enum-changed", context.path, "An enum constraint was added or removed."),
+        finding("breaking", "enum-changed", context.path, "An enum constraint was added or removed.", {
+          before,
+          after,
+        }),
       ];
     }
     findings.push(compareEnum(before.enum, after.enum, context));
@@ -265,7 +301,10 @@ const compareNode = (
   if (!jsonEquals(before.const, after.const)) {
     return [
       ...findings,
-      finding("breaking", "const-changed", context.path, "A constant value constraint changed."),
+      finding("breaking", "const-changed", context.path, "A constant value constraint changed.", {
+        before,
+        after,
+      }),
     ];
   }
 
@@ -284,6 +323,7 @@ const compareNode = (
           "items-changed",
           childPath(context.path, "items"),
           "Array item structure changed.",
+          { before: before.items, after: after.items },
         ),
       );
     }
@@ -315,6 +355,7 @@ const compareNode = (
         "unsupported-keyword",
         childPath(context.path, key),
         `${key} changed and is not classified by the conservative checker.`,
+        { before: before[key], after: after[key] },
       ),
     );
   }
