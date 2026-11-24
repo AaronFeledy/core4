@@ -967,7 +967,7 @@ describe("meta:doctor host-proxy transport reachability", () => {
     expect(commands).toEqual([
       {
         command: ["/usr/local/bin/lando", "open", "--print", "--format=json"],
-        env: { LANDO_HOST_PROXY_SOCKET: "/run/lando/host-proxy.sock" },
+        env: {},
         stdin: "ignore",
         tty: false,
       },

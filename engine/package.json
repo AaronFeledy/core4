@@ -253,6 +253,7 @@
     "./subsystems/host-proxy/open-target": "./src/subsystems/host-proxy/open-target.ts",
     "./subsystems/host-proxy/plan-sanitizer-live": "./src/subsystems/host-proxy/plan-sanitizer-live.ts",
     "./subsystems/host-proxy/proxy-bypass": "./src/subsystems/host-proxy/proxy-bypass.ts",
+    "./subsystems/host-proxy/run-directory": "./src/subsystems/host-proxy/run-directory.ts",
     "./subsystems/host-proxy/session-env": "./src/subsystems/host-proxy/session-env.ts",
     "./subsystems/host-proxy/shim": "./src/subsystems/host-proxy/shim.ts",
     "./subsystems/host-proxy/transport": "./src/subsystems/host-proxy/transport.ts",

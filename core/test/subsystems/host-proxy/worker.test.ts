@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
-import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { createServer, request as httpRequest } from "node:http";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -43,7 +43,7 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
-import { DateTime, Effect, Exit, Fiber, Schema } from "effect";
+import { Cause, DateTime, Effect, Exit, Fiber, Schema } from "effect";
 import "../../../src/runtime/engine-composition.ts";
 import { ownerOnlyFileAccess } from "../../_support/private-file-access.ts";
 
@@ -1040,6 +1040,9 @@ console.log(JSON.stringify({
         first.token,
         first.controlToken,
       ]);
+      // The reused session reports the same container-facing directory generation the worker created.
+      expect(first.containerGeneration).toMatch(/^[0-9a-f]{32}$/u);
+      expect(second.containerGeneration).toBe(first.containerGeneration);
       expect(registered).toEqual(expect.arrayContaining([first.sessionId, first.token, first.controlToken]));
       const output = await Effect.runPromise(
         encodeCommandResult({
@@ -1061,7 +1064,10 @@ console.log(JSON.stringify({
       expect(output).not.toContain(first.sessionId);
       expect(output).not.toContain(first.controlToken);
       await second.close();
-      expect(existsSync(dirname(workerStatePath(app, options.paths)))).toBe(false);
+      // Closing the session retires the worker but keeps the directory running containers bind, and its generation.
+      const runDir = dirname(workerStatePath(app, options.paths));
+      expect(await readdir(runDir)).toEqual(["container"]);
+      expect(await readdir(join(runDir, "container"))).toEqual([".generation"]);
     } finally {
       await first.close();
       await rm(root, { recursive: true, force: true });
@@ -1682,3 +1688,42 @@ console.log(JSON.stringify({
     });
   });
 });
+
+// Linux has no limit: Bun binds a longer socket path through /proc/self/fd.
+test.skipIf(process.platform === "linux" || process.platform === "win32")(
+  "a socket path over the Unix limit fails with its remediation before the worker is replaced",
+  async () => {
+    // Given a recorded worker in a data root too deep for its socket path to fit in sockaddr_un.
+    const root = await tempRoot();
+    const userDataRoot = join(root, "a".repeat(120));
+    let spawned = 0;
+    try {
+      await Effect.runPromise(writeWorkerRecord(app, { userDataRoot }, workerRecord(userDataRoot)));
+      const before = await readFile(workerStatePath(app, { userDataRoot }), "utf8");
+      // When a start needs a worker for that app.
+      const exit = await Effect.runPromiseExit(
+        startDetachedHostProxyWorker({
+          app,
+          plan,
+          paths: { userDataRoot },
+          shimArtifactPath: join(root, "shim"),
+          spawnWorker: () => {
+            spawned++;
+            throw new Error("a worker must not be spawned");
+          },
+        }),
+      );
+      // Then the actionable reason reaches the caller and the recorded worker state is untouched.
+      if (!Exit.isFailure(exit)) throw new TypeError("Expected the start to fail");
+      expect(Cause.squash(exit.cause)).toMatchObject({
+        _tag: "HostProxyTransportUnavailableError",
+        remediation: expect.stringContaining("shorter app name"),
+      });
+      expect(spawned).toBe(0);
+      expect(await readFile(workerStatePath(app, { userDataRoot }), "utf8")).toBe(before);
+      expect(await readdir(dirname(workerStatePath(app, { userDataRoot })))).toEqual(["worker.json"]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+);

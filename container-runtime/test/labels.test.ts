@@ -5,7 +5,7 @@ import {
   APP_LABEL,
   APP_ROOT_LABEL,
   DATA_HELPER_ROLE,
-  HOST_PROXY_SESSION_LABEL,
+  HOST_PROXY_CONTRACT_LABEL,
   HOST_PROXY_TRANSPORT_EXTENSION_KEY,
   PROVIDER_LABEL,
   ROLE_LABEL,
@@ -41,7 +41,7 @@ describe("container runtime label constants", () => {
     expect(SCRATCH_LABEL).toBe("dev.lando.scratch");
     expect(SCRATCH_ID_LABEL).toBe("dev.lando.scratch-id");
     expect(AGENT_SESSION_LABEL).toBe("dev.lando.agent-session");
-    expect(HOST_PROXY_SESSION_LABEL).toBe("dev.lando.host-proxy-session");
+    expect(HOST_PROXY_CONTRACT_LABEL).toBe("dev.lando.host-proxy-contract");
     expect(HOST_PROXY_TRANSPORT_EXTENSION_KEY).toBe("@lando/core/host-proxy-transport");
     expect(VOLUME_OWNER_LABEL).toBe("dev.lando.volume-owner");
     expect(VOLUME_SELECTOR_LABEL).toBe("dev.lando.volume-selector");

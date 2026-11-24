@@ -2,9 +2,12 @@ import { randomBytes } from "node:crypto";
 import { resolve } from "node:path";
 import type { RootOverrides } from "@lando/paths";
 import { makeLandoPaths } from "@lando/paths";
+import { HostProxyTransportUnavailableError } from "@lando/sdk/errors";
 import type { AppRef } from "@lando/sdk/schema";
+import { Effect } from "effect";
 import type { HostProxyMountInfo } from "./cwd-remap.ts";
 import type { HostProxyOpenCallExecutor, HostProxyRunLandoExecutor } from "./dispatch.ts";
+import { HOST_PROXY_SOCKET_NAME, hostProxyContainerDirectory } from "./run-directory.ts";
 import type { HostProxyShimTarget } from "./transport-shim.ts";
 
 export const DEFAULT_CONCURRENCY = 16;
@@ -53,6 +56,10 @@ export interface HostProxyRunLandoSession {
   readonly url?: string;
   readonly containerUrl?: string;
   readonly shimPath: string;
+  /** Content digest of the shim, so a rebuilt helper changes the container-facing contract. */
+  readonly shimDigest?: string;
+  /** Generation of the container-facing directory the session published into; part of the contract. */
+  readonly containerGeneration?: string;
   readonly transport: HostProxyTransportKind;
   readonly close: () => Promise<void>;
   readonly closed: Promise<void>;
@@ -60,6 +67,8 @@ export interface HostProxyRunLandoSession {
 
 export interface HostProxySessionPaths {
   readonly stateDir: string;
+  /** Container-facing directory containers bind; it outlives every session. */
+  readonly containerDir: string;
   readonly socketPath?: string;
   readonly shimPath: string;
   readonly platform: string;
@@ -76,18 +85,50 @@ export const hostProxyRunLandoStateDir = (
   return landoPaths.hostProxyRunDir(app.id, app.root);
 };
 
-export const sessionPaths = (options: HostProxyRunLandoSessionOptions): HostProxySessionPaths => {
+export const sessionPaths = (
+  options: Pick<HostProxyRunLandoSessionOptions, "app" | "paths" | "hostGatewayName">,
+): HostProxySessionPaths => {
   const paths = makeLandoPaths(options.paths ?? {});
   const stateDir = hostProxyRunLandoStateDir(options.app, options.paths);
   const transport: HostProxyTransportKind =
     options.hostGatewayName === undefined ? "unix-socket" : "tcp-host-gateway";
+  const containerDir = hostProxyContainerDirectory(stateDir);
   return {
     stateDir,
-    ...(transport === "unix-socket" ? { socketPath: resolve(stateDir, "host-proxy.sock") } : {}),
+    containerDir,
+    ...(transport === "unix-socket" ? { socketPath: resolve(containerDir, HOST_PROXY_SOCKET_NAME) } : {}),
     shimPath: resolve(stateDir, paths.platform === "win32" ? "lando.exe" : "lando"),
     platform: paths.platform,
     transport,
   };
+};
+
+/**
+ * `sockaddr_un.sun_path` capacity minus its terminating NUL, where a longer path cannot be bound.
+ * Bun binds a longer path on Linux through `/proc/self/fd/<dir>/<name>`, so Linux has no limit.
+ */
+const unixSocketPathMaxBytes = (platform: NodeJS.Platform): number | undefined =>
+  platform === "linux" ? undefined : 103;
+
+/**
+ * Refuses a unix socket path the host cannot bind. Callers run it before a session writes any
+ * file or a worker is replaced, so an app whose path is too long keeps what it had.
+ */
+export const checkHostProxySocketPath = (
+  paths: Pick<HostProxySessionPaths, "socketPath">,
+): Effect.Effect<void, HostProxyTransportUnavailableError> => {
+  const { socketPath } = paths;
+  const limit = unixSocketPathMaxBytes(process.platform);
+  if (socketPath === undefined || limit === undefined) return Effect.void;
+  const bytes = Buffer.byteLength(socketPath);
+  if (bytes <= limit) return Effect.void;
+  return Effect.fail(
+    new HostProxyTransportUnavailableError({
+      message: `The host-proxy socket path is ${bytes} bytes, over the ${limit}-byte Unix socket limit.`,
+      socketPath,
+      remediation: "Use a shorter app name or a shorter Lando data directory, then start the app again.",
+    }),
+  );
 };
 
 export const resolveHostProxyShimArtifact = (options: HostProxyRunLandoSessionOptions): string | undefined =>

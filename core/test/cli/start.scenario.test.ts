@@ -354,9 +354,9 @@ const expectRetainedHostProxyWorker = async (runDir: string): Promise<void> => {
     appRoot: plan.root,
     providerId: plan.provider,
     transport: "unix-socket",
-    socketPath: join(runDir, "host-proxy.sock"),
+    socketPath: join(runDir, "container", "sock"),
   });
-  expect((await stat(join(runDir, "host-proxy.sock"))).isSocket()).toBe(true);
+  expect((await stat(join(runDir, "container", "sock"))).isSocket()).toBe(true);
   expect((await stat(record.shimPath)).isFile()).toBe(true);
   expect(await Effect.runPromise(probeWorker(record, { requireSessionIdentity: true }))).toBe("live");
 };
@@ -1565,15 +1565,15 @@ describe("lando start", () => {
 
       const appliedWeb = harness.applyPlans[0]?.services[ServiceName.make("web")];
       const appliedDatabase = harness.applyPlans[0]?.services[ServiceName.make("database")];
-      expect(appliedWeb?.environment.LANDO_HOST_PROXY_SOCKET).toBe("/run/lando/host-proxy.sock");
+      expect(appliedWeb?.environment.LANDO_HOST_PROXY_SOCKET).toBe("/run/lando/host-proxy/sock");
       expect(appliedWeb?.environment.LANDO_HOST_PROXY_TOKEN).toBeUndefined();
       expect(appliedWeb?.environment.LANDO_HOST_PROXY_SESSION).toBeUndefined();
       expect(appliedWeb?.environment.LANDO_HOST_PROXY_APP).toBeUndefined();
       expect(appliedWeb?.mounts).toContainEqual(
-        expect.objectContaining({ target: "/run/lando/host-proxy/credentials", readOnly: true }),
+        expect.objectContaining({ target: "/run/lando/host-proxy", readOnly: true }),
       );
-      expect(appliedWeb?.mounts).toContainEqual(
-        expect.objectContaining({ target: "/run/lando/host-proxy.sock", readOnly: true }),
+      expect(appliedWeb?.mounts).not.toContainEqual(
+        expect.objectContaining({ target: "/run/lando/host-proxy.sock" }),
       );
       expect(appliedWeb?.mounts).not.toContainEqual(
         expect.objectContaining({ target: "/usr/local/lib/lando/host-proxy-client" }),
@@ -1747,7 +1747,7 @@ describe("lando start", () => {
       expect(appliedWeb?.environment.LANDO_HOST_PROXY_SOCKET).toBeUndefined();
       expect(appliedWeb?.environment.LANDO_HOST_PROXY_TOKEN).toBeUndefined();
       expect(appliedWeb?.mounts).not.toContainEqual(
-        expect.objectContaining({ target: "/run/lando/host-proxy.sock" }),
+        expect.objectContaining({ target: "/run/lando/host-proxy" }),
       );
     });
   });
@@ -1805,7 +1805,7 @@ describe("lando start", () => {
       expect(appliedWeb?.environment.LANDO_HOST_PROXY_TOKEN).toBeUndefined();
       expect(appliedWeb?.environment.LANDO_HOST_PROXY_SESSION).toBeUndefined();
       expect(appliedWeb?.mounts).not.toContainEqual(
-        expect.objectContaining({ target: "/run/lando/host-proxy.sock" }),
+        expect.objectContaining({ target: "/run/lando/host-proxy" }),
       );
       expect(appliedWeb?.mounts).not.toContainEqual(
         expect.objectContaining({ target: "/usr/local/bin/lando" }),
@@ -1841,7 +1841,7 @@ describe("lando start", () => {
       expect(appliedWeb?.environment.LANDO_HOST_PROXY_URL).toStartWith("http://host.containers.internal:");
       expect(appliedWeb?.environment.LANDO_HOST_PROXY_TOKEN).toBeUndefined();
       expect(appliedWeb?.mounts).toContainEqual(
-        expect.objectContaining({ target: "/run/lando/host-proxy/credentials", readOnly: true }),
+        expect.objectContaining({ target: "/run/lando/host-proxy", readOnly: true }),
       );
       expect(appliedWeb?.environment.LANDO_HOST_PROXY_SOCKET).toBeUndefined();
       expect(appliedWeb?.mounts).not.toContainEqual(
@@ -1880,8 +1880,8 @@ describe("lando start", () => {
       expect(persistedPlanJson).not.toContain("host-proxy.sock");
       expect(persistedPlanJson).not.toContain("/usr/local/bin/lando");
       expect(appliedPlanJson).not.toContain("LANDO_HOST_PROXY_TOKEN");
-      expect(appliedPlanJson).toContain("/run/lando/host-proxy/credentials");
-      expect(persistedPlanJson).not.toContain("/run/lando/host-proxy/credentials");
+      expect(appliedPlanJson).toContain('"/run/lando/host-proxy"');
+      expect(persistedPlanJson).not.toContain("/run/lando/host-proxy");
     });
   });
 
@@ -1903,7 +1903,7 @@ describe("lando start", () => {
       await Effect.runPromise(startApp().pipe(Effect.provide(harness.layer)));
 
       const appliedWeb = harness.applyPlans[0]?.services[ServiceName.make("web")];
-      expect(appliedWeb?.environment.LANDO_HOST_PROXY_SOCKET).toBe("/run/lando/host-proxy.sock");
+      expect(appliedWeb?.environment.LANDO_HOST_PROXY_SOCKET).toBe("/run/lando/host-proxy/sock");
       expect(appliedWeb?.mounts).toContainEqual(
         expect.objectContaining({ target: "/usr/local/bin/lando", readOnly: true }),
       );
@@ -1923,7 +1923,7 @@ describe("lando start", () => {
       const appliedWeb = harness.applyPlans[0]?.services[ServiceName.make("web")];
       expect(appliedWeb?.environment.LANDO_HOST_PROXY_SOCKET).toBeUndefined();
       expect(appliedWeb?.mounts).not.toContainEqual(
-        expect.objectContaining({ target: "/run/lando/host-proxy.sock" }),
+        expect.objectContaining({ target: "/run/lando/host-proxy" }),
       );
     });
   });
