@@ -9,12 +9,15 @@
  * explicitly on that retry because elevation does not preserve the invoking
  * user's environment.
  *
- * Every trust store the authority manages (the system store, then each
- * Homebrew CA bundle) is reported as a row. `setup` inspects them before and
- * after installing and marks the ones it made trust the root; a store it
- * could not repair is reported untrusted, not failed. `trustStores` only
- * inspects. The system row is a fresh read, never Bun's per-process snapshot
- * that `root.trusted` uses, so setup can verify its own install.
+ * Every trust store the authority manages (the system store, each Linux
+ * browser NSS database, each Homebrew CA bundle, and the Windows store under
+ * WSL) is reported as a row. `setup` inspects them before and after installing
+ * and marks the ones it made trust the root; a store it could not repair is
+ * reported untrusted, not failed. `trustStores` only inspects. The system row
+ * is a fresh read, never Bun's per-process snapshot that `root.trusted` uses,
+ * so setup can verify its own install. mkcert itself only writes the system
+ * store (`TRUST_STORES=system`): Lando writes the browser databases so it can
+ * report each one, and mkcert's Java keystore install is not used.
  *
  * Any issuing mkcert run creates a root when `CAROOT` has none, without
  * locking, and every Lando data root on a host shares one `CAROOT`. Only
@@ -27,7 +30,6 @@
 
 import { mapFailures } from "@lando/sdk/command-result";
 import { CaError } from "@lando/sdk/errors";
-import type { TrustStoreChange, TrustStoreStatus } from "@lando/sdk/schema";
 import type {
   CaSetupOptions,
   CertificateAuthorityShape,
@@ -39,29 +41,16 @@ import { type ToolError, resolveHostKey } from "@lando/sdk/tool-provisioning";
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
 import { type Context, Effect } from "effect";
 
-import { type HostEnv, makeHomebrewTrust } from "./homebrew-trust.ts";
+import type { HostEnv } from "./homebrew-trust.ts";
 import { hostTrustsPem } from "./host-trust.ts";
 import { makeIssueCert, makeIssueInto } from "./issuance.ts";
 import { CA_ID, type MkcertContext, caError, failureDetail, makeRunMkcert } from "./mkcert-command.ts";
 import { MKCERT_TOOL_VERSION, mkcertInstallPath, provisionMkcert } from "./provision.ts";
 import { makeMkcertRoot } from "./root.ts";
-import { makeSystemTrust } from "./system-trust.ts";
+import { makeTrustStores, markChanges } from "./trust-stores.ts";
+import { WSL_WINDOWS_TRUST_PATHS, type WindowsTrustPaths } from "./windows-trust.ts";
 
 export { CA_ID } from "./mkcert-command.ts";
-
-const storeKey = ({ id, location }: TrustStoreStatus): string => JSON.stringify([id, location ?? null]);
-
-/** `after`, each row marked changed when setup took it from not trusted to trusted. */
-const markChanges = (
-  before: ReadonlyArray<TrustStoreStatus>,
-  after: ReadonlyArray<TrustStoreStatus>,
-): ReadonlyArray<TrustStoreChange> => {
-  const trustedBefore = new Set(before.filter(({ state }) => state === "trusted").map(storeKey));
-  return after.map((row) => ({
-    ...row,
-    changed: row.state === "trusted" && !trustedBefore.has(storeKey(row)),
-  }));
-};
 
 export interface MkcertCertificateAuthorityOptions {
   readonly binDir: string;
@@ -71,12 +60,14 @@ export interface MkcertCertificateAuthorityOptions {
   readonly privateFileAccess: PrivateFileAccess;
   readonly platform?: string | undefined;
   readonly arch?: string | undefined;
-  /** Environment used to find Homebrew; defaults to `process.env`. */
+  /** Environment used to find Homebrew, browser databases and their tools; defaults to `process.env`. */
   readonly env?: HostEnv | undefined;
   /** Whether the system store this process loaded holds a PEM; defaults to Bun's system snapshot. */
   readonly hostTrustsPem?: ((pem: string) => boolean) | undefined;
   /** Linux system bundle candidates for the fresh trust check; defaults to the distro paths. */
   readonly linuxSystemBundles?: ReadonlyArray<string> | undefined;
+  /** WSL interop markers and the `certutil.exe` fallback; defaults to the WSL paths. */
+  readonly windowsTrustPaths?: WindowsTrustPaths | undefined;
 }
 
 export const makeMkcertCertificateAuthority = (
@@ -96,15 +87,12 @@ export const makeMkcertCertificateAuthority = (
     runMkcert,
   };
   const issueInto = makeIssueInto(context);
-  const homebrew = makeHomebrewTrust({
+  const stores = makeTrustStores({
     processRunner: options.processRunner,
     env: options.env ?? process.env,
     platform,
-  });
-  const systemTrust = makeSystemTrust({
-    processRunner: options.processRunner,
-    platform,
-    linuxBundles: options.linuxSystemBundles,
+    linuxSystemBundles: options.linuxSystemBundles,
+    windowsPaths: options.windowsTrustPaths ?? WSL_WINDOWS_TRUST_PATHS,
   });
   const { caRoot, currentRoot, ensureRoot } = makeMkcertRoot(
     context,
@@ -146,21 +134,22 @@ export const makeMkcertCertificateAuthority = (
     root: string,
     privilege: CaSetupOptions["privilege"],
   ): Effect.fn.Return<void, CaError> {
-    const attempt = yield* runMkcert(["-install"], { CAROOT: root });
+    // Only the system store: Lando writes the browser databases itself.
+    const attempt = yield* runMkcert(["-install"], { CAROOT: root, TRUST_STORES: "system" });
     if (attempt.exitCode === 0) return;
     if (privilege === undefined) return yield* Effect.fail(trustInstallError(attempt));
 
-    const elevated = yield* privilege.elevate(["env", `CAROOT=${root}`, binary, "-install"]);
+    const elevated = yield* privilege.elevate([
+      "env",
+      `CAROOT=${root}`,
+      "TRUST_STORES=system",
+      binary,
+      "-install",
+    ]);
     if (elevated.exitCode !== 0) return yield* Effect.fail(trustInstallError(elevated));
   });
 
   const issueCert = makeIssueCert(currentRoot, issueInto);
-
-  /** Every managed store, system first, in a stable order. Reads only. */
-  const inspect = Effect.fnUntraced(function* (caroot: string, root: string) {
-    const system = yield* systemTrust.inspect(caroot, root);
-    return [system, ...(yield* homebrew.inspect(root))];
-  });
 
   return CertificateAuthority.of({
     id: CA_ID,
@@ -168,20 +157,19 @@ export const makeMkcertCertificateAuthority = (
       yield* provision(setupOptions.force);
       const caroot = yield* caRoot;
       const root = yield* ensureRoot(caroot);
-      const before = yield* inspect(caroot, root);
-      if (setupOptions.skipTrustInstall === true) return { trustStores: markChanges(before, before) };
+      const before = yield* stores.snapshot(caroot, root);
+      if (setupOptions.skipTrustInstall === true) {
+        return { trustStores: markChanges(before.rows, before.rows) };
+      }
       yield* installTrust(caroot, setupOptions.privilege);
-      // mkcert can exit 0 without the system store trusting the root; that is reported, not fatal.
-      const system = yield* systemTrust.inspect(caroot, root);
-      const homebrewRows = yield* homebrew.refresh(root, system.state === "trusted");
-      return { trustStores: markChanges(before, [system, ...homebrewRows]) };
+      return { trustStores: markChanges(before.rows, yield* stores.repair(caroot, root, before)) };
     }),
     root: currentRoot.pipe(
       Effect.map(({ root }) => root),
       Effect.withSpan("CertificateAuthority.root"),
     ),
     trustStores: currentRoot.pipe(
-      Effect.flatMap(({ caroot, root }) => inspect(caroot, root.certificate)),
+      Effect.flatMap(({ caroot, root }) => stores.inspect(caroot, root.certificate)),
       Effect.withSpan("CertificateAuthority.trustStores"),
     ),
     issueCert,

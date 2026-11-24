@@ -89,6 +89,10 @@ ${linuxGuideE2eProviderSetupSteps}
         env:
           LANDO_CONFIG__default_provider_id: lando
 
+      - name: Run Homebrew CA trust suite
+        run: |
+          LANDO_SCENARIO_E2E_BINARY="$GITHUB_WORKSPACE/dist/lando" ${testSelectionCommand("ca-mkcert-homebrew-trust-live")}
+
       - name: Teardown Lando runtime
         if: always()
         run: |

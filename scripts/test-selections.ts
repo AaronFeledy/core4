@@ -299,6 +299,12 @@ export const TEST_SELECTIONS = [
     needs: "Live managed Podman and compiled CLI",
   },
   {
+    id: "ca-mkcert-homebrew-trust-live",
+    paths: ["plugins/ca-mkcert/test/homebrew-trust.integration.test.ts"],
+    jobs: [{ workflow: "nightly.yml", job: "provider-lando-e2e-linux-x64" }],
+    needs: "Answering LANDO_TEST_PODMAN_SOCKET, network for the Homebrew image and bottles, compiled CLI",
+  },
+  {
     id: "nightly-tier",
     paths: NIGHTLY_TIER_TESTS,
     unit: "exclude",

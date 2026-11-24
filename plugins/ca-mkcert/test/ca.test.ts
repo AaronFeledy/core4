@@ -89,7 +89,8 @@ describe("mkcert CertificateAuthority setup", () => {
       const installCalls = runner.calls().filter((call) => call.args[0] === "-install");
       expect(installCalls).toHaveLength(1);
       expect(installCalls[0]?.cmd).toBe(mkcertInstallPath(harness.binDir, "linux"));
-      expect(installCalls[0]?.env?.CAROOT).toBe(harness.caRoot);
+      // mkcert writes only the system store; Lando owns the browser databases.
+      expect(installCalls[0]?.env).toEqual({ CAROOT: harness.caRoot, TRUST_STORES: "system" });
     });
   });
 
@@ -155,7 +156,13 @@ describe("mkcert CertificateAuthority setup", () => {
       const privilege = makeFakePrivilege();
       await Effect.runPromise(ca.setup({ force: false, privilege: privilege.service }));
       expect(privilege.calls()).toEqual([
-        ["env", `CAROOT=${harness.caRoot}`, mkcertInstallPath(harness.binDir, "linux"), "-install"],
+        [
+          "env",
+          `CAROOT=${harness.caRoot}`,
+          "TRUST_STORES=system",
+          mkcertInstallPath(harness.binDir, "linux"),
+          "-install",
+        ],
       ]);
     });
   });

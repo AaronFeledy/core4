@@ -3,14 +3,13 @@
  * so setup cannot use that snapshot to verify the trust `mkcert -install` just added; this module
  * reads the store again every time. It only reads: it never installs, prompts, or elevates.
  */
-import { X509Certificate } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { TrustStoreStatus } from "@lando/sdk/schema";
 import type { ProcessRunner } from "@lando/sdk/services";
 import { type Context, Effect, Result } from "effect";
 
-import { PEM_BLOCK, pemsContainRoot } from "./host-trust.ts";
+import { PEM_BLOCK, pemsContainRoot, sha1Hex } from "./host-trust.ts";
 import { failureDetail } from "./mkcert-command.ts";
 
 export const INSTALL_TRUST_REMEDIATION = "Run `lando setup` without `--skip-install-ca`.";
@@ -25,7 +24,7 @@ export const LINUX_SYSTEM_BUNDLES: ReadonlyArray<string> = [
 ];
 
 /** Read-only probes are fast; a hung one must not hang setup or doctor. */
-const PROBE_TIMEOUT_MS = 30_000;
+export const PROBE_TIMEOUT_MS = 30_000;
 
 export interface SystemTrustOptions {
   readonly processRunner: Context.Service.Shape<typeof ProcessRunner>;
@@ -51,15 +50,6 @@ const firstReadable = async (paths: ReadonlyArray<string>) => {
     if (text !== undefined) return { path, text };
   }
   return undefined;
-};
-
-const sha1Hex = (pem: string): string | undefined => {
-  try {
-    return new X509Certificate(pem).fingerprint.replaceAll(":", "");
-  } catch (cause) {
-    if (cause instanceof Error) return undefined;
-    throw cause;
-  }
 };
 
 export const makeSystemTrust = ({ processRunner, platform, linuxBundles }: SystemTrustOptions) => {
