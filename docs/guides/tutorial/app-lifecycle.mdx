@@ -296,6 +296,69 @@ services:
 
 `lando app:config:lint` confirms the Landofile is valid, and from then on only `--volumes` or `--purge` removes that store. Declaring the store does not migrate existing data: the next `lando start` recreates the container on the named store, and whatever the anonymous volume held leaves with the old container. Export anything you need first, for example with [Import and export app databases](../tooling/db-import-export.mdx). Lando only drops the anonymous volumes of the container it is removing; it never prunes unlabeled volumes left behind by anything else.
 
+This app gives `app` a `build.app` step that counts its runs in `build-runs.log`, and adds a `cache` service whose image declares a `VOLUME`. Write a file inside each container, then see what each command keeps:
+
+```yaml
+name: app-lifecycle-keep
+services:
+  app:
+    type: "node:22"
+    primary: true
+    build:
+      app:
+        - echo run >> /app/build-runs.log
+  cache:
+    type: compose
+    image: docker.io/library/redis:7-alpine
+    appMount: false
+```
+
+  <Scenario id="stop-keeps-containers" layer="e2e" timeout={600000} render>
+    <Step name="start">
+      <UseFixture name="app-lifecycle-keep-containers" />
+      <Verify command="lando start --format=json" expect={{ stdout: { regex: "\"name\":\\s*\"app\"(?:(?!\"name\")[\\s\\S])*?\"action\":\\s*\"created\"" } }} />
+      <Run command={`lando exec app -- sh -c 'echo kept > /var/tmp/stop-keeps'`} />
+      <Verify command="lando exec app -- grep -c run /app/build-runs.log" expect={{ stdout: { regex: "^1\\s*$" } }} />
+    </Step>
+    <Hidden reason="Write into the image VOLUME of the cache service">
+      <Step name="write-cache-volume">
+        <Run command={`lando exec cache -- sh -c 'echo kept > /data/stop-keeps'`} />
+      </Step>
+    </Hidden>
+    <Step name="stop-then-start">
+      <Run command="lando stop" />
+      <Verify command="lando start --format=json" expect={{ stdout: { regex: "\"name\":\\s*\"app\"(?:(?!\"name\")[\\s\\S])*?\"action\":\\s*\"started\"" } }} />
+      <Verify command="lando exec app -- cat /var/tmp/stop-keeps" expect={{ stdout: { regex: "kept" } }} />
+      <Verify command="lando exec app -- grep -c run /app/build-runs.log" expect={{ stdout: { regex: "^1\\s*$" } }} />
+    </Step>
+    <Hidden reason="The image VOLUME survives stop and start with its container">
+      <Step name="cache-volume-kept">
+        <Verify command="lando exec cache -- cat /data/stop-keeps" expect={{ stdout: { regex: "kept" } }} />
+      </Step>
+    </Hidden>
+    <Step name="restart">
+      <Verify command="lando restart --format=json" expect={{ stdout: { regex: "\"name\":\\s*\"app\"(?:(?!\"name\")[\\s\\S])*?\"action\":\\s*\"started\"" } }} />
+      <Verify command="lando exec app -- cat /var/tmp/stop-keeps" expect={{ stdout: { regex: "kept" } }} />
+      <Verify command="lando exec app -- grep -c run /app/build-runs.log" expect={{ stdout: { regex: "^1\\s*$" } }} />
+    </Step>
+    <Step name="rebuild">
+      <Verify command="lando rebuild -y --format=json" expect={{ stdout: { regex: "\"name\":\\s*\"app\"(?:(?!\"name\")[\\s\\S])*?\"action\":\\s*\"replaced\"" } }} />
+      <Verify command="lando exec app -- ls /var/tmp" expect={{ stdout: { not: { regex: "stop-keeps" } } }} />
+      <Verify command="lando exec app -- grep -c run /app/build-runs.log" expect={{ stdout: { regex: "^2\\s*$" } }} />
+    </Step>
+    <Step name="destroy-then-start">
+      <Run command={`lando exec app -- sh -c 'echo kept > /var/tmp/stop-keeps'`} />
+      <Run command="lando destroy -y" />
+      <Verify command="lando start --format=json" expect={{ stdout: { regex: "\"name\":\\s*\"app\"(?:(?!\"name\")[\\s\\S])*?\"action\":\\s*\"created\"" } }} />
+      <Verify command="lando exec app -- ls /var/tmp" expect={{ stdout: { not: { regex: "stop-keeps" } } }} />
+      <Verify command="lando exec app -- grep -c run /app/build-runs.log" expect={{ stdout: { regex: "^3\\s*$" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes" />
+    </Step>
+  </Scenario>
+
 ### Check what a service mounts
 
 `lando info --format=json` lists each service's mounts under `services[].mounts` and its application source mount under `services[].appMount`. Ordinary `info` reads the one container inspection it already performs per service; it does not query images or volumes, so it reports evidence rather than guesses:

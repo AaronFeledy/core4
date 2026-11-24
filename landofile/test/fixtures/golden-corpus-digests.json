@@ -29,6 +29,10 @@
       "digest": "454dc13afc986c631bf6031d98efd3586a524c5a3fd5a92f7b191ad29017ebd6"
     },
     {
+      "fixture": "docs/guides/app-lifecycle/fixtures/app-lifecycle-keep-containers",
+      "digest": "12c5af155d59e7b36c0f3155c1f967060bd3fdbe686724d4281220bec9b46abc"
+    },
+    {
       "fixture": "docs/guides/app-name-edge-cases/fixtures/non-kebab-landofile",
       "digest": "a405b1cb3fd658d7c4e931719704002bdd2a02e25741f3ff034ec708a67e2358"
     },
