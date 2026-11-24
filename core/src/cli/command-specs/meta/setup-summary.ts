@@ -44,7 +44,7 @@ const trustValue = ({ state, changed }: TrustStoreChange): string => (changed ? 
 
 /** Plain-text line for one trust store. */
 export const trustStoreLine = (store: TrustStoreChange): string =>
-  `trust: ${store.name}: ${trustValue(store)}`;
+  `trust: ${store.name}${store.location === undefined ? "" : ` (${store.location})`}: ${trustValue(store)}`;
 
 const trustRow = (store: TrustStoreChange): SummaryRow => ({
   label: store.name,

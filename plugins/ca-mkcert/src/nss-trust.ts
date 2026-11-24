@@ -51,12 +51,11 @@ export const parseTrustListing = (output: string): ReadonlyArray<TrustEntry> => 
 };
 
 /** TLS-trusted entries first, then mkcert's own, then the rest. */
-const candidates = (entries: ReadonlyArray<TrustEntry>): ReadonlyArray<TrustEntry> =>
-  [
-    ...entries.filter(({ tls }) => tls),
-    ...entries.filter(({ tls, nickname }) => !tls && nickname.startsWith("mkcert")),
-    ...entries.filter(({ tls, nickname }) => !tls && !nickname.startsWith("mkcert")),
-  ].slice(0, MAX_CANDIDATES);
+const byLikelihood = (entries: ReadonlyArray<TrustEntry>): ReadonlyArray<TrustEntry> => [
+  ...entries.filter(({ tls }) => tls),
+  ...entries.filter(({ tls, nickname }) => !tls && nickname.startsWith("mkcert")),
+  ...entries.filter(({ tls, nickname }) => !tls && !nickname.startsWith("mkcert")),
+];
 
 /** The nickname `mkcert -install` gives the root: its serial number in decimal. */
 export const mkcertNickname = (root: string): string => {
@@ -104,8 +103,9 @@ export const makeNssTrust = ({ processRunner, env, platform }: NssTrustOptions) 
     const sql = `sql:${database.dir}`;
     const listed = yield* run(binary, ["-L", "-d", sql]);
     if (listed.exitCode !== 0) return failed(database, `\`certutil -L\` failed: ${failureDetail(listed)}`);
+    const ordered = byLikelihood(parseTrustListing(listed.stdout));
     let presentWithoutTls = false;
-    for (const { nickname, tls } of candidates(parseTrustListing(listed.stdout))) {
+    for (const { nickname, tls } of ordered.slice(0, MAX_CANDIDATES)) {
       const exported = yield* run(binary, ["-L", "-d", sql, "-n", nickname, "-a"]);
       if (exported.exitCode !== 0)
         return failed(database, `\`certutil -L -n\` failed: ${failureDetail(exported)}`);
@@ -119,6 +119,16 @@ export const makeNssTrust = ({ processRunner, env, platform }: NssTrustOptions) 
         reason: "not-trusted-for-tls",
         detail: "The database holds the local CA but does not trust it to identify websites.",
         remediation: `In ${database.browser}'s certificate settings, trust the local CA to identify websites, then run \`lando doctor\`.`,
+      });
+    }
+    // An unchecked entry may hold the root, so "missing" (which authorizes a write) is unproven.
+    const unchecked = ordered.length - MAX_CANDIDATES;
+    if (unchecked > 0) {
+      return row(database, {
+        state: "unknown",
+        reason: "inspection-incomplete",
+        detail: `The database holds ${ordered.length} certificates; Lando checked ${MAX_CANDIDATES} and did not find the local CA, leaving ${unchecked} unchecked.`,
+        remediation: `Check whether ${database.browser}'s certificate settings trust the local CA, then run \`lando doctor\`.`,
       });
     }
     return row(database, {

@@ -9,7 +9,7 @@ import type {
 import type { TrustStoreStatus } from "@lando/sdk/schema";
 import type { CertificateAuthorityShape } from "@lando/sdk/services";
 import { Cause, Effect, Exit, Option } from "effect";
-import { trustedRootCheck } from "./doctor-certs-trust";
+import { storeSolution, trustedRootCheck } from "./doctor-certs-trust";
 import { warnCheck } from "./doctor-check-builders";
 import type { DoctorFinding } from "./doctor-contract";
 import { CERTS_SPEC, buildDegradedCheck } from "./doctor-subsystem-checks";
@@ -120,18 +120,17 @@ const statusFromRoot = Effect.fnUntraced(function* (
       } as const;
     }
     if (Cause.hasInterrupts(stores.cause)) return yield* Effect.interrupt;
+    const failure = Cause.findErrorOption(stores.cause);
+    // Only a typed CaError is a store answer; doctor's section isolation reports anything else.
+    if (Option.isNone(failure) || !isCaError(failure.value))
+      return yield* Effect.orDie(Effect.failCause(stores.cause));
     // The root is readable, so the system-store answer still stands without the inventory.
     return {
       _tag: "selected",
       id: authority.id,
       trusted: rooted.value.trusted,
       trustStores: [],
-      trustStoresDetail: redact(
-        Option.match(Cause.findErrorOption(stores.cause), {
-          onNone: () => String(Cause.squash(stores.cause)),
-          onSome: (error) => error.message,
-        }),
-      ),
+      trustStoresDetail: redact(failure.value.message),
     } as const;
   }
   if (Cause.hasInterrupts(rooted.cause)) return yield* Effect.interrupt;
@@ -171,7 +170,13 @@ export const certsSubsystemCheck = Effect.fnUntraced(function* (
         certsReason: "untrusted",
         ...(fix ? { fixOutcome: "skipped-manual" } : {}),
       },
-      solutions: [{ kind: "manual", description: UNTRUSTED_CA, command: "lando setup" }],
+      // The first fix covers the system store; every other store that lacks the root needs its own.
+      solutions: [
+        { kind: "manual", description: UNTRUSTED_CA, command: "lando setup" },
+        ...status.trustStores
+          .filter(({ id, state }) => id !== "system" && state !== "trusted")
+          .map(storeSolution),
+      ],
     });
     return status.trustStores.length === 0
       ? finding

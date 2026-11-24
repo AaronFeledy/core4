@@ -112,6 +112,14 @@ describe("CA setup resolver", () => {
     reason: "inspection-failed",
     changed: false,
   };
+  const NSS: TrustStoreChange = {
+    id: "nss",
+    name: "NSS database",
+    location: "/home/u/.pki/nssdb",
+    state: "trusted",
+    detail: "Restart Chrome or Chromium to use it.",
+    changed: true,
+  };
   const reporting = (trustStores: ReadonlyArray<TrustStoreChange>) => ({
     ...makeTestCertificateAuthority(),
     setup: () => Effect.succeed({ trustStores }),
@@ -119,7 +127,7 @@ describe("CA setup resolver", () => {
 
   test("returns the trust stores, narrates changes, and warns about each store left untrusted", async () => {
     // Given: setup trusted the system store and could not repair two others
-    const ca = reporting([SYSTEM, BREW, UNKNOWN]);
+    const ca = reporting([SYSTEM, NSS, BREW, UNKNOWN]);
     const events: LandoEvent[] = [];
     const commandWarnings = makeCommandWarnings(true);
     const { recorder, steps } = makeRecorder();
@@ -137,9 +145,10 @@ describe("CA setup resolver", () => {
     );
 
     // Then
-    expect(stores).toEqual([SYSTEM, BREW, UNKNOWN]);
+    expect(stores).toEqual([SYSTEM, NSS, BREW, UNKNOWN]);
     expect(events.flatMap((event) => (event._tag === "message.info" ? [event.body] : []))).toEqual([
       "Trusted the local CA in System trust store.",
+      "Trusted the local CA in NSS database (/home/u/.pki/nssdb). Restart Chrome or Chromium to use it.",
     ]);
     // Machine output carries the warnings in the envelope instead of narrating them.
     expect(events.filter((event) => event._tag === "message.warn")).toEqual([]);
@@ -149,12 +158,12 @@ describe("CA setup resolver", () => {
         message:
           "Homebrew CA bundle at /b/cert.pem does not trust the local CA: `brew postinstall ca-certificates` failed: Permission denied.",
         remediation: "Fix the Homebrew error, then run `lando setup` again.",
-        context: { store: "homebrew", location: "/b/cert.pem" },
+        context: { store: "homebrew", location: "/b/cert.pem", state: "untrusted", reason: "refresh-failed" },
       },
       {
         code: "CA_TRUST_INCOMPLETE",
         message: "NSS database does not trust the local CA.",
-        context: { store: "nss" },
+        context: { store: "nss", state: "unknown", reason: "inspection-failed" },
       },
     ]);
     expect(steps).toHaveLength(1);

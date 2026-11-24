@@ -8,7 +8,13 @@ import { withAdvisoryLockUsing } from "@lando/state-store/lock";
 import { Effect } from "effect";
 
 import type { IssueInto } from "./issuance.ts";
-import { type MkcertContext, SETUP_REMEDIATION, caError, failureDetail } from "./mkcert-command.ts";
+import {
+  type MkcertContext,
+  NO_TRUST_STORES,
+  SETUP_REMEDIATION,
+  caError,
+  failureDetail,
+} from "./mkcert-command.ts";
 import { MKCERT_TOOL_VERSION, readInstalledMkcertStatus } from "./provision.ts";
 
 const ROOT_FILE = "rootCA.pem";
@@ -26,7 +32,7 @@ export const makeMkcertRoot = (
 ) => {
   // `mkcert -CAROOT` only prints the directory; it never creates a root.
   const caRoot: Effect.Effect<string, CaError> = Effect.gen(function* () {
-    const result = yield* runMkcert(["-CAROOT"]);
+    const result = yield* runMkcert(["-CAROOT"], NO_TRUST_STORES);
     const root = result.stdout.trim();
     if (result.exitCode !== 0 || root.length === 0) {
       return yield* Effect.fail(

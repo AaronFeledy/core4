@@ -19,7 +19,7 @@ export const LOCAL_CA_UNTRUSTED_CODE = "LOCAL_CA_UNTRUSTED";
 export const localCaUntrustedWarning = (): CommandWarning => ({
   code: LOCAL_CA_UNTRUSTED_CODE,
   message:
-    "This machine's system trust store does not include the local CA, so browsers will warn on this app's HTTPS URLs.",
+    "This machine's system trust store does not include the local CA, so browsers may warn on this app's HTTPS URLs.",
   remediation: "Run `lando setup` without `--skip-install-ca`.",
   context: { certsTrusted: "false" },
 });

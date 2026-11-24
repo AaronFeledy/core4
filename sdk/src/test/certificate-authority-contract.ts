@@ -98,10 +98,14 @@ export const runCaContract = Effect.fnUntraced(function* (
 
 /** Every row matches its schema and names a distinct (id, location) store. */
 const requireTrustStoreRows = Effect.fnUntraced(function* (
-  rows: ReadonlyArray<unknown>,
+  rows: unknown,
   isRow: (row: unknown) => row is TrustStoreStatus,
   source: string,
 ): Effect.fn.Return<void, ContractFailure> {
+  // A plugin built outside TypeScript can return anything; a malformed report fails, never dies.
+  if (!Array.isArray(rows)) {
+    return yield* Effect.fail(caContractFailure(`${source} reports its trust stores as a list`, rows));
+  }
   yield* requireCaContract(rows.every(isRow), `${source} reports trust stores that match their schema`, rows);
   const keys = rows.filter(isRow).map(({ id, location }) => JSON.stringify([id, location ?? null]));
   yield* requireCaContract(

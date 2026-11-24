@@ -8,7 +8,7 @@ import {
   PluginLoadError,
 } from "@lando/sdk/errors";
 import { makeTestCertificateAuthority } from "@lando/sdk/test";
-import { Effect } from "effect";
+import { Cause, Effect, Exit } from "effect";
 import {
   type CertsDoctorStatus,
   UNRESOLVED_CERTS_STATUS,
@@ -111,6 +111,28 @@ describe("certificate authority doctor status", () => {
       trustStores: [],
       trustStoresDetail: "[redacted] store read failed.",
     });
+  });
+
+  test("lets a trust store defect reach doctor's section isolation", async () => {
+    // Given
+    const authority = {
+      ...makeTestCertificateAuthority(),
+      id: "mkcert",
+      trustStores: Effect.die(new Error("store inspection bug")),
+    };
+
+    // When
+    const exit = await Effect.runPromiseExit(
+      certsDoctorStatus(redact).pipe(
+        Effect.provideService(
+          CertificateAuthorityResolver,
+          CertificateAuthorityResolver.of({ resolve: Effect.succeed(authority) }),
+        ),
+      ),
+    );
+
+    // Then
+    expect(Exit.isFailure(exit) && Cause.hasDies(exit.cause)).toBe(true);
   });
 
   test("reports an unreadable root without setup or issuance", async () => {

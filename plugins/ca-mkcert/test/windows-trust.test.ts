@@ -114,14 +114,14 @@ describe("Windows certificate store under WSL", () => {
   });
 
   test.each([
-    { answers: [0], probes: 1 },
-    { answers: [17, 0], probes: 2 },
+    { answers: [0], probes: 1, location: "CurrentUser\\Root" },
+    { answers: [17, 0], probes: 2, location: "LocalMachine\\Root" },
   ] as const)(
-    "checks the user then the machine Root store ($answers -> trusted)",
-    async ({ answers, probes }) => {
+    "checks the user then the machine Root store ($answers -> trusted in $location)",
+    async ({ answers, probes, location }) => {
       const runner = fakeRunner(answers);
       const { rows, bin } = await inspect(runner);
-      expect(rows).toEqual([{ ...STORE, state: "trusted" }]);
+      expect(rows).toEqual([{ ...STORE, location, state: "trusted" }]);
       expect(runner.calls).toEqual(
         [
           { cmd: join(bin, "certutil.exe"), args: ["-user", "-store", "Root", SHA1] },

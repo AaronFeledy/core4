@@ -41,8 +41,8 @@ const withHomebrew = async (
     readonly postinstall?: (homebrew: Homebrew) => Promise<ProcessResult>;
     readonly brewSpawnError?: ProcessExecError;
     readonly env?: (homebrew: Homebrew) => Readonly<Record<string, string>>;
-    /** System bundle before setup; it holds the root unless a test says otherwise. */
-    readonly system?: string;
+    /** System bundle before setup; it holds the root unless a test says otherwise, and is absent when null. */
+    readonly system?: string | null;
     /** System bundle after `mkcert -install`; unchanged when undefined. */
     readonly systemAfterInstall?: string;
   },
@@ -65,7 +65,8 @@ const withHomebrew = async (
     await mkdir(join(prefix, "etc", "ca-certificates"), { recursive: true });
     if (options.formula !== false) await mkdir(join(prefix, "opt", "ca-certificates"), { recursive: true });
     if (options.bundle !== undefined) await writeFile(homebrew.bundle, options.bundle);
-    await writeFile(homebrew.systemBundle, options.system ?? `${rootB}\n${rootA}`);
+    if (options.system !== null)
+      await writeFile(homebrew.systemBundle, options.system ?? `${rootB}\n${rootA}`);
     await mkdir(harness.caRoot, { recursive: true });
     await writeFile(join(harness.caRoot, "rootCA.pem"), rootA);
     const { postinstall, brewSpawnError, systemAfterInstall } = options;
@@ -183,12 +184,59 @@ describe("mkcert CertificateAuthority and Homebrew's CA bundle", () => {
       ids: 1,
     },
     { name: "Homebrew is not installed", bundle: rootB, formula: true, env: () => ({ PATH: "" }), ids: 1 },
-  ])("setup runs no brew when $name", async ({ bundle, formula, env, ids }) => {
-    await withHomebrew({ bundle, formula, ...(env === undefined ? {} : { env }) }, async (input) => {
-      const result = await Effect.runPromise(input.ca.setup({ force: false }));
-      expect(result.trustStores.map(({ id, state, changed }) => ({ id, state, changed }))).toEqual(
-        ["system", "homebrew"].slice(0, ids).map((id) => ({ id, state: "trusted", changed: false })),
-      );
+  ])(
+    "setup runs neither mkcert -install nor brew when the system trusts the root and $name",
+    async ({ bundle, formula, env, ids }) => {
+      await withHomebrew({ bundle, formula, ...(env === undefined ? {} : { env }) }, async (input) => {
+        const privilege = makeFakePrivilege();
+        const result = await Effect.runPromise(
+          input.ca.setup({ force: false, privilege: privilege.service }),
+        );
+        expect(result.trustStores.map(({ id, state, changed }) => ({ id, state, changed }))).toEqual(
+          ["system", "homebrew"].slice(0, ids).map((id) => ({ id, state: "trusted", changed: false })),
+        );
+        expect(writingCalls(input.runner)).toEqual([]);
+        expect(privilege.calls()).toEqual([]);
+      });
+    },
+  );
+
+  test("setup reports one Homebrew row for a prefix named two ways", async () => {
+    await withHomebrew(
+      {
+        bundle: `${rootB}\n${rootA}`,
+        env: ({ prefix }) => ({ HOMEBREW_PREFIX: `${prefix}/`, PATH: join(prefix, "bin", "..", "bin") }),
+      },
+      async (input) => {
+        // Given: the brew on PATH lives in the prefix HOMEBREW_PREFIX names with a trailing slash
+        await mkdir(join(input.homebrew.prefix, "bin"), { recursive: true });
+        await writeFile(input.homebrew.brew, "#!/bin/sh\n");
+        await chmod(input.homebrew.brew, 0o755);
+        // When
+        const { trustStores } = await Effect.runPromise(input.ca.setup({ force: false }));
+        // Then
+        expect(trustStores.filter(({ id }) => id === "homebrew")).toEqual([
+          { ...brewStore(input.homebrew), state: "trusted", changed: false },
+        ]);
+      },
+    );
+  });
+
+  test("setup reports a bundle it cannot read as unknown and does not rebuild it", async () => {
+    await withHomebrew({ postinstall: rebuildWith(rootA) }, async (input) => {
+      // Given: something that is not a readable file sits where the bundle belongs
+      await mkdir(input.homebrew.bundle);
+      // When
+      const [, brew] = (await Effect.runPromise(input.ca.setup({ force: false }))).trustStores;
+      // Then
+      expect(brew).toMatchObject({
+        ...brewStore(input.homebrew),
+        state: "unknown",
+        reason: "inspection-failed",
+        remediation: `Make ${input.homebrew.bundle} readable, then run \`lando setup\` again.`,
+        changed: false,
+      });
+      expect(brew?.detail).toContain("Lando could not read the bundle");
       expect(brewCalls(input.runner)).toEqual([]);
     });
   });
@@ -240,6 +288,22 @@ describe("mkcert CertificateAuthority and Homebrew's CA bundle", () => {
         expect(result.trustStores.map(({ id, state, changed }) => ({ id, state, changed }))).toEqual([
           { id: "system", state: "trusted" as const, changed: true },
           { id: "homebrew", state: "trusted" as const, changed: true },
+        ]);
+      },
+    );
+  });
+
+  test("setup does not report a store it could not inspect before as changed", async () => {
+    await withHomebrew(
+      { bundle: `${rootB}\n${rootA}`, system: null, systemAfterInstall: `${rootB}\n${rootA}` },
+      async (input) => {
+        // Given: no system bundle is readable before setup, so the system row starts unknown
+        // When: mkcert -install leaves one that holds the root
+        const result = await Effect.runPromise(input.ca.setup({ force: false }));
+        // Then
+        expect(result.trustStores.map(({ id, state, changed }) => ({ id, state, changed }))).toEqual([
+          { id: "system", state: "trusted" as const, changed: false },
+          { id: "homebrew", state: "trusted" as const, changed: false },
         ]);
       },
     );
