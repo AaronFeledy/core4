@@ -1,6 +1,8 @@
 import { X509Certificate } from "node:crypto";
 import tls from "node:tls";
 
+export const PEM_BLOCK = /-----BEGIN CERTIFICATE-----[\s\S]+?-----END CERTIFICATE-----/g;
+
 const fingerprint = (pem: string): string | undefined => {
   try {
     return new X509Certificate(pem).fingerprint256;
@@ -10,14 +12,12 @@ const fingerprint = (pem: string): string | undefined => {
   }
 };
 
-/** Default and system stores. The default Mozilla set does not contain a mkcert root. */
-const hostTrustPems = (): readonly string[] => {
-  const reader = tls as typeof tls & {
-    getCACertificates?: (type?: "default" | "system") => readonly string[];
-  };
-  if (typeof reader.getCACertificates !== "function") return [...tls.rootCertificates];
-  return [...new Set([...reader.getCACertificates("default"), ...reader.getCACertificates("system")])];
-};
+/**
+ * The system store as this process loaded it. The default set is left out on purpose: it adds
+ * process overrides such as `NODE_EXTRA_CA_CERTS`, which browsers and other tools never read.
+ */
+const systemTrustPems = (): readonly string[] =>
+  typeof tls.getCACertificates === "function" ? tls.getCACertificates("system") : [];
 
 /** True when `pems` holds `root`, compared by SHA-256 fingerprint. Unparsable entries never match. */
 export const pemsContainRoot = (pems: ReadonlyArray<string>, root: string): boolean => {
@@ -26,5 +26,8 @@ export const pemsContainRoot = (pems: ReadonlyArray<string>, root: string): bool
   return pems.some((candidate) => fingerprint(candidate) === wanted);
 };
 
-/** True when `pem` is already in the host trust store. Does not install anything. */
-export const hostTrustsPem = (pem: string): boolean => pemsContainRoot(hostTrustPems(), pem);
+/**
+ * True when the system trust store held `pem` when this process loaded it. Cheap, but cached per
+ * process, so it cannot confirm trust installed later. Does not install anything.
+ */
+export const hostTrustsPem = (pem: string): boolean => pemsContainRoot(systemTrustPems(), pem);

@@ -1,5 +1,5 @@
 /**
- * `meta:setup` optional-service setup steps (CA, router, shell integration).
+ * `meta:setup` optional-service setup steps (router, shell integration, shell profile PATH).
  *
  * Each step resolves its service optionally, runs its `setup`, and records the
  * readiness outcome (satisfied / skipped / unavailable / failed) — honoring the
@@ -10,40 +10,21 @@
 import { resolveProxyDefaultDomain } from "@lando/engine/config/proxy-default-domain";
 import { resolveRouterConfigForApp } from "@lando/engine/config/router-config";
 import {
-  commandWarningsUseMachineOutput,
-  recordCommandWarning,
-} from "@lando/engine/landofile/command-warnings";
-import { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
-import {
   SSH_SIDECAR_READINESS_POLICY,
   awaitRuntimeSshAgent,
 } from "@lando/engine/subsystems/ssh-agent/session";
 import { SshAgentUnavailableError } from "@lando/sdk/errors";
-import { MessageInfoEvent, MessageWarnEvent } from "@lando/sdk/events";
-import {
-  type CaTrustBundle,
-  CertificateAuthority,
-  EventService,
-  type PrivilegeService,
-  RouterService,
-  SshService,
-} from "@lando/sdk/services";
+import { MessageWarnEvent } from "@lando/sdk/events";
+import { EventService, type PrivilegeService, RouterService, SshService } from "@lando/sdk/services";
 import { type Context, DateTime, Duration, Effect, Result } from "effect";
 import { CliInvocation } from "../../../runtime/invocation-context";
 import { resolveSecretsRedactor } from "../../commands/secrets-redactor";
+import { ShellenvInstallRecordError, installShellProfileIntegration } from "../../commands/shellenv";
 import { inputBooleanFlag } from "./setup-inputs";
 import { SYSTEM_RUNTIME_PROVIDERS } from "./setup-provider-selection";
-import type { SetupReadinessRecorder } from "./setup-steps";
+import { type SetupReadinessRecorder, ShellProfileIntegrationError } from "./setup-steps";
 
-type SetupPrivilegeOptions = {
-  readonly privilege?: Context.Service.Shape<typeof PrivilegeService>;
-};
-
-const SKIP_CA_TRUST_EVIDENCE = "Certificate authority trust installation skipped by --skip-install-ca.";
-
-const NO_REFRESHED_BUNDLES: ReadonlyArray<CaTrustBundle> = [];
-
-const recordAbsentHostIntegration = (
+export const recordAbsentHostIntegration = (
   recorder: SetupReadinessRecorder,
   selectedProviderId: string,
   id: string,
@@ -58,104 +39,6 @@ const recordAbsentHostIntegration = (
   }
   return recorder.recordUnavailable(id, serviceName);
 };
-
-export const runCaSetupStep = Effect.fn("SetupCommand.runCaSetupStep")(function* (
-  input: unknown,
-  privilegeOptions: SetupPrivilegeOptions,
-  recorder: SetupReadinessRecorder,
-  selectedProviderId = "lando",
-  platform: NodeJS.Platform = process.platform,
-) {
-  const skipTrustInstall = inputBooleanFlag(input, "skip-install-ca");
-  const resolver = yield* Effect.serviceOption(CertificateAuthorityResolver);
-  const authority = yield* Effect.serviceOption(CertificateAuthority);
-  if (resolver._tag === "None" && authority._tag === "None") {
-    if (skipTrustInstall) {
-      yield* recorder.record({ id: "ca", status: "skipped", evidence: SKIP_CA_TRUST_EVIDENCE });
-    } else {
-      yield* recordAbsentHostIntegration(recorder, selectedProviderId, "ca", "Certificate authority");
-    }
-    return NO_REFRESHED_BUNDLES;
-  }
-  const ca =
-    resolver._tag === "Some"
-      ? yield* resolver.value.resolve.pipe(
-          Effect.catchTag("NoCertificateAuthorityError", (cause) =>
-            Effect.as(
-              skipTrustInstall
-                ? recorder.record({ id: "ca", status: "skipped", evidence: SKIP_CA_TRUST_EVIDENCE })
-                : recorder.record({
-                    id: "ca",
-                    status: "unavailable",
-                    evidence: cause.message,
-                    remediation: cause.remediation,
-                  }),
-              undefined,
-            ),
-          ),
-          Effect.catchTag("AmbiguousCertificateAuthoritiesError", (cause) =>
-            Effect.as(
-              recorder.record({
-                id: "ca",
-                status: "failed",
-                evidence: cause.message,
-                remediation: cause.remediation,
-              }),
-              undefined,
-            ),
-          ),
-          Effect.tapError((cause) => recorder.recordFailure("ca", cause)),
-        )
-      : authority._tag === "Some"
-        ? authority.value
-        : undefined;
-  if (ca === undefined) return NO_REFRESHED_BUNDLES;
-  const events = yield* Effect.serviceOption(EventService);
-  // Narration is best-effort: a renderer failure must not fail the step it describes.
-  const narrate = (event: MessageInfoEvent | MessageWarnEvent) =>
-    events._tag === "Some" ? events.value.publish(event).pipe(Effect.ignore) : Effect.void;
-  if (platform === "win32" && !skipTrustInstall) {
-    yield* narrate(
-      MessageInfoEvent.make({
-        body: "Installing local certificate trust.\nWindows may open a Security Warning. Approve it to continue.\n--yes cannot answer Windows security prompts.",
-        timestamp: yield* DateTime.now,
-      }),
-    );
-  }
-  const { refreshedBundles, warnings } = yield* ca
-    .setup({
-      force: false,
-      ...privilegeOptions,
-      ...(skipTrustInstall ? { skipTrustInstall: true } : {}),
-    })
-    .pipe(Effect.tapError((cause) => recorder.recordFailure("ca", cause)));
-  const refreshed = refreshedBundles.map(
-    (bundle) =>
-      `Refreshed ${bundle.owner}'s CA bundle at ${bundle.path} so tools that read it trust the local CA.`,
-  );
-  for (const body of refreshed)
-    yield* narrate(MessageInfoEvent.make({ body, timestamp: yield* DateTime.now }));
-  // Machine output carries warnings in the result envelope; people read them as they happen.
-  for (const warning of warnings) yield* recordCommandWarning(warning);
-  if (!(yield* commandWarningsUseMachineOutput)) {
-    for (const { message, remediation } of warnings) {
-      const body = remediation === undefined ? message : `${message} ${remediation}`;
-      yield* narrate(MessageWarnEvent.make({ body, timestamp: yield* DateTime.now }));
-    }
-  }
-  const firstWarning = warnings[0];
-  yield* recorder.record({
-    id: "ca",
-    status: skipTrustInstall ? "skipped" : "satisfied",
-    evidence: [
-      skipTrustInstall ? SKIP_CA_TRUST_EVIDENCE : "Certificate authority setup completed.",
-      ...refreshed,
-      ...warnings.map(({ message }) => message),
-    ].join(" "),
-    ...(firstWarning?.remediation === undefined ? {} : { remediation: firstWarning.remediation }),
-  });
-  return refreshedBundles;
-});
 
 export const runProxySetupStep = Effect.fn("SetupCommand.runProxySetupStep")(function* (
   input: unknown,
@@ -254,5 +137,48 @@ export const runShellServiceSetupStep = Effect.fn("SetupCommand.runShellServiceS
     });
   } else {
     yield* recordAbsentHostIntegration(recorder, selectedProviderId, "shell", "Shell integration");
+  }
+});
+
+const SHELL_PROFILE_REMEDIATION =
+  "Fix shell profile write permissions, then rerun `lando setup` or `lando shellenv` to finish PATH integration.";
+
+/** Add Lando to the user's shell profile PATH; Windows and non-interactive runs leave the profile alone. */
+export const runShellProfileSetupStep = Effect.fn("SetupCommand.runShellProfileSetupStep")(function* (
+  input: unknown,
+  privilege: Context.Service.Shape<typeof PrivilegeService>,
+  userDataRoot: string,
+  recorder: SetupReadinessRecorder,
+) {
+  if (
+    process.platform === "win32" ||
+    inputBooleanFlag(input, "skip-shell-integration") ||
+    inputBooleanFlag(input, "no-interactive")
+  ) {
+    return;
+  }
+  const shellProfile = yield* Effect.try({
+    try: () => installShellProfileIntegration(userDataRoot, privilege),
+    catch: (cause) => {
+      if (!(cause instanceof ShellenvInstallRecordError)) throw cause;
+      return new ShellProfileIntegrationError({
+        message: "Shell profile integration failed.",
+        stderr: cause.message,
+        remediation: SHELL_PROFILE_REMEDIATION,
+      });
+    },
+  }).pipe(
+    Effect.flatten,
+    Effect.tapError((cause) => recorder.recordFailure("shell", cause.stderr)),
+  );
+  if (shellProfile.exitCode !== 0) {
+    yield* recorder.recordFailure("shell", shellProfile.stderr);
+    return yield* Effect.fail(
+      new ShellProfileIntegrationError({
+        message: "Shell profile integration failed.",
+        stderr: shellProfile.stderr,
+        remediation: SHELL_PROFILE_REMEDIATION,
+      }),
+    );
   }
 });

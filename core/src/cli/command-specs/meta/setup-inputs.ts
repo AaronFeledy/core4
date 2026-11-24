@@ -11,7 +11,7 @@ import {
   type SetupProviderSwitchResult,
   SetupProviderSwitchResultSchema,
 } from "@lando/engine/operations/setup-provider-switch";
-import { ProviderId } from "@lando/sdk/schema";
+import { ProviderId, TrustStoreChange } from "@lando/sdk/schema";
 import { Schema } from "effect";
 
 import type { SetupNetworkTrustProbe } from "../../commands/setup-network-trust";
@@ -24,6 +24,7 @@ export interface SetupResult {
   readonly fileSyncStatus: FileSyncStatus;
   readonly networkCaInjectionConfigured: boolean;
   readonly providerSwitch?: SetupProviderSwitchResult;
+  readonly trustStores?: ReadonlyArray<TrustStoreChange>;
 }
 
 export const SetupResultSchema = Schema.Struct({
@@ -35,11 +36,9 @@ export const SetupResultSchema = Schema.Struct({
     description:
       "Host-global CA injection configuration: true when setup resolved at least one host CA file and network.ca.injectIntoServices is enabled, so configured host CAs are set to inject into eligible type: lando services. This is setup-level configuration, not the CA set of any particular service; content de-duplication and per-service security.inheritNetworkCa opt-out are resolved when an app is planned.",
   }),
-  refreshedCaBundles: Schema.optionalKey(
-    Schema.Array(Schema.Struct({ owner: Schema.String, path: Schema.String })),
-  ).annotate({
+  trustStores: Schema.optionalKey(Schema.Array(TrustStoreChange)).annotate({
     description:
-      "CA bundles that tools keep apart from the host trust store, such as Homebrew's, that setup rebuilt so they include the local CA. Absent when setup rebuilt none; bundles setup could not rebuild are reported as CA_BUNDLE_STALE warnings.",
+      "Every host trust store the certificate authority manages, as setup left it. Present whenever setup ran a certificate authority; after a trust-installing run each store that does not trust the local CA is also reported as a CA_TRUST_INCOMPLETE warning.",
   }),
 });
 

@@ -41,6 +41,7 @@ export const layerUnavailable = Layer.succeed(
     id: UNAVAILABLE_ID,
     setup: unavailableOperation(unavailableError),
     root: Effect.failSync(unavailableError),
+    trustStores: Effect.failSync(unavailableError),
     issueCert: unavailableOperation(unavailableError),
   }),
 );

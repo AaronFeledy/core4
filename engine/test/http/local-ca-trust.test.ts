@@ -10,8 +10,9 @@ import { CertificateAuthorityResolver } from "../../src/plugins/certificate-auth
 const authority = (trusted: boolean) =>
   CertificateAuthority.of({
     id: "mkcert",
-    setup: () => Effect.succeed({ refreshedBundles: [], warnings: [] }),
+    setup: () => Effect.succeed({ trustStores: [] }),
     root: Effect.succeed({ certificate: "pem", trusted }),
+    trustStores: Effect.succeed([]),
     issueCert: () => Effect.die("issue"),
   });
 

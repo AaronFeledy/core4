@@ -6,10 +6,11 @@ import type {
   NoCertificateAuthorityError,
   PluginLoadError,
 } from "@lando/sdk/errors";
-import type { CaRootCertificate, CaTrustBundle } from "@lando/sdk/services";
+import type { TrustStoreStatus } from "@lando/sdk/schema";
+import type { CertificateAuthorityShape } from "@lando/sdk/services";
 import { Cause, Effect, Exit, Option } from "effect";
-
-import { passCheckNamed, warnCheck } from "./doctor-check-builders";
+import { trustedRootCheck } from "./doctor-certs-trust";
+import { warnCheck } from "./doctor-check-builders";
 import type { DoctorFinding } from "./doctor-contract";
 import { CERTS_SPEC, buildDegradedCheck } from "./doctor-subsystem-checks";
 
@@ -18,9 +19,12 @@ export type CertsDoctorStatus =
   | {
       readonly _tag: "selected";
       readonly id: string;
+      /** Whether the system trust store holds the root. */
       readonly trusted: boolean;
-      /** Bundles that lack the trusted root, with redacted paths. */
-      readonly staleBundles?: ReadonlyArray<CaTrustBundle>;
+      /** Every store the authority manages, with location, detail, and remediation redacted. */
+      readonly trustStores: ReadonlyArray<TrustStoreStatus>;
+      /** Why the stores could not be read; `trustStores` is empty then. */
+      readonly trustStoresDetail?: string;
     }
   | {
       readonly _tag: "root-unavailable";
@@ -90,24 +94,44 @@ export const certsDoctorStatus = Effect.fnUntraced(function* (redact: (value: st
 const isCaError = (error: unknown): error is CaError =>
   typeof error === "object" && error !== null && "_tag" in error && error._tag === "CaError";
 
-/** Read `root` only. Selection without a readable root is not "selected". */
+const redactStore =
+  (redact: (value: string) => string) =>
+  ({ location, detail, remediation, ...store }: TrustStoreStatus): TrustStoreStatus => ({
+    ...store,
+    ...(location === undefined ? {} : { location: redact(location) }),
+    ...(detail === undefined ? {} : { detail: redact(detail) }),
+    ...(remediation === undefined ? {} : { remediation: redact(remediation) }),
+  });
+
+/** Read `root`, then the read-only store inventory. Selection without a readable root is not "selected". */
 const statusFromRoot = Effect.fnUntraced(function* (
-  authority: {
-    readonly id: string;
-    readonly root: Effect.Effect<CaRootCertificate, CaError>;
-  },
+  authority: Pick<CertificateAuthorityShape, "id" | "root" | "trustStores">,
   redact: (value: string) => string,
 ) {
   const rooted = yield* Effect.exit(authority.root);
   if (Exit.isSuccess(rooted)) {
-    const { trusted, staleBundles = [] } = rooted.value;
+    const stores = yield* Effect.exit(authority.trustStores);
+    if (Exit.isSuccess(stores)) {
+      return {
+        _tag: "selected",
+        id: authority.id,
+        trusted: rooted.value.trusted,
+        trustStores: stores.value.map(redactStore(redact)),
+      } as const;
+    }
+    if (Cause.hasInterrupts(stores.cause)) return yield* Effect.interrupt;
+    // The root is readable, so the system-store answer still stands without the inventory.
     return {
       _tag: "selected",
       id: authority.id,
-      trusted,
-      ...(staleBundles.length === 0
-        ? {}
-        : { staleBundles: staleBundles.map(({ owner, path }) => ({ owner, path: redact(path) })) }),
+      trusted: rooted.value.trusted,
+      trustStores: [],
+      trustStoresDetail: redact(
+        Option.match(Cause.findErrorOption(stores.cause), {
+          onNone: () => String(Cause.squash(stores.cause)),
+          onSome: (error) => error.message,
+        }),
+      ),
     } as const;
   }
   if (Cause.hasInterrupts(rooted.cause)) return yield* Effect.interrupt;
@@ -130,51 +154,13 @@ const statusFromRoot = Effect.fnUntraced(function* (
 const UNTRUSTED_CA =
   "Browsers will warn on HTTPS URLs until this machine trusts the local CA. Run `lando setup` without `--skip-install-ca`.";
 
-const staleBundleSentence = ({ owner, path }: CaTrustBundle): string =>
-  `${owner}'s CA bundle at ${path} does not include the local CA, so tools that read it reject Lando HTTPS URLs.`;
-
-const RESTORE_BUNDLES = "Run `lando setup` without `--skip-install-ca`.";
-
 export const certsSubsystemCheck = Effect.fnUntraced(function* (
   status: CertsDoctorStatus,
   fix: boolean,
 ): Effect.fn.Return<DoctorFinding | undefined, never> {
-  if (status._tag === "selected" && status.trusted && status.staleBundles !== undefined) {
-    return warnCheck({
-      name: "certs",
-      recovery: "manual",
-      context: {
-        subsystem: "certs",
-        subsystemId: status.id,
-        ready: "true",
-        certsTrusted: "true",
-        certsReason: "stale-bundle",
-        certsStaleBundles: status.staleBundles.map(({ path }) => path),
-        ...(fix ? { fixOutcome: "skipped-manual" } : {}),
-      },
-      solutions: [
-        {
-          kind: "manual",
-          description: `${status.staleBundles.map(staleBundleSentence).join(" ")} ${RESTORE_BUNDLES}`,
-          command: "lando setup",
-        },
-      ],
-    });
-  }
-  if (status._tag === "selected" && status.trusted) {
-    return passCheckNamed({
-      name: "certs",
-      recovery: "manual",
-      context: {
-        subsystem: "certs",
-        subsystemId: status.id,
-        ready: "true",
-        certsTrusted: "true",
-      },
-    });
-  }
+  if (status._tag === "selected" && status.trusted) return trustedRootCheck(status, fix);
   if (status._tag === "selected") {
-    return warnCheck({
+    const finding = warnCheck({
       name: "certs",
       recovery: "manual",
       context: {
@@ -187,6 +173,9 @@ export const certsSubsystemCheck = Effect.fnUntraced(function* (
       },
       solutions: [{ kind: "manual", description: UNTRUSTED_CA, command: "lando setup" }],
     });
+    return status.trustStores.length === 0
+      ? finding
+      : { ...finding, details: { trustStores: status.trustStores } };
   }
   if (status._tag === "root-unavailable") {
     return warnCheck({

@@ -12,7 +12,7 @@ import { makeTestRouterService } from "@lando/sdk/test";
 import { Effect, Layer, Schema } from "effect";
 import type { CertsDoctorStatus } from "../../src/cli/commands/doctor-certs-status.ts";
 import { certsSubsystemCheck } from "../../src/cli/commands/doctor-certs-status.ts";
-import type { DoctorSectionResult } from "../../src/cli/commands/doctor-contract.ts";
+import { DoctorFinding, type DoctorSectionResult } from "../../src/cli/commands/doctor-contract.ts";
 import { HostDnsResolver } from "../../src/cli/commands/doctor-host-dns.ts";
 import { renderDoctorReportAsNdjson } from "../../src/cli/commands/doctor-render-ndjson.ts";
 import { renderDoctorReport } from "../../src/cli/commands/doctor-render-text.ts";
@@ -438,20 +438,47 @@ describe("certificate-authority check findings", () => {
     Effect.runPromise(certsSubsystemCheck(status, fix));
 
   test("passes the certs check when the local root is in the host trust store", async () => {
-    const certs = await certsFinding({ _tag: "selected", id: "mkcert", trusted: true });
+    const certs = await certsFinding({ _tag: "selected", id: "mkcert", trusted: true, trustStores: [] });
 
     expect(certs?.status).toBe("pass");
     expect(certs?.context.certsTrusted).toBe("true");
+    expect(certs?.details).toBeUndefined();
   });
 
-  test("warns about a stale CA bundle while the host trusts the root, and never fixes it", async () => {
+  const SYSTEM = { id: "system", name: "System trust store", state: "trusted" } as const;
+  const BREW_PATH = "/opt/homebrew/etc/ca-certificates/cert.pem";
+  const STALE_BREW = {
+    id: "homebrew",
+    name: "Homebrew CA bundle",
+    location: BREW_PATH,
+    state: "untrusted",
+    reason: "missing",
+    detail: "The bundle does not include the local CA.",
+    remediation: "Run `lando setup` without `--skip-install-ca`.",
+  } as const;
+  const UNKNOWN_NSS = {
+    id: "nss",
+    name: "NSS database",
+    state: "unknown",
+    reason: "inspection-failed",
+    remediation: "Install certutil.",
+  } as const;
+
+  test("passes with the trust stores as typed details when every store trusts the root", async () => {
+    const trustStores = [SYSTEM, { ...STALE_BREW, state: "trusted" as const }];
+    const certs = await certsFinding({ _tag: "selected", id: "mkcert", trusted: true, trustStores });
+
+    expect(certs?.status).toBe("pass");
+    expect(certs?.details).toEqual({ trustStores });
+    expect(Schema.is(DoctorFinding)(certs)).toBe(true);
+  });
+
+  test.each([
+    { name: "an untrusted store", stores: [SYSTEM, STALE_BREW, UNKNOWN_NSS], reason: "store-untrusted" },
+    { name: "only an uninspectable store", stores: [SYSTEM, UNKNOWN_NSS], reason: "store-unknown" },
+  ])("warns about $name while the system trusts the root, and never fixes it", async ({ stores, reason }) => {
     const certs = await certsFinding(
-      {
-        _tag: "selected",
-        id: "mkcert",
-        trusted: true,
-        staleBundles: [{ owner: "Homebrew", path: "/opt/homebrew/etc/ca-certificates/cert.pem" }],
-      },
+      { _tag: "selected", id: "mkcert", trusted: true, trustStores: stores },
       true,
     );
 
@@ -462,28 +489,43 @@ describe("certificate-authority check findings", () => {
       subsystemId: "mkcert",
       ready: "true",
       certsTrusted: "true",
-      certsReason: "stale-bundle",
-      certsStaleBundles: ["/opt/homebrew/etc/ca-certificates/cert.pem"],
+      certsReason: reason,
       fixOutcome: "skipped-manual",
     });
-    expect(certs?.solutions).toEqual([
-      { kind: "manual", description: expect.any(String), command: "lando setup" },
-    ]);
+    expect(certs?.details).toEqual({ trustStores: stores });
+    expect(Schema.is(DoctorFinding)(certs)).toBe(true);
+    expect(certs?.solutions).toEqual(
+      stores
+        .filter(({ state }) => state !== "trusted")
+        .map((store) =>
+          store.id === "homebrew"
+            ? {
+                kind: "manual",
+                description: `Homebrew CA bundle at ${BREW_PATH} does not trust the local CA: The bundle does not include the local CA. Run \`lando setup\` without \`--skip-install-ca\`.`,
+                command: "lando setup",
+              }
+            : { kind: "manual", description: "NSS database does not trust the local CA. Install certutil." },
+        ),
+    );
   });
 
-  test("an untrusted root wins over stale CA bundles", async () => {
+  test("an untrusted root wins over untrusted stores", async () => {
     const certs = await certsFinding({
       _tag: "selected",
       id: "mkcert",
       trusted: false,
-      staleBundles: [{ owner: "Homebrew", path: "/opt/homebrew/etc/ca-certificates/cert.pem" }],
+      trustStores: [{ ...SYSTEM, state: "untrusted" }, STALE_BREW],
     });
 
     expect(certs?.context.certsReason).toBe("untrusted");
+    expect(certs?.context.certsTrusted).toBe("false");
   });
 
   test("warns when the local root is not in the host trust store", async () => {
-    const certs = await certsFinding({ _tag: "selected", id: "mkcert", trusted: false }, true);
+    const certs = await certsFinding(
+      { _tag: "selected", id: "mkcert", trusted: false, trustStores: [] },
+      true,
+    );
 
     expect(certs?.status).toBe("warn");
     expect(certs?.context.certsTrusted).toBe("false");

@@ -36,9 +36,10 @@ export const makeHarness = (issueFailure?: CaError) => {
     setup: () =>
       Effect.sync(() => {
         operations.push("ca:setup");
-        return { refreshedBundles: [], warnings: [] };
+        return { trustStores: [] };
       }),
     root: Effect.succeed({ certificate: rootPem, trusted: true }),
+    trustStores: Effect.succeed([]),
     issueCert: (spec) => {
       calls.push(spec);
       if (issueFailure !== undefined) return Effect.fail(issueFailure);

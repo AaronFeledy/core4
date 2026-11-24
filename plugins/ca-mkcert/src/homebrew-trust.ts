@@ -6,14 +6,13 @@
  */
 import { readFile, stat } from "node:fs/promises";
 import { dirname, isAbsolute, join } from "node:path";
-import type { CommandWarning } from "@lando/sdk/schema";
-import type { CaSetupResult, CaTrustBundle, ProcessResult, ProcessRunner } from "@lando/sdk/services";
+import type { TrustStoreStatus } from "@lando/sdk/schema";
+import type { ProcessResult, ProcessRunner } from "@lando/sdk/services";
 import { type Context, Effect, Result } from "effect";
 
-import { pemsContainRoot } from "./host-trust.ts";
+import { PEM_BLOCK, pemsContainRoot } from "./host-trust.ts";
+import { INSTALL_TRUST_REMEDIATION } from "./system-trust.ts";
 
-const OWNER = "Homebrew";
-const PEM_BLOCK = /-----BEGIN CERTIFICATE-----[\s\S]+?-----END CERTIFICATE-----/g;
 const BREW_ENV = { HOMEBREW_NO_AUTO_UPDATE: "1", HOMEBREW_NO_ENV_HINTS: "1" } as const;
 /** Rebuilding scans the macOS keychains certificate by certificate; a hung brew must not hang setup. */
 const BREW_TIMEOUT_MS = 180_000;
@@ -22,7 +21,7 @@ export type HostEnv = Readonly<Record<string, string | undefined>>;
 
 interface HomebrewBundle {
   readonly prefix: string;
-  readonly bundle: CaTrustBundle;
+  readonly path: string;
 }
 
 const exists = (path: string): Promise<boolean> =>
@@ -45,10 +44,7 @@ const locateBundles = async (env: HostEnv, platform: string): Promise<ReadonlyAr
   const bundles: HomebrewBundle[] = [];
   for (const prefix of homebrewPrefixes(env)) {
     if (!(await exists(join(prefix, "opt", "ca-certificates")))) continue;
-    bundles.push({
-      prefix,
-      bundle: { owner: OWNER, path: join(prefix, "etc", "ca-certificates", "cert.pem") },
-    });
+    bundles.push({ prefix, path: join(prefix, "etc", "ca-certificates", "cert.pem") });
   }
   return bundles;
 };
@@ -60,22 +56,20 @@ const bundleHasRoot = (path: string, root: string): Promise<boolean> =>
     () => false,
   );
 
-const staleBundles = async (root: string, env: HostEnv, platform: string) => {
-  const stale: HomebrewBundle[] = [];
-  for (const located of await locateBundles(env, platform)) {
-    if (!(await bundleHasRoot(located.bundle.path, root))) stale.push(located);
-  }
-  return stale;
-};
+const row = (
+  { path }: HomebrewBundle,
+  state: Omit<TrustStoreStatus, "id" | "name" | "location">,
+): TrustStoreStatus => ({ id: "homebrew", name: "Homebrew CA bundle", location: path, ...state });
 
-const staleWarning = (bundle: CaTrustBundle, reason: string, remediation: string): CommandWarning => ({
-  code: "CA_BUNDLE_STALE",
-  message: `${bundle.owner}'s CA bundle at ${bundle.path} does not include the local CA: ${reason}.`,
-  remediation,
-  context: { bundle: bundle.path, owner: bundle.owner },
-});
+const TRUSTED = { state: "trusted" } as const;
 
-const RETRY = "then run `lando setup` again.";
+const missing = (detail: string, remediation: string) =>
+  ({ state: "untrusted", reason: "missing", detail, remediation }) as const;
+
+const refreshFailed = (detail: string, remediation: string) =>
+  ({ state: "untrusted", reason: "refresh-failed", detail, remediation }) as const;
+
+const LACKS_ROOT = "The bundle does not include the local CA.";
 
 /**
  * Homebrew prints the post-install error on stdout and only a summary on stderr, around its own
@@ -102,11 +96,7 @@ export interface HomebrewTrustOptions {
 }
 
 export const makeHomebrewTrust = ({ processRunner, env, platform }: HomebrewTrustOptions) => {
-  const refreshBundle = Effect.fn("Homebrew.refreshCaBundle")(function* (
-    located: HomebrewBundle,
-    root: string,
-  ) {
-    const { bundle } = located;
+  const rebuild = Effect.fn("Homebrew.refreshCaBundle")(function* (located: HomebrewBundle, root: string) {
     const ran = yield* processRunner
       .run({
         cmd: join(located.prefix, "bin", "brew"),
@@ -116,44 +106,57 @@ export const makeHomebrewTrust = ({ processRunner, env, platform }: HomebrewTrus
       })
       .pipe(Effect.result);
     if (Result.isFailure(ran)) {
-      return staleWarning(
-        bundle,
-        `Lando could not run Homebrew: ${ran.failure.message}`,
-        `${ran.failure.remediation} Then run \`lando setup\` again.`,
+      return row(
+        located,
+        refreshFailed(
+          `Lando could not run Homebrew: ${ran.failure.message}`,
+          `${ran.failure.remediation} Then run \`lando setup\` again.`,
+        ),
       );
     }
     const result: ProcessResult = ran.success;
     if (result.exitCode !== 0) {
-      return staleWarning(
-        bundle,
-        `\`brew postinstall ca-certificates\` failed: ${brewFailureDetail(result)}`,
-        `Fix the Homebrew error, ${RETRY}`,
+      return row(
+        located,
+        refreshFailed(
+          `\`brew postinstall ca-certificates\` failed: ${brewFailureDetail(result)}`,
+          "Fix the Homebrew error, then run `lando setup` again.",
+        ),
       );
     }
-    if (yield* Effect.promise(() => bundleHasRoot(bundle.path, root))) return undefined;
-    return staleWarning(
-      bundle,
-      "Homebrew rebuilt it without the local CA",
-      `Check that the system trust store includes the local CA with \`lando doctor\`, ${RETRY}`,
+    if (yield* Effect.promise(() => bundleHasRoot(located.path, root))) return row(located, TRUSTED);
+    return row(
+      located,
+      missing(
+        "Homebrew rebuilt it without the local CA.",
+        "Check that the system trust store includes the local CA with `lando doctor`, then run `lando setup` again.",
+      ),
     );
   });
 
+  const inspectBundle = (located: HomebrewBundle, root: string) =>
+    Effect.promise(() => bundleHasRoot(located.path, root)).pipe(
+      Effect.map((has) => row(located, has ? TRUSTED : missing(LACKS_ROOT, INSTALL_TRUST_REMEDIATION))),
+    );
+
+  const located = Effect.promise(() => locateBundles(env, platform));
+
   return {
-    /** Bundles that lack `root`. Reads files only. */
-    staleBundles: (root: string): Effect.Effect<ReadonlyArray<CaTrustBundle>> =>
-      Effect.promise(() => staleBundles(root, env, platform)).pipe(
-        Effect.map((stale) => stale.map(({ bundle }) => bundle)),
-      ),
-    /** Rebuild each bundle that lacks `root`; failures become warnings, never setup failures. */
-    refresh: Effect.fn("Homebrew.refreshCaBundles")(function* (root: string) {
-      const refreshedBundles: CaTrustBundle[] = [];
-      const warnings: CommandWarning[] = [];
-      for (const located of yield* Effect.promise(() => staleBundles(root, env, platform))) {
-        const warning = yield* refreshBundle(located, root);
-        if (warning === undefined) refreshedBundles.push(located.bundle);
-        else warnings.push(warning);
+    /** One row per Homebrew bundle. Reads files only. */
+    inspect: (root: string): Effect.Effect<ReadonlyArray<TrustStoreStatus>> =>
+      Effect.flatMap(located, (bundles) => Effect.all(bundles.map((bundle) => inspectBundle(bundle, root)))),
+    /**
+     * Rebuild each bundle that lacks `root`. A bundle rebuilt from a system store that does not trust
+     * the root would still lack it, so nothing is rebuilt unless `systemTrusted`. Failures become
+     * untrusted rows, never setup failures.
+     */
+    refresh: Effect.fn("Homebrew.refreshCaBundles")(function* (root: string, systemTrusted: boolean) {
+      const rows: TrustStoreStatus[] = [];
+      for (const bundle of yield* located) {
+        const inspected = yield* inspectBundle(bundle, root);
+        rows.push(inspected.state === "trusted" || !systemTrusted ? inspected : yield* rebuild(bundle, root));
       }
-      return { refreshedBundles, warnings } satisfies CaSetupResult;
+      return rows;
     }),
   };
 };

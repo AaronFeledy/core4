@@ -3,10 +3,11 @@ import { CommandWarnings, makeCommandWarnings } from "@lando/engine/landofile/co
 import { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
 
 import { EventError, NoCertificateAuthorityError } from "@lando/sdk/errors";
+import type { TrustStoreChange } from "@lando/sdk/schema";
 import { CertificateAuthority, EventService, type LandoEvent } from "@lando/sdk/services";
 import { makeTestCertificateAuthority } from "@lando/sdk/test";
 import { type Context, Effect } from "effect";
-import { runCaSetupStep } from "../../src/cli/command-specs/meta/setup-service-steps.ts";
+import { runCaSetupStep } from "../../src/cli/command-specs/meta/setup-ca-step.ts";
 import type { SetupReadinessRecorder } from "../../src/cli/command-specs/meta/setup-steps.ts";
 import type { SetupReadinessStep } from "../../src/cli/commands/setup-readiness.ts";
 import { makeTestEventService } from "../../src/testing/test-runtime-events.ts";
@@ -62,7 +63,7 @@ describe("CA setup resolver", () => {
     };
     const ca = {
       ...makeTestCertificateAuthority(),
-      setup: () => processRunner.run().pipe(Effect.as({ refreshedBundles: [], warnings: [] })),
+      setup: () => processRunner.run().pipe(Effect.as({ trustStores: [] })),
     };
     const eventService = EventService.of({
       publish: (event: { readonly _tag: string; readonly body?: string }) =>
@@ -88,67 +89,96 @@ describe("CA setup resolver", () => {
     expect(sequence[1]).toBe("mkcert -install");
   });
 
-  test("reports refreshed bundles and bundle warnings from authority setup", async () => {
-    // Given: setup refreshed one bundle and could not refresh another
-    const warning = {
-      code: "CA_BUNDLE_STALE",
-      message: "Homebrew's CA bundle at /b/cert.pem does not include the local CA.",
-      remediation: "Fix the Homebrew error, then run `lando setup` again.",
-      context: { bundle: "/b/cert.pem", owner: "Homebrew" },
-    };
-    const ca = {
-      ...makeTestCertificateAuthority(),
-      setup: () =>
-        Effect.succeed({
-          refreshedBundles: [{ owner: "Homebrew", path: "/a/cert.pem" }],
-          warnings: [warning],
-        }),
-    };
+  const SYSTEM: TrustStoreChange = {
+    id: "system",
+    name: "System trust store",
+    state: "trusted",
+    changed: true,
+  };
+  const BREW: TrustStoreChange = {
+    id: "homebrew",
+    name: "Homebrew CA bundle",
+    location: "/b/cert.pem",
+    state: "untrusted",
+    reason: "refresh-failed",
+    detail: "`brew postinstall ca-certificates` failed: Permission denied",
+    remediation: "Fix the Homebrew error, then run `lando setup` again.",
+    changed: false,
+  };
+  const UNKNOWN: TrustStoreChange = {
+    id: "nss",
+    name: "NSS database",
+    state: "unknown",
+    reason: "inspection-failed",
+    changed: false,
+  };
+  const reporting = (trustStores: ReadonlyArray<TrustStoreChange>) => ({
+    ...makeTestCertificateAuthority(),
+    setup: () => Effect.succeed({ trustStores }),
+  });
+
+  test("returns the trust stores, narrates changes, and warns about each store left untrusted", async () => {
+    // Given: setup trusted the system store and could not repair two others
+    const ca = reporting([SYSTEM, BREW, UNKNOWN]);
     const events: LandoEvent[] = [];
-    const eventService = makeTestEventService(events);
     const commandWarnings = makeCommandWarnings(true);
     const { recorder, steps } = makeRecorder();
 
     // When
-    const refreshed = await Effect.runPromise(
+    const stores = await Effect.runPromise(
       runCaSetupStep({}, {}, recorder).pipe(
         Effect.provideService(
           CertificateAuthorityResolver,
           CertificateAuthorityResolver.of({ resolve: Effect.succeed(ca) }),
         ),
-        Effect.provideService(EventService, eventService),
+        Effect.provideService(EventService, makeTestEventService(events)),
         Effect.provideService(CommandWarnings, commandWarnings),
       ),
     );
 
     // Then
-    expect(refreshed).toEqual([{ owner: "Homebrew", path: "/a/cert.pem" }]);
+    expect(stores).toEqual([SYSTEM, BREW, UNKNOWN]);
     expect(events.flatMap((event) => (event._tag === "message.info" ? [event.body] : []))).toEqual([
-      expect.stringContaining("/a/cert.pem"),
+      "Trusted the local CA in System trust store.",
     ]);
-    expect(await Effect.runPromise(commandWarnings.list)).toEqual([warning]);
+    // Machine output carries the warnings in the envelope instead of narrating them.
+    expect(events.filter((event) => event._tag === "message.warn")).toEqual([]);
+    expect(await Effect.runPromise(commandWarnings.list)).toEqual([
+      {
+        code: "CA_TRUST_INCOMPLETE",
+        message:
+          "Homebrew CA bundle at /b/cert.pem does not trust the local CA: `brew postinstall ca-certificates` failed: Permission denied.",
+        remediation: "Fix the Homebrew error, then run `lando setup` again.",
+        context: { store: "homebrew", location: "/b/cert.pem" },
+      },
+      {
+        code: "CA_TRUST_INCOMPLETE",
+        message: "NSS database does not trust the local CA.",
+        context: { store: "nss" },
+      },
+    ]);
     expect(steps).toHaveLength(1);
-    expect(steps[0]).toMatchObject({ id: "ca", status: "satisfied", remediation: warning.remediation });
-    expect(steps[0]?.evidence).toContain("/a/cert.pem");
-    expect(steps[0]?.evidence).toContain(warning.message);
+    expect(steps[0]).toMatchObject({ id: "ca", status: "satisfied", remediation: BREW.remediation });
+    expect(steps[0]?.evidence).toContain("Homebrew CA bundle (/b/cert.pem): untrusted.");
   });
 
-  test("records bundle warnings even when narrating them fails", async () => {
+  test("narrates trust warnings to people and still records them when narration fails", async () => {
     // Given: an event bus that rejects every publish
-    const warning = { code: "CA_BUNDLE_STALE", message: "stale", remediation: "Run `lando setup` again." };
-    const ca = {
-      ...makeTestCertificateAuthority(),
-      setup: () => Effect.succeed({ refreshedBundles: [], warnings: [warning] }),
-    };
+    const ca = reporting([BREW]);
+    const published: string[] = [];
     const failingEvents = EventService.of({
       ...makeTestEventService([]),
-      publish: () =>
-        Effect.fail(
-          new EventError({
-            message: "renderer is gone",
-            event: "message.warn",
-            remediation: "Restart the renderer.",
-          }),
+      publish: (event) =>
+        Effect.sync(() => void published.push(event._tag)).pipe(
+          Effect.andThen(
+            Effect.fail(
+              new EventError({
+                message: "renderer is gone",
+                event: "message.warn",
+                remediation: "Restart the renderer.",
+              }),
+            ),
+          ),
         ),
     });
     const commandWarnings = makeCommandWarnings(false);
@@ -165,8 +195,40 @@ describe("CA setup resolver", () => {
 
     // Then
     expect(exit._tag).toBe("Success");
-    expect(await Effect.runPromise(commandWarnings.list)).toEqual([warning]);
+    expect(published).toEqual(["message.warn"]);
+    expect((await Effect.runPromise(commandWarnings.list)).map(({ code }) => code)).toEqual([
+      "CA_TRUST_INCOMPLETE",
+    ]);
     expect(steps[0]).toMatchObject({ id: "ca", status: "satisfied" });
+  });
+
+  test("reports untrusted stores without warnings when skip-install-ca is set", async () => {
+    // Given
+    const ca = reporting([{ ...SYSTEM, state: "untrusted", changed: false }, BREW]);
+    const commandWarnings = makeCommandWarnings(true);
+    const { recorder, steps } = makeRecorder();
+
+    // When
+    const stores = await Effect.runPromise(
+      runCaSetupStep({ flags: { "skip-install-ca": true } }, {}, recorder).pipe(
+        Effect.provideService(CertificateAuthority, ca),
+        Effect.provideService(CommandWarnings, commandWarnings),
+      ),
+    );
+
+    // Then
+    expect(stores?.map(({ id }) => id)).toEqual(["system", "homebrew"]);
+    expect(await Effect.runPromise(commandWarnings.list)).toEqual([]);
+    expect(steps[0]).toMatchObject({ id: "ca", status: "skipped" });
+    expect(steps[0]?.remediation).toBeUndefined();
+  });
+
+  test("returns no trust stores when no authority ran", async () => {
+    const { recorder } = makeRecorder();
+
+    const stores = await Effect.runPromise(runCaSetupStep({}, {}, recorder));
+
+    expect(stores).toBeUndefined();
   });
 
   test("records tagged absence as unavailable without a defect", async () => {

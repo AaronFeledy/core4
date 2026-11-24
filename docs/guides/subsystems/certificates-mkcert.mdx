@@ -148,15 +148,18 @@ When mkcert is installed but the local CA is missing, the second line reads `mkc
 lando setup --skip-install-ca
 ```
 
-That installs mkcert and still creates the local CA, but doesn't add it to the system trust store or to Homebrew's CA bundle. Apps with `certs: true` start as usual. Lando's own URL check trusts that CA, so it does not report the route as unreachable. Start prints one warning instead: browsers will warn until you run `lando setup` without `--skip-install-ca`.
+That installs mkcert and still creates the local CA, but doesn't add it to any trust store. Apps with `certs: true` start as usual. Lando's own URL check trusts that CA, so it does not report the route as unreachable. Start prints one warning instead: browsers will warn until you run `lando setup` without `--skip-install-ca`.
 
-## Trust the CA in Homebrew's curl and OpenSSL
+## Check which trust stores include the CA
 
-Homebrew's `openssl` and the formulae built on it, including `curl` on Linux, don't read the system trust store. They read Homebrew's own CA bundle, `$(brew --prefix)/etc/ca-certificates/cert.pem`, which Homebrew builds from the system store when it installs or upgrades its `ca-certificates` formula. A bundle built before you ran `lando setup` doesn't include the local CA, so Homebrew `curl` fails with `curl: (60)` and `unable to get local issuer certificate` even though your browser trusts the URL.
+Browsers and command-line tools don't all read the same list of trusted certificates. `lando setup` updates each trust store it manages and ends with one line per store, saying whether that store now includes the local CA and whether this run changed it:
 
-`lando setup` takes care of that. After it trusts the local CA, it checks the bundle of the Homebrew it finds through `HOMEBREW_PREFIX` or the `brew` on your `PATH`. When the CA is missing, setup rebuilds the bundle with `brew postinstall ca-certificates`, running as you, and prints the bundle it refreshed. With `--format=json`, the result lists it under `refreshedCaBundles`. Bundles Homebrew builds later, such as after `brew upgrade ca-certificates`, pick up the CA from the system store on their own.
+- **System trust store.** The macOS keychain, the Windows certificate store, or your Linux distribution's CA bundle. Browsers on macOS and Windows and most command-line tools read it. Setup adds the CA with mkcert, which may ask for your password.
+- **Homebrew CA bundle.** Homebrew's `openssl` and the formulae built on it, including `curl` on Linux, read `$(brew --prefix)/etc/ca-certificates/cert.pem` instead of the system store. Homebrew builds that bundle from the system store when it installs `ca-certificates`, so a bundle built before you ran `lando setup` lacks the CA and Homebrew `curl` fails with `curl: (60)`. When setup finds Homebrew through `HOMEBREW_PREFIX` or the `brew` on your `PATH`, it rebuilds a bundle that lacks the CA with `brew postinstall ca-certificates`, running as you. Later rebuilds, such as after `brew upgrade ca-certificates`, keep the CA on their own.
 
-If Homebrew can't rebuild the bundle, for example because another account owns your Homebrew installation, setup still finishes. It prints a warning with Homebrew's error and records it in `--format=json` output under `warnings`, with code `CA_BUNDLE_STALE`. Fix the error, then run `lando setup` again.
+A store setup can't update doesn't stop setup. It prints a warning that says what went wrong and what to do, for example to fix the Homebrew error it shows and run `lando setup` again.
+
+With `--format=json`, `result.trustStores` lists every store with its `state` (`trusted`, `untrusted`, or `unknown` when Lando couldn't inspect it) and `changed`. Each store that still doesn't trust the CA also appears under `warnings` with code `CA_TRUST_INCOMPLETE`.
 
 ## Verify
 
@@ -164,6 +167,6 @@ If Homebrew can't rebuild the bundle, for example because another account owns y
 lando doctor
 ```
 
-When this machine trusts the local CA, the certs check passes. When the CA exists but is not in the host trust store, doctor warns and tells you to run `lando setup` without `--skip-install-ca`. When the system trusts the CA but Homebrew's CA bundle doesn't include it yet, doctor warns with the same fix, sets `certsReason` to `stale-bundle`, and lists the bundle in `certsStaleBundles`. When mkcert is missing or the CA was never created, doctor warns with that authority's own remediation. Doctor does not install the CA or rebuild a bundle for you, including with `--fix`. In JSON, `certsTrusted` is `"true"` or `"false"` on the certs check. A finding that Lando couldn't select or load a certificate authority is separate. Follow the remediation it prints.
+When every trust store includes the local CA, the certs check passes. When the system trust store doesn't, doctor warns with `certsReason` set to `untrusted` and tells you to run `lando setup` without `--skip-install-ca`. When the system store includes the CA but another store doesn't, `certsReason` is `store-untrusted`; when Lando couldn't inspect a store, it's `store-unknown`. Each affected store gets its own fix, and `details.trustStores` in JSON lists every store with its state. When mkcert is missing or the CA was never created, doctor warns with that authority's own remediation. Doctor does not install the CA or update a trust store for you, including with `--fix`. In JSON, `certsTrusted` is `"true"` or `"false"` for the system trust store. A finding that Lando couldn't select or load a certificate authority is separate. Follow the remediation it prints.
 
 To check the result end to end, start an app with an HTTPS route and open its URL: a trusted padlock means the CA is installed and trusted.

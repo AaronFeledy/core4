@@ -27,6 +27,7 @@ export const layer = Layer.effect(
       id: resolver.selectedId ?? "unresolved",
       setup: (options) => Effect.flatMap(resolve, (authority) => authority.setup(options)),
       root: Effect.flatMap(resolve, (authority) => authority.root),
+      trustStores: Effect.flatMap(resolve, (authority) => authority.trustStores),
       issueCert: (spec) => Effect.flatMap(resolve, (authority) => authority.issueCert(spec)),
     });
   }),

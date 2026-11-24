@@ -1,9 +1,10 @@
-import { Clock, Effect, Redacted } from "effect";
+import { Clock, Effect, Redacted, Schema } from "effect";
 import { certificatePairIsCurrent } from "../certificates/index.ts";
 import { mapFailures } from "../command-result/failure.ts";
+import { TrustStoreChange, TrustStoreStatus } from "../schema/index.ts";
 import type {
   CaSetupOptions,
-  CaSetupResult,
+  CaSetupReport,
   CertificateAuthorityShape,
   CertificateSpec,
   IssuedCertificate,
@@ -29,11 +30,7 @@ export const runCaContract = Effect.fnUntraced(function* (
   const setup = yield* ca
     .setup({ force: false })
     .pipe(mapFailures((d) => caContractFailure("setup resolves", d)));
-  yield* requireCaContract(
-    Array.isArray(setup.refreshedBundles) && Array.isArray(setup.warnings),
-    "setup reports refreshed bundles and warnings",
-    setup,
-  );
+  yield* requireTrustStoreRows(setup.trustStores, Schema.is(TrustStoreChange), "setup");
 
   const root = yield* ca.root.pipe(mapFailures((d) => caContractFailure("root resolves", d)));
   yield* requireCaContract(
@@ -41,11 +38,9 @@ export const runCaContract = Effect.fnUntraced(function* (
     "root is a non-empty PEM certificate",
   );
   yield* requireCaContract(typeof root.trusted === "boolean", "root reports whether the host trusts it");
-  yield* requireCaContract(
-    root.staleBundles === undefined || Array.isArray(root.staleBundles),
-    "root reports stale bundles as a list when it reports them",
-    root.staleBundles,
-  );
+
+  const stores = yield* ca.trustStores.pipe(mapFailures((d) => caContractFailure("trustStores resolves", d)));
+  yield* requireTrustStoreRows(stores, Schema.is(TrustStoreStatus), "trustStores");
 
   const spec = { cn: "test.lndo.site", sans: ["*.test.lndo.site"] };
   const issued = yield* ca
@@ -86,12 +81,37 @@ export const runCaContract = Effect.fnUntraced(function* (
     "the issued pair verifies against the root the authority reports afterwards",
   );
 
-  yield* ca
+  const skipped = yield* ca
     .setup({ force: false, skipTrustInstall: true })
     .pipe(mapFailures((d) => caContractFailure("setup with skipTrustInstall resolves", d)));
+  yield* requireTrustStoreRows(
+    skipped.trustStores,
+    Schema.is(TrustStoreChange),
+    "setup with skipTrustInstall",
+  );
+  yield* requireCaContract(
+    skipped.trustStores.every(({ changed }) => !changed),
+    "setup with skipTrustInstall changes no trust store",
+    skipped.trustStores,
+  );
 });
 
-const NO_SETUP_CHANGES: CaSetupResult = { refreshedBundles: [], warnings: [] };
+/** Every row matches its schema and names a distinct (id, location) store. */
+const requireTrustStoreRows = Effect.fnUntraced(function* (
+  rows: ReadonlyArray<unknown>,
+  isRow: (row: unknown) => row is TrustStoreStatus,
+  source: string,
+): Effect.fn.Return<void, ContractFailure> {
+  yield* requireCaContract(rows.every(isRow), `${source} reports trust stores that match their schema`, rows);
+  const keys = rows.filter(isRow).map(({ id, location }) => JSON.stringify([id, location ?? null]));
+  yield* requireCaContract(
+    new Set(keys).size === keys.length,
+    `${source} reports each (id, location) trust store once`,
+    keys,
+  );
+});
+
+const NO_SETUP_CHANGES: CaSetupReport = { trustStores: [] };
 
 /**
  * A recording authority that returns fixed, real material from `TEST_CERTIFICATES`: the contract
@@ -116,6 +136,7 @@ export const makeTestCertificateAuthority = (): CertificateAuthorityShape & {
         return NO_SETUP_CHANGES;
       }),
     root: Effect.succeed({ certificate: TEST_CERTIFICATES.rootA, trusted: true }),
+    trustStores: Effect.succeed([]),
     issueCert: (spec) =>
       Effect.sync((): IssuedCertificate => {
         calls.push({ op: "issueCert", spec });

@@ -113,9 +113,10 @@ describe("combined doctor certificate and network-trust wiring", () => {
         table: [
           independentSection({
             id: "certificate-authority",
-            run: certsSubsystemCheck({ _tag: "selected", id: "injected-ca", trusted: true }, false).pipe(
-              Effect.map((check) => ({ checks: check === undefined ? [] : [check] })),
-            ),
+            run: certsSubsystemCheck(
+              { _tag: "selected", id: "injected-ca", trusted: true, trustStores: [] },
+              false,
+            ).pipe(Effect.map((check) => ({ checks: check === undefined ? [] : [check] }))),
           }),
         ],
       }).pipe(Effect.provide(Layer.succeed(ConfigService, configService(Effect.succeed(config), config)))),

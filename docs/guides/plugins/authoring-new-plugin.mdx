@@ -229,14 +229,15 @@ That key is `contributes.renderers`. Core still owns plain, JSON, and verbose fa
 ## Certificate authority plugins
 
 `@lando/ca-mkcert` is the bundled example. Declare yours under
-`contributes.certificateAuthorities` and implement the four members of
+`contributes.certificateAuthorities` and implement the five members of
 `CertificateAuthority` from `@lando/sdk/services`:
 
 | Member | What it does |
 | --- | --- |
 | `id` | The id from your manifest. |
-| `setup(options)` | Installs what you need, creates your root, and trusts it on the host. After it succeeds, `root` must work. Honor `skipTrustInstall` by leaving every trust store alone. Return `{ refreshedBundles, warnings }`: the separate CA bundles you brought up to date, as `{ owner, path }`, and a `CommandWarning` for trust you couldn't finish. `lando setup` prints both; a warning never fails setup. |
-| `root` | Yields `{ certificate, trusted }`: the PEM of the root that signs your leaves, and whether the host trust store already contains it. Add `staleBundles` when the host trusts the root but a separate CA bundle you refresh in `setup` doesn't include it yet; `lando doctor` warns about those. Read only: never install trust or run a tool. Fail with a `CaError` and a remediation when setup hasn't run or there is no root yet. |
+| `setup(options)` | Installs what you need, creates your root, and trusts it on the host. After it succeeds, `root` must work. Honor `skipTrustInstall` by writing to no trust store. Return `{ trustStores }`: one `TrustStoreChange` row per host trust store you manage, with its `state` after setup and `changed` when this run added your root. `lando setup` prints the rows and turns every store that still doesn't trust your root into a warning; setup fails only when you return a `CaError`. |
+| `trustStores` | Yields the same rows as `TrustStoreStatus`, without `changed`. Read only: inspect, never install or prompt. Report a store you can't inspect as `unknown` instead of failing; fail with a `CaError` only when you have no root. `lando doctor` warns about every row that isn't `trusted`. Return an empty list if you manage no stores. |
+| `root` | Yields `{ certificate, trusted }`: the PEM of the root that signs your leaves, and whether the host's system trust store already contains it. Keep it cheap, because every HTTPS start reads it. Fail with a `CaError` and a remediation when setup hasn't run or there is no root yet. |
 | `issueCert(spec)` | Issues a leaf for `spec.cn` and `spec.sans` and returns PEM values: `{ certificate, privateKey, root: { certificate } }`, with `privateKey` wrapped in `Redacted`. |
 
 Return values, not file paths, and keep no copy of what you issue. Lando and the
@@ -253,7 +254,7 @@ an authority that reports one root and signs with another gets asked for a new
 certificate on every start.
 
 Run `runCaContract` from `@lando/sdk/test` against your authority in your own
-tests. It checks setup, `root`, the shape of what `issueCert` returns, and that
+tests. It checks setup and `trustStores` rows, `root`, the shape of what `issueCert` returns, and that
 the issued pair verifies against both the root it came with and `root` read
 afterwards. To make the same judgment yourself, call `certificatePairIsCurrent`
 from `@lando/sdk/certificates` with the requested names, the current root, and

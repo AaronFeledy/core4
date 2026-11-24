@@ -120,13 +120,14 @@ export const makeHarness = async () => {
   let rootReads = 0;
   const ca = CertificateAuthority.of({
     id: "fake",
-    setup: () => Effect.succeed({ refreshedBundles: [], warnings: [] }),
+    setup: () => Effect.succeed({ trustStores: [] }),
     root: Effect.suspend(() => {
       rootReads += 1;
       return authority.rootFailure === undefined
         ? Effect.succeed({ certificate: authority.root, trusted: true })
         : Effect.fail(authority.rootFailure);
     }),
+    trustStores: Effect.succeed([]),
     issueCert: (spec) =>
       Effect.suspend(() => {
         issued.push(spec);

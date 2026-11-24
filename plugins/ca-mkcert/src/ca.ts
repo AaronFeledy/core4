@@ -9,6 +9,13 @@
  * explicitly on that retry because elevation does not preserve the invoking
  * user's environment.
  *
+ * Every trust store the authority manages (the system store, then each
+ * Homebrew CA bundle) is reported as a row. `setup` inspects them before and
+ * after installing and marks the ones it made trust the root; a store it
+ * could not repair is reported untrusted, not failed. `trustStores` only
+ * inspects. The system row is a fresh read, never Bun's per-process snapshot
+ * that `root.trusted` uses, so setup can verify its own install.
+ *
  * Any issuing mkcert run creates a root when `CAROOT` has none, without
  * locking, and every Lando data root on a host shares one `CAROOT`. Only
  * `setup` creates the root, under an advisory lock inside `CAROOT`; `root` and
@@ -20,9 +27,9 @@
 
 import { mapFailures } from "@lando/sdk/command-result";
 import { CaError } from "@lando/sdk/errors";
+import type { TrustStoreChange, TrustStoreStatus } from "@lando/sdk/schema";
 import type {
   CaSetupOptions,
-  CaSetupResult,
   CertificateAuthorityShape,
   ProcessResult,
   ProcessRunner,
@@ -38,10 +45,23 @@ import { makeIssueCert, makeIssueInto } from "./issuance.ts";
 import { CA_ID, type MkcertContext, caError, failureDetail, makeRunMkcert } from "./mkcert-command.ts";
 import { MKCERT_TOOL_VERSION, mkcertInstallPath, provisionMkcert } from "./provision.ts";
 import { makeMkcertRoot } from "./root.ts";
+import { makeSystemTrust } from "./system-trust.ts";
 
 export { CA_ID } from "./mkcert-command.ts";
 
-const NO_SETUP_CHANGES: CaSetupResult = { refreshedBundles: [], warnings: [] };
+const storeKey = ({ id, location }: TrustStoreStatus): string => JSON.stringify([id, location ?? null]);
+
+/** `after`, each row marked changed when setup took it from not trusted to trusted. */
+const markChanges = (
+  before: ReadonlyArray<TrustStoreStatus>,
+  after: ReadonlyArray<TrustStoreStatus>,
+): ReadonlyArray<TrustStoreChange> => {
+  const trustedBefore = new Set(before.filter(({ state }) => state === "trusted").map(storeKey));
+  return after.map((row) => ({
+    ...row,
+    changed: row.state === "trusted" && !trustedBefore.has(storeKey(row)),
+  }));
+};
 
 export interface MkcertCertificateAuthorityOptions {
   readonly binDir: string;
@@ -53,8 +73,10 @@ export interface MkcertCertificateAuthorityOptions {
   readonly arch?: string | undefined;
   /** Environment used to find Homebrew; defaults to `process.env`. */
   readonly env?: HostEnv | undefined;
-  /** Whether the host trust store holds a PEM; defaults to reading the default and system stores. */
+  /** Whether the system store this process loaded holds a PEM; defaults to Bun's system snapshot. */
   readonly hostTrustsPem?: ((pem: string) => boolean) | undefined;
+  /** Linux system bundle candidates for the fresh trust check; defaults to the distro paths. */
+  readonly linuxSystemBundles?: ReadonlyArray<string> | undefined;
 }
 
 export const makeMkcertCertificateAuthority = (
@@ -78,6 +100,11 @@ export const makeMkcertCertificateAuthority = (
     processRunner: options.processRunner,
     env: options.env ?? process.env,
     platform,
+  });
+  const systemTrust = makeSystemTrust({
+    processRunner: options.processRunner,
+    platform,
+    linuxBundles: options.linuxSystemBundles,
   });
   const { caRoot, currentRoot, ensureRoot } = makeMkcertRoot(
     context,
@@ -129,24 +156,34 @@ export const makeMkcertCertificateAuthority = (
 
   const issueCert = makeIssueCert(currentRoot, issueInto);
 
+  /** Every managed store, system first, in a stable order. Reads only. */
+  const inspect = Effect.fnUntraced(function* (caroot: string, root: string) {
+    const system = yield* systemTrust.inspect(caroot, root);
+    return [system, ...(yield* homebrew.inspect(root))];
+  });
+
   return CertificateAuthority.of({
     id: CA_ID,
     setup: Effect.fn("CertificateAuthority.setup")(function* (setupOptions: CaSetupOptions) {
       yield* provision(setupOptions.force);
       const caroot = yield* caRoot;
       const root = yield* ensureRoot(caroot);
-      if (setupOptions.skipTrustInstall === true) return NO_SETUP_CHANGES;
+      const before = yield* inspect(caroot, root);
+      if (setupOptions.skipTrustInstall === true) return { trustStores: markChanges(before, before) };
       yield* installTrust(caroot, setupOptions.privilege);
-      return yield* homebrew.refresh(root);
+      // mkcert can exit 0 without the system store trusting the root; that is reported, not fatal.
+      const system = yield* systemTrust.inspect(caroot, root);
+      const homebrewRows = yield* homebrew.refresh(root, system.state === "trusted");
+      return { trustStores: markChanges(before, [system, ...homebrewRows]) };
     }),
-    // Issuance reads `currentRoot` without the bundle scan; only this report needs it. A bundle rebuilt
-    // from a store that does not trust the root would still lack it, so only a trusted root reports them.
-    root: Effect.gen(function* () {
-      const { root } = yield* currentRoot;
-      if (!root.trusted) return root;
-      const staleBundles = yield* homebrew.staleBundles(root.certificate);
-      return staleBundles.length === 0 ? root : { ...root, staleBundles };
-    }).pipe(Effect.withSpan("CertificateAuthority.root")),
+    root: currentRoot.pipe(
+      Effect.map(({ root }) => root),
+      Effect.withSpan("CertificateAuthority.root"),
+    ),
+    trustStores: currentRoot.pipe(
+      Effect.flatMap(({ caroot, root }) => inspect(caroot, root.certificate)),
+      Effect.withSpan("CertificateAuthority.trustStores"),
+    ),
     issueCert,
   });
 };

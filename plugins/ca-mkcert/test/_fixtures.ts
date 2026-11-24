@@ -1,6 +1,7 @@
 import { access, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { ProcessExecError } from "@lando/sdk/errors";
 import type { ToolArtifactEntry } from "@lando/sdk/schema";
 import type {
   CertificateAuthorityShape,
@@ -127,6 +128,10 @@ export const makeFakeMkcertRunner = (options: {
   readonly afterIssue?: () => Promise<void>;
   /** Answers `brew postinstall ca-certificates`; Homebrew is absent when unset. */
   readonly brewPostinstall?: () => Promise<ProcessResult>;
+  /** When set, Lando cannot start `brew` at all. */
+  readonly brewSpawnError?: ProcessExecError;
+  /** Runs after a successful `mkcert -install`, like the trust it adds to the system store. */
+  readonly afterInstall?: () => Promise<void>;
 }): FakeProcessRunner => {
   const calls: RunCall[] = [];
   const run = async (input: ProcessSpawnOptions): Promise<ProcessResult> => {
@@ -143,9 +148,10 @@ export const makeFakeMkcertRunner = (options: {
     if (input.args[0] === "-install") {
       await createRootWhenMissing(input.env?.CAROOT ?? options.caRoot);
       const exitCode = options.installExitCode ?? 0;
-      return exitCode === 0
-        ? okResult("The local CA is now installed in the system trust store!\n")
-        : { exitCode, stdout: "", stderr: options.installStderr ?? "permission denied" };
+      if (exitCode !== 0)
+        return { exitCode, stdout: "", stderr: options.installStderr ?? "permission denied" };
+      await options.afterInstall?.();
+      return okResult("The local CA is now installed in the system trust store!\n");
     }
     const certFile = input.args[input.args.indexOf("-cert-file") + 1];
     const keyFile = input.args[input.args.indexOf("-key-file") + 1];
@@ -169,7 +175,15 @@ export const makeFakeMkcertRunner = (options: {
 
   return {
     service: {
-      run: (input) => Effect.promise(() => run(input)),
+      run: (input) => {
+        const spawnError = options.brewSpawnError;
+        if (input.args[0] === "postinstall" && spawnError !== undefined) {
+          return Effect.sync(() => void calls.push({ cmd: input.cmd, args: [...input.args] })).pipe(
+            Effect.andThen(Effect.fail(spawnError)),
+          );
+        }
+        return Effect.promise(() => run(input));
+      },
       stream: () => Stream.die(new Error("stream is not used by the mkcert certificate authority")),
       streamWithExit: () =>
         Stream.die(new Error("streamWithExit is not used by the mkcert certificate authority")),
@@ -223,6 +237,8 @@ export const makeCa = (
     readonly arch?: string;
     readonly env?: Readonly<Record<string, string | undefined>>;
     readonly hostTrustsPem?: (pem: string) => boolean;
+    /** System bundle candidates; none exist unless a test supplies them, whatever the host has. */
+    readonly linuxSystemBundles?: ReadonlyArray<string>;
   } = {},
 ): { readonly ca: CertificateAuthorityShape; readonly downloadCalls: () => number } => {
   const downloader = makeFakeDownloader();
@@ -240,6 +256,7 @@ export const makeCa = (
       // No Homebrew unless a test supplies one, whatever the host has installed.
       env: overrides.env ?? { PATH: "" },
       hostTrustsPem: overrides.hostTrustsPem,
+      linuxSystemBundles: overrides.linuxSystemBundles ?? [join(harness.root, "no-system-bundle.pem")],
     }),
     downloadCalls: downloader.downloadCalls,
   };

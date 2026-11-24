@@ -273,8 +273,9 @@ describe("RouterService registry selection", () => {
         resolutions += 1;
         return {
           id: "test-ca",
-          setup: () => Effect.succeed({ refreshedBundles: [], warnings: [] }),
+          setup: () => Effect.succeed({ trustStores: [] }),
           root: Effect.succeed({ certificate: "ca", trusted: true }),
+          trustStores: Effect.succeed([]),
           issueCert: () =>
             Effect.succeed({
               certificate: "cert",
@@ -312,8 +313,9 @@ describe("RouterService registry selection", () => {
         resolutions += 1;
         return {
           id: "unused-ca",
-          setup: () => Effect.succeed({ refreshedBundles: [], warnings: [] }),
+          setup: () => Effect.succeed({ trustStores: [] }),
           root: Effect.succeed({ certificate: "ca", trusted: true }),
+          trustStores: Effect.succeed([]),
           issueCert: () =>
             Effect.succeed({
               certificate: "cert",

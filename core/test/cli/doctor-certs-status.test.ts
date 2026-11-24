@@ -45,19 +45,26 @@ describe("certificate authority doctor status", () => {
     const status = await resolveStatus(Effect.succeed(authority));
 
     // Then
-    expect(status).toEqual({ _tag: "selected", id: "mkcert", trusted: true });
+    expect(status).toEqual({ _tag: "selected", id: "mkcert", trusted: true, trustStores: [] });
   });
 
-  test("carries the root's stale bundles with redacted paths", async () => {
+  test("carries the authority's trust stores with redacted location, detail, and remediation", async () => {
     // Given
     const authority = {
       ...makeTestCertificateAuthority(),
       id: "mkcert",
-      root: Effect.succeed({
-        certificate: "pem",
-        trusted: true,
-        staleBundles: [{ owner: "Homebrew", path: "/home/secret/.linuxbrew/etc/ca-certificates/cert.pem" }],
-      }),
+      trustStores: Effect.succeed([
+        { id: "system", name: "System trust store", state: "trusted" as const },
+        {
+          id: "homebrew",
+          name: "Homebrew CA bundle",
+          location: "/home/secret/.linuxbrew/etc/ca-certificates/cert.pem",
+          state: "untrusted" as const,
+          reason: "missing",
+          detail: "secret bundle lacks the root.",
+          remediation: "Run `lando setup` as secret.",
+        },
+      ]),
     };
 
     // When
@@ -68,7 +75,41 @@ describe("certificate authority doctor status", () => {
       _tag: "selected",
       id: "mkcert",
       trusted: true,
-      staleBundles: [{ owner: "Homebrew", path: "/home/[redacted]/.linuxbrew/etc/ca-certificates/cert.pem" }],
+      trustStores: [
+        { id: "system", name: "System trust store", state: "trusted" },
+        {
+          id: "homebrew",
+          name: "Homebrew CA bundle",
+          location: "/home/[redacted]/.linuxbrew/etc/ca-certificates/cert.pem",
+          state: "untrusted",
+          reason: "missing",
+          detail: "[redacted] bundle lacks the root.",
+          remediation: "Run `lando setup` as [redacted].",
+        },
+      ],
+    });
+  });
+
+  test("keeps the root's answer and reports why when the trust stores cannot be read", async () => {
+    // Given
+    const authority = {
+      ...makeTestCertificateAuthority(),
+      id: "mkcert",
+      trustStores: Effect.fail(
+        new CaError({ message: "secret store read failed.", caId: "mkcert", remediation: "Retry." }),
+      ),
+    };
+
+    // When
+    const status = await resolveStatus(Effect.succeed(authority));
+
+    // Then
+    expect(status).toEqual({
+      _tag: "selected",
+      id: "mkcert",
+      trusted: true,
+      trustStores: [],
+      trustStoresDetail: "[redacted] store read failed.",
     });
   });
 
@@ -81,7 +122,7 @@ describe("certificate authority doctor status", () => {
       setup: () =>
         Effect.sync(() => {
           calls.push("setup");
-          return { refreshedBundles: [], warnings: [] };
+          return { trustStores: [] };
         }),
       root: Effect.fail(
         new CaError({
@@ -181,7 +222,7 @@ describe("certificate authority doctor status", () => {
     // Given
     const statuses: ReadonlyArray<CertsDoctorStatus> = [
       UNRESOLVED_CERTS_STATUS,
-      { _tag: "selected", id: "mkcert", trusted: true },
+      { _tag: "selected", id: "mkcert", trusted: true, trustStores: [] },
       { _tag: "unavailable", detail: "missing" },
       { _tag: "ambiguous", candidateIds: ["first", "second"], detail: "choose one" },
       { _tag: "load-failed", pluginName: "ca-plugin", detail: "load failed" },
@@ -198,7 +239,7 @@ describe("certificate authority doctor status", () => {
     // Given
     const statuses: ReadonlyArray<CertsDoctorStatus> = [
       UNRESOLVED_CERTS_STATUS,
-      { _tag: "selected", id: "mkcert", trusted: true },
+      { _tag: "selected", id: "mkcert", trusted: true, trustStores: [] },
       { _tag: "unavailable", detail: "missing" },
       { _tag: "ambiguous", candidateIds: ["first", "second"], detail: "choose one" },
       { _tag: "load-failed", pluginName: "ca-plugin", detail: "load failed" },

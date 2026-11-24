@@ -69,8 +69,9 @@ describe("definePlugin", () => {
       CertificateAuthority,
       CertificateAuthority.of({
         id: "test-ca",
-        setup: () => Effect.succeed({ refreshedBundles: [], warnings: [] }),
+        setup: () => Effect.succeed({ trustStores: [] }),
         root: Effect.die("not exercised"),
+        trustStores: Effect.succeed([]),
         issueCert: () => Effect.die("not exercised"),
       }),
     );
