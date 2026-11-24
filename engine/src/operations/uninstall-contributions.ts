@@ -20,7 +20,6 @@ const BUILT_IN_UNINSTALL_STEP_IDS = [
   "managed-provider-runtime",
   "mutagen-binary",
   "mutagen-agents",
-  "ca-trust",
   "global-app-state",
   "caches",
   "host-proxy-sessions",
