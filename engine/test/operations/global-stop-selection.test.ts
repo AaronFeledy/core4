@@ -15,14 +15,20 @@ test("selected stop deduplicates requests without stopping dependencies or remov
   const h = harness();
   // When mail is selected repeatedly.
   const result = await h.run(["mail", "mail"]);
-  // Then only mail is removed and active sibling routes survive.
-  expect(result).toEqual({ changed: true, services: ["mail"] });
-  expect(h.removed.map((service) => String(service.service))).toEqual(["mail"]);
+  // Then only mail is stopped, nothing is removed, and active sibling routes survive.
+  expect(result).toEqual({
+    changed: true,
+    services: ["mail"],
+    containers: [{ service: ServiceName.make("mail"), containerId: "mail-container", action: "stopped" }],
+  });
+  expect(h.stopped.map((service) => String(service.service))).toEqual(["mail"]);
+  expect(h.removed).toEqual([]);
+  expect(h.states.get("mail")).toBe("exited");
   expect(h.states.get("database")).toBe("running");
   expect(h.published).toEqual([["database", "sibling"]]);
 });
 
-test("selected stop removes only the exact receipted legacy global container", async () => {
+test("selected stop stops only the exact receipted legacy global container", async () => {
   const dataRoot = AbsolutePath.make("/tmp/global-stop-fixture-state");
   const providerId = ProviderId.make("lando");
   const mail = harness()
@@ -49,7 +55,8 @@ test("selected stop removes only the exact receipted legacy global container", a
 
   await h.run(["mail"]);
 
-  expect(h.removed.map(({ containerId }) => containerId)).toEqual(["adopted"]);
+  expect(h.stopped.map(({ containerId }) => containerId)).toEqual(["adopted"]);
+  expect(h.removed).toEqual([]);
 });
 
 test("sequential selections and repeats never resurrect stopped sibling routes", async () => {
@@ -60,8 +67,15 @@ test("sequential selections and repeats never resurrect stopped sibling routes",
   await h.run(["database"]);
   const result = await h.run(["mail"]);
   // Then the repeated stop is unchanged and only the active route remains.
-  expect(result).toEqual({ changed: false, services: [] });
-  expect(h.removed.map((service) => String(service.service))).toEqual(["mail", "database"]);
+  expect(result).toEqual({
+    changed: false,
+    services: [],
+    containers: [
+      { service: ServiceName.make("mail"), containerId: "mail-container", action: "already-stopped" },
+    ],
+  });
+  expect(h.stopped.map((service) => String(service.service))).toEqual(["mail", "database"]);
+  expect(h.removed).toEqual([]);
   expect(h.published).toEqual([["database", "sibling"], ["sibling"], ["sibling"]]);
 });
 
@@ -78,10 +92,10 @@ test("selected stop retains active intent-enabled routes when their modules cann
   expect(h.published).toEqual([["database", "sibling"]]);
 });
 
-test("unreadable route policy does not block exact container removal or publish stale routes", async () => {
+test("unreadable route policy does not block exact container stop or publish stale routes", async () => {
   const h = harness({ inventoryFailure: true });
   await expect(h.run(["mail"])).rejects.toThrow("Plugin inventory unavailable.");
-  expect(h.removed.map((service) => String(service.service))).toEqual(["mail"]);
+  expect(h.stopped.map((service) => String(service.service))).toEqual(["mail"]);
   expect(h.states.get("database")).toBe("running");
   expect(h.published).toEqual([]);
 });
@@ -90,18 +104,22 @@ test("selecting all active routes does not need desired policy evidence", async 
   const h = harness({ inventoryFailure: true });
   await h.run(["mail", "database", "sibling"]);
   expect(h.published).toEqual([[]]);
-  expect(h.states.size).toBe(0);
+  expect([...h.states.values()]).toEqual(["exited", "exited", "exited"]);
 });
 
 for (const options of [{ online: false }, { missing: true }]) {
-  test(`selected stop reports no removal when ${JSON.stringify(options)}`, async () => {
+  test(`selected stop reports no stop when ${JSON.stringify(options)}`, async () => {
     // Given offline runtime or an applied service without a container.
     const h = harness(options);
     // When the absent active service is selected.
     const result = await h.run(["mail"]);
     // Then offline stop stays observational, while online stop reconciles selected routes.
-    expect(result).toEqual({ changed: false, services: [] });
-    expect(h.removed).toEqual([]);
+    expect(result).toEqual({
+      changed: false,
+      services: [],
+      containers: [],
+    });
+    expect(h.stopped).toEqual([]);
     expect(h.published).toEqual(options.online === false ? [] : [["database", "sibling"]]);
   });
 }
@@ -170,12 +188,21 @@ for (const requested of ["mail", "unknown"]) {
   });
 }
 
-test("selecting every applied service removes containers and publishes an empty route set", async () => {
+test("selecting every applied service stops containers and publishes an empty route set", async () => {
   // Given all global services are active.
   const h = harness();
   // When every service is explicitly selected.
   const result = await h.run(["mail", "sibling", "database"]);
   // Then even an all-service selection never falls back to destructive teardown.
-  expect(result).toEqual({ changed: true, services: ["sibling", "database", "mail"] });
+  expect(result).toEqual({
+    changed: true,
+    services: ["sibling", "database", "mail"],
+    containers: ["sibling", "database", "mail"].map((service) => ({
+      service: ServiceName.make(service),
+      containerId: `${service}-container`,
+      action: "stopped",
+    })),
+  });
+  expect(h.removed).toEqual([]);
   expect(h.published).toEqual([[]]);
 });

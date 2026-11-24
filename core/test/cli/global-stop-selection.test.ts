@@ -104,6 +104,7 @@ for (const online of [false, true]) {
         outcome: "unchanged",
         materialized: false,
         servicesStopped: [],
+        containers: [],
       });
       expect(harness.calls).toEqual(online ? ["list"] : []);
     } finally {

@@ -52,9 +52,9 @@ test("explicit selection with entirely absent evidence succeeds unchanged", asyn
 });
 
 for (const status of ["running", "exited", "created"] as const) {
-  test(`selected ${status} container is removed without whole-global teardown`, async () => {
+  test(`selected ${status} container is stopped and kept without whole-global teardown`, async () => {
     // Given an applied service with an observed container in the selected state.
-    const dataRoot = await mkdtemp(join(tmpdir(), "lando-global-stop-remove-"));
+    const dataRoot = await mkdtemp(join(tmpdir(), "lando-global-stop-keep-"));
     try {
       const plan = globalPlanAt(AbsolutePath.make(join(dataRoot, "global")));
       const harness = await globalTeardownHarness(dataRoot, {
@@ -75,10 +75,19 @@ for (const status of ["running", "exited", "created"] as const) {
       const result = await Effect.runPromise(
         globalStop({ services: ["ssh-agent"] }).pipe(Effect.provide(harness.layer)),
       );
-      // Then the observed removal path determines the successful receipt.
-      expect(result.servicesStopped).toEqual(["ssh-agent"]);
+      // Then the observed stop path determines the receipt and never removes the container.
+      const running = status === "running";
+      expect(result.outcome).toBe(running ? "stopped" : "unchanged");
+      expect(result.servicesStopped).toEqual(running ? ["ssh-agent"] : []);
+      expect(result.containers).toEqual([
+        {
+          service: ServiceName.make("ssh-agent"),
+          containerId: "exact-container",
+          action: running ? "stopped" : "already-stopped",
+        },
+      ]);
       expect(harness.calls).toEqual(["list", "pre-global-stop", "bringDownObserved", "post-global-stop"]);
-      expect(harness.removed.map((service) => service.containerId)).toEqual(["exact-container"]);
+      expect(harness.removed).toEqual([]);
     } finally {
       await rm(dataRoot, { recursive: true, force: true });
     }

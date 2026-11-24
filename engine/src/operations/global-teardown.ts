@@ -4,6 +4,7 @@ import { PostGlobalDestroyEvent, PreGlobalDestroyEvent } from "@lando/sdk/events
 import {
   AbsolutePath,
   AppId,
+  type ContainerBringDownReceipt,
   type ServiceShutdownObservation,
   isActiveRunStatus,
   noVolumesRemoved,
@@ -26,7 +27,7 @@ import { canonicalMissingAppRoot } from "./app-mutation-lock.ts";
 import { missingRootAppliedTarget } from "./applied-state-target.ts";
 import { currentDataRoot, serviceInDataRoot } from "./data-root-scope.ts";
 import { withDestroyProgress } from "./destroy-progress.ts";
-import { removeGlobalResources } from "./global-teardown-resources.ts";
+import { removeGlobalResources, stopGlobalResources } from "./global-teardown-resources.ts";
 import { withShutdownObservations } from "./shutdown-observations.ts";
 import { stopIdleApp } from "./stop-idle.ts";
 import { preflightStopApp } from "./stop-internal.ts";
@@ -198,10 +199,12 @@ export const executeGlobalStopSelection = Effect.fn("GlobalApp.stopSelection")(f
   selection: Effect.Success<ReturnType<typeof resolveGlobalStopSelection>>,
 ) {
   const services: string[] = [];
+  const containers: ContainerBringDownReceipt[] = [];
   const observationSources: Array<readonly ServiceShutdownObservation[] | undefined> = [];
   for (const service of selection.services) {
-    const result = yield* resolved.provider.bringDownObserved(service, "remove");
-    observationSources.push(result.shutdownObservations);
+    const { shutdownObservations, ...result } = yield* resolved.provider.bringDownObserved(service, "stop");
+    observationSources.push(shutdownObservations);
+    containers.push(result);
     switch (result.action) {
       case "removed":
       case "stopped":
@@ -227,6 +230,7 @@ export const executeGlobalStopSelection = Effect.fn("GlobalApp.stopSelection")(f
     {
       changed: services.length > 0,
       services,
+      containers,
     },
     ...observationSources,
   );
@@ -240,12 +244,15 @@ export const globalTeardownAppRef = (resolved: GlobalTeardown) => ({
 
 export const executeGlobalTeardown = Effect.fn("GlobalApp.teardown")(function* (
   resolved: GlobalTeardown,
-  options: {
-    readonly intent: "stop" | "destroy";
-    readonly volumes: boolean;
-    readonly removeState: boolean;
-    readonly purge?: boolean;
-  },
+  // Stop keeps every resource, so only destroy chooses what to remove.
+  options:
+    | { readonly intent: "stop" }
+    | {
+        readonly intent: "destroy";
+        readonly volumes: boolean;
+        readonly removeState: boolean;
+        readonly purge?: boolean;
+      },
 ) {
   const evidence = resolved.evidence.kind;
   if (evidence === "absent")
@@ -253,7 +260,7 @@ export const executeGlobalTeardown = Effect.fn("GlobalApp.teardown")(function* (
       changed: false,
       services: [],
       volumesRemoved: { ...noVolumesRemoved },
-      cleanup: "routes" as const,
+      containers: [],
     });
   if (options.intent === "stop" && (yield* resolved.provider.getStatus).state === "idle") {
     if (resolved.evidence.kind !== "applied")
@@ -261,7 +268,7 @@ export const executeGlobalTeardown = Effect.fn("GlobalApp.teardown")(function* (
         changed: false,
         services: [],
         volumesRemoved: { ...noVolumesRemoved },
-        cleanup: "routes" as const,
+        containers: [],
       });
     const target = {
       plan: resolved.evidence.plan,
@@ -274,22 +281,22 @@ export const executeGlobalTeardown = Effect.fn("GlobalApp.teardown")(function* (
       changed: true,
       services: [],
       volumesRemoved: { ...noVolumesRemoved },
-      cleanup: "routes" as const,
+      containers: [],
       routes: withdrawal.kind,
     });
+  }
+  switch (options.intent) {
+    case "stop":
+      return yield* stopGlobalResources(resolved);
+    case "destroy":
+      break;
+    default:
+      return options satisfies never;
   }
   const work = removeGlobalResources(resolved, {
     volumes: options.volumes,
     removeState: options.removeState,
   });
-  switch (options.intent) {
-    case "stop":
-      return yield* work;
-    case "destroy":
-      break;
-    default:
-      return options.intent satisfies never;
-  }
   const events = yield* EventService;
   const app = globalTeardownAppRef(resolved);
   const payload = {

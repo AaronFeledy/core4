@@ -71,7 +71,13 @@ test("global stop emits no destroy bracket or destroy progress", async () => {
     // When stop uses the shared teardown implementation.
     await Effect.runPromise(globalStop().pipe(Effect.provide(harness.layer)));
     // Then only the stop bracket surrounds provider and route cleanup.
-    expect(harness.calls).toEqual(["pre-global-stop", "bringDown", "removeRoutes", "post-global-stop"]);
+    expect(harness.calls).toEqual([
+      "pre-global-stop",
+      "bringDown",
+      "list",
+      "removeRoutes",
+      "post-global-stop",
+    ]);
   });
 });
 

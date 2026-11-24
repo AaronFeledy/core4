@@ -49,6 +49,11 @@ for (const spec of [metaGlobalStopSpec, metaGlobalDestroySpec]) {
           volumesRemoved: { data: 0, cache: 0 },
           shutdownObservations: observations,
         },
+        stopOutcome: {
+          kind: "stopped",
+          containers: [{ service: identity.service, containerId: "agent-current", action: "stopped" }],
+          shutdownObservations: observations,
+        },
       });
       const io = createBufferedRendererIO();
       const codes: number[] = [];

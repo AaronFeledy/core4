@@ -178,13 +178,13 @@ const harnessAt = (
     ),
   );
   const teardown = Effect.gen(function* () {
-    const resolved = yield* resolveGlobalTeardown();
-    return yield* executeGlobalTeardown(resolved, { intent: "stop", volumes: true, removeState: true });
+    const resolved = yield* resolveGlobalTeardown("destroy");
+    return yield* executeGlobalTeardown(resolved, { intent: "destroy", volumes: true, removeState: true });
   }).pipe(Effect.provide(layer));
   return { root, layer, teardown, actions, inventoryReads };
 };
 
-test("global teardown merges managed cleanup into the receipt after destroying applied state", async () => {
+test("global destroy merges managed cleanup into the receipt after destroying applied state", async () => {
   // Given managed applied state and a filesystem ownership inventory at the global root.
   await withHarness({ applied: true }, async (harness) => {
     // When global teardown removes the applied state and owned leftovers.
@@ -193,13 +193,14 @@ test("global teardown merges managed cleanup into the receipt after destroying a
     expect(harness.actions).toEqual(["destroy", "cleanup"]);
     expect(receipt).toEqual({
       changed: true,
+      routes: "withdrawn",
       services: ["inventory-service"],
       volumesRemoved: { data: 3, cache: 0 },
     });
   });
 });
 
-test("global teardown queries only managed inventory when docker is also registered", async () => {
+test("global destroy queries only managed inventory when docker is also registered", async () => {
   // Given inventory-only resources and a Docker inventory that must never be queried.
   await withHarness({}, async (harness) => {
     // When global teardown resolves and cleans ownership without an applied plan.
@@ -209,6 +210,7 @@ test("global teardown queries only managed inventory when docker is also registe
     expect(harness.actions).toEqual(["cleanup"]);
     expect(receipt).toEqual({
       changed: true,
+      routes: "withdrawn",
       services: ["inventory-service"],
       volumesRemoved: { data: 3, cache: 0 },
     });
@@ -229,7 +231,7 @@ test("global teardown fails before mutation when managed inventory survives an o
   });
 });
 
-test("global orphan teardown uses prepared managed cleanup without all-provider resolution", async () => {
+test("global orphan destroy uses prepared managed cleanup without all-provider resolution", async () => {
   // Given a managed orphan and an inventory without applied state.
   await withHarness({ orphan: true }, async (harness) => {
     // When global orphan teardown removes the observed container and owned leftovers.
@@ -239,6 +241,7 @@ test("global orphan teardown uses prepared managed cleanup without all-provider 
     expect(harness.inventoryReads).toEqual([{ id: ProviderId.make("lando"), root: harness.root }]);
     expect(receipt).toEqual({
       changed: true,
+      routes: "withdrawn",
       services: ["orphan", "inventory-service"],
       volumesRemoved: { data: 3, cache: 0 },
     });

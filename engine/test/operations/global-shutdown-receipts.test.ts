@@ -146,16 +146,22 @@ for (const command of ["stop", "destroy"] as const) {
             },
           },
         ];
+        const facts = kind === "unobserved" ? {} : { shutdownObservations: observations };
         const harness = await globalTeardownHarness(root, {
           ...(kind === "absent" ? {} : { plan: globalPlanAt(AbsolutePath.make(join(root, "global"))) }),
           destroyOutcome:
             kind === "no-op"
               ? { kind, reason: "no-applied-plan", shutdownObservations: observations }
+              : { kind: "removed", containers: [], volumesRemoved: { data: 0, cache: 0 }, ...facts },
+          stopOutcome:
+            kind === "no-op"
+              ? { kind, reason: "no-applied-plan", shutdownObservations: observations }
               : {
-                  kind: "removed",
-                  containers: [],
-                  volumesRemoved: { data: 0, cache: 0 },
-                  ...(kind === "unobserved" ? {} : { shutdownObservations: observations }),
+                  kind: "stopped",
+                  containers: [
+                    { service: ServiceName.make("ssh-agent"), containerId: "global-mail", action: "stopped" },
+                  ],
+                  ...facts,
                 },
         });
         // When the engine operation runs and its public command schema encodes the result.
