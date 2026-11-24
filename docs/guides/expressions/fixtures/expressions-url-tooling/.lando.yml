@@ -19,8 +19,12 @@ tooling:
     cmd: printenv SITE_URL
   site-host:
     service: web
-    description: Print the hostname part of the published address.
-    cmd: [echo, "{{ url.parse(services.web.url).hostname }}"]
+    description: Print the hostname the router publishes for web.
+    cmd: [echo, "{{ services.web.hostname }}"]
+  site-origin:
+    service: web
+    description: Print the scheme, hostname, and port without a path.
+    cmd: [echo, "{{ services.web.origin }}"]
 events:
   post-start:
     - service: web

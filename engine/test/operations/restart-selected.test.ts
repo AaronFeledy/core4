@@ -620,8 +620,32 @@ describe("selected service restart", () => {
       refuses: true,
       routerDisabled: true,
     },
+    // A consumer is judged by the facts it binds.
+    {
+      operation: "rebuild",
+      hostname: "web.test",
+      prior: "http://web.test:9080",
+      refuses: false,
+      member: "hostname",
+    },
+    {
+      operation: "rebuild",
+      hostname: "web.test",
+      prior: "http://web.test:9080",
+      refuses: true,
+      member: "origin",
+    },
+    {
+      operation: "restart",
+      hostname: "web.test",
+      prior: "http://web.test:8080/old",
+      refuses: false,
+      member: "origin",
+    },
+    { operation: "restart", hostname: "web.test", prior: "http://web.test:8080/old", refuses: true },
+    { operation: "restart", hostname: "web.test", prior: undefined, refuses: true, member: "hostname" },
   ] as const)(
-    "checks retained URL evidence before stopping ($operation, $hostname, $prior)",
+    "checks retained URL evidence before stopping ($operation, $hostname, $prior, $member)",
     async ({ operation, hostname, prior, refuses, ...row }) => {
       const previous = twoServicePlan();
       const consumer = {
@@ -630,7 +654,14 @@ describe("selected service restart", () => {
           prior === undefined
             ? redis.extensions
             : { ...redis.extensions, "@lando/engine/realized-route-urls": { web: prior } },
-        environment: { PUBLIC_URL: { _tag: "RouteText", parts: [{ service: web.name, encoding: "raw" }] } },
+        environment: {
+          PUBLIC_URL: {
+            _tag: "RouteText",
+            parts: [
+              { service: web.name, ...("member" in row ? { member: row.member } : {}), encoding: "raw" },
+            ],
+          },
+        },
       } satisfies typeof redis;
       const applied = { ...previous, services: { ...previous.services, [redis.name]: consumer } };
       const selected = runSelected(

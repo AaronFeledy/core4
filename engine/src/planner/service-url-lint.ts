@@ -12,28 +12,36 @@ export type ServiceUrlLintFacts =
   | { readonly _tag: "Resolved"; readonly endpoints: readonly EndpointPlan[] };
 
 /**
- * Lint findings for `{{ services.<name>.url }}` reads at tooling and Landofile event sites, judged
- * against the desired configuration only: an unknown service, routing disabled, a service with no
- * route that has a concrete hostname, and a lifecycle step that runs while no route is served. A
- * service without authored routes gets a generated default route only when it has an HTTP
- * listener, so one without is reported. Findings that depend on a service lint could not resolve
- * are left out. Global `hostEvents` are not linted here: `app:config:lint` reports no host-step
- * findings for them, and their URL reads are refused when they run.
+ * Lint findings for `{{ services.<name>.url }}`, `.hostname`, and `.origin` reads at tooling and
+ * Landofile event sites, judged against the desired configuration only: an unknown service,
+ * routing disabled, a service with no route that has a concrete hostname, and a lifecycle step
+ * that runs while no route is served. A service without authored routes gets a generated default
+ * route only when it has an HTTP listener, so one without is reported. Findings that depend on a
+ * service lint could not resolve are left out. Each finding is a deterministic authoring error
+ * except `routing-disabled`, a warning because disabling routing is a deliberate opt-out. Planning
+ * accepts all of them: they are refused only when the command runs. Global `hostEvents` are not
+ * linted here: `app:config:lint` reports no host-step findings for them, and their URL reads are
+ * refused when they run.
  */
 export const serviceUrlLintIssues = (input: {
   readonly sites: readonly ParsedPendingSite[];
   readonly services: ReadonlyMap<string, ServiceUrlLintFacts>;
   readonly routes: ReadonlyMap<string, readonly NormalizedRoute[] | undefined>;
   readonly routerEnabled: boolean;
-}): readonly (PlannerIssue & { readonly severity: "warning" })[] =>
+}): readonly (PlannerIssue & { readonly severity: "error" | "warning" })[] =>
   input.sites.flatMap((site) => {
     const [root, name] = site.path;
     if (root !== "tooling" && root !== "events") return [];
-    return [...serviceUrlReads(site.template).services].flatMap((service) => {
-      const finding = (reason: string, message: string, suggestion: string) => [
+    return [...serviceUrlReads(site.template).services].flatMap(([service, read]) => {
+      const fact = [...read][0] ?? "url";
+      const finding = (
+        reason: "event-phase" | "unknown-service" | "routing-disabled" | "no-route",
+        message: string,
+        suggestion: string,
+      ) => [
         {
           rule: "landofile.tooling" as const,
-          severity: "warning" as const,
+          severity: reason === "routing-disabled" ? ("warning" as const) : ("error" as const),
           reason,
           path: site.path,
           source: site.source,
@@ -42,7 +50,7 @@ export const serviceUrlLintIssues = (input: {
         },
       ];
       const known = (reason: "event-phase" | "unknown-service" | "routing-disabled", event?: string) => {
-        const text = serviceUrlFailureText(reason, service, event);
+        const text = serviceUrlFailureText(reason, { service, fact }, event);
         return finding(reason, text.message, text.suggestion);
       };
       if (root === "events" && SERVICE_URL_REFUSED_EVENTS.has(String(name)))
@@ -61,8 +69,8 @@ export const serviceUrlLintIssues = (input: {
       if (routes.some((route) => !route.hostname.includes("*"))) return [];
       return noRoute(
         routes.length === 0
-          ? `${service} declares no routes, so it has no public URL.`
-          : `${service} has only wildcard routes, so it has no public URL.`,
+          ? `${service} declares no routes, so services.${service}.${fact} has no value.`
+          : `${service} has only wildcard routes, so services.${service}.${fact} has no value.`,
       );
     });
   });

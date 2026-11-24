@@ -1,5 +1,5 @@
 import { ConfigExpressionError } from "@lando/sdk/errors";
-import type { AppPlan } from "@lando/sdk/schema";
+import { type AppPlan, routeUrlPartFact } from "@lando/sdk/schema";
 import { Effect } from "effect";
 import { primaryConcreteRoute } from "../operations/connection-url.ts";
 
@@ -8,7 +8,9 @@ export const routeUrlConsumers = (plan: Pick<AppPlan, "services">) =>
     Object.entries(consumer.environment).flatMap(([key, value]) =>
       typeof value !== "string" && value._tag === "RouteText"
         ? value.parts.flatMap((part) =>
-            typeof part === "string" ? [] : [{ consumer: consumer.name, key, service: part.service }],
+            typeof part === "string"
+              ? []
+              : [{ consumer: consumer.name, key, service: part.service, fact: routeUrlPartFact(part) }],
           )
         : [],
     ),
@@ -21,8 +23,8 @@ export const validateRouteUrls = Effect.fn("AppPlanner.validateRouteUrls")(funct
   readonly global: boolean;
 }) {
   const services = new Map(Object.entries(input.plan.services));
-  for (const { consumer, key, service } of routeUrlConsumers(input.plan)) {
-    const expression = `services.${service}.url`;
+  for (const { consumer, key, service, fact } of routeUrlConsumers(input.plan)) {
+    const expression = `services.${service}.${fact}`;
     const target = services.get(service);
     const issue = input.global
       ? {
@@ -44,7 +46,7 @@ export const validateRouteUrls = Effect.fn("AppPlanner.validateRouteUrls")(funct
           : undefined;
     if (issue !== undefined)
       return yield* new ConfigExpressionError({
-        message: `Cannot bind ${expression}${consumer === service ? " (also available as service.url)" : ""}: ${issue.message}.`,
+        message: `Cannot bind ${expression}${consumer === service ? ` (also available as service.${fact})` : ""}: ${issue.message}.`,
         remediation: issue.remediation,
         path: ["services", consumer, "environment", key],
         filePath: input.filePath,

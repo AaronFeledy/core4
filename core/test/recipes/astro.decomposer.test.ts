@@ -82,7 +82,7 @@ describe("astro decomposition", () => {
             "--port",
             "4321",
             "--allowed-hosts",
-            "{{ url.parse(services.web.url).hostname }}",
+            "{{ services.web.hostname }}",
           ],
           wrapper: true,
         },

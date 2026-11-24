@@ -130,10 +130,14 @@ export const resolveLeaf = Effect.fnUntraced(function* (leaf: ToolingStepLeaf, c
   }
 });
 
-/** Resolves the public service URLs a step's sites read; undefined when they read none. */
+/** Resolves the public route facts a step's sites read; undefined when they read none. */
 export type ToolingStepServiceUrls = (
   sites: InvocationProgram,
-) => Effect.Effect<Readonly<Record<string, { readonly url: string }>> | undefined, ToolingCompileError>;
+) => Effect.Effect<
+  | Readonly<Record<string, { readonly url: string; readonly hostname: string; readonly origin: string }>>
+  | undefined,
+  ToolingCompileError
+>;
 
 const withServiceUrls = (
   resolve: ToolingStepServiceUrls | undefined,

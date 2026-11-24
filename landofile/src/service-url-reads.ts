@@ -1,24 +1,35 @@
 import type { ExpressionNode, ExpressionTemplate, PathSegment } from "@lando/sdk/expressions";
+import { PUBLIC_ROUTE_FACTS, type PublicRouteFact } from "@lando/sdk/schema";
 
 /**
- * Why a `services` read at an invocation site cannot be classified as a literal URL read or a
- * literal read of another published fact.
+ * Why a `services` read at an invocation site cannot be classified as a literal route-fact read or
+ * a literal read of another published fact.
  */
 export type ServiceUrlReadRefusal = "computed-service" | "computed-member" | "whole-service";
 
 export interface ServiceUrlReads {
-  /** Services whose `url` the expression reads through literal dot or bracket access. */
-  readonly services: ReadonlySet<string>;
+  /**
+   * Services whose public route facts (`url`, `hostname`, `origin`) the expression reads through
+   * literal dot or bracket access, each with the facts read, in first-read order.
+   */
+  readonly services: ReadonlyMap<string, ReadonlySet<PublicRouteFact>>;
   /** The first `services` read that names neither its service nor its member literally. */
   readonly refusal?: ServiceUrlReadRefusal;
 }
 
-/** A literal `services.<name>.url` read, normalized from dot, bracket, and parenthesized forms. */
+/** A literal `services.<name>.<fact>` read, normalized from dot, bracket, and parenthesized forms. */
 export interface ServiceUrlReadPath {
   readonly service: string;
-  /** Segments after `url`, such as an index into the URL text. */
+  readonly fact: PublicRouteFact;
+  /** Segments after the fact, such as an index into its text. */
   readonly rest: readonly PathSegment[];
 }
+
+const ROUTE_FACTS: ReadonlySet<string> = new Set(PUBLIC_ROUTE_FACTS);
+
+/** True when a `services.<name>` member is a public route fact rather than another published fact. */
+export const isPublicRouteFact = (member: string | undefined): member is PublicRouteFact =>
+  member !== undefined && ROUTE_FACTS.has(member);
 
 const staticName = (segment: PathSegment | undefined): string | undefined => {
   switch (segment?.type) {
@@ -54,7 +65,12 @@ const flattenedServicesPath = (node: ExpressionNode): readonly PathSegment[] | u
 };
 
 type Classified =
-  | { readonly kind: "url"; readonly service: string; readonly rest: readonly PathSegment[] }
+  | {
+      readonly kind: "route";
+      readonly service: string;
+      readonly fact: PublicRouteFact;
+      readonly rest: readonly PathSegment[];
+    }
   | { readonly kind: "other" }
   | { readonly kind: "refused"; readonly refusal: ServiceUrlReadRefusal };
 
@@ -64,24 +80,29 @@ const classifySegments = (segments: readonly PathSegment[]): Classified => {
   if (first === undefined || second === undefined) return { kind: "refused", refusal: "whole-service" };
   const member = staticName(second);
   if (member === undefined) return { kind: "refused", refusal: "computed-member" };
-  if (member !== "url") return { kind: "other" };
+  if (!isPublicRouteFact(member)) return { kind: "other" };
   const service = staticName(first);
   return service === undefined
     ? { kind: "refused", refusal: "computed-service" }
-    : { kind: "url", service, rest };
+    : { kind: "route", service, fact: member, rest };
 };
 
-/** The literal URL read this node performs itself, ignoring reads nested in its own segments. */
+/** The literal route-fact read this node performs itself, ignoring reads nested in its own segments. */
 export const serviceUrlReadPath = (node: ExpressionNode): ServiceUrlReadPath | undefined => {
   const segments = flattenedServicesPath(node);
   if (segments === undefined) return undefined;
   const classified = classifySegments(segments);
-  return classified.kind === "url" ? { service: classified.service, rest: classified.rest } : undefined;
+  return classified.kind === "route"
+    ? { service: classified.service, fact: classified.fact, rest: classified.rest }
+    : undefined;
 };
 
-/** Every `services.<name>.url` read in an expression, and whether any `services` read is unclassifiable. */
+/**
+ * Every `services.<name>.<url|hostname|origin>` read in an expression, and whether any `services`
+ * read is unclassifiable.
+ */
 export const serviceUrlReads = (ast: ExpressionTemplate | ExpressionNode): ServiceUrlReads => {
-  const services = new Set<string>();
+  const services = new Map<string, Set<PublicRouteFact>>();
   let refusal: ServiceUrlReadRefusal | undefined;
   const visitSegments = (segments: readonly PathSegment[]): void => {
     for (const segment of segments) if (segment.type === "dynamic") visit(segment.expr);
@@ -99,8 +120,12 @@ export const serviceUrlReads = (ast: ExpressionTemplate | ExpressionNode): Servi
           return;
         }
         const classified = classifySegments(segments);
-        if (classified.kind === "url") services.add(classified.service);
-        // A computed-name URL read outranks other refusals: sites that admit no URL refuse only it.
+        if (classified.kind === "route")
+          services.set(
+            classified.service,
+            new Set([...(services.get(classified.service) ?? []), classified.fact]),
+          );
+        // A computed-name route-fact read outranks other refusals: sites that admit no URL refuse only it.
         else if (
           classified.kind === "refused" &&
           (refusal === undefined || classified.refusal === "computed-service")
@@ -134,16 +159,16 @@ export const serviceUrlReads = (ast: ExpressionTemplate | ExpressionNode): Servi
   return refusal === undefined ? { services } : { services, refusal };
 };
 
-/** True when the expression reads at least one public service URL. */
+/** True when the expression reads at least one public service route fact. */
 export const readsServiceUrl = (ast: ExpressionTemplate | ExpressionNode): boolean =>
   serviceUrlReads(ast).services.size > 0;
 
 /**
- * Whether an authored value path may read `{{ services.<name>.url }}` at invocation: tooling
- * commands, `cmds` steps, env values, and vars (literal, `sh`, and var `env`), `toolingDefaults`
- * env and literal vars, and Landofile event step `cmd`, `defer`, `env`, and `if`. A v1 `hostEvents`
- * step has only a command, so only its string form or `cmd` may. Placement fields, selectors, Lando
- * command inputs, task ids, and include fields never may.
+ * Whether an authored value path may read `{{ services.<name>.url }}` (or its `hostname` or
+ * `origin`) at invocation: tooling commands, `cmds` steps, env values, and vars (literal, `sh`, and
+ * var `env`), `toolingDefaults` env and literal vars, and Landofile event step `cmd`, `defer`,
+ * `env`, and `if`. A v1 `hostEvents` step has only a command, so only its string form or `cmd` may.
+ * Placement fields, selectors, Lando command inputs, task ids, and include fields never may.
  */
 export const isServiceUrlInvocationPath = (path: readonly (string | number)[]): boolean => {
   const [root, name, field, index, leaf, extra] = path;

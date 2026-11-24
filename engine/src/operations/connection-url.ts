@@ -53,6 +53,27 @@ export const routeUrl = (route: RoutePlan, protocol: "http" | "https", port: num
     ...(route.pathPrefix === undefined ? {} : { pathPrefix: route.pathPrefix }),
   });
 
+/** A service's public route facts, each a pure function of its route, scheme, and port. */
+export interface RouteFacts {
+  /** `scheme://hostname[:port][pathPrefix]`. */
+  readonly url: string;
+  /** The route hostname, lowercase, without a port. */
+  readonly hostname: string;
+  /** `scheme://hostname[:port]`, with no path and no trailing slash. */
+  readonly origin: string;
+}
+
+/**
+ * Project a route's public facts by hand rather than through `new URL()`, which rewrites or rejects
+ * hostnames routes admit, such as `127.1` and `web.123`. The port is omitted only for http on 80
+ * and https on 443.
+ */
+export const routeFacts = (route: RoutePlan, protocol: "http" | "https", port: number): RouteFacts => ({
+  url: routeUrl(route, protocol, port),
+  hostname: route.hostname.toLowerCase(),
+  origin: connectionUrl({ host: route.hostname, protocol, port }),
+});
+
 export const connectionHost = (address: string): string => {
   const host = address.replace(/^\[|\]$/gu, "").toLowerCase();
   return host === "0.0.0.0" || host === "127.0.0.1" ? "localhost" : host === "::" ? "::1" : host;

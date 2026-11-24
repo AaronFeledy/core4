@@ -35,7 +35,7 @@ export const recipeConfigExpressionAdmitted = (
       "services",
       "proxy",
       ...(executableExpressionPath(path) ? INVOCATION_SCOPES : []),
-      ...(self === "supported" || self === "url" ? ["service"] : []),
+      ...(self === "supported" || self === "route-fact" ? ["service"] : []),
       ...(bindingSite ? ["secrets"] : []),
     ]) &&
     !template.segments.some(

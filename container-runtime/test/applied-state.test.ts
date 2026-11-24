@@ -123,6 +123,19 @@ describe("applied plan state layouts", () => {
     expect(migrated).toBeDefined();
     expect(migrated?.plannedPort).toBeUndefined();
   });
+  test("reads a v12 route-text environment value as the URL it always named", () => {
+    // Given a v12 record whose environment holds a RouteText part without a member
+    const encoded = Schema.encodeSync(AppPlan)(legacyPlan());
+    const [name, service] = Object.entries(encoded.services)[0] ?? [];
+    if (name === undefined || service === undefined)
+      throw new Error("The historical plan fixture must contain a service.");
+    const route = { _tag: "RouteText", parts: [{ service: name, encoding: "raw" }, "/api"] } as const;
+    const raw = { ...encoded, services: { [name]: { ...service, environment: { APP_URL: route } } } };
+    // When
+    const migrated = migrateAppliedPlan(raw, 12)?.services[ServiceName.make(name)];
+    // Then
+    expect(migrated?.environment.APP_URL).toEqual(route);
+  });
   test("v10 historical events cannot block recovery of the realized plan", () => {
     const plan = legacyPlan();
     const raw = {
@@ -610,7 +623,7 @@ describe("applied plan records", () => {
       layout === "per-app"
         ? Schema.decodeUnknownSync(AppliedPlan)(raw)
         : Schema.decodeUnknownSync(AppliedPlans)(raw)[plan.id];
-    expect(APPLIED_STATE_VERSION).toBe(12);
+    expect(APPLIED_STATE_VERSION).toBe(13);
     expect(decoded).toEqual(Schema.decodeUnknownSync(AppliedAppPlan)(historicalWriterValue));
     expect(decoded).toEqual(record);
   });

@@ -51,7 +51,7 @@ lando dev
 
 It runs `vite dev --host 0.0.0.0 --port 5173 --strictPort`. The all-interfaces bind and the recipe's port let the proxy reach Vite, so `vite.config.ts` needs no `server` settings. Stop it with Ctrl-C.
 
-Vite rejects requests for hostnames it doesn't know, and it has no CLI flag for allowing one. The task sets Vite's `__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS` variable instead, to `{{ url.parse(services.web.url).hostname }}`: the hostname Lando applied for `web` at the last `lando start`. Vite allows that one hostname and nothing else, and you don't copy it from `lando info`. Don't set `allowedHosts: true`. See [Use the URL in tooling and events](../landofile/expressions.mdx#use-the-url-in-tooling-and-events) and [Vite's server options](https://vite.dev/config/server-options).
+Vite rejects requests for hostnames it doesn't know, and it has no CLI flag for allowing one. The task sets Vite's `__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS` variable instead, to `{{ services.web.hostname }}`: the hostname Lando applied for `web` at the last `lando start`. Vite allows that one hostname and nothing else, and you don't copy it from `lando info`. Don't set `allowedHosts: true`. See [Use the URL in tooling and events](../landofile/expressions.mdx#use-the-url-in-tooling-and-events) and [Vite's server options](https://vite.dev/config/server-options).
 
 Open the URL `lando info` prints. Build when you are ready:
 
@@ -113,7 +113,7 @@ Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pick a 
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "SVELTEKIT_ADAPTER" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"SVELTEKIT_ADAPTER\":\\s*\"node\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"dev\":\\s*\\{[^}]*\"vite\",\\s*\"dev\"" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS\":\\s*\"\\{\\{ url\\.parse\\(services\\.web\\.url\\)\\.hostname \\}\\}\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS\":\\s*\"\\{\\{ services\\.web\\.hostname \\}\\}\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { not: { regex: "APP_URL" } } }} />
     </Step>
     <Step name="start">

@@ -4,7 +4,7 @@ services:
     type: "node:22"
     primary: true
     environment:
-      APP_HOST: "{{ app.name }}.{{ proxy.defaultDomain }}"
+      CACHE_PREFIX: "{{ app.name }}:"
       APP_LABEL: "{{ default(env.LANDO_EXPRESSIONS_UNSET, 'dflt') }}-{{ app.name }}"
   database:
     type: "mariadb:11.4"

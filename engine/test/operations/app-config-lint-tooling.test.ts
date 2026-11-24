@@ -319,7 +319,7 @@ test("skips argv host tooling commands", async () => {
   }
 });
 
-test("lint reports public URL reads that cannot resolve at invocation without blocking planning", async () => {
+test("lint reports route-fact reads that cannot resolve at invocation as errors", async () => {
   // Given
   const root = await mkdtemp(join(tmpdir(), "lando-lint-service-url-"));
   try {
@@ -341,7 +341,7 @@ test("lint reports public URL reads that cannot resolve at invocation without bl
         "tooling:",
         "  ping:",
         "    service: ':host'",
-        "    cmd: curl {{ services.web.url }} {{ services.ghost.url }} {{ services.api.url }}",
+        "    cmd: curl {{ services.web.hostname }} {{ services.ghost.origin }} {{ services.api.url }}",
         "events:",
         "  pre-start:",
         "    - curl {{ services.api.url }}",
@@ -358,11 +358,53 @@ test("lint reports public URL reads that cannot resolve at invocation without bl
         .filter((issue) => issue.rule === "landofile.tooling")
         .map((issue) => [issue.path.join("."), issue.reason, issue.severity]),
     ).toEqual([
-      ["events.pre-start.0", "event-phase", "warning"],
-      ["tooling.ping.cmd", "no-route", "warning"],
-      ["tooling.ping.cmd", "unknown-service", "warning"],
+      ["events.pre-start.0", "event-phase", "error"],
+      ["tooling.ping.cmd", "no-route", "error"],
+      ["tooling.ping.cmd", "unknown-service", "error"],
     ]);
-    expect(result.violations.filter((issue) => issue.severity === "error")).toEqual([]);
+    expect(result.violations).toContainEqual(
+      expect.objectContaining({
+        reason: "unknown-service",
+        message: "services.ghost.origin names no service in this app.",
+      }),
+    );
+    expect(result.valid).toBe(false);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("lint only warns about a route-fact read when routing is disabled", async () => {
+  // Given
+  const root = await mkdtemp(join(tmpdir(), "lando-lint-service-url-disabled-"));
+  try {
+    await writeFile(
+      join(root, ".lando.yml"),
+      [
+        "name: urls",
+        "router:",
+        "  enabled: false",
+        "services:",
+        "  web:",
+        "    type: compose",
+        "    image: nginx:1.27",
+        "    endpoints: ['http:80']",
+        "tooling:",
+        "  ping:",
+        "    service: ':host'",
+        "    cmd: curl {{ services.web.origin }}",
+        "",
+      ].join("\n"),
+    );
+    // When
+    const result = await Effect.runPromise(appConfigLint({ cwd: root }).pipe(Effect.provide(registryLayer)));
+    // Then
+    expect(
+      result.violations
+        .filter((issue) => issue.rule === "landofile.tooling")
+        .map((issue) => [issue.path.join("."), issue.reason, issue.severity]),
+    ).toEqual([["tooling.ping.cmd", "routing-disabled", "warning"]]);
+    expect(result.valid).toBe(true);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -414,36 +456,41 @@ test("lint tells a generated default route from a service with no HTTP listener 
   }
 });
 
-test("lint refuses a placement field that follows a URL-reading var", async () => {
-  // Given
-  const root = await mkdtemp(join(tmpdir(), "lando-lint-service-url-var-"));
-  try {
-    await writeFile(
-      join(root, ".lando.yml"),
-      [
-        "name: urls",
-        "tooling:",
-        "  ping:",
-        "    service: ':host'",
-        "    cmd: echo body",
-        "    dir: '{{ vars.home }}'",
-        "    vars:",
-        "      home: '{{ vars.site }}'",
-        "      site: '{{ services.web.url }}'",
-        "",
-      ].join("\n"),
-    );
-    // When
-    const result = await Effect.runPromise(appConfigLint({ cwd: root }).pipe(Effect.provide(registryLayer)));
-    // Then
-    expect(result.violations).toContainEqual(
-      expect.objectContaining({
-        rule: "landofile.tooling",
-        reason: "service-url-placement",
-        path: ["tooling", "ping", "dir"],
-      }),
-    );
-  } finally {
-    await rm(root, { recursive: true, force: true });
-  }
-});
+test.each(["url", "hostname", "origin"])(
+  "lint refuses a placement field that follows a var reading %s",
+  async (fact) => {
+    // Given
+    const root = await mkdtemp(join(tmpdir(), "lando-lint-service-url-var-"));
+    try {
+      await writeFile(
+        join(root, ".lando.yml"),
+        [
+          "name: urls",
+          "tooling:",
+          "  ping:",
+          "    service: ':host'",
+          "    cmd: echo body",
+          "    dir: '{{ vars.home }}'",
+          "    vars:",
+          "      home: '{{ vars.site }}'",
+          `      site: '{{ services.web.${fact} }}'`,
+          "",
+        ].join("\n"),
+      );
+      // When
+      const result = await Effect.runPromise(
+        appConfigLint({ cwd: root }).pipe(Effect.provide(registryLayer)),
+      );
+      // Then
+      expect(result.violations).toContainEqual(
+        expect.objectContaining({
+          rule: "landofile.tooling",
+          reason: "service-url-placement",
+          path: ["tooling", "ping", "dir"],
+        }),
+      );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+);

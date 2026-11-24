@@ -8,6 +8,7 @@ import { ToolingCompileError } from "@lando/sdk/errors";
 import {
   type AppPlan,
   type LandofileEventName,
+  type PublicRouteFact,
   type ValidationIssue,
   type ValidationIssuePath,
   formatValidationIssuePath,
@@ -15,12 +16,13 @@ import {
 import { RouterService, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { Effect, Option } from "effect";
 import { routerEnabled } from "../config/router-config.ts";
-import { authorizedRouteUrl } from "../lifecycle/route-url-bindings.ts";
+import { authorizedRouteFacts } from "../lifecycle/route-url-bindings.ts";
 import { readOwnAppliedPlan } from "../planner/connection-client-task.ts";
 import { unavailableRouterReason } from "../subsystems/proxy/api.ts";
 import type { ServiceUrlFailureReason } from "../tooling/event-errors.ts";
-import { primaryConcreteRoute } from "./connection-url.ts";
+import { type RouteFacts, primaryConcreteRoute } from "./connection-url.ts";
 import { activeEventNames } from "./event-invocation.ts";
+import { publishRouteFactDrift } from "./route-fact-drift.ts";
 
 /** Lifecycle points that run before start publishes routes and acquires router ports. */
 const UNPUBLISHED = ["pre-init", "post-init", "pre-start"] as const satisfies readonly LandofileEventName[];
@@ -36,25 +38,31 @@ export const SERVICE_URL_REFUSED_EVENTS: ReadonlySet<string> = new Set<Landofile
   "post-destroy",
 ]);
 
+/**
+ * The message and suggestion for a refused route-fact read. `fact` names the fact the site reads
+ * (`url`, `hostname`, or `origin`) so the message names what the author wrote.
+ */
 export const serviceUrlFailureText = (
   reason: ServiceUrlFailureReason,
-  service: string,
+  read: { readonly service: string; readonly fact: PublicRouteFact },
   event?: string,
 ): { readonly message: string; readonly suggestion: string } => {
+  const { service, fact } = read;
+  const expression = `services.${service}.${fact}`;
   switch (reason) {
     case "event-phase":
       return {
-        message: `services.${service}.url is not available during ${event}: ${
+        message: `${expression} is not available during ${event}: ${
           event !== undefined && UNPUBLISHED_EVENTS.has(event)
             ? "the app has not published its routes yet"
             : "the app is no longer serving"
         }.`,
         suggestion:
-          "Read the URL in a post-start, post-restart, or post-rebuild step, or in pre-stop, pre-restart, pre-rebuild, or pre-destroy for the address the app is leaving.",
+          "Read the route in a post-start, post-restart, or post-rebuild step, or in pre-stop, pre-restart, pre-rebuild, or pre-destroy for the address the app is leaving.",
       };
     case "unknown-service":
       return {
-        message: `services.${service}.url names no service in this app.`,
+        message: `${expression} names no service in this app.`,
         suggestion: "Name a service declared in the Landofile.",
       };
     case "app-not-started":
@@ -75,7 +83,7 @@ export const serviceUrlFailureText = (
       };
     case "routing-disabled":
       return {
-        message: `The router is disabled for this app, so ${service} has no public URL.`,
+        message: `The router is disabled for this app, so ${service} has no public route for ${expression}.`,
         suggestion: "Enable the router for this app and run `lando start`.",
       };
     case "router-unsupported":
@@ -95,12 +103,13 @@ export const serviceUrlFailureText = (
 };
 
 /**
- * Resolve every public service URL these invocation sites read: the address Lando last applied for
- * each service's primary concrete route, at the port the router recorded for it. URL-free sites
- * read neither applied state nor the router. A failure is a `ToolingCompileError` whose issues
- * locate every site the failure affects: every reading site for an app-wide failure, and the sites
- * of each affected service otherwise. The caller drops sites that will not run, and `effectivePath`
- * maps a site to its effective declaration path.
+ * Resolve every public route fact these invocation sites read: the address Lando last applied for
+ * each service's primary concrete route, at the port the router recorded for it, projected into
+ * its `url`, `hostname`, and `origin`. Fact-free sites read neither applied state nor the router.
+ * A failure is a `ToolingCompileError` whose issues locate every site the failure affects: every
+ * reading site for an app-wide failure, and the sites of each affected service otherwise. The
+ * caller drops sites that will not run, and `effectivePath` maps a site to its effective
+ * declaration path.
  */
 export const resolveInvocationServiceUrls = Effect.fnUntraced(function* (input: {
   readonly plan: AppPlan;
@@ -108,10 +117,10 @@ export const resolveInvocationServiceUrls = Effect.fnUntraced(function* (input: 
   readonly sites: InvocationProgram;
   readonly effectivePath: (site: InvocationSite) => ValidationIssuePath;
 }) {
-  const reads = new Map<string, InvocationSite[]>();
+  const reads = new Map<string, { readonly site: InvocationSite; readonly fact: PublicRouteFact }[]>();
   for (const site of input.sites)
-    for (const service of serviceUrlReads(site.template).services)
-      reads.set(service, [...(reads.get(service) ?? []), site]);
+    for (const [service, facts] of serviceUrlReads(site.template).services)
+      for (const fact of facts) reads.set(service, [...(reads.get(service) ?? []), { site, fact }]);
   const all = [...reads.keys()];
   if (all.length === 0) return undefined;
   const fail = (
@@ -122,10 +131,10 @@ export const resolveInvocationServiceUrls = Effect.fnUntraced(function* (input: 
     const issues: ValidationIssue[] = [];
     const located = new Set<InvocationSite>();
     for (const service of services) {
-      const text = serviceUrlFailureText(reason, service, extra.event);
-      for (const site of reads.get(service) ?? []) {
+      for (const { site, fact } of reads.get(service) ?? []) {
         if (located.has(site)) continue;
         located.add(site);
+        const text = serviceUrlFailureText(reason, { service, fact }, extra.event);
         issues.push({
           rule: "landofile.tooling",
           reason,
@@ -137,7 +146,12 @@ export const resolveInvocationServiceUrls = Effect.fnUntraced(function* (input: 
       }
     }
     const [first] = issues;
-    const text = serviceUrlFailureText(reason, services[0] ?? all[0] ?? "", extra.event);
+    const service = services[0] ?? all[0] ?? "";
+    const text = serviceUrlFailureText(
+      reason,
+      { service, fact: reads.get(service)?.[0]?.fact ?? "url" },
+      extra.event,
+    );
     return new ToolingCompileError({
       tool: input.tool,
       message:
@@ -185,13 +199,15 @@ export const resolveInvocationServiceUrls = Effect.fnUntraced(function* (input: 
   const authorities = yield* router
     .routeAuthorities(applied.routes)
     .pipe(mapFailures((cause) => fail("authority-unavailable", all, { cause })));
-  const services: Record<string, { readonly url: string }> = {};
+  const services: Record<string, RouteFacts> = {};
   const unrecorded: string[] = [];
   for (const [service, route] of routes) {
-    const authorized = route === undefined ? undefined : authorizedRouteUrl(route, authorities);
+    const authorized = route === undefined ? undefined : authorizedRouteFacts(route, authorities);
     if (authorized === undefined) unrecorded.push(service);
-    else services[service] = { url: authorized.url };
+    else services[service] = authorized.facts;
   }
   if (unrecorded.length > 0) return yield* fail("authority-unavailable", unrecorded);
+  // The applied plan already in hand tells whether a consumer was started with an older value.
+  yield* publishRouteFactDrift(applied, services);
   return services;
 });
