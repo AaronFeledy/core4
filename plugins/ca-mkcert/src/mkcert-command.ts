@@ -26,6 +26,13 @@ export const caError = (
     remediation,
   });
 
+/**
+ * mkcert v1.4.4 inspects every trust store it knows (system, NSS, Java) on each run unless
+ * `TRUST_STORES` lists others. Naming none keeps the `-CAROOT` query and issuance away from the
+ * stores; only `-install` runs without it.
+ */
+export const NO_TRUST_STORES = { TRUST_STORES: "none" } as const;
+
 export const failureDetail = (result: ProcessResult): string => {
   const detail = (result.stderr.trim().length > 0 ? result.stderr : result.stdout).trim();
   return detail.length === 0 ? `exit code ${result.exitCode}` : detail;

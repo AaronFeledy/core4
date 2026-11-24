@@ -11,8 +11,9 @@
  *
  * Every trust store the authority manages (the system store, then each
  * Homebrew CA bundle) is reported as a row. `setup` inspects them before and
- * after installing and marks the ones it made trust the root; a store it
- * could not repair is reported untrusted, not failed. `trustStores` only
+ * after installing and marks the ones it took from untrusted to trusted; a
+ * store it could not repair is reported untrusted, not failed. It skips
+ * `mkcert -install` when the system store already trusts the root. `trustStores` only
  * inspects. The system row is a fresh read, never Bun's per-process snapshot
  * that `root.trusted` uses, so setup can verify its own install.
  *
@@ -51,15 +52,15 @@ export { CA_ID } from "./mkcert-command.ts";
 
 const storeKey = ({ id, location }: TrustStoreStatus): string => JSON.stringify([id, location ?? null]);
 
-/** `after`, each row marked changed when setup took it from not trusted to trusted. */
+/** `after`, each row marked changed only when setup took it from verified untrusted to trusted. */
 const markChanges = (
   before: ReadonlyArray<TrustStoreStatus>,
   after: ReadonlyArray<TrustStoreStatus>,
 ): ReadonlyArray<TrustStoreChange> => {
-  const trustedBefore = new Set(before.filter(({ state }) => state === "trusted").map(storeKey));
+  const untrustedBefore = new Set(before.filter(({ state }) => state === "untrusted").map(storeKey));
   return after.map((row) => ({
     ...row,
-    changed: row.state === "trusted" && !trustedBefore.has(storeKey(row)),
+    changed: row.state === "trusted" && untrustedBefore.has(storeKey(row)),
   }));
 };
 
@@ -159,7 +160,7 @@ export const makeMkcertCertificateAuthority = (
   /** Every managed store, system first, in a stable order. Reads only. */
   const inspect = Effect.fnUntraced(function* (caroot: string, root: string) {
     const system = yield* systemTrust.inspect(caroot, root);
-    return [system, ...(yield* homebrew.inspect(root))];
+    return { system, rows: [system, ...(yield* homebrew.inspect(root))] };
   });
 
   return CertificateAuthority.of({
@@ -169,12 +170,18 @@ export const makeMkcertCertificateAuthority = (
       const caroot = yield* caRoot;
       const root = yield* ensureRoot(caroot);
       const before = yield* inspect(caroot, root);
-      if (setupOptions.skipTrustInstall === true) return { trustStores: markChanges(before, before) };
-      yield* installTrust(caroot, setupOptions.privilege);
-      // mkcert can exit 0 without the system store trusting the root; that is reported, not fatal.
-      const system = yield* systemTrust.inspect(caroot, root);
+      if (setupOptions.skipTrustInstall === true)
+        return { trustStores: markChanges(before.rows, before.rows) };
+      // A system store that already trusts the root needs no `mkcert -install`, so reruns never prompt.
+      const system =
+        before.system.state === "trusted"
+          ? before.system
+          : yield* installTrust(caroot, setupOptions.privilege).pipe(
+              // mkcert can exit 0 without the system store trusting the root; that is reported, not fatal.
+              Effect.andThen(systemTrust.inspect(caroot, root)),
+            );
       const homebrewRows = yield* homebrew.refresh(root, system.state === "trusted");
-      return { trustStores: markChanges(before, [system, ...homebrewRows]) };
+      return { trustStores: markChanges(before.rows, [system, ...homebrewRows]) };
     }),
     root: currentRoot.pipe(
       Effect.map(({ root }) => root),
@@ -182,6 +189,7 @@ export const makeMkcertCertificateAuthority = (
     ),
     trustStores: currentRoot.pipe(
       Effect.flatMap(({ caroot, root }) => inspect(caroot, root.certificate)),
+      Effect.map(({ rows }) => rows),
       Effect.withSpan("CertificateAuthority.trustStores"),
     ),
     issueCert,

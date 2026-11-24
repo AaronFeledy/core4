@@ -592,7 +592,10 @@ describe("meta:setup command", () => {
         .render?.(result)
         ?.split("\n")
         .filter((line) => line.startsWith("trust:")),
-    ).toEqual(["trust: System trust store: trusted (updated)", "trust: Homebrew CA bundle: untrusted"]);
+    ).toEqual([
+      "trust: System trust store (/etc/ssl/cert.pem): trusted (updated)",
+      "trust: Homebrew CA bundle (/opt/homebrew/etc/ca-certificates/cert.pem): untrusted",
+    ]);
     const decorated =
       setupSpec.render?.(result, undefined, {
         mode: "lando",

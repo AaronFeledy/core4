@@ -509,16 +509,36 @@ describe("certificate-authority check findings", () => {
     );
   });
 
-  test("an untrusted root wins over untrusted stores", async () => {
+  test("an untrusted root wins over untrusted stores and still lists their fixes", async () => {
     const certs = await certsFinding({
       _tag: "selected",
       id: "mkcert",
       trusted: false,
-      trustStores: [{ ...SYSTEM, state: "untrusted" }, STALE_BREW],
+      trustStores: [{ ...SYSTEM, state: "untrusted" }, STALE_BREW, UNKNOWN_NSS],
     });
 
     expect(certs?.context.certsReason).toBe("untrusted");
     expect(certs?.context.certsTrusted).toBe("false");
+    expect(certs?.solutions.map(({ description }) => description.split(" does not trust")[0])).toEqual([
+      expect.stringContaining("Browsers will warn"),
+      `Homebrew CA bundle at ${BREW_PATH}`,
+      "NSS database",
+    ]);
+  });
+
+  test("offers `lando setup` as the command only for a remediation that is a plain rerun", async () => {
+    const certs = await certsFinding({
+      _tag: "selected",
+      id: "mkcert",
+      trusted: true,
+      trustStores: [
+        SYSTEM,
+        STALE_BREW,
+        { ...UNKNOWN_NSS, remediation: "Run `sudo apt install libnss3-tools`, then run `lando setup`." },
+      ],
+    });
+
+    expect(certs?.solutions.map(({ command }) => command)).toEqual(["lando setup", undefined]);
   });
 
   test("warns when the local root is not in the host trust store", async () => {

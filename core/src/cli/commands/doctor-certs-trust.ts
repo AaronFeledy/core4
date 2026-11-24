@@ -4,7 +4,8 @@ import type { TrustStoreStatus } from "@lando/sdk/schema";
 import { passCheckNamed, warnCheck } from "./doctor-check-builders";
 import type { DoctorFinding, DoctorSolution } from "./doctor-contract";
 
-const storeSolution = (store: TrustStoreStatus): DoctorSolution => {
+/** One manual fix for a store that does not trust the root; only a plain rerun of setup is a command. */
+export const storeSolution = (store: TrustStoreStatus): DoctorSolution => {
   const where = store.location === undefined ? "" : ` at ${store.location}`;
   const why = store.detail === undefined ? "" : `: ${store.detail}`;
   const sentence = `${store.name}${where} does not trust the local CA${why}`;
@@ -14,7 +15,7 @@ const storeSolution = (store: TrustStoreStatus): DoctorSolution => {
   return {
     kind: "manual",
     description,
-    ...(store.remediation?.includes("lando setup") === true ? { command: "lando setup" } : {}),
+    ...(store.remediation?.startsWith("Run `lando setup`") === true ? { command: "lando setup" } : {}),
   };
 };
 
