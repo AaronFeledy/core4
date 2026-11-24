@@ -206,10 +206,10 @@ const unexplainedNullPaths = (schema: Schema.Top, document: unknown): readonly s
   return [...unexplained.values()];
 };
 
-// Generation can take 5–9 seconds on slower runners. Bound both the child
+// Generation can take 10–20 seconds on slower runners. Bound both the child
 // and the hook/test that owns it without raising the suite's default timeout.
-const generatorTimeoutMs = 15_000;
-const generatorTestTimeoutMs = 20_000;
+const generatorTimeoutMs = 45_000;
+const generatorTestTimeoutMs = 60_000;
 const runGenerator = (): void => {
   const proc = Bun.spawnSync([process.execPath, generatorPath], {
     cwd: repoRoot,

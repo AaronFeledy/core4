@@ -20,6 +20,7 @@ import { evolveHistoricalEndpointMetadata } from "./x-extension-endpoint-metadat
 import { evolveHistoricalEnvironment, evolveHistoricalRouteText } from "./x-extension-environment-proof.ts";
 import { evolveHistoricalExtraArgs } from "./x-extension-extra-args-proof.ts";
 import { evolveHistoricalNetworks } from "./x-extension-networks-proof.ts";
+import { evolveHistoricalPackageCache } from "./x-extension-package-cache-proof.ts";
 import { evolveHistoricalProjectUser } from "./x-extension-project-user-proof.ts";
 import { evolveHistoricalReadiness } from "./x-extension-readiness-proof.ts";
 import { evolveHistoricalSchedule } from "./x-extension-schedule-proof.ts";
@@ -193,7 +194,7 @@ test.each(mutations)(
       await loadNormalizedArtifact("schema:ConfigTranslateEncodeInput"),
       "$.context.services",
     );
-    const evolved = evolveSchemaParity(expected, "services");
+    const evolved = evolveHistoricalPackageCache(evolveSchemaParity(expected, "services"));
     expect(jsonEquals(evolved, current)).toBe(true);
     const changed = mutateFirst(current, change);
     expect(changed).not.toBe(current);
