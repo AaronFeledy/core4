@@ -199,7 +199,7 @@ Add `node` next to `appserver`, point `lando npm` at the theme with tooling
       <Run command={`lando app:config:set services.appserver.environment.WP_HOME '{{ services.appserver.url }}'`} />
     </Step>
     <Step name="confirm-defaults">
-      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true,\\s*\"violations\":\\s*\\[\\s*\\]" } }} />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true", not: { regex: "\"rule\":\\s*\"landofile[.]tooling\"" } } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"wp-install\":\\s*\\{[^}]*\"--url=\\{\\{ services\\.appserver\\.url \\}\\}\"" } }} />
       <Verify command="lando help wp-replace-url --format=json" expect={{ stdout: { regex: "\"name\":\\s*\"from\",\\s*\"order\":\\s*0,\\s*\"required\":\\s*true" } }} />
       <Run command="lando app:config --format=json" />

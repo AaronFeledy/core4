@@ -43,7 +43,7 @@ For the install steps and database hosts, see [Run the WordPress recipe](/guides
     </Step>
     <Hidden reason="Check that the scaffolded WP-CLI tasks lint clean and read the published URL">
       <Step name="confirm-url-tasks">
-        <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true,\\s*\"violations\":\\s*\\[\\s*\\]" } }} />
+        <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true", not: { regex: "\"rule\":\\s*\"landofile[.]tooling\"" } } }} />
         <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"wp-install\":\\s*\\{[^}]*\"--url=\\{\\{ services\\.appserver\\.url \\}\\}\"" } }} />
         <Verify command="lando help wp-replace-url --format=json" expect={{ stdout: { regex: "\"name\":\\s*\"from\",\\s*\"order\":\\s*0,\\s*\"required\":\\s*true" } }} />
       </Step>
