@@ -187,7 +187,7 @@ export const launchAdmittedApp = Effect.fnUntraced(function* (
     readonly buildOptions?: BuildOptions;
     readonly forceAppBuild?: boolean;
     readonly preparedTargets?: readonly PreparedFileSyncTarget[];
-    /** Ordinary start announces replacements; a halt-and-relaunch recreates everything by design. */
+    /** Start and restart announce replacements; rebuild recreates every container by design. */
     readonly announceApplyOutcome?: boolean;
   },
 ): Effect.fn.Return<StartAppResult, StartAppError, BoundStartAppServices> {
@@ -399,7 +399,7 @@ const applyAppLaunch = Effect.fnUntraced(function* (input: {
           // keeps every worker the still-running app may still use.
           yield* retireUnusedSshAgentWorker(plan, target.app);
           yield* retireUnusedGpgAgentWorker(plan, target.app, overlays.gpgIntent);
-          yield* retireUnusedHostProxyWorker(plan, target.app, provider.capabilities);
+          yield* retireUnusedHostProxyWorker(plan, target.app, provider.capabilities, "retire");
         }),
         provider,
         plan: runtimePlan,

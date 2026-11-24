@@ -127,7 +127,7 @@ export const prepareSupersededRealizations = Effect.fn("AppOperation.prepareSupe
           yield* disposal.quiesceRetained;
           const quiesced = yield* disposal.dispose;
           observations.push(quiesced.shutdownObservations);
-          yield* cleanupAppWorkers(app);
+          yield* cleanupAppWorkers(app, "retire");
           const outcome = yield* provider.bringDown(
             { app: old.id, plan: old },
             {

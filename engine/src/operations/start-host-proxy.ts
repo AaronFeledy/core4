@@ -281,13 +281,17 @@ export const withStartedHostProxy = Effect.fnUntraced(function* <A, E, R>(
   return yield* options.use(session === undefined ? plan : yield* withHostProxyRunLando(plan, session));
 });
 
-/** Retires the recorded host-proxy worker when the whole desired plan no longer needs one. */
+/**
+ * Ends the recorded host-proxy worker when the plan no longer needs one: `retire` when the desired
+ * plan dropped host-proxy, `stop` when a selected stop left no running service using it.
+ */
 export const retireUnusedHostProxyWorker = Effect.fnUntraced(function* (
   plan: AppPlan,
   app: AppRef,
   capabilities: ProviderCapabilities,
+  intent: "stop" | "retire",
 ) {
   if (app.kind === "global" || plan.id === "global" || hostProxyWorkerNeeded(plan, capabilities)) return;
   const paths = yield* PathsService;
-  yield* cleanupHostProxyRunLandoState(app, { ...paths.roots, platform: paths.platform });
+  yield* cleanupHostProxyRunLandoState(app, { ...paths.roots, platform: paths.platform }, intent);
 });

@@ -1,6 +1,12 @@
 import type { StopAppResult } from "@lando/sdk/app";
 import { FileSyncStopError } from "@lando/sdk/errors";
-import { type AbsolutePath, AppId, type AppRef, type ServiceShutdownObservation } from "@lando/sdk/schema";
+import {
+  type AbsolutePath,
+  AppId,
+  type AppRef,
+  type ContainerBringDownReceipt,
+  type ServiceShutdownObservation,
+} from "@lando/sdk/schema";
 import { RuntimeProviderRegistry } from "@lando/sdk/services";
 import { Effect } from "effect";
 import { routeOwnerFromPlan, routeOwnerFromRoot } from "../lifecycle/route-owner.ts";
@@ -10,25 +16,10 @@ import { readDiscardableStart } from "./accelerated-start-disposal.ts";
 import type { TeardownResolution } from "./applied-state-target.ts";
 import { cleanupAppWorkers } from "./destroy-provider.ts";
 import { prepareMissingRootStartDisposal } from "./missing-root-start-disposal.ts";
-import { tearDownOrphans } from "./orphan-teardown.ts";
-import { prepareOwnedResourceCleanup, tearDownOwnedResources } from "./owned-resource-teardown.ts";
-import { withShutdownObservations } from "./shutdown-observations.ts";
-
-export const stopOrphans = (resolution: Extract<TeardownResolution, { readonly kind: "orphans" }>) =>
-  tearDownOrphans({
-    root: resolution.root,
-    groups: resolution.groups,
-    options: { volumes: false, purgeCaches: false },
-  }).pipe(
-    Effect.map((removed): StopAppResult => {
-      const base: StopAppResult = {
-        app: removed.app,
-        outcome: removed.services.length === 0 && !removed.ownedChanged ? "unchanged" : "stopped",
-        servicesStopped: removed.services,
-      };
-      return withShutdownObservations(base, removed.shutdownObservations);
-    }),
-  );
+import { mergeShutdownObservations, withShutdownObservations } from "./shutdown-observations.ts";
+import { stopOrphans } from "./stop-realizations.ts";
+import { mergeContainerReceipts, servicesTakenDown, withContainerReceipts } from "./stop-receipts.ts";
+import { stopUnplannedContainers } from "./stop-unplanned.ts";
 
 const journalRef = (root: AbsolutePath, id: string): AppRef => ({
   kind: "user",
@@ -47,7 +38,7 @@ export const journalPending = Effect.fnUntraced(function* (root: AbsolutePath, i
  */
 const stopMissingRootWriters = Effect.fnUntraced(function* (app: AppRef, resolution: TeardownResolution) {
   const registry = yield* RuntimeProviderRegistry;
-  const services: string[] = [];
+  let containers: readonly ContainerBringDownReceipt[] | undefined;
   let shutdownObservations: readonly ServiceShutdownObservation[] | undefined;
   switch (resolution.kind) {
     case "applied": {
@@ -56,35 +47,28 @@ const stopMissingRootWriters = Effect.fnUntraced(function* (app: AppRef, resolut
       if ((yield* provider.getStatus).state !== "idle") {
         const outcome = yield* provider.bringDown(
           { app: target.plan.id, plan: target.plan },
-          { containers: "remove", volumes: false, removeState: false },
+          { containers: "stop" },
         );
-        shutdownObservations = outcome.shutdownObservations;
-        if (outcome.kind === "removed")
-          services.push(
-            ...Object.values(target.plan.services)
-              .reverse()
-              .map((service) => String(service.name)),
-          );
+        const unplanned = yield* stopUnplannedContainers(target.plan, provider);
+        shutdownObservations = mergeShutdownObservations(
+          outcome.shutdownObservations,
+          unplanned.shutdownObservations,
+        );
+        containers = mergeContainerReceipts(
+          outcome.kind === "no-op" ? undefined : outcome.containers,
+          unplanned.containers,
+        );
       }
-      const cleanup = yield* prepareOwnedResourceCleanup(
-        app.root,
-        { volumes: false, purgeCaches: false },
-        "stop",
-      );
-      services.push(...(yield* cleanup).servicesRemoved);
       break;
     }
     case "orphans": {
-      const removed = yield* stopOrphans(resolution);
-      services.push(...removed.servicesStopped);
-      shutdownObservations = removed.shutdownObservations;
+      const stopped = yield* stopOrphans(resolution);
+      containers = stopped.containers;
+      shutdownObservations = stopped.shutdownObservations;
       break;
     }
-    case "owned": {
-      const removed = yield* tearDownOwnedResources(app.root, { volumes: false, purgeCaches: false }, "stop");
-      services.push(...removed.servicesRemoved);
-      break;
-    }
+    // An ownership inventory with no observed container has nothing left to stop.
+    case "owned":
     case "absent":
       break;
     default: {
@@ -92,18 +76,21 @@ const stopMissingRootWriters = Effect.fnUntraced(function* (app: AppRef, resolut
       return unreachable;
     }
   }
-  yield* cleanupAppWorkers(app);
+  yield* cleanupAppWorkers(app, "stop");
   yield* withdrawOwnerRoutes(
     resolution.kind === "applied"
       ? routeOwnerFromPlan(resolution.target.plan)
       : routeOwnerFromRoot(String(app.id), app.root),
   );
   return withShutdownObservations(
-    {
-      app: resolution.kind === "applied" ? resolution.target.plan.name : String(app.id),
-      outcome: "stopped",
-      servicesStopped: [...new Set(services)],
-    } satisfies StopAppResult,
+    withContainerReceipts(
+      {
+        app: resolution.kind === "applied" ? resolution.target.plan.name : String(app.id),
+        outcome: "stopped",
+        servicesStopped: servicesTakenDown(containers),
+      } satisfies StopAppResult,
+      containers,
+    ),
     shutdownObservations,
   );
 });

@@ -26,11 +26,12 @@ export interface TerminateHostProxyWorkerOptions {
 export type TerminateOwnershipResult = "terminated" | "absent";
 
 /**
- * Retiring the app's host-proxy removes the whole run directory. Replacing its worker keeps the
- * container-facing directory, which running containers bind, so the successor's session reaches
- * them without recreating them.
+ * Retiring the app's host-proxy removes the whole run directory. Stopping the app or replacing its
+ * worker resets it instead and keeps the container-facing directory with its generation: stopped
+ * containers start again in place and running ones reach the successor's session, both without
+ * being recreated.
  */
-type RunDirRemoval = "retire" | "replace";
+type RunDirRemoval = "retire" | "reset";
 
 const removeRunDir = (
   app: Pick<AppRef, "id" | "root">,
@@ -84,7 +85,7 @@ export const replaceExistingHostProxyWorker = (
   claim: WorkerClaim,
   app: Pick<AppRef, "id" | "root">,
   options: TerminateHostProxyWorkerOptions,
-) => removeHostProxyClaim(claim, app, options, "replace").pipe(Effect.asVoid);
+) => removeHostProxyClaim(claim, app, options, "reset").pipe(Effect.asVoid);
 
 export const terminateOwnedHostProxyWorker = (
   app: Pick<AppRef, "id" | "root">,
@@ -94,6 +95,18 @@ export const terminateOwnedHostProxyWorker = (
     app,
     options.paths,
     (claim) => removeHostProxyClaim(claim, app, options, "retire"),
+    options.privateFileAccess,
+  ).pipe(Effect.catch(() => Effect.succeed("absent" as const)));
+
+/** Stops the app's worker and resets its run directory, keeping the container-facing directory. */
+export const stopOwnedHostProxyWorker = (
+  app: Pick<AppRef, "id" | "root">,
+  options: TerminateHostProxyWorkerOptions,
+): Effect.Effect<TerminateOwnershipResult> =>
+  withWorkerRecordLock(
+    app,
+    options.paths,
+    (claim) => removeHostProxyClaim(claim, app, options, "reset"),
     options.privateFileAccess,
   ).pipe(Effect.catch(() => Effect.succeed("absent" as const)));
 

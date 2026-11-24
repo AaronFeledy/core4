@@ -56,15 +56,20 @@ export const destroyPlannedProvider = Effect.fn("AppOperation.destroyPlannedProv
   return shutdownObservations === undefined ? outcome : { ...outcome, shutdownObservations };
 });
 
-/** Removes an app's host worker state: agent relays, then the host proxy. Each step is best-effort. */
+/**
+ * Removes an app's host worker state: agent relays, then the host proxy. Each step is best-effort.
+ * A `stop` keeps the host proxy's container-facing directory so the stopped containers that bind it
+ * start again in place; `retire` removes everything.
+ */
 export const cleanupAppWorkers = Effect.fn("AppOperation.cleanupAppWorkers")(function* (
   app: Pick<AppRef, "id" | "root">,
+  intent: "stop" | "retire",
 ) {
   const paths = yield* PathsService;
   const roots = { ...paths.roots, platform: paths.platform };
   yield* cleanupAgentRelayState(app, roots, "ssh");
   yield* cleanupAgentRelayState(app, roots, "gpg");
-  yield* cleanupHostProxyRunLandoState(app, roots);
+  yield* cleanupHostProxyRunLandoState(app, roots, intent);
 });
 
 export const cleanupDestroyWorkers = Effect.fn("AppOperation.cleanupDestroyWorkers")(function* (
@@ -74,7 +79,7 @@ export const cleanupDestroyWorkers = Effect.fn("AppOperation.cleanupDestroyWorke
   const target = teardown.target;
   if (target === undefined) return;
   yield* tree.startTask("host-proxy");
-  yield* cleanupAppWorkers(target.app);
+  yield* cleanupAppWorkers(target.app, "retire");
   yield* tree.completeTask("host-proxy");
 });
 

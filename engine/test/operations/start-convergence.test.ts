@@ -393,8 +393,10 @@ test("whole-app rebuild replaces the record through the complete start apply", a
     appliedPlans: [withAdminer],
     resolveAppliedPlan: () => Effect.succeed(appliedPlanRecord(withAdminer)),
     providerOverrides: containers.providerOverrides,
+    // The halt stops the container and keeps it.
     onDestroy: () => {
-      containers.containers.splice(0);
+      const { health: _health, healthCheckedAt: _checkedAt, ...kept } = observedAdminer();
+      containers.containers.splice(0, 1, { ...kept, status: "exited" });
     },
     onApply: (appliedPlan, options) => {
       seen.push(options);
@@ -405,8 +407,9 @@ test("whole-app rebuild replaces the record through the complete start apply", a
   // When the whole app rebuilds.
   const result = await Effect.runPromise(rebuildApp({}, target).pipe(Effect.provide(harness.layer)));
 
-  // Then the halt removed the container, the rebuild announced it once, and the start apply
-  // replaces the record with the whole desired plan.
+  // Then the relaunch's convergence removed the stopped container and announced it once, and the
+  // start apply replaces the record with the whole desired plan.
+  expect(containers.removed).toEqual([String(adminer.name)]);
   expect(containers.containers).toEqual([]);
   expect(result.servicesRemoved).toEqual([String(adminer.name)]);
   const notices = removalNotices(harness);
@@ -417,7 +420,7 @@ test("whole-app rebuild replaces the record through the complete start apply", a
   expect(Object.keys(record.read()?.services ?? {})).toEqual([String(web.name)]);
 });
 
-test("a whole-app restart reports and announces the service its halt removed", async () => {
+test("a whole-app restart removes, reports, and announces a service the Landofile dropped", async () => {
   // Given an applied service the Landofile no longer defines and its running container.
   const containers = runningContainer();
   const record = appliedRecord(withAdminer);
@@ -426,8 +429,10 @@ test("a whole-app restart reports and announces the service its halt removed", a
     appliedPlans: [withAdminer],
     resolveAppliedPlan: () => Effect.succeed(appliedPlanRecord(withAdminer)),
     providerOverrides: containers.providerOverrides,
+    // The halt stops the container and keeps it.
     onDestroy: () => {
-      containers.containers.splice(0);
+      const { health: _health, healthCheckedAt: _checkedAt, ...kept } = observedAdminer();
+      containers.containers.splice(0, 1, { ...kept, status: "exited" });
     },
     onApply: (appliedPlan, options) =>
       options === undefined ? Effect.void : rememberAppliedPlan(record.cache, appliedPlan, options),
@@ -436,7 +441,8 @@ test("a whole-app restart reports and announces the service its halt removed", a
   // When the whole app restarts.
   const result = await Effect.runPromise(restartApp({}, target).pipe(Effect.provide(harness.layer)));
 
-  // Then the halt removed the container, named the service once, and reported it.
+  // Then the relaunch removed the stopped container, named the service once, and reported it.
+  expect(containers.removed).toEqual([String(adminer.name)]);
   expect(containers.containers).toEqual([]);
   expect(result.servicesRemoved).toEqual([String(adminer.name)]);
   const notices = removalNotices(harness);

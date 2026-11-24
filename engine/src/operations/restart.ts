@@ -109,6 +109,7 @@ export const restartApp = Effect.fn("AppOperation.restart")(
                   ...(options.signal === undefined ? {} : { signal: options.signal }),
                 },
                 managed,
+                { announceApplyOutcome: true },
               );
         const postRestart = PostRestartEvent.make({
           _tag: "post-restart",

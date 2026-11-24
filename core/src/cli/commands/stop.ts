@@ -1,6 +1,6 @@
 /** `lando stop` result rendering. */
 import type { StopAppResult } from "@lando/sdk/app";
-import { teardownLine, unchangedLine } from "./service-summary";
+import { lifecycleLine, teardownLine, unchangedLine } from "./service-summary";
 import { shutdownServiceRows } from "./shutdown-summary";
 
 export const renderStopAppResult = (result: StopAppResult): string => {
@@ -8,7 +8,17 @@ export const renderStopAppResult = (result: StopAppResult): string => {
   if (result.runtimeState === "idle" && result.servicesStopped.length === 0) {
     line = `${result.outcome ?? "stopped"}: ${result.app} (runtime idle; nothing was running)`;
   } else if (result.outcome === "unchanged") {
-    line = unchangedLine(result.app);
+    const alreadyStopped = [
+      ...new Set(
+        (result.containers ?? []).flatMap((container) =>
+          container.action === "already-stopped" ? [String(container.service)] : [],
+        ),
+      ),
+    ];
+    line =
+      alreadyStopped.length === 0
+        ? unchangedLine(result.app)
+        : lifecycleLine("unchanged", result.app, `already stopped: ${alreadyStopped.join(", ")}`);
   } else {
     line = teardownLine(
       "stopped",

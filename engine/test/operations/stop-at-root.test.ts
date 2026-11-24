@@ -10,6 +10,8 @@ import {
   AbsolutePath,
   AppId,
   type AppPlan,
+  type BringDownOutcome,
+  type ContainerDisposition,
   FileSyncSessionRef,
   PortablePath,
   ProviderId,
@@ -158,30 +160,39 @@ const makeHarness = (input: {
     list: (_filter: ListFilter) => Effect.succeed([]),
     listVolumes: () => Effect.sync(() => [...volumes.values()]),
     bringDown: (target: { readonly app: string; readonly plan?: AppPlan }, options: BringDownOptions) =>
-      Effect.sync(() => {
-        calls.push(`destroy(volumes:${options.volumes})`);
+      Effect.sync((): BringDownOutcome => {
         if (target.plan !== undefined) destroyCalls.push(target.plan);
+        const observations =
+          input.shutdownObservation === undefined
+            ? {}
+            : { shutdownObservations: [input.shutdownObservation] };
+        if (options.containers === "stop") {
+          calls.push("stop");
+          return {
+            kind: "stopped",
+            containers: Object.keys(target.plan?.services ?? {}).map((service) => ({
+              service: ServiceName.make(service),
+              containerId: `container-${service}`,
+              action: "stopped" as const,
+            })),
+            ...observations,
+          };
+        }
+        calls.push(`destroy(volumes:${options.volumes})`);
         if (options.removeState) appliedPlan = undefined;
         if (options.volumes) volumes.clear();
-        return {
-          kind: "removed" as const,
-          containers: [],
-          volumesRemoved: { data: 0, cache: 0 },
-          ...(input.shutdownObservation === undefined
-            ? {}
-            : { shutdownObservations: [input.shutdownObservation] }),
-        };
+        return { kind: "removed", containers: [], volumesRemoved: { data: 0, cache: 0 }, ...observations };
       }),
-    bringDownObserved: (service: ServiceRuntimeInfo) =>
+    bringDownObserved: (service: ServiceRuntimeInfo, containers: ContainerDisposition) =>
       Effect.sync(() => {
-        calls.push(`removeObservedService:${service.service}`);
+        calls.push(`${containers}ObservedService:${service.service}`);
         removalAttempts.push({
           service: String(service.service),
           containerId: service.containerId,
         });
         return {
           service: service.service,
-          action: "removed" as const,
+          action: containers === "stop" ? ("stopped" as const) : ("removed" as const),
           ...(input.shutdownObservation === undefined
             ? {}
             : { shutdownObservations: [input.shutdownObservation] }),
@@ -327,17 +338,21 @@ const withTempRoot = async <A>(use: (root: string) => Promise<A>): Promise<A> =>
 describe("stopAppAtRoot", () => {
   test("stops an applied plan at an existing root and withdraws its routes", async () => {
     await withTempRoot(async (root) => {
-      const applied = planAt(root);
+      const applied: AppPlan = { ...planAt(root), services: { [web.name]: web } };
       const harness = makeHarness({ appliedPlan: applied });
       const result = await Effect.runPromise(stopAppAtRoot(root).pipe(Effect.provide(harness.layer)));
       expect(result.outcome).toBe("stopped");
+      expect(result.containers).toEqual([
+        { service: web.name, containerId: "container-web", action: "stopped" },
+      ]);
+      expect(harness.calls).toContain("stop");
       expect(harness.destroyCalls).toEqual([applied]);
       expect(harness.routeRemovals).toEqual(["stop-at-root"]);
       expect(harness.statusReads).toEqual(["lando"]);
     });
   });
 
-  test("removes orphan containers at a missing root and keeps named volumes", async () => {
+  test("stops orphan containers at a missing root and keeps them and named volumes", async () => {
     await withTempRoot(async (parent) => {
       const root = join(parent, "gone");
       const harness = makeHarness({ orphans: [orphanGroup(root, ["appserver", "database"])] });
@@ -353,12 +368,12 @@ describe("stopAppAtRoot", () => {
     });
   });
 
-  test("cleans owned resources at a root with no applied plan", async () => {
+  test("leaves owned resources alone at a root with no applied plan", async () => {
     await withTempRoot(async (root) => {
       const harness = makeHarness({ ownership: [ownershipAt(root)] });
       const result = await Effect.runPromise(stopAppAtRoot(root).pipe(Effect.provide(harness.layer)));
-      expect(result).toMatchObject({ outcome: "stopped", servicesStopped: ["owned-web"] });
-      expect(harness.cleanupRoots).toEqual([root]);
+      expect(result).toMatchObject({ outcome: "unchanged", servicesStopped: [] });
+      expect(harness.cleanupRoots).toEqual([]);
       expect(harness.routeRemovals).toEqual(["owned-app"]);
       expect(harness.destroyCalls).toEqual([]);
     });
@@ -435,9 +450,9 @@ describe("stopAppAtRoot", () => {
   });
 
   test.each([
-    { kind: "applied", writers: ["destroy(volumes:false)"], services: ["web"] },
-    { kind: "orphans", writers: ["removeObservedService:web", "cleanupAppWorkers"], services: ["web"] },
-    { kind: "owned", writers: ["cleanupOwnedResources(volumes:false)"], services: ["owned-web"] },
+    { kind: "applied", writers: ["stop"], services: ["web"] },
+    { kind: "orphans", writers: ["stopObservedService:web", "cleanupAppWorkers"], services: ["web"] },
+    { kind: "owned", writers: [], services: [] },
     { kind: "absent", writers: [], services: [] },
     { kind: "foreign-app", writers: [], services: [] },
     { kind: "foreign-provider", writers: [], services: [] },

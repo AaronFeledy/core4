@@ -341,7 +341,19 @@ export const makeHarness = (
     bringDown: (target, destroyOptions) =>
       Effect.sync(() => options.onDestroy?.(target, destroyOptions)).pipe(
         Effect.andThen(options.destroyEffect ?? Effect.void),
-        Effect.as({ kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } }),
+        Effect.as(
+          destroyOptions.containers === "stop"
+            ? {
+                kind: "stopped" as const,
+                // Every planned service has a running container, as `list` reports, so stop stops each.
+                containers: Object.values(target.plan?.services ?? {}).map((service) => ({
+                  service: service.name,
+                  containerId: `cid-${String(service.name)}`,
+                  action: "stopped" as const,
+                })),
+              }
+            : { kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } },
+        ),
       ),
     listVolumes: options.listVolumes ?? TestRuntimeProvider.listVolumes,
     locateVolume:

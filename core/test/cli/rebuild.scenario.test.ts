@@ -3,7 +3,13 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { mkdir, mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { rebuildApp, renderRebuildAppResult, startApp, stopApp } from "@lando/core/cli/operations";
+import {
+  rebuildApp,
+  renderRebuildAppResult,
+  restartApp,
+  startApp,
+  stopApp,
+} from "@lando/core/cli/operations";
 import {
   AbsolutePath,
   AppId,
@@ -391,8 +397,21 @@ const makeCachedBuildLayer = () => {
         applied = { ...plan, identity: { appRoot: plan.root, ownerKey: appIdentityKey("owner", plan.root) } };
         return { changed: true };
       }),
-    bringDown: () =>
+    // Stop keeps the container, so its id and the app-step results bound to it survive; removal
+    // replaces it on the next start.
+    bringDown: (_target, options) =>
       Effect.sync(() => {
+        if (options.containers === "stop")
+          return {
+            kind: "stopped" as const,
+            containers: [
+              {
+                service: ServiceName.make("web"),
+                containerId: `web-${containerGeneration}`,
+                action: "stopped" as const,
+              },
+            ],
+          };
         containerGeneration += 1;
         applied = undefined;
         return { kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } };
@@ -469,16 +488,12 @@ const makeCachedBuildLayer = () => {
 };
 
 describe("lando rebuild", () => {
-  test("destroys then re-applies with reconcile=true and lists services rebuilt", async () => {
+  test("stops the old containers, then re-applies with reconcile=true and lists services rebuilt", async () => {
     const harness = makeRebuildLayer();
     const result = await Effect.runPromise(rebuildApp().pipe(Effect.provide(harness.layer)));
 
     expect(harness.destroyCalls).toHaveLength(1);
-    expect(harness.destroyCalls[0]?.options).toEqual({
-      containers: "remove",
-      volumes: false,
-      removeState: false,
-    });
+    expect(harness.destroyCalls[0]?.options).toEqual({ containers: "stop" });
     expect(harness.applyCalls).toEqual([{ reconcile: true, services: ["web"], recordedServices: ["web"] }]);
     expect(
       harness.lifecycleOrder.filter((entry) =>
@@ -612,7 +627,7 @@ describe("lando rebuild", () => {
     });
   });
 
-  test("reruns app build steps after stop removes their container", async () => {
+  test("keeps app build steps cached across stop and start, since stop keeps their container", async () => {
     await withTempCwd(async () => {
       const harness = makeCachedBuildLayer();
       await Effect.runPromise(startApp().pipe(Effect.provide(harness.layer)));
@@ -620,7 +635,18 @@ describe("lando rebuild", () => {
       await Effect.runPromise(stopApp().pipe(Effect.provide(harness.layer)));
       await Effect.runPromise(startApp().pipe(Effect.provide(harness.layer)));
 
-      expect(harness.appBuildCalls()).toBe(2);
+      expect(harness.appBuildCalls()).toBe(1);
+    });
+  });
+
+  test("keeps app build steps cached across a bare restart", async () => {
+    await withTempCwd(async () => {
+      const harness = makeCachedBuildLayer();
+      await Effect.runPromise(startApp().pipe(Effect.provide(harness.layer)));
+
+      await Effect.runPromise(restartApp().pipe(Effect.provide(harness.layer)));
+
+      expect(harness.appBuildCalls()).toBe(1);
     });
   });
 

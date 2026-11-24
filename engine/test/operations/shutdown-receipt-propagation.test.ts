@@ -53,27 +53,37 @@ test("stop preserves provider destroy shutdownObservations on the public receipt
       Effect.succeed(
         stopProvider(() =>
           Effect.succeed({
-            kind: "removed" as const,
-            containers: [],
-            volumesRemoved: { data: 0, cache: 0 },
+            kind: "stopped" as const,
+            containers: [
+              { service: ServiceName.make("web"), containerId: "web-1", action: "stopped" as const },
+            ],
             shutdownObservations: observed,
           }),
         ),
       ),
   });
-  // When stop tears the applied plan down.
+  // When stop brings the applied plan down.
   const result = await Effect.runPromise(
     stopAppForTarget({}, targetFor(plan)).pipe(Effect.provide(harness.layer)),
   );
-  // Then the public stop receipt carries the provider observations unchanged.
+  // Then the public stop receipt carries the provider observations and receipts unchanged.
   expect(result.shutdownObservations).toEqual(observed);
   expect(result.servicesStopped).toEqual(["web"]);
+  expect(result.containers).toEqual([
+    { service: ServiceName.make("web"), containerId: "web-1", action: "stopped" },
+  ]);
 });
 
-test("stop leaves services whose container was already gone out of servicesStopped", async () => {
-  // Given a two-service app where the runtime reports worker's container already absent.
+test("stop reports only services whose running container it stopped", async () => {
+  // Given a two-service app where worker's container is already gone and cron's already exited.
   const worker = { ...web, name: ServiceName.make("worker"), primary: false };
-  const twoServices = { ...plan, services: { ...plan.services, [worker.name]: worker } };
+  const cron = { ...web, name: ServiceName.make("cron"), primary: false };
+  const twoServices = { ...plan, services: { ...plan.services, [worker.name]: worker, [cron.name]: cron } };
+  const containers = [
+    { service: cron.name, containerId: "cron-1", action: "already-stopped" as const },
+    { service: worker.name, action: "absent" as const },
+    { service: ServiceName.make("web"), containerId: "web-1", action: "stopped" as const },
+  ];
   const observed: ServiceShutdownObservation[] = [
     exited({ appId: twoServices.id, service: ServiceName.make("web"), containerId: "web-1" }),
     {
@@ -90,21 +100,18 @@ test("stop leaves services whose container was already gone out of servicesStopp
     selectProvider: () =>
       Effect.succeed(
         stopProvider(() =>
-          Effect.succeed({
-            kind: "removed" as const,
-            containers: [],
-            volumesRemoved: { data: 0, cache: 0 },
-            shutdownObservations: observed,
-          }),
+          Effect.succeed({ kind: "stopped" as const, containers, shutdownObservations: observed }),
         ),
       ),
   });
-  // When stop tears the applied plan down.
+  // When stop brings the applied plan down.
   const result = await Effect.runPromise(
     stopAppForTarget({}, targetFor(twoServices)).pipe(Effect.provide(harness.layer)),
   );
   // Then only the container the runtime actually stopped is reported, and the facts stay intact.
+  expect(result.outcome).toBe("stopped");
   expect(result.servicesStopped).toEqual(["web"]);
+  expect(result.containers).toEqual(containers);
   expect(result.shutdownObservations).toEqual(observed);
 });
 
@@ -114,11 +121,7 @@ test("stop omits shutdownObservations when the provider contributes none", async
     resolveAppliedPlan: () => Effect.succeed(plan),
     resolveTeardownEvidence: () => Effect.succeed({ kind: "applied", plan }),
     selectProvider: () =>
-      Effect.succeed(
-        stopProvider(() =>
-          Effect.succeed({ kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } }),
-        ),
-      ),
+      Effect.succeed(stopProvider(() => Effect.succeed({ kind: "stopped" as const, containers: [] }))),
   });
   // When stop completes.
   const result = await Effect.runPromise(
@@ -128,7 +131,7 @@ test("stop omits shutdownObservations when the provider contributes none", async
   expect(result).not.toHaveProperty("shutdownObservations");
 });
 
-test("ownership-only stop never fabricates shutdownObservations", async () => {
+test("ownership-only stop changes nothing and never fabricates shutdownObservations", async () => {
   // Given only ownership inventory leftovers and no provider observation path.
   const harness = makeHarness({
     resolveAppliedPlan: () => Effect.succeed(undefined),
@@ -147,26 +150,21 @@ test("ownership-only stop never fabricates shutdownObservations", async () => {
     providerOverrides: {
       isAvailable: Effect.succeed(true),
       getStatus: Effect.succeed({ state: "running" as const }),
-      cleanupOwnedResources: () =>
-        Effect.succeed({
-          servicesRemoved: [ServiceName.make("leftover")],
-          networksRemoved: 0,
-          volumesRemoved: { data: 0, cache: 0 },
-        }),
-      bringDown: () => Effect.die("ownership-only stop must not destroy by plan"),
-      bringDownObserved: () => Effect.die("ownership-only stop must not remove by observation"),
+      cleanupOwnedResources: () => Effect.die("stop must not clean up the ownership inventory"),
+      bringDown: () => Effect.die("ownership-only stop must not bring the app down by plan"),
+      bringDownObserved: () => Effect.die("ownership-only stop must not act by observation"),
     },
   });
-  // When stop cleans owned resources without an applied plan.
+  // When stop finds only ownership records without an applied plan.
   const result = await Effect.runPromise(
     stopAppForTarget(
       {},
       { ...targetFor(plan), landofile: literalTestLandofile({ name: plan.name, services: {} }) },
     ).pipe(Effect.provide(harness.layer)),
   );
-  // Then services may change without fabricating daemon shutdown facts.
-  expect(result.outcome).toBe("stopped");
-  expect(result.servicesStopped).toEqual(["leftover"]);
+  // Then nothing changes and no daemon shutdown facts are fabricated.
+  expect(result.outcome).toBe("unchanged");
+  expect(result.servicesStopped).toEqual([]);
   expect(result).not.toHaveProperty("shutdownObservations");
 });
 

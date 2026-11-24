@@ -390,7 +390,7 @@ describe("lando restart", () => {
     ).toEqual(["pre-restart", "pre-stop", "post-stop", "pre-start", "post-start", "post-restart"]);
     expect(harness.events.filter((event) => event === "task.detail")).toHaveLength(6);
   });
-  test("destroys then applies provider-lando and publishes stop+start events", async () => {
+  test("stops then applies provider-lando and publishes stop+start events", async () => {
     const harness = makeRestartLayer();
     const result = await Effect.runPromise(restartApp().pipe(Effect.provide(harness.layer)));
 
@@ -419,7 +419,7 @@ describe("lando restart", () => {
       "post-restart",
     ]);
     expect(harness.destroyCalls).toHaveLength(1);
-    expect(harness.destroyCalls).toMatchObject([{ options: { volumes: false, removeState: false } }]);
+    expect(harness.destroyCalls).toMatchObject([{ options: { containers: "stop" } }]);
     expect(harness.applyCalls).toEqual([{ reconcile: false, services: ["web"], recordedServices: ["web"] }]);
     expect(result.servicesStarted.map((service) => [service.name, service.state])).toEqual([
       ["web", "running"],
@@ -461,7 +461,7 @@ describe("lando restart", () => {
     expect(harness.routeApplies).toEqual([]);
     expect(harness.applyCalls).toEqual([]);
     expect(harness.destroyCalls).toHaveLength(1);
-    expect(harness.destroyCalls).toMatchObject([{ options: { volumes: false, removeState: false } }]);
+    expect(harness.destroyCalls).toMatchObject([{ options: { containers: "stop" } }]);
     expect(harness.events).toContain("post-app-stop");
     expect(harness.events).toContain("pre-app-start");
     expect(harness.events).not.toContain("post-app-start");
