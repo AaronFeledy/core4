@@ -69,11 +69,11 @@ test.each(
       getStatus,
       ...(mode === "no-ensure-ready" ? {} : { ensureReady }),
       inspectAppliedFileSync: stoppedProviderInspection("stopped Windows", () => running),
-      destroy: () =>
+      bringDown: () =>
         Effect.sync(() => {
           expect(running).toBe(true);
           destroyed++;
-          return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
+          return { kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } };
         }),
     };
     const harness = makeHarness({
@@ -106,7 +106,7 @@ test.each(
       expect(result).toMatchObject({ _tag: "Success", success: { outcome: "destroyed" } });
       expect(preparations).toBe(1);
       expect(
-        global === undefined ? destroyed : global.calls.filter((call) => call === "destroy").length,
+        global === undefined ? destroyed : global.calls.filter((call) => call === "bringDown").length,
       ).toBe(1);
     } else {
       expect(result).toMatchObject({

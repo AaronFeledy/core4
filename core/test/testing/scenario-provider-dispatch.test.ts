@@ -222,7 +222,7 @@ test("forgets the applied plan when destroy runs from a symlink to its root", as
         const plan = yield* Effect.tryPromise(() => planAndApply(provider, alias));
 
         // When: destroy removes the app's applied state.
-        yield* provider.provider.destroy({ app: plan.id, plan }, { volumes: false });
+        yield* provider.provider.bringDown({ app: plan.id, plan }, { containers: "remove", volumes: false });
 
         // Then: both observation and teardown agree that the realization is absent.
         const evidence = yield* Effect.gen(function* () {
@@ -329,11 +329,15 @@ test("observes only the containers its apply, stop, and destroy produced", async
         expect(yield* statuses()).toEqual(services.map((service) => [service, "running"]));
         const [first] = services;
         if (first === undefined) throw new Error("exec-demo plans no services");
-        yield* provider.provider.stop({ app: plan.id, service: ServiceName.make(first) });
+        const row = (yield* provider.provider.list({ app: plan.id })).find(
+          (service) => service.service === ServiceName.make(first),
+        );
+        if (row === undefined) throw new Error(`exec-demo lists no ${first} container`);
+        yield* provider.provider.bringDownObserved(row, "stop");
         expect(yield* statuses()).toEqual(
           services.map((service) => [service, service === first ? "exited" : "running"]),
         );
-        yield* provider.provider.destroy({ app: plan.id, plan }, { volumes: false });
+        yield* provider.provider.bringDown({ app: plan.id, plan }, { containers: "remove", volumes: false });
         expect(yield* statuses()).toEqual([]);
         expect(yield* provider.appliedPlans).toEqual([]);
       }),

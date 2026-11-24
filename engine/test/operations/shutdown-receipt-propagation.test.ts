@@ -1,6 +1,10 @@
 import { expect, test } from "bun:test";
 import { ProviderId, ServiceName, type ServiceShutdownObservation, appIdentityKey } from "@lando/sdk/schema";
-import { RuntimeProviderRegistry, type RuntimeProviderShape } from "@lando/sdk/services";
+import {
+  RuntimeProviderRegistry,
+  type RuntimeProviderShape,
+  type ServiceRuntimeInfo,
+} from "@lando/sdk/services";
 import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect } from "effect";
 import { destroyAppForTarget } from "../../src/operations/destroy.ts";
@@ -28,13 +32,13 @@ const targetFor = (appPlan: typeof plan) => ({
   app: { kind: "user" as const, id: appPlan.id, root: appPlan.root },
 });
 
-const stopProvider = (destroy: RuntimeProviderShape["destroy"]) => ({
+const stopProvider = (bringDown: RuntimeProviderShape["bringDown"]) => ({
   ...TestRuntimeProvider,
   id: "lando" as const,
   isAvailable: Effect.succeed(true),
   getStatus: Effect.succeed({ state: "running" as const }),
   inspectAppliedFileSync: () => Effect.succeed({ status: "ordinary" as const }),
-  destroy,
+  bringDown,
 });
 
 test("stop preserves provider destroy shutdownObservations on the public receipt", async () => {
@@ -49,7 +53,8 @@ test("stop preserves provider destroy shutdownObservations on the public receipt
       Effect.succeed(
         stopProvider(() =>
           Effect.succeed({
-            kind: "destroyed" as const,
+            kind: "removed" as const,
+            containers: [],
             volumesRemoved: { data: 0, cache: 0 },
             shutdownObservations: observed,
           }),
@@ -86,7 +91,8 @@ test("stop leaves services whose container was already gone out of servicesStopp
       Effect.succeed(
         stopProvider(() =>
           Effect.succeed({
-            kind: "destroyed" as const,
+            kind: "removed" as const,
+            containers: [],
             volumesRemoved: { data: 0, cache: 0 },
             shutdownObservations: observed,
           }),
@@ -110,7 +116,7 @@ test("stop omits shutdownObservations when the provider contributes none", async
     selectProvider: () =>
       Effect.succeed(
         stopProvider(() =>
-          Effect.succeed({ kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } }),
+          Effect.succeed({ kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } }),
         ),
       ),
   });
@@ -147,8 +153,8 @@ test("ownership-only stop never fabricates shutdownObservations", async () => {
           networksRemoved: 0,
           volumesRemoved: { data: 0, cache: 0 },
         }),
-      destroy: () => Effect.die("ownership-only stop must not destroy by plan"),
-      removeObservedService: () => Effect.die("ownership-only stop must not remove by observation"),
+      bringDown: () => Effect.die("ownership-only stop must not destroy by plan"),
+      bringDownObserved: () => Effect.die("ownership-only stop must not remove by observation"),
     },
   });
   // When stop cleans owned resources without an applied plan.
@@ -179,9 +185,10 @@ test("destroy preserves an empty contributed observation array", async () => {
               Effect.succeed({
                 ...TestRuntimeProvider,
                 id: "lando",
-                destroy: () =>
+                bringDown: () =>
                   Effect.succeed({
-                    kind: "destroyed" as const,
+                    kind: "removed" as const,
+                    containers: [],
                     volumesRemoved: { data: 0, cache: 0 },
                     shutdownObservations: [],
                   }),
@@ -238,11 +245,16 @@ test("destroy merges stray-container observations ahead of planned destroy obser
                       containerId: "leftover-1",
                     },
                   ]),
-                removeObservedService: () =>
-                  Effect.succeed({ kind: "removed" as const, shutdownObservations: [strayObs] }),
-                destroy: () =>
+                bringDownObserved: (observed: ServiceRuntimeInfo) =>
                   Effect.succeed({
-                    kind: "destroyed" as const,
+                    service: observed.service,
+                    action: "removed" as const,
+                    shutdownObservations: [strayObs],
+                  }),
+                bringDown: () =>
+                  Effect.succeed({
+                    kind: "removed" as const,
+                    containers: [],
                     volumesRemoved: { data: 0, cache: 0 },
                     shutdownObservations: [plannedObs],
                   }),

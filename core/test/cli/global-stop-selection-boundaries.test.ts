@@ -77,7 +77,7 @@ for (const status of ["running", "exited", "created"] as const) {
       );
       // Then the observed removal path determines the successful receipt.
       expect(result.servicesStopped).toEqual(["ssh-agent"]);
-      expect(harness.calls).toEqual(["list", "pre-global-stop", "removeObservedService", "post-global-stop"]);
+      expect(harness.calls).toEqual(["list", "pre-global-stop", "bringDownObserved", "post-global-stop"]);
       expect(harness.removed.map((service) => service.containerId)).toEqual(["exact-container"]);
     } finally {
       await rm(dataRoot, { recursive: true, force: true });

@@ -238,7 +238,7 @@ export const rotationHarness = Effect.fnUntraced(function* (
         cleanedPlans.push(plan);
         yield* trip("targets");
       }),
-    destroy: (selector: Parameters<typeof base.destroy>[0], opts: Parameters<typeof base.destroy>[1]) =>
+    bringDown: (selector: Parameters<typeof base.bringDown>[0], opts: Parameters<typeof base.bringDown>[1]) =>
       Effect.gen(function* () {
         calls.push("retire");
         if (selector.plan !== oldPlan || opts.volumes || opts.purgeCaches || opts.removeState !== true)
@@ -246,7 +246,7 @@ export const rotationHarness = Effect.fnUntraced(function* (
         yield* trip("retire");
         applied = undefined;
         yield* trip("retire-after");
-        return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
+        return { kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } };
       }),
     prepareFileSyncTargets: (plan: AppPlan) =>
       Effect.gen(function* () {

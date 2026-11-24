@@ -93,11 +93,12 @@ test.each(["accelerated", "ordinary", "no-observations"] as const)(
         Effect.sync(() => {
           calls.push("targets");
         }),
-      destroy: () =>
+      bringDown: () =>
         Effect.sync(() => {
           calls.push("destroy");
           return {
-            kind: "destroyed" as const,
+            kind: "removed" as const,
+            containers: [],
             volumesRemoved: { data: 0, cache: 0 },
             ...(mode === "no-observations"
               ? {}

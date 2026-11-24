@@ -20,7 +20,13 @@ import {
   type VolumeRef,
   appIdentityKey,
 } from "@lando/sdk/schema";
-import type { AppliedOrphanGroup, DestroyOptions, ListFilter, ServiceRuntimeInfo } from "@lando/sdk/services";
+import type {
+  AppliedOrphanGroup,
+  BringDownOptions,
+  ListFilter,
+  OwnedResourcesCleanupOptions,
+  ServiceRuntimeInfo,
+} from "@lando/sdk/services";
 import {
   AppPlanner,
   EventService,
@@ -151,21 +157,22 @@ const makeHarness = (input: {
     }),
     list: (_filter: ListFilter) => Effect.succeed([]),
     listVolumes: () => Effect.sync(() => [...volumes.values()]),
-    destroy: (target: { readonly app: string; readonly plan?: AppPlan }, options: DestroyOptions) =>
+    bringDown: (target: { readonly app: string; readonly plan?: AppPlan }, options: BringDownOptions) =>
       Effect.sync(() => {
         calls.push(`destroy(volumes:${options.volumes})`);
         if (target.plan !== undefined) destroyCalls.push(target.plan);
         if (options.removeState) appliedPlan = undefined;
         if (options.volumes) volumes.clear();
         return {
-          kind: "destroyed" as const,
+          kind: "removed" as const,
+          containers: [],
           volumesRemoved: { data: 0, cache: 0 },
           ...(input.shutdownObservation === undefined
             ? {}
             : { shutdownObservations: [input.shutdownObservation] }),
         };
       }),
-    removeObservedService: (service: ServiceRuntimeInfo) =>
+    bringDownObserved: (service: ServiceRuntimeInfo) =>
       Effect.sync(() => {
         calls.push(`removeObservedService:${service.service}`);
         removalAttempts.push({
@@ -173,7 +180,8 @@ const makeHarness = (input: {
           containerId: service.containerId,
         });
         return {
-          kind: "removed" as const,
+          service: service.service,
+          action: "removed" as const,
           ...(input.shutdownObservation === undefined
             ? {}
             : { shutdownObservations: [input.shutdownObservation] }),
@@ -184,7 +192,7 @@ const makeHarness = (input: {
         volumes.delete(ref.store);
         removedVolumes.push(ref.store);
       }),
-    cleanupOwnedResources: (root: AbsolutePath, options: DestroyOptions) =>
+    cleanupOwnedResources: (root: AbsolutePath, options: OwnedResourcesCleanupOptions) =>
       Effect.sync(() => {
         calls.push(`cleanupOwnedResources(volumes:${options.volumes})`);
         if (options.volumes) volumes.clear();

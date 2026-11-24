@@ -63,7 +63,6 @@ export const fixture = (overrides: Partial<RuntimeProviderShape> = {}) => {
     ...TestRuntimeProvider,
     id,
     setup: () => Effect.die("scanner must not set up runtimes"),
-    start: () => Effect.die("scanner must not start runtimes"),
     list: (filter) => {
       expect(filter).toEqual({ includeScratch: true, includeUnplanned: true });
       return Effect.succeed(services);
@@ -72,10 +71,10 @@ export const fixture = (overrides: Partial<RuntimeProviderShape> = {}) => {
       expect(filter).toEqual({ labels: { "dev.lando.scratch": "TRUE" } });
       return Effect.succeed([observedVolume]);
     },
-    removeObservedService: (observed) =>
+    bringDownObserved: (observed) =>
       Effect.sync(() => {
         removedServices.push(observed);
-        return { kind: "removed" as const };
+        return { service: observed.service, action: "removed" as const };
       }),
     removeVolume: (ref, generation) =>
       Effect.sync(() => {

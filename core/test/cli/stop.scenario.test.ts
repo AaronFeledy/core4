@@ -44,7 +44,7 @@ const testStateStoreLayer = Layer.merge(
 import type {
   AppSelector,
   AppliedFileSyncInspection,
-  DestroyOptions,
+  BringDownOptions,
   FileSyncEngineShape,
   RuntimeProviderShape,
 } from "@lando/sdk/services";
@@ -203,7 +203,7 @@ const makeStopLayer = (
   const currentPlan = currentTestPlan(plannedApp);
   const events: string[] = [];
   const publishedEvents: Array<{ readonly _tag: string; readonly [key: string]: unknown }> = [];
-  const destroyCalls: Array<{ readonly target: AppSelector; readonly options: DestroyOptions }> = [];
+  const destroyCalls: Array<{ readonly target: AppSelector; readonly options: BringDownOptions }> = [];
   const stopped = new Set<ServiceName>();
   const volumes = new Set(plannedApp.stores.map((store) => store.name));
   const appliedFileSync = options.appliedFileSync;
@@ -242,15 +242,13 @@ const makeStopLayer = (
     removeArtifact: () => Effect.succeed({ kind: "absent" as const }),
     listArtifacts: () => Effect.succeed([]),
     apply: () => Effect.succeed({ changed: false }),
-    start: () => Effect.void,
-    stop: () => Effect.void,
     restart: () => Effect.void,
     waitForExit: () => Effect.succeed({ exitCode: 0 }),
-    destroy: (target, options) =>
+    bringDown: (target, options) =>
       Effect.sync(() => {
         destroyCalls.push({ target, options });
         for (const service of Object.values(plannedApp.services)) stopped.add(service.name);
-        return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
+        return { kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } };
       }),
     exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
     execStream: () => Stream.die("not used"),
@@ -359,7 +357,11 @@ describe("lando stop", () => {
     ]);
     expect(harness.destroyCalls).toHaveLength(1);
     expect(harness.destroyCalls[0]?.target).toEqual({ app: plan.id, plan: harness.currentPlan });
-    expect(harness.destroyCalls[0]?.options).toEqual({ volumes: false, removeState: false });
+    expect(harness.destroyCalls[0]?.options).toEqual({
+      containers: "remove",
+      volumes: false,
+      removeState: false,
+    });
     expect(harness.volumes.has("test_stop_database_data")).toBe(true);
     expect(result.servicesStopped).toEqual(["database", "web"]);
     expect(renderStopAppResult(result)).toBe("stopped: test-stop - database, web");
@@ -519,14 +521,12 @@ describe("lando stop", () => {
       removeArtifact: () => Effect.succeed({ kind: "absent" as const }),
       listArtifacts: () => Effect.succeed([]),
       apply: () => Effect.succeed({ changed: false }),
-      start: () => Effect.void,
-      stop: () => Effect.void,
       restart: () => Effect.void,
       waitForExit: () => Effect.succeed({ exitCode: 0 }),
-      destroy: () =>
+      bringDown: () =>
         Effect.sync(() => {
           callLog.push("provider.destroy");
-          return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
+          return { kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } };
         }),
       exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
       execStream: () => Stream.die("not used"),
@@ -803,14 +803,12 @@ describe("lando stop", () => {
       removeArtifact: () => Effect.succeed({ kind: "absent" as const }),
       listArtifacts: () => Effect.succeed([]),
       apply: () => Effect.succeed({ changed: false }),
-      start: () => Effect.void,
-      stop: () => Effect.void,
       restart: () => Effect.void,
       waitForExit: () => Effect.succeed({ exitCode: 0 }),
-      destroy: () =>
+      bringDown: () =>
         Effect.sync(() => {
           callLog.push("provider.destroy");
-          return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
+          return { kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } };
         }),
       exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
       execStream: () => Stream.die("not used"),

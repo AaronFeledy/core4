@@ -30,12 +30,12 @@ test.each(Object.keys(protectingErrors) as Array<keyof typeof protectingErrors>)
     const removed: string[] = [];
     const provider = {
       ...TestRuntimeProvider,
-      removeObservedService: (service: Parameters<typeof TestRuntimeProvider.removeObservedService>[0]) =>
+      bringDownObserved: (service: Parameters<typeof TestRuntimeProvider.bringDownObserved>[0]) =>
         service.app === a
           ? Effect.fail(protecting)
           : Effect.sync(() => {
               removed.push(service.app);
-              return { kind: "removed" as const };
+              return { service: service.service, action: "removed" as const };
             }),
     };
     const harness = makeHarness({

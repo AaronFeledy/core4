@@ -173,14 +173,14 @@ export const makeHarness = (
       plan: AppPlan,
       options?: ApplyOptions,
     ) => void | number | Effect.Effect<void, import("@lando/sdk/services").ProviderError>;
-    readonly onStop?: (...args: Parameters<RuntimeProviderShape["stop"]>) => void;
+    readonly onStop?: (observed: ServiceRuntimeInfo) => void;
     readonly inspect?: RuntimeProviderShape["inspect"];
     readonly exec?: RuntimeProviderShape["exec"];
     readonly logs?: RuntimeProviderShape["logs"];
     readonly listVolumes?: RuntimeProviderShape["listVolumes"];
     readonly locateVolume?: RuntimeProviderShape["locateVolume"];
     readonly onVolumeLock?: (key: string) => void;
-    readonly onDestroy?: (...args: Parameters<RuntimeProviderShape["destroy"]>) => void;
+    readonly onDestroy?: (...args: Parameters<RuntimeProviderShape["bringDown"]>) => void;
     readonly quiesceRetainedFileSync?: RuntimeProviderShape["quiesceRetainedFileSync"];
     readonly disposeFileSyncTargets?: RuntimeProviderShape["disposeFileSyncTargets"];
   } = {},
@@ -308,16 +308,40 @@ export const makeHarness = (
             bindings: [{ port: 3000, transport: "tcp", bindAddress: "127.0.0.1", hostPort: 3000 }],
           },
         })),
-    stop:
-      options.providerOverrides?.stop ??
-      ((target) =>
+    // Every planned service has a running container, as inspect reports.
+    list:
+      options.providerOverrides?.list ??
+      ((filter) =>
+        Effect.succeed(
+          filter.app !== undefined && filter.app !== plannedApp.id
+            ? []
+            : Object.values(plannedApp.services).map(
+                (service): ServiceRuntimeInfo => ({
+                  app: plannedApp.id,
+                  appRoot: plannedApp.identity?.appRoot ?? plannedApp.root,
+                  service: service.name,
+                  providerId: plannedApp.provider,
+                  containerId: `cid-${String(service.name)}`,
+                  status: "running",
+                  publications: { status: "unknown" },
+                }),
+              ),
+        )),
+    bringDownObserved:
+      options.providerOverrides?.bringDownObserved ??
+      ((observed, containers) =>
         Effect.sync(() => {
-          options.onStop?.(target);
+          options.onStop?.(observed);
+          return {
+            service: observed.service,
+            ...(observed.containerId === undefined ? {} : { containerId: observed.containerId }),
+            action: containers === "stop" ? ("stopped" as const) : ("removed" as const),
+          };
         })),
-    destroy: (target, destroyOptions) =>
+    bringDown: (target, destroyOptions) =>
       Effect.sync(() => options.onDestroy?.(target, destroyOptions)).pipe(
         Effect.andThen(options.destroyEffect ?? Effect.void),
-        Effect.as({ kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } }),
+        Effect.as({ kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } }),
       ),
     listVolumes: options.listVolumes ?? TestRuntimeProvider.listVolumes,
     locateVolume:

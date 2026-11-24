@@ -44,7 +44,9 @@ const expectContractFailure = async (
 
 describe("RuntimeProvider contract", () => {
   beforeEach(async () => {
-    await Effect.runPromise(TestRuntimeProvider.destroy({ app: TEST_APP_ID }, { volumes: false }));
+    await Effect.runPromise(
+      TestRuntimeProvider.bringDown({ app: TEST_APP_ID }, { containers: "remove", volumes: false }),
+    );
   });
 
   test("reads no secrets when the app has no containers", async () => {
@@ -263,16 +265,23 @@ describe("RuntimeProvider contract", () => {
   test("documents the Phase 1 provider assertions", async () => {
     expect(TestRuntimeProvider.capabilities.serviceExec).toBe(true);
     expect(TestRuntimeProvider.capabilities.serviceLogs).toBe(true);
-    expect(Effect.isEffect(TestRuntimeProvider.destroy({ app: TEST_APP_ID }, { volumes: true }))).toBe(true);
     expect(
       Effect.isEffect(
-        TestRuntimeProvider.removeObservedService({
-          app: TEST_APP_ID,
-          service: TEST_SERVICE_NAME,
-          providerId: TEST_PROVIDER_ID,
-          status: "running",
-          publications: { status: "unknown" },
-        }),
+        TestRuntimeProvider.bringDown({ app: TEST_APP_ID }, { containers: "remove", volumes: true }),
+      ),
+    ).toBe(true);
+    expect(
+      Effect.isEffect(
+        TestRuntimeProvider.bringDownObserved(
+          {
+            app: TEST_APP_ID,
+            service: TEST_SERVICE_NAME,
+            providerId: TEST_PROVIDER_ID,
+            status: "running",
+            publications: { status: "unknown" },
+          },
+          "stop",
+        ),
       ),
     ).toBe(true);
     expect(
@@ -463,13 +472,13 @@ describe("RuntimeProvider contract", () => {
     await expectContractFailure(provider, "provider exposes a non-empty displayName");
   });
 
-  test("fails with ContractFailure when start does not return an Effect", async () => {
+  test("fails with ContractFailure when bringDown does not return an Effect", async () => {
     const provider = {
       ...TestRuntimeProvider,
-      start: () => "not-an-effect",
+      bringDown: () => "not-an-effect",
     } as unknown as typeof TestRuntimeProvider;
 
-    await expectContractFailure(provider, "start is Effect-typed");
+    await expectContractFailure(provider, "bringDown is Effect-typed");
   });
 
   test("matches the RuntimeProvider service shape", () => {

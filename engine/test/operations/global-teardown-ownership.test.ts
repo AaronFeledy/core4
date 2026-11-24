@@ -16,6 +16,7 @@ import {
   PathsService,
   RouterService,
   RuntimeProviderRegistry,
+  type ServiceRuntimeInfo,
   StateStore,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider, makeTestRouterService, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
@@ -101,15 +102,15 @@ const harnessAt = (
           : [],
       ),
     listVolumes: () => Effect.succeed([]),
-    destroy: () =>
+    bringDown: () =>
       Effect.sync(() => {
         actions.push("destroy");
-        return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
+        return { kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } };
       }),
-    removeObservedService: () =>
+    bringDownObserved: (observed: ServiceRuntimeInfo) =>
       Effect.sync(() => {
         actions.push("removeObservedService");
-        return { kind: "removed" as const };
+        return { service: observed.service, action: "removed" as const };
       }),
     cleanupOwnedResources: (cleanupRoot: AbsolutePath) =>
       Effect.sync(() => {

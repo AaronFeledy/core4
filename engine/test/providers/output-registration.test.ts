@@ -354,8 +354,6 @@ test("metadata and lifecycle members never read app environment", async () => {
         yield* selected.apply(plan, { reconcile: true });
         yield* selected.list({});
         yield* selected.inspect(target);
-        yield* selected.start(target);
-        yield* selected.stop(target);
         yield* selected.restart(target);
         yield* selected.run({ image: "test", command: ["true"] });
         yield* Stream.runDrain(selected.runStream({ image: "test", command: ["true"] }));

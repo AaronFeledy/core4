@@ -124,9 +124,9 @@ export const tearDownOrphans = Effect.fnUntraced(function* (input: {
           Effect.gen(function* () {
             const provider = yield* registry.select(plan);
             for (const service of group.services) {
-              const removal = yield* provider.removeObservedService(service);
+              const removal = yield* provider.bringDownObserved(service, "remove");
               observationSources.push(removal.shutdownObservations);
-              if (removal.kind === "removed") services.push(String(service.service));
+              if (removal.action === "removed") services.push(String(service.service));
             }
             if (!removeVolumes) return;
             const candidates = group.volumes.flatMap((volume) => {

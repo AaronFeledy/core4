@@ -60,7 +60,7 @@ export const makePoweroffFixture = async (input: PoweroffFixtureInput) => {
     appliedPlans: Effect.succeed([]),
     list: () => Effect.succeed([]),
     listVolumes: () => Effect.succeed([]),
-    destroy: (target: { readonly app: string; readonly plan?: AppPlan }) =>
+    bringDown: (target: { readonly app: string; readonly plan?: AppPlan }) =>
       Effect.gen(function* () {
         calls.push(`destroy:${String(target.plan?.root ?? target.app)}`);
         if (input.destroyFailureRoot !== undefined && String(target.plan?.root) === input.destroyFailureRoot)
@@ -72,12 +72,12 @@ export const makePoweroffFixture = async (input: PoweroffFixtureInput) => {
               remediation: "Restore provider access and retry `lando poweroff`.",
             }),
           );
-        return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
+        return { kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } };
       }),
-    removeObservedService: (service: ServiceRuntimeInfo) =>
+    bringDownObserved: (service: ServiceRuntimeInfo) =>
       Effect.sync(() => {
         calls.push(`remove:${service.service}`);
-        return { kind: "removed" as const };
+        return { service: service.service, action: "removed" as const };
       }),
     removeVolume: (ref: { readonly store: string }) =>
       Effect.sync(() => {

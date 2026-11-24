@@ -51,11 +51,14 @@ const makeHarness = (root: string) => {
   const provider = RuntimeProvider.of({
     ...TestRuntimeProvider,
     appliedPlans: Effect.sync(() => (appliedPlan === undefined ? [] : [appliedPlan])),
-    destroy: (_target: unknown, options: { readonly removeState?: boolean; readonly volumes: boolean }) =>
+    bringDown: (_target, options) =>
       Effect.sync(() => {
-        destroyCalls.push(options);
+        destroyCalls.push({
+          volumes: options.volumes === true,
+          ...(options.removeState === undefined ? {} : { removeState: options.removeState }),
+        });
         if (options.removeState !== false) appliedPlan = undefined;
-        return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
+        return { kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } };
       }),
   });
   const layers = [

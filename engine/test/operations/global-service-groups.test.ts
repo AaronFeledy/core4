@@ -174,11 +174,11 @@ test.each([false, true])(
           removals: [{ observation: removed, binding: ["idle", "selected"] }],
           provider: {
             ...TestRuntimeProvider,
-            removeObservedService: (observation) =>
+            bringDownObserved: (observation) =>
               Effect.sync(() => {
                 expect(observation.containerId).toBe("idle-container");
                 timeline.push("remove");
-                return { kind: "removed" as const };
+                return { service: observation.service, action: "removed" as const };
               }),
             apply: (built) =>
               Effect.gen(function* () {
@@ -285,15 +285,11 @@ describe("global service groups", () => {
           if (group.services[ServiceName.make("broken")] !== undefined) return yield* Effect.fail(error);
           return { changed: true };
         }),
-      destroy: (target) =>
+      bringDown: (target) =>
         Effect.sync(() => {
           cleanup.push(String(target.app));
           created.clear();
-          return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
-        }),
-      stop: (target) =>
-        Effect.sync(() => {
-          cleanup.push(String(target.service));
+          return { kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } };
         }),
     };
     const outcome = await Effect.runPromise(

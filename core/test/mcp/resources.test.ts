@@ -37,10 +37,8 @@ const withResourceSession = async <A, E>(
   const provider = RuntimeProvider.of({
     ...baseProvider,
     apply: rejectMutation,
-    start: rejectMutation,
-    stop: rejectMutation,
     restart: rejectMutation,
-    destroy: rejectMutation,
+    bringDown: rejectMutation,
     setup: rejectMutation,
   });
   if (withApp)

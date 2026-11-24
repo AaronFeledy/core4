@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { AppId, ProviderId, appIdentityKey } from "@lando/sdk/schema";
+import type { ServiceRuntimeInfo } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect } from "effect";
 import { withResolvedCwd } from "../../src/landofile/app-resolution.ts";
@@ -40,10 +41,10 @@ test("selected internal stop preserves the non-teardown orphan refusal", async (
   const provider = {
     ...TestRuntimeProvider,
     id: "lando",
-    removeObservedService: () =>
+    bringDownObserved: (observed: ServiceRuntimeInfo) =>
       Effect.sync(() => {
         removals += 1;
-        return { kind: "removed" as const };
+        return { service: observed.service, action: "removed" as const };
       }),
   };
   const harness = makeHarness({
@@ -166,10 +167,10 @@ for (const operation of ["stop", "destroy"] as const) {
       id: "lando",
       appliedPlans: Effect.succeed([applied]),
       isAvailable: Effect.succeed(true),
-      destroy: () =>
+      bringDown: () =>
         Effect.sync(() => {
           calls.push("a");
-          return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
+          return { kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } };
         }),
     };
     const b = {

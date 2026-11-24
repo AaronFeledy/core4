@@ -70,7 +70,7 @@ for (const stopFailure of [false, true]) {
       expect(harness.calls).toEqual([
         "list",
         "pre-global-stop",
-        "removeObservedService",
+        "bringDownObserved",
         ...(!stopFailure ? ["post-global-stop"] : []),
       ]);
       expect(result).toMatchObject(

@@ -205,18 +205,16 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
         }
         return { changed: true };
       }),
-    start: () => die("start"),
-    stop: () => die("stop"),
     restart: () => die("restart"),
     waitForExit: () => Effect.succeed({ exitCode: 0 }),
-    destroy: (target, destroyOptions) =>
+    bringDown: (target, destroyOptions) =>
       Effect.sync(() => {
-        const call = { app: String(target.app), volumes: destroyOptions.volumes };
+        const call = { app: String(target.app), volumes: destroyOptions.volumes === true };
         if (destroyOptions.removeState === false) options.stopCalls?.push(call);
         else recorded.destroyCalls.push(call);
-        return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
+        return { kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } };
       }),
-    removeObservedService: () => Effect.succeed({ kind: "absent" as const }),
+    bringDownObserved: (observed) => Effect.succeed({ service: observed.service, action: "absent" as const }),
     readAppEnvironment: () => Effect.succeed([]),
     exec: () => die("exec"),
     execStream: (target, spec) => {

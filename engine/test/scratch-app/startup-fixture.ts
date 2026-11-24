@@ -124,10 +124,10 @@ const makeFixture = async (
       Effect.sync(() => {
         applied.push(plan);
       }).pipe(Effect.andThen(TestRuntimeProvider.apply(plan, options))),
-    destroy: (target, options) =>
+    bringDown: (target, options) =>
       Effect.sync(() => {
         if (options.removeState === true) destroyed.push(String(target.app));
-        return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
+        return { kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } };
       }),
     ...overrides,
   };

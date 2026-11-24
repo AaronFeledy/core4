@@ -11,7 +11,7 @@ import {
   appIdentityKey,
 } from "@lando/sdk/schema";
 import {
-  type DestroyOptions,
+  type BringDownOptions,
   GlobalAppService,
   RuntimeProviderRegistry,
   type ServiceRuntimeInfo,
@@ -48,7 +48,7 @@ const withSwitch = async (
         Effect.Error<ReturnType<typeof switchGlobalProviderForSetup>>
       >
     >;
-    readonly destroys: DestroyOptions[];
+    readonly destroys: BringDownOptions[];
     readonly globalApplied: () => boolean;
     readonly routeFile: string;
     readonly user: AppPlan;
@@ -80,7 +80,7 @@ const withSwitch = async (
       ...(input.dependent === "service" ? { requires: { globalServices: ["mailpit"] } } : {}),
     };
     let globalApplied = true;
-    const destroys: DestroyOptions[] = [];
+    const destroys: BringDownOptions[] = [];
     const services: ServiceRuntimeInfo[] = input.running
       ? [
           {
@@ -100,11 +100,11 @@ const withSwitch = async (
       isAvailable: Effect.succeed(true),
       appliedPlans: Effect.sync(() => (globalApplied ? [global, user] : [user])),
       list: () => Effect.succeed(services),
-      destroy: (_target: unknown, options: DestroyOptions) =>
+      bringDown: (_target: unknown, options: BringDownOptions) =>
         Effect.sync(() => {
           destroys.push(options);
           globalApplied = false;
-          return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
+          return { kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } };
         }),
     };
     const layer = Layer.mergeAll(
@@ -210,7 +210,7 @@ test("setup retires stopped global dependents, keeps volumes and router files, a
         remainingApps: [{ kind: "user", id: "user-app", root: fixture.user.root }],
       },
     });
-    expect(fixture.destroys).toEqual([{ volumes: false, removeState: true }]);
+    expect(fixture.destroys).toEqual([{ containers: "remove", volumes: false, removeState: true }]);
     expect(fixture.globalApplied()).toBe(false);
     expect(await readFile(fixture.routeFile, "utf8")).toBe("retained dynamic configuration");
   });

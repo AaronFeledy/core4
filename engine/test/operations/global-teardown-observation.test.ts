@@ -61,7 +61,7 @@ test.each(["stop", "destroy"] as const)("global %s handles an idle applied owner
         : await Effect.runPromise(globalDestroy({}).pipe(Effect.provide(harness.layer)));
     expect(result.outcome).toBe(command === "stop" ? "stopped" : "destroyed");
     expect(calls.filter((call) => call === "ensureReady")).toHaveLength(command === "stop" ? 0 : 1);
-    expect(calls.filter((call) => call === "destroy")).toHaveLength(command === "stop" ? 0 : 1);
+    expect(calls.filter((call) => call === "bringDown")).toHaveLength(command === "stop" ? 0 : 1);
     if (command === "stop") expect(statusReads).toBe(1);
   });
 });
@@ -118,7 +118,7 @@ for (const command of ["stop", "destroy"] as const) {
         expect("servicesStopped" in result ? result.servicesStopped : result.servicesDestroyed).toEqual([
           "ssh-agent",
         ]);
-        expect(harness.calls).toContain(mode === "applied" ? "destroy" : "removeObservedService");
+        expect(harness.calls).toContain(mode === "applied" ? "bringDown" : "bringDownObserved");
         if (mode === "applied") {
           expect(harness.destroyed).toEqual([plan]);
           expect(harness.destroyed[0]?.identity).toEqual({

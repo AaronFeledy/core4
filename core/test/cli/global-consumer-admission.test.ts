@@ -402,12 +402,27 @@ test("selected restart rechecks policy after its pre-restart hook before stoppin
                           publications: { status: "unknown" as const },
                         })
                       : provider.inspect(target),
-                  stop: (target) =>
-                    target.app === f.plan.id
+                  list: (filter) =>
+                    filter.app === f.plan.id
+                      ? Effect.succeed([
+                          {
+                            app: f.plan.id,
+                            appRoot: f.plan.identity?.appRoot ?? f.plan.root,
+                            service: ServiceName.make("web"),
+                            providerId: f.plan.provider,
+                            containerId: "owned-web",
+                            status: "running" as const,
+                            publications: { status: "unknown" as const },
+                          },
+                        ])
+                      : provider.list(filter),
+                  bringDownObserved: (observed, containers) =>
+                    observed.app === f.plan.id
                       ? Effect.sync(() => {
                           stopped = true;
+                          return { service: observed.service, action: "stopped" as const };
                         })
-                      : provider.stop(target),
+                      : provider.bringDownObserved(observed, containers),
                 })),
               ),
           }),
@@ -976,8 +991,8 @@ test("policy cleanup keeps its claim until completion and refuses sibling enable
         registry.select(target).pipe(
           Effect.map((provider) => ({
             ...provider,
-            removeObservedService: (observed) => {
-              const remove = provider.removeObservedService(observed);
+            bringDownObserved: (observed, containers) => {
+              const remove = provider.bringDownObserved(observed, containers);
               if (!intercept) return remove;
               intercept = false;
               return Deferred.succeed(cleanup, undefined).pipe(

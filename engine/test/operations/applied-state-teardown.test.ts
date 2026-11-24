@@ -270,7 +270,7 @@ const makeLayer = (input: {
             : Effect.fail(input.listFailure),
         ),
       ),
-    destroy: (
+    bringDown: (
       target: { readonly app: string; readonly plan?: AppPlan },
       options: { readonly removeState?: boolean; readonly volumes?: boolean },
     ) =>
@@ -292,20 +292,20 @@ const makeLayer = (input: {
                 appliedPlan = undefined;
               }),
         ),
-        Effect.as({ kind: "destroyed", volumesRemoved: { data: 0, cache: 0 } } as const),
+        Effect.as({ kind: "removed", containers: [], volumesRemoved: { data: 0, cache: 0 } } as const),
       ),
     removeVolume: (ref: { readonly store: string }, expectedGeneration: string) =>
       Effect.sync(() => {
         removedVolumes.push({ store: ref.store, generation: expectedGeneration });
       }),
-    removeObservedService: (observed: { readonly service: string; readonly containerId?: string }) =>
+    bringDownObserved: (observed: ServiceRuntimeInfo) =>
       Effect.sync(() => {
         mutationOrder.push(`remove:${observed.service}`);
         removalAttempts.push({ service: String(observed.service), containerId: observed.containerId });
         const survives =
           observed.containerId === undefined ||
           (input.survivingServices ?? []).includes(String(observed.service));
-        return survives ? ({ kind: "absent" } as const) : ({ kind: "removed" } as const);
+        return { service: observed.service, action: survives ? ("absent" as const) : ("removed" as const) };
       }).pipe(
         Effect.tap(() =>
           input.removalFailure === undefined ? Effect.void : Effect.fail(input.removalFailure),

@@ -9,14 +9,14 @@ import {
   noVolumesRemoved,
   volumesRemovedAny,
 } from "@lando/sdk/schema";
-import { type DestroyOptions, RuntimeProviderRegistry } from "@lando/sdk/services";
+import { type OwnedResourcesCleanupOptions, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { Effect } from "effect";
 import { runAllAndMergeFailures } from "../lifecycle/failure-compensation.ts";
 import { withAppMutationLock } from "./app-mutation-lock.ts";
 
 export const prepareOwnedResourceCleanup = Effect.fnUntraced(function* (
   root: AbsolutePath,
-  options: DestroyOptions,
+  options: OwnedResourcesCleanupOptions,
   intent: "stop" | "destroy" = "destroy",
 ) {
   const registry = yield* RuntimeProviderRegistry;
@@ -28,7 +28,7 @@ export const prepareOwnedResourceCleanup = Effect.fnUntraced(function* (
 export const prepareOwnedResourceCleanupFrom = Effect.fnUntraced(function* (
   ownership: ReadonlyArray<ResourceOwnership>,
   root: AbsolutePath,
-  options: DestroyOptions,
+  options: OwnedResourcesCleanupOptions,
   intent: "stop" | "destroy" = "destroy",
 ) {
   const registry = yield* RuntimeProviderRegistry;
@@ -62,7 +62,7 @@ export const prepareOwnedResourceCleanupFrom = Effect.fnUntraced(function* (
           }),
         );
       }
-      return (root: AbsolutePath, options: DestroyOptions) =>
+      return (root: AbsolutePath, options: OwnedResourcesCleanupOptions) =>
         cleanup(root, { ...options, appIds: hints.appIds });
     }),
   );
@@ -99,7 +99,7 @@ export const prepareOwnedResourceCleanupFrom = Effect.fnUntraced(function* (
 
 export const tearDownOwnedResources = Effect.fnUntraced(function* (
   root: AbsolutePath,
-  options: DestroyOptions,
+  options: OwnedResourcesCleanupOptions,
   intent: "stop" | "destroy" = "destroy",
 ) {
   const registry = yield* RuntimeProviderRegistry;

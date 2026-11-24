@@ -171,13 +171,13 @@ test.each(Object.entries(cases))(
   "%s reconstruction preserves its schema and yieldability",
   async (_tag, { original, encode }) => {
     // Given
-    const provider = { ...TestRuntimeProvider, start: () => Effect.fail(original) };
+    const provider = { ...TestRuntimeProvider, restart: () => Effect.fail(original) };
     // When
     const result = await Effect.runPromise(
       Effect.gen(function* () {
         yield* (yield* RedactionService).registerValues([canary]);
         const selected = yield* (yield* RuntimeProviderRegistry).select(plan);
-        return yield* Effect.result(selected.start(target));
+        return yield* Effect.result(selected.restart(target));
       }).pipe(Effect.provide(registryLayer(provider))),
     );
     // Then

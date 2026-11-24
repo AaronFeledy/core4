@@ -48,7 +48,7 @@ test.each([false, true])("targets discovery with route failure=%s", async (route
 
     expect(result._tag).toBe(routeFailure ? "Failure" : "Success");
     expect(configured.destroyed).toEqual([plan]);
-    expect(configured.destroyOptions).toEqual([{ volumes: false, removeState: false }]);
+    expect(configured.destroyOptions).toEqual([{ containers: "remove", volumes: false, removeState: false }]);
     expect(configured.events[0]).toMatchObject({
       _tag: "pre-global-stop",
       app: { root: actualRoot },
@@ -58,7 +58,7 @@ test.each([false, true])("targets discovery with route failure=%s", async (route
     expect(configured.routeRoots).toEqual([actualRoot]);
     expect(configured.calls).toEqual([
       "pre-global-stop",
-      "destroy",
+      "bringDown",
       "removeRoutes",
       ...(routeFailure ? [] : ["post-global-stop"]),
     ]);
@@ -125,7 +125,7 @@ test.each([
     expect(configured.routeOwners).toEqual(withdrawn ? [routeOwnerFromPlan(plan)] : []);
     expect(configured.calls).toEqual([
       "pre-global-stop",
-      "destroy",
+      "bringDown",
       withdrawn ? "removeRoutes" : "message.warn",
       "post-global-stop",
     ]);

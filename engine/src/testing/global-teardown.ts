@@ -18,8 +18,8 @@ import {
 } from "@lando/sdk/schema";
 import type { LandoEvent, RuntimeProviderShape } from "@lando/sdk/services";
 import {
-  type DestroyOptions,
-  type DestroyOutcome,
+  type BringDownOptions,
+  type BringDownOutcome,
   EventService,
   FileSystem,
   GlobalAppService,
@@ -79,7 +79,7 @@ export const globalTeardownHarness = async (
     readonly plan?: AppPlan;
     readonly orphanRoot?: AbsolutePath;
     readonly volumes?: ReadonlyArray<VolumeInfo>;
-    readonly destroyOutcome?: DestroyOutcome;
+    readonly destroyOutcome?: BringDownOutcome;
     readonly availability?: Effect.Effect<boolean, ProviderUnavailableError>;
     readonly status?: RuntimeProviderShape["getStatus"];
     readonly inspectAppliedFileSync?: RuntimeProviderShape["inspectAppliedFileSync"];
@@ -102,7 +102,7 @@ export const globalTeardownHarness = async (
   const root = AbsolutePath.make(paths.globalAppRoot);
   const calls: string[] = [];
   const events: LandoEvent[] = [];
-  const destroyOptions: DestroyOptions[] = [];
+  const destroyOptions: BringDownOptions[] = [];
   const destroyed: AppPlan[] = [];
   const removed: ServiceRuntimeInfo[] = [];
   const eventRoots: string[] = [];
@@ -166,32 +166,33 @@ export const globalTeardownHarness = async (
         calls.push("listVolumes");
         return input.volumes ?? [];
       }),
-    destroy: (target: { readonly plan?: AppPlan }, options: DestroyOptions) =>
-      Effect.sync(() => {
-        calls.push("destroy");
+    bringDown: (target: { readonly plan?: AppPlan }, options: BringDownOptions) =>
+      Effect.sync((): BringDownOutcome => {
+        calls.push("bringDown");
         destroyOptions.push(options);
         if (target.plan !== undefined) destroyed.push(target.plan);
-        return input.destroyOutcome ?? { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
+        return (
+          input.destroyOutcome ?? { kind: "removed", containers: [], volumesRemoved: { data: 0, cache: 0 } }
+        );
       }),
-    removeObservedService: Effect.fnUntraced(function* (service: ServiceRuntimeInfo) {
-      calls.push("removeObservedService");
+    bringDownObserved: Effect.fnUntraced(function* (service: ServiceRuntimeInfo) {
+      calls.push("bringDownObserved");
       if (input.stopFailure)
         return yield* Effect.fail(
           new ProviderUnavailableError({
             message: "remove failed",
             providerId: "lando",
-            operation: "removeObservedService",
+            operation: "bringDownObserved",
             remediation: "Remove failed",
           }),
         );
       removed.push(service);
-      return { kind: "removed" as const };
+      return { service: service.service, action: "removed" as const };
     }),
     removeVolume: () =>
       Effect.sync(() => {
         calls.push("removeVolume");
       }),
-    stop: () => Effect.die("selected teardown must remove the observed container"),
   };
   const fileSystem = await Effect.runPromise(FileSystem.pipe(Effect.provide(BunFileSystem.layer)));
   const router = RouterService.of({

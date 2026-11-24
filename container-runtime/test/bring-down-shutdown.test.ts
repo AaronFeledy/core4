@@ -203,7 +203,7 @@ test.each([
   );
   // Then an exited container is removed and only a still-running one keeps the stop failure.
   if (completes) {
-    expect(result).toMatchObject({ _tag: "Success", success: { changed: true, kind: "removed" } });
+    expect(result).toMatchObject({ _tag: "Success", success: { changed: true, action: "removed" } });
     expect(calls.some((call) => call.startsWith("DELETE /containers/owned"))).toBe(true);
   } else {
     expect(result).toMatchObject({ _tag: "Failure", failure: { operation: "bringDown.stop" } });

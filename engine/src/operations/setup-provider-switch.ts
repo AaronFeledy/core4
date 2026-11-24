@@ -106,13 +106,13 @@ export const switchGlobalProviderForSetup = Effect.fn("Setup.switchGlobalProvide
   const registry = yield* RuntimeProviderRegistry;
   const root = plan.identity?.appRoot ?? plan.root;
   const ownership = yield* registry.resourceOwnership?.(plan.provider, root) ?? Effect.succeed(undefined);
-  const options = { volumes: false, removeState: true };
-  const cleanup = yield* prepareOwnedResourceCleanupFrom(
-    ownership === undefined ? [] : [ownership],
-    root,
-    options,
+  const cleanup = yield* prepareOwnedResourceCleanupFrom(ownership === undefined ? [] : [ownership], root, {
+    volumes: false,
+  });
+  yield* provider.bringDown(
+    { app: plan.id, plan },
+    { containers: "remove", volumes: false, removeState: true },
   );
-  yield* provider.destroy({ app: plan.id, plan }, options);
   yield* cleanup;
   return {
     fromProviderId: plan.provider,

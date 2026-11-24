@@ -54,12 +54,12 @@ const stopMissingRootWriters = Effect.fnUntraced(function* (app: AppRef, resolut
       const target = resolution.target;
       const provider = yield* registry.select(target.plan);
       if ((yield* provider.getStatus).state !== "idle") {
-        const outcome = yield* provider.destroy(
+        const outcome = yield* provider.bringDown(
           { app: target.plan.id, plan: target.plan },
-          { volumes: false, removeState: false },
+          { containers: "remove", volumes: false, removeState: false },
         );
         shutdownObservations = outcome.shutdownObservations;
-        if (outcome.kind === "destroyed")
+        if (outcome.kind === "removed")
           services.push(
             ...Object.values(target.plan.services)
               .reverse()

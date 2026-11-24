@@ -190,11 +190,11 @@ const makeFixture = async (directory: string) => {
     get capabilities() {
       return capabilities;
     },
-    removeObservedService: (observation: ServiceRuntimeInfo) =>
+    bringDownObserved: (observation: ServiceRuntimeInfo) =>
       Effect.sync(() => {
         removed.push(observation.service);
         runtimes.delete(observation.service);
-        return { kind: "removed" as const };
+        return { service: observation.service, action: "removed" as const };
       }),
     list: () =>
       Effect.sync(() => {

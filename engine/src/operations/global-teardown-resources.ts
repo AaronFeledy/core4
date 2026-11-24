@@ -31,14 +31,18 @@ export const removeGlobalResources = Effect.fn("GlobalApp.removeResources")(func
     switch (resolved.evidence.kind) {
       case "applied": {
         const plan = resolved.evidence.plan;
-        const destroyed = yield* resolved.provider.destroy({ app: plan.id, plan }, options);
+        const destroyed = yield* resolved.provider.bringDown(
+          { app: plan.id, plan },
+          { containers: "remove", ...options },
+        );
         switch (destroyed.kind) {
+          case "stopped":
           case "no-op":
             return withShutdownObservations(
               { changed: false, services: [] as string[], volumesRemoved: { ...noVolumesRemoved } },
               destroyed.shutdownObservations,
             );
-          case "destroyed":
+          case "removed":
             return withShutdownObservations(
               {
                 changed: true,

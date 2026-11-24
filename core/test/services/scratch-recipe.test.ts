@@ -145,11 +145,9 @@ const makeScratchRecipeLayer = (appliedPlans: AppPlan[], runPostInitCalls?: bool
         appliedPlans.push(plan);
         return { changed: true };
       }),
-    start: () => die("start"),
-    stop: () => die("stop"),
     restart: () => die("restart"),
     waitForExit: () => Effect.succeed({ exitCode: 0 }),
-    destroy: () => die("destroy"),
+    bringDown: () => die("destroy"),
     exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
     execStream: () => Stream.die("scratch recipe test provider should not call execStream"),
     run: () => die("run"),

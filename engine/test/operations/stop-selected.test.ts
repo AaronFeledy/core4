@@ -192,14 +192,14 @@ const runSelectedStop = (
         options.onList?.();
         return rows;
       }),
-    removeObservedService: (observed) =>
+    bringDownObserved: (observed) =>
       Effect.sync(() => {
         const current = containers.get(String(observed.service));
         if (observed.containerId === undefined || current?.containerId !== observed.containerId)
-          return { kind: "absent" as const };
+          return { service: observed.service, action: "absent" as const };
         containers.delete(String(observed.service));
         removed.push(String(observed.service));
-        return { kind: "removed" as const };
+        return { service: observed.service, action: "removed" as const };
       }),
   };
   const harness = makeHarness({

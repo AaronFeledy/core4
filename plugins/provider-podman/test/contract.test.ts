@@ -1198,7 +1198,9 @@ describe("provider-podman RuntimeProvider contract", () => {
     expect(chunks.length).toBeGreaterThan(0);
     expect(fake.calls.some((call) => call.path.includes(`/containers/${containerName}/logs?`))).toBe(true);
 
-    await Effect.runPromise(provider.destroy({ app: appId, plan }, { volumes: false }));
+    await Effect.runPromise(
+      provider.bringDown({ app: appId, plan }, { containers: "remove", volumes: false }),
+    );
     expect(
       fake.calls.some(
         (call) =>

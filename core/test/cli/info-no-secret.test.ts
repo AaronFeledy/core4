@@ -158,8 +158,6 @@ const makeInfoLayer = () => {
     removeArtifact: () => Effect.succeed({ kind: "absent" as const }),
     listArtifacts: () => Effect.succeed([]),
     apply: () => Effect.succeed({ changed: false }),
-    start: () => Effect.void,
-    stop: () => Effect.void,
     restart: () => Effect.void,
     waitForExit: () => Effect.succeed({ exitCode: 0 }),
     exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),

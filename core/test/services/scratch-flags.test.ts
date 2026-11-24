@@ -174,8 +174,6 @@ const makeLayer = (
         appliedPlans.push(plan);
         return { changed: true };
       }),
-    start: () => die("start"),
-    stop: () => die("stop"),
     restart: () => die("restart"),
     waitForExit: () => Effect.succeed({ exitCode: 0 }),
     exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),

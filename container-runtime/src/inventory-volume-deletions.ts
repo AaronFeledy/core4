@@ -1,6 +1,6 @@
 import { type AppliedStateVersionError, ProviderUnavailableError } from "@lando/sdk/errors";
 import { type AbsolutePath, type AppId, LANDO_DATA_ROOT_LABEL, planAppIdentity } from "@lando/sdk/schema";
-import type { DestroyOptions } from "@lando/sdk/services";
+import type { OwnedResourcesCleanupOptions } from "@lando/sdk/services";
 import { Effect } from "effect";
 import { type AdoptionReceipt, dataRootRefusal, decideDataRootOwnership } from "./data-root-ownership.ts";
 import { VOLUME_INSTANCE_LABEL } from "./labels.ts";
@@ -30,7 +30,7 @@ type Inventory = NonNullable<
 export const planInventoryVolumeDeletions = Effect.fnUntraced(function* (input: {
   readonly root: AbsolutePath;
   readonly resources: Inventory["resources"];
-  readonly options: DestroyOptions;
+  readonly options: OwnedResourcesCleanupOptions;
   readonly coverage: { readonly provider: string; readonly app: AppId } | undefined;
   readonly runtime: TeardownVolumeRuntime;
   readonly store: ReturnType<typeof makeResourceOwnershipStore>;

@@ -127,7 +127,14 @@ for (const prepareExit of [0, 1]) {
                 Effect.succeed({
                   ...provider,
                   capabilities: { ...provider.capabilities, agentSocket: { delivery: "bind-directory" } },
-                  stop: (target) => Effect.sync(() => calls.push(`stop:${target.service}`)),
+                  bringDownObserved: (observed, containers) =>
+                    Effect.sync(() => {
+                      calls.push(`stop:${observed.service}`);
+                      return {
+                        service: observed.service,
+                        action: containers === "stop" ? "stopped" : "removed",
+                      };
+                    }),
                   exec: () =>
                     Effect.sync(() => {
                       calls.push("gpg-prepare");

@@ -279,7 +279,10 @@ const stopAppWithResolvedPlan = Effect.fnUntraced(function* (
   const destroyOutcome = yield* runtimeState === "idle"
     ? stopIdleApp(target, preflight)
     : provider
-        .destroy({ app: plan.id, plan: teardownPlan }, { volumes: false, removeState: false })
+        .bringDown(
+          { app: plan.id, plan: teardownPlan },
+          { containers: "remove", volumes: false, removeState: false },
+        )
         .pipe(Effect.ensuring(cleanupAppWorkers(ref)));
   const shutdownObservations: readonly ServiceShutdownObservation[] | undefined =
     "shutdownObservations" in destroyOutcome ? destroyOutcome.shutdownObservations : undefined;

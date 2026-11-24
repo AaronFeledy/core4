@@ -76,8 +76,8 @@ for (const evidence of ["applied", "absent"] as const) {
           // absent path reports unchanged without tearing anything down.
           expect(result.outcome).toBe(evidence === "applied" ? "destroyed" : "unchanged");
           if (evidence === "absent") {
-            expect(harness.calls).not.toContain("destroy");
-            expect(harness.calls).not.toContain("removeObservedService");
+            expect(harness.calls).not.toContain("bringDown");
+            expect(harness.calls).not.toContain("bringDownObserved");
             expect(harness.calls).not.toContain("ensureReady");
           }
           expect(await Bun.file(certPath).exists()).toBe(scoped);

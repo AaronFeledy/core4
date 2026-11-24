@@ -53,18 +53,16 @@ test("selected global stop retries failed route cleanup after its container was 
       id: "lando",
       appliedPlans: Effect.succeed([plan]),
       list: () => Effect.sync(() => Array.from(containers.values())),
-      removeObservedService: (observation: ServiceRuntimeInfo) =>
+      bringDownObserved: (observation: ServiceRuntimeInfo) =>
         Effect.sync(() => {
           removed.push(String(observation.containerId));
           containers.delete(String(observation.service));
-          return { kind: "removed" as const };
+          return { service: observation.service, action: "removed" as const };
         }),
       ensureReady: Effect.die("route retry must not start the runtime"),
       apply: () => Effect.die("route retry must not recreate containers"),
-      start: () => Effect.die("route retry must not start containers"),
       restart: () => Effect.die("route retry must not restart containers"),
-      stop: () => Effect.die("route retry must not recreate or restart a container"),
-      destroy: () => Effect.die("selected stop must not destroy the whole app"),
+      bringDown: () => Effect.die("selected stop must not destroy the whole app"),
     };
     let routeAttempts = 0;
     let persistedRoutes = plan.routes;

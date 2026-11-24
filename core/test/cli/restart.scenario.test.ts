@@ -39,7 +39,7 @@ import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import type {
   AppSelector,
-  DestroyOptions,
+  BringDownOptions,
   RouterServiceShape,
   RuntimeProviderShape,
 } from "@lando/sdk/services";
@@ -210,7 +210,7 @@ const makeRestartLayer = (
   // A started app as a provider reports it: every lookup answers the same record, without Landofile events.
   const { events: _events, ...appliedRecord } = currentTestPlan(plannedApp);
   const events: string[] = [];
-  const destroyCalls: Array<{ readonly target: AppSelector; readonly options: DestroyOptions }> = [];
+  const destroyCalls: Array<{ readonly target: AppSelector; readonly options: BringDownOptions }> = [];
   const applyCalls: Array<{
     readonly reconcile: boolean;
     readonly services: ReadonlyArray<string>;
@@ -241,14 +241,27 @@ const makeRestartLayer = (
           recordedServices: Object.keys((applyOptions.recordedPlan ?? appliedPlan).services),
         });
       }).pipe(Effect.as({ changed: true })),
-    stop: (target) =>
+    list: () =>
+      Effect.succeed(
+        Object.values(plannedApp.services).map((service) => ({
+          app: plannedApp.id,
+          appRoot: plannedApp.identity?.appRoot ?? plannedApp.root,
+          service: service.name,
+          providerId: plannedApp.provider,
+          containerId: `cid-${String(service.name)}`,
+          status: "running" as const,
+          publications: { status: "unknown" as const },
+        })),
+      ),
+    bringDownObserved: (observed) =>
       Effect.sync(() => {
-        stopCalls.push(target.service);
+        stopCalls.push(observed.service);
+        return { service: observed.service, action: "stopped" as const };
       }),
-    destroy: (target, options) =>
+    bringDown: (target, options) =>
       Effect.sync(() => {
         destroyCalls.push({ target, options });
-        return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
+        return { kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } };
       }),
     inspect: (target) =>
       Effect.succeed({

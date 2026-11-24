@@ -115,8 +115,10 @@ export const makeScratchReaper = Effect.gen(function* () {
         yield* events.publish(PreStopEvent.make({ scope: "app", app, timestamp: DateTime.nowUnsafe() }));
         const stopped =
           provider !== undefined && plan !== undefined
-            ? (yield* provider.destroy({ app: plan.id, plan }, { volumes: false, removeState: false }))
-                .kind === "destroyed"
+            ? (yield* provider.bringDown(
+                { app: plan.id, plan },
+                { containers: "remove", volumes: false, removeState: false },
+              )).kind === "removed"
             : yield* orphan?.stop ?? Effect.succeed(false);
         yield* events.publish(PostStopEvent.make({ scope: "app", app, timestamp: DateTime.nowUnsafe() }));
         yield* events.publish(PreDestroyEvent.make({ app, evidence, timestamp: DateTime.nowUnsafe() }));
@@ -128,10 +130,10 @@ export const makeScratchReaper = Effect.gen(function* () {
           const removed = yield* removeSnapshots(snapshots).pipe(Effect.provideService(DataMover, mover));
           const destroyed =
             provider !== undefined && plan !== undefined
-              ? (yield* provider.destroy(
+              ? (yield* provider.bringDown(
                   { app: plan.id, plan },
-                  { volumes: !keepVolumes, removeState: true },
-                )).kind === "destroyed"
+                  { containers: "remove", volumes: !keepVolumes, removeState: true },
+                )).kind === "removed"
               : yield* orphan?.destroy ?? Effect.succeed(false);
           yield* withdrawOwnerRoutes(routeOwnerFromScratch(input.id)).pipe(
             Effect.provideService(EventService, events),

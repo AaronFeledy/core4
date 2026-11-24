@@ -1,6 +1,6 @@
 import type { EngineHttpRequest, PodmanApiClient } from "@lando/container-runtime/engine-api";
 import { APP_LABEL, APP_ROOT_LABEL, SERVICE_LABEL } from "@lando/container-runtime/labels";
-import { removeObservedContainer } from "@lando/container-runtime/service-lifecycle";
+import { bringDownObservedContainer } from "@lando/container-runtime/service-lifecycle";
 import { sameRealpath } from "@lando/paths";
 import { mapFailures } from "@lando/sdk/command-result";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
@@ -170,7 +170,7 @@ export const quiesceRetainedWindowsSyncWriters = Effect.fn("ProviderLando.quiesc
     });
     const writers = yield* inventory;
     for (const writer of writers) {
-      yield* removeObservedContainer(writer, { api, ctx, dataRoot: plan.identity?.dataRoot });
+      yield* bringDownObservedContainer(writer, "remove", { api, ctx, dataRoot: plan.identity?.dataRoot });
     }
     const remaining = yield* inventory;
     if (remaining.length !== 0)

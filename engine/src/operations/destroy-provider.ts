@@ -29,7 +29,7 @@ const removeStrayAppContainers = Effect.fnUntraced(function* (provider: RuntimeP
       service.appRoot === (plan.identity?.appRoot ?? plan.root) &&
       !Object.hasOwn(plan.services, service.service)
     ) {
-      const removal = yield* provider.removeObservedService(service);
+      const removal = yield* provider.bringDownObserved(service, "remove");
       sources.push(removal.shutdownObservations);
     }
   }
@@ -43,9 +43,10 @@ export const destroyPlannedProvider = Effect.fn("AppOperation.destroyPlannedProv
   const target = teardown.target;
   yield* verifyActiveVolumeCoordination(provider);
   const strayObservations = yield* removeStrayAppContainers(provider, target.plan);
-  const outcome = yield* provider.destroy(
+  const outcome = yield* provider.bringDown(
     { app: target.plan.id, plan: target.plan },
     {
+      containers: "remove",
       volumes: teardown.options.volumes === true,
       ...(teardown.options.purgeCaches === undefined ? {} : { purgeCaches: teardown.options.purgeCaches }),
       removeState: true,
