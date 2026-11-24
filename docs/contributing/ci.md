@@ -5,7 +5,7 @@ description: Reproduce CI checks locally and inspect their failure artifacts.
 
 # CI runbook
 
-Use this runbook to reproduce a failing CI job and find its diagnostics. Run commands from the repository root with the Bun version pinned in `.bun-version`. A clean checkout needs `bun install` and `bun run codegen`; tests that compile or run the container helper also need the [helper build](#in-container-helper).
+Use this runbook to reproduce a failing CI job and find its diagnostics. Run commands from the repository root with the Bun version pinned in `.bun-version`. A clean checkout or new worktree needs `bun run bootstrap`, which runs `bun install`, `bun run codegen`, and the SDK build, then restores the container helper when another checkout already built it for the same sources. Tests that compile or run the container helper need that helper; see [In-container helper](#in-container-helper) to build it.
 
 For a pre-PR check, use `bun run gate:pr` as described in the root repository instructions. To investigate a specific failure, go directly to [static checks](#static-checks), [generated schema checks](#generated-schema-and-bundled-codegen-gates), [guide scenarios](#guide-e2e-smoke-subset), or the [docs build](#docs-build). Live provider sections have additional host prerequisites; do not run their setup commands as part of a static-only check.
 
@@ -373,15 +373,19 @@ bun test core/test/recipes core/test/cli/init.canonical-recipes.test.ts
 
 Every compiled `lando` embeds a static Go helper for `linux-x64` and `linux-arm64`. Inside a container it is the host-proxy `lando` client and the reader behind `lando logs --source`. You don't need Go installed: the helper builds with Lando itself, in the pinned `golang` image from `core/container-helper/.lando.yml`.
 
-Before building, run `bun install` and `bun run codegen` on a clean checkout and configure a working provider with `lando setup`. If default setup fails on Linux, use `lando setup --provider=docker` with a working system Docker. No host Go installation is needed.
+Run `bun run bootstrap` first. When it reports the helper as `current` or `restored`, you're done: some checkout on this machine already built the helper for these sources. Otherwise configure a working provider with `lando setup` before building. If default setup fails on Linux, use `lando setup --provider=docker` with a working system Docker. No host Go installation is needed.
 
 Build the helper before `bun test` on Linux or compiling `lando` on any host:
 
 ```bash
-bun run --filter='@lando/core' build:container-helper
+bun run bootstrap --build-helper
 ```
 
-That starts the `lando-container-helper` builder app with the source-mode CLI, writes `core/container-helper/dist/linux-{x64,arm64}/lando-container-helper` plus the source digest they were built from, and destroys the builder. Every checkout shares that app name, so builds in several git worktrees work one after another, not at the same time. Pass `--test` (`bun run scripts/build-container-helper.ts --test`) to run `go vet` and `go test` first. `bun run build` doesn't run it: compiling embeds the helper already in `dist/` and refuses a missing or stale one, so rerun the helper build after editing `core/container-helper/` sources or `core/container-helper/.lando.yml`. To embed prebuilt binaries instead, set `LANDO_CONTAINER_HELPER_DIR` to a directory laid out the same way. When that directory has a `source-digest` file, as every helper build writes, the compile checks it against the current sources and fails with the rebuild command if they differ.
+That runs the bootstrap steps and then `bun run --filter='@lando/core' build:container-helper`, which you can also run on its own.
+
+The helper build starts the `lando-container-helper` builder app with the source-mode CLI, writes `core/container-helper/dist/linux-{x64,arm64}/lando-container-helper` plus the source digest they were built from, and destroys the builder. Every checkout shares that app name, so builds in several git worktrees work one after another, not at the same time. Pass `--test` (`bun run scripts/build-container-helper.ts --test`) to run `go vet` and `go test` first. `bun run build` doesn't run it: compiling embeds the helper already in `dist/` and refuses a missing or stale one, so rerun the helper build after editing `core/container-helper/` sources or `core/container-helper/.lando.yml`. To embed prebuilt binaries instead, set `LANDO_CONTAINER_HELPER_DIR` to a directory laid out the same way. When that directory has a `source-digest` file, as every helper build writes, the compile checks it against the current sources and fails with the rebuild command if they differ.
+
+Every successful helper build also copies its output into a per-user cache at `<userCacheRoot>/dev/container-helper/<source digest>/` (`~/.cache/lando/dev/container-helper/` on Linux by default). `bun run bootstrap` in any other checkout or worktree restores the entry whose digest matches its own sources, so only the first checkout pays for the build. Bootstrap checks each cached file's SHA-256 before copying it and ignores an entry recorded for other sources, and entries are written to a staging directory and renamed into place, so worktrees that bootstrap or build at the same time never see a partial entry. Nothing in shipped Lando reads this cache; delete the directory to reclaim space.
 
 Verify the host-architecture helper on Linux:
 

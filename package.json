@@ -44,6 +44,7 @@
     "saxes": "6.0.0"
   },
   "scripts": {
+    "bootstrap": "bun run scripts/bootstrap.ts",
     "build": "bun run --filter='*' build",
     "test": "bun run scripts/test-shards.ts",
     "test:unit": "bun run scripts/test-shards.ts --local",
