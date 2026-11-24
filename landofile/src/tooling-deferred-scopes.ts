@@ -1,6 +1,6 @@
 import { NotImplementedError } from "@lando/sdk/errors";
 import { type ExpressionTemplate, expressionScopeMembers } from "@lando/sdk/expressions";
-import { executableExpressionPath } from "./invocation-sites.ts";
+import { executableExpressionPath } from "@lando/sdk/landofile/execution-sites";
 
 export const deferredToolingScopeError = (
   template: ExpressionTemplate,
