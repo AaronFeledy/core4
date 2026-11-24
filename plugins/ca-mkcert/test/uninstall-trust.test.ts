@@ -103,6 +103,16 @@ describe("local CA uninstall step", () => {
     expect(step.detail).not.toContain("\n");
   });
 
+  test("linux also names the browser databases Lando's setup writes, such as Chromium's XDG database", async () => {
+    await writeFile(join(caroot, "rootCA.pem"), TEST_CERTIFICATES.rootA);
+    const home = join(dir, "home");
+    const xdg = join(home, ".local", "share", "pki", "nssdb");
+    await mkdir(xdg, { recursive: true });
+    await writeFile(join(xdg, "cert9.db"), "");
+    const step = await plan("linux", { env: { CAROOT: caroot, HOME: home, PATH: "" } });
+    expect(step.detail).toContain(`\`certutil -D -d sql:${xdg} -n '${NICKNAME}'\``);
+  });
+
   test("wsl adds the Windows store removal", async () => {
     await writeFile(join(caroot, "rootCA.pem"), TEST_CERTIFICATES.rootA);
     const step = await plan("wsl", { env: { CAROOT: caroot, PATH: "" } });

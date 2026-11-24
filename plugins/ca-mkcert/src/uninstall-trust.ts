@@ -1,8 +1,8 @@
 /**
  * The uninstall step for the mkcert local CA. Every Lando data root on a host shares one mkcert
  * `CAROOT`, and so does mkcert itself, so Lando cannot prove the CA is its own and never removes it.
- * The step names the exact trust entries mkcert v1.4.4 created for this CA and the OS commands that
- * remove them; none of them needs Lando's mkcert binary, which purge deletes. Planning only reads
+ * The step names the exact trust entries mkcert v1.4.4 and Lando's setup created for this CA and the
+ * OS commands that remove them; none of them needs Lando's mkcert binary, which purge deletes. Planning only reads
  * files: the uninstall contract offers no subprocesses.
  */
 import { X509Certificate } from "node:crypto";
@@ -14,6 +14,7 @@ import type { HostPlatform, HostUninstallStep } from "@lando/sdk/schema";
 import { Effect } from "effect";
 
 import { type HostEnv, locateBundles } from "./homebrew-trust.ts";
+import { discoverNssDatabases } from "./nss-databases.ts";
 
 export const LOCAL_CA_MAINTAINER_ID = "local-ca";
 export const LOCAL_CA_TRUST_STEP_ID = "trust";
@@ -155,7 +156,11 @@ const manualDetail = Effect.fnUntraced(function* (host: Host, caroot: string, pe
     if (!(cause instanceof Error)) throw cause;
     return `${posix.join(caroot, ROOT_FILE)} is not a readable certificate, so Lando cannot name its trust entries. Remove it from your trust stores with your OS tools. ${finish}`;
   }
-  const nss = nssDatabases(host).map((dir) =>
+  // mkcert's own databases, plus the ones Lando's setup writes (such as Chromium's XDG database).
+  const written = yield* Effect.promise(() =>
+    discoverNssDatabases(host.access.env, host.platform === "wsl" ? "linux" : host.platform),
+  );
+  const nss = [...new Set([...nssDatabases(host), ...written.map(({ dir }) => dir)])].map((dir) =>
     run(`${dir.startsWith("/etc/") ? "sudo " : ""}certutil -D -d ${quote(`sql:${dir}`)} -n '${ca.nickname}'`),
   );
   const brew = (yield* Effect.promise(() => locateBundles(host.access.env, host.platform))).map(
