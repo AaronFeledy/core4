@@ -17,6 +17,7 @@ import {
   ConfigService,
   GlobalAppService,
   LandofileService,
+  type PathsService,
   type ProcessRunner,
   RuntimeProviderRegistry,
   type SshService,
@@ -47,7 +48,7 @@ export const sshAgentPostureCheck = Effect.fnUntraced(function* (
     readonly fix?: boolean;
     readonly idleProvider?: string;
   },
-): Effect.fn.Return<DoctorFinding> {
+): Effect.fn.Return<DoctorFinding, never, PathsService> {
   const config = yield* Effect.serviceOption(ConfigService);
   const sshAgent =
     input.globalConfig === undefined && Option.isSome(config)
@@ -77,7 +78,7 @@ export const sshAgentPostureCheck = Effect.fnUntraced(function* (
       try: () => (input.probe ?? probeSshAgent)(upstream, { timeoutMs: 1_000 }),
       catch: (cause: unknown) => cause,
     });
-  const inspect: Effect.Effect<Details["upstream"]> = Effect.gen(function* () {
+  const inspect: Effect.Effect<Details["upstream"], never, PathsService> = Effect.gen(function* () {
     switch (intent.mode) {
       case "sidecar": {
         if (input.idleProvider !== undefined) return { source: "sidecar" as const, reachable: false };

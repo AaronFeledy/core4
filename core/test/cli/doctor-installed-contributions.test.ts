@@ -9,6 +9,7 @@ import { PluginContributionGraph } from "@lando/engine/plugins/contribution-grap
 import { RuntimeLayerFactory } from "@lando/engine/runtime/runtime-layer-factory";
 import { GlobalConfigSources } from "@lando/engine/services/config";
 import { ProviderId } from "@lando/sdk/schema";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect, Layer, Schema } from "effect";
 import { doctor } from "../../src/cli/commands/doctor.ts";
 import { resilientDoctorReport } from "../../src/cli/commands/doctor-bootstrap.ts";
@@ -28,10 +29,7 @@ const report = '{ name: "installed-healthy", status: "pass", severity: "info", c
 const healthy = `{ id: "installed-healthy", run: () => Effect.succeed([${report}]) }`;
 const registry = Layer.succeed(
   RuntimeProviderRegistry,
-  RuntimeProviderRegistry.of({
-    resolveAppliedPlan: () => Effect.succeed(undefined),
-    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-    appliedPlansFor: () => Effect.succeed([]),
+  makeTestRuntimeProviderRegistry({
     list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
     capabilities: Effect.succeed({
       ...TestRuntimeProvider.capabilities,

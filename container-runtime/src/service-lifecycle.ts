@@ -1,6 +1,6 @@
 import { mapFailures } from "@lando/sdk/command-result";
 import { ProviderUnavailableError, ServiceNotFoundError } from "@lando/sdk/errors";
-import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
+import { type AppPlan, LANDO_DATA_ROOT_LABEL, type ServicePlan } from "@lando/sdk/schema";
 import type {
   DestroyOutcome,
   ObservedServiceRemoval,
@@ -10,6 +10,7 @@ import type {
   ServiceSelector,
 } from "@lando/sdk/services";
 import { Effect } from "effect";
+import { type AdoptionReceipt, dataRootRefusal, decideDataRootOwnership } from "./data-root-ownership.ts";
 import type { EngineHttpApi, ProviderErrorContext } from "./engine-api.ts";
 import { missingApi, missingService } from "./engine-errors.ts";
 import { serviceContainerOwnershipProblem } from "./native-ownership.ts";
@@ -169,7 +170,10 @@ export const postExactServiceLifecycle = (
  */
 export const removeObservedContainer = (
   observed: ServiceRuntimeInfo,
-  options: ServiceLifecycleOptions,
+  options: ServiceLifecycleOptions & {
+    readonly dataRoot?: string | undefined;
+    readonly receipts?: readonly AdoptionReceipt[];
+  },
 ): Effect.Effect<ObservedServiceRemoval, ProviderError> => {
   const operation = "removeObservedService";
   if (String(observed.providerId) !== options.ctx.providerId) {
@@ -192,11 +196,34 @@ export const removeObservedContainer = (
   };
   if (containerId === undefined)
     return Effect.succeed({ kind: "absent", shutdownObservations: [absentShutdown(identity)] });
+  const native = {
+    kind: "container",
+    nativeName: observed.nativeName ?? containerId,
+    nativeId: containerId,
+    labels: observed.labels,
+  } as const;
+  if (
+    options.dataRoot !== undefined &&
+    decideDataRootOwnership(native, {
+      dataRoot: options.dataRoot,
+      receipts: observed.nativeName === undefined ? [] : (options.receipts ?? []),
+    }) !== "owned"
+  ) {
+    return Effect.fail(
+      new ProviderUnavailableError({
+        providerId: options.ctx.providerId,
+        operation,
+        ...dataRootRefusal(native),
+        details: { service: observed.service, containerId, label: LANDO_DATA_ROOT_LABEL },
+      }),
+    );
+  }
   // Observed identity alone is not mutation authority: the container's own labels must prove it.
   const ownershipProblem = serviceContainerOwnershipProblem(observed.labels, {
     app: String(observed.app),
     appRoot: observed.appRoot === undefined ? "" : String(observed.appRoot),
     service: String(observed.service),
+    dataRoot: options.dataRoot === undefined ? undefined : observed.labels?.[LANDO_DATA_ROOT_LABEL],
     providerId: options.ctx.providerId,
   });
   if (ownershipProblem !== undefined) {

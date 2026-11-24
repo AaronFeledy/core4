@@ -1,3 +1,4 @@
+import { finding } from "./fingerprint.ts";
 import {
   type CompatibilityFinding,
   type JsonSchema,
@@ -78,13 +79,13 @@ export const compareUnionReplacement = (
     );
   });
   return proven
-    ? {
-        verdict: "compatible",
-        changeKind: narrowing ? "union-narrowed" : "union-widened",
-        path: `${context.path}.anyOf`,
-        message: "A union branch proves the replacement preserves the public contract.",
-        accepted: false,
-      }
+    ? finding(
+        "compatible",
+        narrowing ? "union-narrowed" : "union-widened",
+        `${context.path}.anyOf`,
+        "A union branch proves the replacement preserves the public contract.",
+        { before, after },
+      )
     : undefined;
 };
 
@@ -104,11 +105,11 @@ export const compareUnion = (
     before.every((arm) => after.some((candidate) => preservesValues(arm, candidate)));
   if (!widened && !narrowed && !nestedWidening) return undefined;
   const direction = narrowed ? "narrowed" : "widened";
-  return {
-    verdict: context.polarity === (narrowed ? "output" : "input") ? "compatible" : "breaking",
-    changeKind: `union-${direction}`,
-    path: context.path,
-    message: `The union was ${direction}.`,
-    accepted: false,
-  };
+  return finding(
+    context.polarity === (narrowed ? "output" : "input") ? "compatible" : "breaking",
+    `union-${direction}`,
+    context.path,
+    `The union was ${direction}.`,
+    { before, after },
+  );
 };

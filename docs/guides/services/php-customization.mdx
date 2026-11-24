@@ -151,11 +151,13 @@ build key, so the next `lando start` rebuilds that image. Bare `restart` also st
 
 Stock PHP services write `/usr/local/etc/php/conf.d/10-lando-baseline.ini` during the image build. Custom images and replacement context builds skip that file. An authored startup command alone keeps the stock image's baseline.
 
-The current baseline sets `session.upload_progress.enabled = 0` on stock Apache, FPM, and CLI images, following the [php.net 23 Oct 2026 informational advisory](https://www.php.net/archive/2026.php#2026-10-23-1) for CVE-2026-115560. The risk requires upload progress to be enabled, `session.serialize_handler` configured as `php_binary` or `php_serialize`, and application code that switches it to `php` with `ini_set()` before `session_start()`. This mitigation does not replace installing PHP security updates. See [Pick up a PHP security release](./php-security-updates.mdx).
+The current baseline sets `session.upload_progress.enabled = 0` on every PHP version Lando ships, following the [php.net 23 Oct 2026 informational advisory](https://www.php.net/archive/2026.php#2026-10-23-1) for CVE-2026-115560 (GHSA-658j-r8rw-q6mx). The risk requires upload progress to be enabled, `session.serialize_handler` configured as `php_binary` or `php_serialize`, and application code that switches it to `php` with `ini_set()` before `session_start()`.
+
+PHP 8.2.36, 8.3.37, 8.4.28, 8.5.13, and 8.6.0 fix the vulnerability and already default the setting to `0`, so on those releases the baseline matches PHP's own default. PHP 8.1 is end-of-life and gets no fix, so Lando keeps the baseline on every version while it ships 8.1. The stock tags follow each patch release. An image built before a patch release picks it up on `lando rebuild` or the next weekly registry check, once the registry has published the patch and the pull succeeds. [Pick up a PHP security release](./php-security-updates.mdx) covers what to check when it doesn't. The baseline does not replace installing PHP security updates.
 
 What you lose: PHP session upload progress. Some apps use that feature for session-based upload progress bars. Those bars stop updating until you override the setting.
 
-If your app does not use that handler-switching pattern and needs upload progress, add a `conf.d` drop-in whose name sorts after `10-lando-baseline.ini` to re-enable it. Use the `mounts:` or `configs:` form in the next section. A name such as `zz-custom.ini` loads after `10-` and wins. Do not bind-mount a replacement `/usr/local/etc/php/php.ini` for this override. PHP loads that file before it scans `conf.d`, so the baseline still wins.
+If your app needs upload progress, add a `conf.d` drop-in whose name sorts after `10-lando-baseline.ini` to re-enable it. On the patched releases listed above, PHP then throws an `Error` when code changes a session setting with `ini_set()` at runtime, so set those values in the same drop-in instead. On PHP 8.1, re-enable it only if your app never switches `session.serialize_handler` at runtime. Use the `mounts:` or `configs:` form in the next section. A name such as `zz-custom.ini` loads after `10-` and wins. Do not bind-mount a replacement `/usr/local/etc/php/php.ini` for this override. PHP loads that file before it scans `conf.d`, so the baseline still wins.
 
 Create `php.ini` in your app root:
 
@@ -291,7 +293,8 @@ Explicit opt-ins still matter:
 - `composer.packages` still adds a global-package install step. Supply a working
   `composer` binary in your image; `composer.version` does not install it there.
 - `xdebug:` still configures Xdebug environment and tooling, but your image must
-  already have the extension installed. Set `xdebug.client_host` to
+  already have the extension installed. Without it, `lando xdebug status` exits
+  with `Xdebug not installed`. Set `xdebug.client_host` to
   `debugger.lando.internal` in your image's PHP ini; FPM's default `clear_env`
   can drop `XDEBUG_CONFIG` before workers see it.
 - Mailpit's `mailFrom` selection still applies. The replacement Dockerfile

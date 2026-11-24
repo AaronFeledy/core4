@@ -27,6 +27,7 @@ import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Cause, DateTime, Effect, Exit, Layer, Schema } from "effect";
 import { withGlobalMutation } from "../../src/global-app/mutation.ts";
+import { CommandWarnings, makeCommandWarnings } from "../../src/landofile/command-warnings.ts";
 import {
   readGlobalConsumerReservations,
   withGlobalConsumerReservation,
@@ -36,6 +37,7 @@ import {
   globalServiceGroupError,
 } from "../../src/operations/global-service-groups.ts";
 import { prepareProvider } from "../../src/providers/prepared.ts";
+import * as EventServiceLayer from "../../src/services/event-service.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 import { testEnvironmentResolverLayer } from "../environment-values.ts";
@@ -45,6 +47,7 @@ const root = AbsolutePath.make(join(directory, "global"));
 mkdirSync(root);
 afterAll(() => rmSync(directory, { recursive: true, force: true }));
 const leaseLayer = Layer.mergeAll(
+  EventServiceLayer.layer,
   makeTestStateStore().layer,
   testEnvironmentResolverLayer,
   BunFileSystem.layer,
@@ -352,6 +355,37 @@ describe("global service groups", () => {
     expect(applied).toEqual([["a", "c", "b"], ["solo"]]);
     expect(outcome.services.map((service) => String(service.name))).toEqual(["a", "solo", "c", "b"]);
     expect(outcome.failures).toEqual([]);
+  });
+
+  test("reports each start warning once before fanning out, even when every build fails", async () => {
+    // Given two independent groups that each run a low-port listener as a named user.
+    const lowPort = (name: string): ServicePlan => ({
+      ...service(name),
+      user: "nobody",
+      endpoints: [{ kind: "internal", protocol: "http", port: 80 }],
+    });
+    const plan = planWith([lowPort("first"), lowPort("second")]);
+    const warnings = makeCommandWarnings(true);
+    // When both builds fail.
+    const outcome = await Effect.runPromise(
+      applyGlobalServiceGroups(
+        plan,
+        {
+          provider: TestRuntimeProvider,
+          services: Object.values(plan.services),
+          options: { reconcile: false },
+        },
+        (plan) => Effect.fail(failure(Object.keys(plan.services).join(","))),
+      ).pipe(Effect.provideService(CommandWarnings, warnings)),
+    );
+    // Then each service's warning was recorded once, before any group built.
+    expect(outcome.failures).toHaveLength(2);
+    expect(
+      (await Effect.runPromise(warnings.list)).map(({ code, context }) => [code, context?.service]),
+    ).toEqual([
+      ["LANDO_NONROOT_LOW_PORT_UNVERIFIED", "first"],
+      ["LANDO_NONROOT_LOW_PORT_UNVERIFIED", "second"],
+    ]);
   });
 
   test("a build failure does not prevent another group from starting", async () => {

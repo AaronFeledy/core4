@@ -77,6 +77,7 @@ export const providerMemberPolicy = {
   restoreVolume: ["lifecycle", "effect"],
   listVolumes: ["metadata", "effect"],
   locateVolume: ["metadata", "effect"],
+  adoptDataRoot: ["metadata", "effect"],
   inspectResourceNames: ["metadata", "effect"],
   observeVolume: ["metadata", "effect"],
   adoptVolume: ["lifecycle", "effect"],

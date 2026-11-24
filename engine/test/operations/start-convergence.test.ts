@@ -4,6 +4,7 @@ import { APP_LABEL, APP_ROOT_LABEL, PROVIDER_LABEL, SERVICE_LABEL } from "@lando
 import { rememberAppliedPlan } from "@lando/container-runtime/provider-assembly";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import {
+  AbsolutePath,
   type AppPlan,
   type AppliedAppPlan,
   PortablePath,
@@ -66,6 +67,7 @@ const observedAdminer = (
   providerId: desired.provider,
   service: adminer.name,
   containerId: "adminer-container",
+  nativeName: "legacy-adminer",
   status: "running",
   labels: {
     [APP_LABEL]: desired.id,
@@ -149,6 +151,52 @@ test("a whole-app start removes a removed service's owned container and drops it
   expect(seen[0]?.recordedPlan).toBeUndefined();
   expect(Object.keys(record.read()?.services ?? {})).toEqual([String(web.name)]);
   expect(record.read()?.stores).toEqual([]);
+});
+
+test("upgrade removes an unlabeled service dropped from the recorded plan's successor", async () => {
+  const containers = runningContainer();
+  let adoptedRoot = desired.identity?.dataRoot;
+  const harness = makeHarness({
+    plannedApp: desired,
+    resolveAppliedPlan: () => Effect.succeed(appliedPlanRecord(withAdminer)),
+    providerOverrides: {
+      ...containers.providerOverrides,
+      adoptDataRoot: (plan) =>
+        Effect.sync(() => {
+          adoptedRoot = plan.identity?.dataRoot;
+        }),
+    },
+    resourceOwnership: () =>
+      Effect.sync(() =>
+        adoptedRoot === undefined
+          ? undefined
+          : {
+              appRoot: desired.root,
+              ownerKey: planAppIdentity(desired).ownerKey,
+              providerId: desired.provider,
+              appIds: [desired.id],
+              members: [
+                {
+                  kind: "container" as const,
+                  nativeName: "legacy-adminer",
+                  nativeId: "adminer-container",
+                  dataRoot: adoptedRoot,
+                  appId: desired.id,
+                  service: adminer.name,
+                },
+              ],
+            },
+      ),
+  });
+  const scoped = {
+    ...desired,
+    identity: { ...planAppIdentity(desired), dataRoot: AbsolutePath.make(harness.userDataRoot) },
+  };
+  const result = await Effect.runPromise(
+    startApp({}, { ...target, plan: scoped }).pipe(Effect.provide(harness.layer)),
+  );
+  expect(result.servicesRemoved).toEqual([String(adminer.name)]);
+  expect(containers.containers).toEqual([]);
 });
 
 test("a second start over the converged app removes nothing and stays quiet", async () => {

@@ -26,6 +26,12 @@ const ActiveEventFrames = Context.Reference<ReadonlyArray<ActiveEventFrame>>(
   },
 );
 
+/** Events whose steps are running on this fiber, outermost first, including through nested commands. */
+export const activeEventNames: Effect.Effect<ReadonlyArray<LandofileEventName>> = Effect.map(
+  Effect.service(ActiveEventFrames),
+  (frames) => frames.map((frame) => frame.event),
+);
+
 export const withinEventInvocation = Effect.fnUntraced(function* <A, E, R>(
   frame: ActiveEventFrame,
   work: Effect.Effect<A, E, R>,

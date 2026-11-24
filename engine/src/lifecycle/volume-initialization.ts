@@ -3,6 +3,7 @@ import { ProviderInternalError } from "@lando/sdk/errors";
 import type { AppPlan, VolumeCreationFact } from "@lando/sdk/schema";
 import { planDataId } from "@lando/sdk/schema";
 import { type ApplyOptions, type RuntimeProvider, StateStore } from "@lando/sdk/services";
+import { storeErrorRemediation } from "@lando/state-store";
 import { volumeInitialization } from "@lando/state-store/volume-initialization";
 import { withPhysicalVolumeLock } from "@lando/state-store/volume-lock";
 import { type Context, Effect, Option } from "effect";
@@ -91,8 +92,10 @@ export const recordCreatedVolume = Effect.fn("Lifecycle.recordCreatedVolume")(
               providerId: provider.id,
               operation: "record-volume-creation",
               message: "Could not persist verified volume creation evidence.",
-              remediation:
+              remediation: storeErrorRemediation(
+                cause,
                 "The volume remains ineligible for seeding; inspect durable state before retrying.",
+              ),
               cause,
             }),
       ),

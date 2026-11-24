@@ -53,13 +53,7 @@ const capabilities = {
   ...TestRuntimeProvider.capabilities,
   agentSocket: { delivery: "bind-directory" as const },
 };
-const run = <A, E>(
-  effect: Effect.Effect<
-    A,
-    E,
-    EventService | PathsService | import("@lando/state-store/private-file-access").PrivateFileAccessService
-  >,
-) =>
+const run = <A, E>(effect: Effect.Effect<A, E, EventService | PathsService | PrivateFileAccessService>) =>
   Effect.runPromise(
     effect.pipe(
       Effect.provide(LandoEventService.layer),
@@ -273,7 +267,7 @@ test("sidecar mode uses SshService.getAgentSocket as upstream", async () => {
   const requested: string[] = [];
   try {
     // When
-    const upstream = await Effect.runPromise(
+    const upstream = await run(
       operation
         .resolveSshAgentUpstream({ appId: plan.id, intent: { mode: "sidecar" }, platform: "linux" })
         .pipe(
@@ -285,7 +279,6 @@ test("sidecar mode uses SshService.getAgentSocket as upstream", async () => {
               return Effect.succeed({ appId, socketPath });
             },
           }),
-          Effect.provide(LandoEventService.layer),
         ),
     );
     // Then

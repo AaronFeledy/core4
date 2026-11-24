@@ -61,7 +61,7 @@ import { HostProxyWorkerRecord, probeWorker } from "@lando/engine/subsystems/hos
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import type { FileSyncEngineShape, RuntimeProviderShape, ServiceRuntimeInfo } from "@lando/sdk/services";
-import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRouterService, TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Cause, DateTime, Effect, Exit, Fiber, Layer, Queue, Schema, Stream } from "effect";
 import * as TestLandofileLayers from "../_support/landofile-layer.ts";
@@ -727,7 +727,7 @@ const makeStartLayer = (
     ),
     Layer.succeed(
       RuntimeProviderRegistry,
-      RuntimeProviderRegistry.of({
+      makeTestRuntimeProviderRegistry({
         resolveAppliedPlan: (root) =>
           Effect.sync(() => [...recordedPlans.values()].find((applied) => applied.root === root)),
         resolveTeardownEvidence: (root) =>
@@ -1060,7 +1060,7 @@ const makeAutoStartLayer = async (options: {
     ),
     Layer.succeed(
       RuntimeProviderRegistry,
-      RuntimeProviderRegistry.of({
+      makeTestRuntimeProviderRegistry({
         resolveAppliedPlan: (root) =>
           Effect.sync(() => [...recordedPlans.values()].find((applied) => applied.root === root)),
         resolveTeardownEvidence: (root) =>
@@ -1280,7 +1280,8 @@ describe("lando start", () => {
     // Then
     expect(failureOf(exit)).toMatchObject({
       _tag: "LandofileEventStepFailedError",
-      outputTail: "Unknown event tooling task missing-task.",
+      message: "Event pre-start step 1 did not run: Unknown event tooling task missing-task.",
+      outputTail: "",
     });
   });
 
@@ -1456,7 +1457,7 @@ describe("lando start", () => {
       phase: "app",
       message: "App build failed: 0 of 0 build steps failed.",
       failures: [],
-      remediation: "Inspect the reported app-phase build step failures, fix them, and rebuild.",
+      remediation: "Fix each failed build step, then run lando start.",
     });
     const harness = makeStartLayer({ buildAppEffect: Effect.fail(failure) });
 
@@ -1533,7 +1534,10 @@ describe("lando start", () => {
 
     const treeStart = harness.taskEvents.find((event) => event._tag === "task.tree.start");
     expect(treeStart).toBeDefined();
-    expect((treeStart?.children ?? []) as ReadonlyArray<string>).toEqual(["web", "database"]);
+    expect(treeStart?.children).toEqual([
+      { id: "web", label: "Apply service web" },
+      { id: "database", label: "Apply service database" },
+    ]);
 
     const taskStarts = harness.taskEvents.filter((event) => event._tag === "task.start");
     expect(taskStarts.map((event) => event.taskId as string).sort()).toEqual(["database", "web"]);
@@ -1584,7 +1588,7 @@ describe("lando start", () => {
         harness.taskEvents.find(
           (event) => event._tag === "task.tree.start" && event.parentId === hostProxyParent,
         ),
-      ).toMatchObject({ children: [hostProxyTask] });
+      ).toMatchObject({ children: [{ id: hostProxyTask, label: "Start host-proxy session" }] });
       expect(
         harness.taskEvents.some((event) => event._tag === "task.start" && event.taskId === hostProxyTask),
       ).toBe(true);
@@ -2300,7 +2304,7 @@ describe("lando start", () => {
         const globalParent = `start-global-${String(userPlan.id)}`;
         expect(
           harness.events.find((event) => event._tag === "task.tree.start" && event.parentId === globalParent),
-        ).toMatchObject({ children: [`${globalParent}:traefik`] });
+        ).toMatchObject({ children: [{ id: `${globalParent}:traefik`, label: "Start global traefik" }] });
         const globalCompleteAt = harness.events.findIndex(
           (event) => event._tag === "task.tree.complete" && event.parentId === globalParent,
         );
@@ -2555,10 +2559,7 @@ describe("lando start", () => {
       ),
       Layer.succeed(
         RuntimeProviderRegistry,
-        RuntimeProviderRegistry.of({
-          resolveAppliedPlan: () => Effect.succeed(undefined),
-          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-          appliedPlansFor: () => Effect.succeed([]),
+        makeTestRuntimeProviderRegistry({
           list: Effect.succeed([providerId]),
           capabilities: Effect.succeed(capabilities),
           select: () => Effect.succeed(provider),
@@ -2724,10 +2725,7 @@ describe("lando start", () => {
       ),
       Layer.succeed(
         RuntimeProviderRegistry,
-        RuntimeProviderRegistry.of({
-          resolveAppliedPlan: () => Effect.succeed(undefined),
-          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-          appliedPlansFor: () => Effect.succeed([]),
+        makeTestRuntimeProviderRegistry({
           list: Effect.succeed([providerId]),
           capabilities: Effect.succeed(capabilities),
           select: () => Effect.succeed(provider),
@@ -2884,10 +2882,7 @@ describe("lando start", () => {
       ),
       Layer.succeed(
         RuntimeProviderRegistry,
-        RuntimeProviderRegistry.of({
-          resolveAppliedPlan: () => Effect.succeed(undefined),
-          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-          appliedPlansFor: () => Effect.succeed([]),
+        makeTestRuntimeProviderRegistry({
           list: Effect.succeed([providerId]),
           capabilities: Effect.succeed(capabilities),
           select: () => Effect.succeed(provider),
@@ -3051,10 +3046,7 @@ describe("lando start", () => {
       ),
       Layer.succeed(
         RuntimeProviderRegistry,
-        RuntimeProviderRegistry.of({
-          resolveAppliedPlan: () => Effect.succeed(undefined),
-          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-          appliedPlansFor: () => Effect.succeed([]),
+        makeTestRuntimeProviderRegistry({
           list: Effect.succeed([providerId]),
           capabilities: Effect.succeed(capabilities),
           select: () => Effect.succeed(provider),
@@ -3229,10 +3221,7 @@ describe("lando start", () => {
       ),
       Layer.succeed(
         RuntimeProviderRegistry,
-        RuntimeProviderRegistry.of({
-          resolveAppliedPlan: () => Effect.succeed(undefined),
-          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-          appliedPlansFor: () => Effect.succeed([]),
+        makeTestRuntimeProviderRegistry({
           list: Effect.succeed([providerId]),
           capabilities: Effect.succeed(capabilities),
           select: () => Effect.succeed(provider),
@@ -3444,10 +3433,7 @@ describe("lando start", () => {
       ),
       Layer.succeed(
         RuntimeProviderRegistry,
-        RuntimeProviderRegistry.of({
-          resolveAppliedPlan: () => Effect.succeed(undefined),
-          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-          appliedPlansFor: () => Effect.succeed([]),
+        makeTestRuntimeProviderRegistry({
           list: Effect.succeed([providerId]),
           capabilities: Effect.succeed(capabilities),
           select: () => Effect.succeed(provider),
@@ -3636,10 +3622,7 @@ describe("lando start", () => {
       ),
       Layer.succeed(
         RuntimeProviderRegistry,
-        RuntimeProviderRegistry.of({
-          resolveAppliedPlan: () => Effect.succeed(undefined),
-          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-          appliedPlansFor: () => Effect.succeed([]),
+        makeTestRuntimeProviderRegistry({
           list: Effect.succeed([providerId]),
           capabilities: Effect.succeed(capabilities),
           select: () => Effect.succeed(provider),

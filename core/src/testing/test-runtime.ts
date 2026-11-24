@@ -78,7 +78,7 @@ import {
   planScratchRegistryWrite,
 } from "@lando/engine/scratch-app/registry";
 import { ScratchResourceScanner } from "@lando/engine/scratch-app/scanner";
-import { makeTestRuntimeProvider } from "@lando/sdk/test";
+import { makeTestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 type TestBootstrapLevel = "minimal" | "provider" | "global" | "scratch" | "app";
@@ -674,16 +674,13 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
     list: Effect.succeed([]),
   });
 
-  const runtimeProviderRegistryService = RuntimeProviderRegistry.of({
-    appliedPlansFor: () => Effect.succeed([]),
+  const runtimeProviderRegistryService = makeTestRuntimeProviderRegistry({
     list: Effect.succeed([providerId]),
     capabilities: Effect.succeed(runtimeProvider.capabilities),
     select: (target) =>
       Effect.succeed(
         outputRegisteredTestProvider(runtimeProvider, typeof target === "object" ? target : undefined),
       ),
-    resolveAppliedPlan: () => Effect.succeed(undefined),
-    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
   });
 
   const globalPaths = {

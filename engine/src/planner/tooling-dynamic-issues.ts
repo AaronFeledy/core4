@@ -1,4 +1,8 @@
-import { dynamicToolingReferenceIssues, toolingInvocationIssues } from "@lando/landofile/compiled-sites";
+import {
+  dynamicToolingReferenceIssues,
+  serviceUrlPlacementIssues,
+  toolingInvocationIssues,
+} from "@lando/landofile/compiled-sites";
 import type { ParsedPendingSite } from "@lando/sdk/schema";
 import type { ResolvedLandofile } from "./event-set.ts";
 import { pathIsBlocked } from "./landofile-scopes.ts";
@@ -20,6 +24,7 @@ export const toolingDynamicIssues = (
     return [
       ...dynamicToolingReferenceIssues(task, taskSites),
       ...toolingInvocationIssues(task, taskSites),
+      ...serviceUrlPlacementIssues(taskSites),
     ].map((issue) => {
       const source = toolingIssueSource(provenance, name, issue.path);
       return {

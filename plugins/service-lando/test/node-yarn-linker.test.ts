@@ -35,28 +35,43 @@ test.each([
   ["yarn@1.22.22", "nodeLinker: pnp", false],
   ["npm@11.0.0", "nodeLinker: pnp", false],
   ["pnpm@9.15.0", "nodeLinker: pnp", false],
-] as const)("%s with rc %j sets the PnP include: %s", async (pin, rc, pnp) => {
+  ["bun@1.3.0", "nodeLinker: pnp", false],
+] as const)("%s with rc %j selects PnP mount policy: %s", async (pin, rc, pnp) => {
   const result = await Effect.runPromise(
     resolveNode(pin, [rc === undefined ? { path: ".yarnrc.yml", present: false } : file(".yarnrc.yml", rc)]),
   );
-  expect(result.features?.find((feature) => feature.id === "lando.app-mount")?.config).toMatchObject({
-    includes: pnp ? ["node_modules"] : [],
-  });
+  const config = result.features?.find((feature) => feature.id === "lando.app-mount")?.config;
+  expect(config).toMatchObject({ excludes: pnp ? [] : ["node_modules"] });
+  expect(config).not.toHaveProperty("includes");
 });
 
 test.each([
-  ["nodeLinker: pnp", ["node_modules"]],
-  ["enableGlobalCache: false", []],
-] as const)("uses the nearest declared linker when the nested rc is %s", async (nestedRc, includes) => {
+  ["nodeLinker: pnp", []],
+  ["enableGlobalCache: false", ["node_modules", "apps/web/node_modules"]],
+] as const)("uses the nearest declared linker when the nested rc is %s", async (nestedRc, excludes) => {
   const result = await Effect.runPromise(
     resolveNode(
       "yarn@4.5.3",
       [file("apps/web/.yarnrc.yml", nestedRc), file(".yarnrc.yml", "nodeLinker: node-modules")],
-      "apps/web",
+      "./apps//web/./",
     ),
   );
   expect(result.features?.find((feature) => feature.id === "lando.app-mount")?.config).toMatchObject({
-    includes,
+    excludes,
+  });
+});
+
+test("a Windows-spelled packageRoot excludes the POSIX container path", async () => {
+  const result = await Effect.runPromise(resolveNode("npm@11.0.0", [], "apps\\web"));
+  expect(result.features?.find((feature) => feature.id === "lando.app-mount")?.config).toMatchObject({
+    excludes: ["node_modules", "apps/web/node_modules"],
+  });
+});
+
+test("a packageRoot equivalent to the app root gets only one dependency exclude", async () => {
+  const result = await Effect.runPromise(resolveNode("npm@11.0.0", [], "././"));
+  expect(result.features?.find((feature) => feature.id === "lando.app-mount")?.config).toMatchObject({
+    excludes: ["node_modules"],
   });
 });
 

@@ -10,6 +10,7 @@ import type {
   DoctorSkip,
 } from "./doctor-contract";
 import {
+  DOCTOR_SECTION_LABELS,
   type DoctorSectionOutcome,
   checksOutcome,
   doctorTreeSummary,
@@ -164,6 +165,6 @@ const collectWithTree = Effect.fnUntraced(function* (input: CollectDoctorReportI
 
 const sectionOutcomeFor = (id: DoctorSectionId, output: DoctorSectionOutput): DoctorSectionOutcome => {
   if (output.checks.length === 0 && output.skipped.length > 0)
-    return { summary: `${id} · skipped`, skipped: true };
+    return { summary: `${DOCTOR_SECTION_LABELS[id]} · skipped`, skipped: true };
   return checksOutcome(id, output.checks);
 };

@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { ProviderUnavailableError, ProxyError } from "@lando/sdk/errors";
 import { AbsolutePath, type AppPlan, FileSyncSessionRef } from "@lando/sdk/schema";
 import { RouterService, RuntimeProviderRegistry, ToolingEngine } from "@lando/sdk/services";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { DateTime, Effect } from "effect";
 import { rebuildApp } from "../../src/operations/rebuild.ts";
 import { restartApp } from "../../src/operations/restart.ts";
@@ -121,23 +122,26 @@ for (const operation of [restartApp, rebuildApp]) {
 
     await Effect.runPromise(
       operation({}, { plan: ordinaryPlan, app, root: app.root }).pipe(
-        Effect.provideService(RuntimeProviderRegistry, {
-          ...harness.runtimeProviderRegistry,
-          select: () =>
-            Effect.succeed({
-              ...provider,
-              inspectAppliedFileSync: () =>
-                Effect.sync(() =>
-                  applied
-                    ? {
-                        status: "accelerated" as const,
-                        engineId: "mutagen",
-                        sessions: oldPlan.fileSync.map(({ session }) => session),
-                      }
-                    : { status: "missing" as const },
-                ),
-            }),
-        }),
+        Effect.provideService(
+          RuntimeProviderRegistry,
+          makeTestRuntimeProviderRegistry({
+            ...harness.runtimeProviderRegistry,
+            select: () =>
+              Effect.succeed({
+                ...provider,
+                inspectAppliedFileSync: () =>
+                  Effect.sync(() =>
+                    applied
+                      ? {
+                          status: "accelerated" as const,
+                          engineId: "mutagen",
+                          sessions: oldPlan.fileSync.map(({ session }) => session),
+                        }
+                      : { status: "missing" as const },
+                  ),
+              }),
+          }),
+        ),
         Effect.provide(harness.layer),
       ),
     );

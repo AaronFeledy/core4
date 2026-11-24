@@ -8,7 +8,7 @@ import {
   ServiceName,
 } from "@lando/sdk/schema";
 import { AppPlanner, LandofileService, RuntimeProviderRegistry } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { DateTime, Effect, Layer, Stream } from "effect";
 
 import { resolveBuiltInCommand } from "../../src/cli/built-in-command-registry.ts";
@@ -113,10 +113,7 @@ describe("lando ssh — provider-exec TTY command behavior", () => {
         Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
         Layer.succeed(
           RuntimeProviderRegistry,
-          RuntimeProviderRegistry.of({
-            resolveAppliedPlan: () => Effect.succeed(undefined),
-            resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-            appliedPlansFor: () => Effect.succeed([]),
+          makeTestRuntimeProviderRegistry({
             list: Effect.succeed([providerId]),
             capabilities: Effect.succeed(provider.capabilities),
             select: () => Effect.succeed(provider),

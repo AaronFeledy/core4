@@ -54,7 +54,7 @@ export const publishTree = Effect.fnUntraced(function* (
     TaskTreeStartEvent.make({
       parentId: "db",
       label,
-      children: steps.map((step) => step.id),
+      children: steps.map((step) => ({ id: step.id, label: step.label })),
       timestamp: now,
     }),
   );

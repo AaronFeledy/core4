@@ -4,7 +4,7 @@ import { DateTime, Effect, Result } from "effect";
 import type { EngineHttpRequest, EngineHttpResponse } from "../src/engine-api.ts";
 import {
   coherentPrivateNetworkOwnership,
-  networkLabelsDecision,
+  matchesPrivateNetworkLabels,
   networkOwnershipLabels,
 } from "../src/native-ownership.ts";
 import { ensurePrivateNetwork } from "../src/podman/bring-up-networks.ts";
@@ -37,7 +37,7 @@ test("scratch private networks carry complete six-label proof", () => {
     "dev.lando.scratch-id": appId,
   });
   expect(coherentPrivateNetworkOwnership(labels, "docker")).toBe(true);
-  expect(networkLabelsDecision({}, labels)).toBe("foreign");
+  expect(matchesPrivateNetworkLabels({}, labels)).toBe(false);
   for (const damaged of [
     { ...labels, "dev.lando.scratch-id": "other" },
     { ...labels, "dev.lando.scratch": "FALSE" },
@@ -51,7 +51,7 @@ test("scratch private networks carry complete six-label proof", () => {
   }
   const ordinary = networkOwnershipLabels({ ...plan, extensions: {} });
   expect(Object.keys(ordinary)).toHaveLength(4);
-  expect(networkLabelsDecision(ordinary, labels)).toBe("foreign");
+  expect(matchesPrivateNetworkLabels(ordinary, labels)).toBe(false);
 });
 
 const ctx = { providerId: "docker", remediation: "Retry.", env: {} };

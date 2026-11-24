@@ -30,7 +30,12 @@ import {
   RuntimeProviderRegistry,
   StateStore,
 } from "@lando/sdk/services";
-import { TestFileSyncEngine, TestRuntimeProvider, makeTestRouterService } from "@lando/sdk/test";
+import {
+  TestFileSyncEngine,
+  TestRuntimeProvider,
+  makeTestRouterService,
+  makeTestRuntimeProviderRegistry,
+} from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { DateTime, Deferred, Effect, Fiber, Layer, Schema, Stream } from "effect";
 import {
@@ -184,11 +189,16 @@ const makeHarness = (input: {
         calls.push(`cleanupOwnedResources(volumes:${options.volumes})`);
         if (options.volumes) volumes.clear();
         cleanupRoots.push(root);
-        return { servicesRemoved: ["owned-web"], networksRemoved: 0, volumesRemoved: { data: 0, cache: 0 } };
+        return {
+          servicesRemoved: [ServiceName.make("owned-web")],
+          networksRemoved: 0,
+          volumesRemoved: { data: 0, cache: 0 },
+        };
       }),
   };
-  const registry = {
-    appliedPlansFor: (root: AbsolutePath, scope?: ProviderId) => {
+  const readAppliedPlan = () => Effect.sync(() => appliedPlan);
+  const registry = makeTestRuntimeProviderRegistry({
+    appliedPlansFor: (root, { providerId: scope } = {}) => {
       appliedPlanReads.push(scope);
       return Effect.succeed(
         appliedPlan !== undefined &&
@@ -198,15 +208,13 @@ const makeHarness = (input: {
           : [],
       );
     },
-    appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
     list: Effect.succeed([providerId, otherProviderId]),
-    capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
     select: (target?: AppPlan | ProviderId) =>
       Effect.succeed({
         ...provider,
         id: typeof target === "string" ? target : (target?.provider ?? provider.id),
       }),
-    resolveAppliedPlan: () => Effect.sync(() => appliedPlan),
+    resolveAppliedPlan: readAppliedPlan,
     resolveTeardownEvidence: (root: AbsolutePath) =>
       Effect.gen(function* () {
         const scope = yield* TeardownProvider;
@@ -225,7 +233,7 @@ const makeHarness = (input: {
       }),
     resourceOwnership: () => Effect.succeed(undefined),
     observeRuntime: Effect.succeed([]),
-  };
+  });
   const router = RouterService.of({
     ...makeTestRouterService(),
     removeRoutes: (owner) =>
@@ -284,7 +292,7 @@ const makeHarness = (input: {
   return {
     layer,
     listVolumes: provider.listVolumes,
-    readAppliedPlan: registry.resolveAppliedPlan,
+    readAppliedPlan,
     calls,
     destroyCalls,
     removalAttempts,
@@ -597,6 +605,52 @@ describe("stopAppAtRoot", () => {
         expect(harness.removedVolumes).toEqual([]);
         expect(await Effect.runPromise(harness.readAppliedPlan())).toEqual(
           kind === "applied" ? plan : undefined,
+        );
+      });
+    },
+  );
+  test.each([
+    { kind: "applied", rootExists: false },
+    { kind: "orphans", rootExists: false },
+    { kind: "orphans", rootExists: true },
+    { kind: "owned", rootExists: true },
+  ] as const)(
+    "selected stop refuses an unfinished start before touching writers ($kind, root exists: $rootExists)",
+    async ({ kind, rootExists }) => {
+      await withTempRoot(async (root) => {
+        const plan = acceleratedPlanAt(root);
+        const app = { kind: "user" as const, id: plan.id, root: plan.root };
+        const harness = makeHarness({
+          ...(kind === "applied" ? { appliedPlan: plan } : {}),
+          ...(kind === "orphans" ? { orphans: [orphanGroup(root, ["web"], app.id)] } : {}),
+          ...(kind === "owned" ? { ownership: [{ ...ownershipAt(root), appIds: [app.id] }] } : {}),
+        });
+        const layer = Layer.mergeAll(
+          harness.layer,
+          Layer.succeed(FileSyncResolver, {
+            candidates: [],
+            select: () => Effect.succeed(undefined),
+            acquire: () => Effect.succeed({ ...TestFileSyncEngine, id: "mutagen" }),
+          }),
+        );
+        await Effect.runPromise(
+          beginOrResumeAcceleratedStart(plan, app, [web.name]).pipe(Effect.asVoid, Effect.provide(layer)),
+        );
+        if (!rootExists) await rm(root, { recursive: true, force: true });
+        const before = await Effect.runPromise(readJournal(app).pipe(Effect.provide(layer)));
+
+        const stopped = await Effect.runPromise(
+          stopAppAtRoot(root, { services: [web.name] }).pipe(Effect.provide(layer), Effect.result),
+        );
+
+        expect(stopped).toMatchObject({ _tag: "Failure", failure: { _tag: "FileSyncStopError" } });
+        if (stopped._tag === "Failure") expect(stopped.failure.remediation).toContain("`lando start -s web`");
+        expect(harness.calls).toEqual([]);
+        expect(harness.destroyCalls).toEqual([]);
+        expect(harness.removalAttempts).toEqual([]);
+        expect(harness.cleanupRoots).toEqual([]);
+        expect((await Effect.runPromise(readJournal(app).pipe(Effect.provide(layer)))).pending).toEqual(
+          before.pending,
         );
       });
     },

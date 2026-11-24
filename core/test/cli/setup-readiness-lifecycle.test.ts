@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { TestRuntimeProvider, makeTestDownloader, makeTestInteractionService } from "@lando/core/testing";
 import { GlobalConfigSources } from "@lando/engine/services/config";
 import { layerWith } from "@lando/http-client/live";
+import { makeLandoPaths } from "@lando/paths";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { GlobalConfig, ProviderId } from "@lando/sdk/schema";
 import {
@@ -12,9 +13,10 @@ import {
   ConfigService,
   Downloader,
   InteractionService,
+  PathsService,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
-import { makeTestCertificateAuthority } from "@lando/sdk/test";
+import { makeTestCertificateAuthority, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Cause, Effect, Exit, Layer, Schema } from "effect";
 import { setupSpec } from "../../src/cli/command-specs/meta/setup";
 import { readSetupReadiness, writeSetupReadiness } from "../../src/cli/commands/setup-readiness";
@@ -50,19 +52,20 @@ test.each(["provider", "ca", "selection-failure", "selection-defect"] as const)(
       }
     };
     const layers = Layer.mergeAll(
+      Layer.succeed(PathsService, makeLandoPaths()),
       Layer.succeed(ConfigService, {
         load: Effect.succeed(config),
         get: (key) => Effect.succeed(config[key]),
       }),
       Layer.succeed(GlobalConfigSources, { env: {}, sources: { user: false, env: false } }),
-      Layer.succeed(RuntimeProviderRegistry, {
-        resolveAppliedPlan: () => Effect.succeed(undefined),
-        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-        appliedPlansFor: () => Effect.succeed([]),
-        list: Effect.succeed([ProviderId.make("podman")]),
-        capabilities: Effect.succeed(provider.capabilities),
-        select,
-      }),
+      Layer.succeed(
+        RuntimeProviderRegistry,
+        makeTestRuntimeProviderRegistry({
+          list: Effect.succeed([ProviderId.make("podman")]),
+          capabilities: Effect.succeed(provider.capabilities),
+          select,
+        }),
+      ),
       Layer.succeed(CertificateAuthority, {
         ...makeTestCertificateAuthority(),
         setup: () => Effect.interrupt,

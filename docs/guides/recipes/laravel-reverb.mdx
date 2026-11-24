@@ -18,7 +18,7 @@ lando init --recipe laravel --name=reverb-demo --yes --answer=worker=true
 cd reverb-demo
 ```
 
-`--answer=worker=true` adds a queue `worker` service and shares `vendor/` between `appserver` and `worker`, so both boot against the same Composer install. Before the first start, open `.lando.yml`. Change the `command` and `depends_on` of `worker`, and add `APP_URL` to `appserver` and `worker`, next to any `environment` keys they already have:
+`--answer=worker=true` adds a queue `worker` service. It mounts the same project directory as `appserver`, so both boot against the same Composer install. Before the first start, open `.lando.yml`. Change the `command` and `depends_on` of `worker`, and add `APP_URL` to `appserver` and `worker`, next to any `environment` keys they already have:
 
 ```yaml
 services:
@@ -124,10 +124,6 @@ services:
     type: "php:{{ recipe.php }}"
     port: 8080
     command: "php artisan reverb:start --host=0.0.0.0 --port={{ service.port }}"
-    appMount:
-      target: /app
-      includes:
-        - vendor
     depends_on:
       database:
         condition: service_healthy
@@ -161,7 +157,7 @@ lando start
 
 This starts the new services and brings the worker back up after installing Laravel. `queue:listen` reloads code for each job. Stock PHP includes the `pcntl` extension it needs.
 
-`port: 8080` routes to Reverb, not Apache. The [port expression](../landofile/expressions.mdx#your-services-own-port) passes that port to Reverb. The scanner probes `/up` because Reverb returns 404 at `/`. `includes: [vendor]` exposes the same Composer dependencies to all three PHP services; otherwise each has a separate vendor volume. Node serves nothing, so it has no endpoints.
+`port: 8080` routes to Reverb, not Apache. The [port expression](../landofile/expressions.mdx#your-services-own-port) passes that port to Reverb. The scanner probes `/up` because Reverb returns 404 at `/`. All three PHP services read the same `vendor` through the app mount. Node serves nothing, so it has no endpoints.
 
 Both PHP processes wait for a healthy database because the queue and Reverb's restart cache use MariaDB here. The health gate prevents a cold-start connection race, but doesn't create the tables: run the migration before this start.
 
@@ -280,7 +276,7 @@ If nothing arrives within 60 seconds, the script exits 1. Check `lando logs -s w
 
 | You see | Fix |
 | --- | --- |
-| `Failed opening required '/app/vendor/autoload.php'` from `worker` or `reverb` | That service lacks `includes: [vendor]`. Add it and run `lando start`. |
+| `Failed opening required '/app/vendor/autoload.php'` from `worker` or `reverb` | Composer dependencies aren't installed. Run `lando composer install`. |
 | `tempnam(): file created in the system's temporary directory` on the app URL | Check which directory Laravel cannot write and the service's project-user status. See [Who owns your app files](../services/file-ownership.mdx). |
 
 ## Tear down
@@ -305,7 +301,6 @@ lando destroy -y
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"hostname\":\\s*\"ws\\." } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"path\":\\s*\"/up\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"command\":\\s*\"php artisan queue:listen\"" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"includes\":\\s*\\[\\s*\"vendor\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"condition\":\\s*\"service_healthy\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"npm\":\\s*\\{[^}]*\"service\":\\s*\"node\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"VITE_REVERB_URL\":\\s*\"\\{\\{ services\\.reverb\\.url \\}\\}\"" } }} />

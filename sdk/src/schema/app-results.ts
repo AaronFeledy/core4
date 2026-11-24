@@ -105,6 +105,9 @@ export const StopAppResult = Schema.Struct({
   servicesStopped: Schema.Array(Schema.String).annotate({
     description: "Names of the services stopped by the operation.",
   }),
+  servicesKeptRunning: Schema.optionalKey(Schema.Array(Schema.String)).annotate({
+    description: "Names of services that stayed running after a selected stop. Omitted for whole-app stop.",
+  }),
   shutdownObservations: Schema.optionalKey(Schema.Array(ServiceShutdownObservation)).annotate({
     description: "Attributed daemon shutdown facts, when the provider supports observation.",
   }),
@@ -217,6 +220,40 @@ export const InfoAppHostProxy = Schema.Struct({
 });
 export type InfoAppHostProxy = typeof InfoAppHostProxy.Type;
 
+/**
+ * Filesystem applied-state observation for `lando info`. Distinct from service runtime status:
+ * a newer or damaged record is unknown with a version/unreadable diagnosis, never silent absence.
+ */
+const infoAppliedStateIssueFields = {
+  path: Schema.String.annotate({ description: "Path to the applied-state file." }),
+  message: Schema.String.annotate({ description: "Why Lando could not read the applied state." }),
+  remediation: Schema.String.annotate({ description: "How to recover from the reported issue." }),
+};
+
+export const InfoAppliedStateIssue = Schema.Union([
+  Schema.Struct({
+    ...infoAppliedStateIssueFields,
+    reason: Schema.Literal("unreadable").annotate({ description: "The applied state could not be read." }),
+  }),
+  Schema.Struct({
+    ...infoAppliedStateIssueFields,
+    reason: Schema.Literal("newer-version").annotate({
+      description: "A newer Lando wrote this applied state.",
+    }),
+    storedVersion: Schema.Int.annotate({ description: "Applied-state format version stored on disk." }),
+    supportedVersion: Schema.Int.annotate({
+      description: "Applied-state format version this Lando supports.",
+    }),
+    writtenBy: Schema.optionalKey(
+      Schema.String.annotate({ description: "Lando version that wrote the record, when recorded." }),
+    ),
+  }),
+]).annotate({
+  description:
+    "A diagnosis for applied provider state that Lando leaves in place because it cannot read it safely.",
+});
+export type InfoAppliedStateIssue = typeof InfoAppliedStateIssue.Type;
+
 export const InfoAppResult = Schema.Struct({
   app: Schema.String.annotate({ description: "Name of the inspected app." }),
   dataName: Schema.optionalKey(Schema.String).annotate({
@@ -235,6 +272,9 @@ export const InfoAppResult = Schema.Struct({
   }),
   fileSync: Schema.optionalKey(FileSyncInfo).annotate({
     description: "File synchronization status, when available.",
+  }),
+  appliedStateIssue: Schema.optionalKey(InfoAppliedStateIssue).annotate({
+    description: "Present only when Lando cannot safely read this app's applied-state record.",
   }),
 }).annotate({ description: "Service and host-integration observations returned when inspecting an app." });
 export type InfoAppResult = typeof InfoAppResult.Type;

@@ -1,3 +1,4 @@
+import { adoptionReceiptsFromSummary } from "@lando/container-runtime/native-ownership";
 import { AppResolveError } from "@lando/sdk/errors";
 import { PostGlobalDestroyEvent, PreGlobalDestroyEvent } from "@lando/sdk/events";
 import {
@@ -23,6 +24,7 @@ import { type AppliedStateProvider, resolveTeardownEvidence } from "../providers
 import { observeRuntime, prepareTeardownOwners, runtimeOnline } from "../providers/runtime-observation.ts";
 import { canonicalMissingAppRoot } from "./app-mutation-lock.ts";
 import { missingRootAppliedTarget } from "./applied-state-target.ts";
+import { currentDataRoot, serviceInDataRoot } from "./data-root-scope.ts";
 import { withDestroyProgress } from "./destroy-progress.ts";
 import { removeGlobalResources } from "./global-teardown-resources.ts";
 import { withShutdownObservations } from "./shutdown-observations.ts";
@@ -39,17 +41,17 @@ export const resolveGlobalTeardown = Effect.fn("GlobalApp.resolveTeardown")(func
   const registry = yield* RuntimeProviderRegistry;
   const explicit = yield* TeardownProvider;
   const providerId = explicit ?? (yield* globalObserveProviderId);
+  const recorded = yield* registry.readAppliedPlanStrict({ id: AppId.make("global"), provider: providerId });
+  const plans =
+    recorded !== undefined && (recorded.identity?.appRoot ?? recorded.root) === root ? [recorded] : [];
   const provider = yield* registry.select(providerId);
   const resourceOwnership = registry.resourceOwnership;
   const ownership = yield* resourceOwnership?.(providerId, root) ?? Effect.succeed(undefined);
-  if (
-    intent === "destroy" &&
-    (ownership !== undefined ||
-      (yield* registry.appliedPlansFor(root, providerId)).some((plan) => plan.provider === providerId))
-  )
+  if (intent === "destroy" && (ownership !== undefined || plans.length > 0))
     yield* prepareTeardownOwners([provider]);
   const observedProvider = {
     ...provider,
+    appliedStateInventory: Effect.succeed({ plans, unreadable: [] }),
     isAvailable: observeRuntime(provider).pipe(
       Effect.flatMap((observation) =>
         observation.kind === "unavailable"
@@ -63,7 +65,12 @@ export const resolveGlobalTeardown = Effect.fn("GlobalApp.resolveTeardown")(func
     ...(resourceOwnership === undefined ? {} : { resourceOwnership: () => Effect.succeed(ownership) }),
     canCleanupOwnedResources: Effect.succeed(provider.cleanupOwnedResources !== undefined),
   } satisfies AppliedStateProvider;
-  const evidence = yield* resolveTeardownEvidence(root, [observedProvider]);
+  const evidence = yield* resolveTeardownEvidence(
+    root,
+    [observedProvider],
+    { kind: "global", id: "global" },
+    yield* currentDataRoot,
+  );
   if (evidence.kind === "applied") yield* missingRootAppliedTarget(evidence.plan, root);
   const fileSystem = yield* FileSystem;
   const materialized = yield* fileSystem.exists(paths.distLandofile);
@@ -143,10 +150,12 @@ export const resolveGlobalStopSelection = Effect.fn("GlobalApp.resolveStopSelect
   const observed = online
     ? yield* resolved.provider.list({ app: evidence.plan.id, includeUnplanned: true })
     : [];
+  const receipts = (evidence.ownership ?? []).flatMap(adoptionReceiptsFromSummary);
   const owned = observed.filter(
     (service) =>
       service.app === evidence.plan.id &&
       service.appRoot === resolved.paths.root &&
+      serviceInDataRoot(service, evidence.plan.identity?.dataRoot, receipts) &&
       service.providerId === evidence.plan.provider &&
       service.containerId !== undefined,
   );

@@ -143,9 +143,10 @@ func fakeDrupalComposer(command, workingDir string, arguments []string, mode str
 			return 2
 		}
 		target := arguments[1]
-		_ = os.MkdirAll(filepath.Join(target, "web"), 0o755)
-		_ = os.MkdirAll(filepath.Join(target, "vendor", "bin"), 0o755)
-		_ = os.WriteFile(filepath.Join(target, "composer.json"), []byte("{}\n"), 0o644)
+		writeFakeJSON(filepath.Join(target, "composer.json"), map[string]any{
+			"require": map[string]string{"drupal/core-recommended": "^11.4"},
+			"extra":   json.RawMessage(`{"drupal-scaffold":{"locations":{"web-root":"web/"}},"installer-paths":{"web/core":["type:drupal-core"],"web/modules/contrib/{$name}":["type:drupal-module"],"drush/Commands/contrib/{$name}":["type:drupal-drush"]}}`),
+		})
 		if mode == "staged-config" {
 			if err := os.WriteFile(filepath.Join(target, "phpcs.xml.dist"), []byte("project rules\n"), 0o644); err != nil {
 				return 2
@@ -156,14 +157,34 @@ func fakeDrupalComposer(command, workingDir string, arguments []string, mode str
 		if workingDir == "" {
 			return 2
 		}
-		if slices.Equal(arguments, []string{"drush/drush"}) {
-			return fakeComposerBinaries(workingDir, "", "drush")
+		return 0
+	case "update":
+		root := fakeDrupalSiteWebroot(workingDir)
+		if err := os.MkdirAll(filepath.Join(workingDir, root, "core"), 0o755); err != nil {
+			return 2
 		}
-		if slices.Contains(arguments, "--dev") {
-			return fakeComposerBinaries(workingDir, mode, "phpcs", "phpcbf", "phpstan")
+		if err := os.WriteFile(filepath.Join(workingDir, root, "index.php"), []byte("<?php\n"), 0o644); err != nil {
+			return 2
 		}
+		if err := os.MkdirAll(filepath.Join(workingDir, "vendor", "bin"), 0o755); err != nil {
+			return 2
+		}
+		if err := os.WriteFile(filepath.Join(workingDir, "composer.lock"), []byte("{}\n"), 0o644); err != nil {
+			return 2
+		}
+		return fakeComposerBinaries(workingDir, mode, "drush", "phpcs", "phpcbf", "phpstan")
+	case "run-script":
+		return 0
 	}
 	return 2
+}
+
+func fakeDrupalSiteWebroot(directory string) string {
+	manifest := readFakeJSON(filepath.Join(directory, "composer.json"))
+	extra := manifest["extra"].(map[string]any)
+	scaffold := extra["drupal-scaffold"].(map[string]any)
+	locations := scaffold["locations"].(map[string]any)
+	return strings.TrimSuffix(locations["web-root"].(string), "/")
 }
 
 func fakeComposerBinaries(workingDir, mode string, binaries ...string) int {

@@ -16,7 +16,8 @@ export type SqlTestOptions = {
   readonly password: string;
   readonly readPayload?: Uint8Array;
   readonly connection?: DatabaseConnection;
-  readonly appliedPlans?: SqlCommandDeps["appliedPlans"];
+  readonly appliedPlans?: import("effect").Effect.Effect<readonly import("@lando/sdk/schema").AppPlan[]>;
+  readonly findAppliedSource?: NonNullable<SqlCommandDeps["findAppliedSource"]>;
   readonly inspectSource?: SqlCommandDeps["inspectSource"];
   readonly rootPassword?: string;
   readonly type?: string;

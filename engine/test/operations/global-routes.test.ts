@@ -56,6 +56,23 @@ const makeRouter = () => ({
 const sibling = ServiceName.make("sibling");
 const siblingPlan: AppPlan = {
   ...plan,
+  services: {
+    [sibling]: {
+      name: sibling,
+      type: "compose",
+      primary: false,
+      provider: plan.provider,
+      artifact: { kind: "ref", ref: "alpine" },
+      environment: {},
+      mounts: [],
+      endpoints: [],
+      routes: [],
+      dependsOn: [],
+      hostAliases: [],
+      extensions: {},
+      metadata: plan.metadata,
+    },
+  },
   routes: [
     ...plan.routes,
     {
@@ -73,6 +90,8 @@ const observation = {
   appRoot: plan.root,
   providerId: plan.provider,
   service: sibling,
+  containerId: "sibling-container",
+  labels: { "dev.lando.app": plan.id, "dev.lando.app-root": plan.root, "dev.lando.service": sibling },
   status: "running" as const,
   publications: { status: "unknown" as const },
 };

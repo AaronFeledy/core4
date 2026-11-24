@@ -31,7 +31,7 @@ import * as hostProxyWorker from "@lando/engine/subsystems/host-proxy/worker";
 import { stubContainerHelper } from "@lando/engine/testing/container-helper";
 import { FileSyncStartError } from "@lando/sdk/errors";
 import type { FileSyncEngineShape } from "@lando/sdk/services";
-import { TestRouterService } from "@lando/sdk/test";
+import { TestRouterService, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Cause, DateTime, Deferred, Effect, Exit, Fiber, Layer, Stream } from "effect";
 import { preparedFileSyncTargets } from "../_support/prepared-sync-targets.ts";
 import { withCwd, withEnvVar } from "../_support/temp-cwd.ts";
@@ -295,7 +295,7 @@ const appLayer = (
         Layer.succeed(RuntimeProvider, RuntimeProvider.of(fixtureProvider)),
         Layer.succeed(
           RuntimeProviderRegistry,
-          RuntimeProviderRegistry.of({
+          makeTestRuntimeProviderRegistry({
             resolveAppliedPlan: (root) =>
               (fixtureProvider.appliedPlans ?? Effect.succeed([])).pipe(
                 Effect.map((plans) => plans.find((candidate) => candidate.root === root)),
@@ -764,6 +764,27 @@ describe("App handle managed lifecycle scopes", () => {
     });
   });
 
+  test("selected stop keeps the managed start scope that running siblings still use", async () => {
+    await withTempApp(async (dir) => {
+      const tracking = makeTrackingEngine();
+      const base = planWithFileSync(dir);
+      const worker = { ...webService, name: ServiceName.make("worker"), primary: false, endpoints: [] };
+      const plan: AppPlan = { ...base, services: { ...base.services, [worker.name]: worker } };
+      const sizes = await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const app = yield* resolveApp();
+            yield* app.start();
+            yield* app.stop({ services: [worker.name] });
+            return tracking.sessions.size;
+          }),
+        ).pipe(Effect.provide(appLayer(tracking.engine, dir, plan))),
+      );
+
+      expect(sizes).toBe(1);
+    });
+  });
+
   test("successful destroy closes the managed start scope before returning", async () => {
     await withTempApp(async (dir) => {
       const tracking = makeTrackingEngine();
@@ -818,7 +839,7 @@ describe("App handle managed lifecycle scopes", () => {
       });
     });
   }
-  test("repeated accelerated stop fails closed after the managed session was drained", async () => {
+  test("repeated accelerated stop succeeds after the managed session was drained", async () => {
     await withTempApp(async (dir) => {
       const tracking = makeTrackingEngine();
       const destroys: Array<{ volumes: boolean; removeState: boolean | undefined }> = [];
@@ -840,9 +861,11 @@ describe("App handle managed lifecycle scopes", () => {
         ).pipe(Effect.provide(appLayer(tracking.engine, dir, planWithFileSync(dir), provider))),
       );
 
-      expect(secondStop._tag).toBe("Failure");
-      if (secondStop._tag === "Failure") expect(secondStop.failure._tag).toBe("FileSyncStopError");
-      expect(destroys).toEqual([{ volumes: false, removeState: false }]);
+      expect(secondStop._tag).toBe("Success");
+      expect(destroys).toEqual([
+        { volumes: false, removeState: false },
+        { volumes: false, removeState: false },
+      ]);
       expect(tracking.sessions.size).toBe(0);
     });
   });
@@ -1419,10 +1442,7 @@ describe("App handle managed lifecycle scopes", () => {
                   Layer.succeed(RuntimeProvider, RuntimeProvider.of(fixtureProvider)),
                   Layer.succeed(
                     RuntimeProviderRegistry,
-                    RuntimeProviderRegistry.of({
-                      resolveAppliedPlan: () => Effect.succeed(undefined),
-                      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-                      appliedPlansFor: () => Effect.succeed([]),
+                    makeTestRuntimeProviderRegistry({
                       list: Effect.succeed([ProviderId.make(fixtureProvider.id)]),
                       capabilities: Effect.succeed(fixtureProvider.capabilities),
                       select: () => Effect.succeed(fixtureProvider),

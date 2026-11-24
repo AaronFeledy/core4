@@ -34,8 +34,16 @@
  * either form. The labels are not collapsed into one, so nothing here needs a
  * migration path for volumes an earlier build created.
  */
-import { type AppPlan, appIdentityKey, planAppIdentity, planDataId } from "@lando/sdk/schema";
+import {
+  type AppPlan,
+  PHYSICAL_VOLUME_LOCK_TIER,
+  type PhysicalVolumeLockTier,
+  appIdentityKey,
+  planAppIdentity,
+  planDataId,
+} from "@lando/sdk/schema";
 
+import { dataRootLabels } from "./data-root-labels.ts";
 import { isOwnershipRoot } from "./ownership-root.ts";
 import {
   type VolumeFilterMap,
@@ -57,6 +65,13 @@ const GLOBAL_CACHE_APP = "@global-cache";
 
 export const isGlobalCacheStore = (store: Pick<AppPlan["stores"][number], "scope" | "kind">) =>
   store.scope === "global" && store.kind === "cache";
+
+export const ownedVolumeLockTier = (appId: string, shared: boolean): PhysicalVolumeLockTier | undefined =>
+  shared
+    ? PHYSICAL_VOLUME_LOCK_TIER.cache
+    : appId === "global"
+      ? PHYSICAL_VOLUME_LOCK_TIER.globalApp
+      : undefined;
 
 export const sharedCacheOwnershipLabels = (providerId: string) => ({
   [VOLUME_OWNER_LABEL]: GLOBAL_CACHE_OWNER,
@@ -149,6 +164,7 @@ export const volumeOwnershipLabels = (
   const ownership = planAppIdentity(plan);
   return {
     [VOLUME_OWNER_LABEL]: ownership.appRoot,
+    ...dataRootLabels(ownership.dataRoot),
     [VOLUME_SELECTOR_LABEL]: volumeSelectorValue({
       providerId: plan.provider,
       appId: planDataId(plan),

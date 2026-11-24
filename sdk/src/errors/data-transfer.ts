@@ -106,19 +106,6 @@ export class SnapshotNotFoundError extends Schema.TaggedError<SnapshotNotFoundEr
   },
 ) {}
 
-export class SnapshotAmbiguousError extends Schema.TaggedError<SnapshotAmbiguousError>()(
-  "SnapshotAmbiguousError",
-  {
-    message: Schema.String,
-    snapshotId: Schema.String,
-    matchCount: Schema.Number,
-    candidateIds: Schema.optional(Schema.Array(Schema.String)).annotate({
-      description: "Matching snapshot ids, newest first, when resolving an ambiguous label.",
-    }),
-    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
-  },
-) {}
-
 export class SnapshotOwnershipError extends Schema.TaggedError<SnapshotOwnershipError>()(
   "SnapshotOwnershipError",
   {

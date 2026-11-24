@@ -9,6 +9,7 @@ import {
   type TaskTreeInteractionModel,
   TaskTreeViewModel,
   type TaskTreeViewModelOptions,
+  isTaskTreeStartEvent,
 } from "./task-tree-tail.ts";
 
 interface TaskTreeCollectionOutput {
@@ -25,13 +26,6 @@ interface TaskTreeEntry {
 const stringField = (event: LandoEvent, key: string): string | undefined => {
   const value = Reflect.get(event, key);
   return typeof value === "string" ? value : undefined;
-};
-
-const childrenOf = (event: LandoEvent): ReadonlyArray<string> => {
-  const children = Reflect.get(event, "children");
-  return Array.isArray(children)
-    ? children.filter((child): child is string => typeof child === "string")
-    : [];
 };
 
 export interface TaskTreeConsumeResult {
@@ -75,14 +69,12 @@ export class TaskTreeCollection implements TaskTreeInteractionModel {
   }
 
   consume(event: LandoEvent): TaskTreeConsumeResult {
-    if (event._tag === "task.tree.start") {
-      const parentId = stringField(event, "parentId");
-      if (parentId === undefined) return { completedLines: [] };
-      const entry = this.#startTree(parentId);
-      for (const taskId of childrenOf(event)) this.#taskOwners.set(taskId, parentId);
+    if (isTaskTreeStartEvent(event)) {
+      const entry = this.#startTree(event.parentId);
+      for (const child of event.children) this.#taskOwners.set(child.id, event.parentId);
       entry.viewModel.apply(event);
       entry.animation.consume(event);
-      this.#select(parentId);
+      this.#select(event.parentId);
       this.#footerVisible = true;
       return { completedLines: [] };
     }

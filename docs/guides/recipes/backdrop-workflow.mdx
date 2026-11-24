@@ -29,7 +29,7 @@ The appserver sets `uploadDirs: [files]` to keep PHP out of uploaded files.
 | `database` | `type: mariadb:11.4` |
 | Tooling | `lando bee`, `lando composer`, and `lando php` on `appserver`, plus `lando mariadb` from the database service |
 
-Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pass `--answer=php=8.2` or `--answer=database=mysql:8.0` when you want those instead. PHP 8.6 is accepted (`--answer=php=8.6`) but runs a release-candidate image and has no Xdebug.
+Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pass `--answer=php=8.2` or `--answer=database=mysql:8.0` when you want those instead.
 
 For the MySQL answer path, use `lando mysql` instead of `lando mariadb` for database commands.
 
@@ -274,7 +274,7 @@ lando xdebug off
 lando xdebug on
 ```
 
-Point your IDE at port `9003` and map `/app` to the project root. Xdebug doesn't plan on `php:8.6`. IDE setup lives in [Debug PHP with Xdebug in PhpStorm](../tooling/xdebug-phpstorm.mdx).
+Point your IDE at port `9003` and map `/app` to the project root. IDE setup lives in [Debug PHP with Xdebug in PhpStorm](../tooling/xdebug-phpstorm.mdx).
 
 ## Catch outgoing mail
 

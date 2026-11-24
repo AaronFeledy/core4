@@ -140,7 +140,7 @@ export const teardownResolutionAt = Effect.fnUntraced(function* <E, R>(
   const evidence = yield* registry.resolveTeardownEvidence(root, app);
   switch (evidence.kind) {
     case "applied":
-      yield* registry.assertAppliedStateReadable?.(evidence.plan) ?? Effect.void;
+      yield* registry.readAppliedPlanStrict(evidence.plan);
       return {
         kind: "applied",
         target: yield* targetFor(evidence.plan),
@@ -148,8 +148,7 @@ export const teardownResolutionAt = Effect.fnUntraced(function* <E, R>(
       };
     case "orphans":
       for (const group of evidence.groups) {
-        yield* registry.assertAppliedStateReadable?.({ id: group.appId, provider: group.providerId }) ??
-          Effect.void;
+        yield* registry.readAppliedPlanStrict({ id: group.appId, provider: group.providerId });
       }
       return {
         kind: "orphans",
@@ -161,7 +160,7 @@ export const teardownResolutionAt = Effect.fnUntraced(function* <E, R>(
     case "owned":
       for (const hints of evidence.ownership) {
         for (const id of hints.appIds) {
-          yield* registry.assertAppliedStateReadable?.({ id, provider: hints.providerId }) ?? Effect.void;
+          yield* registry.readAppliedPlanStrict({ id, provider: hints.providerId });
         }
       }
       return { kind: "owned", root, ownership: evidence.ownership, landofilePresent };
@@ -191,7 +190,10 @@ export const teardownResolutionAtRoot = <E, R>(
           const app: AppRef = { kind: "user", id: normalizeAppSlug(loaded.document.name ?? "app", ""), root };
           const registry = yield* RuntimeProviderRegistry;
           const providerId = yield* TeardownProvider;
-          const plans = (yield* registry.appliedPlansFor(root, providerId)).filter(
+          const plans = (yield* registry.appliedPlansFor(
+            root,
+            providerId === undefined ? undefined : { providerId },
+          )).filter(
             (plan) =>
               (providerId === undefined || plan.provider === providerId) && matchesAppPlanIdentity(plan, app),
           );

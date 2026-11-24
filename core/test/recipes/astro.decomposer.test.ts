@@ -70,6 +70,22 @@ describe("astro decomposition", () => {
           cmd: [":node-local", "astro"],
           wrapper: true,
         },
+        dev: {
+          service: "web",
+          description: "Run the Astro dev server on the address Lando publishes.",
+          cmd: [
+            ":node-local",
+            "astro",
+            "dev",
+            "--host",
+            "0.0.0.0",
+            "--port",
+            "4321",
+            "--allowed-hosts",
+            "{{ services.web.hostname }}",
+          ],
+          wrapper: true,
+        },
       },
     });
     expect<unknown>(result.fragment).toEqual({

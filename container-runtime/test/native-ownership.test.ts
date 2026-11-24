@@ -609,6 +609,44 @@ test("inspectOwnedNativeId accepts a scratch plan's own container", async () => 
   expect(id).toBe("scratch-container");
 });
 
+test("inspectOwnedNativeId accepts an unlabeled legacy container only with this root's receipt", async () => {
+  // Given: a container created before data-root labels, now planned under a scoped data root.
+  const dataRoot = AbsolutePath.make("/data/local");
+  const scoped: AppPlan = { ...plan, identity: { ...planAppIdentity(plan), dataRoot } };
+  const name = "lando-ownership--web";
+  const fake = fakeApi(
+    new Map([[`/containers/${name}/json`, { Id: "legacy-container", Config: { Labels: ownedLabels } }]]),
+  );
+  const target = { kind: "container", name, labels: containerOwnershipLabels(scoped, web) } as const;
+  const receipt = {
+    kind: "container",
+    nativeName: name,
+    nativeId: "legacy-container",
+    dataRoot,
+    appRoot: scoped.root,
+    appId: scoped.id,
+    providerId: scoped.provider,
+  } as const;
+  // When
+  const receipted = await Effect.runPromise(
+    inspectOwnedNativeId(fake.api, { ...target, receipts: [receipt] }, ctx),
+  );
+  const unreceipted = await Effect.runPromise(Effect.result(inspectOwnedNativeId(fake.api, target, ctx)));
+  const peerReceipt = await Effect.runPromise(
+    Effect.result(
+      inspectOwnedNativeId(
+        fake.api,
+        { ...target, receipts: [{ ...receipt, dataRoot: AbsolutePath.make("/data/peer") }] },
+        ctx,
+      ),
+    ),
+  );
+  // Then
+  expect(receipted).toBe("legacy-container");
+  expect(Result.isFailure(unreceipted)).toBe(true);
+  expect(Result.isFailure(peerReceipt)).toBe(true);
+});
+
 test("inspectOwnedNativeId names a coherent foreign-root network", async () => {
   // Given: another app's coherent private-network ownership at the planned name.
   const foreignRoot = AbsolutePath.make("/other/app");

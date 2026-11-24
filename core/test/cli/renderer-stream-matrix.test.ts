@@ -66,7 +66,7 @@ for (const mode of ["lando", "plain", "json", "verbose"] as const) {
                 _tag: "task.tree.start",
                 parentId: "tooling:gen",
                 label: "Generating",
-                children: ["tooling:gen:exec"],
+                children: [{ id: "tooling:gen:exec", label: "tooling:gen:exec" }],
                 timestamp: "2026-06-04T00:00:00.000Z",
               });
               yield* events.publish({

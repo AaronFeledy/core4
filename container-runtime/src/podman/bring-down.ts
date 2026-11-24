@@ -10,6 +10,7 @@ import {
 import type { EventService, ProviderError } from "@lando/sdk/services";
 import { type Context, Effect } from "effect";
 
+import type { AdoptionReceipt } from "../data-root-ownership.ts";
 import type { LifecycleDialect } from "../dialect.ts";
 import type {
   EngineHttpApi,
@@ -57,6 +58,7 @@ export interface BringDownOptions {
   /** Test seam for owner-aware helper reclamation. */
   readonly helperReclaim?: HelperReclaimOptions;
   readonly purgeCaches?: boolean;
+  readonly adoptionReceipts?: readonly AdoptionReceipt[];
 }
 
 interface BringDownDeps {
@@ -94,9 +96,12 @@ const removeNetwork = Effect.fnUntraced(function* (
       kind: "network",
       name,
       labels: networkOwnershipLabels(plan),
-      legacy: plan.networking?.authoredNetworks?.some((network) => network.name === name)
-        ? "reject"
-        : "accept",
+      receipts: deps.options.adoptionReceipts ?? [],
+      legacy:
+        plan.identity?.dataRoot !== undefined ||
+        plan.networking?.authoredNetworks?.some((network) => network.name === name)
+          ? "reject"
+          : "accept",
     },
     deps.options.ctx,
   );
@@ -148,7 +153,12 @@ export const bringDown = Effect.fn("RuntimeProvider.bringDown")(function* (
   const containers = yield* listLabeledServiceContainers(api, stopCtx, plan.id).pipe(
     mapFailures((error) => retainShutdownObservations(error, shutdownObservations)),
   );
-  const stales = selectStaleServiceContainers(plan, options.ctx.providerId, containers);
+  const stales = selectStaleServiceContainers(
+    plan,
+    options.ctx.providerId,
+    containers,
+    options.adoptionReceipts,
+  );
   const stale = yield* removeStaleServiceContainers(api, stopCtx, plan, stales).pipe(
     mapFailures((error) => retainShutdownObservations(error, shutdownObservations)),
   );

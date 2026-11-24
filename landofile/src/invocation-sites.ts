@@ -11,20 +11,6 @@ import { Effect, Result, Schema } from "effect";
 import { templateSource } from "./expression-source.ts";
 import { captureTemplate } from "./invocation-captures.ts";
 
-export const INVOCATION_SCOPES = ["event", "vars", "item", "key", "flags", "args", "raw", "task"] as const;
-
-/** Only executable declaration positions can retain invocation-time expressions. */
-export const executableExpressionPath = (path: readonly (string | number)[]): boolean => {
-  const [root, name, field] = path;
-  if (root === "events") return typeof name === "string" && typeof field === "number";
-  if (root === "toolingIncludes" || root === "includes") return field === "vars";
-  if (root !== "tooling" && root !== "toolingDefaults") return false;
-  const key = root === "tooling" ? field : name;
-  return (
-    key === undefined || ["cmd", "cmds", "service", "dir", "user", "env", "vars", "if"].includes(String(key))
-  );
-};
-
 export const InvocationSite = Schema.Struct({
   ...ParsedPendingSite.fields,
   template: ExpressionTemplate,
@@ -74,15 +60,24 @@ export const compileInvocationSites = (
     }),
   );
 
-/** Explicit authored boundary for standalone/host programs, never for compiled values. */
-export const authoredInvocationSites = (value: unknown, file: string): InvocationProgram => {
+/**
+ * Explicit authored boundary for standalone/host programs, never for compiled values. `pathPrefix`
+ * places `value` in its document, so site and source paths name the authored location.
+ */
+export const authoredInvocationSites = (
+  value: unknown,
+  file: string,
+  options: { readonly layer?: "base" | "config-file"; readonly pathPrefix?: readonly string[] } = {},
+): InvocationProgram => {
   const sites: ParsedPendingSite[] = [];
+  const layer = options.layer ?? "base";
+  const prefix = options.pathPrefix ?? [];
   const visit = (entry: unknown, path: readonly (string | number)[]): void => {
     if (typeof entry === "string") {
       const template = parseExpressionEither(entry, { filePath: file, bareShellParameters: "preserve" });
       if (Result.isFailure(template)) throw template.failure;
       {
-        const source = { file, layer: "base" as const, path };
+        const source = { file, layer, path };
         sites.push({ id: JSON.stringify(source), path, source, template: template.success });
       }
     } else if (Array.isArray(entry))
@@ -92,9 +87,9 @@ export const authoredInvocationSites = (value: unknown, file: string): Invocatio
     else if (isPlainRecord(entry))
       for (const [key, child] of Object.entries(entry)) visit(child, [...path, key]);
   };
-  visit(value, []);
+  visit(value, prefix);
   return sites.map((site) =>
-    InvocationSite.make({ ...site, expression: siteExpression(site, value), captures: {} }),
+    InvocationSite.make({ ...site, expression: siteExpression(site, value, prefix.length), captures: {} }),
   );
 };
 

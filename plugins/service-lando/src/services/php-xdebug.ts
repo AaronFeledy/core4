@@ -3,18 +3,22 @@ import { DEBUGGER_HOST_ALIAS } from "@lando/sdk/schema";
 import type { ServiceBuildStepIntent } from "@lando/sdk/services";
 
 import { ServiceConfigIssue } from "./_feature-helpers.ts";
-import type { PhpVia } from "./php-via.ts";
+import type { PhpVia, SupportedPhpVersion } from "./php-via.ts";
+import pins from "./php-xdebug-pins.json" with { type: "json" };
 
-export const PHP_XDEBUG_RELEASE = {
-  version: "3.5.3",
-  sha256: "f073de91bea046106abf4d6071c963ea71e58571df6ce58948ceca89d121cb2d",
-  url: "https://pecl.php.net/get/xdebug-3.5.3.tgz",
-} as const;
+type PhpXdebugRelease = {
+  readonly version: string;
+  readonly sha256: string;
+  readonly url: string;
+};
+
+const XDEBUG_RELEASE_BY_PHP_VERSION = pins.releases satisfies Readonly<
+  Record<SupportedPhpVersion, PhpXdebugRelease>
+>;
 
 export const PHP_XDEBUG_PORT = 9003;
 export const PHP_XDEBUG_CLIENT_HOST = DEBUGGER_HOST_ALIAS;
 export const PHP_XDEBUG_INI = "/usr/local/etc/php/conf.d/zz-lando-xdebug.ini";
-export const PHP_XDEBUG_SOURCE_DIR = `xdebug-${PHP_XDEBUG_RELEASE.version}`;
 
 export const PHP_XDEBUG_MODES = [
   "off",
@@ -27,12 +31,7 @@ export const PHP_XDEBUG_MODES = [
 ] as const;
 
 export type PhpXdebugMode = (typeof PHP_XDEBUG_MODES)[number];
-export type PhpXdebug =
-  | false
-  | {
-      readonly mode: string;
-      readonly release: typeof PHP_XDEBUG_RELEASE;
-    };
+export type PhpXdebug = false | { readonly mode: string };
 
 const XDEBUG_REMEDIATION =
   'Set xdebug: true, xdebug: false, or a comma-separated Xdebug 3 mode list such as xdebug: "debug,develop".';
@@ -64,22 +63,12 @@ const parseModeString = (value: string): string => {
 
 export const resolvePhpXdebug = (value: unknown): PhpXdebug => {
   if (value === undefined || value === false) return false;
-  if (value === true) return { mode: "debug", release: PHP_XDEBUG_RELEASE };
-  if (typeof value === "string") return { mode: parseModeString(value), release: PHP_XDEBUG_RELEASE };
+  if (value === true) return { mode: "debug" };
+  if (typeof value === "string") return { mode: parseModeString(value) };
   throw new ServiceConfigIssue(
     ["xdebug"],
     `Unsupported Xdebug mode ${JSON.stringify(value)}.`,
     XDEBUG_REMEDIATION,
-  );
-};
-
-export const assertPhpXdebugSupported = (phpVersion: string, xdebug: PhpXdebug): void => {
-  if (xdebug === false) return;
-  if (phpVersion !== "8.6") return;
-  throw new ServiceConfigIssue(
-    ["xdebug"],
-    `Xdebug is not available on PHP 8.6. The shipped pin is ${PHP_XDEBUG_RELEASE.version} and supports PHP 8.0 through 8.5.`,
-    "Remove xdebug: or set type to php:8.5.",
   );
 };
 
@@ -88,20 +77,23 @@ export const phpXdebugConfigEnv = (): Readonly<Record<string, string>> => ({
 });
 
 export const phpXdebugBuildStep = (
-  phpVersion: string,
+  phpVersion: SupportedPhpVersion,
   xdebug: Exclude<PhpXdebug, false>,
 ): ServiceBuildStepIntent => {
-  const { mode, release } = xdebug;
+  const { mode } = xdebug;
+  const { version, sha256, url } = XDEBUG_RELEASE_BY_PHP_VERSION[phpVersion];
+  const release = { version, sha256, url };
+  const sourceDir = `/tmp/xdebug-${release.version}`;
   const command = [
     "set -eux",
     "apt-get update",
     "apt-get install -y --no-install-recommends $PHPIZE_DEPS",
     `php -r '$url = "${release.url}"; $target = "/tmp/xdebug.tgz"; if (copy($url, $target) !== true) { exit(1); } $actual = hash_file("sha256", $target); if ($actual === false || !hash_equals("${release.sha256}", $actual)) { fwrite(STDERR, "Xdebug checksum mismatch\\n"); exit(1); }'`,
     "tar -xzf /tmp/xdebug.tgz -C /tmp",
-    `( cd /tmp/${PHP_XDEBUG_SOURCE_DIR} && phpize && ./configure --enable-xdebug && make -j"$(nproc)" && make install )`,
+    `( cd ${sourceDir} && phpize && ./configure --enable-xdebug && make -j"$(nproc)" && make install )`,
     "docker-php-ext-enable xdebug",
     `printf "xdebug.mode=${mode}\\nxdebug.client_host=${PHP_XDEBUG_CLIENT_HOST}\\nxdebug.client_port=${String(PHP_XDEBUG_PORT)}\\n" > ${PHP_XDEBUG_INI}`,
-    `rm -rf /tmp/xdebug.tgz /tmp/${PHP_XDEBUG_SOURCE_DIR}`,
+    `rm -rf /tmp/xdebug.tgz ${sourceDir}`,
     "apt-get purge -y $PHPIZE_DEPS",
     "rm -rf /var/lib/apt/lists/*",
   ].join(" && ");
@@ -149,7 +141,7 @@ export const phpXdebugTooling = (
     "}",
     `reload() { ${reload}; }`,
     "status() {",
-    `  php -r '$m = function_exists("xdebug_info") ? xdebug_info("mode") : []; if (!is_array($m) || count($m) === 0) { echo "Xdebug disabled\\n"; } else { echo "Xdebug enabled (" . implode(",", $m) . ")\\n"; }'`,
+    `  php -r '$version = phpversion("xdebug"); if ($version === false) { echo "Xdebug not installed. Install the extension in your image.\\n"; exit(1); } $m = xdebug_info("mode"); if (!is_array($m) || count($m) === 0) { echo "Xdebug $version disabled\\n"; } else { echo "Xdebug $version enabled (" . implode(",", $m) . ")\\n"; }'`,
     `  host=$(php -r 'echo ini_get("xdebug.client_host");')`,
     `  port=$(php -r 'echo ini_get("xdebug.client_port");')`,
     '  resolved=$(getent -s files hosts -- "$host" 2>/dev/null | awk \'!seen[$1]++ { print $1 }\' | paste -sd" " - || true)',

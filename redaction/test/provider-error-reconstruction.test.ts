@@ -85,6 +85,26 @@ test("rejects unknown tags and incomplete provider-shaped objects", () => {
   expect(isProviderError({ _tag: "ProviderUnavailableError", message: canary })).toBe(false);
 });
 
+test("preserves the writer when rebuilding a protected-state error with a redacted path", () => {
+  const redactor = createStandaloneRedactor("secrets", { authoritativeTokens: [canary] });
+  const error = Errors.appliedStateVersionError({
+    providerId: "lando",
+    operation: "applied-state.read",
+    path: `/state/${canary}.json`,
+    storedVersion: 12,
+    supportedVersion: 11,
+    writtenBy: "4.15.0",
+    reader: "4.14.0",
+    scope: "provider",
+  });
+
+  expect(taggedErrorJson(redactProviderError(error, redactor))).toMatchObject({
+    _tag: "AppliedStateVersionError",
+    path: "/state/[redacted].json",
+    writtenBy: "4.15.0",
+  });
+});
+
 test("preserves and redacts ArtifactBuildError build context", () => {
   const redactor = createStandaloneRedactor("secrets", { authoritativeTokens: [canary] });
   const error = new Errors.ArtifactBuildError({

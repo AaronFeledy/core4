@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { resolve } from "node:path";
-import { ScratchAppNotFoundError } from "@lando/sdk/errors";
+import {
+  type AppliedStateVersionError,
+  ScratchAppNotFoundError,
+  appliedStateVersionError,
+} from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
@@ -11,7 +15,7 @@ import {
   appIdentityKey,
 } from "@lando/sdk/schema";
 import { RuntimeProviderRegistry, ScratchAppService, type ScratchHandle } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { type Context, DateTime, Effect, Layer, Stream } from "effect";
 import { TestClock } from "effect/testing";
 import { followScratchLogs, scratchLogs } from "../../src/cli/commands/scratch.ts";
@@ -93,7 +97,11 @@ interface LogCall {
   readonly since?: string;
 }
 
-const harness = (input: { readonly plan?: AppPlan; readonly failing?: boolean }) => {
+const harness = (input: {
+  readonly plan?: AppPlan;
+  readonly failing?: boolean;
+  readonly protection?: AppliedStateVersionError;
+}) => {
   const calls: LogCall[] = [];
   const resolutions: Array<unknown> = [];
   const provider = {
@@ -115,15 +123,15 @@ const harness = (input: { readonly plan?: AppPlan; readonly failing?: boolean })
       ]);
     },
   };
-  const registry = RuntimeProviderRegistry.of({
+  const registry = makeTestRuntimeProviderRegistry({
+    readAppliedPlanStrict: () =>
+      input.protection === undefined ? Effect.succeed(input.plan) : Effect.fail(input.protection),
     resolveAppliedPlan: (lookupRoot, app, lookup) =>
       Effect.sync(() => {
         resolutions.push({ root: lookupRoot, app, lookup });
         return input.plan;
       }),
     select: () => Effect.succeed(provider),
-    appliedPlansFor: () => Effect.succeed([]),
-    list: Effect.succeed([]),
     capabilities: Effect.die("unexpected capabilities"),
     resolveTeardownEvidence: () => Effect.die("unexpected teardown resolution"),
   });
@@ -160,6 +168,21 @@ const failure = <A, E>(current: Harness, effect: Effect.Effect<A, E, HarnessServ
   Effect.runPromise(effect.pipe(Effect.provide(current.layer), Effect.flip));
 
 describe("scratch:logs", () => {
+  test("scratch logs report a newer receipt rather than an empty log", async () => {
+    const plan = appliedPlan();
+    const protection = appliedStateVersionError({
+      providerId: plan.provider,
+      operation: "applied-state.read",
+      path: "/state/scratch.json",
+      storedVersion: 12,
+      supportedVersion: 11,
+      scope: "app",
+      appId: plan.id,
+    });
+    const current = harness({ plan, protection });
+    expect(await failure(current, scratchLogs(scratchId))).toBe(protection);
+    expect(current.calls).toEqual([]);
+  });
   test("resolves the applied plan by exact scratch identity and forwards log flags", async () => {
     const current = harness({ plan: appliedPlan() });
     const result = await run(

@@ -4,9 +4,16 @@ import { RuntimeLayerFactory } from "@lando/engine/runtime/runtime-layer-factory
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import { makeLandoPaths } from "@lando/paths";
-import { AbsolutePath, AppId, GlobalConfig, ProviderId, ServiceName } from "@lando/sdk/schema";
+import {
+  AbsolutePath,
+  AppId,
+  GlobalConfig,
+  LANDO_DATA_ROOT_LABEL,
+  ProviderId,
+  ServiceName,
+} from "@lando/sdk/schema";
 import { ConfigService, FileSystem, PathsService, RuntimeProviderRegistry } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect, Layer, Schema } from "effect";
 import { resilientDoctorReport } from "../../src/cli/commands/doctor-bootstrap";
 
@@ -31,6 +38,8 @@ test.each([false, true])(
     // report also reads the process-wide one, where another test's leftover start journal
     // shows up as a second missing app root.
     const store = makeTestStateStore();
+    const env = { LANDO_USER_DATA_ROOT: "/local-data" };
+    const paths = makeLandoPaths({ env });
     const runtime = Layer.mergeAll(
       store.layer,
       Layer.succeed(
@@ -38,17 +47,14 @@ test.each([false, true])(
         ConfigService.of({ load: Effect.succeed(config), get: (key) => Effect.succeed(config[key]) }),
       ),
       PluginRegistryLayer.layer,
-      Layer.succeed(PathsService, makeLandoPaths({ env: {} })),
+      Layer.succeed(PathsService, paths),
       Layer.effect(
         FileSystem,
         Effect.map(FileSystem, (fs) => ({ ...fs, exists: () => Effect.succeed(false) })),
       ).pipe(Layer.provide(BunFileSystem.layer)),
       Layer.succeed(
         RuntimeProviderRegistry,
-        RuntimeProviderRegistry.of({
-          resolveAppliedPlan: () => Effect.succeed(undefined),
-          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-          appliedPlansFor: () => Effect.succeed([]),
+        makeTestRuntimeProviderRegistry({
           list: Effect.succeed([ProviderId.make(provider.id)]),
           capabilities: Effect.succeed(provider.capabilities),
           select: () => Effect.succeed(provider),
@@ -66,6 +72,7 @@ test.each([false, true])(
                   providerId: ProviderId.make(provider.id),
                   status: "running",
                   containerId: "observed-container",
+                  labels: { [LANDO_DATA_ROOT_LABEL]: paths.roots.userDataRoot },
                   publications: { status: "unknown" },
                 },
               ],
@@ -75,7 +82,7 @@ test.each([false, true])(
       ),
     );
     const report = await Effect.runPromise(
-      resilientDoctorReport({ env: {}, fix }).pipe(
+      resilientDoctorReport({ env, fix }).pipe(
         Effect.provideService(RuntimeLayerFactory, RuntimeLayerFactory.of({ make: () => runtime })),
       ),
     );

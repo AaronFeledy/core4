@@ -112,6 +112,8 @@ export function withAppActivation<A, E, R>(
           default:
             return request satisfies never;
         }
+        const registry = yield* RuntimeProviderRegistry;
+        yield* registry.readAppliedPlanStrict(plan);
         let placement = yield* ensureAppPlacementState(target.app, plan.provider);
         yield* validateSelectedRename(target, placement.superseded, scoped);
         const pending =
@@ -147,7 +149,6 @@ export function withAppActivation<A, E, R>(
         if (request.operation === "start" && scoped)
           yield* preflightSelectedStartFileSync(selectedPlan, placement.plan);
         yield* validateDesiredFileSyncEngine(request.operation === "start" ? selectedPlan : plan);
-        const registry = yield* RuntimeProviderRegistry;
         const selectedProvider = yield* registry.select(plan);
         const overlays = yield* prepareStartOverlays({ ...target, plan: selectedPlan }, selectedProvider);
         const provider = yield* prepareProvider(selectedProvider);

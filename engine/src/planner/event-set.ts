@@ -4,12 +4,15 @@ import { landofileValidationError, unavailableEntryPath } from "@lando/landofile
 import { mapFailures } from "@lando/sdk/command-result";
 import { LandofileValidationError, causeMessage } from "@lando/sdk/errors";
 import {
+  type AppIdentity,
   type LoadScopedLandofile,
   type ProviderCapabilities,
   type ProviderId,
   ServiceName,
   ServiceScopedLandofile,
   authoredProbeTargetError,
+  landoNativeAppSlug,
+  normalizeAppSlug,
 } from "@lando/sdk/schema";
 import type { ConfigService, FileSystem, PathsService, PluginRegistry } from "@lando/sdk/services";
 import { type Context, DateTime, Effect, Result } from "effect";
@@ -17,6 +20,7 @@ import { routerEnabledFrom } from "../config/router-config.ts";
 import { hostProviderIdFrom } from "../providers/host-provider.ts";
 import { resolveGpgAgentIntent } from "../subsystems/gpg-agent/intent.ts";
 import { resolveUserAppDefaults } from "./app-defaults.ts";
+import { planServicePrimary } from "./effective-events.ts";
 import { resolveEffectiveTooling } from "./effective-tooling.ts";
 import { requireServiceProjection } from "./endpoint-availability.ts";
 import { projectEndpoints } from "./endpoint-projection.ts";
@@ -24,6 +28,7 @@ import { validEventNames } from "./event-names.ts";
 import { planningHostShellIssues } from "./host-shell-issues.ts";
 import { effectiveInvocationSites } from "./invocation-authority.ts";
 import { materializeLandofileScopes, pathIsBlocked, serviceScopeContext } from "./landofile-scopes.ts";
+import { primaryServiceName } from "./primary-service.ts";
 import { validateResolvedLandofile } from "./resolved-validation.ts";
 import { applyRouteDemandedCertificates } from "./route-certificate-defaults.ts";
 import { type PlanningUnavailableSite, resolveServiceSeeds } from "./service-seeds.ts";
@@ -32,6 +37,7 @@ import { toolingAndEventIssues } from "./tooling-event-issues.ts";
 import { materializeWholeDocument, pendingAfterSeeds } from "./whole-document-expressions.ts";
 
 export interface KnownEventSetInput {
+  readonly identity?: AppIdentity | undefined;
   readonly dataName?: string;
   readonly landofile: LoadScopedLandofile;
   readonly pluginRegistry: Context.Service.Shape<typeof PluginRegistry>;
@@ -85,6 +91,7 @@ const resolveLandofile = Effect.fn("AppPlanner.resolve")(function* (
   });
   const { provenance } = materialized;
   const { appSlug, defaultDomain, deferredSites } = materialized;
+  const nativeSlug = landoNativeAppSlug({ slug: appSlug, identity: input.identity });
   landofile = materialized.landofile;
   const appDefaults = resolveUserAppDefaults(appName, appRoot, pathsService, globalConfig);
   const hostProvider = yield* hostProviderIdFrom(globalConfig?.defaultProviderId);
@@ -103,6 +110,11 @@ const resolveLandofile = Effect.fn("AppPlanner.resolve")(function* (
   );
   const seeds = yield* resolveServiceSeeds({
     dataName,
+    nativeDataSlug: landoNativeAppSlug({
+      slug: appSlug,
+      identity: input.identity,
+      dataSlug: normalizeAppSlug(dataName, appRoot),
+    }),
     landofile,
     provenance,
     context: materialized.context,
@@ -158,6 +170,7 @@ const resolveLandofile = Effect.fn("AppPlanner.resolve")(function* (
     blocked: blockedPaths,
     loadBlocked,
     appSlug,
+    nativeSlug,
   });
   // A generated HTTPS route makes an owned Apache-style launcher demand its own
   // certificate. Decide once here so endpoint projection, assembly, cache
@@ -223,6 +236,14 @@ const resolveLandofile = Effect.fn("AppPlanner.resolve")(function* (
     toolingResolution: resolveEffectiveTooling({
       landofile,
       provenance,
+      primary: primaryServiceName(
+        Object.fromEntries(
+          effectiveSeeds.services.map(({ name, resolution }) => [
+            name,
+            { primary: planServicePrimary(name, resolution.normalizedConfig.primary) },
+          ]),
+        ),
+      ),
       services: effectiveSeeds.services.map((entry) => ({
         name: entry.name,
         serviceTypeId: entry.serviceType.id,

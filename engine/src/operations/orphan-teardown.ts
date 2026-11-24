@@ -7,6 +7,7 @@ import { orDieWithRole } from "@lando/sdk/command-result";
 import {
   type AppLockTimeoutError,
   type AppResolveError,
+  type AppliedStateVersionError,
   ProviderUnavailableError,
   type StateStoreError,
 } from "@lando/sdk/errors";
@@ -35,6 +36,13 @@ import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
 import { cleanupAppWorkers } from "./destroy-provider.ts";
 import { ownedCleanupChanged, prepareOwnedResourceCleanup } from "./owned-resource-teardown.ts";
 import { withShutdownObservations } from "./shutdown-observations.ts";
+
+/** A damaged or newer-format applied record protects its app's resources from the sweep. */
+const isProtectedAppliedState = <E extends { readonly _tag: string }>(
+  error: E,
+): error is Extract<E, ProviderUnavailableError | AppliedStateVersionError> =>
+  error._tag === "AppliedStateVersionError" ||
+  (error instanceof ProviderUnavailableError && error.operation === "applied-state.read");
 
 export interface OrphanTeardownOptions {
   /** Remove the data volumes recorded against the root; `stop` never does. */
@@ -161,27 +169,24 @@ export const tearDownOrphans = Effect.fnUntraced(function* (input: {
           }).pipe(
             Effect.tapError((error) =>
               Effect.sync(() => {
-                protectedState =
-                  error._tag === "ProviderUnavailableError" && error.operation === "applied-state.read";
+                protectedState = isProtectedAppliedState(error);
               }),
             ),
             Effect.ensuring(Effect.suspend(() => (protectedState ? Effect.void : cleanupAppWorkers(ref)))),
           ),
         ).pipe(
-          Effect.catchIf(
-            (error) => error._tag === "ProviderUnavailableError" && error.operation === "applied-state.read",
-            (error) =>
-              Effect.gen(function* () {
-                const events = yield* Effect.serviceOption(EventService);
-                if (Option.isSome(events))
-                  yield* events.value
-                    .publish({
-                      _tag: "message.warn",
-                      body: `Skipped resources for app ${group.appId}: ${error.message}`,
-                      timestamp: now(),
-                    })
-                    .pipe(orDieWithRole("cleanup"));
-              }),
+          Effect.catchIf(isProtectedAppliedState, (error) =>
+            Effect.gen(function* () {
+              const events = yield* Effect.serviceOption(EventService);
+              if (Option.isSome(events))
+                yield* events.value
+                  .publish({
+                    _tag: "message.warn",
+                    body: `Skipped resources for app ${group.appId}: ${error.message} ${error.remediation}`,
+                    timestamp: now(),
+                  })
+                  .pipe(orDieWithRole("cleanup"));
+            }),
           ),
         );
       }

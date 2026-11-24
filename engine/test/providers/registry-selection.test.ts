@@ -75,6 +75,8 @@ test.each([
           {
             id: providerId,
             appliedPlans: () => Effect.die("selection must not load applied plans"),
+            appliedStateInventory: () => Effect.die("selection must not load applied state inventory"),
+            readAppliedPlanStrict: () => Effect.die("selection must not read applied state"),
             make: () =>
               Effect.sync(() => {
                 initialized.push(id);

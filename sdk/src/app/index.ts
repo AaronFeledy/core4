@@ -129,6 +129,7 @@ export type {
   InfoAppAgentEnv,
   InfoAppHostProxy,
   InfoAppResult,
+  InfoAppliedStateIssue,
   LandofileEventsOutcome,
   RebuildAppResult,
   RestartAppResult,
@@ -290,10 +291,16 @@ export type StartAppError =
   | StateStoreError
   | VolumeOperationError;
 
-// biome-ignore lint/complexity/noBannedTypes: stop has no extra options beyond start today.
-export type StopAppOptions = {};
+export interface StopAppOptions {
+  /**
+   * Stop only these planned services. Unknown or empty names fail with `ServiceNotFoundError`;
+   * an omitted or empty list stops the whole app.
+   */
+  readonly services?: ReadonlyArray<ServiceName>;
+}
 
 export type StopAppError =
+  | ProxyApplyError
   | ProxyError
   | Lando3LandofileDetected
   | LandofileDialectMixError

@@ -3,7 +3,7 @@ import { rmSync } from "node:fs";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { ProviderId } from "@lando/sdk/schema";
 import { RuntimeProviderRegistry } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect } from "effect";
 import { destroyApp } from "../../src/operations/destroy.ts";
 import { readAppDataIdentity, recordAppDataIdentity } from "../../src/planner/data-identity.ts";
@@ -42,33 +42,36 @@ test.each(["scoped", "observe", "select", "available", "status", "volumes", "lis
           { volumes: true, ...(failureAt === "scoped" ? { providerId: plan.provider } : {}) },
           identityTarget(plan),
         ).pipe(
-          Effect.provideService(RuntimeProviderRegistry, {
-            ...registry,
-            list: failureAt === "list" ? Effect.fail(failure) : Effect.succeed([plan.provider, docker]),
-            select: (target) =>
-              target !== docker
-                ? registry.select(target)
-                : failureAt === "select"
-                  ? Effect.fail(failure)
-                  : Effect.succeed({
-                      ...TestRuntimeProvider,
-                      id: docker,
-                      isAvailable: failureAt === "available" ? Effect.fail(failure) : Effect.succeed(true),
-                      getStatus:
-                        failureAt === "status"
-                          ? Effect.fail(failure)
-                          : Effect.succeed({ state: "running" as const }),
-                      listVolumes: () =>
-                        failureAt === "volumes" ? Effect.fail(failure) : Effect.succeed([]),
-                    }),
-            ...(failureAt === "scoped" || failureAt === "observe"
-              ? {
-                  observeRuntime: Effect.sync(() => {
-                    observations++;
-                  }).pipe(Effect.andThen(Effect.fail(failure))),
-                }
-              : {}),
-          }),
+          Effect.provideService(
+            RuntimeProviderRegistry,
+            makeTestRuntimeProviderRegistry({
+              ...registry,
+              list: failureAt === "list" ? Effect.fail(failure) : Effect.succeed([plan.provider, docker]),
+              select: (target) =>
+                target !== docker
+                  ? registry.select(target)
+                  : failureAt === "select"
+                    ? Effect.fail(failure)
+                    : Effect.succeed({
+                        ...TestRuntimeProvider,
+                        id: docker,
+                        isAvailable: failureAt === "available" ? Effect.fail(failure) : Effect.succeed(true),
+                        getStatus:
+                          failureAt === "status"
+                            ? Effect.fail(failure)
+                            : Effect.succeed({ state: "running" as const }),
+                        listVolumes: () =>
+                          failureAt === "volumes" ? Effect.fail(failure) : Effect.succeed([]),
+                      }),
+              ...(failureAt === "scoped" || failureAt === "observe"
+                ? {
+                    observeRuntime: Effect.sync(() => {
+                      observations++;
+                    }).pipe(Effect.andThen(Effect.fail(failure))),
+                  }
+                : {}),
+            }),
+          ),
           Effect.provide(harness.layer),
         ),
       );

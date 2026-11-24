@@ -15,7 +15,7 @@ import { type SqlPlan, sqlPlanDataId } from "./views.ts";
 
 type SnapshotSourceInput = {
   readonly plan: SqlPlan;
-  readonly appliedPlans?: SqlCommandDeps["appliedPlans"];
+  readonly findAppliedSource?: SqlCommandDeps["findAppliedSource"];
   readonly store?: string;
   readonly ownerKey?: string;
   readonly repoGroupKey?: string;
@@ -53,21 +53,20 @@ export const resolveSnapshotSource = (
     const fromApp = input.fromApp;
     const repoGroupKey = input.repoGroupKey;
     return Effect.gen(function* () {
-      const plans =
-        fromApp === input.plan.id || input.appliedPlans === undefined
-          ? []
-          : yield* input.appliedPlans.pipe(
+      const source =
+        fromApp === input.plan.id || input.findAppliedSource === undefined
+          ? undefined
+          : yield* input.findAppliedSource({ id: fromApp }).pipe(
               mapFailures(
                 (cause) =>
                   new SqlRecoveryUnavailableError({
                     message: `Cannot resolve snapshot source ${fromApp}.`,
                     service: input.service,
                     reason: cause.message,
-                    remediation: "Select the exact source app root with --from-path.",
+                    remediation: cause.remediation,
                   }),
               ),
             );
-      const source = plans.find((plan) => plan.id === fromApp);
       return {
         app:
           fromApp === input.plan.id

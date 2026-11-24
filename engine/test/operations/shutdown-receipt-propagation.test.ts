@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { ProviderId, ServiceName, type ServiceShutdownObservation, appIdentityKey } from "@lando/sdk/schema";
 import { RuntimeProviderRegistry, type RuntimeProviderShape } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect } from "effect";
 import { destroyAppForTarget } from "../../src/operations/destroy.ts";
 import { stopAppForTarget } from "../../src/operations/stop.ts";
@@ -171,24 +171,27 @@ test("destroy preserves an empty contributed observation array", async () => {
     Effect.gen(function* () {
       const registry = yield* RuntimeProviderRegistry;
       return yield* destroyAppForTarget({}, targetFor(destroyPlan)).pipe(
-        Effect.provideService(RuntimeProviderRegistry, {
-          ...registry,
-          select: () =>
-            Effect.succeed({
-              ...TestRuntimeProvider,
-              id: "lando",
-              destroy: () =>
-                Effect.succeed({
-                  kind: "destroyed" as const,
-                  volumesRemoved: { data: 0, cache: 0 },
-                  shutdownObservations: [],
-                }),
-              list: () => Effect.succeed([]),
-              inspectAppliedFileSync: () => Effect.succeed({ status: "ordinary" as const }),
-            }),
-          resolveTeardownEvidence: () => Effect.succeed({ kind: "applied" as const, plan: destroyPlan }),
-          resolveAppliedPlan: () => Effect.succeed(destroyPlan),
-        }),
+        Effect.provideService(
+          RuntimeProviderRegistry,
+          makeTestRuntimeProviderRegistry({
+            ...registry,
+            select: () =>
+              Effect.succeed({
+                ...TestRuntimeProvider,
+                id: "lando",
+                destroy: () =>
+                  Effect.succeed({
+                    kind: "destroyed" as const,
+                    volumesRemoved: { data: 0, cache: 0 },
+                    shutdownObservations: [],
+                  }),
+                list: () => Effect.succeed([]),
+                inspectAppliedFileSync: () => Effect.succeed({ status: "ordinary" as const }),
+              }),
+            resolveTeardownEvidence: () => Effect.succeed({ kind: "applied" as const, plan: destroyPlan }),
+            resolveAppliedPlan: () => Effect.succeed(destroyPlan),
+          }),
+        ),
       );
     }).pipe(Effect.provide(harness.layer)),
   );
@@ -215,37 +218,40 @@ test("destroy merges stray-container observations ahead of planned destroy obser
     Effect.gen(function* () {
       const registry = yield* RuntimeProviderRegistry;
       return yield* destroyAppForTarget({ volumes: true }, targetFor(destroyPlan)).pipe(
-        Effect.provideService(RuntimeProviderRegistry, {
-          ...registry,
-          select: () =>
-            Effect.succeed({
-              ...TestRuntimeProvider,
-              id: "lando",
-              list: () =>
-                Effect.succeed([
-                  {
-                    app: destroyPlan.id,
-                    appRoot: destroyPlan.root,
-                    providerId: destroyPlan.provider,
-                    service: ServiceName.make("leftover"),
-                    status: "exited" as const,
-                    publications: { status: "unknown" as const },
-                    containerId: "leftover-1",
-                  },
-                ]),
-              removeObservedService: () =>
-                Effect.succeed({ kind: "removed" as const, shutdownObservations: [strayObs] }),
-              destroy: () =>
-                Effect.succeed({
-                  kind: "destroyed" as const,
-                  volumesRemoved: { data: 0, cache: 0 },
-                  shutdownObservations: [plannedObs],
-                }),
-              inspectAppliedFileSync: () => Effect.succeed({ status: "ordinary" as const }),
-            }),
-          resolveTeardownEvidence: () => Effect.succeed({ kind: "applied" as const, plan: destroyPlan }),
-          resolveAppliedPlan: () => Effect.succeed(destroyPlan),
-        }),
+        Effect.provideService(
+          RuntimeProviderRegistry,
+          makeTestRuntimeProviderRegistry({
+            ...registry,
+            select: () =>
+              Effect.succeed({
+                ...TestRuntimeProvider,
+                id: "lando",
+                list: () =>
+                  Effect.succeed([
+                    {
+                      app: destroyPlan.id,
+                      appRoot: destroyPlan.root,
+                      providerId: destroyPlan.provider,
+                      service: ServiceName.make("leftover"),
+                      status: "exited" as const,
+                      publications: { status: "unknown" as const },
+                      containerId: "leftover-1",
+                    },
+                  ]),
+                removeObservedService: () =>
+                  Effect.succeed({ kind: "removed" as const, shutdownObservations: [strayObs] }),
+                destroy: () =>
+                  Effect.succeed({
+                    kind: "destroyed" as const,
+                    volumesRemoved: { data: 0, cache: 0 },
+                    shutdownObservations: [plannedObs],
+                  }),
+                inspectAppliedFileSync: () => Effect.succeed({ status: "ordinary" as const }),
+              }),
+            resolveTeardownEvidence: () => Effect.succeed({ kind: "applied" as const, plan: destroyPlan }),
+            resolveAppliedPlan: () => Effect.succeed(destroyPlan),
+          }),
+        ),
       );
     }).pipe(Effect.provide(harness.layer)),
   );

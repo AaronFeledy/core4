@@ -23,7 +23,7 @@ import {
   phpPlannedPort,
   resolvePhpVia,
 } from "./php-via.ts";
-import { assertPhpXdebugSupported, phpXdebugTooling, resolvePhpXdebug } from "./php-xdebug.ts";
+import { phpXdebugTooling, resolvePhpXdebug } from "./php-xdebug.ts";
 
 export {
   PHP_BASELINE_INI_PATH,
@@ -105,7 +105,6 @@ const makePhpServiceType = (version: SupportedPhpVersion): ServiceType => ({
       const via = resolvePhpVia(input.service.via);
       assertPhpViaKeys(via, input.service);
       const xdebug = resolvePhpXdebug(input.service.xdebug);
-      assertPhpXdebugSupported(resolvedVersion, xdebug);
       resolvePhpDbClient(input.service.dbClient);
       const webroot = resolveWebroot("PHP", input.service.webroot, input.service.appMount);
       const allowOverride = input.service.allowOverride ?? false;

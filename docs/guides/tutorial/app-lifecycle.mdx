@@ -118,6 +118,47 @@ On a fresh app, `result.servicesStarted` lists `db`, and `result.servicesStayedD
     </Step>
   </Scenario>
 
+## Stop one service
+
+Stop `db` while `app` keeps running. Repeat `-s` (or `--service`) to name more than one service. Lando removes only those containers; the rest keep running, and named volumes and the applied state stay.
+
+```sh
+lando start
+lando stop -s db --format=json
+lando info --format=json
+lando start -s app --format=json
+lando start
+```
+
+`result.servicesStopped` names `db`, and `result.servicesKeptRunning` names `app`. `lando info` reports `db` as `stopped`, and the later `start -s app` names `db` in `servicesStayedDown`. Running `lando stop -s db` again reports an empty `servicesStopped`. The last command brings `db` back without restarting `app`. See [Stop one service in the CLI guide](../cli/everyday-commands.mdx#stop-one-service) for what Lando leaves in place.
+
+  <Scenario id="stop-one-service" render>
+    <Step name="start-app">
+      <UseFixture name="app-lifecycle-demo" />
+      <Verify command="lando start --format=json" />
+    </Step>
+    <Step name="stop-db">
+      <Verify command="lando stop -s db --format=json" expect={{ stdout: { regex: "\"servicesStopped\":\\s*\\[\\s*\"db\"\\s*\\][\\s\\S]*\"servicesKeptRunning\":\\s*\\[\\s*\"app\"\\s*\\]" } }} />
+    </Step>
+    <Step name="inspect">
+      <Verify command="lando info --format=json" expect={{ stdout: { regex: "\"service\":\\s*\"db\"(?:(?!\"service\")[\\s\\S])*?\"status\":\\s*\"stopped\"" } }} />
+    </Step>
+    <Step name="stop-again">
+      <Verify command="lando stop -s db --format=json" expect={{ stdout: { regex: "\"servicesStopped\":\\s*\\[\\s*\\]" } }} />
+    </Step>
+    <Hidden reason="An unknown service name fails before anything stops">
+      <Step name="stop-unknown-service">
+        <Verify command="lando stop -s nope --format=json" expectExit={1} expect={{ stdout: { regex: "\"_tag\":\\s*\"ServiceNotFoundError\"" } }} />
+      </Step>
+    </Hidden>
+    <Step name="start-app-only">
+      <Verify command="lando start -s app --format=json" expect={{ stdout: { regex: "\"servicesStayedDown\":\\s*\\[\\s*\"db\"\\s*\\]" } }} />
+    </Step>
+    <Step name="start-rest">
+      <Verify command="lando start --format=json" expect={{ stdout: { regex: "\"servicesStarted\":[\\s\\S]*\"name\":\\s*\"db\"" } }} />
+    </Step>
+  </Scenario>
+
 ## Restart and rebuild
 
 `lando rebuild` and `lando destroy` ask for confirmation first. Pass `-y` to skip the prompt in scripts.
@@ -126,7 +167,7 @@ Bare `restart` stops then starts, so it removes and recreates containers. It is 
 
 `lando restart --service web` (or `-s`, repeatable) restarts only the services you name and brings each one back the way `lando start` would. An unchanged container restarts in place; a container whose settings changed, or that is missing, is replaced or created, and Lando prints why, naming any anonymous volume that went with it. Route changes on the named services publish with the restart. It refuses only when the app was never started or was destroyed. See [Restart or rebuild one service](../cli/everyday-commands.mdx#restart-or-rebuild-one-service) for the full rules and the `--format=json` fields.
 
-`lando stop` withdraws the app's published hostnames along with its containers, and the next `lando start` publishes them again. `lando restart` and `lando rebuild` keep them published, even when the start that follows fails. A selected `restart -s` or `rebuild -s` publishes route changes on the services it applies and leaves the other services' published routes untouched.
+`lando stop` withdraws the app's published hostnames along with its containers, and the next `lando start` publishes them again. `lando restart` and `lando rebuild` keep them published, even when the start that follows fails. A selected `restart -s` or `rebuild -s` publishes route changes on the services it applies and leaves the other running services' published routes untouched. `lando stop -s db` stops only `db`; `app` keeps running, named volumes stay, and the next `lando start` brings `db` back without restarting `app`.
 
 ```sh
 # Stop the app's containers but keep named volumes and state
@@ -236,7 +277,7 @@ These are facts the runtime reported, not a verdict. Exit `0` does not prove you
 
 ## Keep data across stop, restart, and destroy
 
-Database data stores, persistent homes, `node_modules` and `vendor` shadows, and caches use named volumes. The app lifecycle commands retain that storage unless you request its removal with `--volumes`, `--purge`, or `--purge-caches`. Bind mounts keep their files on the host instead.
+Database data stores, persistent homes, excluded directories such as `node_modules`, and caches use named volumes. The app lifecycle commands retain that storage unless you request its removal with `--volumes`, `--purge`, or `--purge-caches`. Bind mounts keep their files on the host instead.
 
 Images Lando built stay around too. `lando destroy` keeps the newest one for each service for up to seven days, so the next `lando start` reuses it without building. `--purge-caches` removes those images right away.
 
@@ -300,11 +341,23 @@ directory or breaking its config. Lando verifies the stored app root, owner, and
 provider before it touches anything.
 
 If that saved state is damaged or unreadable, `start`, `stop`, `restart`, and
-`destroy` refuse to change anything and name the state file, while `info` and
-`logs` keep working. Restore the file from a backup if you have one. Otherwise
-move it aside and run `lando destroy` again: Lando then finds the app's
-containers and volumes by their ownership labels. On Windows with accelerated
-file sync, changes that had not synced back yet can be lost that way.
+`destroy` refuse to change anything and name the state file. Restore the file
+from a backup if you have one. Otherwise move it aside and run `lando destroy`
+again: Lando then finds the app's containers and volumes by their ownership
+labels. On Windows with accelerated file sync, changes that had not synced
+back yet can be lost that way.
+
+If a newer Lando wrote that state in a format this binary cannot read, those
+same commands refuse with a version error that names the file and the stored
+and supported format versions. Run that newer Lando, or upgrade this one, and
+leave the file in place. Moving it aside or destroying it throws away ownership
+state the newer Lando still needs.
+
+`info` and `logs` keep working either way. When the saved state is damaged or
+newer-format, `info --format=json` adds an optional `appliedStateIssue` with
+the reason, path, message, and remediation (plus format versions for a
+newer-format record). Readable and missing state omit that field. If you use
+file sync, its applied settings are unknown until Lando can read the record.
 
 Teardown looks at what is actually running before it reads your config. An app
 that was never started reports `unchanged` and exits 0, even when its Landofile
@@ -359,6 +412,17 @@ it stopped. Results stay on stdout; progress goes to stderr:
       </Step>
       <Step name="start-the-rest">
         <Verify command="lando start --format=json" expect={{ stdout: { regex: "\"name\":\\s*\"db\"(?:(?!\"name\")[\\s\\S])*?\"action\":\\s*\"kept\"" } }} />
+      </Step>
+    </Hidden>
+    <Hidden reason="Stop one service on the real provider, then bring it back without touching the other">
+      <Step name="stop-one-service">
+        <Verify command="lando stop -s db --format=json" expect={{ stdout: { regex: "\"servicesStopped\":\\s*\\[\\s*\"db\"\\s*\\][\\s\\S]*\"servicesKeptRunning\":\\s*\\[\\s*\"app\"\\s*\\]" } }} />
+      </Step>
+      <Step name="stopped-service-info">
+        <Verify command="lando info --format=json" expect={{ stdout: { regex: "\"service\":\\s*\"app\"[^}]*\"status\":\\s*\"running\"[\\s\\S]*\"service\":\\s*\"db\"[^}]*\"status\":\\s*\"stopped\"" } }} />
+      </Step>
+      <Step name="restore-stopped-service">
+        <Verify command="lando start --format=json" expect={{ stdout: { regex: "\"name\":\\s*\"app\"(?:(?!\"name\")[\\s\\S])*?\"action\":\\s*\"kept\"" } }} />
       </Step>
     </Hidden>
     <Step name="cleanup">

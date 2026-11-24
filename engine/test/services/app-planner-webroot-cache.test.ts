@@ -6,12 +6,13 @@ import { LandofileValidationError } from "@lando/sdk/errors";
 import { LandofileShape } from "@lando/sdk/schema";
 import { AppPlanner } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { Cause, Effect, Exit, Option, Schema } from "effect";
+import { Cause, Effect, Exit, Layer, Option, Schema } from "effect";
 import * as AppPlanCache from "../../src/cache/app-plan.ts";
 import * as AppCacheService from "../../src/cache/service.ts";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";
 import { literalTestLandofile } from "../compiled-landofile.ts";
+import { pathsServiceLayer } from "../paths-service.ts";
 
 test.each([{ webroot: "public" }, { appMount: "relative" }])(
   "an old cached plan rejects invalid authored fields before cache lookup: %j",
@@ -29,7 +30,7 @@ test.each([{ webroot: "public" }, { appMount: "relative" }])(
       Effect.flatMap(AppPlanner, (planner) =>
         planner.plan(literalTestLandofile(input, root), TestRuntimeProvider.capabilities),
       ).pipe(
-        Effect.provide(AppPlannerLayer.layer),
+        Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
         Effect.provide(AppCacheService.layer),
         Effect.provide(PluginRegistryLayer.layer),
       );

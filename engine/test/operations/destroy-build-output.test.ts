@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { AbsolutePath, ProviderId, ServiceName } from "@lando/sdk/schema";
 import { PathsService, RuntimeProviderRegistry } from "@lando/sdk/services";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect } from "effect";
 import { destroyApp } from "../../src/operations/destroy.ts";
 import { artifactBuildStoreKey } from "../../src/services/build-artifact-name.ts";
@@ -72,7 +73,10 @@ test.each([false, true])(
           root: plan.root,
           app: { kind: "user" as const, id: plan.id, root: plan.root },
         };
-        const selected = { ...registry, select: () => Effect.succeed(provider) };
+        const selected = makeTestRuntimeProviderRegistry({
+          ...registry,
+          select: () => Effect.succeed(provider),
+        });
         const first = yield* destroyApp({}, target).pipe(
           Effect.provideService(RuntimeProviderRegistry, selected),
         );

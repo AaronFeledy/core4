@@ -8,17 +8,19 @@ import {
   AbsolutePath,
   AppId,
   type AppPlan,
+  LANDO_DATA_ROOT_LABEL,
   ProviderId,
   ServiceName,
   appIdentityKey,
 } from "@lando/sdk/schema";
 import {
   FileSystem,
+  PathsService,
   type ProviderRuntimeSnapshot,
   RuntimeProviderRegistry,
   StateStore,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import * as DiskStateStore from "@lando/state-store/service";
 import { Cause, Effect, Exit, Layer } from "effect";
 import { prepareAppsGc } from "../../src/operations/apps-gc.ts";
@@ -46,7 +48,9 @@ const at = (name: string): AppPlan => {
   };
 };
 
-const fixture = (names: readonly string[] = ["one", "two"], retainData = false) => {
+const fixture = (names: readonly string[] = ["one", "two"], retainData = false, foreign = false) => {
+  const harness = makeHarness();
+  const paths = makeLandoPaths({ userDataRoot: harness.userDataRoot });
   let plans = names.map(at);
   let listed = [providerId];
   const destroyed: string[] = [];
@@ -85,7 +89,7 @@ const fixture = (names: readonly string[] = ["one", "two"], retainData = false) 
         return Effect.succeed({ kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } });
       }),
   };
-  const registry = RuntimeProviderRegistry.of({
+  const registry = makeTestRuntimeProviderRegistry({
     list: Effect.sync(() => listed),
     capabilities: Effect.succeed(provider.capabilities),
     select: () => Effect.succeed(provider),
@@ -105,7 +109,7 @@ const fixture = (names: readonly string[] = ["one", "two"], retainData = false) 
         appliedPlans: plans,
         // The idle runtime's containers are only listed once it runs.
         services: running
-          ? plans.map((plan) => ({
+          ? [...plans, ...(foreign ? [at("foreign")] : [])].map((plan) => ({
               app: plan.id,
               appRoot: plan.root,
               service: ServiceName.make("web"),
@@ -113,12 +117,17 @@ const fixture = (names: readonly string[] = ["one", "two"], retainData = false) 
               status: "created" as const,
               publications: { status: "unknown" as const },
               containerId: `${plan.id}-web`,
+              labels: {
+                [LANDO_DATA_ROOT_LABEL]:
+                  plan.id === "foreign" ? "/another-data-root" : paths.roots.userDataRoot,
+              },
             }))
           : [],
         volumes: retainData
           ? [
               {
                 ref: { app: at("one").id, store: "database" },
+                labels: { [LANDO_DATA_ROOT_LABEL]: paths.roots.userDataRoot },
                 identity: {
                   nativeName: "one-data",
                   coordinationKey: "key",
@@ -132,9 +141,9 @@ const fixture = (names: readonly string[] = ["one", "two"], retainData = false) 
       },
     ]),
   });
-  const harness = makeHarness();
   const layer = Layer.mergeAll(
     harness.layer,
+    Layer.succeed(PathsService, paths),
     BunFileSystem.layer,
     Layer.succeed(RuntimeProviderRegistry, registry),
   );
@@ -215,6 +224,13 @@ test("report lists missing roots without preparing the runtime or destroying app
   expect(result.prune).toBe(false);
   expect(f.destroyed).toEqual([]);
   expect(f.launches()).toBe(0);
+});
+
+test("prune never selects another data root's missing app", async () => {
+  const f = fixture(["one"], false, true);
+  const prepared = await Effect.runPromise(prepareAppsGc({}).pipe(Effect.provide(f.layer)));
+  await Effect.runPromise(prepared.prune.pipe(Effect.provide(f.layer)));
+  expect(f.destroyed).toEqual(["one"]);
 });
 
 test.each([false, true])(
@@ -328,22 +344,25 @@ test("a failed provider scan does not hide another provider's roots", async () =
       const registry = yield* RuntimeProviderRegistry;
       const broken = ProviderId.make("broken");
       return yield* prepareAppsGc().pipe(
-        Effect.provideService(RuntimeProviderRegistry, {
-          ...registry,
-          list: Effect.succeed([broken, providerId]),
-          observeRuntime: Effect.flatMap(TeardownProvider, (id) =>
-            id === broken
-              ? Effect.fail(
-                  new ProviderUnavailableError({
-                    providerId: broken,
-                    operation: "observe",
-                    message: "unreadable",
-                    remediation: "Repair the provider state.",
-                  }),
-                )
-              : (registry.observeRuntime ?? Effect.succeed([])),
-          ),
-        }),
+        Effect.provideService(
+          RuntimeProviderRegistry,
+          makeTestRuntimeProviderRegistry({
+            ...registry,
+            list: Effect.succeed([broken, providerId]),
+            observeRuntime: Effect.flatMap(TeardownProvider, (id) =>
+              id === broken
+                ? Effect.fail(
+                    new ProviderUnavailableError({
+                      providerId: broken,
+                      operation: "observe",
+                      message: "unreadable",
+                      remediation: "Repair the provider state.",
+                    }),
+                  )
+                : (registry.observeRuntime ?? Effect.succeed([])),
+            ),
+          }),
+        ),
       );
     }).pipe(Effect.provide(f.layer)),
   );
@@ -378,11 +397,17 @@ test("an answering runtime does not hide unreadable applied-state records", asyn
     Effect.gen(function* () {
       const registry = yield* RuntimeProviderRegistry;
       return yield* prepareAppsGc().pipe(
-        Effect.provideService(RuntimeProviderRegistry, {
-          ...registry,
-          appliedStateInventory: () =>
-            Effect.succeed({ plans: [], unreadable: [{ path: "/private/applied-state" }] }),
-        }),
+        Effect.provideService(
+          RuntimeProviderRegistry,
+          makeTestRuntimeProviderRegistry({
+            ...registry,
+            appliedStateInventory: () =>
+              Effect.succeed({
+                plans: [],
+                unreadable: [{ path: "/private/applied-state", reason: "unreadable" }],
+              }),
+          }),
+        ),
       );
     }).pipe(Effect.provide(f.layer)),
   );
@@ -390,7 +415,7 @@ test("an answering runtime does not hide unreadable applied-state records", asyn
   expect(prepared.report.scans[0]).toMatchObject({
     runtimeObserved: true,
     complete: false,
-    errorTag: "AppResolveError",
+    errorTag: "ProviderUnavailableError",
   });
 });
 
@@ -426,12 +451,11 @@ test("an owner that cannot start does not block another owner's confirmation", a
         return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
       }),
   });
-  const registry = RuntimeProviderRegistry.of({
+  const registry = makeTestRuntimeProviderRegistry({
     list: Effect.succeed([healthy, broken]),
-    capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
     select: (target) =>
       Effect.succeed(providerFor(typeof target === "string" ? target : (target?.provider ?? healthy))),
-    appliedPlansFor: (root, providerId) =>
+    appliedPlansFor: (root, { providerId } = {}) =>
       Effect.sync(() =>
         plans.filter(
           (plan) => plan.root === root && (providerId === undefined || plan.provider === providerId),
@@ -459,6 +483,7 @@ test("an owner that cannot start does not block another owner's confirmation", a
                 appRoot: plan.root,
                 service: ServiceName.make("web"),
                 providerId: id,
+                labels: { [LANDO_DATA_ROOT_LABEL]: harness.userDataRoot },
                 status: "created" as const,
                 publications: { status: "unknown" as const },
                 containerId: `${plan.id}-web`,
@@ -469,8 +494,9 @@ test("an owner that cannot start does not block another owner's confirmation", a
       }),
     ),
   });
+  const harness = makeHarness();
   const layer = Layer.mergeAll(
-    makeHarness().layer,
+    harness.layer,
     BunFileSystem.layer,
     Layer.succeed(RuntimeProviderRegistry, registry),
   );

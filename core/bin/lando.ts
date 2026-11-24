@@ -19,6 +19,7 @@ import { installProcessLifecycle } from "../src/cli/process-lifecycle";
 import { runWithProcessSignalReraise } from "../src/cli/process-signals";
 import { cliUserArgv } from "../src/cli/user-argv";
 import { derivedCodegenMessage, isModuleResolveError, missingDerivedCodegen } from "./derived-codegen.ts";
+import { preservedSymlinksMessage } from "./preserve-symlinks.ts";
 
 ensureHostProxyNoProxy("127.0.0.1");
 ensureHostProxyNoProxy("localhost");
@@ -37,6 +38,13 @@ const writeLine = async (destination: "stdout" | "stderr", text: string): Promis
 const isCompiledEntry = Bun.isStandaloneExecutable;
 
 const main = async (): Promise<void> => {
+  const preservedSymlinks = isCompiledEntry
+    ? undefined
+    : preservedSymlinksMessage(process.env, process.execArgv);
+  if (preservedSymlinks !== undefined) {
+    await writeLine("stderr", preservedSymlinks);
+    process.exit(1);
+  }
   await installProcessLifecycle();
   if (argv[0] === "__internal:host-proxy-worker") {
     await import("../src/runtime/engine-composition");

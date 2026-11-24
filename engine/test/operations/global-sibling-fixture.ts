@@ -17,7 +17,7 @@ import {
   RuntimeProviderRegistry,
   type ServiceRuntimeInfo,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect, Layer, Schema, Stream } from "effect";
 import { reconcileGlobalSiblings } from "../../src/operations/global-retained-plan.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
@@ -63,8 +63,8 @@ export const fixture = (
         return options.observed ?? [observation()];
       }),
   };
-  const registry = RuntimeProviderRegistry.of({
-    assertAppliedStateReadable: () =>
+  const registry = makeTestRuntimeProviderRegistry({
+    readAppliedPlanStrict: () =>
       options.unreadable
         ? Effect.fail(
             new ProviderUnavailableError({
@@ -74,10 +74,9 @@ export const fixture = (
               remediation: "Restore the global record, then run `lando global:start`.",
             }),
           )
-        : Effect.void,
+        : Effect.succeed(options.prior),
     appliedPlansFor: () => Effect.succeed(options.prior === undefined ? [] : [options.prior]),
     resolveAppliedPlan: () => Effect.succeed(options.prior),
-    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
     list: Effect.succeed([ProviderId.make("lando")]),
     capabilities: Effect.succeed(provider.capabilities),
     select: () => Effect.succeed(provider),

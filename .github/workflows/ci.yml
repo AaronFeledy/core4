@@ -8,6 +8,12 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# A new push to a pull request supersedes its running checks. Other events get
+# a group of their own, so every main commit keeps its run.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 defaults:
   run:
     shell: bash
@@ -472,7 +478,7 @@ jobs:
 
       - name: Check schema compatibility
         env:
-          LANDO_SCHEMA_COMPATIBILITY_BASE_REF: origin/${{ github.event_name == 'pull_request' && github.base_ref || 'main' }}
+          LANDO_SCHEMA_COMPATIBILITY_BASE_REF: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || 'origin/main' }}
         run: bun run check:schema-compatibility
 
       - name: Regenerate command reference
@@ -2672,7 +2678,7 @@ jobs:
 
   ci:
     needs: [selection, static-checks-platform, static-checks, docs-build, schema-snapshot, bundled-codegen, library-api-tests-runner, library-api-tests, recipe-tests-runner, recipe-tests, container-helper, container-helper-arm64, build-linux-x64, runtime-bundle-linux-x64, runtime-bundle-linux-arm64, guide-scenarios-linux-x64-runner, guide-scenarios-linux-x64, guide-e2e-linux-x64-runner, guide-e2e-linux-x64, unit-tests-linux-x64-shard, unit-tests-linux-x64, test-isolation-linux-x64, process-signal-tests-darwin, perf-budget-linux-x64, runtime-bundle-win32-x64, build-darwin-arm64, guide-scenarios-darwin-arm64, provider-integration-darwin-arm64, build-darwin-x64, guide-scenarios-darwin-x64, provider-integration-darwin-x64, build-linux-arm64, guide-scenarios-linux-arm64, provider-integration-linux-arm64, provider-integration-linux-x64, provider-integration-linux-x64-runner, build-windows-x64, guide-scenarios-windows-x64, provider-integration-windows-x64, build-windows-arm64, guide-scenarios-windows-arm64, provider-integration-windows-arm64]
-    if: always()
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:

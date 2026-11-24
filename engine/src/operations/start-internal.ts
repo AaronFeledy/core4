@@ -1,6 +1,6 @@
 import { observeTcpListener } from "@lando/container-runtime/listener-observation";
+import { adoptionReceiptsFromSummary } from "@lando/container-runtime/native-ownership";
 import type { RedactionService } from "@lando/redaction/service";
-
 import type { StartAppError as SdkStartAppError, StartAppOptions, StartAppResult } from "@lando/sdk/app";
 import {
   AppPlacementError,
@@ -66,7 +66,6 @@ import { fileSyncBundle } from "./file-sync-bundle.ts";
 import { resolveFileSyncMountPlan } from "./file-sync-plan.ts";
 import { withGlobalConsumerAdmission } from "./global-consumer-admission.ts";
 import { verifyGlobalConsumerAdmission } from "./global-consumer-lease.ts";
-import { publishLowPortWarnings } from "./low-port-warning.ts";
 import { runPostStartScan, startupScanUrls } from "./post-start-scan.ts";
 import { prepareAcceleratedStart } from "./prepare-accelerated-start.ts";
 import { selectRebuildPlan } from "./service-selection.ts";
@@ -78,6 +77,7 @@ import { markStartMutation } from "./start-incomplete-notice.ts";
 import { projectDebuggerOverlay, withAcquiredStartOverlays } from "./start-overlays.ts";
 import { withApplyProgress, withGlobalStartProgress } from "./start-progress-phases.ts";
 import { retireUnusedSshAgentWorker } from "./start-ssh-agent.ts";
+import { publishStartWarnings } from "./start-warnings.ts";
 import type { StopAppPreflight } from "./stop-internal.ts";
 
 export type StartAppError = SdkStartAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
@@ -282,7 +282,7 @@ export const announceAppLaunch = Effect.fnUntraced(function* (input: {
   const proxy = yield* RouterService;
   const ref = target.app;
 
-  yield* publishLowPortWarnings(plan);
+  yield* publishStartWarnings(plan);
   yield* events.publish(
     PreAppStartEvent.make({
       eventName: "pre-app-start",
@@ -352,6 +352,7 @@ const applyAppLaunch = Effect.fnUntraced(function* (input: {
   const { target, provider, overlays } = admitted;
   const events = yield* EventService;
   const services = Object.values(runtimePlan.services);
+  const registry = yield* RuntimeProviderRegistry;
   let applyOutcome: Effect.Success<ReturnType<typeof applyActivation>> | undefined;
   let initial: ReadonlyMap<string, ServiceRuntimeInfo> = new Map();
   let servicesRemoved: ReadonlyArray<string> = [];
@@ -369,6 +370,9 @@ const applyAppLaunch = Effect.fnUntraced(function* (input: {
       // Whole-app start names every service, so containers of services the Landofile no
       // longer defines are pruned here, after accelerated-start preparation.
       servicesRemoved = yield* convergeRemovedServices(runtimePlan, provider, {
+        receipts: (
+          registry.resourceOwnership?.(runtimePlan.provider, runtimePlan.root) ?? Effect.succeed(undefined)
+        ).pipe(Effect.map(adoptionReceiptsFromSummary)),
         app: target.app,
         events,
         observations,

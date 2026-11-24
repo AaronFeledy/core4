@@ -5,6 +5,8 @@ services:
     primary: true
     appMount:
       target: /app
+      excludes:
+        - vendor
       includes:
         - vendor/acme/sdk
     mounts:

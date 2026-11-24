@@ -11,7 +11,7 @@ import {
   RuntimeProviderRegistry,
   StateStore,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Cause, Deferred, Effect, Exit, Fiber, Layer, Queue, Schema } from "effect";
 import * as Builder from "../../src/services/build-orchestrator.ts";
 import * as Events from "../../src/services/event-service.ts";
@@ -67,10 +67,7 @@ test("settles declared artifact tasks when interrupted after tree-start delivery
     Layer.succeed(StateStore, makeTestStateStore().service),
     Layer.succeed(
       RuntimeProviderRegistry,
-      RuntimeProviderRegistry.of({
-        appliedPlansFor: () => Effect.succeed([]),
-        resolveAppliedPlan: () => Effect.succeed(undefined),
-        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+      makeTestRuntimeProviderRegistry({
         list: Effect.succeed([ProviderId.make(provider.id)]),
         capabilities: Effect.succeed(provider.capabilities),
         select: () => Effect.succeed(provider),

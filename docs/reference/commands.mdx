@@ -577,6 +577,12 @@ Stop the current Lando app.
 
 Aliases: `lando stop`
 
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--service, -s` | Service to stop, without stopping its dependents (repeatable) |
+
 ## `lando apps:gc`
 
 Report or clean up user apps whose folders no longer exist.
@@ -953,8 +959,9 @@ Flags:
 | --- | --- |
 | `--from-app` | Explicit sibling source app id. |
 | `--from-path` | Explicit canonical source app root. |
-| `--keep-latest` | Number of newest manual snapshots to retain. |
+| `--keep-latest` | Number of newest snapshots to retain in the selected bucket. |
 | `--preview` | Show deletions without removing snapshots. |
+| `--recovery` | Select automatic recovery snapshots instead of manual ones. |
 | `--service` | Database service to prune. |
 | `--yes, -y` | Confirm snapshot deletion. |
 
@@ -1005,7 +1012,7 @@ Flags:
 | `--fix` | Re-run the setup step of each degraded subsystem whose recovery is safe to automate. |
 | `--limit` | Return at most this many checks (1 to 1000). |
 | `--provider` | Report what would be selected if `--provider=…` were used (e.g. lando, docker, podman). |
-| `--section` | Run only the selected diagnostic sections (repeatable); always report global config. (one of `global-config`, `provider`, `app-listeners`, `database-credentials`, `certificate-authority`, `network-trust`, `subsystems`, `global-app`, `mcp`, `accelerated-starts`, `missing-app-roots`, `orphaned-volume-snapshots`, `legacy-snapshot-catalogs`, `filesystem-watch`, `debugger-host`, `app-version-constraints`, `deprecations`, `app-config`) |
+| `--section` | Run only the selected diagnostic sections (repeatable); always report global config. (one of `global-config`, `provider`, `app-listeners`, `database-credentials`, `certificate-authority`, `network-trust`, `subsystems`, `global-app`, `mcp`, `accelerated-starts`, `state-compatibility`, `missing-app-roots`, `orphaned-volume-snapshots`, `legacy-snapshot-catalogs`, `filesystem-watch`, `debugger-host`, `app-version-constraints`, `deprecations`, `app-config`) |
 | `--status` | Include checks with this status (repeatable). (one of `pass`, `warn`, `fail`) |
 
 ## `lando meta:events:follow`

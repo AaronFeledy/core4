@@ -491,7 +491,7 @@ Run `lando config validate`, then `lando config --format=json` to check the resu
 
 ## Configure the shared global app
 
-`lando global:config` reads and writes the shared global app, which runs host-wide services such as the proxy, Mailpit, and the SSH agent when needed. Lando starts Traefik for you as part of that app. It's a Landofile stack, not `config.yml`: `lando config` owns host settings such as `serviceDefaults.environment` or `router`, and `lando global:config` owns the global app's services.
+`lando global:config` reads and writes this data root's global app. The proxy, Mailpit, and the SSH agent are shared by apps in that root. Lando starts Traefik for you as part of that app. It's a Landofile stack, not `config.yml`: `lando config` owns host settings such as `serviceDefaults.environment` or `router`, and `lando global:config` owns the global app's services.
 
 Generate the global configuration first, then override a bundled service, check the effective result, and apply it:
 

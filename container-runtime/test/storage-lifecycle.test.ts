@@ -31,7 +31,7 @@ test("cleans captured IDs with anonymous-aware removal when a scenario assertion
       body: JSON.stringify({
         Id: "container/id",
         Mounts: [
-          { Type: "volume", Name: "anonymous/id", Destination: "/ephemeral" },
+          { Type: "volume", Name: "a".repeat(64), Destination: "/ephemeral" },
           { Type: "volume", Name: "named-id", Destination: "/retained" },
         ],
       }),
@@ -63,7 +63,7 @@ test("cleans captured IDs with anonymous-aware removal when a scenario assertion
   expect(deletes.slice(0, 4)).toEqual([
     "/containers/container%2Fid?force=true&v=true",
     "/volumes/named-id",
-    "/volumes/anonymous%2Fid",
+    `/volumes/${"a".repeat(64)}`,
     "/networks/network-id",
   ]);
   expect(deletes).toHaveLength(5);
@@ -154,7 +154,7 @@ test.each([false, true])(
         status: 200,
         body: JSON.stringify({
           Id: "owner",
-          Mounts: [{ Type: "volume", Name: "anonymous/id", Destination: "/ephemeral" }],
+          Mounts: [{ Type: "volume", Name: "a".repeat(64), Destination: "/ephemeral" }],
         }),
       };
     });
@@ -170,7 +170,7 @@ test.each([false, true])(
     const borrow = fixture.call({
       method: "POST",
       path: `/containers/create?name=${fixture.borrower}`,
-      body: { Image: fixture.image, HostConfig: { Binds: ["anonymous/id:/ephemeral"] } },
+      body: { Image: fixture.image, HostConfig: { Binds: [`${"a".repeat(64)}:/ephemeral`] } },
     });
     if (captured) await expect(borrow).resolves.toMatchObject({ status: 201 });
     else {

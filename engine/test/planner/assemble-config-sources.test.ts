@@ -7,10 +7,11 @@ import { LandofileValidationError } from "@lando/sdk/errors";
 import { type LandofileShape, ServiceName } from "@lando/sdk/schema";
 import { AppPlanner } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { Effect, Result } from "effect";
+import { Effect, Layer, Result } from "effect";
 import * as cache from "../../src/cache/app-plan.ts";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";
+import { pathsServiceLayer } from "../paths-service.ts";
 
 const withTempCwd = async (run: (root: string) => Promise<void>) => {
   const root = await realpath(await mkdtemp(join(tmpdir(), "lando-config-plan-")));
@@ -35,7 +36,10 @@ const plan = (config: { readonly server?: string; readonly dir?: string }) => {
   };
   return Effect.flatMap(AppPlanner, (planner) =>
     planTestLandofile(planner, landofile, TestRuntimeProvider.capabilities),
-  ).pipe(Effect.provide(AppPlannerLayer.layer), Effect.provide(PluginRegistryLayer.layer));
+  ).pipe(
+    Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
+    Effect.provide(PluginRegistryLayer.layer),
+  );
 };
 
 test("changes the derived plan cache key when config bytes change", () =>

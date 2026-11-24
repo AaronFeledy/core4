@@ -7,11 +7,11 @@ import { CommandResultEnvelope } from "@lando/sdk/schema";
 import { Schema } from "effect";
 import { resolveCompiledBinaryVersion } from "../../../scripts/compiled-binary-version.ts";
 import corePackage from "../../package.json";
+import { compileCliTo } from "../_support/compiled-cli.ts";
 import { withFifoChild } from "../cli/stdio-file-status-support.ts";
 import { stubContainerHelperDir } from "./fixtures/container-helper-stubs.ts";
 
 const coreRoot = resolve(import.meta.dirname, "../..");
-const binaryPath = resolve(coreRoot, "dist/lando");
 const expectedBundledPluginNames: ReadonlyArray<string> = [
   "@lando/provider-lando",
   "@lando/provider-docker",
@@ -66,8 +66,11 @@ describe.skipIf(process.platform !== "linux" || process.arch !== "x64")("compile
     const buildEnv = { ...process.env, LANDO_CONTAINER_HELPER_DIR: await stubContainerHelperDir() };
     const manifest = await runCommand([process.execPath, "run", "build:manifest"], { env: buildEnv });
     expect(manifest.exitCode).toBe(0);
-    const build = await runCommand([process.execPath, "run", "build:compile"], { env: buildEnv });
-    expect(build.exitCode).toBe(0);
+    // Never `build:compile`: it writes core/dist/lando, the binary developer tooling runs.
+    const relocatedRoot = await mkdtemp(resolve(tmpdir(), "lando-opentui-compiled-"));
+    const buildDir = resolve(relocatedRoot, "build");
+    const binaryPath = resolve(buildDir, "lando");
+    await compileCliTo(binaryPath, buildEnv);
 
     const binary = await stat(binaryPath);
     expect(binary.isFile()).toBe(true);
@@ -79,8 +82,8 @@ describe.skipIf(process.platform !== "linux" || process.arch !== "x64")("compile
       binaryText.match(/\/\$bunfs\/root\/libopentui-[a-z0-9]+\.so/gu) ?? [],
     );
     expect([...embeddedOpenTuiAssets]).toHaveLength(1);
-    expect(await Bun.file(resolve(coreRoot, "dist/libopentui.so")).exists()).toBe(false);
-    expect(await Bun.file(resolve(coreRoot, "dist/node_modules")).exists()).toBe(false);
+    expect(await Bun.file(resolve(buildDir, "libopentui.so")).exists()).toBe(false);
+    expect(await Bun.file(resolve(buildDir, "node_modules")).exists()).toBe(false);
     for (const pluginName of expectedBundledPluginNames) {
       expect(binaryText).toContain(pluginName);
     }
@@ -104,7 +107,6 @@ describe.skipIf(process.platform !== "linux" || process.arch !== "x64")("compile
     expect(help.stdout).toContain("MORE");
     expect(help.stderr).not.toContain("could not find package.json");
 
-    const relocatedRoot = await mkdtemp(resolve(tmpdir(), "lando-opentui-compiled-"));
     const relocatedBinary = resolve(relocatedRoot, "lando");
     const appRoot = resolve(relocatedRoot, "app");
     await copyFile(binaryPath, relocatedBinary);

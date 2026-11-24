@@ -18,7 +18,7 @@ import {
   failedAppStepDisposition,
 } from "./build-app-disposition.ts";
 import { isScratchPlan } from "./build-app-kind.ts";
-import type { AppStep } from "./build-app-plan.ts";
+import { type AppStep, appStepLabel } from "./build-app-plan.ts";
 import { makeAppBuildReceipts } from "./build-app-receipts.ts";
 import type { AppBuildInput } from "./build-app-step-runner.ts";
 
@@ -42,7 +42,7 @@ export const makeAppBuildSettlement = (input: AppBuildInput, steps: readonly App
           TaskStartEvent.make({
             taskId: appStep.step.id,
             parentId,
-            label: `Build ${String(appStep.step.service)}`,
+            label: appStepLabel(appStep),
             ...(evidence.transcriptPath === undefined ? {} : { transcriptPath: evidence.transcriptPath }),
             timestamp: yield* DateTime.now,
           }),
@@ -221,7 +221,7 @@ export const makeAppBuildSettlement = (input: AppBuildInput, steps: readonly App
         TaskTreeStartEvent.make({
           parentId,
           label: "Building app dependencies",
-          children: steps.map(({ step }) => step.id),
+          children: steps.map((appStep) => ({ id: appStep.step.id, label: appStepLabel(appStep) })),
           mode: "list",
           timestamp: yield* DateTime.now,
         }),

@@ -7,6 +7,7 @@ import { TestRuntimeProvider } from "@lando/core/testing";
 import { makeLandoPaths } from "@lando/paths";
 import type { LandoPluginModule, PluginDoctorCheckContribution } from "@lando/sdk/plugins";
 import { type GlobalConfig, PluginManifest, ProviderId } from "@lando/sdk/schema";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { type Context, Effect, Layer, Schema } from "effect";
 
 import { doctor } from "../../src/cli/commands/doctor.ts";
@@ -24,14 +25,10 @@ const buildConfigService = (): Context.Service.Shape<typeof ConfigService> => {
   });
 };
 
-const buildRegistry = () => ({
-  resolveAppliedPlan: () => Effect.succeed(undefined),
-  resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-  appliedPlansFor: () => Effect.succeed([]),
-  list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
-  capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-  select: () => Effect.succeed(TestRuntimeProvider),
-});
+const buildRegistry = () =>
+  makeTestRuntimeProviderRegistry({
+    list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
+  });
 
 const doctorModule = (check: PluginDoctorCheckContribution): LandoPluginModule => ({
   name: "@lando/doctor-test",
@@ -45,7 +42,7 @@ const doctorModule = (check: PluginDoctorCheckContribution): LandoPluginModule =
 
 const doctorLayer = (registry = buildRegistry()) =>
   Layer.mergeAll(
-    Layer.succeed(RuntimeProviderRegistry, RuntimeProviderRegistry.of(registry)),
+    Layer.succeed(RuntimeProviderRegistry, registry),
     Layer.succeed(ConfigService, ConfigService.of(buildConfigService())),
     Layer.succeed(PathsService, makeLandoPaths({ platform: "linux", env: {} })),
   );
@@ -155,10 +152,10 @@ describe("doctor() contributed checks", () => {
           },
         ]),
     });
-    const registryThatMustNotConstruct = {
+    const registryThatMustNotConstruct = makeTestRuntimeProviderRegistry({
       ...buildRegistry(),
       select: () => Effect.die("registry.select() must not run after a preemptive plugin report"),
-    };
+    });
 
     // When
     const result = await Effect.runPromise(

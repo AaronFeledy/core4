@@ -478,12 +478,21 @@ type ScratchLogsServices = ScratchAppService | RuntimeProviderRegistry;
 const scratchAppliedPlan = Effect.fnUntraced(function* (id: string) {
   const handle = yield* scratchResolve(id);
   const registry = yield* RuntimeProviderRegistry;
-  const plan = yield* registry.resolveAppliedPlan(
+  const discovered = yield* registry.resolveAppliedPlan(
     handle.app.root,
     { kind: "scratch", id: handle.id },
     "exact",
   );
-  return { handle, plan };
+  const plan = discovered === undefined ? undefined : yield* registry.readAppliedPlanStrict(discovered);
+  return {
+    handle,
+    plan:
+      plan?.id === handle.id &&
+      discovered !== undefined &&
+      (plan.identity?.appRoot ?? plan.root) === (discovered.identity?.appRoot ?? discovered.root)
+        ? plan
+        : undefined,
+  };
 });
 
 export const scratchLogs = Effect.fn("Scratch.logs")(function* (

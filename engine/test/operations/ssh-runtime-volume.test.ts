@@ -11,7 +11,7 @@ import {
   RuntimeProviderRegistry,
   SshService,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Effect, Fiber, Schema } from "effect";
 import { TestClock } from "effect/testing";
@@ -19,6 +19,10 @@ import { resolveSshAgentUpstream, withStartedSshAgent } from "../../src/operatio
 import { startSshSidecar } from "../../src/operations/start-ssh-sidecar.ts";
 import * as LandoEventService from "../../src/services/event-service.ts";
 import { globalPlanAt } from "../../src/testing/global-teardown.ts";
+
+const testPaths = makeLandoPaths();
+const runWithPaths = <A, E>(effect: Effect.Effect<A, E, PathsService>) =>
+  Effect.runPromise(effect.pipe(Effect.provideService(PathsService, testPaths)));
 
 const metadata = { resolvedAt: "2026-01-01T00:00:00Z", source: "test", runtime: 4 };
 const plan = Schema.decodeUnknownSync(AppPlan)({
@@ -83,33 +87,33 @@ const appliedGlobal = globalPlanAt(AbsolutePath.make("/global"), {
   intervalSeconds: 1,
   retries: 1,
 });
-const registry = (state: "running" | "exited", selected: string[], providerId = appliedGlobal.provider) => ({
-  appliedPlansFor: () => Effect.succeed([]),
-  resolveAppliedPlan: () => Effect.succeed({ ...appliedGlobal, provider: providerId }),
-  resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-  list: Effect.succeed([providerId]),
-  capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-  select: (selectedPlan?: AppPlan | ProviderId) => {
-    selected.push(String(typeof selectedPlan === "string" ? selectedPlan : selectedPlan?.provider));
-    return Effect.succeed({
-      ...TestRuntimeProvider,
-      id: providerId,
-      inspect: () =>
-        Effect.succeed({
-          app: AppId.make("global"),
-          service: ServiceName.make("ssh-agent"),
-          providerId,
-          status: state,
-          publications: { status: "unknown" as const },
-        }),
-      exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
-    });
-  },
-});
+const registry = (state: "running" | "exited", selected: string[], providerId = appliedGlobal.provider) =>
+  makeTestRuntimeProviderRegistry({
+    appliedStateInventory: () => Effect.succeed({ plans: [appliedGlobal], unreadable: [] }),
+    readAppliedPlanStrict: () => Effect.succeed(appliedGlobal),
+    resolveAppliedPlan: () => Effect.succeed({ ...appliedGlobal, provider: providerId }),
+    list: Effect.succeed([providerId]),
+    select: (selectedPlan?: AppPlan | ProviderId) => {
+      selected.push(String(typeof selectedPlan === "string" ? selectedPlan : selectedPlan?.provider));
+      return Effect.succeed({
+        ...TestRuntimeProvider,
+        id: providerId,
+        inspect: () =>
+          Effect.succeed({
+            app: AppId.make("global"),
+            service: ServiceName.make("ssh-agent"),
+            providerId,
+            status: state,
+            publications: { status: "unknown" as const },
+          }),
+        exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
+      });
+    },
+  });
 
 test("Docker app uses the runtime volume when the global app is realized on Docker", async () => {
   const selected: string[] = [];
-  const upstream = await Effect.runPromise(
+  const upstream = await runWithPaths(
     resolveSshAgentUpstream({
       appId: plan.id,
       provider: ProviderId.make("docker"),
@@ -135,7 +139,7 @@ test("global placement failure keeps its reason and remediation in the sidecar e
   // Given
   const remediation = "Remove the duplicate global app realization, then retry.";
   // When
-  const failure = await Effect.runPromise(
+  const failure = await runWithPaths(
     resolveSshAgentUpstream({
       appId: plan.id,
       provider: ProviderId.make("docker"),
@@ -245,52 +249,56 @@ test("stopped sidecar warns and leaves the app without an overlay", async () => 
   expect(warnings[0]).toContain("global:logs --service ssh-agent");
 });
 
-test.each(["docker", "podman", "missing-volume"])("%s keeps the host socket probe path", async (provider) => {
-  // Given
-  const selected: string[] = [];
-  const service =
-    provider === "missing-volume"
-      ? {
-          ...ssh,
-          getAgentSocket: (appId: AppId) => Effect.succeed({ appId, socketPath: "/missing-host-agent.sock" }),
-        }
-      : ssh;
-  // When
-  const result = await Effect.runPromise(
-    Effect.result(
-      resolveSshAgentUpstream({
-        appId: plan.id,
-        provider: ProviderId.make(provider === "missing-volume" ? "lando" : provider),
-        intent: { mode: "sidecar" },
-      }),
-    ).pipe(
-      Effect.provideService(SshService, {
-        ...service,
-        setup: () =>
-          Effect.fail(
-            new SshError({
-              sshId: "sidecar",
-              message: "offline",
-              remediation:
-                "Repair the `sidecar` SSH service (agent socket, plugin install, or sidecar), then re-run.",
-            }),
-          ),
-      }),
-      Effect.provideService(RuntimeProviderRegistry, registry("running", selected)),
-      Effect.provideService(GlobalAppService, globalApp),
-      Effect.provide(LandoEventService.layer),
-    ),
-  );
-  // Then
-  expect(result).toMatchObject({ _tag: "Failure", failure: { reason: "sidecar-not-running" } });
-  expect(selected).toEqual([]);
-});
+test.each(["docker", "podman", "missing-volume"])(
+  "%s refuses an unavailable sidecar delivery",
+  async (provider) => {
+    // Given
+    const selected: string[] = [];
+    const service =
+      provider === "missing-volume"
+        ? {
+            ...ssh,
+            getAgentSocket: (appId: AppId) =>
+              Effect.succeed({ appId, socketPath: "/missing-host-agent.sock" }),
+          }
+        : ssh;
+    // When
+    const result = await runWithPaths(
+      Effect.result(
+        resolveSshAgentUpstream({
+          appId: plan.id,
+          provider: ProviderId.make(provider === "missing-volume" ? "lando" : provider),
+          intent: { mode: "sidecar" },
+        }),
+      ).pipe(
+        Effect.provideService(SshService, {
+          ...service,
+          setup: () =>
+            Effect.fail(
+              new SshError({
+                sshId: "sidecar",
+                message: "offline",
+                remediation:
+                  "Repair the `sidecar` SSH service (agent socket, plugin install, or sidecar), then re-run.",
+              }),
+            ),
+        }),
+        Effect.provideService(RuntimeProviderRegistry, registry("running", selected)),
+        Effect.provideService(GlobalAppService, globalApp),
+        Effect.provide(LandoEventService.layer),
+      ),
+    );
+    // Then
+    expect(result).toMatchObject({ _tag: "Failure", failure: { reason: "sidecar-not-running" } });
+    expect(selected).toEqual(provider === "missing-volume" ? ["lando"] : []);
+  },
+);
 
 test("host-socket path stops waiting when the started sidecar exits", async () => {
   // Given
   let setups = 0;
   // When
-  const result = await Effect.runPromise(
+  const result = await runWithPaths(
     Effect.result(
       resolveSshAgentUpstream({
         appId: plan.id,
@@ -350,26 +358,29 @@ test("stopped sidecar starts once and forwards after delayed readiness with task
             setups++;
           }),
       }),
-      Effect.provideService(RuntimeProviderRegistry, {
-        ...providerRegistry,
-        select: (input) =>
-          providerRegistry.select(input).pipe(
-            Effect.map((provider) => ({
-              ...provider,
-              inspect: () =>
-                provider.inspect().pipe(
-                  Effect.map((service) => ({
-                    app: service.app,
-                    service: service.service,
-                    providerId: service.providerId,
-                    publications: service.publications,
-                    status: setups === 0 ? ("exited" as const) : ("running" as const),
-                  })),
-                ),
-              exec: () => Effect.sync(() => ({ exitCode: ++probes < 3 ? 2 : 0, stdout: "", stderr: "" })),
-            })),
-          ),
-      }),
+      Effect.provideService(
+        RuntimeProviderRegistry,
+        makeTestRuntimeProviderRegistry({
+          ...providerRegistry,
+          select: (input) =>
+            providerRegistry.select(input).pipe(
+              Effect.map((provider) => ({
+                ...provider,
+                inspect: (target: Parameters<typeof provider.inspect>[0]) =>
+                  provider.inspect(target).pipe(
+                    Effect.map((service) => ({
+                      app: service.app,
+                      service: service.service,
+                      providerId: service.providerId,
+                      publications: service.publications,
+                      status: setups === 0 ? ("exited" as const) : ("running" as const),
+                    })),
+                  ),
+                exec: () => Effect.sync(() => ({ exitCode: ++probes < 3 ? 2 : 0, stdout: "", stderr: "" })),
+              })),
+            ),
+        }),
+      ),
       Effect.provideService(PathsService, makeLandoPaths({ platform: "linux" })),
       Effect.provide(PrivateFileAccessService.layer),
       Effect.provide(LandoEventService.layer),
@@ -465,17 +476,21 @@ test.each([false, true])(
           yield* TestClock.adjust("30 seconds");
           return yield* Fiber.join(fiber);
         }).pipe(
-          Effect.provideService(RuntimeProviderRegistry, {
-            ...providerRegistry,
-            select: (input) =>
-              providerRegistry.select(input).pipe(
-                Effect.map((provider) => ({
-                  ...provider,
-                  exec: () => Effect.succeed({ exitCode: 2, stdout: "", stderr: `exec denied ${secret}` }),
-                })),
-              ),
-          }),
+          Effect.provideService(
+            RuntimeProviderRegistry,
+            makeTestRuntimeProviderRegistry({
+              ...providerRegistry,
+              select: (input) =>
+                providerRegistry.select(input).pipe(
+                  Effect.map((provider) => ({
+                    ...provider,
+                    exec: () => Effect.succeed({ exitCode: 2, stdout: "", stderr: `exec denied ${secret}` }),
+                  })),
+                ),
+            }),
+          ),
           Effect.provideService(GlobalAppService, globalApp),
+          Effect.provideService(PathsService, makeLandoPaths()),
           Effect.provide(LandoEventService.layer),
           Effect.provide(TestClock.layer()),
         ),

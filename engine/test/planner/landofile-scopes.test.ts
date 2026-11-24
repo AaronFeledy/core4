@@ -73,6 +73,11 @@ test("advances recorded identity and connection sites without rescanning produce
           services: {
             db: {
               url: { _tag: "RouteText", parts: [{ service: "db", encoding: "raw" }] },
+              hostname: {
+                _tag: "RouteText",
+                parts: [{ service: "db", member: "hostname", encoding: "raw" }],
+              },
+              origin: { _tag: "RouteText", parts: [{ service: "db", member: "origin", encoding: "raw" }] },
               creds: { user: "lando", database: "app", password: { _tag: "SecretRef", reference: "DB" } },
               port: 5544,
             },
@@ -118,6 +123,7 @@ test("reconstructs trusted scope only from persisted connection facts including 
         environment: { POSTGRES_PASSWORD: "must-not-be-used" },
         mounts: [],
         endpoints: [],
+        plannedPort: 5432,
         routes: [],
         dependsOn: [],
         hostAliases: [],
@@ -139,8 +145,48 @@ test("reconstructs trusted scope only from persisted connection facts including 
   const scope = serviceCredsScopeForPlan(plan);
   expect(scope.db).toEqual({
     url: { _tag: "RouteText", parts: [{ service: "db", encoding: "raw" }] },
+    hostname: { _tag: "RouteText", parts: [{ service: "db", member: "hostname", encoding: "raw" }] },
+    origin: { _tag: "RouteText", parts: [{ service: "db", member: "origin", encoding: "raw" }] },
     creds: { user: "lando", database: "app", password: { _tag: "SecretRef", reference: "DB" } },
     port: 5544,
+  });
+});
+
+test("rehydrates the peer listen port recorded on the plan when it has no connection", () => {
+  const plan = Schema.decodeUnknownSync(AppPlan)({
+    id: "demo",
+    name: "demo",
+    slug: "demo",
+    root: "/app",
+    provider: "lando",
+    services: {
+      edge: {
+        name: "edge",
+        type: "nginx",
+        provider: "lando",
+        primary: true,
+        environment: {},
+        mounts: [],
+        endpoints: [],
+        plannedPort: 8080,
+        routes: [],
+        dependsOn: [],
+        hostAliases: [],
+        metadata: { resolvedAt: "2026-01-01T00:00:00Z", source: "/app/.lando.yml", runtime: 4 },
+        extensions: {},
+      },
+    },
+    routes: [],
+    stores: [],
+    fileSync: [],
+    metadata: { resolvedAt: "2026-01-01T00:00:00Z", source: "/app/.lando.yml", runtime: 4 },
+    extensions: {},
+  });
+  expect(serviceCredsScopeForPlan(plan).edge).toEqual({
+    url: { _tag: "RouteText", parts: [{ service: "edge", encoding: "raw" }] },
+    hostname: { _tag: "RouteText", parts: [{ service: "edge", member: "hostname", encoding: "raw" }] },
+    origin: { _tag: "RouteText", parts: [{ service: "edge", member: "origin", encoding: "raw" }] },
+    port: 8080,
   });
 });
 
@@ -211,6 +257,11 @@ test("locates forbidden binding helpers at the canonical destination", async () 
           services: {
             db: {
               url: { _tag: "RouteText", parts: [{ service: "db", encoding: "raw" }] },
+              hostname: {
+                _tag: "RouteText",
+                parts: [{ service: "db", member: "hostname", encoding: "raw" }],
+              },
+              origin: { _tag: "RouteText", parts: [{ service: "db", member: "origin", encoding: "raw" }] },
               creds: { user: "lando", database: "app", password: { _tag: "SecretRef", reference: "DB" } },
               port: 5432,
             },

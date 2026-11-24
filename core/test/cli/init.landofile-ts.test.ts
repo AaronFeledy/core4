@@ -3,17 +3,18 @@ import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promi
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ServiceName } from "@lando/core/schema";
-import { AppPlanner, LandofileService } from "@lando/core/services";
+import { AppPlanner, LandofileService, PathsService } from "@lando/core/services";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
 import { InitTargetExistsError } from "@lando/sdk/errors";
 import type { LoadScopedLandofile } from "@lando/sdk/schema";
-import { Effect } from "effect";
+import { Effect, Layer } from "effect";
 import { bundledRecipe } from "../_support/bundled-recipe.ts";
 
 const nodeTsRecipe = bundledRecipe("node-ts");
 
+import { makeLandoPaths } from "@lando/paths";
 import * as TestLandofileServiceLayer from "../_support/landofile-layer.ts";
 import { initAppWithOwnerOnlyFileAccess as initApp } from "../_support/private-file-access.ts";
 import { previewBuiltinRecipe } from "../_support/recipe-output.ts";
@@ -119,7 +120,9 @@ const withEnv = async <T>(
 const planLandofile = (landofile: LoadScopedLandofile) =>
   Effect.runPromise(
     Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, providerCapabilities)).pipe(
-      Effect.provide(AppPlannerLayer.layer),
+      Effect.provide(
+        AppPlannerLayer.layer.pipe(Layer.provide(Layer.succeed(PathsService, makeLandoPaths()))),
+      ),
       Effect.provide(PluginRegistryLayer.layer),
       Effect.provide(BunFileSystem.layer),
     ),

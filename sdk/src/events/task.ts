@@ -3,10 +3,22 @@ import { Schema } from "effect";
 import { AbsolutePath } from "../schema/primitives.ts";
 import { Timestamp } from "./_shared.ts";
 
+const TaskTreeChild = Schema.Struct({
+  id: Schema.String.annotate({
+    description: "Task id that this child's later task.start, task.complete, and task.fail events carry.",
+  }),
+  label: Schema.String.annotate({
+    description: "Display label for the child, shown while it is still pending.",
+  }),
+});
+export type TaskTreeChild = typeof TaskTreeChild.Type;
+
 export const TaskTreeStartEvent = Schema.TaggedStruct("task.tree.start", {
   parentId: Schema.String,
   label: Schema.String,
-  children: Schema.Array(Schema.String),
+  children: Schema.Array(TaskTreeChild).annotate({
+    description: "Children the tree declares, in display order, before any of them starts.",
+  }),
   mode: Schema.optional(Schema.Literals(["list", "grid"])),
   timestamp: Timestamp,
 });

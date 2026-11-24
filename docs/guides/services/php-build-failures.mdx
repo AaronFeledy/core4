@@ -134,7 +134,7 @@ lando start
 [app:app:authored-app:1] bare=[redacted]
 [app:app:authored-app:1] ! to-stderr
 [app:app:authored-app:1] unterminated [redacted] tail
-[app:app:authored-app:1] ✗ fail: app:app:authored-app:1 failed (exit 3) (88ms)
+[app:app:authored-app:1] ✗ fail: app failed (exit 3) (88ms)
 ▶ App dependency build failed (0 ✓ · 1 ✗) (95ms)
 App build failed: 1 of 1 build steps failed.
 Build step app:app:authored-app:1 for service app exited with code 3.
@@ -292,7 +292,7 @@ A step that already succeeded with the same inputs doesn't run again while its w
 ```text
 ▼ Building app dependencies (1 step)
 [app:app:authored-app:1] start: Build app
-[app:app:authored-app:1] ✓ complete: app:app:authored-app:1 cached (0ms)
+[app:app:authored-app:1] ✓ complete: app cached (0ms)
 ▶ App dependencies built (1 ✓ · 0 ✗) (5ms)
 ```
 
@@ -313,7 +313,7 @@ A successful `lando destroy` also removes the app's saved build output. This is 
 ▼ Building app dependencies (1 step)
 [app:app:authored-app:1] start: Build app
 [app:app:authored-app:1] app build step ok
-[app:app:authored-app:1] ✓ complete: app:app:authored-app:1 complete (129ms)
+[app:app:authored-app:1] ✓ complete: Built app (129ms)
 ▶ App dependencies built (1 ✓ · 0 ✗) (136ms)
 ```
 

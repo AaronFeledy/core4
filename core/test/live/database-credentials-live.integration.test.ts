@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { retireTempRoots } from "@lando/engine/testing/temp-root-retirement";
 import { CommandResultEnvelope, StartAppResult } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
 import { runFixtureCli } from "./convergence-cli.ts";
@@ -91,22 +92,14 @@ for (const provider of providers)
           LANDO_SYSTEM_PLUGIN_ROOT: join(directory, "system-plugins"),
           LANDO_PROVIDER: provider.id,
           LANDO_CONFIG__default_provider_id: provider.id,
+          LANDO_TEST_PODMAN_SOCKET: undefined,
           DOCKER_HOST: `unix://${provider.socketPath}`,
           LANDO_TELEMETRY_ENABLED: "false",
         };
+        const binary = process.env.LANDO_SCENARIO_E2E_BINARY;
+        const command = binary === undefined ? ([process.execPath, cliEntry] as const) : ([binary] as const);
         const lando = (args: readonly string[]) =>
-          Effect.runPromise(
-            runFixtureCli(
-              [
-                ...(process.env.LANDO_SCENARIO_E2E_BINARY === undefined
-                  ? [process.execPath, cliEntry]
-                  : [process.env.LANDO_SCENARIO_E2E_BINARY]),
-                ...args,
-              ],
-              root,
-              env,
-            ),
-          );
+          Effect.runPromise(runFixtureCli([...command, ...args], root, env));
         const artifact = async (label: string, value: unknown) => {
           const path = join(directory, `${label}.json`);
           await Bun.write(path, JSON.stringify(value));
@@ -157,9 +150,18 @@ for (const provider of providers)
             () => undefined,
           );
           if (destroyed !== undefined) await artifact("destroy", destroyed);
-          await rm(directory, { recursive: true, force: true });
+          const retirement = await retireTempRoots({
+            directory,
+            env,
+            endpoint: provider.socketPath,
+            command,
+          });
+          expect(
+            [...retirement.retained, ...retirement.failed],
+            JSON.stringify({ directory, ...retirement }),
+          ).toEqual([]);
         }
       },
-      journeyTimeout,
+      journeyTimeout + 240_000,
     );
   }

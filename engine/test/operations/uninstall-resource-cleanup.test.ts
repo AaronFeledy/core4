@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { rmSync } from "node:fs";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Effect } from "effect";
-import { makeCleanupDiscoveredApps } from "../../src/install/uninstall-discovery.ts";
+import { makePrepareUninstallCleanup } from "../../src/install/uninstall-discovery.ts";
 import { uninstall } from "../../src/operations/uninstall.ts";
 import { makeUninstallRoots, sandboxUninstallOptions } from "./uninstall-support.ts";
 
@@ -54,8 +54,7 @@ for (const scenario of [
           ...sandboxUninstallOptions(roots),
           purge: true,
           yes: true,
-          listDiscoveredApps: async () => [],
-          cleanupDiscoveredApps: makeCleanupDiscoveredApps(roots.userDataRoot, exec, "linux"),
+          prepareResourceCleanup: makePrepareUninstallCleanup([], exec, "linux"),
           exists: (path) => remaining.has(path),
           readManagedProviderMachine: () => ({ ownership: "owned", name: "lando" }),
           teardownProviderMachines: async () => {

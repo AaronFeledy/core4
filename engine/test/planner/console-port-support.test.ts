@@ -5,12 +5,13 @@ import { join } from "node:path";
 import { LandofileShape, type ServiceConfig, ServiceName } from "@lando/sdk/schema";
 import { AppPlanner, PluginRegistry, type ServiceType } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { Effect, Schema } from "effect";
+import { Effect, Layer, Schema } from "effect";
 import { appConfigLint } from "../../src/operations/app-config-lint.ts";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import { composeExtendedServiceType } from "../../src/services/extends.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";
 import { literalTestLandofile } from "../compiled-landofile.ts";
+import { pathsServiceLayer } from "../paths-service.ts";
 
 const plan = (service: typeof ServiceConfig.Encoded) =>
   Effect.flatMap(AppPlanner, (planner) =>
@@ -24,7 +25,7 @@ const plan = (service: typeof ServiceConfig.Encoded) =>
       ),
       TestRuntimeProvider.capabilities,
     ),
-  ).pipe(Effect.provide(AppPlannerLayer.layer));
+  ).pipe(Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))));
 
 test.each(["mailpit", "compose"])("planner rejects unsupported %s consolePort", async (type) => {
   // Given an authored console port on a service without a supporting feature.

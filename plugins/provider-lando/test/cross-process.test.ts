@@ -14,7 +14,7 @@ import {
   HOST_PROXY_CONTAINER_SOCKET,
   stripHostProxyRunLando,
 } from "@lando/engine/subsystems/host-proxy/transport-feature";
-import { appliedPlanPath, loadAppliedPlan } from "@lando/provider-lando";
+import { appliedPlanPath, loadAppliedPlanStrict } from "@lando/provider-lando";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -447,11 +447,11 @@ describe("provider-lando cross-process state", () => {
 
       // Forced recreation alone still merges; only a complete apply replaces the record.
       await runOnce(provider.apply(first, { reconcile: true }).pipe(Effect.scoped));
-      const recreated = await runOnce(loadAppliedPlan(appliedPlanState(stateDir), plan.id));
+      const recreated = await runOnce(loadAppliedPlanStrict(appliedPlanState(stateDir), plan.id));
       expect(Object.keys(recreated?.services ?? {}).sort()).toEqual(["database", "web"]);
 
       await runOnce(provider.apply(first, { reconcile: false, complete: true }).pipe(Effect.scoped));
-      const replaced = await runOnce(loadAppliedPlan(appliedPlanState(stateDir), plan.id));
+      const replaced = await runOnce(loadAppliedPlanStrict(appliedPlanState(stateDir), plan.id));
       expect(Object.keys(replaced?.services ?? {})).toEqual(["database"]);
     });
   });
@@ -483,7 +483,7 @@ describe("provider-lando cross-process state", () => {
         runOnce(providerB.apply(second, { reconcile: false }).pipe(Effect.scoped)),
       ]);
 
-      const persisted = await runOnce(loadAppliedPlan(appliedPlanState(stateDir), plan.id));
+      const persisted = await runOnce(loadAppliedPlanStrict(appliedPlanState(stateDir), plan.id));
       expect(Object.keys(persisted?.services ?? {}).sort()).toEqual(["database", "web"]);
     });
   });
@@ -685,7 +685,7 @@ describe("provider-lando cross-process state", () => {
       expect(fake.existing.size).toBe(0);
       expect(fake.volumes.has("crossprocessapp_database_data")).toBe(true);
       expect(await fileExists(appliedPlanPath(stateDir, plan.id))).toBe(true);
-      expect((await runOnce(loadAppliedPlan(appliedPlanState(stateDir), plan.id)))?.stores).toEqual(
+      expect((await runOnce(loadAppliedPlanStrict(appliedPlanState(stateDir), plan.id)))?.stores).toEqual(
         plan.stores,
       );
 

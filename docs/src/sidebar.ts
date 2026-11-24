@@ -81,6 +81,7 @@ export const sidebar = [
           { label: "Run the Drupal recipe", slug: "guides/recipes/drupal-workflow" },
           { label: "Run the Drupal CMS recipe", slug: "guides/recipes/drupal-cms-workflow" },
           { label: "Run the Drupal contrib recipe", slug: "guides/recipes/drupal-contrib-workflow" },
+          { label: "Copy a production Drupal database", slug: "guides/recipes/drupal-production-copy" },
           { label: "Run the Joomla recipe", slug: "guides/recipes/joomla-workflow" },
           { label: "Run a Craft CMS site on LAMP", slug: "guides/recipes/craft-workflow" },
           { label: "Run a TYPO3 site on LAMP", slug: "guides/recipes/typo3-workflow" },

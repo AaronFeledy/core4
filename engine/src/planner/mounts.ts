@@ -22,7 +22,6 @@ import {
   literalIncludeError,
 } from "./authored-mounts.ts";
 import { SERVICE_FEATURES_EXTENSION_KEY, serviceFeatureExtension } from "./extensions.ts";
-import { mergeDefaultExcludes } from "./file-sync.ts";
 import { shortHash } from "./naming.ts";
 import { type ShadowHostCheck, checkShadowHosts } from "./shadow-host-checks.ts";
 import { plannedContainerDestination } from "./storage.ts";
@@ -37,7 +36,7 @@ export const prepareServiceMounts = (input: {
   | { readonly servicePlan: ServicePlan; readonly storageByTarget: CompiledAuthoredMounts["storageByTarget"] }
   | LandofileValidationError
   | ServiceFeatureError => {
-  const service = mergeDefaultExcludes(input.servicePlan);
+  const service = input.servicePlan;
   const authored = compileAuthoredMounts(input.context, input.normalizedConfig, input.storage);
   if (authored instanceof LandofileValidationError) return authored;
   const targets = new Set(authored.mounts.map((mount) => mount.target));

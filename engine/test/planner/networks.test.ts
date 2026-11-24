@@ -4,11 +4,12 @@ import { LandofileValidationError } from "@lando/sdk/errors";
 import { LandofileShape, ServiceName, landoNetworkingPlan } from "@lando/sdk/schema";
 import { AppPlanner } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { Effect, Result, Schema } from "effect";
+import { Effect, Layer, Result, Schema } from "effect";
 import { normalizeNetworks } from "../../src/planner/networks.ts";
 import * as PluginRegistry from "../../src/plugins/registry.ts";
 import * as Planner from "../../src/services/planner.ts";
 import { literalTestLandofile } from "../compiled-landofile.ts";
+import { pathsServiceLayer } from "../paths-service.ts";
 import { provenanceIn } from "../provenance-support.ts";
 
 const web = ServiceName.make("web");
@@ -84,7 +85,10 @@ test("the full planner normalizes attachments without preserving Compose records
         ...TestRuntimeProvider.capabilities,
         composeServiceFields: { supported: [] },
       }),
-    ).pipe(Effect.provide(Planner.layer), Effect.provide(PluginRegistry.layer)),
+    ).pipe(
+      Effect.provide(Planner.layer.pipe(Layer.provide(pathsServiceLayer()))),
+      Effect.provide(PluginRegistry.layer),
+    ),
   );
   expect(
     plan.networking?.authoredNetworks?.map(({ key, name, members }) => ({ key, name, members })),

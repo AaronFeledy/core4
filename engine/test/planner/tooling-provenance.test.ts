@@ -34,14 +34,14 @@ const base: AppPlan = {
   },
 };
 
-test("persisted tooling resolves field prefixes to winning defaults, local fields and service contributors", async () => {
+test("persisted tooling locates winning defaults, local fields and primary service contributions", async () => {
   const compiled = await Effect.runPromise(
     loadAuthoredDocuments(
       [
         {
           file: "/tmp/provenance/.lando.yml",
           value: {
-            services: { web: { type: "php" } },
+            services: { cli: { type: "php" }, web: { type: "php", primary: true } },
             toolingDefaults: {
               service: ":host",
               dir: "/default",
@@ -61,14 +61,16 @@ test("persisted tooling resolves field prefixes to winning defaults, local field
       { appRoot: String(base.root), file: "/tmp/provenance/.lando.yml" },
     ),
   );
-  const resolution = resolveEffectiveTooling({
+  const input = {
     landofile: compiled.document,
     provenance: provenanceIn(compiled),
+    primary: "web",
     services: [
-      { name: "zeta", serviceTypeId: "node", tooling: { php: { cmd: "wrong contributor" } } },
+      { name: "cli", serviceTypeId: "php", tooling: { php: { cmd: "php" } }, connectionClientNames: ["php"] },
       { name: "web", serviceTypeId: "php", tooling: { php: { cmd: "php" } }, connectionClientNames: ["php"] },
     ],
-  });
+  };
+  const resolution = resolveEffectiveTooling(input);
   const plan = Schema.decodeUnknownSync(AppPlan)(
     Schema.encodeSync(AppPlan)(attachEffectiveTooling(base, resolution.tasks, resolution)),
   );

@@ -12,7 +12,7 @@ test("omits runtime host-proxy binds when the applied plan has stripped the over
   const internalMounts = [...HOST_PROXY_MOUNT_TARGETS].map((target) =>
     Object.freeze({ type: "bind" as const, source: `/host/integration${target}`, target, readOnly: true }),
   );
-  const userMount = Object.freeze({ type: "volume" as const, source: "anonymous-data", target: "/data" });
+  const userMount = Object.freeze({ type: "volume" as const, source: "a".repeat(64), target: "/data" });
   const mounts = Object.freeze({
     status: "present" as const,
     mounts: Object.freeze([...internalMounts, userMount]),

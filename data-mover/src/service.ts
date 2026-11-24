@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { cp, mkdir, readdir, realpath, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
+import { inventoryProtectsApp, protectedSlotError } from "@lando/container-runtime/applied-state";
 import { APP_ROOT_LABEL, SNAPSHOT_STORE_LABEL } from "@lando/container-runtime/labels";
 import { findAppRoot } from "@lando/landofile/discovery";
 import { discoveryCwd } from "@lando/landofile/operation-discovery";
@@ -33,6 +34,7 @@ import {
 import {
   AbsolutePath,
   type AppId,
+  type AppPlan,
   type DataEndpoint,
   type DataTransferProgress,
   type DataTransferResult,
@@ -45,6 +47,7 @@ import {
   type VolumeSnapshotRef,
   planDataId,
   snapshotHandle,
+  snapshotInPruneBucket,
 } from "@lando/sdk/schema";
 import {
   DataMover,
@@ -72,6 +75,7 @@ import {
   Layer,
   Option,
   Queue,
+  Result,
   Schema,
   type Scope,
   Stream,
@@ -1741,11 +1745,7 @@ export const makeDataMoverService = (
           }
           const retained = new Set(policy.retainSnapshotIds?.map(String));
           return [...infos]
-            .filter((info) => {
-              const manual =
-                info.metadata?.recoveryReason === undefined || info.metadata.recoveryReason === "manual";
-              return policy.recovery === true ? !manual : manual;
-            })
+            .filter((info) => snapshotInPruneBucket(info, policy.recovery === true))
             .sort(
               (left, right) =>
                 Number(retained.has(String(right.id))) - Number(retained.has(String(left.id))) ||
@@ -1793,24 +1793,42 @@ export const layerWithPrivateFileAccess: Layer.Layer<
           // Explicit call-time bindings come from operations that already selected
           // their provider. The bootstrap placeholder is never a selection.
           const supplied = yield* Effect.serviceOption(RuntimeProvider);
-          if (Option.isSome(supplied) && supplied.value.id !== "stub") return supplied.value;
-          if (app === undefined) return yield* providerRegistry.select(providerId);
-          const inspectAppliedPlans = (id: ProviderId) =>
-            providerRegistry
-              .select(id)
-              .pipe(Effect.flatMap((candidate) => candidate.appliedPlans ?? Effect.succeed([])));
+          const bound = Option.isSome(supplied) && supplied.value.id !== "stub" ? supplied.value : undefined;
+          if (app === undefined) return bound ?? (yield* providerRegistry.select(providerId));
+          if (bound !== undefined && !volume) {
+            yield* providerRegistry.readAppliedPlanStrict({ id: app, provider: ProviderId.make(bound.id) });
+            return bound;
+          }
+          const inspectAppliedPlans = providerRegistry.appliedStateInventory;
           // The first provider that could not be inspected keeps its own tag and remediation.
           let uninspected: Effect.Error<ReturnType<typeof inspectAppliedPlans>> | undefined;
-          for (const id of yield* providerRegistry.list) {
+          const scope = bound === undefined ? providerId : ProviderId.make(bound.id);
+          for (const id of scope === undefined ? yield* providerRegistry.list : [scope]) {
             const inspected = yield* Effect.result(inspectAppliedPlans(id));
-            if (inspected._tag === "Failure") {
+            if (Result.isFailure(inspected)) {
               uninspected ??= inspected.failure;
               continue;
             }
-            const plan = inspected.success.find((plan) => (volume ? planDataId(plan) : plan.id) === app);
-            if (plan !== undefined) return yield* providerRegistry.select(plan);
+            const plan: AppPlan | undefined = inspected.success.plans.find(
+              (plan) => plan.provider === id && (volume ? planDataId(plan) : plan.id) === app,
+            );
+            if (plan !== undefined) {
+              const recorded: AppPlan | undefined = yield* providerRegistry.readAppliedPlanStrict(plan);
+              if (
+                recorded !== undefined &&
+                recorded.provider === id &&
+                (volume ? planDataId(recorded) : recorded.id) === app
+              )
+                return bound ?? (yield* providerRegistry.select(recorded));
+            }
+            // A protected receipt can't reveal whether a renamed app still owns this data ID.
+            const issue =
+              inspected.success.unreadable.find((entry) => inventoryProtectsApp(entry, app)) ??
+              (volume && bound === undefined ? inspected.success.unreadable[0] : undefined);
+            if (issue !== undefined) uninspected ??= protectedSlotError(id, issue, issue.appId ?? app);
           }
           if (uninspected !== undefined) return yield* Effect.fail(uninspected);
+          if (bound !== undefined) return bound;
           return yield* Effect.fail(
             new ProviderUnavailableError({
               providerId: "unknown",

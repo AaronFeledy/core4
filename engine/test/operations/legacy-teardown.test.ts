@@ -46,7 +46,7 @@ test.each([false, true])(
     try {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
-          return withPlan ? (yield* haltAppRuntime({}, target)).result : yield* stopApp({}, target);
+          return withPlan ? (yield* haltAppRuntime(target)).result : yield* stopApp({}, target);
         }).pipe(Effect.provide(harness.layer)),
       );
       expect(result.app).toBe(current.name);

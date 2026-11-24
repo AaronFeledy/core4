@@ -1,3 +1,4 @@
+import { helperBindCoveredBy } from "@lando/container-runtime/container-helper";
 import { makeLandoPaths } from "@lando/paths";
 import type { RedactionService } from "@lando/redaction/service";
 import { mapFailures } from "@lando/sdk/command-result";
@@ -23,6 +24,7 @@ import {
   isHostProxyRunLandoEnvName,
 } from "../subsystems/host-proxy/transport.ts";
 import {
+  HOST_PROXY_COMMAND_TARGETS,
   HOST_PROXY_CONTAINER_SOCKET,
   HOST_PROXY_MOUNT_TARGETS,
 } from "../subsystems/host-proxy/transport-feature.ts";
@@ -92,6 +94,12 @@ export const withHostProxyRunLando = Effect.fnUntraced(function* (
           environment.push([name, value]);
         },
         addMount: (mount) => {
+          // A mount above a command target owns that directory; the start warning names the skipped commands.
+          if (
+            HOST_PROXY_COMMAND_TARGETS.includes(mount.target) &&
+            helperBindCoveredBy(service.mounts, mount.target) !== undefined
+          )
+            return;
           mounts.push(mount);
         },
         addExtension: (name, value) => {

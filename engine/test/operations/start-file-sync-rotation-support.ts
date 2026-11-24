@@ -9,7 +9,7 @@ import {
   plannedFileSyncSessions,
 } from "@lando/sdk/schema";
 import { type FileSyncEngineShape, RuntimeProviderRegistry } from "@lando/sdk/services";
-import { TestFileSyncEngine } from "@lando/sdk/test";
+import { TestFileSyncEngine, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { DateTime, Effect, Layer } from "effect";
 import { FileSyncResolver } from "../../src/plugins/file-sync-resolver.ts";
 import { acceleratedPlan, app } from "./accelerated-start-recovery-support.ts";
@@ -293,14 +293,17 @@ export const rotationHarness = Effect.fnUntraced(function* (
   });
   const layer = Layer.mergeAll(
     harness.layer,
-    Layer.succeed(RuntimeProviderRegistry, {
-      ...harness.runtimeProviderRegistry,
-      select: () => Effect.succeed(provider),
-      resolveAppliedPlan: (_root, _app, lookup) =>
-        lookup === "exact"
-          ? Effect.sync(() => applied)
-          : Effect.die("file-sync rotation must ask for the exact app"),
-    }),
+    Layer.succeed(
+      RuntimeProviderRegistry,
+      makeTestRuntimeProviderRegistry({
+        ...harness.runtimeProviderRegistry,
+        select: () => Effect.succeed(provider),
+        resolveAppliedPlan: (_root, _app, lookup) =>
+          lookup === "exact"
+            ? Effect.sync(() => applied)
+            : Effect.die("file-sync rotation must ask for the exact app"),
+      }),
+    ),
     Layer.succeed(FileSyncResolver, resolver),
   );
   return {

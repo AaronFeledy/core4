@@ -9,7 +9,7 @@ tags: [docs, php, service, runtime, security]
 
 Stock PHP tags are checked against the registry about once a week. `lando start` and `lando restart` reuse the image already on your machine until that check is due, then pull the tag. `lando rebuild` checks immediately. `lando doctor` reports a check that is overdue. The next start performs it.
 
-Official images publish a security release under the same tag the service already uses. Stock `type: php:8.4` plans `php:8.4-apache-bookworm`. Other minors use the tags in [Pin a PHP version](./php-version-matrix.mdx), including the PHP 8.6 release-candidate tag until GA. A custom `image:` or replacement build is not on this weekly check. Rebuild it yourself when you want a new base.
+Official images publish a security release under the same tag the service already uses. Stock `type: php:8.4` plans `php:8.4-apache-bookworm`. Other minors use the tags in [Pin a PHP version](./php-version-matrix.mdx). A custom `image:` or replacement build is not on this weekly check. Rebuild it yourself when you want a new base.
 
 The examples use a PHP service named `appserver`, the name the PHP framework recipes use. Swap in your service name. Run the commands from the app directory on your host. `lando exec` needs the app running. Reading the planned tag does not require a running app. The Landofile below is written by hand. On an app created by `lando init`, keep the `recipe:` block and change only the `type:` or `via:` under `services`, so the recipe's other services stay.
 
@@ -133,7 +133,7 @@ rm public/version.php
 - There was no warning, so the pull succeeded and you are running whatever that tag points at. If the fix still is not there, the registry does not have the new build under that tag yet. Lando can only pull what is published. Check the tag on Docker Hub, then rebuild.
 - `image:` is pinned to a patch tag, such as `php:8.4.12-apache-bookworm`. That tag does not move to a newer patch. A floating tag such as `php:8.4-apache-bookworm` does. Remove `image:` to return to the stock tag for the service `type:`.
 - You need a new minor, such as 8.4 to 8.5. Change `type:`. Rebuild does not do that. See [Pin a PHP version](./php-version-matrix.mdx).
-- Rebuilding to a patched PHP does not drop the `session.upload_progress.enabled = 0` line that Lando adds to stock images. That drop-in belongs to Lando and changes only with a Lando release. [See the security baseline](./php-customization.mdx#see-the-security-baseline) for what it does.
+- Rebuilding to a patched PHP does not drop the `session.upload_progress.enabled = 0` line that Lando adds to stock images. Patched releases default that setting to `0` anyway, and Lando keeps the line while it ships PHP 8.1, which gets no fix. That drop-in belongs to Lando and changes only with a Lando release. [See the security baseline](./php-customization.mdx#see-the-security-baseline) for what it does and how to override it.
 
 ## Next
 

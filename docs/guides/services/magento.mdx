@@ -57,6 +57,18 @@ tooling:
     dir: /app
     user: www-data
     description: Run bin/magento inside the appserver service.
+  magento-install:
+    service: appserver
+    cmd:
+      - php
+      - bin/magento
+      - setup:install
+      - "--base-url={{ services.appserver.url }}/"
+      - "--base-url-secure={{ services.appserver.url }}/"
+    dir: /app
+    user: www-data
+    wrapper: true
+    description: Install the store at the URL Lando publishes.
 ```
 
 These sample credentials initialize a new database. If you followed an earlier version of this guide, keep your existing database credentials and Magento connection settings rather than changing them to match the example. If you intentionally change `creds`, `lando start` applies the new settings to MariaDB without deleting its data. Update Magento's connection files separately. See [Keep database credentials in sync](../tooling/db-creds-apply.mdx).
@@ -128,12 +140,10 @@ Confirm that your editor can save a source file. The application root also needs
 
 Keep Magento commands and cron running as `www-data`, as the tooling task does. Don't reassign existing files in `var/session` to your host UID: PHP checks session ownership, not just write access. If a page reports `Session data file is not created by your uid`, check the session-file owner inside `appserver` and your provider's filesystem mapping before adding permissions. For Docker through WSL, use the Linux-filesystem project location above.
 
-Run the installer. Replace both `<appserver-url>` values with the HTTPS URL from `lando info`, without a trailing slash; the command adds it. Replace `<admin-password>` with a unique password of at least 12 characters, including letters and numbers. Keep the quotes. Use these credentials only for this local store; command-line passwords can appear in shell history and process listings.
+Run the installer with the `magento-install` task. It passes `--base-url` and `--base-url-secure` for you, reading `{{ services.appserver.url }}`, the address Lando published at the last `lando start`, so you don't copy it from `lando info`. See [Use the URL in tooling and events](../landofile/expressions.mdx#use-the-url-in-tooling-and-events). Replace `<admin-password>` with a unique password of at least 12 characters, including letters and numbers. Keep the quotes. Use these credentials only for this local store; command-line passwords can appear in shell history and process listings.
 
 ```sh
-lando magento setup:install \
-  --base-url='<appserver-url>/' \
-  --base-url-secure='<appserver-url>/' \
+lando magento-install \
   --use-secure=1 --use-secure-admin=1 \
   --db-host=database --db-name=magento --db-user=magento --db-password=magento \
   --search-engine=opensearch --opensearch-host=search --opensearch-port=9200 \
@@ -163,7 +173,7 @@ lando magento cache:clean
 lando magento module:status Magento_TwoFactorAuth
 ```
 
-Check that the module is disabled, then open `<appserver-url>/admin` and log in as `admin` with your chosen password. Check that the dashboard loads. Don't use `--force` to bypass module dependencies if disabling fails.
+Check that the module is disabled, then open `/admin` on the appserver URL from `lando info` and log in as `admin` with your chosen password. Check that the dashboard loads. Don't use `--force` to bypass module dependencies if disabling fails.
 
 Keep 2FA enabled on shared or production stores. To restore it here, run `lando magento module:enable Magento_TwoFactorAuth`, `lando magento setup:upgrade`, and `lando magento cache:clean`, then [configure 2FA](https://experienceleague.adobe.com/en/docs/commerce-admin/systems/security/tfa/security-two-factor-authentication) before relying on Admin access.
 
@@ -188,7 +198,7 @@ lando restart
 lando schedule:list
 ```
 
-The list should show `magento-cron` on `appserver`, user `www-data`, with a next run time within the minute. Lando runs the job in a sidecar service named `appserver-schedule-www-data`, which shares the code, `vendor` volume, and environment of `appserver`. It starts and stops with the app, so there's nothing to launch by hand.
+The list should show `magento-cron` on `appserver`, user `www-data`, with a next run time within the minute. Lando runs the job in a sidecar service named `appserver-schedule-www-data`, which shares the code, mounts, and environment of `appserver`. It starts and stops with the app, so there's nothing to launch by hand.
 
 To trigger a run without waiting, or to see its output in your terminal:
 
@@ -277,7 +287,7 @@ This command checks PHP style, not whether the module works or its XML is valid.
 - `webroot: pub` keeps non-public application files outside Apache's document root. `allowOverride: true` enables Magento's `.htaccess` rules; Lando enables `mod_rewrite` for this PHP service.
 - `php.ini` applies the same 2 GB memory limit to CLI PHP and Apache. `lando magento` runs from `/app` as `www-data`, matching the web server's PHP worker.
 - `database` and `search` are internal service names, not hostnames to open in your browser. OpenSearch's security plugin is disabled. Don't publish its port for other machines.
-- `vendor` lives in a service volume by default, so your host editor won't see it. To keep it in your host project instead, add `appMount: { target: /app, includes: [vendor] }` to `appserver`, run `lando start`, then `lando composer install` and repeat the access checks. Changing the mount doesn't copy dependencies out of the old volume. See [Exclude paths from the app mount](../setup/file-sync-excludes.mdx).
+- `vendor` is in your project directory, so your host editor reads the same packages PHP does. See [Exclude paths from the app mount](../setup/file-sync-excludes.mdx).
 - This small local stack uses filesystem caches and the database-backed message queue. Redis or Valkey, RabbitMQ, Varnish, email delivery, and production deployment need their own configuration; they aren't established by this walkthrough.
 
 ## Check the config
@@ -301,6 +311,7 @@ This command checks PHP style, not whether the module works or its XML is valid.
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"search\":\\s*\\{[^}]*\"type\":\\s*\"opensearch\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"user\":\\s*\"www-data\",\\s*\"service\":\\s*\"appserver\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"cmd\":\\s*\\[\\s*\"php\"\\s*,\\s*\"bin/magento\"\\s*\\]" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"--base-url-secure=\\{\\{ services\\.appserver\\.url \\}\\}/\"" } }} />
       <Run command="lando schedule:list --format=json" />
       <Verify command="lando schedule:list --format=json" expect={{ stdout: { regex: "\"service\":\\s*\"appserver\",\\s*\"name\":\\s*\"magento-cron\"" } }} />
       <Verify command="lando schedule:list --format=json" expect={{ stdout: { regex: "\"user\":\\s*\"www-data\"" } }} />
@@ -316,7 +327,7 @@ To pause the app without removing containers, run `lando stop`. The cron sidecar
 lando destroy -y
 ```
 
-By default, the database, OpenSearch, and `vendor` volumes remain. Run `lando start` when you want to use the store again; Magento cron starts with it.
+By default, the database and OpenSearch volumes remain. Run `lando start` when you want to use the store again; Magento cron starts with it.
 
 Adding `--volumes` permanently deletes those volumes. It doesn't remove the application files or `app/etc/env.php` from your project. Back up anything you need before deleting data; for a clean reinstall, use a new empty project directory rather than rerunning `setup:install` against leftover configuration.
 

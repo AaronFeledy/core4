@@ -12,7 +12,8 @@ import { appPlanCachePath } from "@lando/engine/cache/paths";
 import { Effect } from "effect";
 
 test.each([
-  19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 35, 38, 39, 41, 44, 45, 46, 49, 56, 60, 62, 63, 64, 65, 66,
+  19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 35, 38, 39, 41, 44, 45, 46, 49, 56, 60, 62, 63, 64, 65, 66, 67, 68,
+  69,
 ])("current app-plan cache rejects the persisted revision %i fixture", async (revision) => {
   // Given intact versioned bytes at the real cache path.
   const cacheRoot = await mkdtemp(join(tmpdir(), "lando-app-plan-previous-"));

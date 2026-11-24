@@ -7,6 +7,7 @@ import { Effect } from "effect";
 import { globalDestroy } from "../../src/operations/global-destroy.ts";
 import { globalStop } from "../../src/operations/global-stop.ts";
 import { globalPlanAt, globalTeardownHarness } from "../../src/testing/global-teardown.ts";
+import { ownedGlobalOrphan } from "./owned-global-orphan.ts";
 
 const withRoot = async (use: (root: string) => Promise<void>) => {
   const root = await realpath(await mkdtemp(join(tmpdir(), "global-destroy-events-")));
@@ -94,7 +95,7 @@ test.each(["provider", "routes"] as const)("global %s failure suppresses post-de
     const harness = await globalTeardownHarness(
       root,
       failure === "provider"
-        ? { orphanRoot: appRoot, stopFailure: true }
+        ? { services: [ownedGlobalOrphan(appRoot, root)], stopFailure: true }
         : { plan: globalPlanAt(appRoot), routeFailure: true },
     );
     // When teardown fails.

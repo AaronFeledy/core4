@@ -11,7 +11,7 @@ import {
 } from "@lando/sdk/schema";
 import { TestFileSyncEngine } from "@lando/sdk/test";
 import { DateTime, Effect } from "effect";
-import { terminateFileSyncSessions } from "../../src/operations/file-sync.ts";
+import { hasStopFileSyncCoverage, terminateFileSyncSessions } from "../../src/operations/file-sync.ts";
 import { provideFileSyncEngine } from "../file-sync-engine.ts";
 
 const app: AppRef = {
@@ -40,6 +40,36 @@ const session: FileSyncSessionInfo = {
 };
 
 describe("file-sync teardown", () => {
+  test("stop coverage skips paused or missing sessions of services without containers", () => {
+    const paused = { ...session, status: "paused" as const };
+    expect(hasStopFileSyncCoverage([spec], [paused], new Set(["web"]))).toBe(true);
+    expect(hasStopFileSyncCoverage([spec], [], new Set(["web"]))).toBe(true);
+    expect(hasStopFileSyncCoverage([spec], [], new Set())).toBe(false);
+    expect(hasStopFileSyncCoverage([spec], [session], new Set())).toBe(true);
+  });
+
+  test("terminate skips a paused session whose service container is already gone", async () => {
+    const calls: string[] = [];
+    const paused = { ...session, status: "paused" as const };
+    const engine = {
+      ...TestFileSyncEngine,
+      id: "mutagen",
+      listSessions: () => Effect.succeed([paused]),
+      flushSession: () =>
+        Effect.sync(() => {
+          calls.push("flush");
+        }),
+      terminateSession: () =>
+        Effect.sync(() => {
+          calls.push("terminate");
+        }),
+    };
+    await Effect.runPromise(
+      terminateFileSyncSessions(app, [paused], new Set(["web"])).pipe(provideFileSyncEngine(engine)),
+    );
+    expect(calls).toEqual([]);
+  });
+
   test("a flush failure leaves the session running for recovery", async () => {
     let terminated = false;
     const failure = new FileSyncStopError({

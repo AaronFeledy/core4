@@ -1,16 +1,22 @@
 import { access } from "node:fs/promises";
 import { isAbsolute } from "node:path";
 import { pathToFileURL } from "node:url";
+import { adoptionReceiptsFromSummary } from "@lando/container-runtime/native-ownership";
+import { makeResourceOwnershipStore } from "@lando/container-runtime/provider-assembly";
 import { withAppMutationLock } from "@lando/engine/operations/app-mutation-lock";
 import { RuntimeCwd } from "@lando/engine/runtime/cwd";
+import { makeLandoPaths } from "@lando/paths";
 import { hasC0OrDel, hyperlink } from "@lando/renderer/console-layout";
 import type { AppLockTimeoutError, CacheError, LandoCommandError, StateStoreError } from "@lando/sdk/errors";
+import { AbsolutePath, type CommandWarning } from "@lando/sdk/schema";
 import type { FileSystem, LandoPaths, StateStoreShape } from "@lando/sdk/services";
 import { ConfigService, PathsService, ProcessRunner, StateStore } from "@lando/sdk/services";
+import { makePluginStateStore } from "@lando/state-store/plugin";
 import { type PrivateFileAccess, PrivateFileAccessService } from "@lando/state-store/private-file-access";
-import { Effect, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 import { CliInvocation } from "../../runtime/invocation-context";
 
+import { recordCommandWarning } from "../command-warnings";
 import { type RenderContext, contextAllowsHyperlinks } from "../renderer-boundary";
 import {
   type AppsDiscoveryEvidence,
@@ -23,7 +29,11 @@ import {
   readAppliedPlansFromUserData,
 } from "./list-discovery";
 import { AppsListPathResolver, filterAppsByPath } from "./list-path-filter";
-import { pruneAppliedPlanState } from "./list-prune-state";
+import {
+  type AppsListPruneFailure,
+  type PruneAppliedPlanOutcome,
+  pruneAppliedPlanState,
+} from "./list-prune-state";
 
 export type { AppsListEntry } from "./list-discovery";
 export { appliedPlansDirectory } from "./list-discovery";
@@ -42,9 +52,23 @@ export const AppsListEntrySchema = Schema.Struct({
   scratch: Schema.optionalKey(Schema.Boolean),
 });
 
+export const AppsListPruneFailureSchema = Schema.Struct({
+  reason: Schema.Literal("newer-version"),
+  providerId: Schema.String,
+  path: Schema.String,
+  appId: Schema.optionalKey(Schema.String),
+  storedVersion: Schema.Int,
+  supportedVersion: Schema.Int,
+  writtenBy: Schema.optionalKey(Schema.String),
+  message: Schema.String,
+  remediation: Schema.String,
+});
+
 export const AppsListResultSchema = Schema.Struct({
   apps: Schema.Array(AppsListEntrySchema),
   pruned: Schema.optionalKey(Schema.Array(AppsListEntrySchema)),
+  pruneFailures: Schema.optionalKey(Schema.Array(AppsListPruneFailureSchema)),
+  appliedStateIssues: Schema.optionalKey(Schema.Array(AppsListPruneFailureSchema)),
 });
 
 export interface ListServicesOptions {
@@ -103,10 +127,30 @@ export const renderAppsListResult = (
         .join("  ");
     return [pad(header), ...rows.map(pad)].join("\n");
   })();
-  if (result.pruned === undefined) return inventory;
-  if (result.pruned.length === 0) return `${inventory}\nPruned 0 stale inventory entries.`;
-  const entries = result.pruned.map((entry) => `- ${entry.appId} (${entry.providerId}) ${entry.appRoot}`);
-  return `${inventory}\nPruned ${result.pruned.length} stale inventory ${result.pruned.length === 1 ? "entry" : "entries"}:\n${entries.join("\n")}`;
+  const parts = [inventory];
+  for (const issue of result.appliedStateIssues ?? []) {
+    parts.push(`Warning: ${issue.message} ${issue.remediation}`);
+  }
+  if (result.pruned !== undefined) {
+    if (result.pruned.length === 0) {
+      parts.push("Pruned 0 stale inventory entries.");
+    } else {
+      const entries = result.pruned.map((entry) => `- ${entry.appId} (${entry.providerId}) ${entry.appRoot}`);
+      parts.push(
+        `Pruned ${result.pruned.length} stale inventory ${result.pruned.length === 1 ? "entry" : "entries"}:\n${entries.join("\n")}`,
+      );
+    }
+  }
+  if (result.pruneFailures !== undefined && result.pruneFailures.length > 0) {
+    const failures = result.pruneFailures.map(
+      (failure) =>
+        `- ${failure.path}${failure.appId === undefined ? "" : ` (${failure.appId})`}: ${failure.message} ${failure.remediation}`,
+    );
+    parts.push(
+      `Protected ${result.pruneFailures.length} applied-state ${result.pruneFailures.length === 1 ? "record" : "records"} written by a newer Lando:\n${failures.join("\n")}`,
+    );
+  }
+  return parts.join("\n");
 };
 
 interface PruneServices {
@@ -120,7 +164,7 @@ interface PruneCandidateInput {
   readonly entry: AppsListEntry;
 }
 
-type PruneCandidate<E, R> = (input: PruneCandidateInput) => Effect.Effect<boolean, E, R>;
+type PruneCandidate<E, R> = (input: PruneCandidateInput) => Effect.Effect<PruneAppliedPlanOutcome, E, R>;
 
 const listServicesInternal = Effect.fnUntraced(function* <E, R>(
   options: ListServicesOptions,
@@ -129,12 +173,27 @@ const listServicesInternal = Effect.fnUntraced(function* <E, R>(
   const configService = yield* ConfigService;
   const invocation = yield* CliInvocation;
   const processRunner = yield* Effect.serviceOption(ProcessRunner);
+  const stateStore = yield* Effect.serviceOption(StateStore);
+  const privateFileAccess = yield* Effect.serviceOption(PrivateFileAccessService);
   const userDataRoot = options.userDataRoot ?? (yield* configService.get("userDataRoot"));
   if (userDataRoot === undefined) return { apps: [] };
 
+  const appliedStateIssues: AppsListPruneFailure[] = [];
   const persisted = yield* Effect.promise(async () => {
     try {
-      return await readAppliedPlansFromUserData(userDataRoot);
+      return await readAppliedPlansFromUserData(userDataRoot, (issue) => {
+        const { providerId, path, storedVersion, supportedVersion, writtenBy, message, remediation } = issue;
+        appliedStateIssues.push({
+          reason: "newer-version",
+          providerId,
+          path,
+          storedVersion,
+          supportedVersion,
+          ...(writtenBy === undefined ? {} : { writtenBy }),
+          message,
+          remediation,
+        });
+      });
     } catch {
       return [];
     }
@@ -147,6 +206,7 @@ const listServicesInternal = Effect.fnUntraced(function* <E, R>(
         ...(app.appRoot === "" ? {} : { appRoot: app.appRoot }),
       }),
     );
+  const ownershipWarnings = new Map<string, CommandWarning>();
   const discoverEvidence = (): Effect.Effect<AppsDiscoveryEvidence> =>
     Effect.tryPromise(async () => {
       if (options.discoverContainersEvidence !== undefined) {
@@ -166,15 +226,41 @@ const listServicesInternal = Effect.fnUntraced(function* <E, R>(
           ownedResources: ownedFromApps(apps),
         };
       }
-      return discoverRunningAppsEvidenceFromSockets(
+      const evidence = await discoverRunningAppsEvidenceFromSockets(
         userDataRoot,
         containerSocketCandidates(userDataRoot, { env: invocation.env }),
         {
           ...(options.includeScratch === true ? { includeScratch: true } : {}),
           env: invocation.env,
+          ...(stateStore._tag === "Some" && privateFileAccess._tag === "Some"
+            ? {
+                readReceipts: async (providerId: string, root: AbsolutePath) => {
+                  const paths = makeLandoPaths({ userDataRoot });
+                  const pluginStore = makePluginStateStore(
+                    stateStore.value,
+                    AbsolutePath.make(paths.pluginStateDir(`@lando/provider-${providerId}`)),
+                    privateFileAccess.value,
+                  );
+                  const ownership = await Effect.runPromise(
+                    makeResourceOwnershipStore(providerId, pluginStore).summary(root).pipe(Effect.result),
+                  );
+                  if (Result.isSuccess(ownership)) return adoptionReceiptsFromSummary(ownership.success);
+                  ownershipWarnings.set(providerId, {
+                    code: "LANDO_OWNERSHIP_INVENTORY_UNREADABLE",
+                    message: `Provider ${providerId}: ${ownership.failure.message}`,
+                    remediation:
+                      "Check the provider plugin state permissions or restore the ownership inventory from a trusted backup, then rerun `lando list`.",
+                    context: { providerId },
+                  });
+                  return [];
+                },
+              }
+            : {}),
           ...(processRunner._tag === "Some" ? { processRunner: processRunner.value } : {}),
         },
       );
+      const confirmedProviderIds = evidence.confirmedProviderIds.filter((id) => !ownershipWarnings.has(id));
+      return { ...evidence, confirmedProviderIds, providerConfirmed: confirmedProviderIds.length > 0 };
     }).pipe(
       Effect.catch(() =>
         Effect.succeed({
@@ -218,6 +304,16 @@ const listServicesInternal = Effect.fnUntraced(function* <E, R>(
         (resource.appRoot === undefined || resource.appRoot === entry.appRoot),
     );
   const pruned: Array<typeof AppsListEntrySchema.Type> = [];
+  const pruneFailures: AppsListPruneFailure[] = [];
+  const failureKey = (failure: AppsListPruneFailure): string =>
+    `${failure.providerId}\0${failure.path}\0${failure.appId ?? ""}\0${failure.storedVersion}`;
+  const seenFailures = new Set<string>();
+  const pushFailure = (failure: AppsListPruneFailure): void => {
+    const key = failureKey(failure);
+    if (seenFailures.has(key)) return;
+    seenFailures.add(key);
+    pruneFailures.push(failure);
+  };
   if (options.prune === true && evidence.providerConfirmed && pruneCandidate !== undefined) {
     const confirmedProviderIds = new Set(evidence.confirmedProviderIds);
     const candidates = apps
@@ -226,8 +322,21 @@ const listServicesInternal = Effect.fnUntraced(function* <E, R>(
       )
       .slice(0, options.pruneLimit ?? 100);
     for (const entry of candidates) {
-      const removed = yield* pruneCandidate({ discoverEvidence, entry });
-      if (removed) pruned.push(entry);
+      const outcome = yield* pruneCandidate({ discoverEvidence, entry });
+      switch (outcome.status) {
+        case "removed":
+          pruned.push(entry);
+          break;
+        case "protected":
+          pushFailure(outcome.failure);
+          break;
+        case "kept":
+          break;
+        default: {
+          const _exhaustive: never = outcome;
+          void _exhaustive;
+        }
+      }
     }
   }
 
@@ -253,7 +362,17 @@ const listServicesInternal = Effect.fnUntraced(function* <E, R>(
   );
   const visible =
     pruneCandidate === undefined ? filtered : filtered.filter((entry) => !pruned.includes(entry));
-  return { apps: visible, ...(pruneCandidate === undefined ? {} : { pruned }) };
+  for (const warning of ownershipWarnings.values()) yield* recordCommandWarning(warning);
+  return {
+    apps: visible,
+    ...(appliedStateIssues.length === 0 ? {} : { appliedStateIssues }),
+    ...(pruneCandidate === undefined
+      ? {}
+      : {
+          pruned,
+          ...(pruneFailures.length === 0 ? {} : { pruneFailures }),
+        }),
+  };
 });
 
 export const listServices = Effect.fn("AppsList.listServices")(
@@ -291,7 +410,7 @@ export const listServicesWithPrune = Effect.fn("AppsList.listServicesWithPrune")
               (resource.appRoot === undefined || resource.appRoot === entry.appRoot),
           )
         ) {
-          return false;
+          return { status: "kept" as const };
         }
         const rootGone = yield* Effect.promise(async () => {
           try {
@@ -301,7 +420,7 @@ export const listServicesWithPrune = Effect.fn("AppsList.listServicesWithPrune")
             return true;
           }
         });
-        if (!rootGone) return false;
+        if (!rootGone) return { status: "kept" as const };
         return yield* pruneAppliedPlanState(pruneServices.paths, pruneServices.stateStore, entry);
       }),
     ).pipe(

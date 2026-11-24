@@ -326,18 +326,21 @@ That prints `9.15.0`.
 ### Use Yarn Plug'n'Play
 
 Pin a supported Yarn Berry release in `package.json`, for example
-`"packageManager": "yarn@4.5.3"`. With the default Plug'n'Play (PnP) linker or
-`nodeLinker: pnp`, Lando leaves `/app/node_modules` in the app bind instead of
-mounting a volume there. That path is your host directory, so
-`lando yarn install` can delete an existing host `node_modules`. Lando does not
+`"packageManager": "yarn@4.5.3"`. A Node service normally keeps
+`/app/node_modules` in its own volume, out of your project directory. With the
+default Plug'n'Play (PnP) linker or `nodeLinker: pnp`, Lando mounts no volume
+there, because PnP installs no `node_modules`. That path is then your host
+directory, so `lando yarn install` can delete an existing host `node_modules`. Lando does not
 change how `.yarn/` is mounted.
 
 Lando reads `nodeLinker` from `.yarnrc.yml` at `packageRoot` and, for a nested
 package, at the app root; the nearest one wins. It ignores other ancestor configs
 and `YARN_NODE_LINKER`, so set the linker in one of those two files to keep the
 mount plan in step with Yarn. Yarn Classic and Berry with
-`nodeLinker: node-modules` or `nodeLinker: pnpm` keep the default volume.
-Explicit `appMount.excludes` and `appMount.includes` take precedence over this default.
+`nodeLinker: node-modules` or `nodeLinker: pnpm` keep the `node_modules` volume,
+as do npm and pnpm. Add `node_modules` to `appMount.includes` to use your host
+directory with any of them. See
+[Exclude paths from the app mount](../setup/file-sync-excludes.mdx).
 
 After changing linkers, run `lando start` for the whole app to apply the new
 mount plan, then run `lando yarn install` if your service does not install on start.
@@ -348,7 +351,7 @@ mount plan, then run `lando yarn install` if your service does not install on st
 yield* Effect.promise(() => Bun.write(join(context.testDir, "package.json"), JSON.stringify({ name: "yarn-pnp", private: true, packageManager: "yarn@4.5.3" })));
 lastRun = yield* context.runCli("lando info --format=json");
 expect(lastRun.exitCode).toBe(0);
-expect(lastRun.stdout).toMatch(/"overlays":\[[^\]]*"\/app\/vendor"/);
+expect(lastRun.stdout).toMatch(/"overlays":\[\]/);
 expect(lastRun.stdout).not.toMatch(/"overlays":\[[^\]]*"\/app\/node_modules"/);`} displayCode={`lando info --format=json`} />
     </Step>
     <Step name="node-modules-linker-keeps-the-volume">
@@ -719,6 +722,8 @@ image, so `globals` is where Yarn or pnpm goes there. See [Pin the service type]
 Set `packageRoot` when the Node package lives below the app root. It defaults
 to `.` and selects where Lando looks for `package.json` and `.yarnrc.yml`.
 It does not move the app mount or change the container working directory.
+A nested package root gets its own `node_modules` volume, next to the one at
+the app root.
 
 ```yaml
 services:
@@ -740,6 +745,11 @@ services:
 
 Either way, Lando reads `apps/web/package.json` for the package manager first,
 then the app-root `package.json`.
+
+Both `/app/node_modules` and `/app/apps/web/node_modules` are volumes that
+belong to the service. A workspace install can hoist packages to the app root,
+and a standalone package installs beside its own `package.json`; either way the
+files stay out of your project directory. Yarn Plug'n'Play gets neither volume.
 
 `packageRoot` must be a directory inside the app root. Lando rejects absolute
 paths, paths that escape the app root, and symbolic links for these project

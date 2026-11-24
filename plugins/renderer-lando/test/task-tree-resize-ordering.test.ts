@@ -26,7 +26,7 @@ test("semantic footer reflow completes before resize replay through production c
             _tag: "task.tree.start",
             parentId: "build",
             label: "Building",
-            children: ["web"],
+            children: [{ id: "web", label: "web" }],
             timestamp,
           }),
         );

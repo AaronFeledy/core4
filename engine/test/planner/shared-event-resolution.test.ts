@@ -17,6 +17,7 @@ import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
 import { scopedLandofileRuntimeInputs } from "../../src/services/landofile-live.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";
+import { pathsServiceLayer } from "../paths-service.ts";
 
 const capabilities: ProviderCapabilities = {
   artifactBuild: true,
@@ -223,7 +224,9 @@ test("lint and the planner report one identical known event set for the same app
   await withApp(async (appRoot) => {
     // Given
     const plannerLayer = AppPlannerLayer.layer.pipe(
-      Layer.provide(Layer.mergeAll(AppCacheService.layer, BunFileSystem.layer, registryLayer)),
+      Layer.provide(
+        Layer.mergeAll(AppCacheService.layer, BunFileSystem.layer, registryLayer, pathsServiceLayer()),
+      ),
     );
 
     // When
@@ -263,7 +266,9 @@ test("planning aggregates two unknown events and a hostname issue in one error",
       .replace("  pre-typo:", "  pre-buidl:\n    - echo typo\n  post-nope:");
     await writeFile(join(appRoot, ".lando.yml"), yaml);
     const plannerLayer = AppPlannerLayer.layer.pipe(
-      Layer.provide(Layer.mergeAll(AppCacheService.layer, BunFileSystem.layer, registryLayer)),
+      Layer.provide(
+        Layer.mergeAll(AppCacheService.layer, BunFileSystem.layer, registryLayer, pathsServiceLayer()),
+      ),
     );
     const landofile = await Effect.runPromise(loadLayered(appRoot));
     // When

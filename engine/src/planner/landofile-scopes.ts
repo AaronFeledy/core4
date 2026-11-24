@@ -1,4 +1,9 @@
-import { compiledValueError, consumeSites, siteExpression } from "@lando/landofile/compiled-sites";
+import {
+  compiledValueError,
+  consumeSites,
+  isPublicRouteFact,
+  siteExpression,
+} from "@lando/landofile/compiled-sites";
 import { provenanceOf } from "@lando/landofile/provenance";
 import {
   PLAN_IDENTITY_EXPRESSION_SCOPES,
@@ -132,7 +137,7 @@ export const serviceCredsScopeForPlan = (plan: AppPlan): ServiceCredsScope =>
   Object.fromEntries(
     Object.values(plan.services).map((service) => [
       service.name,
-      serviceExpressionFacts(service.name, service),
+      serviceExpressionFacts(service.name, service, service.plannedPort),
     ]),
   );
 
@@ -180,9 +185,9 @@ export const referencedServices = (
           remediation: "Write the service name directly, for example services.database.creds.user.",
         }),
       );
-    // URL facts are descriptors available before any service resolves, including self reads.
+    // Route facts are descriptors available before any service resolves, including self reads.
     for (const [name, member] of members.paths)
-      if (member !== "url" && !references.has(name)) references.set(name, site);
+      if (!isPublicRouteFact(member) && !references.has(name)) references.set(name, site);
   }
   return Result.succeed(references);
 };

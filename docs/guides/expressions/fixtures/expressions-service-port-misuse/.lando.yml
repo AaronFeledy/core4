@@ -1,7 +1,6 @@
-# lando-lint: expect-invalid service.port is not available in environment values
+# lando-lint: expect-invalid service.port is not available as the port field value
 name: expressions-service-port-misuse
 services:
   cache:
     type: redis
-    environment:
-      PORT: "{{ service.port }}"
+    port: "{{ service.port }}"

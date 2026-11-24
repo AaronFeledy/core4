@@ -58,7 +58,7 @@ export const ServiceContainerChange = Schema.Struct({
   ),
   anonymousVolumes: Schema.optionalKey(Schema.Array(Schema.String)).annotate({
     description:
-      "Container paths of a replaced container's anonymous volumes, meaning volume mounts whose destination no planned mount or store of the service covers.",
+      "Container paths of a replaced container's anonymous volumes: volumes created by the engine, not by Lando, whose destinations no planned mount of the service covers. A named volume the plan stopped mounting survives the replacement and is not listed.",
   }),
 });
 export type ServiceContainerChange = typeof ServiceContainerChange.Type;
@@ -167,6 +167,10 @@ export const ServiceInfo = Schema.Struct({
     description: "Reserved JSON-safe provider-specific details, when explicitly supplied.",
   }),
   ...connectionAddressFields,
+  url: Schema.optionalKey(Schema.String).annotate({
+    description:
+      "Public URL that `{{ services.<name>.url }}` resolves to now: the address of the service's primary concrete route (the first HTTPS or `both` route with no wildcard hostname, otherwise the first such HTTP route) in the route table Lando last applied, or the planned routes before the app has been started, at the port the router reports for it. Absent when the service has no such route, the router is disabled or reports no port for the route, or the applied state cannot be read.",
+  }),
   logSources: Schema.optionalKey(Schema.Array(ServiceInfoLogSource)).annotate({
     description: "Declared service log sources and their provider-specific availability.",
   }),

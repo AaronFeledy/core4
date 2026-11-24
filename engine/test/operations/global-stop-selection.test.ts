@@ -1,5 +1,11 @@
 import { expect, test } from "bun:test";
-import { ProviderId, ServiceName } from "@lando/sdk/schema";
+import {
+  AbsolutePath,
+  LANDO_DATA_ROOT_LABEL,
+  ProviderId,
+  ServiceName,
+  appIdentityKey,
+} from "@lando/sdk/schema";
 import { Effect } from "effect";
 import { resolveGlobalStopSelection } from "../../src/operations/global-teardown.ts";
 import { type Resolved, harness, id, root } from "./global-stop-selection-fixture.ts";
@@ -14,6 +20,36 @@ test("selected stop deduplicates requests without stopping dependencies or remov
   expect(h.removed.map((service) => String(service.service))).toEqual(["mail"]);
   expect(h.states.get("database")).toBe("running");
   expect(h.published).toEqual([["database", "sibling"]]);
+});
+
+test("selected stop removes only the exact receipted legacy global container", async () => {
+  const dataRoot = AbsolutePath.make("/tmp/global-stop-fixture-state");
+  const providerId = ProviderId.make("lando");
+  const mail = harness()
+    .observed()
+    .find((service) => service.service === "mail");
+  if (mail === undefined) throw new Error("Missing mail observation");
+  const nativeName = "lando-global--mail";
+  const local = { ...mail, nativeName, containerId: "adopted" };
+  const h = harness({
+    dataRoot,
+    observations: [
+      local,
+      { ...local, containerId: "replacement" },
+      { ...local, nativeName: "peer", containerId: "peer", labels: { [LANDO_DATA_ROOT_LABEL]: "/tmp/peer" } },
+    ],
+    ownership: {
+      appRoot: root,
+      ownerKey: appIdentityKey("owner", root),
+      providerId,
+      appIds: [id],
+      members: [{ kind: "container", appId: id, nativeName, nativeId: "adopted", dataRoot }],
+    },
+  });
+
+  await h.run(["mail"]);
+
+  expect(h.removed.map(({ containerId }) => containerId)).toEqual(["adopted"]);
 });
 
 test("sequential selections and repeats never resurrect stopped sibling routes", async () => {

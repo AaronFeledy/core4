@@ -21,7 +21,7 @@ This part is the master contract index for replaceable abstractions, selection, 
 
 | Abstraction | Service tag | Default | Swap mechanism |
 |---|---|---|---|
-| Containerization | `RuntimeProvider` | `@lando/provider-lando` | `providers:`; select by app `provider:` or global `defaultProviderId`. One provider is selected per app. |
+| Containerization | `RuntimeProvider` | `@lando/provider-lando` | `providers:`; select by app `provider:` or global `defaultProviderId`. One provider is selected per app. A contribution MUST supply `id`, `make`, `appliedPlans`, `appliedStateInventory`, and `readAppliedPlanStrict`; `resourceOwnership` and `declaredCapabilities` are optional (§5.3.1). |
 | File sync | `FileSyncEngine` | No engine on native providers; bundled `@lando/file-sync-mutagen` eligible for Windows prepared-volume targets | `fileSyncEngines:`; required support metadata gates eligibility independently of preference: global `defaultFileSyncEngine` → matching eligible `defaultFor` → sole eligible implementation (§4.3). No eligible automatic candidate means ordinary binds; explicit unsupported choices and ambiguity fail with `FileSyncSelectionError`. `passthrough` is a reserved no-session policy, not an engine; `appMount.accelerate: false` opts one service out. Neither ordinary path acquires an engine. Landofiles MUST NOT name an engine id. Engines MUST use provider ports and preserve lifecycle/scope semantics (§3.5, §5.4). |
 | Tooling execution | `ToolingEngine` | Core `providerExec` and `host` | `toolingEngines:`; per-step/task/default/Landofile/global selection (§8.6). Core ids MUST NOT be replaced; implementations MUST pass the tooling-engine contract suite (§13.1). |
 | Template rendering | `TemplateEngine` | Core `lando`; bundled `handlebars` and `mustache` whole-file engines | `templateEngines:`; explicit `engine`, extension, Landofile `defaultTemplateEngine`, then global config (§7.3.2). Only `lando` interpolates Landofile string values. |
@@ -97,7 +97,7 @@ Descriptors name an `id` and MAY declare `module`, `defaultFor`, `capabilities`,
 
 Every plugin-facing abstraction MUST be:
 
-- **Effect-typed:** methods return `Effect.Effect<A, E, R>` or `Stream<A, E, R>`; synchronous plugin methods are forbidden.
+- **Effect-typed:** methods return `Effect.Effect<A, E, R>` or `Stream<A, E, R>`; synchronous plugin methods are forbidden. The one exception is a pure declaration that performs no IO, such as the provider contribution's optional `declaredCapabilities` (§5.3.1).
 - **Schema-defined:** trust-boundary inputs and outputs use `Schema.Schema<A>`.
 - **Tagged-error based:** failures are adjacent `Schema.TaggedError` contracts.
 - **Capability-declared:** consumers validate typed capabilities before optional methods.

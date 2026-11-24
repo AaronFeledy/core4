@@ -53,3 +53,10 @@ export const isActiveRunStatus = (status: ServiceRunStatus): boolean =>
 /** True when the container is provably not executing: absent, never started, or terminated. */
 export const isIdleRunStatus = (status: ServiceRunStatus): boolean =>
   status === "absent" || status === "created" || status === "exited" || status === "dead";
+
+/**
+ * True when the service cannot serve requests or run a command: its container is idle, paused, or
+ * being removed. `unknown` and `restarting` are not down, so an unclear answer never counts as stopped.
+ */
+export const isDownRunStatus = (status: ServiceRunStatus): boolean =>
+  isIdleRunStatus(status) || status === "paused" || status === "removing";

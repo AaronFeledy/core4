@@ -116,10 +116,12 @@ rules and lists every service it started in `servicesStarted`.
 The start stops instead when Lando can't safely do that work: a conflicting
 service is disabled or no longer configured, or a running container's labels
 don't prove it belongs to this global app. The error names the service and
-container and tells you what to run. If the global app's applied-state file is
-unreadable, the start fails with the provider's `applied-state.read` error and
-its recovery steps, even when a retained runtime could otherwise reuse a
-verified start.
+container and tells you what to run. If the global app's applied-state file is damaged or unreadable, the start fails
+with the provider's `applied-state.read` error and restore-or-move-aside recovery,
+even when a retained runtime could otherwise reuse a verified start. If a newer
+Lando wrote that file in a format this binary cannot read, warm and cold global
+start both fail with a version error that names the stored and supported format
+versions: run that newer Lando or upgrade, and leave the file in place.
 
 ## Where the global app runs
 

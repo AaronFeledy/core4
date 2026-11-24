@@ -57,6 +57,13 @@ export const providerFaults = {
     prerequisite: "supported-host",
   }),
   ProviderUnavailableError: new Errors.ProviderUnavailableError(fields),
+  AppliedStateVersionError: new Errors.AppliedStateVersionError({
+    ...fields,
+    path: "/applied.json",
+    storedVersion: 11,
+    supportedVersion: 10,
+    scope: "app",
+  }),
   ServiceExecError: new Errors.ServiceExecError({ ...fields, service: "web" }),
   ServiceNotFoundError: new Errors.ServiceNotFoundError({ ...fields, service: "web" }),
   ServiceStartError: new Errors.ServiceStartError({ ...fields, service: "web" }),

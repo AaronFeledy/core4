@@ -80,7 +80,7 @@ Changing the effective home user, through `projectUser:`, `user:`, or a provider
 
 Before applying a changed plan, `lando start`, `lando rebuild`, and `lando restart` warn once for each service target whose data volume changes. This includes persisted homes, service-type data such as a database directory, and data volumes you declare in `storage:`. An upgrade that changes generated volume names or an edit to storage can therefore produce a notice even when the target directory stays the same. A replacement volume starts empty if it doesn't already exist; Lando does not copy the previous volume's contents.
 
-The notice names the previous and replacement volumes and their container targets. If you remove a data mount without replacing it at that target, the notice says it is no longer mounted. Lando leaves the previous volume untouched. Selected-service rebuilds and restarts report only the services selected for that command. Cache volumes, exclude shadows, global-scope stores, and host-directory binds do not produce these notices.
+The notice names the previous and replacement volumes and their container targets. If you remove a data mount without replacing it at that target, the notice says it is no longer mounted. Lando leaves the previous volume untouched. Selected-service rebuilds and restarts report only the services selected for that command. Cache volumes, global-scope stores, and host-directory binds do not produce these notices. An excluded directory that returns to the app mount gets [its own warning](../setup/file-sync-excludes.mdx#when-a-directory-moves-back-to-the-app-mount).
 
 For a persisted home, Lando also warns when it can no longer determine the home path, for example after you add your own `image:`. The notice explains why. A `user:` or `home.path` change can move the home to another volume or target. You get no automatic-home warning for `home: false` or when you mount something at the home path yourself.
 
@@ -145,6 +145,14 @@ Lando normalizes every container destination to one POSIX path before comparing 
 - A destination cannot be the filesystem root. `/`, and anything that reduces to it like `/a/..`, is refused: container engines reject a mount over `/`, so Lando refuses it up front instead of promising a mount the provider will throw out.
 
 A colon is fine in a destination. `/srv/a:b` is a legal POSIX path, so Lando keeps it and switches that mount to the provider's long syntax, because the short `source:target:mode` spelling has nowhere to put the extra colon. Authoring a colon destination as a Compose short volume string is the one place it cannot work; write it as a mount or storage object instead.
+
+Lando also binds a few files of its own into every service: its helper directory at `/run/lando/helper`, commands such as `lando-create-project` (plus `lando`, `xdg-open`, and `open` when [host-proxy](../subsystems/host-open.mdx) is on) in `/usr/local/bin`, and the login-profile file that [keeps your `PATH`](../cli/ssh.mdx#keep-the-service-path). Your mounts decide what happens to them:
+
+- A mount at `/run/lando/helper`, inside it, or a bind or volume above it such as `/run/lando` is a validation error. `lando app:config:lint` reports it, and `lando start` fails with `LandofileValidationError` before it builds anything. Move the mount to a path that is neither above nor inside `/run/lando/helper`.
+- A mount at the exact path of one of Lando's own commands is the same validation error. That covers `/usr/local/bin/lando-create-project` and the other scaffold commands in every service, and `/usr/local/bin/lando`, `/usr/local/bin/xdg-open`, and `/usr/local/bin/open` in a service with host-proxy. The error names the path and the command Lando provides there.
+- A bind or volume above those commands, such as `/usr/local/bin`, keeps your mount: Lando leaves those commands out of that service rather than create empty files in your directory, and `lando start` prints a `LANDO_HELPER_COMMANDS_UNAVAILABLE` warning that names the mount and the missing commands. Move the mount to another path to get the commands back.
+- A bind or volume at `/etc/profile.d` or `/etc` keeps your mount, and Lando leaves its profile file out without a warning.
+- A `tmpfs` is different: it holds nothing on your host, so Lando's helper directory, commands, and profile file all still mount beneath a `tmpfs` at `/run`, `/usr/local/bin`, or `/etc/profile.d`, with no warning.
 
 Home contents stay out of build keys. Filling up `~/.npm` will not trigger a rebuild.
 
@@ -224,6 +232,62 @@ If the request is refused, see [Reach host services and sibling stacks](../subsy
       <Run command="lando app:cache:refresh" />
     </Step>
     <Step name="cleanup-explicit">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="helper-commands-covered" render={false} reason="A mount above the helper commands keeps the mount and warns once with the skipped commands">
+    <Step name="scaffold-bin-mount">
+      <UseFixture name="home-and-host-bin-mount" />
+    </Step>
+    <Step name="start-with-warning">
+      <Verify command="lando start --format=json" expect={{ stdout: { regex: "\"code\":\\s*\"LANDO_HELPER_COMMANDS_UNAVAILABLE\"[^}]*\"context\":\\s*\\{\"service\":\\s*\"tools\",\\s*\"mount\":\\s*\"/usr/local/bin\"" } }} />
+    </Step>
+    <Step name="cleanup-bin-mount">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="helper-commands-under-tmpfs" render={false} reason="A tmpfs above the helper commands persists nothing, so the commands still mount and no warning is raised">
+    <Step name="scaffold-bin-tmpfs">
+      <UseFixture name="home-and-host-bin-tmpfs" />
+    </Step>
+    <Step name="start-without-warning">
+      <Verify command="lando start --format=json" expect={{ stdout: { regex: "^(?![\\s\\S]*LANDO_HELPER_COMMANDS_UNAVAILABLE)[\\s\\S]*\"ok\":\\s*true" } }} />
+    </Step>
+    <Step name="cleanup-bin-tmpfs">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="host-proxy-command-mount" render={false} reason="An exact mount at a host-proxy command path fails planning and lint before any build">
+    <Step name="scaffold-host-proxy-command">
+      <UseFixture name="home-and-host-host-proxy-command" />
+    </Step>
+    <Step name="lint-reports-command-mount">
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"rule\":\\s*\"landofile.service\",\\s*\"severity\":\\s*\"error\",\\s*\"path\":\\s*\\[\"services\",\\s*\"tools\",\\s*\"mounts\",\\s*0\\],\\s*\"message\":\\s*\"[^\"]*reserved for Lando.s xdg-open command" } }} />
+    </Step>
+    <Step name="refuse-command-mount-before-build">
+      <Verify command="lando start --format=json" expectExit={1} expect={{ stdout: { regex: "^(?![\\s\\S]*\"event\":\\s*\"(task\\.start|build-step-[a-z]+)\")[\\s\\S]*\"_tag\":\\s*\"LandofileValidationError\"[\\s\\S]*\"path\":\\s*\\[\"services\",\\s*\"tools\",\\s*\"mounts\",\\s*0\\][\\s\\S]*Lando provides the xdg-open command at /usr/local/bin/xdg-open" } }} />
+    </Step>
+    <Step name="cleanup-host-proxy-command">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="helper-directory-overlap" render={false} reason="A bind above the reserved helper directory fails planning and lint before any build">
+    <Step name="scaffold-helper-overlap">
+      <UseFixture name="home-and-host-helper-overlap" />
+    </Step>
+    <Step name="lint-reports-overlap">
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"rule\":\\s*\"landofile.service\",\\s*\"severity\":\\s*\"error\",\\s*\"path\":\\s*\\[\"services\",\\s*\"tools\",\\s*\"mounts\",\\s*0\\]" } }} />
+    </Step>
+    <Step name="refuse-start-before-build">
+      <Verify command="lando start --format=json" expectExit={1} expect={{ stdout: { regex: "^(?![\\s\\S]*\"event\":\\s*\"(task\\.start|build-step-[a-z]+)\")[\\s\\S]*\"_tag\":\\s*\"LandofileValidationError\"[\\s\\S]*\"path\":\\s*\\[\"services\",\\s*\"tools\",\\s*\"mounts\",\\s*0\\]" } }} />
+    </Step>
+    <Step name="cleanup-helper-overlap">
       <Cleanup />
     </Step>
   </Scenario>

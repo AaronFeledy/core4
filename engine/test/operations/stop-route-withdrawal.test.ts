@@ -79,7 +79,7 @@ describe("public stop route withdrawal", () => {
 
     // When the runtime is halted
     await Effect.runPromise(
-      haltAppRuntime({}, target).pipe(
+      haltAppRuntime(target).pipe(
         Effect.provideService(RouterService, recordingRouter(calls)),
         Effect.provide(harness.layer),
       ),

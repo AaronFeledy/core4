@@ -111,7 +111,6 @@ describe("Laravel deterministic decomposition", () => {
         appserver: {
           ...expected.services.appserver,
           environment: { ...expected.services.appserver.environment, DB_CONNECTION: "pgsql" },
-          appMount: { target: "/app", includes: ["vendor"] },
           schedule: [
             {
               name: "laravel-scheduler",
@@ -129,7 +128,6 @@ describe("Laravel deterministic decomposition", () => {
           restart: "unless-stopped",
           depends_on: ["cache", "database"],
           environment: { ...expected.services.appserver.environment, DB_CONNECTION: "pgsql" },
-          appMount: { target: "/app", includes: ["vendor"] },
         },
       },
     });

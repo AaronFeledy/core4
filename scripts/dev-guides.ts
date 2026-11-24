@@ -9,6 +9,7 @@ import {
   buildGuideScenarioAst,
   resolveGeneratedGuideTestRoot,
 } from "./build-guide-scenarios.ts";
+import type { TrackTestChild } from "./live-test-roots.ts";
 import { rewriteScenarioSourceMappedOutput } from "./test-reporters/scenario-source-mapper.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
@@ -38,13 +39,17 @@ interface RunResult {
 const ABORT_EXIT_CODE = 130;
 
 let activeProc: Bun.Subprocess | undefined;
+let liveTestInFlight = false;
+let shutdownCode = ABORT_EXIT_CODE;
 let shuttingDown = false;
 const shutdownHooks = new Set<() => void>();
 
-const requestShutdown = (): void => {
+const requestShutdown = (signal: "SIGINT" | "SIGTERM"): void => {
   if (shuttingDown) return;
   shuttingDown = true;
-  activeProc?.kill();
+  shutdownCode = signal === "SIGTERM" ? 143 : ABORT_EXIT_CODE;
+  if (liveTestInFlight) process.exitCode = shutdownCode;
+  activeProc?.kill(signal);
   for (const hook of shutdownHooks) hook();
 };
 
@@ -83,10 +88,11 @@ export const computeAffectedGuides = (changedPath: string, ctx: AffectedGuidesCo
 const run = async (
   cmd: ReadonlyArray<string>,
   env: Record<string, string | undefined> = {},
+  track?: TrackTestChild,
 ): Promise<RunResult> => {
   if (shuttingDown) {
     return {
-      exitCode: ABORT_EXIT_CODE,
+      exitCode: shutdownCode,
       stdout: "",
       stderr: "dev:guides: shutdown requested before subprocess start\n",
     };
@@ -98,7 +104,8 @@ const run = async (
     stdout: "pipe",
     stderr: "pipe",
   });
-  activeProc = proc;
+  if (track === undefined) activeProc = proc;
+  else track(proc);
   try {
     const [exitCode, stdout, stderr] = await Promise.all([
       proc.exited,
@@ -107,6 +114,8 @@ const run = async (
     ]);
     return { exitCode, stdout, stderr };
   } finally {
+    if (proc.exitCode === null && proc.signalCode === null) proc.kill("SIGKILL");
+    await proc.exited;
     if (activeProc === proc) activeProc = undefined;
   }
 };
@@ -219,16 +228,34 @@ const typecheckGuides = async (guideIds: readonly string[]): Promise<RunResult> 
 };
 
 const testGuides = async (guideIds: readonly string[], isAll: boolean): Promise<RunResult> => {
+  const runTests = async (targets: readonly string[]) => {
+    const command = [process.execPath, "test", ...targets];
+    if (process.env.LANDO_GUIDE_E2E !== "1") return run(command);
+    const { runWithLiveTestRoots } = await import("./live-test-roots.ts");
+    let output = { stdout: "", stderr: "" };
+    liveTestInFlight = true;
+    const exitCode = await runWithLiveTestRoots(
+      { live: true, cwd: REPO_ROOT, env: process.env },
+      async (env, track) => {
+        const result = await run([...command, "--max-concurrency=1"], env, track);
+        output = result;
+        return result.exitCode;
+      },
+    ).finally(() => {
+      liveTestInFlight = false;
+    });
+    return { ...output, exitCode };
+  };
   if (isAll) {
     if (!(await dirExists(resolve(REPO_ROOT, GENERATED_ROOT)))) return noGeneratedOutput([]);
-    return run([process.execPath, "test", `${GENERATED_ROOT}/`]);
+    return runTests([`${GENERATED_ROOT}/`]);
   }
   if (guideIds.length === 0) return noGeneratedOutput([]);
 
   const present = await generatedDirsFor(guideIds);
   const missing = missingGeneratedGuideIds(guideIds, present);
   if (missing.length > 0) return noGeneratedOutput(missing);
-  return run([process.execPath, "test", ...present.map((id) => `${GENERATED_ROOT}/${id}/`)]);
+  return runTests(present.map((id) => `${GENERATED_ROOT}/${id}/`));
 };
 
 const writeMapped = (result: RunResult): void => {
@@ -257,7 +284,7 @@ const runIteration = async (guideIds: readonly string[], isAll: boolean): Promis
     return generated.exitCode;
   }
 
-  if (shuttingDown) return ABORT_EXIT_CODE;
+  if (shuttingDown) return shutdownCode;
 
   const typecheck = await typecheckGuides(guideIds);
   if (typecheck.exitCode !== 0) {
@@ -265,7 +292,7 @@ const runIteration = async (guideIds: readonly string[], isAll: boolean): Promis
     return typecheck.exitCode;
   }
 
-  if (shuttingDown) return ABORT_EXIT_CODE;
+  if (shuttingDown) return shutdownCode;
 
   const tested = await testGuides(guideIds, isAll);
   writeMapped(tested);

@@ -10,6 +10,7 @@ import { RedactionService, makeRedactionService } from "@lando/redaction/service
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { GlobalConfig, ProviderId, StreamFrame } from "@lando/sdk/schema";
 import { ConfigService, PathsService, PluginRegistry, RuntimeProviderRegistry } from "@lando/sdk/services";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect, Layer, Schema } from "effect";
 import { metaDoctorSpec } from "../../src/cli/command-specs/meta/doctor.ts";
 import { resilientDoctorReport } from "../../src/cli/commands/doctor-bootstrap.ts";
@@ -22,10 +23,7 @@ import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 import { resources } from "../../src/mcp-resources.ts";
 
 const registryFor = (provider: typeof TestRuntimeProvider) =>
-  RuntimeProviderRegistry.of({
-    resolveAppliedPlan: () => Effect.succeed(undefined),
-    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-    appliedPlansFor: () => Effect.succeed([]),
+  makeTestRuntimeProviderRegistry({
     list: Effect.succeed([ProviderId.make(provider.id)]),
     capabilities: Effect.succeed(provider.capabilities),
     select: () => Effect.succeed(provider),
