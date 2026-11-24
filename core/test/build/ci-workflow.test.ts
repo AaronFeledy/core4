@@ -690,7 +690,7 @@ describe("ci workflow", () => {
           fetch-depth: 0`);
     expect(schemaSnapshot).toContain("      - name: Check schema compatibility");
     expect(schemaSnapshot).toContain(
-      "          LANDO_SCHEMA_COMPATIBILITY_BASE_REF: origin/${{ github.event_name == 'pull_request' && github.base_ref || 'main' }}",
+      "          LANDO_SCHEMA_COMPATIBILITY_BASE_REF: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || 'origin/main' }}",
     );
     expect(findIndentedBlock(findIndentedBlock(workflow, "on"), "pull_request", 2)).not.toContain(
       "branches:",

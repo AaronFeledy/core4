@@ -1035,7 +1035,7 @@ ${codegenStep}
 
       - name: Check schema compatibility
         env:
-          LANDO_SCHEMA_COMPATIBILITY_BASE_REF: origin/\${{ github.event_name == 'pull_request' && github.base_ref || 'main' }}
+          LANDO_SCHEMA_COMPATIBILITY_BASE_REF: \${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || 'origin/main' }}
         run: bun run check:schema-compatibility
 
       - name: Regenerate command reference

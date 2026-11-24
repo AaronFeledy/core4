@@ -429,7 +429,7 @@ describe("ci workflow codegen", () => {
           fetch-depth: 0`);
       expect(workflow).toContain("- name: Check schema compatibility");
       expect(workflow).toContain(
-        "LANDO_SCHEMA_COMPATIBILITY_BASE_REF: origin/${{ github.event_name == 'pull_request' && github.base_ref || 'main' }}",
+        "LANDO_SCHEMA_COMPATIBILITY_BASE_REF: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || 'origin/main' }}",
       );
       expect(workflow).toContain("run: bun run check:schema-compatibility");
       expect(fixtureVerificationStart).toBeLessThan(fixtureVerificationEnd);
