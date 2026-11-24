@@ -61,7 +61,7 @@ const renderVerify = (component: Extract<GuideStepComponent, { kind: "Verify" }>
       `    const actual = ${expected === undefined ? "tagged.at(-1)" : `tagged.findLast((event) => matchesExpected(event, ${expected})) ?? tagged.at(-1)`};`,
       `    const matched = ${expected === undefined ? "actual !== undefined" : `actual !== undefined && matchesExpected(actual, ${expected})`};`,
       `    yield* context.transcript.append({ kind: "verify", target: "event", matched, expected: ${expected ?? quote(props.event)}, actual });`,
-      "    expect(matched).toBe(true);",
+      `    expect(matched, ${quote(`last ${props.event} event: `)} + JSON.stringify(actual ?? null)).toBe(true);`,
     ].join("\n");
   if (props.command !== undefined)
     return [
@@ -71,7 +71,7 @@ const renderVerify = (component: Extract<GuideStepComponent, { kind: "Verify" }>
       ...(expected === undefined
         ? []
         : [
-            `    expect(matchesExpected({ stdout: verifyRun.stdout, stderr: verifyRun.stderr }, ${expected})).toBe(true);`,
+            `    expect(matchesExpected({ stdout: verifyRun.stdout, stderr: verifyRun.stderr }, ${expected}), \`stdout:\\n\${verifyRun.stdout}\\nstderr:\\n\${verifyRun.stderr}\`).toBe(true);`,
           ]),
     ].join("\n");
   if (props.file !== undefined)
@@ -79,14 +79,14 @@ const renderVerify = (component: Extract<GuideStepComponent, { kind: "Verify" }>
       `    const fileContent = yield* Effect.promise(() => Bun.file(join(context.testDir, ${quote(props.file)})).text());`,
       `    const matched = ${expected === undefined ? "fileContent !== undefined" : `matchesExpected(fileContent, ${expected})`};`,
       `    yield* context.transcript.append({ kind: "verify", target: "file", matched, expected: ${expected ?? quote(props.file)}, actual: fileContent });`,
-      "    expect(matched).toBe(true);",
+      `    expect(matched, ${quote(`${props.file}:\n`)} + fileContent).toBe(true);`,
     ].join("\n");
   return [
     '    const failureText = lastRun === undefined ? "" : `${lastRun.stdout}\\n${lastRun.stderr}`;',
     "    const actual = errorTagFromRun(lastRun);",
     `    const matched = actual === ${quote(props.errorTag ?? "")}${expected === undefined ? "" : ` && matchesExpected(failureText, ${expected})`};`,
     `    yield* context.transcript.append({ kind: "verify", target: "errorTag", matched, expected: ${quote(props.errorTag ?? "")}, actual });`,
-    "    expect(matched).toBe(true);",
+    "    expect(matched, `error tag: ${actual}\\n${failureText}`).toBe(true);",
   ].join("\n");
 };
 export const renderStepComponent = (component: GuideStepComponent, sourcePath: string): string => {
@@ -106,12 +106,12 @@ export const renderStepComponent = (component: GuideStepComponent, sourcePath: s
           `    expect(${JSON.stringify(status)}, "Fetch returned HTTP " + response.status).toContain(response.status);`,
           ...Object.entries(expect.headers ?? {}).map(
             ([name, matcher]) =>
-              `    expect(matchesExpected(response.headers[${quote(name.toLowerCase())}] ?? null, ${JSON.stringify(matcher)}), ${quote(`Fetch response header ${name}`)}).toBe(true);`,
+              `    expect(matchesExpected(response.headers[${quote(name.toLowerCase())}] ?? null, ${JSON.stringify(matcher)}), ${quote(`Fetch response header ${name}: `)} + JSON.stringify(response.headers[${quote(name.toLowerCase())}] ?? null)).toBe(true);`,
           ),
           ...(expect.body === undefined
             ? []
             : [
-                `    expect(matchesExpected(response.body, ${JSON.stringify(expect.body)}), "Fetch response body").toBe(true);`,
+                `    expect(matchesExpected(response.body, ${JSON.stringify(expect.body)}), "Fetch response body: " + JSON.stringify(response.body)).toBe(true);`,
               ]),
         ].join("\n");
       }
