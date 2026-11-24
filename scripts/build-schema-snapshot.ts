@@ -128,7 +128,10 @@ const generateCommandResultSchemas = (): ReadonlyArray<CommandResultSchemaArtifa
 
 const renderJson = (value: unknown): string => `${JSON.stringify(stable(value), null, 2)}\n`;
 
-const main = async (): Promise<void> => {
+export const buildSchemaSnapshot = async (): Promise<{
+  readonly sdkSchemas: number;
+  readonly commandSchemas: number;
+}> => {
   for (const root of [
     LandofileShape,
     ServiceConfig,
@@ -247,9 +250,12 @@ const main = async (): Promise<void> => {
   ]);
   await mirrorSchemaArtifacts({ repoRoot: REPO_ROOT });
 
-  console.log(
-    `[build-schema-snapshot] wrote ${sdkSchemas.length} SDK schemas and ${commandResultSchemas.length} command schemas`,
-  );
+  return { sdkSchemas: sdkSchemas.length, commandSchemas: commandResultSchemas.length };
 };
 
-await main();
+if (import.meta.main) {
+  const written = await buildSchemaSnapshot();
+  console.log(
+    `[build-schema-snapshot] wrote ${written.sdkSchemas} SDK schemas and ${written.commandSchemas} command schemas`,
+  );
+}
