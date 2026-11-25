@@ -60,8 +60,10 @@ import {
   loadUserLandofileFile,
   makeEngineUserAppResolution,
 } from "../landofile/app-resolution.ts";
+import { routeOwnerFromPlan } from "../lifecycle/route-owner.ts";
 import { routeUrlRouterError } from "../lifecycle/route-url-bindings.ts";
 import { prepareServiceCertificates } from "../lifecycle/service-certificates.ts";
+import { routeUrl } from "../operations/connection-url.ts";
 import {
   type GlobalConsumerAdmissionServices,
   requireSelectableRouter,
@@ -974,7 +976,22 @@ const makeScratchAppService = Effect.fnUntraced(function* (
     if (entry === undefined) return yield* Effect.fail(scratchAppNotFoundError(id));
     const scratchPaths = yield* paths(id);
     const cachedPlan = yield* readCachedPlan(scratchPaths.planCache);
-    return { ...summaryFromEntry(entry), ...scratchPlanDetail(cachedPlan) };
+    const info = { ...summaryFromEntry(entry), ...scratchPlanDetail(cachedPlan) };
+    if (cachedPlan === undefined || cachedPlan.routes.length === 0 || !routerEnabled(cachedPlan)) return info;
+    const observation = yield* router.observeRoutes(routeOwnerFromPlan(cachedPlan), cachedPlan.routes).pipe(
+      Effect.map((evidence) => evidence.observation),
+      Effect.catchTag("ProxyError", () => Effect.succeed(undefined)),
+    );
+    // Declared routes always report a list, so an empty one means none are confirmed yet.
+    if (observation?.status !== "present") return { ...info, routes: [] };
+    return {
+      ...info,
+      routes: observation.publications.map(({ route, authority }) => ({
+        ...authority,
+        service: route.service,
+        url: routeUrl(route, authority.scheme, authority.port),
+      })),
+    };
   });
 
   const start = (id: string) => resolveById(id);

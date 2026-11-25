@@ -14,7 +14,7 @@ tags: [docs, scratch, list, info]
 lando scratch:list
 ```
 
-To see mounts, networks, and endpoints, run `lando scratch:info <id>`, replacing
+To see route URLs, mounts, networks, and endpoints, run `lando scratch:info <id>`, replacing
 `<id>` with an id from this list.
 
 ## List
@@ -58,6 +58,32 @@ lando scratch:info <id> --format json
 `lando scratch:info` is the alias of `apps:scratch:info`. The id is required.
 
 Info repeats the list fields, then prints `root`, the per-app bridge (and the shared network when the scratch joined it), each mount (service, target, source, kind, read-only), and endpoints grouped by service.
+
+Under `routes`, look for the URLs the router confirms for this scratch. The
+JSON `routes` entries include `service`, `hostname`, `scheme`, `port`, and
+`url`, which includes any nonstandard port and route path prefix. If the
+router cannot confirm a route, info does not report it, and an empty `routes`
+list means the scratch declares routes but none are confirmed yet. A scratch
+with no routes, or with routing turned off, has no `routes` field. A reported
+URL does not imply the service behind it is healthy.
+
+<Guide>
+  <Scenario id="published-route-urls" render={false} reason="Prove scratch info reports the published URL with its port and path in JSON and text">
+    <Step name="fork">
+      <UseFixture name="scratch-info-web" />
+      <Run command="lando scratch:start --fork --no-hostname-suffix --detach --format=json" capture={{ name: "scratchId", json: "handle.id" }} />
+    </Step>
+    <Step name="inspect">
+      <Verify command="lando scratch:info {{capture:scratchId}} --format=json" expect={{ stdout: { regex: "\"hostname\":\\s*\"web\\.scratch-info-guide\\.lndo\\.site\"[\\s\\S]*\"url\":\\s*\"http://web\\.scratch-info-guide\\.lndo\\.site:38080/hello\"" } }} />
+      <Verify command="lando scratch:info {{capture:scratchId}} --renderer=plain --format=text" expect={{ stdout: { regex: "http://web\\.scratch-info-guide\\.lndo\\.site:38080/hello" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando scratch:destroy {{capture:scratchId}}" />
+      <Run command="lando destroy -y --volumes" />
+    </Step>
+  </Scenario>
+</Guide>
 
 ## Next
 
