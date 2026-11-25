@@ -26,13 +26,16 @@ export interface StateBucketBackend {
   ) => Effect.Effect<A, E | StateStoreError>;
 }
 
-const decodeError = (operation: string, path: string, cause: unknown): StateStoreError =>
+const codecError = (operation: "get" | "set", path: string, cause: unknown): StateStoreError =>
   new StateStoreError({
     reason: "decode",
     operation,
     path,
     cause,
-    remediation: "The durable state file is corrupt; remove it or restore a backup.",
+    remediation:
+      operation === "set"
+        ? "The value could not be saved. Correct the value or the code that produced it, then retry."
+        : "The durable state file is corrupt; remove it or restore a backup.",
   });
 
 export const buildStateBucket = <A, I>(
@@ -66,7 +69,7 @@ export const buildStateBucket = <A, I>(
   const handleCorrupt = (cause: unknown): Effect.Effect<A | null, StateStoreError> => {
     switch (onCorrupt) {
       case "fail":
-        return Effect.fail(decodeError("get", file, cause));
+        return Effect.fail(codecError("get", file, cause));
       case "quarantine":
         return quarantine.pipe(Effect.andThen(Effect.succeed<A | null>(fallback)));
       case "discard":
@@ -124,11 +127,11 @@ export const buildStateBucket = <A, I>(
     if (isCustomCodec(codec)) {
       return Effect.try({
         try: () => codec.encode(value),
-        catch: (cause) => decodeError("set", file, cause),
+        catch: (cause) => codecError("set", file, cause),
       }).pipe(Effect.flatMap((body) => backend.writeBytes(file, body, "set", writeOptions)));
     }
     return schema.encode(value).pipe(
-      mapFailures((cause) => decodeError("set", file, cause)),
+      mapFailures((cause) => codecError("set", file, cause)),
       Effect.flatMap((encoded) => {
         const body = encodeFrame(codec, spec.version, encoded, value, writer);
         return backend.writeBytes(file, body, "set", writeOptions);
