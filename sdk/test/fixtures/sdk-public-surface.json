@@ -572,6 +572,7 @@
       "annotateFailureRole",
       "boundedDiagnosticSummary",
       "buildCommandResultEnvelope",
+      "causeRemediation",
       "commandCompletionFromExitCode",
       "commandFailureCause",
       "commandResultEnvelopePolicy",

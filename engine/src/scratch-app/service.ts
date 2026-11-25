@@ -5,7 +5,7 @@ import { migrateAppliedPlan } from "@lando/container-runtime/applied-state";
 import type { UserAppResolution } from "@lando/landofile/app-resolution";
 import { discoveryCwd, withDiscoveryCwd } from "@lando/landofile/operation-discovery";
 import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
-import { mapFailures } from "@lando/sdk/command-result";
+import { causeRemediation, mapFailures } from "@lando/sdk/command-result";
 import { sha256Hex } from "@lando/sdk/digest";
 import {
   AppPlacementError,
@@ -163,7 +163,7 @@ const scratchAppError = (
     message,
     operation,
     cause,
-    remediation: remediation ?? scratchRemediationFor(operation),
+    remediation: remediation ?? causeRemediation(cause) ?? scratchRemediationFor(operation),
   });
 
 export const decodeScratchPlan = (raw: unknown): AppPlan => {
@@ -691,7 +691,7 @@ const makeScratchAppService = Effect.fnUntraced(function* (
     // A routed scratch start without a selectable router refuses before placement, builds, or certificates.
     yield* requireSelectableRouter(markedPlan).pipe(
       Effect.provideService(RouterService, router),
-      mapFailures((cause) => scratchAppError("start", cause.message, cause, cause.remediation)),
+      mapFailures((cause) => scratchAppError("start", cause.message, cause)),
     );
     const routeError = routeUrlRouterError(markedPlan, router);
     if (routeError !== undefined) return yield* routeError;
@@ -741,7 +741,6 @@ const makeScratchAppService = Effect.fnUntraced(function* (
           "start",
           `Unable to prepare certificates for scratch app ${scratchId}: ${cause.message}`,
           cause,
-          cause.remediation,
         ),
       ),
     );

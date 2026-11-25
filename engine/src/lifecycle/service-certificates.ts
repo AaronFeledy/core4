@@ -24,7 +24,7 @@ import { chmod, mkdir, readFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
 import { prepareCertificatePair } from "@lando/sdk/certificates";
-import { mapFailures } from "@lando/sdk/command-result";
+import { causeRemediation, mapFailures } from "@lando/sdk/command-result";
 import { sha256Hex } from "@lando/sdk/digest";
 import { CaError, isErrnoCode } from "@lando/sdk/errors";
 import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
@@ -37,7 +37,6 @@ import {
   CertificateAuthorityResolver,
   type CertificateAuthorityResolverShape,
 } from "../plugins/certificate-authority-resolver.ts";
-import { taggedErrorRemediation } from "../providers/managed.ts";
 import { routeOwnerFromPlan } from "./route-owner.ts";
 import { resolveCertsDir, serviceCertificatePaths } from "./service-certificate-paths.ts";
 
@@ -169,7 +168,7 @@ export const prepareServiceCertificates = Effect.fn("ServiceCertificates.prepare
             message: `Unable to resolve the certificate authority for service ${name}.`,
             caId: certs.caId,
             remediation:
-              taggedErrorRemediation(cause) ??
+              causeRemediation(cause) ??
               "Install a certificate-authority plugin with `lando setup` and select it as the active CA, then re-run.",
             cause,
           }),

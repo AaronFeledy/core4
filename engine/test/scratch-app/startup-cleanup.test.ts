@@ -158,6 +158,7 @@ test("scratch apply failure uses the same acquisition cleanup boundary", async (
       expect(failureOf(exit)).toMatchObject({
         _tag: "ScratchAppError",
         cause: { _tag: "ProviderUnavailableError" },
+        remediation: expect.stringContaining("`lando` provider"),
       });
       expect(f.destroyed).toHaveLength(1);
       expect(f.entries.size).toBe(0);

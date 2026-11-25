@@ -1,4 +1,4 @@
-import { mapFailures } from "@lando/sdk/command-result";
+import { causeRemediation, mapFailures } from "@lando/sdk/command-result";
 import {
   AppPlacementError,
   RouteUrlBindingError,
@@ -65,7 +65,7 @@ export const applyScratchStartup = Effect.fn("ScratchApp.applyStartup")(function
           : new ScratchAppError({
               operation: "start",
               message: cause.message,
-              remediation: cause.remediation,
+              remediation: causeRemediation(cause) ?? "Repair the router and retry scratch startup.",
               cause,
             }),
       ),
@@ -86,7 +86,9 @@ export const applyScratchStartup = Effect.fn("ScratchApp.applyStartup")(function
             operation: "start",
             message: `Unable to start scratch app ${id}.`,
             cause,
-            remediation: "Run `lando doctor`, fix the provider failure, then retry scratch start.",
+            remediation:
+              causeRemediation(cause) ??
+              "Run `lando doctor`, fix the provider failure, then retry scratch start.",
           }),
       ),
     );
@@ -111,7 +113,8 @@ export const applyScratchStartup = Effect.fn("ScratchApp.applyStartup")(function
               message: `Unable to ready scratch app ${id}.`,
               cause,
               remediation:
-                cause.remediation ?? "Wait for services to become healthy, or run `lando doctor` and retry.",
+                causeRemediation(cause) ??
+                "Wait for services to become healthy, or run `lando doctor` and retry.",
             }),
       ),
     );
@@ -145,7 +148,7 @@ export const applyScratchStartup = Effect.fn("ScratchApp.applyStartup")(function
             message: `Required global services could not be admitted for scratch app ${id}.`,
             cause,
             remediation:
-              cause.remediation ??
+              causeRemediation(cause) ??
               "Inspect global service policy and restore the required services before retrying scratch startup.",
           }),
     ),

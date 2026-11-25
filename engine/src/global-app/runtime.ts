@@ -2,7 +2,7 @@ import {
   ownsAppliedGlobalService,
   resolveAppliedGlobalPlan,
 } from "@lando/container-runtime/applied-global-service";
-import { mapFailures } from "@lando/sdk/command-result";
+import { causeRemediation, mapFailures } from "@lando/sdk/command-result";
 import { AppPlacementError, DebuggerHostUnavailableError, GlobalAppError } from "@lando/sdk/errors";
 import {
   type ConfigService,
@@ -16,7 +16,6 @@ import {
   type EnsureGlobalServicesServices,
   ensureGlobalServicesRunning,
 } from "../operations/ensure-global-services.ts";
-import { taggedErrorRemediation } from "../providers/managed.ts";
 import { prepareProvider } from "../providers/prepared.ts";
 import { globalCreateProviderId, globalObserveProviderId } from "./placement.ts";
 
@@ -62,7 +61,7 @@ export const layer = Layer.effect(
               message: "Unable to resolve the global runtime provider.",
               operation: "placement",
               remediation:
-                taggedErrorRemediation(cause) ??
+                causeRemediation(cause) ??
                 "Run `lando setup` and ensure a runtime provider is selected, then retry.",
               cause,
             }),
@@ -78,7 +77,7 @@ export const layer = Layer.effect(
                 message: "Unable to start the global service runtime before port selection.",
                 operation: "ensureProviderReady",
                 remediation:
-                  taggedErrorRemediation(cause) ??
+                  causeRemediation(cause) ??
                   "Run `lando doctor` and fix the selected runtime provider, then retry.",
                 cause,
               }),
@@ -94,7 +93,7 @@ export const layer = Layer.effect(
                   message: "Unable to inspect provider-host published TCP ports.",
                   operation: "occupiedPublishPorts",
                   remediation:
-                    taggedErrorRemediation(cause) ??
+                    causeRemediation(cause) ??
                     "Run `lando doctor` and fix the selected runtime provider, then retry.",
                   cause,
                 }),
@@ -137,7 +136,7 @@ export const layer = Layer.effect(
                 message: "Unable to inspect Lando-owned global service ports.",
                 operation: "ownedPublishPorts",
                 remediation:
-                  taggedErrorRemediation(cause) ??
+                  causeRemediation(cause) ??
                   "Run `lando doctor` and fix the selected runtime provider, then retry.",
                 cause,
               }),
@@ -159,7 +158,7 @@ export const layer = Layer.effect(
                 message: "Unable to reload the running global service.",
                 operation: "restartRunningService",
                 remediation:
-                  taggedErrorRemediation(cause) ??
+                  causeRemediation(cause) ??
                   "Run `lando doctor` and fix the selected runtime provider, then retry.",
                 cause,
               }),
@@ -176,7 +175,7 @@ export const layer = Layer.effect(
                   message: "Unable to ensure global services are running.",
                   operation: "ensureRunning",
                   remediation:
-                    taggedErrorRemediation(cause) ??
+                    causeRemediation(cause) ??
                     "Lando tried to install and start the required global services automatically. Fix the underlying error, then retry.",
                   cause,
                 }),

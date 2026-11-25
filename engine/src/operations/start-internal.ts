@@ -2,6 +2,7 @@ import { observeTcpListener } from "@lando/container-runtime/listener-observatio
 import { adoptionReceiptsFromSummary } from "@lando/container-runtime/native-ownership";
 import type { RedactionService } from "@lando/redaction/service";
 import type { StartAppError as SdkStartAppError, StartAppOptions, StartAppResult } from "@lando/sdk/app";
+import { causeRemediation } from "@lando/sdk/command-result";
 import {
   AppPlacementError,
   type ComposeKeyRejectedError,
@@ -44,7 +45,6 @@ import { type PreparedRouteUrls, prepareRouteUrlBindings } from "../lifecycle/ro
 import { type PreparedCertificates, prepareServiceCertificates } from "../lifecycle/service-certificates.ts";
 import { completeStartup } from "../lifecycle/startup-completion.ts";
 import { verifyActiveVolumeCoordination } from "../lifecycle/volume-coordination.ts";
-import { taggedErrorRemediation } from "../providers/managed.ts";
 import type { PreparedRuntimeProvider } from "../providers/prepared.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
 import { readPendingAcceleratedStart } from "./accelerated-start-journal.ts";
@@ -326,7 +326,7 @@ export const announceAppLaunch = Effect.fnUntraced(function* (input: {
               app: plan.name,
               services: [...neededGlobalServices],
               remediation:
-                taggedErrorRemediation(cause) ??
+                causeRemediation(cause) ??
                 "Lando tried to install and start the required global services automatically. Fix the underlying error, then retry `lando start`.",
               cause,
             }),

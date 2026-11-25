@@ -17,6 +17,11 @@ const ownValue = (value: object | undefined, key: string): unknown => {
 const text = (value: unknown): string | undefined =>
   typeof value === "string" && value.trim().length > 0 ? value : undefined;
 
+export const causeRemediation = (cause: unknown): string | undefined => {
+  if (cause === null || typeof cause !== "object" || !("remediation" in cause)) return undefined;
+  return text(cause.remediation);
+};
+
 const decodeIssue = Schema.decodeUnknownResult(ValidationIssue);
 
 /**

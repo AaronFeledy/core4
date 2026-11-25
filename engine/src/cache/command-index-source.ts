@@ -5,7 +5,7 @@ import { findLandofilePath } from "@lando/landofile/discovery";
 import { presentLandofileLayers } from "@lando/landofile/layers";
 import type { LandofileProvenance } from "@lando/landofile/provenance";
 import { isPathWithin } from "@lando/paths";
-import { mapFailures } from "@lando/sdk/command-result";
+import { causeRemediation, mapFailures } from "@lando/sdk/command-result";
 import { sha256Hex } from "@lando/sdk/digest";
 import { CacheError } from "@lando/sdk/errors";
 import type { LandofileShape } from "@lando/sdk/schema";
@@ -13,7 +13,6 @@ import type { LandoRoots } from "@lando/sdk/services";
 import { Effect } from "effect";
 import { resolveAppIdentity } from "../planner/app-identity.ts";
 import { readAppDataIdentity } from "../planner/data-identity.ts";
-import { taggedErrorRemediation } from "../providers/managed.ts";
 
 export const isMissingFile = (cause: unknown): boolean =>
   typeof cause === "object" && cause !== null && "code" in cause && cause.code === "ENOENT";
@@ -172,8 +171,7 @@ export const readDataIdentityFingerprint = Effect.fnUntraced(function* (root: st
         new CacheError({
           key: "app-command",
           message: "Could not read the folder's data identity for tooling compilation.",
-          remediation:
-            taggedErrorRemediation(cause) ?? "Check the data identity record's permissions and retry.",
+          remediation: causeRemediation(cause) ?? "Check the data identity record's permissions and retry.",
           cause,
         }),
     ),

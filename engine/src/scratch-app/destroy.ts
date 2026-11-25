@@ -1,6 +1,6 @@
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
-import { mapFailures } from "@lando/sdk/command-result";
+import { causeRemediation, mapFailures } from "@lando/sdk/command-result";
 import { ScratchAppError } from "@lando/sdk/errors";
 import {
   PostDestroyEvent,
@@ -25,7 +25,6 @@ import { withdrawOwnerRoutes } from "../lifecycle/route-withdrawal.ts";
 import { removeServiceCertificates } from "../lifecycle/service-certificate-paths.ts";
 import { withDestroyProgress } from "../operations/destroy-progress.ts";
 import { removeSnapshots, scratchOwnedSnapshots } from "../operations/destroy-snapshots.ts";
-import { taggedErrorRemediation } from "../providers/managed.ts";
 import { BuildOwner } from "../services/build-owner.ts";
 import { clearAppBuildResults } from "../services/build-results.ts";
 import { removeAppBuildOutput, warnBuildOutputCleanupFailure } from "../services/build-transcript-cleanup.ts";
@@ -213,7 +212,7 @@ export const makeScratchReaper = Effect.gen(function* () {
             message: "Unable to destroy scratch resources.",
             cause,
             remediation:
-              taggedErrorRemediation(cause) ??
+              causeRemediation(cause) ??
               "Repair the failed provider, snapshot, or route operation and retry scratch destroy.",
           }),
     ),
