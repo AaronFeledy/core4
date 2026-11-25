@@ -270,7 +270,7 @@ lando global:status
 lando global:config
 ```
 
-With no `--service`, `global:stop` stops every global service and keeps its containers, networks, and named volumes; `global:start` then starts the same containers again. `global:restart` is a stop and a start, so it keeps containers too, while `global:rebuild` recreates them. Both always act on the whole global app. `lando poweroff` stops the global app after your apps unless you pass `--keep-global`. `global:config` prints the effective global Landofile, merged from the generated file and your own layers (YAML or TypeScript, includes resolved), plus the paths behind it.
+With no `--service`, `global:stop` stops every global service and keeps its containers, networks, and named volumes; `global:start` then starts the same containers again. `global:restart` also keeps unchanged containers, while `global:rebuild` recreates them. Both always act on the whole global app. See [Recover a failed global service](./install-and-bundled-services.mdx#recover-a-failed-global-service) for what happens to routes during a restart. `lando poweroff` stops the global app after your apps unless you pass `--keep-global`. `global:config` prints the effective global Landofile, merged from the generated file and your own layers (YAML or TypeScript, includes resolved), plus the paths behind it.
 
 Each `meta:global:*` command publishes a `global:*` alias.
 

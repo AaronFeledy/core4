@@ -55,7 +55,10 @@ import { TestRuntimeProvider } from "@lando/core/testing";
 import * as AppCacheService from "@lando/engine/cache/service";
 import { readGlobalPolicy } from "@lando/engine/global-app/enablement";
 import { withGlobalMutation } from "@lando/engine/global-app/mutation";
-import { readGlobalReconciliation } from "@lando/engine/global-app/reconciliation";
+import {
+  readGlobalReconciliation,
+  recordGlobalReconciliation,
+} from "@lando/engine/global-app/reconciliation";
 import * as GlobalAppServiceLayer from "@lando/engine/global-app/service";
 import { globalDestroy } from "@lando/engine/operations/global-destroy";
 import { globalList } from "@lando/engine/operations/global-list";
@@ -73,6 +76,7 @@ import * as EnvironmentValueResolverLayer from "@lando/engine/services/environme
 import * as LandoEventService from "@lando/engine/services/event-service";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
+import { noRouterInstalled } from "@lando/engine/subsystems/proxy/api";
 import { parseLandofile } from "@lando/landofile/parser";
 import { RedactionService } from "@lando/redaction/service";
 import { PreAppStartEvent } from "@lando/sdk/events";
@@ -656,18 +660,21 @@ const makeHarness = async (
             ),
           ),
         removeRoutes: (app) =>
-          options.failRouteRemoval
-            ? Effect.fail(
-                new ProxyError({
-                  proxyId: "test",
-                  message: "route removal failed",
-                  remediation: "Repair routes.",
-                }),
-              )
-            : Effect.sync(() => {
-                calls.routesRemoved.push(String(app.id));
-                calls.publishedRoutes.push({ app: String(app.id), hostnames: [] });
-              }),
+          Effect.suspend(() => {
+            options.timeline?.push("routes-remove");
+            return options.failRouteRemoval
+              ? Effect.fail(
+                  new ProxyError({
+                    proxyId: "test",
+                    message: "route removal failed",
+                    remediation: "Repair routes.",
+                  }),
+                )
+              : Effect.sync(() => {
+                  calls.routesRemoved.push(String(app.id));
+                  calls.publishedRoutes.push({ app: String(app.id), hostnames: [] });
+                });
+          }),
         stop: Effect.die("Global lifecycle must not stop the shared router"),
       }),
     ),
@@ -1015,7 +1022,7 @@ describe("meta:global command effects", () => {
             exitCode: 17,
           });
           expect(harness.calls.routes).toEqual([]);
-          expect(harness.calls.routesRemoved).toEqual(command === "restart" ? ["global"] : []);
+          expect(harness.calls.routesRemoved).toEqual([]);
           expect(harness.events.map((event) => event._tag)).not.toContain("post-global-start");
           expect(harness.events.map((event) => event._tag)).not.toContain("post-global-rebuild");
           expect(revalidated).toEqual(command === "start" ? [] : ["revalidated"]);
@@ -1367,6 +1374,123 @@ describe("meta:global command effects", () => {
       );
     });
   }
+
+  test.each([
+    ["applied", "routed"],
+    ["absent", "routed"],
+    ["idle", "routed"],
+    ["applied", "route-free"],
+    ["applied", "router-disabled"],
+  ] as const)("restart converges %s %s routes only after the services are back", async (halt, routing) => {
+    const timeline: string[] = [];
+    const vanishedServices: string[] = [];
+    const options = {
+      failRouteRemoval: false,
+      idle: false,
+      missingAppliedState: false,
+      vanishedServices,
+      timeline,
+      beforeApply: Effect.sync(() => {
+        timeline.push("apply");
+        options.idle = false;
+        options.missingAppliedState = false;
+        vanishedServices.length = 0;
+      }),
+    };
+    await withHarness(async ({ dataRoot, layer, calls, events }) => {
+      await Effect.runPromise(globalStart().pipe(Effect.provide(layer)));
+      expect(calls.publishedRoutes.at(-1)?.hostnames.toSorted()).toEqual([
+        "mail.global.lndo.site",
+        "proxy.global.lndo.site",
+      ]);
+      calls.publishedRoutes.length = 0;
+      events.length = 0;
+      timeline.length = 0;
+      options.failRouteRemoval = true;
+      options.idle = halt === "idle";
+      options.missingAppliedState = halt === "absent";
+      if (halt === "absent") vanishedServices.push("mail", "proxy");
+      if (routing !== "routed") {
+        await writeFile(
+          join(dataRoot, "global", ".lando.local.yml"),
+          routing === "route-free"
+            ? "services:\n  mail:\n    routes: []\n  proxy:\n    routes: []\n"
+            : "router:\n  enabled: false\n",
+        );
+      }
+
+      const exit = await Effect.runPromiseExit(globalRestart().pipe(Effect.provide(layer)));
+
+      if (routing === "routed") {
+        expect(Exit.isSuccess(exit)).toBe(true);
+        expect(timeline.filter((entry) => entry === "routes-remove")).toEqual([]);
+        expect(calls.publishedRoutes.map(({ hostnames }) => hostnames.toSorted())).toEqual([
+          ["mail.global.lndo.site", "proxy.global.lndo.site"],
+        ]);
+      } else {
+        expect(failureOf(exit)).toMatchObject({
+          _tag: "ProxyApplyError",
+          app: "global",
+          cause: { _tag: "ProxyError" },
+        });
+        expect(calls.publishedRoutes).toEqual([]);
+        expect(timeline.filter((entry) => entry === "apply" || entry === "routes-remove")).toEqual([
+          "apply",
+          "apply",
+          "routes-remove",
+        ]);
+        expect(events.some((event) => event._tag === "post-global-start")).toBe(false);
+      }
+      const status = await Effect.runPromise(globalStatus().pipe(Effect.provide(layer)));
+      expect(status.services.map(({ service, status }) => [service, status]).toSorted()).toEqual([
+        ["mail", "running"],
+        ["proxy", "running"],
+      ]);
+    }, options);
+  });
+
+  test.each(["replace", "withdraw", "no-router"] as const)(
+    "restart reconciles only route work established by %s",
+    async (publication) => {
+      await withHarness(async ({ dataRoot, layer }) => {
+        await Effect.runPromise(globalStart().pipe(Effect.provide(layer)));
+        const pending = [
+          { phase: "routes", services: ["mail", "retired"], message: "Routes need cleanup." },
+          { phase: "routes", services: [], message: "Earlier route ownership is unknown." },
+          { phase: "containers", services: ["retired"], message: "Containers need cleanup." },
+          { phase: "evidence", services: ["retired"], message: "Ownership is unverified." },
+        ] as const;
+        await Effect.runPromise(
+          recordGlobalReconciliation({
+            operation: "disable",
+            revision: 0,
+            contributions: ["mail", "retired"],
+            servicesRemoved: [],
+            ...(publication === "replace" ? { routesClearedRevision: 0 } : {}),
+            pending,
+          }).pipe(Effect.provide(layer)),
+        );
+        if (publication !== "replace") {
+          await writeFile(join(dataRoot, "global", ".lando.local.yml"), "router:\n  enabled: false\n");
+        }
+
+        await Effect.runPromise(
+          (publication === "no-router"
+            ? globalRestart().pipe(Effect.provideService(RouterService, noRouterInstalled))
+            : globalRestart()
+          ).pipe(Effect.provide(layer)),
+        );
+
+        const receipt = await Effect.runPromise(readGlobalReconciliation().pipe(Effect.provide(layer)));
+        expect(receipt.routesClearedRevision).toBe(publication === "withdraw" ? 0 : undefined);
+        const routeWork = receipt.pending.filter(({ phase }) => phase === "routes");
+        expect(routeWork.map(({ services }) => services)).toEqual(
+          publication === "withdraw" ? [] : [publication === "replace" ? ["mail"] : ["mail", "retired"], []],
+        );
+        expect(receipt.pending.filter(({ phase }) => phase !== "routes")).toEqual(pending.slice(2));
+      });
+    },
+  );
 
   test("restart clears a stale router watcher record despite partial start failure", async () => {
     await withHarness(

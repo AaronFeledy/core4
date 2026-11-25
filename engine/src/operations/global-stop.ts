@@ -74,13 +74,14 @@ export type GlobalStopServices =
   | EventService
   | RouterService;
 
-export const globalStop = Effect.fn("GlobalStop.stop")(
+const stopGlobal = Effect.fn("GlobalStop.stop")(
   function* (
-    options: GlobalStopOptions = {},
+    options: GlobalStopOptions,
+    intent: "stop" | "halt",
   ): Effect.fn.Return<GlobalStopResult, GlobalStopError, GlobalStopServices> {
     const loaded = yield* resolveGlobalTeardown();
     if (loaded.evidence.kind === "absent") {
-      if (!options.services?.length) {
+      if (intent === "stop" && !options.services?.length) {
         const withdrawal = yield* withdrawOwnerRoutes(routeOwnerFromGlobalTeardown(loaded));
         // A skipped withdrawal proves nothing, so route obligations stay pending.
         if (withdrawal.kind === "withdrawn") yield* recordGlobalRouteCleanup();
@@ -134,9 +135,9 @@ export const globalStop = Effect.fn("GlobalStop.stop")(
           ReturnType<typeof executeGlobalTeardown | typeof executeGlobalStopSelection>
         > & { readonly routes?: RouteWithdrawal["kind"] } =
           selection === undefined
-            ? yield* executeGlobalTeardown(loaded, { intent: "stop" })
+            ? yield* executeGlobalTeardown(loaded, { intent })
             : yield* executeGlobalStopSelection(loaded, selection);
-        if (selection === undefined) {
+        if (selection === undefined && intent === "stop") {
           // An idle teardown already withdrew routes; withdrawing again would repeat its warning.
           const withdrawal =
             receipt.routes ?? (yield* withdrawOwnerRoutes(routeOwnerFromGlobalTeardown(loaded))).kind;
@@ -215,3 +216,7 @@ export const globalStop = Effect.fn("GlobalStop.stop")(
       );
     }),
 );
+
+export const globalStop = (options: GlobalStopOptions = {}) => stopGlobal(options, "stop");
+
+export const haltGlobalRuntime = () => stopGlobal({}, "halt");

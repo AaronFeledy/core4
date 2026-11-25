@@ -1,14 +1,24 @@
 import { ownsAppliedGlobalService } from "@lando/container-runtime/applied-global-service";
 import { mapFailures } from "@lando/sdk/command-result";
 import { type GlobalAppError, ProxyApplyError } from "@lando/sdk/errors";
-import { type AppPlan, isActiveRunStatus } from "@lando/sdk/schema";
+import { type AppPlan, type RoutePlan, isActiveRunStatus } from "@lando/sdk/schema";
 import type { ProviderError, RouterServiceShape, RuntimeProviderShape } from "@lando/sdk/services";
-import { Effect } from "effect";
+import { Context, Effect } from "effect";
 
 import { routerEnabled } from "../config/router-config.ts";
 import { withGlobalRoutePublication } from "../global-app/activation-scope.ts";
 import { routeOwnerFromPlan } from "../lifecycle/route-owner.ts";
 import { unavailableRouterReason } from "../subsystems/proxy/api.ts";
+
+type GlobalRouteWithdrawal = { readonly kind: "withdrawn" } | { readonly kind: "no-router" };
+export type GlobalRoutePublication =
+  | GlobalRouteWithdrawal
+  | { readonly kind: "replaced"; readonly routes: ReadonlyArray<RoutePlan> };
+
+/** Restart settles its receipt before publication releases the claim to policy changes. */
+export const GlobalRoutePublicationRecorder = Context.Reference<
+  ((outcome: GlobalRoutePublication) => Effect.Effect<void, GlobalAppError>) | undefined
+>("@lando/engine/GlobalRoutePublicationRecorder", { defaultValue: () => undefined });
 
 /**
  * Withdraw the global app's route definition without router setup. Only the unavailable router's own
@@ -18,12 +28,13 @@ import { unavailableRouterReason } from "../subsystems/proxy/api.ts";
 export const withdrawGlobalRoutes = Effect.fn("GlobalRoutes.withdraw")(function* (
   router: RouterServiceShape,
   plan: AppPlan,
-) {
+): Effect.fn.Return<GlobalRouteWithdrawal, ProxyApplyError> {
   const reason = unavailableRouterReason(router);
   return yield* router.removeRoutes(routeOwnerFromPlan(plan)).pipe(
+    Effect.as({ kind: "withdrawn" } as const),
     Effect.catchIf(
       (error) => error === reason,
-      () => Effect.void,
+      () => Effect.succeed({ kind: "no-router" } as const),
     ),
     mapFailures(
       (error) =>
@@ -50,7 +61,7 @@ export const publishGlobalRoutes = Effect.fn("GlobalRoutes.publish")(function* (
     readonly failed: ReadonlySet<string>;
   },
   beforeRoutes?: Effect.Effect<void, GlobalAppError>,
-): Effect.fn.Return<void, ProxyApplyError | ProviderError | GlobalAppError> {
+): Effect.fn.Return<GlobalRoutePublication | undefined, ProxyApplyError | ProviderError | GlobalAppError> {
   if (outcome.failed.size > 0) return;
   const withdraw = withdrawGlobalRoutes(router, plan);
   return yield* withGlobalRoutePublication(
@@ -58,8 +69,7 @@ export const publishGlobalRoutes = Effect.fn("GlobalRoutes.publish")(function* (
       if (plan.routes.length === 0 || !routerEnabled(plan)) {
         yield* beforeRoutes ?? Effect.void;
         // A route-free or router-disabled plan must not leave previously published hostnames live.
-        yield* withdraw;
-        return;
+        return yield* withdraw;
       }
       const { started } = outcome;
       const observed = plan.routes.some((route) => !started.has(route.service))
@@ -74,10 +84,14 @@ export const publishGlobalRoutes = Effect.fn("GlobalRoutes.publish")(function* (
       yield* beforeRoutes ?? Effect.void;
       if (routes.length === 0) {
         // An empty selection removes the definition; it never publishes an empty route set.
-        yield* withdraw;
-        return;
+        return yield* withdraw;
       }
       yield* router.applyRoutes(routes, routeOwnerFromPlan(plan));
-    }),
+      return { kind: "replaced", routes } as const;
+    }).pipe(
+      Effect.tap((outcome) =>
+        Effect.flatMap(GlobalRoutePublicationRecorder, (record) => record?.(outcome) ?? Effect.void),
+      ),
+    ),
   );
 });
