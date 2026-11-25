@@ -7,7 +7,7 @@ import { StateStoreError } from "../errors/index.ts";
 import { AbsolutePath } from "../schema/index.ts";
 import type { DurableStateBucketSpec, StateBucketSpec, StateStoreShape } from "../services/index.ts";
 import { defineTransitions } from "../transitions/index.ts";
-import { ContractFailure, bytesEqual, decodeUtf8, utf8 } from "./_shared.ts";
+import { ContractFailure, bytesEqual, decodeUtf8, isSdkError, utf8 } from "./_shared.ts";
 
 const stateStoreContractFailure = (assertion: string, details?: unknown): ContractFailure =>
   new ContractFailure({ message: `StateStore contract failed: ${assertion}`, assertion, details });
@@ -144,7 +144,7 @@ const assertNewerVersionProtection = Effect.fnUntraced(function* (harness: State
       const result = yield* Effect.result(action);
       const failure = Result.isFailure(result) ? result.failure : undefined;
       yield* requireStateStoreContract(
-        failure instanceof StateStoreError &&
+        isSdkError(failure, StateStoreError) &&
           failure.reason === "newer-version" &&
           failure.path === bucket.path &&
           failure.storedVersion === 2 &&
@@ -447,7 +447,7 @@ export const runStateStoreContract = Effect.fnUntraced(
     const corruptFail = yield* Effect.result(corruptFailBucket.get);
     yield* requireStateStoreContract(
       Result.isFailure(corruptFail) &&
-        corruptFail.failure instanceof StateStoreError &&
+        isSdkError(corruptFail.failure, StateStoreError) &&
         corruptFail.failure.reason === "decode" &&
         corruptFail.failure.operation === "get",
       'onCorrupt "fail" surfaces a StateStoreError with reason decode',
