@@ -59,7 +59,7 @@ The entire scratch tree MUST be excluded from cwd discovery. After resource dest
 - All included Landofile layers and the lockfile are copied; merge and include resolution then run against the scratch root.
 - The resolved app name is rewritten to the scratch id.
 - Local and user overrides are copied unless `--no-local-overrides` is set.
-- Materialization is atomic. Failure removes the partial root and raises `ScratchMaterializeError`; provider actions MUST NOT begin first.
+- Materialization is atomic. Failure raises `ScratchAppError` with operation `materialize` and, unless `--keep-on-failure` applies, attempts to remove the partial root without replacing that failure; provider actions MUST NOT begin first.
 - Fork materialization MUST NOT implicitly copy source persisted-home stores (§6.5).
 
 #### 21.4.2 Scratch mode
@@ -87,7 +87,7 @@ Required behavior:
 - The service belongs to the `scratch` bootstrap level and is lazy when included by higher levels.
 - `acquire` binds the root, caches, host-proxy socket, routes, containers, and volumes to the caller's `Scope`. Finalization MUST destroy resources before unlinking state.
 - CLI foreground acquisition uses the command scope so interruption reaches finalization.
-- Destroy is idempotent after success; an unresolved id raises `ScratchUnknownIdError`.
+- Destroy is idempotent after success; an unresolved id raises `ScratchAppNotFoundError`.
 - The scratch desired plan is a regenerable record that opts into `onNewerVersion: "discard"`: an older or a newer envelope version is a miss (§12.1, §12.7.1). A miss is not permission to ignore applied state. On a miss, destroy and garbage collection MUST resolve the matching applied scratch plan before falling back to planless orphan cleanup. Unreadable ownership evidence MUST NOT be treated as absence (§5.3.1): a damaged or newer-format applied record for the scratch id is protected evidence (§5.5.2), and destroy and GC MUST refuse with the provider's diagnosis before the planless fallback, workspace removal, or registry removal, including when the runtime is offline. The registry does not record which provider ran a scratch app, so a protected shared (record-layout) receipt on any installed provider also refuses the reap; the refusal names that record and its recovery.
 - Operations for one id are serialized across callers and processes by one lifecycle lock: the app mutation lock of kind `scratch` keyed by the id and its canonical instance root `<userDataRoot>/scratch/<id>/`, also for passthrough forks whose plan root is the source app. Acquisition holds it from the registry `acquire` write through `mark-running`, covering its own failure cleanup; explicit destroy and stop, `apps:poweroff`, foreground scope-close cleanup, and each GC reap acquire it. Scope-close cleanup reacquires the lock instead of inheriting the acquisition's hold. The lock is taken before any global or app mutation lock.
 - Failures are tagged as listed in §21.14.
@@ -229,18 +229,15 @@ The registry walk MUST NOT replace the provider-label scan, and the provider-lab
 
 Every error is tagged and includes remediation:
 
-- `ScratchAppError`, the umbrella for state-transition failures
-- `ScratchMaterializeError`
+- `ScratchAppError`, the umbrella for state-transition failures, including materialization, registry, start, and recipe prompt failures
 - `ScratchSourceUnresolvedError`
-- `ScratchUnknownIdError`
+- `ScratchAppNotFoundError`
+- `ScratchAppIdInvalidError`
 - `ScratchIsolationConflictError`
-- `ScratchIsolationUnsupportedError`
-- `ScratchRecipeAnswersError`
-- `ScratchRegistryCorruptError`
 - `ScratchRunTargetError`
 - `RouteUrlBindingError` with `no-route`, `router-unsupported`, or `authority-changed` for public URL binding failures. `retained-consumer` is specific to selected user-app relaunch. An unavailable router is still a `ProxySetupError` wrapped in `ScratchAppError`, not a binding error.
 
-`ScratchRecipeAnswersError` wraps `RecipeMissingAnswerError` or `RecipeOutputValidationError` with scratch identity. This surface also uses the shared `CommandAliasConflictError` tag (§8.1.2). Materialization failures remove partial roots. Corrupt registries are quarantined and recovery invokes label-driven GC. Finalizer failures are logged even when cleanup remains best-effort.
+A recipe prompt failure (`RecipeMissingAnswerError`, `RecipePromptValidationError`, `InteractionRequiredError`, or `PromptValidationError`) is wrapped in `ScratchAppError` with the scratch source, naming the prompt to answer when the failure identifies it; a recipe that cannot be resolved or is unsupported (`RecipeManifestNotFoundError`, `RecipeManifestParseError`, `RecipeManifestValidationError`, or `NotImplementedError`) is reported as `ScratchSourceUnresolvedError`. This surface also uses the shared `CommandAliasConflictError` tag (§8.1.2). Materialization failures attempt to remove partial roots unless `--keep-on-failure` applies. Corrupt registries are quarantined and recovery invokes label-driven GC. Finalizer failures are logged even when cleanup remains best-effort.
 
 ### 21.15 Non-goals
 

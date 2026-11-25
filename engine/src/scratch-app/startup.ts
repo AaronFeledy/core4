@@ -145,6 +145,7 @@ export const applyScratchStartup = Effect.fn("ScratchApp.applyStartup")(function
             message: `Required global services could not be admitted for scratch app ${id}.`,
             cause,
             remediation:
+              cause.remediation ??
               "Inspect global service policy and restore the required services before retrying scratch startup.",
           }),
     ),
