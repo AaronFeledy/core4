@@ -3,6 +3,8 @@ import type { ProviderInternalError, ProviderUnavailableError } from "@lando/sdk
 import {
   AppId,
   type AppPlan,
+  type ContainerBringDownReceipt,
+  type ContainerDisposition,
   ProviderId,
   ServiceName,
   type ServiceShutdownObservation,
@@ -13,7 +15,7 @@ import type { EngineHttpApi, ProviderErrorContext } from "../engine-api.ts";
 import { APP_LABEL, SERVICE_LABEL } from "../labels.ts";
 import { ownsServiceContainer } from "../native-ownership.ts";
 import { serviceContainerName } from "../plan.ts";
-import { retainShutdownObservations, stopAndRemoveContainer } from "../stop-container.ts";
+import { bringDownContainer, retainShutdownObservations } from "../stop-container.ts";
 import { listLabeledContainerRows } from "./discover.ts";
 
 /** One Lando-labeled container from the engine list endpoint, with native names. */
@@ -106,36 +108,42 @@ export const selectStaleServiceContainers = (
 };
 
 /**
- * Stops and removes each stale container by id. Removal uses force=true&v=true so only
- * anonymous volumes attached to that container are deleted. Returns the shutdown facts of the
- * removed containers so a teardown receipt keeps them.
+ * Brings down each stale container by id: `stop` keeps it, `remove` deletes it with force=true&v=true
+ * so only anonymous volumes attached to that container go too. Returns one receipt per container and
+ * the shutdown facts observed, so a teardown receipt keeps them.
  */
-export const removeStaleServiceContainers = Effect.fn("RuntimeProvider.removeStaleServiceContainers")(
+export const bringDownStaleServiceContainers = Effect.fn("RuntimeProvider.bringDownStaleServiceContainers")(
   function* (
     api: EngineHttpApi,
     ctx: ProviderErrorContext,
     plan: AppPlan,
-    stales: ReadonlyArray<StaleServiceContainer>,
+    stale: {
+      readonly containers: ReadonlyArray<StaleServiceContainer>;
+      readonly disposition: ContainerDisposition;
+    },
   ): Effect.fn.Return<
-    { readonly changed: boolean; readonly shutdownObservations: ReadonlyArray<ServiceShutdownObservation> },
+    {
+      readonly changed: boolean;
+      readonly receipts: ReadonlyArray<ContainerBringDownReceipt>;
+      readonly shutdownObservations: ReadonlyArray<ServiceShutdownObservation>;
+    },
     ProviderInternalError | ProviderUnavailableError
   > {
     const providerId = ProviderId.make(ctx.providerId);
     let changed = false;
+    const receipts: ContainerBringDownReceipt[] = [];
     const shutdownObservations: ServiceShutdownObservation[] = [];
-    for (const stale of stales) {
-      const result = yield* stopAndRemoveContainer(
-        {
-          appId: AppId.make(plan.id),
-          providerId,
-          service: ServiceName.make(stale.service),
-          containerId: stale.containerId,
-        },
+    for (const container of stale.containers) {
+      const service = ServiceName.make(container.service);
+      const result = yield* bringDownContainer(
+        { appId: AppId.make(plan.id), providerId, service, containerId: container.containerId },
+        stale.disposition,
         { api, ctx },
       ).pipe(mapFailures((error) => retainShutdownObservations(error, shutdownObservations)));
       changed = changed || result.changed;
+      receipts.push({ service, containerId: container.containerId, action: result.action });
       shutdownObservations.push(...result.shutdownObservations);
     }
-    return { changed, shutdownObservations };
+    return { changed, receipts, shutdownObservations };
   },
 );

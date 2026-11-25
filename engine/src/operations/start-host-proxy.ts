@@ -25,7 +25,7 @@ import {
 } from "../subsystems/host-proxy/transport.ts";
 import {
   HOST_PROXY_COMMAND_TARGETS,
-  HOST_PROXY_CONTAINER_SOCKET,
+  HOST_PROXY_CONTAINER_BRIDGE_SOCKET,
   HOST_PROXY_MOUNT_TARGETS,
 } from "../subsystems/host-proxy/transport-feature.ts";
 import type { HostProxyShimTarget } from "../subsystems/host-proxy/transport-shim.ts";
@@ -159,10 +159,11 @@ export const validateHostProxyOverlay = Effect.fnUntraced(function* (
     const duplicate =
       duplicateMountTarget(orderMounts(service.mounts)) ??
       (serviceHasHostProxyFeature(service)
-        ? service.mounts.find(
+        ? // Only a provider-machine bridge mounts its socket; withHostProxyRunLando refuses that collision.
+          service.mounts.find(
             (mount) =>
               HOST_PROXY_MOUNT_TARGETS.has(mount.target) &&
-              (platform !== "win32" || mount.target !== HOST_PROXY_CONTAINER_SOCKET),
+              mount.target !== HOST_PROXY_CONTAINER_BRIDGE_SOCKET,
           )?.target
         : undefined);
     if (duplicate !== undefined)
@@ -236,7 +237,8 @@ export const startHostProxyRunLandoSession = Effect.fnUntraced(function* (
                 "session",
                 session.reused ? "Host-proxy session reused" : "Host-proxy session ready",
               )
-              .pipe(Effect.as(session)),
+              // The worker installs this helper as the shim; its digest is part of the container contract.
+              .pipe(Effect.as({ ...session, shimDigest: helper.digest })),
           {
             close: (session) => Effect.promise(() => session.close()),
             ...(options.managed === undefined ? {} : { scope: options.managed.scope }),
@@ -279,13 +281,17 @@ export const withStartedHostProxy = Effect.fnUntraced(function* <A, E, R>(
   return yield* options.use(session === undefined ? plan : yield* withHostProxyRunLando(plan, session));
 });
 
-/** Retires the recorded host-proxy worker when the whole desired plan no longer needs one. */
+/**
+ * Ends the recorded host-proxy worker when the plan no longer needs one: `retire` when the desired
+ * plan dropped host-proxy, `stop` when a selected stop left no running service using it.
+ */
 export const retireUnusedHostProxyWorker = Effect.fnUntraced(function* (
   plan: AppPlan,
   app: AppRef,
   capabilities: ProviderCapabilities,
+  intent: "stop" | "retire",
 ) {
   if (app.kind === "global" || plan.id === "global" || hostProxyWorkerNeeded(plan, capabilities)) return;
   const paths = yield* PathsService;
-  yield* cleanupHostProxyRunLandoState(app, { ...paths.roots, platform: paths.platform });
+  yield* cleanupHostProxyRunLandoState(app, { ...paths.roots, platform: paths.platform }, intent);
 });

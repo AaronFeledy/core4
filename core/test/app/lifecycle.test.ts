@@ -30,7 +30,7 @@ import { beginOrResumeAcceleratedStart } from "@lando/engine/operations/accelera
 import * as hostProxyWorker from "@lando/engine/subsystems/host-proxy/worker";
 import { stubContainerHelper } from "@lando/engine/testing/container-helper";
 import { FileSyncStartError } from "@lando/sdk/errors";
-import type { FileSyncEngineShape } from "@lando/sdk/services";
+import type { BringDownOptions, FileSyncEngineShape } from "@lando/sdk/services";
 import { TestRouterService, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Cause, DateTime, Deferred, Effect, Exit, Fiber, Layer, Stream } from "effect";
 import { preparedFileSyncTargets } from "../_support/prepared-sync-targets.ts";
@@ -213,11 +213,11 @@ const lifecycleProvider = (provider: RuntimeProviderShape): RuntimeProviderShape
           }),
         ),
       ),
-    destroy: (selector, options) =>
-      provider.destroy(selector, options).pipe(
+    bringDown: (selector, options) =>
+      provider.bringDown(selector, options).pipe(
         Effect.tap(() =>
           Effect.sync(() => {
-            if (options.removeState !== false) appliedPlan = undefined;
+            if (options.containers === "remove" && options.removeState !== false) appliedPlan = undefined;
           }),
         ),
       ),
@@ -842,13 +842,13 @@ describe("App handle managed lifecycle scopes", () => {
   test("repeated accelerated stop succeeds after the managed session was drained", async () => {
     await withTempApp(async (dir) => {
       const tracking = makeTrackingEngine();
-      const destroys: Array<{ volumes: boolean; removeState: boolean | undefined }> = [];
+      const destroys: Array<BringDownOptions> = [];
       const provider: RuntimeProviderShape = {
         ...TestRuntimeProvider,
-        destroy: (selector, options) =>
+        bringDown: (selector, options) =>
           Effect.sync(() => {
-            destroys.push({ volumes: options.volumes, removeState: options.removeState });
-          }).pipe(Effect.andThen(TestRuntimeProvider.destroy(selector, options))),
+            destroys.push(options);
+          }).pipe(Effect.andThen(TestRuntimeProvider.bringDown(selector, options))),
       };
       const secondStop = await Effect.runPromise(
         Effect.scoped(
@@ -862,10 +862,7 @@ describe("App handle managed lifecycle scopes", () => {
       );
 
       expect(secondStop._tag).toBe("Success");
-      expect(destroys).toEqual([
-        { volumes: false, removeState: false },
-        { volumes: false, removeState: false },
-      ]);
+      expect(destroys).toEqual([{ containers: "stop" }, { containers: "stop" }]);
       expect(tracking.sessions.size).toBe(0);
     });
   });
@@ -878,7 +875,7 @@ describe("App handle managed lifecycle scopes", () => {
         let finalizerCalls = 0;
         const provider: RuntimeProviderShape = {
           ...TestRuntimeProvider,
-          destroy: Effect.fnUntraced(function* () {
+          bringDown: Effect.fnUntraced(function* () {
             destroyCalls += 1;
             return yield* Effect.fail(
               new ProviderUnavailableError({
@@ -961,10 +958,10 @@ describe("App handle managed lifecycle scopes", () => {
       let finalizerCalls = 0;
       const provider: RuntimeProviderShape = {
         ...TestRuntimeProvider,
-        destroy: (selector, options) =>
+        bringDown: (selector, options) =>
           Effect.sync(() => {
             destroyCalls += 1;
-            return TestRuntimeProvider.destroy(selector, options);
+            return TestRuntimeProvider.bringDown(selector, options);
           }).pipe(Effect.flatten),
       };
       const engine: FileSyncEngineShape = {

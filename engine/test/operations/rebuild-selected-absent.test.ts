@@ -1,5 +1,4 @@
 import { expect, test } from "bun:test";
-import { ServiceNotFoundError } from "@lando/sdk/errors";
 import { type AppPlan, ServiceName } from "@lando/sdk/schema";
 import { Effect } from "effect";
 
@@ -12,16 +11,7 @@ test("scoped rebuild recreates a service whose container is already gone", async
   const harness = makeHarness({
     plannedApp: plan,
     providerOverrides: {
-      stop: (target) =>
-        Effect.fail(
-          new ServiceNotFoundError({
-            providerId: String(plan.provider),
-            operation: "stop",
-            service: target.service,
-            message: `Service ${target.service} was not found.`,
-            remediation: "Add the missing service to the Landofile.",
-          }),
-        ),
+      bringDownObserved: (observed) => Effect.succeed({ service: observed.service, action: "absent" }),
     },
     onApply: (appliedPlan) =>
       Effect.sync(() => {

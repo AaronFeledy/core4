@@ -12,10 +12,10 @@ import {
 import { DateTime } from "effect";
 import { CREATE_CONFIG_LABEL, createConfigFingerprint } from "../src/create-fingerprint.ts";
 import {
-  HOST_PROXY_SESSION_LABEL,
+  HOST_PROXY_CONTRACT_LABEL,
   HOST_PROXY_TRANSPORT_EXTENSION_KEY,
   containerIntegrationLabels,
-  hostProxySessionDigest,
+  hostProxyContractDigest,
 } from "../src/labels.ts";
 import { commonContainerLabels, containerCreateBodyFragment } from "../src/plan.ts";
 import { renderCompose } from "../src/podman/compose.ts";
@@ -213,14 +213,14 @@ test("normalizes complete GPG overlays across session mount source changes", () 
   expect(fingerprints).toEqual([baseline, baseline]);
 });
 
-const sessionDigest = (session: string): string => sha256Hex(session).slice(0, 16);
+const contractDigestOf = (session: string): string => sha256Hex(session).slice(0, 16);
 const trustedHostProxyExtension = (session: string): ServicePlan["extensions"] => ({
-  [HOST_PROXY_TRANSPORT_EXTENSION_KEY]: { sessionDigest: sessionDigest(session) },
+  [HOST_PROXY_TRANSPORT_EXTENSION_KEY]: { contractDigest: contractDigestOf(session) },
 });
 
-test("stamps host-proxy session label only from a trusted transport extension digest", () => {
+test("stamps host-proxy contract label only from a trusted transport extension digest", () => {
   // Given a trusted overlay extension and a forged authored label of a different value.
-  const digest = sessionDigest("session-alpha");
+  const digest = contractDigestOf("session-alpha");
   const selected: ServicePlan = {
     ...service,
     environment: {
@@ -230,7 +230,7 @@ test("stamps host-proxy session label only from a trusted transport extension di
     },
     extensions: {
       ...trustedHostProxyExtension("session-alpha"),
-      compose: { labels: { [HOST_PROXY_SESSION_LABEL]: "forged-digest" } },
+      compose: { labels: { [HOST_PROXY_CONTRACT_LABEL]: "forged-digest" } },
     },
   };
   const applied = { ...plan, services: { [selected.name]: selected } };
@@ -239,9 +239,9 @@ test("stamps host-proxy session label only from a trusted transport extension di
   const compose = renderCompose(applied, { providerId: "podman", remediation: "Retry.", env: {} });
   const labels = commonContainerLabels(plan, selected);
   // Then both provider paths emit the trusted digest and reject the authored spoof.
-  expect(labels[HOST_PROXY_SESSION_LABEL]).toBe(digest);
-  expect(body).toMatchObject({ Labels: { [HOST_PROXY_SESSION_LABEL]: digest } });
-  expect(compose).toContain(`${HOST_PROXY_SESSION_LABEL}: "${digest}"`);
+  expect(labels[HOST_PROXY_CONTRACT_LABEL]).toBe(digest);
+  expect(body).toMatchObject({ Labels: { [HOST_PROXY_CONTRACT_LABEL]: digest } });
+  expect(compose).toContain(`${HOST_PROXY_CONTRACT_LABEL}: "${digest}"`);
 });
 
 const hostProxyEnvironments: readonly ServicePlan["environment"][] = [
@@ -254,55 +254,55 @@ const hostProxyEnvironments: readonly ServicePlan["environment"][] = [
   { LANDO_HOST_PROXY_SOCKET: "/run/lando/host-proxy.sock" },
 ];
 test.each(hostProxyEnvironments)(
-  "strips forged host-proxy-session labels without a trusted extension: %j",
+  "strips forged host-proxy-contract labels without a trusted extension: %j",
   (environment) => {
     // Given env-era credentials and/or a forged Compose label without the transport extension.
     const selected: ServicePlan = {
       ...service,
       environment,
-      extensions: { compose: { labels: { [HOST_PROXY_SESSION_LABEL]: "spoofed", keep: "user" } } },
+      extensions: { compose: { labels: { [HOST_PROXY_CONTRACT_LABEL]: "spoofed", keep: "user" } } },
     };
     // When
-    const labels = commonContainerLabels(plan, selected, { [HOST_PROXY_SESSION_LABEL]: "caller-spoof" });
+    const labels = commonContainerLabels(plan, selected, { [HOST_PROXY_CONTRACT_LABEL]: "caller-spoof" });
     // Then neither env nor authored labels can emit the session marker.
-    expect(labels[HOST_PROXY_SESSION_LABEL]).toBeUndefined();
+    expect(labels[HOST_PROXY_CONTRACT_LABEL]).toBeUndefined();
     expect(labels.keep).toBe("user");
-    expect(hostProxySessionDigest({})).toBeUndefined();
+    expect(hostProxyContractDigest({})).toBeUndefined();
     expect(
-      containerIntegrationLabels(environment, { [HOST_PROXY_SESSION_LABEL]: "spoofed" }, {})[
-        HOST_PROXY_SESSION_LABEL
+      containerIntegrationLabels(environment, { [HOST_PROXY_CONTRACT_LABEL]: "spoofed" }, {})[
+        HOST_PROXY_CONTRACT_LABEL
       ],
     ).toBeUndefined();
   },
 );
 
 test.each([
-  { sessionDigest: "tooshort" },
-  { sessionDigest: "not-hex-but16chr!" },
-  { sessionDigest: "ABCDEF0123456789" },
-  { sessionDigest: "0123456789abcdef0" },
+  { contractDigest: "tooshort" },
+  { contractDigest: "not-hex-but16chr!" },
+  { contractDigest: "ABCDEF0123456789" },
+  { contractDigest: "0123456789abcdef0" },
   "0123456789abcdef",
   null,
   12,
 ] as const)("rejects untrusted host-proxy transport extension payload %j", (payload) => {
   // Given a non-conforming extension value under the trusted key.
   const extensions: ServicePlan["extensions"] = { [HOST_PROXY_TRANSPORT_EXTENSION_KEY]: payload };
-  // When / Then only `{ sessionDigest: /^[a-f0-9]{16}$/ }` is accepted.
-  expect(hostProxySessionDigest(extensions)).toBeUndefined();
+  // When / Then only `{ contractDigest: /^[a-f0-9]{16}$/ }` is accepted.
+  expect(hostProxyContractDigest(extensions)).toBeUndefined();
   expect(
-    containerIntegrationLabels({}, { [HOST_PROXY_SESSION_LABEL]: "spoof" }, extensions)[
-      HOST_PROXY_SESSION_LABEL
+    containerIntegrationLabels({}, { [HOST_PROXY_CONTRACT_LABEL]: "spoof" }, extensions)[
+      HOST_PROXY_CONTRACT_LABEL
     ],
   ).toBeUndefined();
 });
 
-test("accepts a 16-char lowercase hex sessionDigest from the transport extension", () => {
+test("accepts a 16-char lowercase hex contractDigest from the transport extension", () => {
   // Given
   const digest = "0123456789abcdef";
-  const extensions = { [HOST_PROXY_TRANSPORT_EXTENSION_KEY]: { sessionDigest: digest } };
+  const extensions = { [HOST_PROXY_TRANSPORT_EXTENSION_KEY]: { contractDigest: digest } };
   // When / Then
-  expect(hostProxySessionDigest(extensions)).toBe(digest);
-  expect(containerIntegrationLabels({}, {}, extensions)[HOST_PROXY_SESSION_LABEL]).toBe(digest);
+  expect(hostProxyContractDigest(extensions)).toBe(digest);
+  expect(containerIntegrationLabels({}, {}, extensions)[HOST_PROXY_CONTRACT_LABEL]).toBe(digest);
 });
 
 test("ignores host-proxy session metadata in normalized fingerprints", () => {
@@ -310,7 +310,7 @@ test("ignores host-proxy session metadata in normalized fingerprints", () => {
   const baseline = createConfigFingerprint(plan, service, {});
   // When a session marker appears only as a label argument
   const marked = createConfigFingerprint(plan, service, {
-    [HOST_PROXY_SESSION_LABEL]: sessionDigest("s"),
+    [HOST_PROXY_CONTRACT_LABEL]: contractDigestOf("s"),
   });
   // Then the create identity is unchanged
   expect(marked).toBe(baseline);

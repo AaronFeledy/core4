@@ -8,7 +8,7 @@ import {
   type ServiceName,
   noVolumesRemoved,
 } from "@lando/sdk/schema";
-import { type DestroyOptions, EventService, type ProviderError } from "@lando/sdk/services";
+import { EventService, type OwnedResourcesCleanupOptions, type ProviderError } from "@lando/sdk/services";
 import { DateTime, Effect, Option, Schema } from "effect";
 import { removeRuntimeContainer } from "./container-removal.ts";
 import { dataRootRefusal, decideDataRootOwnership } from "./data-root-ownership.ts";
@@ -42,7 +42,10 @@ export const makeOwnedResourcesCleanup = (input: {
   readonly endpointNamespace?: string;
   readonly userDataRoot?: string | undefined;
 }) =>
-  Effect.fn("RuntimeProvider.cleanupOwnedResources")(function* (root: AbsolutePath, options: DestroyOptions) {
+  Effect.fn("RuntimeProvider.cleanupOwnedResources")(function* (
+    root: AbsolutePath,
+    options: OwnedResourcesCleanupOptions,
+  ) {
     const inventory = yield* input.store.load(root);
     const receipts = inventory?.adoptions?.flatMap((batch) => batch.receipts) ?? [];
     const servicesRemoved: ServiceName[] = [];

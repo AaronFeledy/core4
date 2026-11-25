@@ -140,9 +140,9 @@ export const globalRebuild = Effect.fn("GlobalRebuild.rebuild")(
       },
       Effect.gen(function* () {
         yield* verifyAdmission;
-        yield* provider.destroy(
+        yield* provider.bringDown(
           { app: loaded.plan.id, plan: loaded.plan },
-          { volumes: false, removeState: false },
+          { containers: "remove", volumes: false, removeState: false },
         );
 
         const applied = yield* applyGlobalServiceGroups(

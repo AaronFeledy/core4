@@ -128,7 +128,10 @@ describe("provider-lando destroy vs apps:list inventory", () => {
 
       const provider = await makeProvider(userDataRoot, true);
       await Effect.runPromise(
-        provider.destroy({ app: plan.id, plan }, { volumes: false, removeState: true }),
+        provider.bringDown(
+          { app: plan.id, plan },
+          { containers: "remove", volumes: false, removeState: true },
+        ),
       );
 
       expect(await listedAppIds(userDataRoot)).toEqual([]);
@@ -142,14 +145,20 @@ describe("provider-lando destroy vs apps:list inventory", () => {
 
       const unavailableProvider = await makeProvider(userDataRoot, false);
       const exit = await Effect.runPromiseExit(
-        unavailableProvider.destroy({ app: plan.id, plan }, { volumes: false, removeState: true }),
+        unavailableProvider.bringDown(
+          { app: plan.id, plan },
+          { containers: "remove", volumes: false, removeState: true },
+        ),
       );
       expect(Exit.isFailure(exit)).toBe(true);
       expect(await listedAppIds(userDataRoot)).toEqual([String(appId)]);
 
       const recoveredProvider = await makeProvider(userDataRoot, true);
       await Effect.runPromise(
-        recoveredProvider.destroy({ app: plan.id }, { volumes: false, removeState: true }),
+        recoveredProvider.bringDown(
+          { app: plan.id },
+          { containers: "remove", volumes: false, removeState: true },
+        ),
       );
       expect(await listedAppIds(userDataRoot)).toEqual([]);
     });
@@ -160,7 +169,10 @@ describe("provider-lando destroy vs apps:list inventory", () => {
       await persistLivePlan(userDataRoot);
       const provider = await makeProvider(userDataRoot, true);
       await Effect.runPromise(
-        provider.destroy({ app: plan.id, plan }, { volumes: false, removeState: false }),
+        provider.bringDown(
+          { app: plan.id, plan },
+          { containers: "remove", volumes: false, removeState: false },
+        ),
       );
 
       expect(await listedAppIds(userDataRoot)).toEqual([String(appId)]);

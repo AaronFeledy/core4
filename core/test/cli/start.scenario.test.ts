@@ -354,9 +354,9 @@ const expectRetainedHostProxyWorker = async (runDir: string): Promise<void> => {
     appRoot: plan.root,
     providerId: plan.provider,
     transport: "unix-socket",
-    socketPath: join(runDir, "host-proxy.sock"),
+    socketPath: join(runDir, "container", "sock"),
   });
-  expect((await stat(join(runDir, "host-proxy.sock"))).isSocket()).toBe(true);
+  expect((await stat(join(runDir, "container", "sock"))).isSocket()).toBe(true);
   expect((await stat(record.shimPath)).isFile()).toBe(true);
   expect(await Effect.runPromise(probeWorker(record, { requireSessionIdentity: true }))).toBe("live");
 };
@@ -629,20 +629,18 @@ const makeStartLayer = (
           }),
         ),
       ),
-    start: () => Effect.void,
-    stop: () => Effect.void,
     restart: () => Effect.void,
     waitForExit: () => Effect.succeed({ exitCode: 0 }),
-    destroy: (target, destroyOptions) =>
+    bringDown: (target, destroyOptions) =>
       Effect.sync(() => {
         destroyCalls.push({
           app: String(target.app),
-          volumes: destroyOptions.volumes,
+          volumes: destroyOptions.volumes === true,
           removeState: destroyOptions.removeState ?? false,
         });
       }).pipe(
         Effect.andThen(options.destroyEffect ?? Effect.void),
-        Effect.as({ kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } }),
+        Effect.as({ kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } }),
       ),
     exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
     execStream: () => Stream.die("not used"),
@@ -980,8 +978,6 @@ const makeAutoStartLayer = async (options: {
           }),
         ),
       ),
-    start: () => Effect.void,
-    stop: () => Effect.void,
     restart: () => Effect.void,
     waitForExit: () => Effect.succeed({ exitCode: 0 }),
     exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
@@ -1565,15 +1561,15 @@ describe("lando start", () => {
 
       const appliedWeb = harness.applyPlans[0]?.services[ServiceName.make("web")];
       const appliedDatabase = harness.applyPlans[0]?.services[ServiceName.make("database")];
-      expect(appliedWeb?.environment.LANDO_HOST_PROXY_SOCKET).toBe("/run/lando/host-proxy.sock");
+      expect(appliedWeb?.environment.LANDO_HOST_PROXY_SOCKET).toBe("/run/lando/host-proxy/sock");
       expect(appliedWeb?.environment.LANDO_HOST_PROXY_TOKEN).toBeUndefined();
       expect(appliedWeb?.environment.LANDO_HOST_PROXY_SESSION).toBeUndefined();
       expect(appliedWeb?.environment.LANDO_HOST_PROXY_APP).toBeUndefined();
       expect(appliedWeb?.mounts).toContainEqual(
-        expect.objectContaining({ target: "/run/lando/host-proxy/credentials", readOnly: true }),
+        expect.objectContaining({ target: "/run/lando/host-proxy", readOnly: true }),
       );
-      expect(appliedWeb?.mounts).toContainEqual(
-        expect.objectContaining({ target: "/run/lando/host-proxy.sock", readOnly: true }),
+      expect(appliedWeb?.mounts).not.toContainEqual(
+        expect.objectContaining({ target: "/run/lando/host-proxy.sock" }),
       );
       expect(appliedWeb?.mounts).not.toContainEqual(
         expect.objectContaining({ target: "/usr/local/lib/lando/host-proxy-client" }),
@@ -1747,7 +1743,7 @@ describe("lando start", () => {
       expect(appliedWeb?.environment.LANDO_HOST_PROXY_SOCKET).toBeUndefined();
       expect(appliedWeb?.environment.LANDO_HOST_PROXY_TOKEN).toBeUndefined();
       expect(appliedWeb?.mounts).not.toContainEqual(
-        expect.objectContaining({ target: "/run/lando/host-proxy.sock" }),
+        expect.objectContaining({ target: "/run/lando/host-proxy" }),
       );
     });
   });
@@ -1805,7 +1801,7 @@ describe("lando start", () => {
       expect(appliedWeb?.environment.LANDO_HOST_PROXY_TOKEN).toBeUndefined();
       expect(appliedWeb?.environment.LANDO_HOST_PROXY_SESSION).toBeUndefined();
       expect(appliedWeb?.mounts).not.toContainEqual(
-        expect.objectContaining({ target: "/run/lando/host-proxy.sock" }),
+        expect.objectContaining({ target: "/run/lando/host-proxy" }),
       );
       expect(appliedWeb?.mounts).not.toContainEqual(
         expect.objectContaining({ target: "/usr/local/bin/lando" }),
@@ -1841,7 +1837,7 @@ describe("lando start", () => {
       expect(appliedWeb?.environment.LANDO_HOST_PROXY_URL).toStartWith("http://host.containers.internal:");
       expect(appliedWeb?.environment.LANDO_HOST_PROXY_TOKEN).toBeUndefined();
       expect(appliedWeb?.mounts).toContainEqual(
-        expect.objectContaining({ target: "/run/lando/host-proxy/credentials", readOnly: true }),
+        expect.objectContaining({ target: "/run/lando/host-proxy", readOnly: true }),
       );
       expect(appliedWeb?.environment.LANDO_HOST_PROXY_SOCKET).toBeUndefined();
       expect(appliedWeb?.mounts).not.toContainEqual(
@@ -1880,8 +1876,8 @@ describe("lando start", () => {
       expect(persistedPlanJson).not.toContain("host-proxy.sock");
       expect(persistedPlanJson).not.toContain("/usr/local/bin/lando");
       expect(appliedPlanJson).not.toContain("LANDO_HOST_PROXY_TOKEN");
-      expect(appliedPlanJson).toContain("/run/lando/host-proxy/credentials");
-      expect(persistedPlanJson).not.toContain("/run/lando/host-proxy/credentials");
+      expect(appliedPlanJson).toContain('"/run/lando/host-proxy"');
+      expect(persistedPlanJson).not.toContain("/run/lando/host-proxy");
     });
   });
 
@@ -1903,7 +1899,7 @@ describe("lando start", () => {
       await Effect.runPromise(startApp().pipe(Effect.provide(harness.layer)));
 
       const appliedWeb = harness.applyPlans[0]?.services[ServiceName.make("web")];
-      expect(appliedWeb?.environment.LANDO_HOST_PROXY_SOCKET).toBe("/run/lando/host-proxy.sock");
+      expect(appliedWeb?.environment.LANDO_HOST_PROXY_SOCKET).toBe("/run/lando/host-proxy/sock");
       expect(appliedWeb?.mounts).toContainEqual(
         expect.objectContaining({ target: "/usr/local/bin/lando", readOnly: true }),
       );
@@ -1923,7 +1919,7 @@ describe("lando start", () => {
       const appliedWeb = harness.applyPlans[0]?.services[ServiceName.make("web")];
       expect(appliedWeb?.environment.LANDO_HOST_PROXY_SOCKET).toBeUndefined();
       expect(appliedWeb?.mounts).not.toContainEqual(
-        expect.objectContaining({ target: "/run/lando/host-proxy.sock" }),
+        expect.objectContaining({ target: "/run/lando/host-proxy" }),
       );
     });
   });
@@ -2522,8 +2518,6 @@ describe("lando start", () => {
           order.push("apply");
           return { changed: true };
         }),
-      start: () => Effect.void,
-      stop: () => Effect.void,
       restart: () => Effect.void,
       waitForExit: () => Effect.succeed({ exitCode: 0 }),
       exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
@@ -2688,8 +2682,6 @@ describe("lando start", () => {
       removeArtifact: () => Effect.succeed({ kind: "absent" as const }),
       listArtifacts: () => Effect.succeed([]),
       apply: () => Effect.succeed({ changed: true }),
-      start: () => Effect.void,
-      stop: () => Effect.void,
       restart: () => Effect.void,
       waitForExit: () => Effect.succeed({ exitCode: 0 }),
       exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
@@ -2844,8 +2836,6 @@ describe("lando start", () => {
       removeArtifact: () => Effect.succeed({ kind: "absent" as const }),
       listArtifacts: () => Effect.succeed([]),
       apply: () => Effect.succeed({ changed: true }),
-      start: () => Effect.void,
-      stop: () => Effect.void,
       restart: () => Effect.void,
       waitForExit: () => Effect.succeed({ exitCode: 0 }),
       exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
@@ -3004,14 +2994,12 @@ describe("lando start", () => {
       removeArtifact: () => Effect.succeed({ kind: "absent" as const }),
       listArtifacts: () => Effect.succeed([]),
       apply: () => Effect.succeed({ changed: true }),
-      start: () => Effect.void,
-      stop: () => Effect.void,
       restart: () => Effect.void,
       waitForExit: () => Effect.succeed({ exitCode: 0 }),
-      destroy: (_target, options) =>
+      bringDown: (_target, options) =>
         Effect.sync(() => {
           destroyCalls.push(`${options.volumes}:${options.removeState ?? false}`);
-          return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
+          return { kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } };
         }),
       exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
       execStream: () => Stream.die("not used"),
@@ -3178,14 +3166,12 @@ describe("lando start", () => {
       removeArtifact: () => Effect.succeed({ kind: "absent" as const }),
       listArtifacts: () => Effect.succeed([]),
       apply: () => Effect.succeed({ changed: true }),
-      start: () => Effect.void,
-      stop: () => Effect.void,
       restart: () => Effect.void,
       waitForExit: () => Effect.succeed({ exitCode: 0 }),
-      destroy: (_target, options) =>
+      bringDown: (_target, options) =>
         Effect.sync(() => {
           destroyCalls.push(`${options.volumes}:${options.removeState ?? false}`);
-          return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
+          return { kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } };
         }),
       exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
       execStream: () => Stream.die("not used"),
@@ -3385,11 +3371,9 @@ describe("lando start", () => {
       removeArtifact: () => Effect.succeed({ kind: "absent" as const }),
       listArtifacts: () => Effect.succeed([]),
       apply: () => Effect.succeed({ changed: true }),
-      start: () => Effect.void,
-      stop: () => Effect.void,
       restart: () => Effect.void,
       waitForExit: () => Effect.succeed({ exitCode: 0 }),
-      destroy: Effect.fnUntraced(function* (_target, options) {
+      bringDown: Effect.fnUntraced(function* (_target, options) {
         callLog.push(`destroy:${options.volumes}:${options.removeState ?? false}`);
         return yield* Effect.fail(
           new ProviderUnavailableError({
@@ -3580,14 +3564,12 @@ describe("lando start", () => {
       removeArtifact: () => Effect.succeed({ kind: "absent" as const }),
       listArtifacts: () => Effect.succeed([]),
       apply: () => Effect.succeed({ changed: true }),
-      start: () => Effect.void,
-      stop: () => Effect.void,
       restart: () => Effect.void,
       waitForExit: () => Effect.succeed({ exitCode: 0 }),
-      destroy: (_target, options) =>
+      bringDown: (_target, options) =>
         Effect.sync(() => {
           callLog.push(`destroy:${options.volumes}:${options.removeState ?? false}`);
-          return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
+          return { kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } };
         }),
       exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
       execStream: () => Stream.die("not used"),

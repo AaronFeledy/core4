@@ -10,7 +10,7 @@ import { withResolvedCwd } from "../../src/landofile/app-resolution.ts";
 import { destroyApp } from "../../src/operations/destroy.ts";
 import { stopApp } from "../../src/operations/stop.ts";
 import { literalTestLandofile } from "../compiled-landofile.ts";
-import { current, fixture } from "./legacy-teardown-support.ts";
+import { current, fixture, stale } from "./legacy-teardown-support.ts";
 
 test.each(["stop", "destroy"] as const)(
   "%s reconciles loaded legacy names even when desired planning fails",
@@ -45,9 +45,11 @@ test.each(["stop", "destroy"] as const)(
           ),
         );
         expect(result.outcome).toBe(command === "stop" ? "stopped" : "destroyed");
-        expect([...harness.containers]).toEqual([]);
+        // Stop keeps both names' containers and records; the next start or destroy retires the old one.
+        expect([...harness.running]).toEqual([]);
+        expect([...harness.containers]).toEqual(command === "stop" ? [stale.id, current.id] : []);
         expect(harness.applied.map((plan) => plan.id)).toEqual(
-          command === "stop" && name === current.name ? [current.id] : [],
+          command === "stop" ? [stale.id, current.id] : [],
         );
       } finally {
         rmSync(root, { recursive: true, force: true });

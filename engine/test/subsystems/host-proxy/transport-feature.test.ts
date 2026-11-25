@@ -1,9 +1,8 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
-import { sha256Hex } from "@lando/sdk/digest";
 
 import {
   AbsolutePath,
@@ -17,6 +16,7 @@ import {
 } from "@lando/sdk/schema";
 import { EventService } from "@lando/sdk/services";
 import { DateTime, Effect, Exit, Layer, Stream } from "effect";
+import { hostProxyContainerGeneration } from "../../../src/subsystems/host-proxy/run-directory.ts";
 import {
   HOST_PROXY_CONTAINER_LANDO,
   HOST_PROXY_CONTAINER_SOCKET,
@@ -26,6 +26,7 @@ import {
   hostProxyRunLandoFeature,
   stripHostProxyRunLando,
 } from "../../../src/subsystems/host-proxy/transport.ts";
+import { HOST_PROXY_CONTAINER_BRIDGE_SOCKET } from "../../../src/subsystems/host-proxy/transport-feature.ts";
 
 const tempDirs: string[] = [];
 
@@ -99,7 +100,7 @@ const sessionFor = async () =>
   );
 
 describe("hostProxyRunLandoFeature", () => {
-  test("injects least-privilege socket, credentials, and shim file binds without auth env", async () => {
+  test("binds the container-facing directory and shim without auth env", async () => {
     const session = await sessionFor();
     if (session.shimPath === undefined) throw new TypeError("host-proxy shim path is missing");
     if (session.socketPath === undefined) throw new TypeError("host-proxy socket path is missing");
@@ -114,7 +115,7 @@ describe("hostProxyRunLandoFeature", () => {
       readonly realization: "passthrough";
     }> = [];
     const service = {
-      addExtension: (name: string, value: { readonly sessionDigest: string }) => {
+      addExtension: (name: string, value: { readonly contractDigest: string }) => {
         extensions[name] = value;
       },
       addEnv: (name: string, value: string) => {
@@ -134,27 +135,23 @@ describe("hostProxyRunLandoFeature", () => {
 
     hostProxyRunLandoFeature(session).apply(service);
 
-    expect(environment.LANDO_HOST_PROXY_SOCKET).toBe("/run/lando/host-proxy.sock");
+    const containerDir = join(dirname(session.shimPath), "container");
+    expect(session.socketPath).toBe(join(containerDir, "sock"));
+    // The bound directory exposes only container-facing files; the shim and worker state stay outside it.
+    expect((await readdir(containerDir)).sort()).toEqual([".generation", "credentials", "sock"]);
+    expect(environment.LANDO_HOST_PROXY_SOCKET).toBe("/run/lando/host-proxy/sock");
     expect(environment.LANDO_HOST_PROXY_TOKEN).toBeUndefined();
     expect(environment.LANDO_HOST_PROXY_SESSION).toBeUndefined();
     expect(environment.LANDO_HOST_PROXY_APP).toBeUndefined();
     expect(extensions[HOST_PROXY_TRANSPORT_EXTENSION_KEY]).toEqual({
-      sessionDigest: sha256Hex(session.sessionId).slice(0, 16),
+      contractDigest: expect.stringMatching(/^[a-f0-9]{16}$/u),
     });
     expect(mounts).toEqual([
       {
         type: "bind",
-        source: session.socketPath,
+        source: containerDir,
         origin: "integration",
-        target: "/run/lando/host-proxy.sock",
-        readOnly: true,
-        realization: "passthrough",
-      },
-      {
-        type: "bind",
-        source: join(dirname(session.shimPath), "credentials"),
-        origin: "integration",
-        target: "/run/lando/host-proxy/credentials",
+        target: "/run/lando/host-proxy",
         readOnly: true,
         realization: "passthrough",
       },
@@ -178,7 +175,7 @@ describe("hostProxyRunLandoFeature", () => {
     await session.close();
   });
 
-  test("mounts a guest Unix socket even when the Windows worker retains a loopback control URL", () => {
+  test("file-binds a guest Unix socket even when the Windows worker retains a loopback control URL", () => {
     const environment: Record<string, string> = {};
     const mounts: Array<{ readonly source: string; readonly target: string }> = [];
     hostProxyRunLandoFeature({
@@ -198,16 +195,18 @@ describe("hostProxyRunLandoFeature", () => {
         mounts.push(mount);
       },
     });
-    expect(environment.LANDO_HOST_PROXY_SOCKET).toBe(HOST_PROXY_CONTAINER_SOCKET);
+    expect(environment.LANDO_HOST_PROXY_SOCKET).toBe(HOST_PROXY_CONTAINER_BRIDGE_SOCKET);
     expect(environment.LANDO_HOST_PROXY_URL).toBeUndefined();
-    expect(mounts[0]).toMatchObject({
-      source: "/home/user/.local/share/lando/host-proxy/session/host-proxy.sock",
-      target: HOST_PROXY_CONTAINER_SOCKET,
-    });
     expect(mounts).toContainEqual(
       expect.objectContaining({
-        source: "C:\\lando\\credentials",
-        target: "/run/lando/host-proxy/credentials",
+        source: "/home/user/.local/share/lando/host-proxy/session/host-proxy.sock",
+        target: HOST_PROXY_CONTAINER_BRIDGE_SOCKET,
+      }),
+    );
+    expect(mounts).toContainEqual(
+      expect.objectContaining({
+        source: "C:\\lando\\container",
+        target: "/run/lando/host-proxy",
         readOnly: true,
       }),
     );
@@ -243,12 +242,111 @@ describe("hostProxyRunLandoFeature", () => {
     expect(environment.LANDO_HOST_PROXY_APP).toBeUndefined();
     expect(mounts).toContainEqual(
       expect.objectContaining({
-        target: "/run/lando/host-proxy/credentials",
-        source: "C:\\Users\\me\\AppData\\Local\\Lando\\Data\\run\\demo\\credentials",
+        target: "/run/lando/host-proxy",
+        source: "C:\\Users\\me\\AppData\\Local\\Lando\\Data\\run\\demo\\container",
         readOnly: true,
       }),
     );
-    expect(mounts).not.toContainEqual(expect.objectContaining({ target: "/run/lando/host-proxy.sock" }));
+    expect(mounts).not.toContainEqual(
+      expect.objectContaining({ target: HOST_PROXY_CONTAINER_BRIDGE_SOCKET }),
+    );
+  });
+
+  test.each(["kept", "recreated"] as const)(
+    "a new session in a %s container directory keeps the contract only when the directory is kept",
+    async (directory) => {
+      // Given two consecutive sessions for one app and data root.
+      const paths = { userCacheRoot: await tempRoot(), userDataRoot: await tempRoot() };
+      const shimArtifactPath = await fakeExecutable();
+      const open = async () => {
+        const session = await run(
+          createHostProxyRunLandoSession({
+            app,
+            mountInfo: mount,
+            allowlist: ["app:open"],
+            callerService: "web",
+            executor: () => Effect.succeed({ stdout: JSON.stringify(envelope), stderr: "", exitCode: 0 }),
+            paths,
+            shimArtifactPath,
+          }),
+        );
+        // The worker manager stamps the generation the same way after a session is ready.
+        return {
+          ...session,
+          containerGeneration: await hostProxyContainerGeneration(dirname(session.shimPath)),
+        };
+      };
+      const contractOf = (session: Parameters<typeof hostProxyRunLandoFeature>[0]) => {
+        const extensions: Record<string, unknown> = {};
+        hostProxyRunLandoFeature(session).apply({
+          addEnv: () => undefined,
+          addMount: () => undefined,
+          addExtension: (name, value) => {
+            extensions[name] = value;
+          },
+        });
+        return extensions[HOST_PROXY_TRANSPORT_EXTENSION_KEY];
+      };
+      const first = await open();
+      const firstContract = contractOf(first);
+      await first.close();
+      // When the next session starts, after something deleted the whole run directory or not.
+      if (directory === "recreated") await rm(dirname(first.shimPath), { recursive: true, force: true });
+      const second = await open();
+      // Then a kept directory keeps the digest, so a running container's bind still reaches the new
+      // session; a recreated one at the same path changes it, so bring-up recreates the container.
+      expect(second.sessionId).not.toBe(first.sessionId);
+      expect(second.socketPath).toBe(first.socketPath);
+      if (directory === "kept") {
+        expect(second.containerGeneration).toBe(first.containerGeneration);
+        expect(contractOf(second)).toEqual(firstContract);
+      } else {
+        expect(second.containerGeneration).not.toBe(first.containerGeneration);
+        expect(contractOf(second)).not.toEqual(firstContract);
+      }
+      const credentials = await Bun.file(join(dirname(second.shimPath), "container", "credentials")).json();
+      expect(credentials).toMatchObject({ session: second.sessionId });
+      await second.close();
+    },
+  );
+
+  test("the contract digest changes when what containers see changes", () => {
+    const base = {
+      appId: "demo",
+      sessionId: "session-1",
+      token: "secret-token",
+      socketPath: "/data/run/demo/container/sock",
+      shimPath: "/data/run/demo/lando",
+      transport: "unix-socket" as const,
+    };
+    const digestOf = (session: Parameters<typeof hostProxyRunLandoFeature>[0]) => {
+      let digest = "";
+      hostProxyRunLandoFeature(session).apply({
+        addEnv: () => undefined,
+        addMount: () => undefined,
+        addExtension: (_name, value) => {
+          digest = value.contractDigest;
+        },
+      });
+      return digest;
+    };
+    const current = digestOf(base);
+    expect(digestOf({ ...base, sessionId: "session-2", token: "other" })).toBe(current);
+    expect(digestOf({ ...base, shimDigest: "sha256:rebuilt" })).not.toBe(current);
+    expect(digestOf({ ...base, containerGeneration: "a".repeat(32) })).not.toBe(
+      digestOf({ ...base, containerGeneration: "b".repeat(32) }),
+    );
+    expect(digestOf({ ...base, socketPath: "/guest/session-2/host-proxy.sock" })).not.toBe(current);
+    expect(
+      digestOf({
+        ...base,
+        socketPath: "/data2/run/demo/container/sock",
+        shimPath: "/data2/run/demo/lando",
+      }),
+    ).not.toBe(current);
+    expect(
+      digestOf({ ...base, transport: "tcp-host-gateway", containerUrl: "http://host.containers.internal:1" }),
+    ).not.toBe(current);
   });
 
   test("strips runLando auth env, mounts, and extensions from a persisted plan", () => {
@@ -269,7 +367,7 @@ describe("hostProxyRunLandoFeature", () => {
         LANDO_HOST_PROXY_DEPTH: "0",
       },
       mounts: [
-        ...["/usr/local/bin/xdg-open", "/usr/local/bin/open", "/run/lando/host-proxy/credentials"].map(
+        ...["/usr/local/bin/xdg-open", "/usr/local/bin/open", HOST_PROXY_CONTAINER_BRIDGE_SOCKET].map(
           (target) => ({
             type: "bind" as const,
             source: "/tmp/lando-shim",
@@ -280,8 +378,8 @@ describe("hostProxyRunLandoFeature", () => {
         ),
         {
           type: "bind" as const,
-          source: "/tmp/host-proxy.sock",
-          target: PortablePath.make(HOST_PROXY_CONTAINER_SOCKET),
+          source: "/tmp/run/container",
+          target: PortablePath.make("/run/lando/host-proxy"),
           readOnly: true,
           realization: "passthrough" as const,
         },

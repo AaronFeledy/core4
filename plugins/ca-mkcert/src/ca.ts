@@ -9,6 +9,17 @@
  * explicitly on that retry because elevation does not preserve the invoking
  * user's environment.
  *
+ * Every trust store the authority manages (the system store, each Linux
+ * browser NSS database, each Homebrew CA bundle, and the Windows store under
+ * WSL) is reported as a row. `setup` inspects them before and after installing
+ * and marks the ones it took from untrusted to trusted; a store it could not
+ * repair is reported untrusted, not failed. It skips `mkcert -install` when the
+ * system store already trusts the root. `trustStores` only inspects. The system
+ * row is a fresh read, never Bun's per-process snapshot that `root.trusted`
+ * uses, so setup can verify its own install. mkcert itself only writes the
+ * system store (`TRUST_STORES=system`): Lando writes the browser databases so
+ * it can report each one, and mkcert's Java keystore install is not used.
+ *
  * Any issuing mkcert run creates a root when `CAROOT` has none, without
  * locking, and every Lando data root on a host shares one `CAROOT`. Only
  * `setup` creates the root, under an advisory lock inside `CAROOT`; `root` and
@@ -31,10 +42,14 @@ import { type ToolError, resolveHostKey } from "@lando/sdk/tool-provisioning";
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
 import { type Context, Effect } from "effect";
 
+import type { HostEnv } from "./homebrew-trust.ts";
+import { hostTrustsPem } from "./host-trust.ts";
 import { makeIssueCert, makeIssueInto } from "./issuance.ts";
 import { CA_ID, type MkcertContext, caError, failureDetail, makeRunMkcert } from "./mkcert-command.ts";
 import { MKCERT_TOOL_VERSION, mkcertInstallPath, provisionMkcert } from "./provision.ts";
 import { makeMkcertRoot } from "./root.ts";
+import { makeTrustStores, markChanges } from "./trust-stores.ts";
+import { WSL_WINDOWS_TRUST_PATHS, type WindowsTrustPaths } from "./windows-trust.ts";
 
 export { CA_ID } from "./mkcert-command.ts";
 
@@ -46,6 +61,14 @@ export interface MkcertCertificateAuthorityOptions {
   readonly privateFileAccess: PrivateFileAccess;
   readonly platform?: string | undefined;
   readonly arch?: string | undefined;
+  /** Environment used to find Homebrew, browser databases and their tools; defaults to `process.env`. */
+  readonly env?: HostEnv | undefined;
+  /** Whether the system store this process loaded holds a PEM; defaults to Bun's system snapshot. */
+  readonly hostTrustsPem?: ((pem: string) => boolean) | undefined;
+  /** Linux system bundle candidates for the fresh trust check; defaults to the distro paths. */
+  readonly linuxSystemBundles?: ReadonlyArray<string> | undefined;
+  /** WSL interop markers and the `certutil.exe` fallback; defaults to the WSL paths. */
+  readonly windowsTrustPaths?: WindowsTrustPaths | undefined;
 }
 
 export const makeMkcertCertificateAuthority = (
@@ -65,7 +88,18 @@ export const makeMkcertCertificateAuthority = (
     runMkcert,
   };
   const issueInto = makeIssueInto(context);
-  const { caRoot, currentRoot, ensureRoot } = makeMkcertRoot(context, issueInto);
+  const stores = makeTrustStores({
+    processRunner: options.processRunner,
+    env: options.env ?? process.env,
+    platform,
+    linuxSystemBundles: options.linuxSystemBundles,
+    windowsPaths: options.windowsTrustPaths ?? WSL_WINDOWS_TRUST_PATHS,
+  });
+  const { caRoot, currentRoot, ensureRoot } = makeMkcertRoot(
+    context,
+    issueInto,
+    options.hostTrustsPem ?? hostTrustsPem,
+  );
 
   const provisionError = (cause: ToolError): CaError =>
     cause._tag === "ToolManifestError"
@@ -101,11 +135,18 @@ export const makeMkcertCertificateAuthority = (
     root: string,
     privilege: CaSetupOptions["privilege"],
   ): Effect.fn.Return<void, CaError> {
-    const attempt = yield* runMkcert(["-install"], { CAROOT: root });
+    // Only the system store: Lando writes the browser databases itself.
+    const attempt = yield* runMkcert(["-install"], { CAROOT: root, TRUST_STORES: "system" });
     if (attempt.exitCode === 0) return;
     if (privilege === undefined) return yield* Effect.fail(trustInstallError(attempt));
 
-    const elevated = yield* privilege.elevate(["env", `CAROOT=${root}`, binary, "-install"]);
+    const elevated = yield* privilege.elevate([
+      "env",
+      `CAROOT=${root}`,
+      "TRUST_STORES=system",
+      binary,
+      "-install",
+    ]);
     if (elevated.exitCode !== 0) return yield* Effect.fail(trustInstallError(elevated));
   });
 
@@ -116,11 +157,23 @@ export const makeMkcertCertificateAuthority = (
     setup: Effect.fn("CertificateAuthority.setup")(function* (setupOptions: CaSetupOptions) {
       yield* provision(setupOptions.force);
       const caroot = yield* caRoot;
-      yield* ensureRoot(caroot);
-      if (setupOptions.skipTrustInstall === true) return;
-      yield* installTrust(caroot, setupOptions.privilege);
+      const root = yield* ensureRoot(caroot);
+      const before = yield* stores.snapshot(caroot, root);
+      if (setupOptions.skipTrustInstall === true) {
+        return { trustStores: markChanges(before.rows, before.rows) };
+      }
+      // A system store that already trusts the root needs no `mkcert -install`, so reruns never prompt.
+      if (before.system.state !== "trusted") yield* installTrust(caroot, setupOptions.privilege);
+      return { trustStores: markChanges(before.rows, yield* stores.repair(caroot, root, before)) };
     }),
-    root: Effect.map(currentRoot, ({ root }) => root).pipe(Effect.withSpan("CertificateAuthority.root")),
+    root: currentRoot.pipe(
+      Effect.map(({ root }) => root),
+      Effect.withSpan("CertificateAuthority.root"),
+    ),
+    trustStores: currentRoot.pipe(
+      Effect.flatMap(({ caroot, root }) => stores.inspect(caroot, root.certificate)),
+      Effect.withSpan("CertificateAuthority.trustStores"),
+    ),
     issueCert,
   });
 };

@@ -697,14 +697,6 @@ const buildUninstallPlanWithContributions = async (
       detail: "Remove Lando-downloaded per-platform Mutagen agents when present.",
     },
     {
-      id: "ca-trust",
-      label: "CA trust-store changes",
-      target: "Lando local CA trust entry",
-      destructive: false,
-      status: "manual",
-      detail: "Review host trust-store entries and remove only Lando-managed certificates.",
-    },
-    {
       id: "global-app-state",
       label: "global app state",
       target: globalAppState,

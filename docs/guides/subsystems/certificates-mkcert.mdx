@@ -148,7 +148,20 @@ When mkcert is installed but the local CA is missing, the second line reads `mkc
 lando setup --skip-install-ca
 ```
 
-That installs mkcert and still creates the local CA, but doesn't add it to the system trust store. Apps with `certs: true` start as usual. Lando's own URL check trusts that CA, so it does not report the route as unreachable. Start prints one warning instead: browsers will warn until you run `lando setup` without `--skip-install-ca`.
+That installs mkcert and still creates the local CA, but doesn't add it to any trust store. Apps with `certs: true` start as usual. Lando's own URL check trusts that CA, so it does not report the route as unreachable. Start prints one warning instead: browsers may warn until you run `lando setup` without `--skip-install-ca`.
+
+## Check which trust stores include the CA
+
+Browsers and command-line tools don't all read the same list of trusted certificates. `lando setup` updates each trust store it manages and ends with one line per store, naming the store and the file it checked when there is one, and saying whether that store now includes the local CA and whether this run changed it:
+
+- **System trust store.** The macOS keychain, the Windows certificate store, or your Linux distribution's CA bundle. Browsers on macOS and Windows and most command-line tools read it. Setup adds the CA with mkcert, which may ask for your password. When the store already includes the CA, setup skips that step, so running it again doesn't prompt.
+- **Browser certificate databases on Linux.** Chrome and Chromium read their own NSS database, `~/.pki/nssdb` (or `~/.local/share/pki/nssdb` on newer Chromium), and Firefox reads one per profile, not the system store. Setup adds the CA to each database that exists, using NSS's `certutil` as you, and tells you to restart the browser. When `certutil` isn't installed, setup can't do that: it warns and names the package to install, such as `sudo apt install libnss3-tools`. Install it, then run `lando setup` again. A browser you haven't opened yet has no database; open it once, then run setup. Setup never overrides a CA you've distrusted in the browser's certificate settings.
+- **Homebrew CA bundle.** Homebrew's `openssl` and the formulae built on it, including `curl` on Linux, read `$(brew --prefix)/etc/ca-certificates/cert.pem` instead of the system store. Homebrew builds that bundle from the system store when it installs `ca-certificates`, so a bundle built before you ran `lando setup` lacks the CA and Homebrew `curl` fails with `curl: (60)`. When setup finds Homebrew through `HOMEBREW_PREFIX` or the `brew` on your `PATH`, it rebuilds a bundle that lacks the CA with `brew postinstall ca-certificates`, running as you. Later rebuilds, such as after `brew upgrade ca-certificates`, keep the CA on their own.
+- **Windows certificate store under WSL.** Edge and Chrome on Windows read the Windows store, which setup inside WSL doesn't change. Setup and `lando doctor` check whether it holds the CA and, when it doesn't, print the PowerShell command that adds it for your Windows user. See [Trust the CA in a Windows browser](../install/wsl.mdx#trust-the-ca-in-a-windows-browser).
+
+A store setup can't update doesn't stop setup. It prints a warning that says what went wrong and what to do, for example to fix the Homebrew error it shows and run `lando setup` again.
+
+With `--format=json`, `result.trustStores` lists every store with its `state` (`trusted`, `untrusted`, or `unknown` when Lando couldn't inspect it) and `changed`, which is true only when Lando saw the store lacking the CA before this run and including it after. Each store that still doesn't trust the CA also appears under `warnings` with code `CA_TRUST_INCOMPLETE`.
 
 ## Verify
 
@@ -156,6 +169,6 @@ That installs mkcert and still creates the local CA, but doesn't add it to the s
 lando doctor
 ```
 
-When this machine trusts the local CA, the certs check passes. When the CA exists but is not in the host trust store, doctor warns and tells you to run `lando setup` without `--skip-install-ca`. When mkcert is missing or the CA was never created, doctor warns with that authority's own remediation. Doctor does not install the CA for you, including with `--fix`. In JSON, `certsTrusted` is `"true"` or `"false"` on the certs check. A finding that Lando couldn't select or load a certificate authority is separate. Follow the remediation it prints.
+When every trust store includes the local CA, the certs check passes. When the system trust store doesn't, doctor warns with `certsReason` set to `untrusted` and tells you to run `lando setup` without `--skip-install-ca`, followed by a fix for each other store that also lacks the CA. When the system store includes the CA but another store doesn't, `certsReason` is `store-untrusted`; when Lando couldn't inspect a store, it's `store-unknown`. Each affected store gets its own fix, and `details.trustStores` in JSON lists every store with its state. When mkcert is missing or the CA was never created, doctor warns with that authority's own remediation. Doctor does not install the CA or update a trust store for you, including with `--fix`. In JSON, `certsTrusted` is `"true"` or `"false"` for the system trust store. A finding that Lando couldn't select or load a certificate authority is separate. Follow the remediation it prints.
 
 To check the result end to end, start an app with an HTTPS route and open its URL: a trusted padlock means the CA is installed and trusted.

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { chmod, mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { type IncomingMessage, createServer, request as httpRequest } from "node:http";
 import { createConnection } from "node:net";
 import { tmpdir } from "node:os";
@@ -169,6 +169,50 @@ const sessionFor = async (
   );
 };
 
+const startUnderDeepDataRoot = async (root: string) =>
+  runExit(
+    createHostProxyRunLandoSession({
+      app,
+      mountInfo: mount,
+      allowlist: [],
+      callerService: "web",
+      executor: () => Effect.die("unused"),
+      // Deep enough that the socket path does not fit in sockaddr_un.
+      paths: { userCacheRoot: await tempRoot(), userDataRoot: join(root, "a".repeat(120)) },
+      shimArtifactPath: await fakeExecutable(),
+    }),
+  );
+
+test.skipIf(process.platform !== "linux")(
+  "a socket path longer than sockaddr_un still serves on Linux",
+  async () => {
+    const exit = await startUnderDeepDataRoot(await tempRoot());
+    if (!Exit.isSuccess(exit))
+      throw new TypeError(`Expected the session to start: ${Cause.pretty(exit.cause)}`);
+    const session = exit.value;
+    try {
+      expect(Buffer.byteLength(session.socketPath ?? "")).toBeGreaterThan(107);
+      expect((await stat(session.socketPath ?? "")).isSocket()).toBe(true);
+    } finally {
+      await session.close();
+    }
+  },
+);
+
+test.skipIf(process.platform === "linux" || process.platform === "win32")(
+  "a socket path over the Unix limit fails with its remediation before the session writes anything",
+  async () => {
+    const root = await tempRoot();
+    const exit = await startUnderDeepDataRoot(root);
+    // Then it fails with the tagged, actionable reason and creates no run directory, credentials, or shim.
+    if (!Exit.isFailure(exit)) throw new TypeError("Expected the session to fail");
+    const failure = Cause.squash(exit.cause);
+    expect(failure).toBeInstanceOf(HostProxyTransportUnavailableError);
+    expect(failure).toMatchObject({ remediation: expect.stringContaining("shorter app name") });
+    expect(await readdir(root)).toEqual([]);
+  },
+);
+
 const fakeExecutable = async (): Promise<string> => {
   const path = join(await tempRoot(), "lando-shim");
   await writeFile(path, "#!/usr/bin/env sh\nexit 0\n");
@@ -222,6 +266,12 @@ const expectMissingPath = async (path: string): Promise<void> => {
     throw cause;
   }
   throw new Error(`Expected ${path} to be removed.`);
+};
+
+/** A closed session leaves only the container-facing directory that containers bind, and its generation. */
+const expectOnlyContainerFacingDirectory = async (stateDir: string): Promise<void> => {
+  expect(await readdir(stateDir)).toEqual(["container"]);
+  expect(await readdir(join(stateDir, "container"))).toEqual([".generation"]);
 };
 
 const waitForMissingPath = async (path: string): Promise<void> => {
@@ -306,7 +356,7 @@ describe("host-proxy runLando physical transport", () => {
       appId: "demo",
       sessionId: session.sessionId,
       transport: "unix-socket",
-      protocolVersion: 3,
+      protocolVersion: 4,
       configDigest: "",
       appRoot: app.root,
       providerId: "lando",
@@ -386,7 +436,7 @@ describe("host-proxy runLando physical transport", () => {
         expect(accepted.statusCode).toBe(200);
         expect(JSON.parse(accepted.body)).toMatchObject({
           configDigest: "worker-config",
-          protocolVersion: 3,
+          protocolVersion: 4,
           sessionId: session.sessionId,
         });
         expect(accepted.body).not.toContain(session.token);
@@ -497,7 +547,8 @@ describe("host-proxy runLando physical transport", () => {
     const shutdown = await controlHttpExchange(socketPathOf(session), "POST", "/_lando/host-proxy/shutdown", {
       "x-lando-host-proxy-control": session.controlToken,
     });
-    await waitForMissingPath(dirname(session.shimPath));
+    await waitForMissingPath(session.shimPath);
+    await expectOnlyContainerFacingDirectory(dirname(session.shimPath));
 
     expect(shutdown.statusCode).toBe(202);
   });
@@ -538,7 +589,8 @@ describe("host-proxy runLando physical transport", () => {
 
     const stateDir = hostProxyRunLandoStateDir(app, { platform: "win32", userDataRoot: dataRoot });
     await session.close();
-    await expectMissingPath(stateDir);
+    await expectMissingPath(session.shimPath);
+    await expectOnlyContainerFacingDirectory(stateDir);
   });
 
   test("rejects missing, stale, and cross-app tokens with tagged failures", async () => {
@@ -692,8 +744,9 @@ describe("host-proxy runLando physical transport", () => {
   test("fails closed when a stale socket path already exists", async () => {
     const paths = { userCacheRoot: await tempRoot(), userDataRoot: await tempRoot() };
     const stateDir = hostProxyRunLandoStateDir(app, paths);
-    await mkdir(stateDir, { recursive: true, mode: 0o700 });
-    await writeFile(join(stateDir, "host-proxy.sock"), "stale");
+    await mkdir(join(stateDir, "container"), { recursive: true, mode: 0o700 });
+    await chmod(join(stateDir, "container"), 0o711);
+    await writeFile(join(stateDir, "container", "sock"), "stale");
 
     const exit = await runExit(
       createHostProxyRunLandoSession({
@@ -1025,7 +1078,7 @@ describe("host-proxy runLando physical transport", () => {
   test.skipIf(process.platform === "win32")("closes the listener when chmod fails after bind", async () => {
     const stateDir = join(await tempRoot(), "state");
     await mkdir(stateDir, { recursive: true, mode: 0o700 });
-    const socketPath = join(stateDir, "host-proxy.sock");
+    const socketPath = join(stateDir, "container", "sock");
     const server = createServer();
     let chmodCalled = false;
 
@@ -1034,6 +1087,7 @@ describe("host-proxy runLando physical transport", () => {
         server,
         {
           stateDir,
+          containerDir: join(stateDir, "container"),
           socketPath,
           shimPath: join(stateDir, "lando"),
           platform: "linux",

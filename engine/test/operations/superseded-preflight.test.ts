@@ -10,13 +10,13 @@ import { destroyApp } from "../../src/operations/destroy.ts";
 import { rebuildApp } from "../../src/operations/rebuild.ts";
 import { restartApp } from "../../src/operations/restart.ts";
 import { startApp } from "../../src/operations/start.ts";
-import { stopApp } from "../../src/operations/stop.ts";
 import { FileSyncResolver } from "../../src/plugins/file-sync-resolver.ts";
 import { acceleratedPlan } from "./accelerated-start-recovery-support.ts";
 import { ordinaryPlan } from "./start-file-sync-rotation-support.ts";
 import { makeHarness, plan } from "./start-progress-topology-support.ts";
 
-const operations = [startApp, restartApp, rebuildApp, stopApp, destroyApp].map(
+// Stop only stops an earlier name's containers, so it never prepares a retirement.
+const operations = [startApp, restartApp, rebuildApp, destroyApp].map(
   (operation) => (_options: Record<string, never>, target: ResolvedAppTarget) =>
     Effect.gen(function* () {
       yield* operation({}, target);

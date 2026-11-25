@@ -13,13 +13,13 @@ import { TestFileSyncEngine, makeTestRuntimeProviderRegistry } from "@lando/sdk/
 import { DateTime, Effect } from "effect";
 import { withResolvedCwd } from "../../src/landofile/app-resolution.ts";
 import { destroyApp } from "../../src/operations/destroy.ts";
-import { stopApp } from "../../src/operations/stop.ts";
 import { FileSyncResolver } from "../../src/plugins/file-sync-resolver.ts";
 import { literalTestLandofile } from "../compiled-landofile.ts";
 import { fixture, stale, target } from "./legacy-teardown-support.ts";
 import { web } from "./start-progress-topology-support.ts";
 
-test.each(["stop", "destroy", "renamed-destroy"] as const)(
+// Stop never retires an earlier name: it only stops its containers (legacy-teardown.test.ts).
+test.each(["destroy", "renamed-destroy"] as const)(
   "%s includes retired services and preserves quiescence observations over later absence",
   async (command) => {
     const harness = fixture();
@@ -59,7 +59,6 @@ test.each(["stop", "destroy", "renamed-destroy"] as const)(
       const base = await Effect.runPromise(harness.runtimeProviderRegistry.select());
       const result = await Effect.runPromise(
         Effect.gen(function* () {
-          if (command === "stop") return yield* stopApp({}, target);
           if (command === "renamed-destroy")
             return yield* withResolvedCwd(target.root, destroyApp({ volumes: true, yes: true }));
           return yield* destroyApp({ volumes: true }, target);
@@ -96,10 +95,10 @@ test.each(["stop", "destroy", "renamed-destroy"] as const)(
                         : { status: "ordinary" as const },
                     ),
                   quiesceForFileSync: () => Effect.succeed({ shutdownObservations: [observed] }),
-                  destroy: (ref, options) =>
-                    base.destroy(ref, options).pipe(
+                  bringDown: (ref, options) =>
+                    base.bringDown(ref, options).pipe(
                       Effect.map((outcome) =>
-                        outcome.kind === "destroyed"
+                        outcome.kind === "removed"
                           ? {
                               ...outcome,
                               volumesRemoved: {
@@ -139,12 +138,9 @@ test.each(["stop", "destroy", "renamed-destroy"] as const)(
           Effect.provide(harness.layer),
         ),
       );
-      expect("servicesStopped" in result ? result.servicesStopped : result.servicesDestroyed).toEqual([
-        "worker",
-        "web",
-      ]);
+      expect(result.servicesDestroyed).toEqual(["worker", "web"]);
       expect(result.shutdownObservations).toEqual([observed]);
-      if ("dataVolumesRemoved" in result) expect(result.dataVolumesRemoved).toBe(true);
+      expect(result.dataVolumesRemoved).toBe(true);
     } finally {
       if (command === "renamed-destroy") rmSync(join(target.root, ".lando.yml"));
       rmSync(harness.userDataRoot, { recursive: true, force: true });

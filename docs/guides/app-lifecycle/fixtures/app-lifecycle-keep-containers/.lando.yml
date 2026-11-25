@@ -1,0 +1,12 @@
+name: app-lifecycle-keep
+services:
+  app:
+    type: "node:22"
+    primary: true
+    build:
+      app:
+        - echo run >> /app/build-runs.log
+  cache:
+    type: compose
+    image: docker.io/library/redis:7-alpine
+    appMount: false

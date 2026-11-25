@@ -49,7 +49,7 @@ for (const labels of replacements) {
       observed = { Id: "foreign-replacement", Config: { Labels: labels } };
       // When
       const result = await Effect.runPromise(
-        provider.destroy({ app: plan.id }, { volumes: false }).pipe(Effect.result),
+        provider.bringDown({ app: plan.id }, { containers: "remove", volumes: false }).pipe(Effect.result),
       );
       // Then
       expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "ProviderUnavailableError" } });

@@ -604,6 +604,76 @@ for (const scenario of ["completed", "dead", "replacement"] as const) {
   });
 }
 
+for (const rerun of [0, 1] as const) {
+  test(`a kept job container that stop left exited runs again before its completion gate opens: exit ${rerun}`, async () => {
+    // Given the job container a stop kept, still showing its previous run's successful exit
+    const base = planWithDependency(dependentNames.web, true);
+    const web = base.services[dependentNames.web];
+    if (web === undefined) throw new Error("Expected dependent service");
+    const plan = {
+      ...base,
+      services: {
+        ...base.services,
+        [web.name]: {
+          ...web,
+          dependsOn: [
+            { service: dbName, condition: "service_completed_successfully" as const, required: true },
+          ],
+        },
+      },
+    };
+    const name = "lando-bring-up-order-app--db";
+    const fake = makePodmanApi(0, [name]);
+    const request = fake.api.request;
+    if (request === undefined) throw new Error("Expected request transport");
+    const keptId = fake.ids.get(name);
+    let exitCode = 0;
+    let started = false;
+    let waitedFor: string | undefined;
+    // When start brings it up again and this run exits with `rerun`
+    const result = await Effect.runPromise(
+      Effect.result(
+        bringUp(plan, {
+          ctx,
+          api: {
+            ...fake.api,
+            request: (input) => {
+              if (input.path.endsWith("/wait")) {
+                waitedFor = input.path.split("/").at(-2);
+                exitCode = rerun;
+                return Effect.succeed({ status: 200, body: String(rerun) });
+              }
+              if (input.path === `/containers/${keptId}/start` || input.path === `/containers/${name}/start`)
+                started = true;
+              return request(input).pipe(
+                Effect.map((response) => {
+                  if (input.path !== `/containers/${name}/json` || response.status !== 200) return response;
+                  return {
+                    ...response,
+                    body: JSON.stringify({
+                      ...JSON.parse(response.body),
+                      State:
+                        started && waitedFor === undefined
+                          ? { Running: true, Status: "running" }
+                          : { Running: false, Status: "exited", ExitCode: exitCode },
+                    }),
+                  };
+                }),
+              );
+            },
+          },
+        }),
+      ),
+    );
+    // Then the kept container is started in place and the gate follows only this run's exit
+    expect(started).toBe(true);
+    expect(fake.requests.some((path) => path === `POST /containers/create?name=${name}`)).toBe(false);
+    expect(waitedFor).toBe(keptId);
+    expect(Result.isSuccess(result)).toBe(rerun === 0);
+    expect(requestStarted(fake.requests, "lando-bring-up-order-app--web", fake.ids)).toBe(rerun === 0);
+  });
+}
+
 test("a slow inspect after a completed wait still opens the completion gate", async () => {
   const base = planWithDependency(dependentNames.web, true);
   const web = base.services[dependentNames.web];

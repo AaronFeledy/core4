@@ -14,7 +14,12 @@ import {
   ServiceName,
   appIdentityKey,
 } from "@lando/sdk/schema";
-import type { ProviderRuntimeSnapshot, ServiceRuntimeInfo } from "@lando/sdk/services";
+import type {
+  BringDownOptions,
+  ContainerDisposition,
+  ProviderRuntimeSnapshot,
+  ServiceRuntimeInfo,
+} from "@lando/sdk/services";
 import {
   AppPlanner,
   ConfigService,
@@ -155,17 +160,36 @@ const makeHarness = async (input: {
       : Effect.succeed({ state: input.idle === true ? ("idle" as const) : ("running" as const) }),
     list: () => Effect.succeed(globalServices),
     listVolumes: () => Effect.succeed([]),
-    removeObservedService: (service: ServiceRuntimeInfo) =>
+    bringDownObserved: (service: ServiceRuntimeInfo, containers: ContainerDisposition) =>
       Effect.sync(() => {
-        calls.push(`remove:${service.appRoot}`);
-        return { kind: "removed" as const };
+        calls.push(`${containers}:${service.appRoot}`);
+        return { service: service.service, action: containers === "stop" ? "stopped" : "removed" } as const;
       }),
-    destroy: (target: { readonly app: string; readonly plan?: AppPlan }) =>
+    bringDown: (target: { readonly app: string; readonly plan?: AppPlan }, options: BringDownOptions) =>
       Effect.gen(function* () {
-        calls.push(`destroy:${target.plan?.root ?? "global"}`);
+        const stop = options.containers === "stop";
+        calls.push(`${stop ? "stop" : "destroy"}:${target.plan?.root ?? "global"}`);
         const failure = target.plan === undefined ? undefined : failures.get(String(target.plan.root));
         if (failure !== undefined) return yield* Effect.fail(failure);
-        return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
+        if (!stop) return { kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } };
+        // Stop answers for the app's observed containers, as a real provider does.
+        const observed = services.filter(
+          (service) => service.appRoot === target.plan?.root && service.app === target.app,
+        );
+        return {
+          kind: "stopped" as const,
+          containers:
+            observed.length > 0
+              ? observed.map((service) => ({
+                  service: service.service,
+                  ...(service.containerId === undefined ? {} : { containerId: service.containerId }),
+                  action: service.status === "exited" ? ("already-stopped" as const) : ("stopped" as const),
+                }))
+              : Object.values(target.plan?.services ?? {}).map((service) => ({
+                  service: service.name,
+                  action: "stopped" as const,
+                })),
+        };
       }),
   };
   const registry = makeTestRuntimeProviderRegistry({
@@ -321,9 +345,9 @@ describe("poweroff operation", () => {
         } else {
           expect(Result.isSuccess(result)).toBe(true);
         }
-        expect(
-          harness.calls.filter((call) => call.startsWith("destroy:") && call !== "destroy:global"),
-        ).toEqual([`destroy:${a}`]);
+        expect(harness.calls.filter((call) => call.startsWith("stop:") && call !== "stop:global")).toEqual([
+          `stop:${a}`,
+        ]);
       });
     },
   );
@@ -340,8 +364,8 @@ describe("poweroff operation", () => {
       const users = result.apps.filter((app) => app.kind === "user");
       expect(users.map((app) => app.appRoot).sort()).toEqual([a, b].sort());
       expect(users.every((app) => app.outcome === "stopped")).toBe(true);
-      expect(harness.calls.filter((call) => call.startsWith("destroy:"))).toHaveLength(2);
-      expect(harness.calls).not.toContain(`destroy:${quiet}`);
+      expect(harness.calls.filter((call) => call.startsWith("stop:"))).toHaveLength(2);
+      expect(harness.calls).not.toContain(`stop:${quiet}`);
     });
   });
 
@@ -353,8 +377,8 @@ describe("poweroff operation", () => {
       });
       const result = await Effect.runPromise(poweroff().pipe(Effect.provide(harness.layer)));
       expect(result.apps.filter((app) => app.kind === "user").map((app) => app.appId)).toEqual(["twin"]);
-      expect(harness.calls).not.toContain(`destroy:${quiet}`);
-      expect(harness.calls.filter((call) => call.startsWith("destroy:"))).toEqual([`destroy:${a}`]);
+      expect(harness.calls).not.toContain(`stop:${quiet}`);
+      expect(harness.calls.filter((call) => call.startsWith("stop:"))).toEqual([`stop:${a}`]);
     });
   });
 

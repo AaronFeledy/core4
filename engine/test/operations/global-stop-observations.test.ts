@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { AbsolutePath, ProviderId } from "@lando/sdk/schema";
+import { AbsolutePath, ProviderId, ServiceName } from "@lando/sdk/schema";
 import { RouterService } from "@lando/sdk/services";
 import { makeTestRouterService } from "@lando/sdk/test";
 import { Effect } from "effect";
@@ -32,7 +32,8 @@ test("selected teardown preserves a foreign-labeled planned container and its si
   };
   // When the foreign-labeled service is selected for teardown.
   await h.run(["mail"]);
-  // Then no container is removed, including the selected foreign ID and unselected siblings.
+  // Then no container is stopped, including the selected foreign ID and unselected siblings.
+  expect(h.stopped).toEqual([]);
   expect(h.removed).toEqual([]);
   expect(h.observed()).toEqual(observations);
 });
@@ -53,20 +54,25 @@ for (const mismatch of ["root", "provider"] as const) {
     const h = harness({ observations: [...source, foreign] });
     // When mail is selected for teardown.
     await h.run(["mail"]);
-    // Then only the exact owned observation is removed, leaving foreign and sibling IDs intact.
-    expect(h.removed).toEqual([selected]);
-    expect(h.observed()).toEqual([...source.filter((service) => service !== selected), foreign]);
+    // Then only the exact owned observation is stopped, and every container is kept.
+    expect(h.stopped).toEqual([selected]);
+    expect(h.removed).toEqual([]);
+    expect(h.observed()).toEqual([...source, foreign]);
   });
 }
 
-test("a container disappearing after observation produces an unchanged removal receipt", async () => {
+test("a container disappearing after observation produces an unchanged stop receipt", async () => {
   // Given the provider will report the selected observation already absent.
   const h = harness({ race: true });
-  // When the observed selected container is removed.
+  // When the observed selected container is stopped.
   const receipt = await h.run(["mail"]);
-  // Then no removal is claimed and the selected route is withdrawn without restoring stopped routes.
-  expect(receipt).toEqual({ changed: false, services: [] });
-  expect(h.removed).toEqual([]);
+  // Then no stop is claimed and the selected route is withdrawn without restoring stopped routes.
+  expect(receipt).toEqual({
+    changed: false,
+    services: [],
+    containers: [{ service: ServiceName.make("mail"), action: "absent" }],
+  });
+  expect(h.stopped).toEqual([]);
   expect(h.published).toEqual([["database", "sibling"]]);
 });
 
@@ -94,18 +100,23 @@ test("stopping a service without authored routes leaves sibling route publicatio
       Effect.provide(h.layer),
     ),
   );
-  // Then container removal succeeds without touching the router.
-  expect(receipt).toEqual({ changed: true, services: ["mail"] });
+  // Then the container stops without touching the router.
+  expect(receipt).toEqual({
+    changed: true,
+    services: ["mail"],
+    containers: [{ service: ServiceName.make("mail"), containerId: "mail-container", action: "stopped" }],
+  });
 });
 
 test("selected teardown retains routes only for active unselected containers", async () => {
   // Given an exited sibling still exists in applied runtime observations.
   const h = harness();
   h.states.set("sibling", "exited");
-  // When an active service is removed.
+  // When an active service is stopped.
   await h.run(["mail"]);
-  // Then the exited sibling container survives, but its route is not restored.
+  // Then every container survives, but the exited sibling's route is not restored.
   expect(h.observed().map((service) => service.containerId)).toEqual([
+    "mail-container",
     "database-container",
     "sibling-container",
   ]);

@@ -112,8 +112,8 @@ const hostProxyPlan: AppPlan = {
       mounts: [
         {
           type: "bind",
-          source: "/tmp/host-proxy.sock",
-          target: PortablePath.make(HOST_PROXY_CONTAINER_SOCKET),
+          source: "/tmp/run/container",
+          target: PortablePath.make("/run/lando/host-proxy"),
           readOnly: true,
           realization: "passthrough",
         },
@@ -397,6 +397,7 @@ describe("provider-lando cross-process state", () => {
       expect(persisted).not.toContain("LANDO_HOST_PROXY_SOCKET");
       expect(persisted).not.toContain("LANDO_HOST_PROXY_DEPTH");
       expect(persisted).not.toContain("host-proxy.sock");
+      expect(persisted).not.toContain("/tmp/run/container");
       expect(persisted).not.toContain(HOST_PROXY_CONTAINER_LANDO);
 
       const createdBodies = fake.calls
@@ -571,7 +572,7 @@ describe("provider-lando cross-process state", () => {
       expect(snapshot.service).toBe(web.name);
       expect(snapshot.status).toBe("running");
 
-      await runOnce(providerB.destroy({ app: plan.id }, { volumes: false }));
+      await runOnce(providerB.bringDown({ app: plan.id }, { containers: "remove", volumes: false }));
 
       expect(fake.existing.size).toBe(0);
       expect(Array.from(fake.networks)).toEqual(["lando_bridge_network"]);
@@ -613,7 +614,7 @@ describe("provider-lando cross-process state", () => {
         ),
       );
 
-      await runOnce(providerB.destroy({ app: plan.id }, { volumes: true }));
+      await runOnce(providerB.bringDown({ app: plan.id }, { containers: "remove", volumes: true }));
 
       expect(fake.volumes.has("crossprocessapp_database_data")).toBe(false);
       expect(await fileExists(appliedPlanPath(stateDir, plan.id))).toBe(false);
@@ -641,7 +642,9 @@ describe("provider-lando cross-process state", () => {
       const providerA = await makeProvider();
       await runOnce(providerA.apply(plan, { reconcile: false }).pipe(Effect.scoped));
 
-      const failed = await runOnce(Effect.result(providerA.destroy({ app: plan.id }, { volumes: true })));
+      const failed = await runOnce(
+        Effect.result(providerA.bringDown({ app: plan.id }, { containers: "remove", volumes: true })),
+      );
       expect(failed._tag).toBe("Failure");
       if (failed._tag === "Failure") {
         expect(failed.failure).toBeInstanceOf(ProviderUnavailableError);
@@ -691,7 +694,7 @@ describe("provider-lando cross-process state", () => {
 
       failVolumeRemove = false;
       const providerB = await makeProvider();
-      await runOnce(providerB.destroy({ app: plan.id }, { volumes: true }));
+      await runOnce(providerB.bringDown({ app: plan.id }, { containers: "remove", volumes: true }));
       expect(fake.volumes.has("crossprocessapp_database_data")).toBe(false);
       expect(await fileExists(appliedPlanPath(stateDir, plan.id))).toBe(false);
       expect(
@@ -734,7 +737,9 @@ describe("provider-lando cross-process state", () => {
           ),
         ),
       );
-      await runOnce(providerB.destroy({ app: plan.id }, { volumes: false, removeState: false }));
+      await runOnce(
+        providerB.bringDown({ app: plan.id }, { containers: "remove", volumes: false, removeState: false }),
+      );
 
       expect(await fileExists(appliedPlanPath(stateDir, plan.id))).toBe(true);
 
@@ -865,7 +870,7 @@ describe("provider-lando cross-process state", () => {
         ),
       );
 
-      await runOnce(provider.destroy({ app: plan.id }, { volumes: false }));
+      await runOnce(provider.bringDown({ app: plan.id }, { containers: "remove", volumes: false }));
     });
   });
 });

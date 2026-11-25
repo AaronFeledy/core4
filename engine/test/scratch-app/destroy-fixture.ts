@@ -22,6 +22,7 @@ import {
 } from "@lando/sdk/schema";
 import {
   AppPlanner,
+  type BringDownOptions,
   DataMover,
   EventService,
   type LandoEvent,
@@ -168,10 +169,10 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
     ...(options.offlineNewerReceipt
       ? { isAvailable: Effect.succeed(false), getStatus: Effect.succeed({ state: "idle" as const }) }
       : {}),
-    destroy: (_target: unknown, request: { readonly volumes: boolean; readonly removeState?: boolean }) =>
+    bringDown: (_target: unknown, request: BringDownOptions) =>
       Effect.sync(() => {
         calls.push(request.removeState ? `destroy:${request.volumes}` : "stop");
-        return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
+        return { kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } };
       }).pipe(
         Effect.flatMap((outcome) =>
           options.fail && request.removeState

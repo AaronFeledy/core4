@@ -76,9 +76,9 @@ export const runProviderVolumeCreationContract = Effect.fnUntraced(function* (
     }),
   ).pipe(mapFailures(mapProviderFailure("reapply with existing volumes succeeds")));
   yield* requireContract(adoptedCallbacks === 0, "existing volumes never emit creation receipts");
-  yield* Effect.scoped(provider.destroy({ app: plan.id, plan }, { volumes: true })).pipe(
-    mapFailures(mapProviderFailure("receipt contract cleanup succeeds")),
-  );
+  yield* Effect.scoped(
+    provider.bringDown({ app: plan.id, plan }, { containers: "remove", volumes: true }),
+  ).pipe(mapFailures(mapProviderFailure("receipt contract cleanup succeeds")));
 
   const failingPlan = makePlan();
   const failure = new ProviderInternalError({
@@ -108,7 +108,7 @@ export const runProviderVolumeCreationContract = Effect.fnUntraced(function* (
       serviceStartCount() === startsBeforeFailure,
     "receipt failure aborts apply before any service starts",
   );
-  yield* Effect.scoped(provider.destroy({ app: failingPlan.id, plan: failingPlan }, { volumes: true })).pipe(
-    mapFailures(mapProviderFailure("failed receipt contract cleanup succeeds")),
-  );
+  yield* Effect.scoped(
+    provider.bringDown({ app: failingPlan.id, plan: failingPlan }, { containers: "remove", volumes: true }),
+  ).pipe(mapFailures(mapProviderFailure("failed receipt contract cleanup succeeds")));
 });

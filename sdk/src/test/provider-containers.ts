@@ -1,10 +1,17 @@
 import { Clock, DateTime, Effect } from "effect";
 import {
   HealthcheckTargetUnsupportedError,
+  ProviderUnavailableError,
   ServiceNotFoundError,
   ServiceStartError,
 } from "../errors/index.ts";
-import { LANDO_DATA_ROOT_LABEL, effectiveReadiness } from "../schema/index.ts";
+import {
+  type BringDownOutcome,
+  type ContainerBringDownReceipt,
+  LANDO_DATA_ROOT_LABEL,
+  type ObservedBringDown,
+  effectiveReadiness,
+} from "../schema/index.ts";
 import type { RuntimeProviderShape, ServiceRuntimeFields, ServiceSelector } from "../services/index.ts";
 import { TEST_PROVIDER_ID } from "./_shared.ts";
 
@@ -35,15 +42,14 @@ export const makeTestProviderContainers = () => {
         : Effect.succeed(container);
     }),
   );
-  const setRunState = (target: ServiceSelector, status: "running" | "exited") =>
+  const restart = (target: ServiceSelector) =>
     Effect.gen(function* () {
-      const current = yield* inspect(target, status === "running" ? "start" : "stop");
+      const current = yield* inspect(target, "restart");
       const now = yield* Clock.currentTimeMillis;
       containers.set(key(target), {
         ...current,
-        status,
-        lastStartedAt:
-          status === "running" ? DateTime.toDateUtc(DateTime.makeUnsafe(now)) : current.lastStartedAt,
+        status: "running",
+        lastStartedAt: DateTime.toDateUtc(DateTime.makeUnsafe(now)),
       });
     });
   const apply: RuntimeProviderShape["apply"] = Effect.fn("TestRuntimeProvider.applyContainers")(
@@ -123,36 +129,64 @@ export const makeTestProviderContainers = () => {
       return { changed };
     },
   );
-  const destroy: RuntimeProviderShape["destroy"] = (target) =>
-    Effect.sync(() => {
-      let removed = false;
+  const bringDown: RuntimeProviderShape["bringDown"] = (target, options) =>
+    Effect.sync((): BringDownOutcome => {
+      const receipts: ContainerBringDownReceipt[] = [];
       for (const [id, container] of containers) {
-        if (container.app === target.app) {
+        if (container.app !== target.app) continue;
+        const receipt = { service: container.service, containerId: container.containerId };
+        if (options.containers === "remove") {
           containers.delete(id);
-          removed = true;
-        }
+          receipts.push({ ...receipt, action: "removed" });
+        } else if (container.status === "running") {
+          containers.set(id, { ...container, status: "exited" });
+          receipts.push({ ...receipt, action: "stopped" });
+        } else receipts.push({ ...receipt, action: "already-stopped" });
       }
-      return removed || target.plan !== undefined
-        ? { kind: "destroyed", volumesRemoved: { data: 0, cache: 0 } }
-        : { kind: "no-op", reason: "no-applied-plan" };
+      if (receipts.length === 0 && target.plan === undefined)
+        return { kind: "no-op", reason: "no-applied-plan" };
+      return options.containers === "remove"
+        ? { kind: "removed", containers: receipts, volumesRemoved: { data: 0, cache: 0 } }
+        : { kind: "stopped", containers: receipts };
     });
-  const removeObservedService: RuntimeProviderShape["removeObservedService"] = (observed) =>
-    Effect.sync(() => {
+  // The observation only addresses a container: ownership is proven by what the double stored.
+  const bringDownObserved: RuntimeProviderShape["bringDownObserved"] = (observed, disposition) =>
+    Effect.suspend((): Effect.Effect<ObservedBringDown, ProviderUnavailableError> => {
       const id = key(observed);
       const current = containers.get(id);
+      const service = observed.service;
       if (observed.containerId === undefined || current?.containerId !== observed.containerId)
-        return { kind: "absent" };
-      containers.delete(id);
-      return { kind: "removed" };
+        return Effect.succeed({ service, action: "absent" });
+      const containerId = current.containerId;
+      if (
+        observed.providerId !== current.providerId ||
+        current.labels?.["dev.lando.app"] !== String(observed.app) ||
+        current.labels?.["dev.lando.app-root"] !== String(observed.appRoot) ||
+        current.labels?.["dev.lando.service"] !== String(observed.service)
+      )
+        return Effect.fail(
+          new ProviderUnavailableError({
+            providerId: TEST_PROVIDER_ID,
+            operation: "bringDownObserved",
+            message: `Container ${containerId} does not prove Lando service ownership.`,
+            remediation: `Inspect container ${containerId} with your container runtime and remove it there.`,
+          }),
+        );
+      if (disposition === "remove") {
+        containers.delete(id);
+        return Effect.succeed({ service, containerId, action: "removed" });
+      }
+      if (current.status !== "running")
+        return Effect.succeed({ service, containerId, action: "already-stopped" });
+      containers.set(id, { ...current, status: "exited" });
+      return Effect.succeed({ service, containerId, action: "stopped" });
     });
   return {
     apply,
     inspect,
-    start: (target: ServiceSelector) => setRunState(target, "running"),
-    restart: (target: ServiceSelector) => setRunState(target, "running"),
-    stop: (target: ServiceSelector) => setRunState(target, "exited"),
-    destroy,
-    removeObservedService,
+    restart,
+    bringDown,
+    bringDownObserved,
     list: (filter: Parameters<RuntimeProviderShape["list"]>[0]) =>
       Effect.sync(() =>
         [...containers.values()].filter(

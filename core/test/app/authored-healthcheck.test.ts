@@ -23,7 +23,7 @@ for (const [kind, field] of [
     );
     const local = join(root, ".lando.local.yml");
     await writeFile(local, `services:\n  web:\n    healthcheck:\n      kind: ${kind}\n`);
-    const actions = { apply: 0, start: 0, build: 0, pull: 0, exec: 0 };
+    const actions = { apply: 0, build: 0, pull: 0, exec: 0 };
     const provider = {
       ...TestRuntimeProvider,
       apply: (...args: Parameters<typeof TestRuntimeProvider.apply>) =>
@@ -31,14 +31,6 @@ for (const [kind, field] of [
           Effect.tap(() =>
             Effect.sync(() => {
               actions.apply++;
-            }),
-          ),
-        ),
-      start: (...args: Parameters<typeof TestRuntimeProvider.start>) =>
-        TestRuntimeProvider.start(...args).pipe(
-          Effect.tap(() =>
-            Effect.sync(() => {
-              actions.start++;
             }),
           ),
         ),
@@ -108,7 +100,7 @@ for (const [kind, field] of [
           ],
         });
       }
-      expect(actions).toEqual({ apply: 0, start: 0, build: 0, pull: 0, exec: 0 });
+      expect(actions).toEqual({ apply: 0, build: 0, pull: 0, exec: 0 });
     } finally {
       await rm(root, { recursive: true, force: true });
     }

@@ -70,7 +70,7 @@ for (const stopFailure of [false, true]) {
       expect(harness.calls).toEqual([
         "list",
         "pre-global-stop",
-        "removeObservedService",
+        "bringDownObserved",
         ...(!stopFailure ? ["post-global-stop"] : []),
       ]);
       expect(result).toMatchObject(
@@ -104,6 +104,7 @@ for (const online of [false, true]) {
         outcome: "unchanged",
         materialized: false,
         servicesStopped: [],
+        containers: [],
       });
       expect(harness.calls).toEqual(online ? ["list"] : []);
     } finally {

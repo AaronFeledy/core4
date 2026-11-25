@@ -39,7 +39,6 @@ import {
   makeProviderLogSourceBinding,
 } from "@lando/container-runtime/log-source-binding";
 import { serviceContainerName } from "@lando/container-runtime/plan";
-import { bringDown } from "@lando/container-runtime/podman/bring-down";
 import {
   type BringUpOptions,
   type StartFailureRemediation,
@@ -57,7 +56,6 @@ import { containerConsoleLogs, logs } from "@lando/container-runtime/podman/logs
 import {
   bindResolvedProviderOps,
   composeAdaptersFor,
-  forgetAppliedPlanUnlessKept,
   makeProviderPlanState,
   makeResourceOwnershipStore,
   notImplementedError,
@@ -76,10 +74,9 @@ import { inspectEngineResourceNames } from "@lando/container-runtime/resource-na
 import { runObservationFromListState } from "@lando/container-runtime/run-observation";
 import { readAppEnvironment } from "@lando/container-runtime/runtime-provider";
 import {
-  DESTROY_NO_OP,
+  BRING_DOWN_NO_OP,
   postExactServiceLifecycle,
   postServiceLifecycle,
-  removeObservedContainer,
 } from "@lando/container-runtime/service-lifecycle";
 import { normalizeNamedPipePath } from "@lando/container-runtime/transport";
 import { waitForExit } from "@lando/container-runtime/wait-for-exit";
@@ -599,6 +596,7 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CT
       persist: persistAppliedPlan,
       remove: removeAppliedPlan,
     });
+    const providerBringDown = planState.bringDownWith({ api: dockerApi, dialect: dockerLifecycleDialect });
     const { appliedPlans } = planState;
     const resolvePlan = (target: { readonly app: AppId; readonly plan?: AppPlan }) =>
       appliedPlans.resolvePlan(target.app).pipe(Effect.map((recorded) => target.plan ?? recorded));
@@ -609,8 +607,8 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CT
         readAppEnvironment(target, names, { api: dockerApi, ctx: DOCKER_CTX }),
       noPlanError: (_app, operation) => makeUnavailable(operation),
       service: {
-        lifecycle: (plan, target, action) =>
-          postServiceLifecycle(plan, target, action, { api: dockerApi, ctx: DOCKER_CTX }),
+        restart: (plan, target) =>
+          postServiceLifecycle(plan, target, "restart", { api: dockerApi, ctx: DOCKER_CTX }),
         resume: (target, identity) =>
           postExactServiceLifecycle(target, identity, "start", { api: dockerApi, ctx: DOCKER_CTX }),
         suspend: (target, identity) =>
@@ -747,55 +745,13 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CT
       }),
       ...resolvedOps,
       cleanupOwnedResources: planState.cleanupOwnedResources,
-      destroy: Effect.fn("RuntimeProvider.destroy")(function* (target, destroyOptions) {
-        return yield* appliedPlans.resolveMutationPlan(target.app).pipe(
-          Effect.map((previous) => target.plan ?? previous),
-          Effect.flatMap((plan) =>
-            plan === undefined
-              ? Effect.succeed(DESTROY_NO_OP)
-              : planState.ownership.receiptsFor(plan).pipe(
-                  Effect.flatMap((adoptionReceipts) =>
-                    bringDown(plan, {
-                      adoptionReceipts,
-                      api: dockerApi,
-                      endpointNamespace: resolvedDockerHost,
-                      ctx: DOCKER_CTX,
-                      dialect: dockerLifecycleDialect,
-                      volumes: destroyOptions.volumes,
-                      ...(destroyOptions.purgeCaches === undefined
-                        ? {}
-                        : { purgeCaches: destroyOptions.purgeCaches }),
-                    }),
-                  ),
-                  Effect.tap(() => forgetAppliedPlanUnlessKept(appliedPlans, target.app, destroyOptions)),
-                  Effect.map(({ shutdownObservations, volumesRemoved, skipped }) => ({
-                    kind: "destroyed" as const,
-                    volumesRemoved,
-                    shutdownObservations,
-                    ...(skipped === undefined ? {} : { skipped }),
-                  })),
-                ),
-          ),
-        );
+      bringDown: Effect.fn("RuntimeProvider.bringDown")(function* (target, bringDownOptions) {
+        const previous = yield* appliedPlans.resolveMutationPlan(target.app);
+        const plan = target.plan ?? previous;
+        if (plan === undefined) return BRING_DOWN_NO_OP;
+        return yield* providerBringDown.app({ app: target.app, plan, options: bringDownOptions });
       }),
-      removeObservedService: Effect.fn("RuntimeProvider.removeObservedService")((observed) =>
-        appliedPlans.resolveMutationPlan(observed.app).pipe(
-          Effect.flatMap(
-            Effect.fnUntraced(function* (plan) {
-              const receipts =
-                observed.appRoot !== undefined && observed.nativeName !== undefined
-                  ? yield* planState.ownership.receiptsAt(observed.appRoot)
-                  : [];
-              return yield* removeObservedContainer(observed, {
-                api: dockerApi,
-                ctx: DOCKER_CTX,
-                dataRoot: options.userDataRoot ?? plan?.identity?.dataRoot,
-                receipts,
-              });
-            }),
-          ),
-        ),
-      ),
+      bringDownObserved: providerBringDown.observed,
       logs: (target, logOptions) =>
         Stream.unwrap(
           resolvePlan(target).pipe(

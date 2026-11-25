@@ -3,6 +3,7 @@ import { MessageWarnEvent, PostServiceStopEvent, PreServiceStopEvent } from "@la
 import {
   type AppPlan,
   type AppRef,
+  type ContainerBringDownReceipt,
   type ServiceName,
   type ServiceShutdownObservation,
   type StopAppResult,
@@ -27,6 +28,7 @@ import { withShutdownObservations } from "./shutdown-observations.ts";
 import { retireUnusedGpgAgentWorker } from "./start-gpg-agent.ts";
 import { retireUnusedHostProxyWorker } from "./start-host-proxy.ts";
 import { retireUnusedSshAgentWorker } from "./start-ssh-agent.ts";
+import { servicesTakenDown, withContainerReceipts } from "./stop-receipts.ts";
 
 /** The services a stop selects; omitted and empty selections both mean the whole app. */
 export const requestedStopServices = (
@@ -73,7 +75,8 @@ export const selectedStopRefusal = (
 };
 
 /** Containers of this app on this provider, matched by the plan's identity. */
-const ownedContainers = (plan: AppPlan, observed: ReadonlyArray<ServiceRuntimeInfo>) =>
+/** Observed containers of this app at its root on its provider, each addressable by native id. */
+export const ownedContainers = (plan: AppPlan, observed: ReadonlyArray<ServiceRuntimeInfo>) =>
   observed.filter(
     (service) =>
       service.app === plan.id &&
@@ -141,12 +144,12 @@ const retireWorkersForRemaining = Effect.fnUntraced(function* (
   };
   yield* retireUnusedSshAgentWorker(remainingPlan, app);
   yield* retireUnusedGpgAgentWorker(remainingPlan, app, { forward: true });
-  yield* retireUnusedHostProxyWorker(remainingPlan, app, provider.capabilities);
+  yield* retireUnusedHostProxyWorker(remainingPlan, app, provider.capabilities, "stop");
 });
 
 /**
- * Remove only the validated selected services' containers. Sibling containers, named volumes,
- * networking, and applied state stay. `applied` says whether the target has an applied record.
+ * Stop only the validated selected services' containers and keep them. Sibling containers, named
+ * volumes, networking, and applied state stay. `applied` says whether the target has an applied record.
  */
 export const stopSelectedAppServices = Effect.fn("AppOperation.stopSelection")(function* (
   services: ReadonlyArray<ServiceName>,
@@ -189,12 +192,21 @@ export const stopSelectedAppServices = Effect.fn("AppOperation.stopSelection")(f
   );
   const fileSync = yield* preflightSelectedStopFileSync(plan, ref, selected, absentServices, provider);
 
-  const servicesStopped: string[] = [];
+  const receipts: ContainerBringDownReceipt[] = [];
   const observationSources: Array<readonly ServiceShutdownObservation[] | undefined> = [];
   for (const service of Object.values(plan.services).reverse()) {
     if (!selected.has(String(service.name))) continue;
     const containers = owned.filter((observation) => observation.service === service.name);
-    if (containers.length === 0) continue;
+    // A container with no process left has nothing to stop, so a repeated stop changes nothing.
+    const idle = containers.filter((observation) => isIdleRunStatus(observation.status));
+    for (const container of idle)
+      receipts.push({
+        service: service.name,
+        ...(container.containerId === undefined ? {} : { containerId: container.containerId }),
+        action: "already-stopped",
+      });
+    const live = containers.filter((observation) => !isIdleRunStatus(observation.status));
+    if (live.length === 0) continue;
     const lifecycle = { appRef: ref, serviceName: service.name, providerId: plan.provider };
     yield* events.publish(
       PreServiceStopEvent.make({
@@ -203,18 +215,10 @@ export const stopSelectedAppServices = Effect.fn("AppOperation.stopSelection")(f
         timestamp: DateTime.nowUnsafe(),
       }),
     );
-    for (const container of containers) {
-      const result = yield* provider.removeObservedService(container);
-      observationSources.push(result.shutdownObservations);
-      switch (result.kind) {
-        case "removed":
-          if (!servicesStopped.includes(String(service.name))) servicesStopped.push(String(service.name));
-          break;
-        case "absent":
-          break;
-        default:
-          return result satisfies never;
-      }
+    for (const container of live) {
+      const { shutdownObservations, ...receipt } = yield* provider.bringDownObserved(container, "stop");
+      observationSources.push(shutdownObservations);
+      receipts.push(receipt);
     }
     yield* events.publish(
       PostServiceStopEvent.make({
@@ -225,6 +229,7 @@ export const stopSelectedAppServices = Effect.fn("AppOperation.stopSelection")(f
     );
   }
 
+  const servicesStopped = servicesTakenDown(receipts);
   const keptRunning = new Set([...remaining].filter((name) => up.has(name)));
   yield* warnRunningDependents(plan, new Set(servicesStopped), keptRunning);
 
@@ -239,13 +244,16 @@ export const stopSelectedAppServices = Effect.fn("AppOperation.stopSelection")(f
   yield* retireWorkersForRemaining(plan, ref, remaining, provider);
 
   return withShutdownObservations(
-    {
-      app: plan.name,
-      outcome: servicesStopped.length > 0 ? ("stopped" as const) : ("unchanged" as const),
-      runtimeState,
-      servicesStopped,
-      servicesKeptRunning: [...keptRunning].sort(),
-    },
+    withContainerReceipts(
+      {
+        app: plan.name,
+        outcome: servicesStopped.length > 0 ? ("stopped" as const) : ("unchanged" as const),
+        runtimeState,
+        servicesStopped,
+        servicesKeptRunning: [...keptRunning].sort(),
+      },
+      receipts,
+    ),
     ...observationSources,
   );
 });

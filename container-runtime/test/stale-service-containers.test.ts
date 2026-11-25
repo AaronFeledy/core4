@@ -11,7 +11,7 @@ import {
 import { DateTime, Effect } from "effect";
 import type { EngineHttpRequest, EngineHttpResponse } from "../src/engine-api.ts";
 import { DATA_HELPER_ROLE, ROLE_LABEL } from "../src/labels.ts";
-import { bringDown } from "../src/podman/bring-down.ts";
+import { bringDown, stopAppContainers } from "../src/podman/bring-down.ts";
 import {
   type LabeledServiceContainer,
   listLabeledServiceContainers,
@@ -393,6 +393,49 @@ describe("bringDown stale-name sweep", () => {
     expect(result.shutdownObservations.filter((observation) => observation.service === "web")).toEqual([
       expect.objectContaining({ containerId: "stale-web-id", exitCode: 137, oomKilled: true }),
     ]);
+  });
+});
+
+describe("stopAppContainers", () => {
+  test("stops stale-named and planned containers by id and keeps every resource", async () => {
+    // Given an old-named web container and a db container at its planned name.
+    const plan = planOf();
+    const expectedDb = serviceContainerName(plan, "db");
+    const fake = makeApi({
+      list: [{ Id: "stale-web-id", Names: ["/lando-stale-app-web-old"], Labels: ownedLabels(plan, "web") }],
+      inspect: (name) => {
+        if (name === expectedDb)
+          return {
+            status: 200,
+            body: JSON.stringify({
+              Id: "db-id",
+              Name: `/${expectedDb}`,
+              Config: { Labels: ownedLabels(plan, "db") },
+            }),
+          };
+        if (name === "stale-web-id" || name === "db-id")
+          return { status: 200, body: JSON.stringify({ State: { Status: "exited", ExitCode: 0 } }) };
+        return { status: 404, body: "{}" };
+      },
+      onRequest: (request) =>
+        request.method === "POST" && request.path === "/containers/db-id/stop"
+          ? { status: 304, body: "" }
+          : undefined,
+    });
+    // When
+    const result = await Effect.runPromise(stopAppContainers(plan, { api: fake.api, ctx }));
+    // Then each owned container is stopped once and reported, and nothing is deleted.
+    expect(result.receipts).toEqual([
+      { service: ServiceName.make("web"), containerId: "stale-web-id", action: "stopped" },
+      { service: ServiceName.make("db"), containerId: "db-id", action: "already-stopped" },
+    ]);
+    expect(result.changed).toBe(true);
+    expect(
+      fake.calls.filter((call) => call.method !== "GET").map((call) => `${call.method} ${call.path}`),
+    ).toEqual(["POST /containers/stale-web-id/stop", "POST /containers/db-id/stop"]);
+    expect(
+      fake.calls.some((call) => call.path.startsWith("/networks/") || call.path.startsWith("/volumes")),
+    ).toBe(false);
   });
 });
 

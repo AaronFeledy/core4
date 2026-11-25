@@ -6,7 +6,7 @@ import { AppLifecycleEventName } from "./landofile-events.ts";
 import { CheckResult } from "./networking.ts";
 import { OwnedResourcesCleanupResult } from "./resource-ownership.ts";
 import { ServiceInfo, StartedService } from "./service-info.ts";
-import { ServiceShutdownObservation } from "./service-shutdown.ts";
+import { ContainerBringDownReceipt, ServiceShutdownObservation } from "./service-shutdown.ts";
 
 // ==== Lifecycle results
 // Outcomes returned when an App handle changes its services or resources.
@@ -84,7 +84,7 @@ export type StartAppResult = typeof StartAppResult.Type;
 
 export const StopAppOutcome = Schema.Literals(["stopped", "unchanged"]).annotate({
   description:
-    "`stopped` when the operation stopped or removed anything, or `unchanged` when there was nothing to stop.",
+    "`stopped` when the operation stopped anything, or `unchanged` when there was nothing left running to stop.",
 });
 export type StopAppOutcome = typeof StopAppOutcome.Type;
 
@@ -104,6 +104,10 @@ export const StopAppResult = Schema.Struct({
   }),
   servicesStopped: Schema.Array(Schema.String).annotate({
     description: "Names of the services stopped by the operation.",
+  }),
+  containers: Schema.optionalKey(Schema.Array(ContainerBringDownReceipt)).annotate({
+    description:
+      "What the stop did to each container it addressed. Stop keeps containers, so actions are `stopped`, `already-stopped`, or `absent`; `removed` appears only for the retained file-sync writers of an unfinished accelerated start on Windows. Omitted when the provider reported no containers.",
   }),
   servicesKeptRunning: Schema.optionalKey(Schema.Array(Schema.String)).annotate({
     description: "Names of services that stayed running after a selected stop. Omitted for whole-app stop.",

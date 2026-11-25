@@ -23,10 +23,10 @@ test.each([false, true])(
     let mutations = 0;
     const provider = {
       ...TestRuntimeProvider,
-      destroy: () =>
+      bringDown: () =>
         Effect.sync(() => {
           mutations += 1;
-          return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
+          return { kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } };
         }),
       removeVolume: () =>
         Effect.sync(() => {

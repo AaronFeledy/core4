@@ -137,7 +137,7 @@ describe("docker healthcheck start_interval", () => {
       } finally {
         await Effect.runPromise(
           provider
-            .destroy({ app: appId }, { volumes: true })
+            .bringDown({ app: appId }, { containers: "remove", volumes: true })
             .pipe(Effect.provide(makeTestStateStore().layer)),
         );
       }

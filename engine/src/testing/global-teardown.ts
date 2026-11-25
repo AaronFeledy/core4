@@ -18,8 +18,9 @@ import {
 } from "@lando/sdk/schema";
 import type { LandoEvent, RuntimeProviderShape } from "@lando/sdk/services";
 import {
-  type DestroyOptions,
-  type DestroyOutcome,
+  type BringDownOptions,
+  type BringDownOutcome,
+  type ContainerDisposition,
   EventService,
   FileSystem,
   GlobalAppService,
@@ -79,7 +80,8 @@ export const globalTeardownHarness = async (
     readonly plan?: AppPlan;
     readonly orphanRoot?: AbsolutePath;
     readonly volumes?: ReadonlyArray<VolumeInfo>;
-    readonly destroyOutcome?: DestroyOutcome;
+    readonly destroyOutcome?: BringDownOutcome;
+    readonly stopOutcome?: BringDownOutcome;
     readonly availability?: Effect.Effect<boolean, ProviderUnavailableError>;
     readonly status?: RuntimeProviderShape["getStatus"];
     readonly inspectAppliedFileSync?: RuntimeProviderShape["inspectAppliedFileSync"];
@@ -102,9 +104,11 @@ export const globalTeardownHarness = async (
   const root = AbsolutePath.make(paths.globalAppRoot);
   const calls: string[] = [];
   const events: LandoEvent[] = [];
-  const destroyOptions: DestroyOptions[] = [];
+  const destroyOptions: BringDownOptions[] = [];
   const destroyed: AppPlan[] = [];
   const removed: ServiceRuntimeInfo[] = [];
+  const stopped: ServiceRuntimeInfo[] = [];
+  const stoppedPlans: AppPlan[] = [];
   const eventRoots: string[] = [];
   const selectedRoots: string[] = [];
   const routeRoots: string[] = [];
@@ -166,32 +170,57 @@ export const globalTeardownHarness = async (
         calls.push("listVolumes");
         return input.volumes ?? [];
       }),
-    destroy: (target: { readonly plan?: AppPlan }, options: DestroyOptions) =>
-      Effect.sync(() => {
-        calls.push("destroy");
+    bringDown: (target: { readonly plan?: AppPlan }, options: BringDownOptions) =>
+      Effect.sync((): BringDownOutcome => {
+        calls.push("bringDown");
         destroyOptions.push(options);
+        if (options.containers === "stop") {
+          if (target.plan !== undefined) stoppedPlans.push(target.plan);
+          return (
+            input.stopOutcome ?? {
+              kind: "stopped",
+              containers: Object.values(target.plan?.services ?? {}).map((service) => ({
+                service: service.name,
+                containerId: `${service.name}-container`,
+                action: "stopped" as const,
+              })),
+            }
+          );
+        }
         if (target.plan !== undefined) destroyed.push(target.plan);
-        return input.destroyOutcome ?? { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
+        return (
+          input.destroyOutcome ?? { kind: "removed", containers: [], volumesRemoved: { data: 0, cache: 0 } }
+        );
       }),
-    removeObservedService: Effect.fnUntraced(function* (service: ServiceRuntimeInfo) {
-      calls.push("removeObservedService");
+    bringDownObserved: Effect.fnUntraced(function* (
+      service: ServiceRuntimeInfo,
+      containers: ContainerDisposition,
+    ) {
+      calls.push("bringDownObserved");
       if (input.stopFailure)
         return yield* Effect.fail(
           new ProviderUnavailableError({
-            message: "remove failed",
+            message: "bring-down failed",
             providerId: "lando",
-            operation: "removeObservedService",
-            remediation: "Remove failed",
+            operation: "bringDownObserved",
+            remediation: "Bring-down failed",
           }),
         );
+      const containerId = service.containerId;
+      if (containers === "stop") {
+        if (containerId === undefined) return { service: service.service, action: "absent" as const };
+        if (service.status !== "running")
+          return { service: service.service, containerId, action: "already-stopped" as const };
+        stopped.push(service);
+        return { service: service.service, containerId, action: "stopped" as const };
+      }
       removed.push(service);
-      return { kind: "removed" as const };
+      return { service: service.service, action: "removed" as const };
     }),
     removeVolume: () =>
       Effect.sync(() => {
         calls.push("removeVolume");
       }),
-    stop: () => Effect.die("selected teardown must remove the observed container"),
   };
   const fileSystem = await Effect.runPromise(FileSystem.pipe(Effect.provide(BunFileSystem.layer)));
   const router = RouterService.of({
@@ -337,6 +366,8 @@ export const globalTeardownHarness = async (
     destroyOptions,
     destroyed,
     removed,
+    stopped,
+    stoppedPlans,
     eventRoots,
     selectedRoots,
     routeRoots,

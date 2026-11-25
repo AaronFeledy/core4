@@ -108,9 +108,9 @@ export const makeHarness = (
   const provider: RuntimeProviderShape = {
     ...TestRuntimeProvider,
     id: "lando",
-    destroy: () =>
+    bringDown: () =>
       (options.destroyEffect ?? Effect.void).pipe(
-        Effect.as({ kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } }),
+        Effect.as({ kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } }),
       ),
     list:
       options.list ??

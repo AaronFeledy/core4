@@ -24,6 +24,7 @@ import { refuseRetainedRouteConsumers, retainedRouteReferences } from "./selecte
 import type { StartManagedScope } from "./start-file-sync.ts";
 import { markStartMutation } from "./start-incomplete-notice.ts";
 import { projectDebuggerOverlay, withAcquiredStartOverlays } from "./start-overlays.ts";
+import { ownedContainers } from "./stop-selection.ts";
 
 export type SelectedRelaunchOperation = "restart" | "rebuild";
 
@@ -143,6 +144,7 @@ export const relaunchSelectedServices = Effect.fnUntraced(function* (
             });
             yield* refuseRetainedRouteConsumers({ retained, runtimePlan, proof: routeUrls, operation });
             const environment = yield* openDatabaseCredentialSession(runtimePlan);
+            const owned = ownedContainers(target.plan, yield* provider.list({ app: target.plan.id }));
             for (const service of [...services].reverse()) {
               if (signal?.aborted === true) return yield* Effect.interrupt;
               yield* events.publish(
@@ -155,9 +157,8 @@ export const relaunchSelectedServices = Effect.fnUntraced(function* (
                 }),
               );
               // A planned service whose container is already gone needs no stop.
-              yield* provider
-                .stop({ app: target.plan.id, service: service.name, plan: runtimePlan })
-                .pipe(Effect.catchTag("ServiceNotFoundError", () => Effect.void));
+              for (const container of owned.filter((observed) => observed.service === service.name))
+                yield* provider.bringDownObserved(container, "stop");
               yield* events.publish(
                 PostServiceStopEvent.make({
                   eventName: "post-service-stop",

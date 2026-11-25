@@ -1,8 +1,5 @@
 import { type GlobalMutationServices, withGlobalMutation } from "@lando/engine/global-app/mutation";
-import {
-  recordGlobalResourceCleanup,
-  recordGlobalRouteCleanup,
-} from "@lando/engine/global-app/reconciliation";
+import { recordGlobalRouteCleanup } from "@lando/engine/global-app/reconciliation";
 import {
   executeGlobalStopSelection,
   executeGlobalTeardown,
@@ -14,7 +11,13 @@ import {
 import { type EventError, GlobalAppError, type ProxyError } from "@lando/sdk/errors";
 
 import { PostGlobalStopEvent, PreGlobalStopEvent } from "@lando/sdk/events";
-import { AbsolutePath, type ProviderId, StopAppOutcome, StopAppResult } from "@lando/sdk/schema";
+import {
+  AbsolutePath,
+  ContainerBringDownReceipt,
+  type ProviderId,
+  StopAppOutcome,
+  StopAppResult,
+} from "@lando/sdk/schema";
 import { EventService, FileSystem, GlobalAppService, RouterService } from "@lando/sdk/services";
 import { DateTime, Effect, Layer, Schema } from "effect";
 import { makeGlobalAppServiceForRoot } from "../global-app/service.ts";
@@ -38,6 +41,10 @@ export const GlobalStopResultSchema = Schema.Struct({
     description: "Whether the global app has a materialized Landofile.",
   }),
   servicesStopped: StopAppResult.fields.servicesStopped,
+  containers: Schema.Array(ContainerBringDownReceipt).annotate({
+    description:
+      "What the stop did to each global service container: stopped, already-stopped, or absent. Stop never removes one.",
+  }),
   shutdownObservations: StopAppResult.fields.shutdownObservations,
 });
 
@@ -63,7 +70,7 @@ export type GlobalStopServices =
   | Effect.Services<ReturnType<typeof executeGlobalTeardown>>
   | Effect.Services<ReturnType<typeof resolveGlobalStopSelection>>
   | Effect.Services<ReturnType<typeof executeGlobalStopSelection>>
-  | Effect.Services<ReturnType<typeof recordGlobalResourceCleanup>>
+  | Effect.Services<ReturnType<typeof recordGlobalRouteCleanup>>
   | EventService
   | RouterService;
 
@@ -78,14 +85,26 @@ export const globalStop = Effect.fn("GlobalStop.stop")(
         // A skipped withdrawal proves nothing, so route obligations stay pending.
         if (withdrawal.kind === "withdrawn") yield* recordGlobalRouteCleanup();
       }
-      return { app: "global", outcome: "unchanged", materialized: loaded.materialized, servicesStopped: [] };
+      return {
+        app: "global",
+        outcome: "unchanged",
+        materialized: loaded.materialized,
+        servicesStopped: [],
+        containers: [],
+      };
     }
     const selection = options.services?.length
       ? yield* resolveGlobalStopSelection(loaded, options.services)
       : undefined;
     if (selection?.services.length === 0) {
       yield* executeGlobalStopSelection(loaded, selection);
-      return { app: "global", outcome: "unchanged", materialized: loaded.materialized, servicesStopped: [] };
+      return {
+        app: "global",
+        outcome: "unchanged",
+        materialized: loaded.materialized,
+        servicesStopped: [],
+        containers: [],
+      };
     }
     const events = yield* EventService;
     const app = globalTeardownAppRef(loaded);
@@ -115,17 +134,15 @@ export const globalStop = Effect.fn("GlobalStop.stop")(
           ReturnType<typeof executeGlobalTeardown | typeof executeGlobalStopSelection>
         > & { readonly routes?: RouteWithdrawal["kind"] } =
           selection === undefined
-            ? yield* executeGlobalTeardown(loaded, { intent: "stop", volumes: false, removeState: false })
+            ? yield* executeGlobalTeardown(loaded, { intent: "stop" })
             : yield* executeGlobalStopSelection(loaded, selection);
         if (selection === undefined) {
           // An idle teardown already withdrew routes; withdrawing again would repeat its warning.
           const withdrawal =
             receipt.routes ?? (yield* withdrawOwnerRoutes(routeOwnerFromGlobalTeardown(loaded))).kind;
-          // Cleanup proof covers routes, so a skipped withdrawal leaves every obligation pending.
-          if (withdrawal === "withdrawn")
-            yield* "cleanup" in receipt && receipt.cleanup === "routes"
-              ? recordGlobalRouteCleanup()
-              : recordGlobalResourceCleanup();
+          // Stop keeps containers, so it proves route cleanup only: pending container removals stay
+          // pending for a later destroy, and a skipped withdrawal proves nothing at all.
+          if (withdrawal === "withdrawn") yield* recordGlobalRouteCleanup();
         }
         return withShutdownObservations(
           {
@@ -133,6 +150,7 @@ export const globalStop = Effect.fn("GlobalStop.stop")(
             outcome: receipt.changed ? ("stopped" as const) : ("unchanged" as const),
             materialized: loaded.materialized,
             servicesStopped: receipt.services,
+            containers: "containers" in receipt ? receipt.containers : [],
           },
           receipt.shutdownObservations,
         );

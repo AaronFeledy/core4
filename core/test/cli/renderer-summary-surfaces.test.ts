@@ -60,9 +60,9 @@ describe("uninstall summary", () => {
         detail: "Remove Lando-managed runtime bundles when present.",
       },
       {
-        id: "ca-trust",
-        label: "CA trust-store changes",
-        target: "Lando local CA trust entry",
+        id: "local-ca:trust",
+        label: "local CA trust",
+        target: "/home/user/.local/share/mkcert",
         destructive: false,
         status: "manual",
         detail: "Review entries; proxy token=[redacted] preserved.",

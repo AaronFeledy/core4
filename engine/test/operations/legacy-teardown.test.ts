@@ -22,6 +22,7 @@ test.each(["stop", "destroy"] as const)(
     };
     harness.applied.push(scratch);
     harness.containers.add(scratch.id);
+    harness.running.add(scratch.id);
     try {
       await Effect.runPromise(
         Effect.gen(function* () {
@@ -30,9 +31,12 @@ test.each(["stop", "destroy"] as const)(
         }).pipe(Effect.provide(harness.layer)),
       );
       expect(harness.applied.map((plan) => plan.id)).toEqual(
-        command === "stop" ? [current.id, scratch.id] : [scratch.id],
+        command === "stop" ? [stale.id, current.id, scratch.id] : [scratch.id],
       );
-      expect([...harness.containers]).toEqual([scratch.id]);
+      expect([...harness.containers]).toEqual(
+        command === "stop" ? [stale.id, current.id, scratch.id] : [scratch.id],
+      );
+      expect([...harness.running]).toEqual([scratch.id]);
     } finally {
       rmSync(harness.userDataRoot, { recursive: true, force: true });
     }
@@ -40,7 +44,7 @@ test.each(["stop", "destroy"] as const)(
 );
 
 test.each([false, true])(
-  "stop retires the stale name and stops the current realization while keeping data (with plan: %s)",
+  "stop stops both names and keeps their containers, records, and data (with plan: %s)",
   async (withPlan) => {
     const harness = fixture();
     try {
@@ -51,8 +55,9 @@ test.each([false, true])(
       );
       expect(result.app).toBe(current.name);
       expect(result.outcome).toBe("stopped");
-      expect([...harness.containers]).toEqual([]);
-      expect(harness.applied.map((plan) => plan.id)).toEqual([current.id]);
+      expect([...harness.running]).toEqual([]);
+      expect([...harness.containers]).toEqual([stale.id, current.id]);
+      expect(harness.applied.map((plan) => plan.id)).toEqual([stale.id, current.id]);
       expect([...harness.volumes]).toEqual([stale.id, current.id]);
     } finally {
       rmSync(harness.userDataRoot, { recursive: true, force: true });
@@ -81,8 +86,11 @@ test.each(["stop", "destroy"] as const)(
         _tag: "Success",
         success: { outcome: command === "stop" ? "stopped" : "destroyed" },
       });
-      expect(harness.applied).toEqual([]);
-      expect([...harness.containers]).toEqual([]);
+      expect(harness.applied.map((plan) => plan.id)).toEqual(
+        command === "stop" ? [stale.id, current.id] : [],
+      );
+      expect([...harness.containers]).toEqual(command === "stop" ? [stale.id, current.id] : []);
+      expect([...harness.running]).toEqual([]);
     } finally {
       rmSync(harness.userDataRoot, { recursive: true, force: true });
     }
@@ -160,8 +168,11 @@ test.each(["stop", "destroy"] as const)(
         withResolvedCwd(root, operation).pipe(Effect.provide(harness.layer)),
       );
       expect(result.app).toBe(current.name);
-      expect(harness.applied.map((plan) => plan.id)).toEqual(command === "stop" ? [current.id] : []);
-      expect([...harness.containers]).toEqual([]);
+      expect(harness.applied.map((plan) => plan.id)).toEqual(
+        command === "stop" ? [stale.id, current.id] : [],
+      );
+      expect([...harness.containers]).toEqual(command === "stop" ? [stale.id, current.id] : []);
+      expect([...harness.running]).toEqual([]);
     } finally {
       rmSync(root, { recursive: true, force: true });
       rmSync(harness.userDataRoot, { recursive: true, force: true });

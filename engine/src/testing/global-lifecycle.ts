@@ -14,6 +14,7 @@ import {
 import {
   AppPlanner,
   ConfigService,
+  type ContainerDisposition,
   FileSystem,
   GlobalAppService,
   PathsService,
@@ -41,6 +42,7 @@ export const makeGlobalLifecycleFixture = (
   const containers = new Map<string, ServiceRuntimeInfo>();
   const missingOverrides = new Map<string, Partial<ServiceRuntimeFields> | ServiceRunObservation>();
   const removed: string[] = [];
+  const stopped: string[] = [];
   const published: string[][] = [];
   const planned: Array<Parameters<AppPlanner["Service"]["plan"]>[0]> = [];
   let applied: AppPlan | undefined;
@@ -91,17 +93,26 @@ export const makeGlobalLifecycleFixture = (
           mounts: { status: "missing" },
         };
       }),
-    removeObservedService: (row: ServiceRuntimeInfo) =>
+    bringDownObserved: (row: ServiceRuntimeInfo, disposition: ContainerDisposition) =>
       Effect.sync(() => {
         const current = containers.get(row.service);
-        if (current?.containerId !== row.containerId || current === undefined)
-          return { kind: "absent" as const };
+        const containerId = row.containerId;
+        if (containerId === undefined || current?.containerId !== containerId)
+          return { service: row.service, action: "absent" as const };
+        if (disposition === "stop") {
+          if (current.status !== "running")
+            return { service: row.service, containerId, action: "already-stopped" as const };
+          const { health: _health, healthCheckedAt: _checkedAt, ...fields } = current;
+          containers.set(row.service, { ...fields, status: "exited", publications: { status: "missing" } });
+          stopped.push(String(row.service));
+          return { service: row.service, containerId, action: "stopped" as const };
+        }
         containers.delete(row.service);
         removed.push(String(row.service));
-        return { kind: "removed" as const };
+        return { service: row.service, containerId, action: "removed" as const };
       }),
     ensureReady: Effect.die("Policy operations must not initialize providers"),
-    destroy: () => Effect.die("Selected cleanup must retain applied state and volumes"),
+    bringDown: () => Effect.die("Selected cleanup must retain applied state and volumes"),
   };
   const registry = makeTestRuntimeProviderRegistry({
     list: Effect.succeed([providerId]),
@@ -198,6 +209,7 @@ export const makeGlobalLifecycleFixture = (
     containers,
     missingOverrides,
     removed,
+    stopped,
     published,
     planned,
     planFor,

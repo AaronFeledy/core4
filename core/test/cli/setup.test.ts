@@ -498,6 +498,7 @@ describe("meta:setup command", () => {
       setup: () =>
         Effect.sync(() => {
           calls.push("ca");
+          return { trustStores: [] };
         }),
     };
     const proxy = {
@@ -534,6 +535,79 @@ describe("meta:setup command", () => {
     );
 
     expect(calls).toEqual(["provider", "ca", "proxy", "shell", "file-sync"]);
+  });
+
+  test("returns and renders every trust store the certificate authority reports", async () => {
+    // Given: setup trusted the system store and left Homebrew's bundle untrusted
+    const trustStores = [
+      {
+        id: "system",
+        name: "System trust store",
+        location: "/etc/ssl/cert.pem",
+        state: "trusted",
+        changed: true,
+      },
+      {
+        id: "homebrew",
+        name: "Homebrew CA bundle",
+        location: "/opt/homebrew/etc/ca-certificates/cert.pem",
+        state: "untrusted",
+        reason: "refresh-failed",
+        remediation: "Fix the Homebrew error, then run `lando setup` again.",
+        changed: false,
+      },
+    ] as const;
+    const provider = {
+      ...TestRuntimeProvider,
+      id: "lando",
+      capabilities: { ...TestRuntimeProvider.capabilities, bindMountPerformance: "native" as const },
+      setup: () => Effect.void,
+    };
+    const registry = makeTestRuntimeProviderRegistry({
+      list: Effect.succeed([ProviderId.make("lando")]),
+      capabilities: Effect.succeed(provider.capabilities),
+      select: () => Effect.succeed(provider),
+    });
+    const ca = { ...makeTestCertificateAuthority(), setup: () => Effect.succeed({ trustStores }) };
+
+    // When
+    const result = await Effect.runPromise(
+      setupSpec.run({ installDir: "/opt/lando" }).pipe(
+        Effect.provide(
+          buildSetupLayersWithHostIntegrations(registry, {
+            ca,
+            proxy: makeTestRouterService(),
+            ssh: makeTestSshService(),
+            fileSync: TestFileSyncEngine,
+          }),
+        ),
+      ),
+    );
+
+    // Then
+    expect(result.trustStores).toEqual(trustStores);
+    expect(Schema.is(SetupResultSchema)(result)).toBe(true);
+    expect(
+      setupSpec
+        .render?.(result)
+        ?.split("\n")
+        .filter((line) => line.startsWith("trust:")),
+    ).toEqual([
+      "trust: System trust store (/etc/ssl/cert.pem): trusted (updated)",
+      "trust: Homebrew CA bundle (/opt/homebrew/etc/ca-certificates/cert.pem): untrusted",
+    ]);
+    const decorated =
+      setupSpec.render?.(result, undefined, {
+        mode: "lando",
+        format: "text",
+        columns: 160,
+        isTTY: true,
+        noColor: true,
+      }) ?? "";
+    expect(decorated).toContain("trust");
+    expect(decorated).toContain("/opt/homebrew/etc/ca-certificates/cert.pem");
+    expect(decorated).toContain("Fix the Homebrew error, then run `lando setup` again.");
+    expect(decorated).toContain("untrusted");
   });
 
   test("writes already-satisfied evidence for every completed setup step", async () => {
@@ -1160,11 +1234,11 @@ describe("meta:setup command", () => {
         id: "podman",
         appliedPlans: Effect.succeed([globalPlan, userPlan]),
         list: () => Effect.succeed([]),
-        destroy: () =>
+        bringDown: () =>
           Effect.sync(() => {
             calls.push("retire");
             globalApplied = false;
-            return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
+            return { kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } };
           }),
       };
       const registry = makeTestRuntimeProviderRegistry({
@@ -1457,6 +1531,7 @@ describe("meta:setup command", () => {
       setup: (options: unknown) =>
         Effect.sync(() => {
           caSetupOptions.push(options);
+          return { trustStores: [] };
         }),
     });
 
@@ -2506,6 +2581,7 @@ describe("meta:setup command", () => {
         Effect.sync(() => {
           caSetupOptions.push(opts);
           calls.push("ca");
+          return { trustStores: [] };
         }),
     };
     const proxy = {
@@ -2875,7 +2951,10 @@ describe("meta:setup command", () => {
               buildSetupLayersWithHostIntegrations(
                 registry,
                 {
-                  ca: { ...makeTestCertificateAuthority(), setup: () => observe },
+                  ca: {
+                    ...makeTestCertificateAuthority(),
+                    setup: () => Effect.as(observe, { trustStores: [] }),
+                  },
                   proxy: { ...makeTestRouterService(), setup: () => observe },
                   ssh: { ...makeTestSshService(), setup: () => observe },
                   fileSync: { ...TestFileSyncEngine, setup: () => observe },

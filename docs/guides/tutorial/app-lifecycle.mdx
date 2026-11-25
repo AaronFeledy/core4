@@ -120,7 +120,7 @@ On a fresh app, `result.servicesStarted` lists `db`, and `result.servicesStayedD
 
 ## Stop one service
 
-Stop `db` while `app` keeps running. Repeat `-s` (or `--service`) to name more than one service. Lando removes only those containers; the rest keep running, and named volumes and the applied state stay.
+Stop `db` while `app` keeps running. Repeat `-s` (or `--service`) to name more than one service. Lando stops only those containers and keeps them; the rest keep running, and named volumes and the applied state stay.
 
 ```sh
 lando start
@@ -163,20 +163,22 @@ lando start
 
 `lando rebuild` and `lando destroy` ask for confirmation first. Pass `-y` to skip the prompt in scripts.
 
-Bare `restart` stops then starts, so it removes and recreates containers. It is not an in-place process restart. `lando start` applies Landofile changes such as command, environment, image, and mounts, and keeps unchanged containers and named volumes. When it replaces a container, it prints the reason and names any anonymous volume that went with it. A `build.app` step runs again in every new container, so `stop` then `start` and bare `restart` both rerun those steps, while a `start` that keeps a container reports them as cached. Reach for `rebuild` when you need a forced image pull, or a forced rerun of build steps in a container that would otherwise stay. `start` does not take `-y`.
+`lando stop` stops the app's containers and keeps them. The next `lando start` starts each one again in place, so files written inside a container, its anonymous volumes, and its `build.app` results are still there, and those steps report as cached. `lando start` also applies Landofile changes such as command, environment, image, and mounts: it replaces only a container whose settings changed, prints the reason, and names any anonymous volume that went with it. Bare `restart` is the same `stop` then `start` in one step, with the same replacement notices. Reach for `rebuild` when you need a forced image pull, fresh containers, or a forced rerun of build steps. `start` does not take `-y`.
+
+Because a stopped container stays in place, a service with a Compose `restart: always` policy can start again on its own when the container runtime or your machine restarts. Use `restart: unless-stopped` to keep a stopped app stopped.
 
 `lando restart --service web` (or `-s`, repeatable) restarts only the services you name and brings each one back the way `lando start` would. An unchanged container restarts in place; a container whose settings changed, or that is missing, is replaced or created, and Lando prints why, naming any anonymous volume that went with it. Route changes on the named services publish with the restart. It refuses only when the app was never started or was destroyed. See [Restart or rebuild one service](../cli/everyday-commands.mdx#restart-or-rebuild-one-service) for the full rules and the `--format=json` fields.
 
-`lando stop` withdraws the app's published hostnames along with its containers, and the next `lando start` publishes them again. `lando restart` and `lando rebuild` keep them published, even when the start that follows fails. A selected `restart -s` or `rebuild -s` publishes route changes on the services it applies and leaves the other running services' published routes untouched. `lando stop -s db` stops only `db`; `app` keeps running, named volumes stay, and the next `lando start` brings `db` back without restarting `app`.
+`lando stop` withdraws the app's published hostnames when it stops the containers, and the next `lando start` publishes them again. `lando restart` and `lando rebuild` keep them published, even when the start that follows fails. A selected `restart -s` or `rebuild -s` publishes route changes on the services it applies and leaves the other running services' published routes untouched. `lando stop -s db` stops only `db`; `app` keeps running, named volumes stay, and the next `lando start` brings `db` back without restarting `app`.
 
 ```sh
-# Stop the app's containers but keep named volumes and state
+# Stop the app's containers and keep them, their data, and named volumes
 lando stop
 
 # Bring the app up and apply create-config changes. Named volumes stay
 lando start
 
-# Stop then start in one step
+# Stop then start in one step, keeping unchanged containers
 lando restart
 
 # Force a pull and build refresh, then recreate containers
@@ -261,7 +263,7 @@ Lando removes a container only when its labels prove it belongs to this app. If 
 
 ## Read what stop reports
 
-`lando stop` sends each container its stop signal, waits out the container's stop grace period, and then kills whatever is still running. Before it removes a container, Lando asks the runtime how that container ended and repeats the answer beside the service name in the `stopped:` or `destroyed:` line, for example `app (exit 143)`. Catalog services such as `node` and `postgres` run under a small init process by default that forwards the stop signal to your command, so a server that handles SIGTERM gets the chance to finish in-flight work; see [Stop cleanly](../services/node.mdx#stop-cleanly) for how commands, wrappers, and `init: false` affect that.
+`lando stop` sends each container its stop signal, waits out the container's stop grace period, and then kills whatever is still running. Once a container has stopped, Lando asks the runtime how it ended and repeats the answer beside the service name in the `stopped:` line, for example `app (exit 143)`. `lando destroy` does the same before it removes each container and prints the answers in its `destroyed:` line. Catalog services such as `node` and `postgres` run under a small init process by default that forwards the stop signal to your command, so a server that handles SIGTERM gets the chance to finish in-flight work; see [Stop cleanly](../services/node.mdx#stop-cleanly) for how commands, wrappers, and `init: false` affect that.
 
 | Reported | What the runtime said |
 | --- | --- |
@@ -269,9 +271,13 @@ Lando removes a container only when its labels prove it belongs to this app. If 
 | `exit 143` | Conventionally 128 + 15 for SIGTERM, but an application can also return 143 itself. The code alone does not prove how it ended. |
 | `exit 137` | Conventionally 128 + 9 for SIGKILL, but an application can also return 137 itself. The code alone cannot distinguish an expired grace period, an OOM kill, an external signal, or an application-selected status. |
 | `exit 137, OOMKilled` | The runtime explicitly reported an out-of-memory kill. Lando also prints a warning on stderr. |
-| `container absent`, `state unavailable`, `not exited`, `inspect failed` | No terminal state was available: the container was already gone, its state could not be read, it was not in an exited state, or inspection failed. Only `inspect failed` prints a warning. Removal still proceeds. |
+| `container absent`, `state unavailable`, `not exited`, `inspect failed` | No terminal state was available: the container was already gone, its state could not be read, it was not in an exited state, or inspection failed. Only `inspect failed` prints a warning. The stop or removal still proceeds. |
 
 These are facts the runtime reported, not a verdict. Exit `0` does not prove your application flushed its data, and exit `137` alone does not mean Lando forced the stop. A provider that does not observe shutdown lists bare service names instead; the result is the same `stopped` or `destroyed` outcome either way. If you need proof that your own shutdown handler ran, have the handler record its completion somewhere you can check, such as a log line or a file in a named volume.
+
+Stop an app that is already stopped and Lando reports `unchanged: app-lifecycle-demo - already stopped: app, db`. With `--format=json`, `result.outcome` is `unchanged` and `result.containers` lists what happened to each container: `action` is `stopped`, `already-stopped`, or `absent` when the service had no container, with the service name and the `containerId` it acted on.
+
+A stopped container runs nothing, so `lando exec`, `lando ssh`, tooling commands, and database commands fail with `Service app is not running.` and tell you to run `lando start`. `lando info` still lists each stopped service with status `stopped`, and `lando logs` still shows what the containers printed before they stopped.
 
 `lando stop --format=json` and `lando destroy -y --format=json` carry the same facts under `result.shutdownObservations`. Each entry names the `appId`, `providerId`, and `service`, the exact `containerId` when it was known, and a `status`: `exited` with an optional integer `exitCode`, or `unknown` with a `reason` of `container-absent`, `state-unavailable`, `not-exited`, or `inspect-failed`. A missing `exitCode` means the runtime did not report one; it is never read as `0`. `oomKilled` appears only when the runtime reported it. The field is omitted entirely when the provider supplied no observations.
 
@@ -281,7 +287,7 @@ Database data stores, persistent homes, excluded directories such as `node_modul
 
 Images Lando built stay around too. `lando destroy` keeps the newest one for each service for up to seven days, so the next `lando start` reuses it without building. `--purge-caches` removes those images right away.
 
-An image that declares a `VOLUME` path you never mapped gets an anonymous volume instead. The runtime creates it with the container, and Lando asks the runtime to drop it whenever it removes that container: `lando stop`, `lando destroy`, bare `lando restart`, `lando rebuild`, and a `lando start` that recreates a changed container. The runtime keeps one that another live container still uses. `lando restart --service <name>` keeps an unchanged container and its volumes, and drops them only when it replaces that container. Both `lando start` and `lando restart --service` print the reason for a replacement and name any anonymous volume the old container took with it. A failed start retains established resources for inspection rather than rolling them back.
+An image that declares a `VOLUME` path you never mapped gets an anonymous volume instead. The runtime creates it with the container, and it lasts as long as the container does. `lando stop` and `lando restart` keep the container, so the volume and its data stay. Lando asks the runtime to drop the volume whenever it removes the container: `lando destroy`, `lando rebuild`, removing the service from the Landofile, and a `lando start` or `lando restart` that replaces a changed container. The runtime keeps one that another live container still uses. `lando start` and `lando restart` print the reason for a replacement and name any anonymous volume the old container took with it. A failed start retains established resources for inspection rather than rolling them back.
 
 To keep data at such a path, name it. A bare container path under `volumes:` becomes a named store Lando owns:
 
@@ -295,6 +301,78 @@ services:
 ```
 
 `lando app:config:lint` confirms the Landofile is valid, and from then on only `--volumes` or `--purge` removes that store. Declaring the store does not migrate existing data: the next `lando start` recreates the container on the named store, and whatever the anonymous volume held leaves with the old container. Export anything you need first, for example with [Import and export app databases](../tooling/db-import-export.mdx). Lando only drops the anonymous volumes of the container it is removing; it never prunes unlabeled volumes left behind by anything else.
+
+This app gives `app` a `build.app` step that counts its runs in `build-runs.log`, and adds a `cache` service whose image declares a `VOLUME`. Write a file inside each container, then see what each command keeps. After `lando stop` and `lando start`, and after `lando restart`, `lando start` reports `app` as `started` in place, the file is still there, and the step has run once. `lando rebuild` and `lando destroy` give `app` a new container: the file is gone and the step runs again.
+
+```yaml
+name: app-lifecycle-keep
+services:
+  app:
+    type: "node:22"
+    primary: true
+    build:
+      app:
+        - echo run >> /app/build-runs.log
+  cache:
+    type: compose
+    image: docker.io/library/redis:7-alpine
+    appMount: false
+```
+
+  <Scenario id="stop-keeps-containers" layer="e2e" timeout={600000} render>
+    <Step name="start">
+      <UseFixture name="app-lifecycle-keep-containers" />
+      <Verify command="lando start --format=json" expect={{ stdout: { regex: "\"name\":\\s*\"app\"(?:(?!\"name\")[\\s\\S])*?\"action\":\\s*\"created\"" } }} />
+      <Run command={`lando exec app -- sh -c 'echo kept > /var/tmp/stop-keeps'`} />
+      <Verify command="lando exec app -- grep -c run /app/build-runs.log" expect={{ stdout: { regex: "^1\\s*$" } }} />
+    </Step>
+    <Hidden reason="Write into the image VOLUME of the cache service">
+      <Step name="write-cache-volume">
+        <Run command={`lando exec cache -- sh -c 'echo kept > /data/stop-keeps'`} />
+      </Step>
+    </Hidden>
+    <Step name="stop">
+      <Verify command="lando stop --format=json" expect={{ stdout: { regex: "\"outcome\":\\s*\"stopped\"[\\s\\S]*\"action\":\\s*\"stopped\"" } }} />
+    </Step>
+    <Hidden reason="A second stop changes nothing, and commands inside a stopped service fail with start remediation">
+      <Step name="stop-again">
+        <Verify command="lando stop --format=json" expect={{ stdout: { regex: "\"outcome\":\\s*\"unchanged\"[\\s\\S]*\"action\":\\s*\"already-stopped\"" } }} />
+        <Verify command="lando exec app -- true" expectExit={1} expect={{ stderr: { regex: "Service app is not running" } }} />
+        <Verify command="lando info --format=json" expect={{ stdout: { regex: "\"service\":\\s*\"app\"(?:(?!\"service\")[\\s\\S])*?\"status\":\\s*\"stopped\"" } }} />
+      </Step>
+    </Hidden>
+    <Step name="start-after-stop">
+      <Verify command="lando start --format=json" expect={{ stdout: { regex: "\"name\":\\s*\"app\"(?:(?!\"name\")[\\s\\S])*?\"action\":\\s*\"started\"" } }} />
+      <Verify command="lando exec app -- cat /var/tmp/stop-keeps" expect={{ stdout: { regex: "kept" } }} />
+      <Verify command="lando exec app -- grep -c run /app/build-runs.log" expect={{ stdout: { regex: "^1\\s*$" } }} />
+    </Step>
+    <Hidden reason="The image VOLUME survives stop and start with its container">
+      <Step name="cache-volume-kept">
+        <Verify command="lando exec cache -- cat /data/stop-keeps" expect={{ stdout: { regex: "kept" } }} />
+      </Step>
+    </Hidden>
+    <Step name="restart">
+      <Verify command="lando restart --format=json" expect={{ stdout: { regex: "\"name\":\\s*\"app\"(?:(?!\"name\")[\\s\\S])*?\"action\":\\s*\"started\"" } }} />
+      <Verify command="lando exec app -- cat /var/tmp/stop-keeps" expect={{ stdout: { regex: "kept" } }} />
+      <Verify command="lando exec app -- grep -c run /app/build-runs.log" expect={{ stdout: { regex: "^1\\s*$" } }} />
+    </Step>
+    <Step name="rebuild">
+      <Verify command="lando rebuild -y --format=json" expect={{ stdout: { regex: "\"name\":\\s*\"app\"(?:(?!\"name\")[\\s\\S])*?\"action\":\\s*\"replaced\"" } }} />
+      <Verify command="lando exec app -- ls /var/tmp" expect={{ stdout: { not: { regex: "stop-keeps" } } }} />
+      <Verify command="lando exec app -- grep -c run /app/build-runs.log" expect={{ stdout: { regex: "^2\\s*$" } }} />
+    </Step>
+    <Step name="destroy-then-start">
+      <Run command={`lando exec app -- sh -c 'echo kept > /var/tmp/stop-keeps'`} />
+      <Run command="lando destroy -y" />
+      <Verify command="lando start --format=json" expect={{ stdout: { regex: "\"name\":\\s*\"app\"(?:(?!\"name\")[\\s\\S])*?\"action\":\\s*\"created\"" } }} />
+      <Verify command="lando exec app -- ls /var/tmp" expect={{ stdout: { not: { regex: "stop-keeps" } } }} />
+      <Verify command="lando exec app -- grep -c run /app/build-runs.log" expect={{ stdout: { regex: "^3\\s*$" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes" />
+    </Step>
+  </Scenario>
 
 ### Check what a service mounts
 

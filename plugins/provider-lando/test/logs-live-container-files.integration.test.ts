@@ -408,7 +408,7 @@ describe("provider-lando live container-file logs", () => {
       } finally {
         await Effect.runPromise(
           provider
-            .destroy({ app: plan.id, plan }, { volumes: true, removeState: false })
+            .bringDown({ app: plan.id, plan }, { containers: "remove", volumes: true, removeState: false })
             .pipe(Effect.provide(makeTestStateStore().layer)),
         );
         await rm(appRoot, { recursive: true, force: true });
@@ -469,7 +469,7 @@ describe("provider-lando live container-file logs", () => {
       } finally {
         await Effect.runPromise(
           provider
-            .destroy({ app: plan.id, plan }, { volumes: true, removeState: false })
+            .bringDown({ app: plan.id, plan }, { containers: "remove", volumes: true, removeState: false })
             .pipe(Effect.provide(makeTestStateStore().layer)),
         );
         await rm(appRoot, { recursive: true, force: true });

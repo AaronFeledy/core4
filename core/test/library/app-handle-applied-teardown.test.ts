@@ -4,9 +4,10 @@ import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openLandoRuntime } from "@lando/core";
-import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/core/schema";
+import { AbsolutePath, AppId, type AppPlan, type BringDownOutcome, ProviderId } from "@lando/core/schema";
 import { RouterService, RuntimeProvider, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
+import type { BringDownOptions } from "@lando/sdk/services";
 import { TestRouterService, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { DateTime, Effect, Layer } from "effect";
 
@@ -47,15 +48,16 @@ const withEmptyAppRoot = async <A>(use: (root: string) => Promise<A>): Promise<A
 
 const makeHarness = (root: string) => {
   let appliedPlan: AppPlan | undefined = appliedPlanAt(root);
-  const destroyCalls: Array<{ readonly removeState?: boolean; readonly volumes: boolean }> = [];
+  const destroyCalls: BringDownOptions[] = [];
   const provider = RuntimeProvider.of({
     ...TestRuntimeProvider,
     appliedPlans: Effect.sync(() => (appliedPlan === undefined ? [] : [appliedPlan])),
-    destroy: (_target: unknown, options: { readonly removeState?: boolean; readonly volumes: boolean }) =>
-      Effect.sync(() => {
+    bringDown: (_target, options) =>
+      Effect.sync((): BringDownOutcome => {
         destroyCalls.push(options);
+        if (options.containers === "stop") return { kind: "stopped", containers: [] };
         if (options.removeState !== false) appliedPlan = undefined;
-        return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
+        return { kind: "removed", containers: [], volumesRemoved: { data: 0, cache: 0 } };
       }),
   });
   const layers = [
@@ -110,8 +112,8 @@ describe("@lando/core applied-state App handle teardown", () => {
       expect(result.stopped.app).toBe("library-applied-teardown");
       expect(result.destroyed.app).toBe("library-applied-teardown");
       expect(harness.destroyCalls).toEqual([
-        { removeState: false, volumes: false },
-        { removeState: true, volumes: false },
+        { containers: "stop" },
+        { containers: "remove", volumes: false, removeState: true },
       ]);
       expect(harness.appliedPlan()).toBeUndefined();
     });

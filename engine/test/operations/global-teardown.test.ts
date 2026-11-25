@@ -14,6 +14,7 @@ import {
   appIdentityKey,
 } from "@lando/sdk/schema";
 import {
+  type ContainerDisposition,
   GlobalAppService,
   PathsService,
   RouterService,
@@ -98,6 +99,7 @@ const harnessAt = (
   const root = AbsolutePath.make(join(dataRoot, "global"));
   const selected: Array<string | undefined> = [];
   const removedServices: ServiceRuntimeInfo[] = [];
+  const stoppedServices: ServiceRuntimeInfo[] = [];
   const removedVolumes: string[] = [];
   const destroyed: AppPlan[] = [];
   const provider = {
@@ -106,19 +108,23 @@ const harnessAt = (
     appliedPlans: Effect.succeed(input.plan === undefined ? [] : [input.plan]),
     list: () => Effect.succeed(input.services ?? []),
     listVolumes: () => Effect.succeed(input.volumes ?? []),
-    removeObservedService: (service: ServiceRuntimeInfo) =>
+    bringDownObserved: (service: ServiceRuntimeInfo, containers: ContainerDisposition) =>
       Effect.sync(() => {
+        if (containers === "stop") {
+          stoppedServices.push(service);
+          return { service: service.service, containerId: "observed-container", action: "stopped" as const };
+        }
         removedServices.push(service);
-        return { kind: "removed" as const };
+        return { service: service.service, action: "removed" as const };
       }),
     removeVolume: (ref: VolumeInfo["ref"]) =>
       Effect.sync(() => {
         removedVolumes.push(ref.store);
       }),
-    destroy: (target: { readonly plan?: AppPlan }) =>
+    bringDown: (target: { readonly plan?: AppPlan }) =>
       Effect.sync(() => {
         if (target.plan !== undefined) destroyed.push(target.plan);
-        return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
+        return { kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } };
       }),
   };
   const layer = Layer.mergeAll(
@@ -180,7 +186,7 @@ const harnessAt = (
       }),
     ),
   );
-  return { layer, selected, removedServices, removedVolumes, destroyed };
+  return { layer, selected, removedServices, stoppedServices, removedVolumes, destroyed };
 };
 
 test.each(["stop", "destroy"] as const)(
@@ -263,15 +269,15 @@ for (const volumes of [false, true]) {
         services: [owned, foreign],
         volumes: [volumeAt(root, "app"), volumeAt(root, "global")],
       });
-      // When teardown uses the observed-identity orphan path and its scoped lock.
+      // When destroy uses the observed-identity orphan path and its scoped lock.
       const receipt = await Effect.runPromise(
         Effect.gen(function* () {
-          const resolved = yield* resolveGlobalTeardown();
-          return yield* executeGlobalTeardown(resolved, { intent: "stop", volumes, removeState: volumes });
+          const resolved = yield* resolveGlobalTeardown("destroy");
+          return yield* executeGlobalTeardown(resolved, { intent: "destroy", volumes, removeState: volumes });
         }).pipe(Effect.provide(harness.layer)),
       );
       // Then only owned containers and requested app-scoped data are removed.
-      expect(receipt).toEqual({
+      expect(receipt).toMatchObject({
         changed: true,
         services: ["orphan"],
         volumesRemoved: { data: volumes ? 1 : 0, cache: 0 },
@@ -283,6 +289,41 @@ for (const volumes of [false, true]) {
     });
   });
 }
+
+test("global orphan stop stops observed containers and removes nothing", async () => {
+  await withRoot(async (dataRoot, root) => {
+    // Given an owned global orphan, a foreign-root container, and an app-scoped volume.
+    const owned = serviceAt(root);
+    const foreignRoot = AbsolutePath.make(join(dataRoot, "foreign"));
+    const foreign = {
+      ...owned,
+      appRoot: foreignRoot,
+      containerId: "foreign-container",
+      labels: { ...owned.labels, "dev.lando.app-root": foreignRoot },
+    };
+    const harness = harnessAt(dataRoot, { services: [owned, foreign], volumes: [volumeAt(root, "app")] });
+    // When stop takes the orphan path.
+    const receipt = await Effect.runPromise(
+      Effect.gen(function* () {
+        const resolved = yield* resolveGlobalTeardown();
+        return yield* executeGlobalTeardown(resolved, { intent: "stop" });
+      }).pipe(Effect.provide(harness.layer)),
+    );
+    // Then only the owned container is stopped by its observed identity and nothing is removed.
+    expect(receipt).toEqual({
+      changed: true,
+      services: ["orphan"],
+      volumesRemoved: { data: 0, cache: 0 },
+      containers: [
+        { service: ServiceName.make("orphan"), containerId: "observed-container", action: "stopped" },
+      ],
+    });
+    expect(harness.stoppedServices).toEqual([owned]);
+    expect(harness.removedServices).toEqual([]);
+    expect(harness.removedVolumes).toEqual([]);
+    expect(harness.destroyed).toEqual([]);
+  });
+});
 
 test("global teardown ignores foreign-root applied and observed resources", async () => {
   await withRoot(async (dataRoot) => {

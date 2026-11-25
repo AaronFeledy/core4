@@ -165,13 +165,14 @@ export const executeLockedTeardown = Effect.fnUntraced(function* (plan: Teardown
             const outcome = yield* destroyPlannedProvider({ ...plan, target }, provider);
             observationSources.push(outcome.shutdownObservations);
             switch (outcome.kind) {
-              case "destroyed":
+              case "removed":
                 skipped = [...skipped, ...(outcome.skipped ?? [])];
                 for (const service of Object.values(target.plan.services).reverse())
                   services.add(String(service.name));
                 volumesRemoved = addVolumeRemovalCounts(volumesRemoved, outcome.volumesRemoved);
                 changed = true;
                 break;
+              case "stopped":
               case "no-op":
                 break;
               default: {
