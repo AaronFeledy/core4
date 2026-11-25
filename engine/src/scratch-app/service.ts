@@ -68,6 +68,7 @@ import {
   requireSelectableRouter,
 } from "../operations/global-consumer-admission.ts";
 import { publishStartWarnings } from "../operations/start-warnings.ts";
+import { validateAppPlan } from "../planner/plan-decode.ts";
 import { ensureAppPlacement } from "../providers/app-placement.ts";
 import { prepareProvider } from "../providers/prepared.ts";
 import { RuntimeCwd } from "../runtime/cwd.ts";
@@ -392,7 +393,11 @@ const applyScratchStartFlags = Effect.fnUntraced(function* (
     }
     next = applyShareGlobalStorage(next);
   }
-  return applyScratchHostnames(next, input);
+  const final = markScratchPlan(applyScratchHostnames(next, input), plan.id);
+  yield* validateAppPlan(final.root, final).pipe(
+    mapFailures((cause) => scratchAppError("plan", cause.message, cause)),
+  );
+  return final;
 });
 
 const scratchIsolationConflict = (flags: ReadonlyArray<string>): ScratchIsolationConflictError =>
@@ -685,9 +690,8 @@ const makeScratchAppService = Effect.fnUntraced(function* (
     readonly planCache: AbsolutePath;
     readonly landofileRouter?: RouterConfig;
   }) {
-    const { id: scratchId, plan, planCache, landofileRouter } = request;
+    const { id: scratchId, plan: markedPlan, planCache, landofileRouter } = request;
     const router = yield* scratchRouter;
-    const markedPlan = markScratchPlan(plan, scratchId);
     // A routed scratch start without a selectable router refuses before placement, builds, or certificates.
     yield* requireSelectableRouter(markedPlan).pipe(
       Effect.provideService(RouterService, router),
@@ -890,7 +894,7 @@ const makeScratchAppService = Effect.fnUntraced(function* (
               {
                 id: scratchId,
                 instanceRoot: scratchPaths.instanceRoot,
-                plan: markScratchPlan(startPlan, scratchId),
+                plan: startPlan,
                 keepOnFailure: input.keepOnFailure === true,
                 detached: input.detached,
               },
@@ -1043,7 +1047,7 @@ const makeScratchAppService = Effect.fnUntraced(function* (
               {
                 id: scratchId,
                 instanceRoot: scratchPaths.instanceRoot,
-                plan: markScratchPlan(startPlan, scratchId),
+                plan: startPlan,
                 keepOnFailure: input.keepOnFailure === true,
                 detached: input.detached,
               },

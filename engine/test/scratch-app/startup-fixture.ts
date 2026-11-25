@@ -40,6 +40,7 @@ interface StartupFixtureOptions {
   readonly registration?: Effect.Effect<void, ScratchAppError>;
   /** Publishes a route for `web` and starts through this router. */
   readonly router?: RouterServiceShape;
+  readonly routes?: AppPlan["routes"];
   /** Fields merged into the source app's `web` service. */
   readonly web?: Partial<Pick<ServicePlan, "user" | "endpoints">>;
 }
@@ -76,7 +77,7 @@ export const withStartupFixture = async (
 const makeFixture = async (
   root: string,
   overrides: Partial<RuntimeProviderShape>,
-  { registration = Effect.void, router, onEvent, web: webOverrides }: StartupFixtureOptions,
+  { registration = Effect.void, router, routes, onEvent, web: webOverrides }: StartupFixtureOptions,
 ) => {
   const sourceRoot = AbsolutePath.make(join(root, "source"));
   await mkdir(sourceRoot);
@@ -89,7 +90,8 @@ const makeFixture = async (
     ...plan,
     root: sourceRoot,
     routes:
-      router === undefined
+      routes ??
+      (router === undefined
         ? []
         : [
             {
@@ -100,7 +102,7 @@ const makeFixture = async (
               endpoint: 3000,
               backend: { service: web.name, protocol: "http", port: 3000 },
             },
-          ],
+          ]),
     router: { enabled: router !== undefined },
     services: {
       [web.name]: {
