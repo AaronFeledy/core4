@@ -15,6 +15,7 @@ import { DateTime, Effect } from "effect";
 import { withGlobalActivationScope, withGlobalPolicyChange } from "../../src/global-app/activation-scope.ts";
 import { routeOwnerFromPlan } from "../../src/lifecycle/route-owner.ts";
 import { publishGlobalRoutes as publishGlobalRoutesEffect } from "../../src/operations/global-routes.ts";
+import { makeUnavailableRouter, noRouterInstalled } from "../../src/subsystems/proxy/api.ts";
 
 const publishGlobalRoutes = (...args: Parameters<typeof publishGlobalRoutesEffect>) =>
   withGlobalActivationScope(publishGlobalRoutesEffect(...args));
@@ -257,31 +258,25 @@ describe("global route publication", () => {
     expect(urls).toBeUndefined();
   });
 
-  test("disabled router tolerates route removal failure", async () => {
+  test("disabled routing fails the command when its stale definition cannot be withdrawn", async () => {
     // Given a disabled router whose stale file cannot be removed.
-    const router = {
-      ...makeRouter(),
-      removeRoutes: () =>
-        Effect.fail(
-          new ProxyError({
-            proxyId: "test",
-            message: "unavailable",
-            remediation:
-              "Install or repair the `test` router plugin and ensure `defaultRouterService` points at an installed id.",
-          }),
-        ),
-    };
-    // When best-effort withdrawal runs.
-    const urls = await Effect.runPromise(
+    const failure = new ProxyError({
+      proxyId: "test",
+      message: "unavailable",
+      remediation: "Repair routes.",
+    });
+    const router = { ...makeRouter(), removeRoutes: () => Effect.fail(failure) };
+    // When withdrawal runs.
+    const result = await Effect.runPromise(
       publishGlobalRoutes(
         router,
         { list: () => Effect.die("Must not list") },
         { ...plan, router: { enabled: false } },
         { started: new Set(), failed: new Set() },
-      ),
+      ).pipe(Effect.result),
     );
-    // Then disabled routing still returns no URLs.
-    expect(urls).toBeUndefined();
+    // Then the withdrawal failure reaches the caller with the router's failure as its cause.
+    expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "ProxyApplyError", cause: failure } });
   });
 
   test("publication withdraws stale routes when nothing routable is running", async () => {
@@ -317,47 +312,60 @@ describe("global route publication", () => {
     expect(calls).toEqual(["list", "beforeRoutes", `remove:${routeOwnerFromPlan(plan).ownerKey}`]);
   });
 
-  test("an unavailable router does not fail publication of an empty selection", async () => {
-    // Given a router that cannot withdraw and a selection with nothing routable running.
-    const router = {
-      ...makeRouter(),
-      applyRoutes: () => Effect.die("An empty selection must not apply an empty route set"),
-      removeRoutes: () =>
-        Effect.fail(
-          new ProxyError({ proxyId: "unavailable", message: "unavailable", remediation: "Select a router." }),
-        ),
-    };
-    // When publication runs after the selected service started.
+  test("withdrawal is silent when no router is installed", async () => {
+    // Given the real unavailable router of a host with no router installed and nothing routable running.
+    const router = { ...noRouterInstalled, setup: () => Effect.die("Withdrawal must not set up the router") };
+    // When publication runs after an unrouted service started.
     const result = await Effect.runPromise(
       publishGlobalRoutes(router, { list: () => Effect.succeed([]) }, siblingPlan, {
         started: new Set([ServiceName.make("unrouted")]),
         failed: new Set(),
       }).pipe(Effect.result),
     );
-    // Then the start is not failed by best-effort withdrawal.
+    // Then there was nothing to withdraw from, so the start succeeds.
     expect(result._tag).toBe("Success");
   });
 
-  test("a route-free plan still publishes when best-effort withdrawal fails", async () => {
-    // Given a route-free global plan and a router whose withdrawal fails
-    const router = {
-      ...makeRouter(),
-      applyRoutes: () => Effect.die("A route-free plan must not apply routes"),
-      removeRoutes: () =>
-        Effect.fail(new ProxyError({ proxyId: "test", message: "failed", remediation: "Repair routes." })),
-    };
-    // When publication runs
-    const result = await Effect.runPromise(
-      publishGlobalRoutes(
-        router,
-        { list: () => Effect.die("A route-free plan must not observe services") },
-        { ...plan, routes: [] },
-        { started: new Set(), failed: new Set() },
-      ).pipe(Effect.result),
-    );
-    // Then the router failure does not fail publication
-    expect(result._tag).toBe("Success");
-  });
+  test.each([
+    [
+      "an installed router",
+      (failure: ProxyError) => ({ ...makeRouter(), removeRoutes: () => Effect.fail(failure) }),
+    ],
+    [
+      "an unavailable router delegating to installed routers",
+      (failure: ProxyError) => ({
+        ...makeUnavailableRouter(
+          new ProxyError({
+            proxyId: "unavailable",
+            message: "not selected",
+            remediation: "Select a router.",
+          }),
+          () => Effect.fail(failure),
+        ),
+        setup: () => Effect.die("Withdrawal must not set up the router"),
+      }),
+    ],
+  ] as const)(
+    "a route-free plan fails when %s cannot withdraw its routes",
+    async (_label, makeFailingRouter) => {
+      // Given a route-free global plan and a router whose withdrawal fails.
+      const failure = new ProxyError({ proxyId: "test", message: "failed", remediation: "Repair routes." });
+      // When publication runs.
+      const result = await Effect.runPromise(
+        publishGlobalRoutes(
+          makeFailingRouter(failure),
+          { list: () => Effect.die("A route-free plan must not observe services") },
+          { ...plan, routes: [] },
+          { started: new Set(), failed: new Set() },
+        ).pipe(Effect.result),
+      );
+      // Then the command fails with a route error that keeps the router's failure as its cause.
+      expect(result).toMatchObject({
+        _tag: "Failure",
+        failure: { _tag: "ProxyApplyError", app: "global", proxyId: "test", cause: failure },
+      });
+    },
+  );
 
   test("publication propagates route application failures unchanged", async () => {
     // Given a router that cannot publish the started service's routes.

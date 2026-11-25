@@ -1,5 +1,6 @@
 import { ownsAppliedGlobalService } from "@lando/container-runtime/applied-global-service";
-import type { GlobalAppError, ProxyApplyError } from "@lando/sdk/errors";
+import { mapFailures } from "@lando/sdk/command-result";
+import { type GlobalAppError, ProxyApplyError } from "@lando/sdk/errors";
 import { type AppPlan, isActiveRunStatus } from "@lando/sdk/schema";
 import type { ProviderError, RouterServiceShape, RuntimeProviderShape } from "@lando/sdk/services";
 import { Effect } from "effect";
@@ -7,6 +8,35 @@ import { Effect } from "effect";
 import { routerEnabled } from "../config/router-config.ts";
 import { withGlobalRoutePublication } from "../global-app/activation-scope.ts";
 import { routeOwnerFromPlan } from "../lifecycle/route-owner.ts";
+import { unavailableRouterReason } from "../subsystems/proxy/api.ts";
+
+/**
+ * Withdraw the global app's route definition without router setup. Only the unavailable router's own
+ * reason (no router installed, so nothing was published) is silent; an installed router's failure
+ * fails the command while the applied services stay up.
+ */
+export const withdrawGlobalRoutes = Effect.fn("GlobalRoutes.withdraw")(function* (
+  router: RouterServiceShape,
+  plan: AppPlan,
+) {
+  const reason = unavailableRouterReason(router);
+  return yield* router.removeRoutes(routeOwnerFromPlan(plan)).pipe(
+    Effect.catchIf(
+      (error) => error === reason,
+      () => Effect.void,
+    ),
+    mapFailures(
+      (error) =>
+        new ProxyApplyError({
+          proxyId: error.proxyId,
+          app: String(plan.id),
+          message: `Routes the global app published earlier could not be withdrawn, so its old URLs may still resolve. Its services remain applied. ${error.message}`,
+          remediation: `${error.remediation} Inspect the global app with \`lando global:info\`, fix the router problem, then run \`lando global:start\` again.`,
+          cause: error,
+        }),
+    ),
+  );
+});
 
 /**
  * Replace the global route file only after all selected groups succeed, retaining active owned siblings.
@@ -22,12 +52,12 @@ export const publishGlobalRoutes = Effect.fn("GlobalRoutes.publish")(function* (
   beforeRoutes?: Effect.Effect<void, GlobalAppError>,
 ): Effect.fn.Return<void, ProxyApplyError | ProviderError | GlobalAppError> {
   if (outcome.failed.size > 0) return;
-  const withdraw = router.removeRoutes(routeOwnerFromPlan(plan)).pipe(Effect.catch(() => Effect.void));
+  const withdraw = withdrawGlobalRoutes(router, plan);
   return yield* withGlobalRoutePublication(
     Effect.gen(function* () {
       if (plan.routes.length === 0 || !routerEnabled(plan)) {
         yield* beforeRoutes ?? Effect.void;
-        // Best-effort: a route-free or router-disabled plan must not leave previously published hostnames live.
+        // A route-free or router-disabled plan must not leave previously published hostnames live.
         yield* withdraw;
         return;
       }

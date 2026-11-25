@@ -9,6 +9,7 @@ import {
   NoProviderInstalledError,
   ProviderUnavailableError,
   ProxyApplyError,
+  ProxyError,
   ProxySetupError,
   RouterWatcherError,
   ServiceStartError,
@@ -161,6 +162,7 @@ interface HarnessOptions {
   readonly completedServices?: ReadonlyArray<string>;
   readonly failRouterSetup?: boolean;
   readonly failRoutes?: boolean;
+  readonly failRouteRemoval?: boolean;
   readonly missingRouteObservation?: boolean;
   readonly failApply?: ReadonlyArray<string>;
   readonly serviceNames?: ReadonlyArray<string>;
@@ -654,10 +656,18 @@ const makeHarness = async (
             ),
           ),
         removeRoutes: (app) =>
-          Effect.sync(() => {
-            calls.routesRemoved.push(String(app.id));
-            calls.publishedRoutes.push({ app: String(app.id), hostnames: [] });
-          }),
+          options.failRouteRemoval
+            ? Effect.fail(
+                new ProxyError({
+                  proxyId: "test",
+                  message: "route removal failed",
+                  remediation: "Repair routes.",
+                }),
+              )
+            : Effect.sync(() => {
+                calls.routesRemoved.push(String(app.id));
+                calls.publishedRoutes.push({ app: String(app.id), hostnames: [] });
+              }),
         stop: Effect.die("Global lifecycle must not stop the shared router"),
       }),
     ),
@@ -1309,6 +1319,50 @@ describe("meta:global command effects", () => {
           revalidateStartup: Effect.sync(() => {
             revalidated.push("router-revalidated");
           }).pipe(Effect.andThen(failingWatcherObservation("2026-09-19T10:00:00.000Z"))),
+        },
+      );
+    });
+  }
+
+  for (const command of ["start", "rebuild"] as const) {
+    test(`${command} fails when route withdrawal fails and leaves services applied`, async () => {
+      // Given router-disabled global services and a router that cannot withdraw the stale definition.
+      const revalidated: string[] = [];
+      await withHarness(
+        async (harness) => {
+          await mkdir(join(harness.dataRoot, "global"), { recursive: true });
+          await writeFile(
+            join(harness.dataRoot, "global", ".lando.local.yml"),
+            "router:\n  enabled: false\n",
+          );
+          // When the explicit global lifecycle command converges routes.
+          const exit =
+            command === "start"
+              ? await Effect.runPromiseExit(globalStart().pipe(Effect.provide(harness.layer)))
+              : await Effect.runPromiseExit(globalRebuild().pipe(Effect.provide(harness.layer)));
+          // Then the withdrawal failure is the tagged command failure, without rollback or success event.
+          expect(failureOf(exit)).toMatchObject({
+            _tag: "ProxyApplyError",
+            app: "global",
+            cause: { _tag: "ProxyError", message: "route removal failed" },
+          });
+          expect(harness.calls.apply.map(({ plan }) => Object.keys(plan.services))).toEqual([
+            ["mail"],
+            ["proxy"],
+          ]);
+          expect(harness.calls.destroy.filter((call) => call.options.removeState === true)).toEqual([]);
+          expect(harness.calls.routerSetups).toEqual([]);
+          const eventTags = harness.events.map((event) => event._tag);
+          expect(eventTags).not.toContain("post-global-start");
+          expect(eventTags).not.toContain("post-global-rebuild");
+          expect(revalidated).toEqual(command === "start" ? [] : ["router-revalidated"]);
+        },
+        {
+          failRouteRemoval: true,
+          routerId: "proxy",
+          revalidateStartup: Effect.sync(() => {
+            revalidated.push("router-revalidated");
+          }),
         },
       );
     });
@@ -3894,31 +3948,46 @@ describe("meta:global command effects", () => {
     });
   });
 
-  test("rebuild succeeds without provider calls when no global services are materialized", async () => {
-    await withHarness(async (harness) => {
-      const layer = Layer.mergeAll(
-        harness.layer,
-        Layer.succeed(
-          PluginRegistry,
-          PluginRegistry.of({
-            list: Effect.succeed([]),
-            load: () => Effect.die("not used"),
-            loadServiceType: () => Effect.die("not used"),
-            loadServiceFeature: () => Effect.die("not used"),
-            loadAppFeature: () => Effect.die("not used"),
-          }),
-        ),
+  test.each([false, true])(
+    "rebuild without materialized global services only withdraws routes (removal fails=%s)",
+    async (failRouteRemoval) => {
+      await withHarness(
+        async (harness) => {
+          const layer = Layer.mergeAll(
+            harness.layer,
+            Layer.succeed(
+              PluginRegistry,
+              PluginRegistry.of({
+                list: Effect.succeed([]),
+                load: () => Effect.die("not used"),
+                loadServiceType: () => Effect.die("not used"),
+                loadServiceFeature: () => Effect.die("not used"),
+                loadAppFeature: () => Effect.die("not used"),
+              }),
+            ),
+          );
+
+          const exit = await Effect.runPromiseExit(globalRebuild({}).pipe(Effect.provide(layer)));
+
+          expect(harness.calls.destroy).toEqual([]);
+          expect(harness.calls.build).toEqual([]);
+          expect(harness.calls.apply).toEqual([]);
+          expect(harness.calls.inspect).toEqual([]);
+          expect(harness.calls.routerSetups).toEqual([]);
+          if (failRouteRemoval)
+            expect(failureOf(exit)).toMatchObject({ _tag: "ProxyApplyError", cause: { _tag: "ProxyError" } });
+          else {
+            expect(exit).toMatchObject({
+              _tag: "Success",
+              value: { app: "global", materialized: true, servicesRebuilt: [] },
+            });
+            expect(harness.calls.routesRemoved).toEqual(["global"]);
+          }
+        },
+        { failRouteRemoval },
       );
-
-      const result = await Effect.runPromise(globalRebuild({}).pipe(Effect.provide(layer)));
-
-      expect(harness.calls.destroy).toEqual([]);
-      expect(harness.calls.build).toEqual([]);
-      expect(harness.calls.apply).toEqual([]);
-      expect(harness.calls.inspect).toEqual([]);
-      expect(result).toEqual({ app: "global", materialized: true, servicesRebuilt: [] });
-    });
-  });
+    },
+  );
 
   test("rebuild publishes pre/post-global-rebuild only after successful apply and inspect", async () => {
     await withHarness(async (harness) => {
