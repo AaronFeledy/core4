@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { makeLandoPaths } from "@lando/paths";
-import type { ScratchAppError } from "@lando/sdk/errors";
+import type { EventError, LandofileValidationError, ScratchAppError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, type AppPlan, GlobalConfig, type ServicePlan } from "@lando/sdk/schema";
 import {
   AppPlanner,
@@ -37,6 +37,8 @@ import { ownerOnlyFileAccess } from "../private-file-access.ts";
 
 interface StartupFixtureOptions {
   readonly onEvent?: (event: LandoEvent) => void;
+  readonly eventFailure?: EventError;
+  readonly planScratch?: Effect.Effect<void, LandofileValidationError>;
   /** Runs before the registry records the scratch app as running. */
   readonly registration?: Effect.Effect<void, ScratchAppError>;
   /** Publishes a route for `web` and starts through this router. */
@@ -85,6 +87,8 @@ const makeFixture = async (
     routes,
     defaultDomain,
     onEvent,
+    eventFailure,
+    planScratch,
     web: webOverrides,
   }: StartupFixtureOptions,
 ) => {
@@ -191,13 +195,15 @@ const makeFixture = async (
     Layer.succeed(
       AppPlanner,
       AppPlanner.of({
-        plan: (landofile) =>
-          Effect.succeed({
-            ...source,
-            id: AppId.make(landofile.document.name ?? source.name),
-            name: landofile.document.name ?? source.name,
-            valueModel: 1 as const,
-          }),
+        plan: (landofile, _capabilities, options) =>
+          (options?.kind === "scratch" ? (planScratch ?? Effect.void) : Effect.void).pipe(
+            Effect.as({
+              ...source,
+              id: AppId.make(landofile.document.name ?? source.name),
+              name: landofile.document.name ?? source.name,
+              valueModel: 1 as const,
+            }),
+          ),
       }),
     ),
     Layer.succeed(
@@ -228,7 +234,9 @@ const makeFixture = async (
           Effect.sync(() => {
             events.push(event);
             onEvent?.(event);
-          }),
+          }).pipe(
+            Effect.andThen(eventFailure?.event === event._tag ? Effect.fail(eventFailure) : Effect.void),
+          ),
         subscribe: () => Stream.empty,
         subscribeQueue: Effect.die("unused"),
         waitFor: () => Effect.never,

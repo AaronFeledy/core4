@@ -89,7 +89,7 @@ lando scratch:start --fork --detach --no-hostname-suffix
 lando scratch:start --fork --detach --hostname=api.example.test
 ```
 
-Recipe scratches skip post-init hooks by default. Add `--run-post-init` when the recipe needs them. Add `--keep-on-failure` to retain the scratch root and registry entry after a failed start so you can inspect logs or destroy it yourself.
+Recipe scratches skip post-init hooks by default. Add `--run-post-init` when the recipe needs them. Add `--keep-on-failure` to skip automatic cleanup after a failed start so you can inspect what was created and destroy it yourself.
 
 ## Next
 

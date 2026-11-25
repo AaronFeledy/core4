@@ -27,8 +27,10 @@ a recipe, then pass the tool command after `--`: `lando run -- sh -c 'echo ok'`.
 
 If the scratch app's routes can't be published, a healthcheck exhausts its
 attempts, or an unsupervised service exits during startup, the tool does not
-run. Failed or interrupted scratch acquisition cleans up at every phase, unlike
-a failed user-app start.
+run. If scratch acquisition fails or is interrupted, Lando tries to clean up
+what it created. If cleanup fails, Lando also reports the scratch id. If it
+still appears in `lando scratch:list`, run `lando scratch:destroy <id>` after
+fixing the reported problem.
 
 ## Pick a recipe and service
 

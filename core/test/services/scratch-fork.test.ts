@@ -53,6 +53,7 @@ import { withDiscoveryCwd } from "@lando/landofile/operation-discovery";
 import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService } from "@lando/redaction/service";
+import { failureOutcomeFromCause } from "@lando/sdk/command-result";
 import { TestRuntimeProvider, makeTestRouterService, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import * as StateStoreLayer from "@lando/state-store/service";
@@ -764,14 +765,29 @@ describe("ScratchAppServiceLayer.layer fork acquire", () => {
           ),
         );
         // Then: no handle is returned and the publication failure is the primary error.
-        expect(Exit.isFailure(exit) ? Cause.findErrorOption(exit.cause) : undefined).toMatchObject({
-          _tag: "Some",
-          value: {
+        const id = applied.at(0)?.id;
+        if (id === undefined) throw new TypeError("Expected the scratch to reach provider apply");
+        expect(Exit.isFailure(exit) ? failureOutcomeFromCause(exit.cause) : undefined).toMatchObject({
+          error: {
             _tag: "ScratchAppError",
             operation: "start",
             cause: rejection,
             remediation: expect.stringContaining(rejection.remediation),
+            ...(keepOnFailure ? { scratchId: id } : {}),
           },
+          additionalErrors: reapFails
+            ? [
+                {
+                  role: "cleanup",
+                  error: {
+                    _tag: "ScratchAppError",
+                    operation: "cleanup",
+                    scratchId: id,
+                    remediation: expect.stringContaining(`lando scratch:destroy ${id}`),
+                  },
+                },
+              ]
+            : [],
         });
         expect(applied).toHaveLength(1);
         expect(hostRoutes.applied).toHaveLength(1);
