@@ -124,6 +124,9 @@ export const ScenarioProps = Schema.Struct({
   reason: Schema.optionalKey(Schema.String),
   tags: Schema.optionalKey(Schema.Array(Schema.String)),
   layer: Schema.optionalKey(Schema.Literals(["scenario", "e2e"])),
+  faults: Schema.optionalKey(Schema.Array(Schema.Literal("router.apply-routes"))).annotate({
+    description: "Injected failures for hidden scenarios using the in-memory runner.",
+  }),
   timeout: Schema.optionalKey(
     GuideTimeout.annotate({
       description: "Scenario test timeout in milliseconds. Overrides the guide timeout.",
@@ -147,6 +150,10 @@ export const ScenarioProps = Schema.Struct({
           toJsonSchema: () => [{}, true],
         },
       ),
+      Schema.makeFilter((input) => input.faults === undefined || input.render === false, {
+        message: "<Scenario faults> requires render={false}.",
+        toJsonSchema: () => [{}, true],
+      }),
     ),
   )
   .annotate({

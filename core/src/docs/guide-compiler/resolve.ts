@@ -258,6 +258,14 @@ export const resolveGuide = (guide: ParsedGuide): GuideScenarioAst => {
   const ids = new Map<string, number>();
   const cells: Array<{ readonly scenarioId: string; readonly resolved: ResolvedScenario }> = [];
   for (const scenario of guide.scenarios) {
+    if (scenario.faults !== undefined && (scenario.layer ?? guide.frontmatter.defaultLayer) === "e2e")
+      semanticError(guide, scenario, {
+        code: "guide.scenario.faults-e2e",
+        line: scenario.line,
+        component: "Scenario",
+        prop: "faults",
+        name: "e2e",
+      });
     if ((scenario.layer ?? guide.frontmatter.defaultLayer) !== "e2e") {
       const fetch = scenario.body
         .flatMap((item) => {

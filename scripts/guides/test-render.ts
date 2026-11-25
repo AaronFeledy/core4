@@ -210,7 +210,7 @@ ${
   try {
 `
 }  const exit = await Effect.runPromiseExit(
-    ${contextRunner}({ guideId: ${JSON.stringify(guide.frontmatter.id)}, scenarioId: ${JSON.stringify(scenario.id)}, render: ${scenario.render} }, (context) =>
+    ${contextRunner}({ guideId: ${JSON.stringify(guide.frontmatter.id)}, scenarioId: ${JSON.stringify(scenario.id)}, render: ${scenario.render}${scenario.faults === undefined ? "" : `, faults: ${JSON.stringify(scenario.faults)}`} }, (context) =>
       Effect.gen(function* () {
         let lastRun: ScenarioRunResult | undefined;
         // <Verify event> asserts on what the most recent CLI invocation published.

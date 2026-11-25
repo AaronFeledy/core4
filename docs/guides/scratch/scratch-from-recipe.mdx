@@ -68,10 +68,16 @@ lando start
 - [Everyday commands](../cli/everyday-commands.mdx)
 
 <Guide>
-  <Scenario id="scratch-failure-policy" tags={["scenario"]} render={false} reason="Verify acquisition flags without starting scratch containers">
-    <Step name="check-failure-policy">
-      <Run command="lando scratch:start --help" />
-      <Verify command="lando scratch:start --help" expect={{ stdout: { regex: "--keep-on-failure" } }} />
+  <Scenario id="scratch-failure-policy" layer="scenario" tags={["scenario"]} faults={["router.apply-routes"]} render={false} reason="Verify the retention policy when scratch route publication fails">
+    <Step name="reap-failed-scratch">
+      <Run command="lando scratch:start --from lamp --yes --detach --format=json" expectExit={1} />
+      <Verify errorTag="ScratchAppError" expect={{ regex: "\"cause\":\\s*\\{[^{}]*\"_tag\":\\s*\"ProxyApplyError\"" }} />
+      <Verify command="lando scratch:list --format=json" expect={{ stdout: { regex: "\"result\":\\s*\\[\\s*\\]" } }} />
+    </Step>
+    <Step name="retain-failed-scratch">
+      <Run command="lando scratch:start --from lamp --yes --detach --keep-on-failure --format=json" expectExit={1} />
+      <Verify errorTag="ScratchAppError" expect={{ regex: "\"cause\":\\s*\\{[^{}]*\"_tag\":\\s*\"ProxyApplyError\"" }} />
+      <Verify command="lando scratch:list --format=json" expect={{ stdout: { regex: "\"result\":\\s*\\[\\s*\\{[^{}]*\"id\":\\s*\"scratch-[^\"]+\"[^{}]*(?:\\{[^{}]*\\}[^{}]*)+\\}\\s*\\]" } }} />
     </Step>
   </Scenario>
 </Guide>
