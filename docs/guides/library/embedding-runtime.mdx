@@ -162,6 +162,35 @@ await Effect.runPromise(
 );
 ```
 
+## Acquire a scratch app
+
+`runtime.scratch(input)` acquires a disposable scratch app through the retained
+runtime. Lando resolves the scratch from the runtime's `cwd`, not the process
+working directory: a fork discovers the Landofile at or above that directory,
+and `mountCwd` binds that directory into the primary service.
+
+```ts
+import { Effect } from "effect";
+import { openLandoRuntime } from "@lando/core";
+import { ScratchAppService } from "@lando/core/services";
+
+const program = Effect.gen(function* () {
+  const runtime = yield* openLandoRuntime({ cwd: "/work/my-app/src" });
+  const handle = yield* runtime.scratch({
+    source: { kind: "fork" },
+    detached: true,
+    mountCwd: { target: "/cwd" },
+  });
+  // runtime.run provides ScratchAppService, so later calls need no extra layer.
+  yield* runtime.run(ScratchAppService.pipe(Effect.flatMap((scratch) => scratch.destroy(handle.id))));
+});
+
+await Effect.runPromise(Effect.scoped(program));
+```
+
+A routed scratch fails to start when its routes can't be published, and Lando
+cleans it up unless you pass `keepOnFailure: true`.
+
 For command-shaped dispatch, `@lando/core/cli` exposes the programmatic `runCli`
 entry point, while the lower-level Effect operations behind built-in commands remain
 available from `@lando/core/cli/operations` (for example `startApp`, `infoApp`, and
@@ -241,6 +270,92 @@ const program = openLandoRuntime({ cwd: process.cwd() }).pipe(
 
 const info = await Effect.runPromise(Effect.scoped(program));
 console.log(info.app, info.services.map((service) => service.service));`}
+      />
+    </Step>
+  </Scenario>
+
+  <Scenario id="scratch-runtime-cwd" render={false} reason="Prove scratch acquisition reads the runtime cwd, not the process cwd">
+    <Step name="scratch-from-nested-runtime-cwd">
+      <Run
+        runtime="library"
+        code={`const [{ RouterService, ScratchAppService }, { TestRouterService }] = yield* Effect.promise(() =>
+  Promise.all([import("@lando/core/services"), import("@lando/sdk/test")]),
+);
+const appliedPlans = new Map<string, import("@lando/core/schema").AppPlan>();
+const provider = LandoCore.RuntimeProvider.of({
+  ...LandoTesting.TestRuntimeProvider,
+  appliedPlans: Effect.sync(() => [...appliedPlans.values()]),
+  apply: (plan, options) => LandoTesting.TestRuntimeProvider.apply(plan, options).pipe(
+    Effect.tap(() => Effect.sync(() => appliedPlans.set(plan.root, plan))),
+  ),
+});
+const providerLayers = [
+  LandoTesting.withService(LandoCore.RuntimeProvider, provider),
+  LandoTesting.withService(LandoCore.RuntimeProviderRegistry, LandoTesting.makeTestRuntimeProviderRegistry({
+    appliedPlansFor: (root) => Effect.sync(() => [...appliedPlans.values()].filter((plan) => plan.root === root)),
+    select: () => Effect.succeed(provider),
+    resolveAppliedPlan: (root) => Effect.sync(() => appliedPlans.get(root)),
+    resolveTeardownEvidence: (root) => Effect.sync(() => {
+      const plan = appliedPlans.get(root);
+      return plan === undefined ? { kind: "absent" as const } : { kind: "applied" as const, plan };
+    }),
+    readAppliedPlanStrict: ({ id }) =>
+      Effect.sync(() => [...appliedPlans.values()].find((plan) => plan.id === id)),
+  })),
+  LandoTesting.withService(RouterService, TestRouterService),
+];
+const nested = join(context.testDir, "src", "module");
+const recipeDir = join(context.testDir, "recipe");
+yield* Effect.promise(async () => {
+  await Bun.write(
+    join(context.testDir, ".lando.yml"),
+    "name: embedded-scratch\nruntime: 4\nprovider: test\nrouter:\n  enabled: false\nservices:\n  cache:\n    type: redis\n    primary: true\n    home: false\n",
+  );
+  await Bun.write(join(nested, ".keep"), "");
+  await Bun.write(
+    join(recipeDir, "recipe.yml"),
+    "id: recipe\ntitle: Cwd\ndescription: Fixture\nversion: 1.0.0\nconfig:\n  runtime: 4\n  router:\n    enabled: false\n  services:\n    cache:\n      type: redis\n      primary: true\n      home: false\n",
+  );
+});
+expect(process.cwd()).not.toBe(nested);
+const [fork, recipe] = yield* LandoCore.openLandoRuntime({
+  cwd: nested,
+  plugins: { policy: "bundled-only", layers: providerLayers },
+}).pipe(
+  Effect.flatMap((runtime) =>
+    Effect.all([
+      runtime.scratch({ source: { kind: "fork" }, detached: true, isolate: "none", mountCwd: { target: "/cwd" } }),
+      runtime.scratch({
+        source: { kind: "recipe", ref: recipeDir },
+        detached: true,
+        yes: true,
+        nonInteractive: true,
+        mountCwd: { target: "/cwd" },
+      }),
+    ]).pipe(
+      Effect.tap((handles) =>
+        runtime.run(
+          ScratchAppService.pipe(
+            Effect.flatMap((scratch) => Effect.forEach(handles, (handle) => scratch.destroy(handle.id))),
+          ),
+        ),
+      ),
+    ),
+  ),
+);
+// The applied root is canonical; only the native realpath also expands Windows 8.3 short names.
+const { realpathSync } = yield* Effect.promise(() => import("node:fs"));
+const canonical = (path: string | undefined) => (path === undefined ? undefined : realpathSync.native(path));
+const applied = (id: string) => [...appliedPlans.values()].find((plan) => plan.id === id);
+const cwdBindSource = (id: string) =>
+  Object.values(applied(id)?.services ?? {})
+    .flatMap((service) => service.mounts)
+    .flatMap((mount) => (mount.type === "bind" && mount.target === "/cwd" ? [mount.source] : []))[0];
+expect(canonical(applied(fork.id)?.root)).toBe(canonical(context.testDir));
+expect(canonical(cwdBindSource(fork.id))).toBe(canonical(nested));
+expect(canonical(cwdBindSource(recipe.id))).toBe(canonical(nested));`}
+        displayCode={`const runtime = yield* openLandoRuntime({ cwd: "/work/my-app/src" });
+const handle = yield* runtime.scratch({ source: { kind: "fork" }, detached: true, mountCwd: { target: "/cwd" } });`}
       />
     </Step>
   </Scenario>

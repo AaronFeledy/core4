@@ -135,7 +135,7 @@ Acquisition wraps materialization and start; scratch start wraps the standard Ap
 
 "Relative mounts" are the bind entries planning marked `relativeTo: app` (§6.4). Under `full` and recipe `baked`, a relative mount whose source leaves the scratch root, lexically or through a symlink on an existing ancestor, is not mounted, and acquisition publishes a warning naming the service and target; the scratch root is Lando-owned, so mounting inside it exposes no host files. `--mount-cwd` without a target rebinds those mounts to the cwd; `--mount-cwd=<path>` instead adds one plain bind of the cwd at `<path>`, replacing whatever was planned exactly there, and leaves app mounts and sessions untouched.
 
-`--mount-cwd` is sugar for `--isolate=cwd`; in fork mode it MUST warn that it overrides the safer `full` default. Combining it with an explicit incompatible isolation mode fails with `ScratchIsolationConflictError`. `--isolate=passthrough` is reserved and unsupported, raising `ScratchIsolationUnsupportedError`. Copy exclusions apply only to fork materialization.
+`--mount-cwd` is sugar for `--isolate=cwd`; in fork mode it MUST warn that it overrides the safer `full` default. Combining it with an explicit incompatible isolation mode fails with `ScratchIsolationConflictError`. `--isolate=passthrough` is reserved and unsupported; the CLI rejects it as a malformed `--isolate` value (`MalformedCliFlagValueError`). Copy exclusions apply only to fork materialization.
 
 Scratch planning MUST skip dependency-environment materialization before deriving mount isolation: no generated store, activation defaults, or prepare job. This applies to all isolation modes, including passthrough (§6.5.1).
 

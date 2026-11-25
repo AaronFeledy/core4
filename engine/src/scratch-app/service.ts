@@ -3,7 +3,7 @@ import { readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { migrateAppliedPlan } from "@lando/container-runtime/applied-state";
 import type { UserAppResolution } from "@lando/landofile/app-resolution";
-import { withDiscoveryCwd } from "@lando/landofile/operation-discovery";
+import { discoveryCwd, withDiscoveryCwd } from "@lando/landofile/operation-discovery";
 import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
 import { mapFailures } from "@lando/sdk/command-result";
 import { sha256Hex } from "@lando/sdk/digest";
@@ -69,6 +69,7 @@ import {
 import { publishStartWarnings } from "../operations/start-warnings.ts";
 import { ensureAppPlacement } from "../providers/app-placement.ts";
 import { prepareProvider } from "../providers/prepared.ts";
+import { RuntimeCwd } from "../runtime/cwd.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
 import { layerUnavailable } from "../subsystems/proxy/api.ts";
 import { prepareDebuggerOverlay } from "../subsystems/start-overlay-registry.ts";
@@ -760,8 +761,10 @@ const makeScratchAppService = Effect.fnUntraced(function* (
     } satisfies ScratchHandle;
   });
 
-  const acquireFork = Effect.fn("ScratchAppService.acquireFork")(function* (input: ScratchAcquireInput) {
-    const hostCwd = yield* Effect.sync(() => process.cwd());
+  const acquireFork = Effect.fn("ScratchAppService.acquireFork")(function* (
+    input: ScratchAcquireInput,
+    hostCwd: string,
+  ) {
     const landofile = yield* resolution
       .loadUserLandofile(landofileService)
       .pipe(
@@ -895,8 +898,8 @@ const makeScratchAppService = Effect.fnUntraced(function* (
   const acquireRecipe = Effect.fn("ScratchAppService.acquireRecipe")(function* (
     input: ScratchAcquireInput,
     recipeRef: string,
+    hostCwd: string,
   ) {
-    const hostCwd = yield* Effect.sync(() => process.cwd());
     const ref = recipeRef.trim();
     if (ref.length === 0) return yield* Effect.fail(scratchSourceUnresolvedError(input));
 
@@ -1049,7 +1052,17 @@ const makeScratchAppService = Effect.fnUntraced(function* (
     if (input.mountCwd !== undefined && input.isolate === "full") {
       return Effect.fail(scratchIsolationConflict(["--mount-cwd", "--isolate=full"]));
     }
-    return input.source.kind === "fork" ? acquireFork(input) : acquireRecipe(input, input.source.ref);
+    // The runtime's cwd is authoritative; an engine caller without one falls back to discovery.
+    return Effect.gen(function* () {
+      const runtimeCwd = yield* Effect.serviceOption(RuntimeCwd);
+      const hostCwd = Option.isSome(runtimeCwd) ? runtimeCwd.value : yield* discoveryCwd();
+      return yield* withDiscoveryCwd(
+        hostCwd,
+        input.source.kind === "fork"
+          ? acquireFork(input, hostCwd)
+          : acquireRecipe(input, input.source.ref, hostCwd),
+      );
+    });
   };
   const handleFromEntry = (entry: ScratchRegistryEntry): ScratchHandle => ({
     id: entry.id,
