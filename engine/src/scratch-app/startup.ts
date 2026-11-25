@@ -46,7 +46,7 @@ export const applyScratchStartup = Effect.fn("ScratchApp.applyStartup")(function
     readonly provider: PreparedRuntimeProvider;
     readonly environmentResolver: typeof EnvironmentValueResolver.Service;
     readonly stateStore: typeof StateStore.Service;
-    readonly router?: RouterServiceShape;
+    readonly router: RouterServiceShape;
     readonly admissionContext?: Context.Context<GlobalConsumerAdmissionServices>;
   },
 ) {
@@ -95,12 +95,16 @@ export const applyScratchStartup = Effect.fn("ScratchApp.applyStartup")(function
       routeUrls,
       provider: services.provider,
       plan: runtimePlan,
+      id,
       services: Object.values(runtimePlan.services).map((service) => service.name),
-      ...(services.router === undefined ? {} : { router: services.router }),
+      router: services.router,
       ...(request.landofileRouter === undefined ? {} : { landofileRouter: request.landofileRouter }),
     }).pipe(
       mapFailures((cause) =>
-        cause instanceof AppPlacementError || cause instanceof RouteUrlBindingError
+        // Route publication failures arrive already named as such; only readiness failures remain.
+        cause instanceof AppPlacementError ||
+        cause instanceof RouteUrlBindingError ||
+        cause instanceof ScratchAppError
           ? cause
           : new ScratchAppError({
               operation: "start",

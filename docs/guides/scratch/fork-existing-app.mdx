@@ -31,7 +31,7 @@ lando scratch --fork --name review --detach
 
 `lando scratch` and `lando scratch:start` are aliases of `apps:scratch:start`. Pass exactly one of `--fork` or `--from`. Bare `lando scratch --help` shows the scratch topic page, the same as `lando help scratch`; ask `lando scratch:start --help` for this command's flags.
 
-`--detach` returns only after the fork passes startup readiness, including enabled healthchecks. Without it the session stays attached until Ctrl+C, then the scratch is destroyed. Readiness failure or interruption during acquisition cleans up the scratch unless you passed `--keep-on-failure`; user-app start retention does not apply to scratch apps.
+`--detach` returns only after the fork passes startup readiness, including enabled healthchecks. Without it the session stays attached until Ctrl+C, then the scratch is destroyed. If the fork's routes can't be published, readiness fails, or you interrupt acquisition, the start fails and Lando cleans up the scratch, including any routes the router already wrote, unless you passed `--keep-on-failure`. User-app start retention does not apply to scratch apps.
 
 `--name` is only the base for the generated id (`scratch-<base>-<6hex>`). The source Landofile is not rewritten.
 

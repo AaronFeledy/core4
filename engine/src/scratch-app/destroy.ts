@@ -30,6 +30,7 @@ import { BuildOwner } from "../services/build-owner.ts";
 import { clearAppBuildResults } from "../services/build-results.ts";
 import { removeAppBuildOutput, warnBuildOutputCleanupFailure } from "../services/build-transcript-cleanup.ts";
 import { ScratchRegistry } from "./registry.ts";
+import { captureScratchRouter } from "./router.ts";
 import { ScratchResourceScanner } from "./scanner.ts";
 
 export interface ScratchReapInput {
@@ -46,7 +47,7 @@ export const makeScratchReaper = Effect.gen(function* () {
   const providers = yield* RuntimeProviderRegistry;
   const scanner = yield* ScratchResourceScanner;
   const mover = yield* DataMover;
-  const router = yield* Effect.serviceOption(RouterService);
+  const scratchRouter = yield* captureScratchRouter;
   const paths = yield* Effect.serviceOption(PathsService);
   const stateStore = yield* StateStore;
   return Effect.fn("ScratchApp.reap")(
@@ -137,7 +138,7 @@ export const makeScratchReaper = Effect.gen(function* () {
               : yield* orphan?.destroy ?? Effect.succeed(false);
           yield* withdrawOwnerRoutes(routeOwnerFromScratch(input.id)).pipe(
             Effect.provideService(EventService, events),
-            Option.isSome(router) ? Effect.provideService(RouterService, router.value) : (effect) => effect,
+            Effect.provideService(RouterService, yield* scratchRouter),
           );
           yield* removeServiceCertificates(routeOwnerFromScratch(input.id).ownerKey).pipe(
             Effect.provideService(EventService, events),

@@ -1,8 +1,10 @@
-import type { GlobalAppError } from "@lando/sdk/errors";
+import { mapFailures } from "@lando/sdk/command-result";
+import { AppPlacementError, type GlobalAppError, ScratchAppError } from "@lando/sdk/errors";
 import { type AppPlan, type RouterConfig, type ServicePlan, isDownRunStatus } from "@lando/sdk/schema";
 import type { BuildOrchestrator, RouterServiceShape } from "@lando/sdk/services";
 import type { ProgressEmitter } from "@lando/sdk/task-progress";
 import { Effect } from "effect";
+import { routerEnabled } from "../config/router-config.ts";
 import { verifyGlobalConsumerAdmission } from "../operations/global-consumer-lease.ts";
 import { observeServices } from "../operations/service-observation.ts";
 import { waitForServiceReadiness } from "../operations/service-readiness.ts";
@@ -11,9 +13,8 @@ import { withRoutesStartProgress } from "../operations/start-progress-phases.ts"
 import { withActivationObservations } from "../services/build-app-observation.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
 import { type PreparedRouteUrls, verifyPublishedRouteUrls } from "./route-url-bindings.ts";
-import { applyAppRoutes } from "./routes.ts";
+import { applyAppRoutes, publishAppRoutes } from "./routes.ts";
 import { completeGlobalGroups } from "./startup-completion-groups.ts";
-import { applyScratchRoutes } from "./startup-completion-scratch.ts";
 
 type Readiness = Parameters<typeof waitForServiceReadiness>[0];
 type UserStart = Readiness & {
@@ -44,7 +45,8 @@ type EnsureGlobal = Readiness & { readonly policy: "ensure-global" };
 type Scratch = Readiness & {
   readonly routeUrls?: PreparedRouteUrls | undefined;
   readonly policy: "scratch";
-  readonly router?: RouterServiceShape;
+  readonly id: string;
+  readonly router: RouterServiceShape;
   readonly landofileRouter?: RouterConfig;
 };
 export type GlobalGroups<E> = {
@@ -132,8 +134,26 @@ const selected = Effect.fn("StartupCompletion.selected")(function* (request: Sel
   return yield* waitForServiceReadiness(request);
 });
 const scratch = Effect.fn("StartupCompletion.scratch")(function* (request: Scratch) {
-  const published = yield* applyScratchRoutes(request);
-  if (published !== undefined) yield* verifyPublishedRouteUrls(request.routeUrls, published.authorities);
+  // A fresh scratch never published anything, so a route-free plan neither starts nor touches the router.
+  if (request.plan.routes.length > 0 && routerEnabled(request.plan)) {
+    const { authorities } = yield* publishAppRoutes(
+      request.router,
+      request.plan,
+      request.landofileRouter,
+    ).pipe(
+      mapFailures((cause) =>
+        cause instanceof AppPlacementError
+          ? cause
+          : new ScratchAppError({
+              operation: "start",
+              message: `Unable to publish routes for scratch app ${request.id}: ${cause.message}`,
+              cause,
+              remediation: `${cause.remediation ?? "Fix the router problem."} Then start the scratch again.`,
+            }),
+      ),
+    );
+    yield* verifyPublishedRouteUrls(request.routeUrls, authorities);
+  }
   return yield* waitForServiceReadiness(request);
 });
 

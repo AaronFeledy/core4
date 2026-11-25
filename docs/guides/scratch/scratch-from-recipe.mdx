@@ -47,7 +47,7 @@ lando scratch:destroy <id>
 
 Destroy keeps the newest image Lando built for each of the scratch's services for up to seven days. Start another scratch app from the same recipe in that window and it reuses those images instead of building them again.
 
-`--detach` returns after services pass startup readiness. Enabled healthchecks must pass; services without checks settle in a running state, and completion jobs must exit 0. Without `--detach` the session stays attached. A failed or interrupted acquisition cleans up scratch resources by default. `--keep-on-failure` retains failed acquisition state for inspection and explicit destruction; it does not turn a failed start into success.
+`--detach` returns after services pass startup readiness. Enabled healthchecks must pass; services without checks settle in a running state, and completion jobs must exit 0. Without `--detach` the session stays attached. A failed or interrupted acquisition, including one whose routes the router could not publish, cleans up scratch resources by default. `--keep-on-failure` retains failed acquisition state for inspection and explicit destruction; it does not turn a failed start into success.
 
 `lando run --from lamp -- composer --version` runs one command in a disposable scratch app. When `--from` is omitted, `lando run` uses the bundled toolbox recipe.
 

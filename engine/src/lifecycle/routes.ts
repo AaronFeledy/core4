@@ -49,6 +49,14 @@ export const applyAppRoutes = Effect.fn("Lifecycle.applyAppRoutes")(function* (
     }
     return { app: plan.id, appliedRoutes: [], authorities: [] };
   }
+  return yield* publishAppRoutes(proxy, plan, landofileRouter);
+});
+
+export const publishAppRoutes = Effect.fn("Lifecycle.publishAppRoutes")(function* (
+  proxy: RouterServiceShape,
+  plan: AppPlan,
+  landofileRouter?: RouterConfig,
+) {
   const defaultDomain = yield* resolveProxyDefaultDomain;
   const { router, routerPin } = yield* resolveRouterConfigForApp(landofileRouter);
   return yield* Effect.scoped(proxy.setup({ defaultDomain, router, routerPin })).pipe(

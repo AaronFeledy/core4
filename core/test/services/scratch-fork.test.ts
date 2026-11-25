@@ -2,7 +2,13 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { AppPlacementError, RouteProviderMismatchError, ScratchAppError } from "@lando/core/errors";
+import {
+  AppPlacementError,
+  ProviderUnavailableError,
+  ProxyApplyError,
+  RouteProviderMismatchError,
+  ScratchAppError,
+} from "@lando/core/errors";
 import {
   AbsolutePath,
   AppId,
@@ -47,7 +53,7 @@ import { withDiscoveryCwd } from "@lando/landofile/operation-discovery";
 import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService } from "@lando/redaction/service";
-import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRouterService, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import * as StateStoreLayer from "@lando/state-store/service";
 import { makeStateStore } from "@lando/state-store/service";
@@ -232,6 +238,7 @@ const makeScratchForkLayer = (
     readonly onCapabilities?: () => void;
     readonly routes?: RouteRecorder;
     readonly applyRoutes?: Effect.Effect<void>;
+    readonly destroyFailure?: ProviderUnavailableError;
     readonly globalPlan?: AppPlan;
     readonly setupRouter?: Effect.Effect<void, AppPlacementError>;
     readonly requiredGlobalServices?: ReadonlyArray<string>;
@@ -272,15 +279,17 @@ const makeScratchForkLayer = (
       }),
     restart: () => die("restart"),
     waitForExit: () => Effect.succeed({ exitCode: 0 }),
-    bringDown: (target, options) =>
-      Effect.sync(() => {
-        destroyCalls.push({
-          app: String(target.app),
-          volumes: options.volumes === true,
-          removeState: options.removeState,
-        });
-        return { kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } };
-      }),
+    bringDown: (target, bringDownOptions) =>
+      options.destroyFailure !== undefined
+        ? Effect.fail(options.destroyFailure)
+        : Effect.sync(() => {
+            destroyCalls.push({
+              app: String(target.app),
+              volumes: bringDownOptions.volumes === true,
+              removeState: bringDownOptions.removeState,
+            });
+            return { kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } };
+          }),
     exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
     execStream: () => Stream.die("scratch fork test provider should not call execStream"),
     run: () => die("run"),
@@ -694,8 +703,86 @@ describe("ScratchAppServiceLayer.layer fork acquire", () => {
     });
   });
 
+  test.each([
+    ["reaped", { keepOnFailure: false, reapFails: false }],
+    ["retained", { keepOnFailure: true, reapFails: false }],
+    ["still primary when cleanup fails", { keepOnFailure: false, reapFails: true }],
+  ] as const)(
+    "a route publication failure that wrote routes is %s",
+    async (_label, { keepOnFailure, reapFails }) => {
+      await withTempProject(routedForkLandofile, async (dir) => {
+        // Given: a host-provided router that writes the scratch routes and then rejects them,
+        // over the router the scratch service was built with.
+        const applied: AppPlan[] = [];
+        const destroyed: DestroyCall[] = [];
+        const builtRoutes: RouteRecorder = { applied: [], removed: [] };
+        const hostRoutes: RouteRecorder = { applied: [], removed: [] };
+        const rejection = new ProxyApplyError({
+          proxyId: "host-router",
+          app: "forkme",
+          message: "Router rejected the routes.",
+          remediation: "Repair the router configuration.",
+        });
+        const hostRouter = RouterService.of({
+          ...makeTestRouterService(),
+          id: "host-router",
+          applyRoutes: (_routes, owner) =>
+            Effect.sync(() => void hostRoutes.applied.push(owner)).pipe(
+              Effect.andThen(Effect.fail(rejection)),
+            ),
+          removeRoutes: (owner) => Effect.sync(() => void hostRoutes.removed.push(owner)),
+        });
+        // When
+        const exit = await Effect.runPromiseExit(
+          Effect.flatMap(ScratchAppService, (service) =>
+            Effect.scoped(service.acquire({ source: { kind: "fork" }, detached: false, keepOnFailure })).pipe(
+              Effect.provideService(RouterService, hostRouter),
+            ),
+          ).pipe(
+            Effect.provide(
+              makeScratchForkLayer(dir, applied, destroyed, {
+                routes: builtRoutes,
+                ...(reapFails
+                  ? {
+                      destroyFailure: new ProviderUnavailableError({
+                        providerId: "lando",
+                        operation: "destroy",
+                        message: "Injected destroy failure.",
+                        remediation:
+                          "Install or start the `lando` provider and confirm it can perform `destroy`.",
+                      }),
+                    }
+                  : {}),
+              }),
+            ),
+          ),
+        );
+        // Then: no handle is returned and the publication failure is the primary error.
+        expect(Exit.isFailure(exit) ? Cause.findErrorOption(exit.cause) : undefined).toMatchObject({
+          _tag: "Some",
+          value: {
+            _tag: "ScratchAppError",
+            operation: "start",
+            cause: rejection,
+            remediation: expect.stringContaining(rejection.remediation),
+          },
+        });
+        expect(applied).toHaveLength(1);
+        expect(hostRoutes.applied).toHaveLength(1);
+        // The router that wrote the routes withdraws them under the scratch owner unless the instance
+        // is retained; the router the service was built with is never used.
+        expect(hostRoutes.removed).toEqual(keepOnFailure || reapFails ? [] : hostRoutes.applied);
+        expect(builtRoutes).toEqual({ applied: [], removed: [] });
+        expect(destroyed.map((call) => call.volumes)).toEqual(
+          keepOnFailure || reapFails ? [] : [false, true],
+        );
+        expect(await readFile(join(dir, ".lando.yml"), "utf8")).toBe(routedForkLandofile);
+      });
+    },
+  );
+
   test("rejects a routed cross-provider fork before applying resources", async () => {
-    await withTempProject(routedForkLandofile, async () => {
+    await withTempProject(routedForkLandofile, async (dir) => {
       // Given
       const applied: AppPlan[] = [];
       const routes: RouteRecorder = { applied: [], removed: [] };

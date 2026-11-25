@@ -71,7 +71,6 @@ import { ensureAppPlacement } from "../providers/app-placement.ts";
 import { prepareProvider } from "../providers/prepared.ts";
 import { RuntimeCwd } from "../runtime/cwd.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
-import { layerUnavailable } from "../subsystems/proxy/api.ts";
 import { prepareDebuggerOverlay } from "../subsystems/start-overlay-registry.ts";
 import { makeScratchReaper } from "./destroy.ts";
 import { makeScratchGc } from "./gc.ts";
@@ -82,6 +81,7 @@ import { makeScratchLifecycleLock } from "./lifecycle-lock.ts";
 import { applyMountCwd, isolateScratchMounts } from "./mount-isolation.ts";
 import { openScratchPlan } from "./plan.ts";
 import { ScratchRegistry, type ScratchRegistryEntry, makeScratchRegistry } from "./registry.ts";
+import { captureScratchRouter } from "./router.ts";
 import { isCanonicalScratchId } from "./scanner.ts";
 import { applyScratchStartup, withScratchAcquisition } from "./startup.ts";
 
@@ -506,9 +506,9 @@ const makeScratchAppService = Effect.fnUntraced(function* (
   const scratchRegistry = yield* ScratchRegistry;
   const dataMover = yield* DataMover;
   const buildOrchestrator = yield* Effect.serviceOption(BuildOrchestrator);
-  const proxy = yield* Effect.serviceOption(RouterService);
   const initAppPort = yield* ScratchInitAppPort;
   const reapScratch = yield* makeScratchReaper;
+  const scratchRouter = yield* captureScratchRouter;
   const withLifecycleLock = yield* makeScratchLifecycleLock;
   const startupOwnership = {
     registry: scratchRegistry,
@@ -680,13 +680,14 @@ const makeScratchAppService = Effect.fnUntraced(function* (
     readonly landofileRouter?: RouterConfig;
   }) {
     const { id: scratchId, plan, planCache, landofileRouter } = request;
+    const router = yield* scratchRouter;
     const markedPlan = markScratchPlan(plan, scratchId);
     // A routed scratch start without a selectable router refuses before placement, builds, or certificates.
     yield* requireSelectableRouter(markedPlan).pipe(
-      Effect.provide(Option.isSome(proxy) ? Layer.succeed(RouterService, proxy.value) : layerUnavailable),
+      Effect.provideService(RouterService, router),
       mapFailures((cause) => scratchAppError("start", cause.message, cause, cause.remediation)),
     );
-    const routeError = routeUrlRouterError(markedPlan, Option.getOrUndefined(proxy));
+    const routeError = routeUrlRouterError(markedPlan, router);
     if (routeError !== undefined) return yield* routeError;
     yield* publishStartWarnings(markedPlan).pipe(
       Effect.provideService(EventService, events),
@@ -751,7 +752,7 @@ const makeScratchAppService = Effect.fnUntraced(function* (
         environmentResolver,
         stateStore,
         ...(consumerAdmission === undefined ? {} : { admissionContext: consumerAdmission }),
-        ...(Option.isSome(proxy) ? { router: proxy.value } : {}),
+        router,
       },
     );
     return {
