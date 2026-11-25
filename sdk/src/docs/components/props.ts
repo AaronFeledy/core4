@@ -4,6 +4,7 @@ import { withDefaultKey } from "../../schema/default-key.ts";
 import { KEBAB_CASE_ID_PATTERN, patternString } from "../../schema/string-forms.ts";
 import { GuideSkip, GuideTimeout } from "../guide-execution-fields.ts";
 import { GuideFrontmatter, GuideId } from "../guide-frontmatter.ts";
+import { runCapture } from "./run-capture.ts";
 
 /** Scenario/step id token — same kebab alphabet as GuideId, distinct schema identity. */
 export const ComponentId = GuideId.annotate({ identifier: "ComponentId" });
@@ -177,6 +178,7 @@ export const RunProps = Schema.Union([
     command: Schema.String,
     answers: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
     expectExit: Schema.optionalKey(Schema.Number.pipe(Schema.check(Schema.isInt()))),
+    capture: Schema.optionalKey(runCapture),
   }),
   Schema.Struct({
     shell: Schema.String,

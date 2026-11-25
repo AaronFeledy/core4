@@ -31,5 +31,16 @@
       }
     ],
     "justification": "RuntimeProvider.removeObservedService is replaced by bringDownObserved; its receipt is ObservedBringDown, which reports the per-container action with the same optional shutdown observations. No persisted state or command result embeds ObservedServiceRemoval."
+  },
+  {
+    "fingerprint": "sha256:cbf57616bf27356d4a53dacfe66f24aaed9d29bca857fb759b1afd2625e013a8",
+    "changeKind": "unsupported-construct",
+    "locations": [
+      {
+        "surface": "schema:RunProps",
+        "path": "$.anyOf"
+      }
+    ],
+    "justification": "The command variant of RunProps accepts an optional capture. Existing command, shell, and library props are unchanged."
   }
 ]
