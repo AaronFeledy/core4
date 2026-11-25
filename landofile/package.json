@@ -91,7 +91,7 @@
   "scripts": {
     "build": "tsc -b",
     "clean": "rm -rf dist .tsbuildinfo",
-    "test": "bun test ./test",
+    "test": "bun --cwd=.. test ./landofile/test",
     "typecheck": "tsc -b"
   }
 }
