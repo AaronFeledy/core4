@@ -31,12 +31,14 @@ export const landoNativeAppSlug = (input: {
     : (input.dataSlug ?? input.slug);
 
 export const landoDependencyEnvironmentStoreName = (dataSlug: string, kind: string, digest: string): string =>
-  `lando-${segment(dataSlug, 57)}--env--${segment(kind, 32)}-${digest.slice(0, 16)}`;
+  `lando-${segment(dataSlug, APP_SLUG_MAX_LENGTH)}--env--${segment(kind, 32)}-${digest.slice(0, 16)}`;
 
 import { DOMAIN_NAME_PATTERN } from "./hostname.ts";
 
 const PREFIX = "lando-";
 const DNS_LABEL_MAX_LENGTH = 63;
+/** Longest app slug: `lando-<slug>` must stay one DNS label. */
+export const APP_SLUG_MAX_LENGTH = DNS_LABEL_MAX_LENGTH - PREFIX.length;
 const HASH_LENGTH = 8;
 /** Lowercase words joined by single hyphens: a DNS label that never contains `--`. */
 const CANONICAL = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
@@ -80,7 +82,7 @@ export const landoServiceStoreName = (slug: string, service: string, role: strin
 
 /** Shared app slug normalization, including a root-derived name when no words remain. */
 export const normalizeAppSlug = (name: string, appRoot: string): string =>
-  segment(name, 57) || sha256Hex(appRoot).slice(0, HASH_LENGTH);
+  segment(name, APP_SLUG_MAX_LENGTH) || sha256Hex(appRoot).slice(0, HASH_LENGTH);
 
 export const defaultRouteHostname = (service: string, appSlug: string, domain: string): string => {
   const lower = service.toLowerCase();

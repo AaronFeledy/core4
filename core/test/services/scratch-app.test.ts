@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { AbsolutePath } from "@lando/core/schema";
+import { AbsolutePath, normalizeAppSlug } from "@lando/core/schema";
 import { ScratchAppService } from "@lando/core/services";
 import { Effect } from "effect";
 
@@ -74,6 +74,19 @@ describe("ScratchAppServiceLayer.layer", () => {
       expect(first).toMatch(/^scratch-my-app-[0-9a-f]{6}$/u);
       expect(second).toMatch(/^scratch-my-app-[0-9a-f]{6}$/u);
       expect(first).not.toBe(second);
+    });
+  });
+
+  test("synthesizeId from a long base yields an id the planner keeps as the app id", async () => {
+    await withTempRoots(async () => {
+      const base = "/tmp/lando-scenario-embedding-runtime-scratch-runtime-cwd-AbCdEf/recipe";
+      const id = await Effect.runPromise(
+        Effect.flatMap(ScratchAppService, (service) => service.synthesizeId(base)).pipe(
+          Effect.provide(scratchAppLayer()),
+        ),
+      );
+      expect(id).toMatch(/^scratch-[a-z0-9]+(?:-[a-z0-9]+)*-[0-9a-f]{6}$/u);
+      expect(normalizeAppSlug(id, "/unused")).toBe(id);
     });
   });
 

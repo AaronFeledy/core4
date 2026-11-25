@@ -18,6 +18,7 @@ import {
   ScratchSourceUnresolvedError,
 } from "@lando/sdk/errors";
 import {
+  APP_SLUG_MAX_LENGTH,
   AbsolutePath,
   type AppPlan,
   AppPlan as AppPlanSchema,
@@ -267,11 +268,15 @@ const scratchAppNotFoundError = (id: string): ScratchAppNotFoundError =>
     remediation: "Run `lando apps:scratch:list` to see currently registered scratch apps.",
   });
 
+/** The base leaves room for `scratch-` and `-<6hex>` within the app slug cap the planner applies. */
+const SCRATCH_BASE_MAX_LENGTH = APP_SLUG_MAX_LENGTH - "scratch-".length - "-000000".length;
+
 const sanitizeBase = (base: string): string => {
   const cleaned = base
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9]+/gu, "-")
+    .slice(0, SCRATCH_BASE_MAX_LENGTH)
     .replace(/^-+|-+$/gu, "");
   return cleaned.length === 0 ? "scratch" : cleaned;
 };
@@ -324,7 +329,8 @@ export const suffixScratchHostname = (hostname: string, scratchId: string): stri
   if (labels.length < 3) return hostname;
   const targetIndex = labels.length - 3;
   const target = labels[targetIndex];
-  if (target === undefined || target.endsWith(`--${scratchId}`)) return hostname;
+  // A default route's app label is already the scratch id; suffixing it again can overflow a DNS label.
+  if (target === undefined || target === scratchId || target.endsWith(`--${scratchId}`)) return hostname;
   return labels.map((label, index) => (index === targetIndex ? `${label}--${scratchId}` : label)).join(".");
 };
 

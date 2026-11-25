@@ -878,6 +878,9 @@ describe("ScratchAppServiceLayer.layer fork acquire", () => {
       expect(suffixScratchHostname("app--scratch-demo-123456.lndo.site", "scratch-demo-123456")).toBe(
         "app--scratch-demo-123456.lndo.site",
       );
+      expect(suffixScratchHostname("web.scratch-demo-123456.lndo.site", "scratch-demo-123456")).toBe(
+        "web.scratch-demo-123456.lndo.site",
+      );
     });
   });
 
