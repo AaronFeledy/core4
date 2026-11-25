@@ -80,7 +80,9 @@ Full isolation always skips `.git/`, `node_modules/`, `vendor/`, `.lando/cache/`
 
 ## Control scratch hostnames
 
-Scratch routes get `--<scratch-id>` before the final two DNS labels. A default route already names the scratch, as in `web.<scratch-id>.lndo.site`, so it keeps that hostname. Keep every planned hostname with `--no-hostname-suffix`, or keep selected hostnames by repeating `--hostname`.
+Lando adds `--<scratch-id>` to the label before the configured proxy domain. For a hostname outside that domain, it uses the label before the last two DNS labels. A default route already names the scratch, as in `web.<scratch-id>.lndo.site`, so it keeps that hostname.
+
+If the suffix would make the hostname too long, Lando shortens that label and adds a short hash. Lando rejects a rewrite that can't fit or would give two different hostnames the same name. Keep every planned hostname with `--no-hostname-suffix`, or keep selected hostnames by repeating `--hostname`.
 
 ```sh
 lando scratch:start --fork --detach --no-hostname-suffix

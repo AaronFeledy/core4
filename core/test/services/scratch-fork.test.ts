@@ -43,7 +43,7 @@ import * as ScratchRegistryLayer from "@lando/engine/scratch-app/registry";
 import { ScratchRegistry, makeScratchRegistry } from "@lando/engine/scratch-app/registry";
 import * as ScratchResourceScannerLayer from "@lando/engine/scratch-app/scanner";
 import * as ScratchAppServiceLayer from "@lando/engine/scratch-app/service";
-import { ScratchInitAppPort, suffixScratchHostname } from "@lando/engine/scratch-app/service";
+import { ScratchInitAppPort } from "@lando/engine/scratch-app/service";
 import * as LandoConfigService from "@lando/engine/services/config";
 import * as LandoEventService from "@lando/engine/services/event-service";
 import * as BunFileSystem from "@lando/engine/services/file-system";
@@ -561,7 +561,12 @@ describe("ScratchAppServiceLayer.layer fork acquire", () => {
             const service = yield* ScratchAppService;
             return yield* Effect.scoped(
               Effect.gen(function* () {
-                const handle = yield* service.acquire({ source: { kind: "fork" }, detached: false, isolate });
+                const handle = yield* service.acquire({
+                  source: { kind: "fork" },
+                  detached: false,
+                  isolate,
+                  name: "a".repeat(42),
+                });
                 expect(routes.applied.map((owner) => String(owner.id))).toEqual([handle.id]);
                 expect(routes.removed).toEqual([]);
                 return handle.id;
@@ -570,6 +575,7 @@ describe("ScratchAppServiceLayer.layer fork acquire", () => {
           }).pipe(Effect.provide(makeScratchForkLayer(dir, appliedPlans, [], { routes }))),
         );
 
+        expect(handleId).toMatch(/^scratch-a{25}-[0-9a-f]{6}$/u);
         expect(routes.applied).toEqual([
           { id: AppId.make(handleId), ownerKey: appIdentityKey("owner", `scratch:${handleId}`) },
         ]);
@@ -869,18 +875,6 @@ describe("ScratchAppServiceLayer.layer fork acquire", () => {
 
       expect(withoutSuffix[0]?.routes[0]?.hostname).toBe("forkme.lndo.site");
       expect(preserved[0]?.routes[0]?.hostname).toBe("forkme.lndo.site");
-      expect(suffixScratchHostname("admin.app.lndo.site", "scratch-demo-123456")).toBe(
-        "admin.app--scratch-demo-123456.lndo.site",
-      );
-      expect(suffixScratchHostname("*.app.lndo.site", "scratch-demo-123456")).toBe(
-        "*.app--scratch-demo-123456.lndo.site",
-      );
-      expect(suffixScratchHostname("app--scratch-demo-123456.lndo.site", "scratch-demo-123456")).toBe(
-        "app--scratch-demo-123456.lndo.site",
-      );
-      expect(suffixScratchHostname("web.scratch-demo-123456.lndo.site", "scratch-demo-123456")).toBe(
-        "web.scratch-demo-123456.lndo.site",
-      );
     });
   });
 

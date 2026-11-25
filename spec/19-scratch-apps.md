@@ -28,7 +28,7 @@ A scratch app is not a Git worktree, a source-app extension, a persistent projec
 | Field | Contract |
 |---|---|
 | `kind` | `scratch` |
-| `id` | A validated, unique `scratch-<base>-<suffix>` identity derived from source or `--name`. The suffix is bounded and collision-resistant. |
+| `id` | A validated, unique `scratch-<base>-<suffix>` identity derived from source or `--name`. New ids are at most 40 characters, with a base of at most 25 and a six-digit hexadecimal suffix. Existing longer ids remain valid. |
 | Root | `<userDataRoot>/scratch/<id>/` with the materialized app under its managed root. |
 | Provider labels | `dev.lando.scratch=TRUE` and `dev.lando.scratch-id=<id>` on every provisioned container, volume, and network, in addition to §6.5 labels. |
 | Environment | `LANDO_PROJECT=<id>`, `LANDO_APP_NAME=<id>`, `LANDO_APP_KIND=scratch`; `LANDO_APP_KIND` applies to every app kind (§6.9). |
@@ -164,7 +164,9 @@ The `scope: global` to `scope: app` rewrite is mandatory unless `--share-global-
 
 `ScratchHostnameSuffix` is the plan-time hostname transform for scratch routes, separate from `RouteFilter` middleware. It runs after endpoint derivation and binding (§6.6). Unless overridden, it rewrites each route hostname with the scratch id before the domain, including nested and wildcard hostnames. A label that already is the scratch id, as in a default route's `<service>.<scratch id>.<domain>`, MUST be left unchanged so the label stays within the 63-character DNS limit. The transform MUST be idempotent. Activation binds public URL descriptors against this suffixed publication table and the router's current authorities. For every routed scratch, whether or not it bound URLs, router setup or publication failure MUST fail acquisition. `AppPlacementError` stays the top-level failure; any other failure becomes `ScratchAppError` with operation `start` that names route publication for the scratch id and retains the original cause and the router's remediation. Unless `--keep-on-failure` applies, the §21.6 acquisition-failure cleanup is attempted, including withdrawal of routes the router wrote before failing, and a cleanup failure MUST NOT replace the startup failure. Activation of a route-free or router-disabled scratch MUST NOT prepare, set up, or publish routes for that scratch; teardown follows §21.6.3. Only successful publication can fail with `authority-changed` if its authorities disagree with the prepared proof.
 
-`--no-hostname-suffix` disables the filter. Repeated `--hostname` values preserve selected hostnames and MAY deliberately collide with another app.
+When the hostname ends in the configured proxy domain, the transform uses the label immediately before that entire domain, including multi-label domains. Otherwise, it uses the label before the final two DNS labels. A rewritten label MUST end in `--<id>`. The transform MUST shorten the label with a digest when needed to fit both 63 characters per label and 253 overall. An impossible rewrite or two distinct hostnames mapping to the same hostname MUST fail with `ScratchAppError` with operation `plan` that names the route. The final scratch plan MUST pass the application plan schema and planning policy before placement, cache writes, builds, or provider apply.
+
+`--no-hostname-suffix` disables the transform. Repeated `--hostname` values preserve selected hostnames and MAY deliberately collide with another app.
 
 #### 21.9.3 Exclusion from cross-app scopes
 

@@ -18,7 +18,6 @@ import {
   ScratchSourceUnresolvedError,
 } from "@lando/sdk/errors";
 import {
-  APP_SLUG_MAX_LENGTH,
   AbsolutePath,
   type AppPlan,
   AppPlan as AppPlanSchema,
@@ -77,6 +76,7 @@ import { prepareDebuggerOverlay } from "../subsystems/start-overlay-registry.ts"
 import { makeScratchReaper } from "./destroy.ts";
 import { makeScratchGc } from "./gc.ts";
 import { ownerPidIsDead } from "./gc-candidates.ts";
+import { applyScratchHostnames } from "./hostnames.ts";
 import { SCRATCH_EXTENSION_KEY } from "./identity.ts";
 import { decodeScratchLandofile } from "./landofile.ts";
 import { makeScratchLifecycleLock } from "./lifecycle-lock.ts";
@@ -269,8 +269,7 @@ const scratchAppNotFoundError = (id: string): ScratchAppNotFoundError =>
     remediation: "Run `lando apps:scratch:list` to see currently registered scratch apps.",
   });
 
-/** The base leaves room for `scratch-` and `-<6hex>` within the app slug cap the planner applies. */
-const SCRATCH_BASE_MAX_LENGTH = APP_SLUG_MAX_LENGTH - "scratch-".length - "-000000".length;
+const SCRATCH_BASE_MAX_LENGTH = 40 - "scratch-".length - "-000000".length;
 
 const sanitizeBase = (base: string): string => {
   const cleaned = base
@@ -325,30 +324,6 @@ const applyShareGlobalStorage = (plan: AppPlan): AppPlan => {
   };
 };
 
-export const suffixScratchHostname = (hostname: string, scratchId: string): string => {
-  const labels = hostname.split(".");
-  if (labels.length < 3) return hostname;
-  const targetIndex = labels.length - 3;
-  const target = labels[targetIndex];
-  // A default route's app label is already the scratch id; suffixing it again can overflow a DNS label.
-  if (target === undefined || target === scratchId || target.endsWith(`--${scratchId}`)) return hostname;
-  return labels.map((label, index) => (index === targetIndex ? `${label}--${scratchId}` : label)).join(".");
-};
-
-const applyScratchHostnames = (plan: AppPlan, input: ScratchAcquireInput): AppPlan => {
-  if (input.noHostnameSuffix === true) return plan;
-  const preserved = new Set(input.hostnames ?? []);
-  const scratchId = String(plan.id);
-  return {
-    ...plan,
-    routes: plan.routes.map((route) =>
-      preserved.has(route.hostname)
-        ? route
-        : { ...route, hostname: suffixScratchHostname(route.hostname, scratchId) },
-    ),
-  };
-};
-
 const applyScratchStartFlags = Effect.fnUntraced(function* (
   plan: AppPlan,
   input: ScratchAcquireInput,
@@ -393,7 +368,8 @@ const applyScratchStartFlags = Effect.fnUntraced(function* (
     }
     next = applyShareGlobalStorage(next);
   }
-  const final = markScratchPlan(applyScratchHostnames(next, input), plan.id);
+  const routed = yield* applyScratchHostnames(next, input);
+  const final = markScratchPlan(routed, plan.id);
   yield* validateAppPlan(final.root, final).pipe(
     mapFailures((cause) => scratchAppError("plan", cause.message, cause)),
   );
@@ -864,6 +840,7 @@ const makeScratchAppService = Effect.fnUntraced(function* (
         );
         const startPlan = yield* applyScratchStartFlags(forkPlan, input, capabilities, hostCwd).pipe(
           Effect.provideService(EventService, events),
+          Effect.provide(context),
           Effect.tapError(() =>
             unlessKeepOnFailure(
               input,
@@ -1017,6 +994,7 @@ const makeScratchAppService = Effect.fnUntraced(function* (
         );
         const startPlan = yield* applyScratchStartFlags(recipePlan, input, capabilities, hostCwd).pipe(
           Effect.provideService(EventService, events),
+          Effect.provide(context),
           Effect.tapError(() =>
             unlessKeepOnFailure(
               input,

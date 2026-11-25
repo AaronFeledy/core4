@@ -3,9 +3,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { makeLandoPaths } from "@lando/paths";
 import type { ScratchAppError } from "@lando/sdk/errors";
-import { AbsolutePath, AppId, type AppPlan, type ServicePlan } from "@lando/sdk/schema";
+import { AbsolutePath, AppId, type AppPlan, GlobalConfig, type ServicePlan } from "@lando/sdk/schema";
 import {
   AppPlanner,
+  ConfigService,
   EventService,
   type LandoEvent,
   LandofileService,
@@ -19,7 +20,7 @@ import {
 import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { makeStateStore } from "@lando/state-store/service";
-import { Effect, Layer, Stream } from "effect";
+import { Effect, Layer, Schema, Stream } from "effect";
 import {
   ScratchRegistry,
   type ScratchRegistryEntry,
@@ -41,6 +42,7 @@ interface StartupFixtureOptions {
   /** Publishes a route for `web` and starts through this router. */
   readonly router?: RouterServiceShape;
   readonly routes?: AppPlan["routes"];
+  readonly defaultDomain?: string | undefined;
   /** Fields merged into the source app's `web` service. */
   readonly web?: Partial<Pick<ServicePlan, "user" | "endpoints">>;
 }
@@ -77,7 +79,14 @@ export const withStartupFixture = async (
 const makeFixture = async (
   root: string,
   overrides: Partial<RuntimeProviderShape>,
-  { registration = Effect.void, router, routes, onEvent, web: webOverrides }: StartupFixtureOptions,
+  {
+    registration = Effect.void,
+    router,
+    routes,
+    defaultDomain,
+    onEvent,
+    web: webOverrides,
+  }: StartupFixtureOptions,
 ) => {
   const sourceRoot = AbsolutePath.make(join(root, "source"));
   await mkdir(sourceRoot);
@@ -158,9 +167,19 @@ const makeFixture = async (
         entries.delete(id);
       }),
   });
+  const config = Schema.decodeUnknownSync(GlobalConfig)(
+    defaultDomain === undefined ? {} : { proxy: { defaultDomain } },
+  );
   const dependencies = Layer.mergeAll(
     PrivateFileAccessService.layer,
     router === undefined ? Layer.empty : Layer.succeed(RouterService, router),
+    Layer.succeed(
+      ConfigService,
+      ConfigService.of({
+        load: Effect.succeed(config),
+        get: (key) => Effect.succeed(config[key]),
+      }),
+    ),
     FileSystem.layer,
     Layer.succeed(PathsService, makeLandoPaths()),
     Layer.succeed(StateStore, makeStateStore({ privateFileAccess: ownerOnlyFileAccess })),
