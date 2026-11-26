@@ -61,12 +61,10 @@ export const planInventoryVolumeDeletions = Effect.fnUntraced(function* (input: 
           receipt.appId === resource.appId &&
           receipt.dataRoot === dataRoot,
       );
-    if (
+    const covered =
       !retainedGlobal &&
       coverage?.provider === resource.providerId &&
-      (shared || coverage.app === resource.appId)
-    )
-      continue;
+      (shared || coverage.app === resource.appId);
     if (
       !(resource.volumeClass === "cache"
         ? options.purgeCaches
@@ -141,11 +139,13 @@ export const planInventoryVolumeDeletions = Effect.fnUntraced(function* (input: 
         else yield* input.store.retire(root, resource);
         break;
       case "candidate":
+        if (covered) break;
         if (!candidates.some((candidate) => candidate.key === observed.candidate.key))
           candidates.push(observed.candidate);
         volumeRecords.push(resource);
         break;
       case "unverified":
+        if (covered) break;
         if (shared) skipped.push(skippedVolume(volume, "shared cache ownership could not be verified"));
         else {
           const labels: Readonly<Record<string, string>> = observed.labels;

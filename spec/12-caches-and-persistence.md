@@ -165,7 +165,7 @@ A journal with a newer envelope version is neither recovered nor treated as abse
 
 #### 12.4.2 Durable ownership manifest
 
-This durable provider-private identity record lets stop, destroy, and a converging start finish when a failed or interrupted attempt left resources in place (§5.3.1, §6.7). It survives app-plan cache invalidation. Stop never retires entries. Containers and private networks that destroy or a converging start verified absent or removed are retired; named volume identities remain until the existing volume flags select their cleanup (anonymous volumes are never recorded, §6.5).
+This durable provider-private identity record lets stop, destroy, and a converging start finish when a failed or interrupted attempt left resources in place (§5.3.1, §6.7). It survives app-plan cache invalidation. Stop never retires entries. Containers and private networks that destroy or a converging start verified absent or removed are retired; named volume identities remain until the existing volume flags select their cleanup (anonymous volumes are never recorded, §6.5). When those flags select a volume, owned cleanup MUST retire that inventory member after verified absence or removal, including when the destroy's provider `bringDown` already deleted it, so a successful `--volumes` destroy leaves no inventory member for the removed volume.
 
 | Field | Contract |
 |---|---|
