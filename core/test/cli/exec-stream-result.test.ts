@@ -13,7 +13,7 @@ import { compiledCommandOptionsFromSpec } from "../../src/cli/run-built-in-comma
 import { makePlan } from "../_support/host-proxy-open-fixtures.ts";
 import { currentTestPlan } from "../_support/value-contracts.ts";
 
-test("exec JSON preserves output but ends in a tagged failure when the provider reports no exit", async () => {
+test("exec NDJSON preserves output but ends in a tagged failure when the provider reports no exit", async () => {
   let dispatches = 0;
   const runtime = makeTestRuntime({
     bootstrap: "app",
@@ -27,19 +27,23 @@ test("exec JSON preserves output but ends in a tagged failure when the provider 
       },
     },
   });
-  const input = compiledCommandInputFromArgv("app:exec", ["--format=json", "--", "private-argv"]);
+  const resultFormat = "ndjson";
+  const rendererMode = "plain";
+  const input = compiledCommandInputFromArgv("app:exec", [`--format=${resultFormat}`, "--", "private-argv"], {
+    rendererMode,
+  });
   const plan = currentTestPlan(makePlan([], ["appserver"]));
   const operation = execSpec
     .run(input)
     .pipe(Effect.provideService(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })));
   const io = createBufferedRendererIO();
-  let cliStatus: number | undefined;
+  const cliStatuses: number[] = [];
   const options = compiledCommandOptionsFromSpec(execSpec, input);
 
   await runWithRendererHandling(operation, {
     runtime: runtime.layer,
-    rendererMode: "json",
-    resultFormat: "json",
+    rendererMode,
+    resultFormat,
     command: execSpec.id,
     resultSchema: ExecAppResult,
     ...options,
@@ -48,7 +52,7 @@ test("exec JSON preserves output but ends in a tagged failure when the provider 
     render: () => undefined,
     formatError: ({ error }) => String(error),
     setExitCode: (code) => {
-      cliStatus = code;
+      cliStatuses.push(code);
     },
   });
 
@@ -67,6 +71,6 @@ test("exec JSON preserves output but ends in a tagged failure when the provider 
     "result",
   ]);
   expect(frames.find((frame) => frame._tag === "stdout")).toMatchObject({ chunk: "partial output" });
-  expect(cliStatus).toBe(1);
+  expect(cliStatuses).toEqual([1]);
   expect(dispatches).toBe(1);
 });
