@@ -6,6 +6,7 @@ import { collectObservedConnections, startedServices } from "@lando/engine/opera
 import { requireSelectableGlobalRouter } from "@lando/engine/operations/global-consumer-admission";
 import { installAndLoadGlobalPlan } from "@lando/engine/operations/global-install";
 import type { LoadGlobalPlanError } from "@lando/engine/operations/global-plan";
+import { withdrawGlobalRoutes } from "@lando/engine/operations/global-routes";
 import { applyGlobalServiceGroups } from "@lando/engine/operations/global-service-groups";
 import type {
   DebuggerHostUnavailableError,
@@ -39,6 +40,7 @@ import {
   type RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 import { DateTime, Effect, Schema } from "effect";
+import { withGlobalRoutePublication } from "../global-app/activation-scope.ts";
 import { selectPreparedProvider } from "../providers/prepared.ts";
 import { prepareDebuggerOverlay } from "../subsystems/start-overlay-registry.ts";
 import { globalAppRef, withGlobalLifecycleEvents } from "./global-common";
@@ -102,7 +104,13 @@ export const globalRebuild = Effect.fn("GlobalRebuild.rebuild")(
 
     const services = Object.values(loaded.plan.services);
     if (services.length === 0) {
-      yield* revalidateAppliedGlobalRouterStartup(loaded.plan);
+      // No service can publish a route, so converge by withdrawing the definition, without router setup.
+      const verifyAdmission = yield* captureGlobalStartupAdmission();
+      const revalidateRouter = revalidateAppliedGlobalRouterStartup(loaded.plan);
+      yield* withGlobalRoutePublication(
+        Effect.andThen(verifyAdmission, withdrawGlobalRoutes(yield* RouterService, loaded.plan)),
+      ).pipe(Effect.tapError(() => Effect.asVoid(Effect.result(revalidateRouter))));
+      yield* revalidateRouter;
       return { app: loaded.plan.name, materialized: true, servicesRebuilt: [] };
     }
     yield* requireSelectableGlobalRouter(

@@ -1,6 +1,7 @@
 import { mapFailures } from "@lando/sdk/command-result";
 import { LandofileValidationError } from "@lando/sdk/errors";
 import {
+  type AppPlan,
   CurrentExecutableAppPlan,
   type RoutePlan,
   ServicePlan,
@@ -74,6 +75,30 @@ const invalidPlan = (appRoot: string, issues: ReadonlyArray<ValidationIssue>) =>
     issues,
   });
 
+const planSchemaIssues = (plan: unknown, cause: Parameters<typeof validationIssuesFromCause>[0]) =>
+  validationIssuesFromCause(cause, { fallback: "Invalid AppPlan." }).map((issue) => {
+    if (
+      issue.path[0] !== "routes" ||
+      typeof issue.path[1] !== "number" ||
+      !Predicate.isObject(plan) ||
+      !Array.isArray(plan.routes)
+    )
+      return issue;
+    const route: unknown = plan.routes[issue.path[1]];
+    if (!Predicate.isObject(route)) return issue;
+    return {
+      ...issue,
+      rule: issue.rule ?? ("landofile.route" as const),
+      message: `Route for service ${String(route.service)} with hostname ${String(route.hostname)}: ${issue.message}`,
+      ...(issue.suggestion === undefined && issue.path[2] === "hostname"
+        ? {
+            suggestion:
+              "Correct the authored route hostname, or update the plugin or feature that generated it.",
+          }
+        : {}),
+    };
+  });
+
 export const decodeAppPlan = (
   appRoot: string,
   plan: unknown,
@@ -81,30 +106,20 @@ export const decodeAppPlan = (
   const decoded = Schema.decodeUnknownResult(CurrentExecutableAppPlan)(plan);
   const issues = Result.isSuccess(decoded)
     ? planPolicyIssues(decoded.success.routes)
-    : validationIssuesFromCause(decoded.failure, { fallback: "Invalid AppPlan." }).map((issue) => {
-        if (
-          issue.path[0] !== "routes" ||
-          typeof issue.path[1] !== "number" ||
-          !Predicate.isObject(plan) ||
-          !Array.isArray(plan.routes)
-        )
-          return issue;
-        const route: unknown = plan.routes[issue.path[1]];
-        if (!Predicate.isObject(route)) return issue;
-        return {
-          ...issue,
-          rule: issue.rule ?? ("landofile.route" as const),
-          message: `Route for service ${String(route.service)} with hostname ${String(route.hostname)}: ${issue.message}`,
-          ...(issue.suggestion === undefined && issue.path[2] === "hostname"
-            ? {
-                suggestion:
-                  "Correct the authored route hostname, or update the plugin or feature that generated it.",
-              }
-            : {}),
-        };
-      });
+    : planSchemaIssues(plan, decoded.failure);
   if (Result.isSuccess(decoded) && issues.length === 0) return Effect.succeed(decoded.success);
   return Effect.fail(invalidPlan(appRoot, issues));
+};
+
+export const validateAppPlan = (
+  appRoot: string,
+  plan: AppPlan,
+): Effect.Effect<void, LandofileValidationError> => {
+  const encoded = Schema.encodeUnknownResult(CurrentExecutableAppPlan)(plan);
+  const issues = Result.isSuccess(encoded)
+    ? planPolicyIssues(plan.routes)
+    : planSchemaIssues(plan, encoded.failure);
+  return issues.length === 0 ? Effect.void : Effect.fail(invalidPlan(appRoot, issues));
 };
 
 /** Cached plans skip decodeAppPlan, so the cache-hit path re-applies the coverage policy. */

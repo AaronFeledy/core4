@@ -246,7 +246,7 @@ export const executeGlobalTeardown = Effect.fn("GlobalApp.teardown")(function* (
   resolved: GlobalTeardown,
   // Stop keeps every resource, so only destroy chooses what to remove.
   options:
-    | { readonly intent: "stop" }
+    | { readonly intent: "stop" | "halt" }
     | {
         readonly intent: "destroy";
         readonly volumes: boolean;
@@ -262,7 +262,7 @@ export const executeGlobalTeardown = Effect.fn("GlobalApp.teardown")(function* (
       volumesRemoved: { ...noVolumesRemoved },
       containers: [],
     });
-  if (options.intent === "stop" && (yield* resolved.provider.getStatus).state === "idle") {
+  if (options.intent !== "destroy" && (yield* resolved.provider.getStatus).state === "idle") {
     if (resolved.evidence.kind !== "applied")
       return withShutdownObservations({
         changed: false,
@@ -276,16 +276,20 @@ export const executeGlobalTeardown = Effect.fn("GlobalApp.teardown")(function* (
       app: globalTeardownAppRef(resolved),
     };
     yield* stopIdleApp(target, yield* preflightStopApp(target, "idle"));
-    const withdrawal = yield* withdrawOwnerRoutes(routeOwnerFromPlan(resolved.evidence.plan));
+    const routes =
+      options.intent === "stop"
+        ? (yield* withdrawOwnerRoutes(routeOwnerFromPlan(resolved.evidence.plan))).kind
+        : undefined;
     return withShutdownObservations({
       changed: true,
       services: [],
       volumesRemoved: { ...noVolumesRemoved },
       containers: [],
-      routes: withdrawal.kind,
+      ...(routes === undefined ? {} : { routes }),
     });
   }
   switch (options.intent) {
+    case "halt":
     case "stop":
       return yield* stopGlobalResources(resolved);
     case "destroy":

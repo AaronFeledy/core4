@@ -1,5 +1,5 @@
 import type { AppHandleRuntimeServices } from "@lando/engine/app/handle";
-import { type ResolvedAppTarget, withResolvedCwd } from "@lando/engine/landofile/app-resolution";
+import type { ResolvedAppTarget } from "@lando/engine/landofile/app-resolution";
 import type { RuntimeCwd } from "@lando/engine/runtime/cwd";
 import { provideRuntime, runtimeServiceContext } from "@lando/engine/runtime/observability";
 import * as ScratchRegistryLayer from "@lando/engine/scratch-app/registry";
@@ -7,14 +7,7 @@ import * as ScratchResourceScannerLayer from "@lando/engine/scratch-app/scanner"
 import * as ScratchAppServiceLayer from "@lando/engine/scratch-app/service";
 import { acquireScratchAppWithPlan } from "@lando/engine/scratch-app/service";
 import type { App, AppSelector, LandoRuntime, ScratchAcquireError } from "@lando/sdk/app";
-import { mapFailures } from "@lando/sdk/command-result";
-import {
-  type AppResolveError,
-  type ConfigError,
-  type LandoRuntimeBootstrapError,
-  LandofileParseError,
-  ScratchAppError,
-} from "@lando/sdk/errors";
+import type { AppResolveError, ConfigError, LandoRuntimeBootstrapError } from "@lando/sdk/errors";
 import { AbsolutePath } from "@lando/sdk/schema";
 import { type ScratchAcquireInput, ScratchAppService } from "@lando/sdk/services";
 import { type Context, Effect, Layer, Scope } from "effect";
@@ -66,22 +59,8 @@ export const openLandoRuntime = Effect.fn("LandoRuntime.open")(function* (
   const defaultTarget: ResolvedAppTarget | undefined =
     scratchInput === undefined
       ? undefined
-      : yield* withResolvedCwd(
-          capturedCwd,
-          Effect.suspend(() => acquireScratchAppWithPlan(scratchInput)),
-        ).pipe(
+      : yield* acquireScratchAppWithPlan(scratchInput).pipe(
           Effect.map(({ handle, plan }) => ({ plan, root: plan.root, app: handle.app })),
-          mapFailures((cause) =>
-            cause instanceof LandofileParseError
-              ? new ScratchAppError({
-                  message: `Unable to acquire scratch app from runtime cwd ${capturedCwd}.`,
-                  operation: "acquire",
-                  cause,
-                  remediation:
-                    "Run from a scratch app directory created by `lando apps:scratch:start`, or pass an explicit scratch id.",
-                })
-              : cause,
-          ),
           (program) => provideRuntime(program, context),
         );
 

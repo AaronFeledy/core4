@@ -177,7 +177,7 @@ import type {
 import type { UserLandofileError } from "../services/landofile.ts";
 import type { AppPlannerError, BuildAppError, BuildError } from "../services/planner.ts";
 import type { LogChunk, ProviderError, ProviderSelectionError } from "../services/provider.ts";
-import type { ScratchAcquireInput, ScratchHandle } from "../services/scratch.ts";
+import type { ScratchAcquireInput, ScratchAppService, ScratchHandle } from "../services/scratch.ts";
 
 /**
  * The union of every Effect service tag a fully-bootstrapped app-tier Lando
@@ -648,5 +648,5 @@ export interface LandoRuntime {
   ) => Effect.Effect<ScratchHandle, ScratchAcquireError, Scope.Scope>;
   readonly run: <A, E, R>(
     program: Effect.Effect<A, E, R>,
-  ) => Effect.Effect<A, E, Exclude<R, LandoRuntimeServices>>;
+  ) => Effect.Effect<A, E, Exclude<R, LandoRuntimeServices | ScratchAppService>>;
 }

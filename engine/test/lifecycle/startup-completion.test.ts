@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { ProxyApplyError } from "@lando/sdk/errors";
+import { ProxyApplyError, ProxySetupError } from "@lando/sdk/errors";
 import { type AppPlan, FileSyncSessionRef, ServiceName } from "@lando/sdk/schema";
 import { BuildOrchestrator, type RuntimeProviderShape } from "@lando/sdk/services";
 import { TestFileSyncEngine, TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
@@ -13,7 +13,7 @@ import { publicUrlRouter, urlReadingPlan } from "./route-url-fixture.ts";
 
 const policies = ["user-start", "selected", "ensure-global", "scratch"] as const;
 
-test("scratch with bound URLs reports the actual publication failure", async () => {
+test("scratch with bound URLs fails with the router's own publication failure as its cause", async () => {
   const failure = new ProxyApplyError({
     proxyId: "test",
     app: urlReadingPlan.id,
@@ -27,6 +27,7 @@ test("scratch with bound URLs reports the actual publication failure", async () 
   const result = await Effect.runPromise(
     completeStartup({
       policy: "scratch",
+      id: "scratch-url",
       plan: urlReadingPlan,
       routeUrls,
       router,
@@ -34,7 +35,15 @@ test("scratch with bound URLs reports the actual publication failure", async () 
       services: [web.name],
     }).pipe(Effect.result),
   );
-  expect(result).toMatchObject({ _tag: "Failure", failure });
+  expect(result).toMatchObject({
+    _tag: "Failure",
+    failure: {
+      _tag: "ScratchAppError",
+      operation: "start",
+      cause: failure,
+      remediation: expect.stringContaining(failure.remediation),
+    },
+  });
 });
 
 test("a changed router authority fails startup after route publication", async () => {
@@ -48,6 +57,7 @@ test("a changed router authority fails startup after route publication", async (
       });
       return yield* completeStartup({
         policy: "scratch",
+        id: "scratch-url",
         plan: urlReadingPlan,
         router,
         routeUrls,
@@ -182,7 +192,7 @@ test.each([...policies, "forced-user-start" as const, "forced-selected" as const
         case "ensure-global":
           return yield* completeStartup({ ...readiness, policy });
         case "scratch":
-          return yield* completeStartup({ ...readiness, policy, router });
+          return yield* completeStartup({ ...readiness, policy, id: "scratch-web", router });
         default:
           return policy satisfies never;
       }
@@ -217,59 +227,103 @@ test.each([...policies, "forced-user-start" as const, "forced-selected" as const
   },
 );
 
-test("scratch route publication failure remains soft and still runs readiness", async () => {
-  // Given a proxy that fails route publication after setup.
-  const calls: string[] = [];
-  const routed: AppPlan = {
-    ...plan,
-    routes: [
-      {
-        hostname: "web.test",
-        scheme: "http",
-        service: web.name,
-        priority: 1,
-        backend: { service: web.name, port: 3000, protocol: "http" },
+const routedPlan: AppPlan = {
+  ...plan,
+  routes: [
+    {
+      hostname: "web.test",
+      scheme: "http",
+      service: web.name,
+      priority: 1,
+      backend: { service: web.name, port: 3000, protocol: "http" },
+    },
+  ],
+};
+const proxyFailure = new ProxyApplyError({
+  proxyId: "test",
+  app: plan.id,
+  message: "offline",
+  remediation: "Restore the proxy.",
+});
+
+test.each(["setup", "applyRoutes"] as const)(
+  "a routed scratch without URL consumers fails when router %s fails, before readiness",
+  async (failing) => {
+    // Given a routed scratch that binds no URLs and a router whose setup or publication fails.
+    const calls: string[] = [];
+    const router = {
+      ...TestRouterService,
+      setup: () =>
+        failing === "setup"
+          ? Effect.fail(
+              new ProxySetupError({ proxyId: "test", message: "offline", remediation: "Restore the proxy." }),
+            )
+          : Effect.void,
+      applyRoutes: () => Effect.fail(proxyFailure),
+    };
+    // When scratch completion runs.
+    const result = await Effect.runPromise(
+      completeStartup({
+        policy: "scratch",
+        id: "scratch-web",
+        plan: routedPlan,
+        services: [web.name],
+        router,
+        provider: {
+          ...TestRuntimeProvider,
+          inspect: () =>
+            Effect.sync(() => {
+              calls.push("readiness");
+              return {
+                app: plan.id,
+                service: web.name,
+                providerId: plan.provider,
+                status: "running" as const,
+                publications: { status: "unknown" },
+              };
+            }),
+        },
+      }).pipe(Effect.result),
+    );
+    // Then the router failure fails startup as a scratch failure and readiness never runs.
+    expect(calls).toEqual([]);
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: {
+        _tag: "ScratchAppError",
+        operation: "start",
+        cause: { _tag: failing === "setup" ? "ProxySetupError" : "ProxyApplyError" },
+        remediation: expect.stringContaining("Restore the proxy."),
       },
-    ],
-  };
+    });
+  },
+);
+
+test("a route-free scratch never sets up or touches the router", async () => {
+  // Given a router that records every call and a scratch plan with no routes.
+  const calls: string[] = [];
   const router = {
     ...TestRouterService,
-    setup: () => Effect.void,
+    setup: () => Effect.sync(() => void calls.push("setup")),
     applyRoutes: () =>
-      Effect.fail(
-        new ProxyApplyError({
-          proxyId: "test",
-          app: plan.id,
-          message: "offline",
-          remediation: "Restore the proxy.",
-        }),
-      ),
+      Effect.sync(() => {
+        calls.push("routes");
+        return { app: plan.id, appliedRoutes: [], authorities: [] };
+      }),
+    removeRoutes: () => Effect.sync(() => void calls.push("remove")),
   };
-  // When scratch completion sees an ordinary proxy failure.
-  const rows = await Effect.runPromise(
+  // When scratch completion runs.
+  const result = await Effect.runPromise(
     completeStartup({
       policy: "scratch",
-      plan: routed,
-      services: [web.name],
+      id: "scratch-web",
+      plan: { ...plan, routes: [] },
+      services: [],
       router,
-      provider: {
-        ...TestRuntimeProvider,
-        inspect: () =>
-          Effect.sync(() => {
-            calls.push("readiness");
-            return {
-              app: plan.id,
-              service: web.name,
-              providerId: plan.provider,
-              status: "exited" as const,
-              publications: { status: "unknown" },
-              exitCode: 0,
-            };
-          }),
-      },
+      provider: TestRuntimeProvider,
     }).pipe(Effect.result),
   );
-  // Then readiness was attempted rather than bypassed by the soft route error.
-  expect(calls).toEqual(["readiness"]);
-  expect(rows).toMatchObject({ _tag: "Failure", failure: { _tag: "ServiceNotReadyError" } });
+  // Then completion succeeds without any router call.
+  expect(result._tag).toBe("Success");
+  expect(calls).toEqual([]);
 });

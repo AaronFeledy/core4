@@ -1,10 +1,10 @@
+import { causeRemediation } from "@lando/sdk/command-result";
 import { GlobalAppError } from "@lando/sdk/errors";
 import type { AppPlan, ServiceContainerChange, ServicePlan } from "@lando/sdk/schema";
 import { type ApplyOptions, EnvironmentValueResolver } from "@lando/sdk/services";
 import { Effect, Result } from "effect";
 import { applyActivation } from "../lifecycle/activation-apply.ts";
 import { prepareServiceCertificates } from "../lifecycle/service-certificates.ts";
-import { taggedErrorRemediation } from "../providers/managed.ts";
 import type { PreparedRuntimeProvider } from "../providers/prepared.ts";
 import {
   type PreparedDebuggerOverlay,
@@ -178,7 +178,7 @@ export const globalServiceGroupError = <E>(
     operation,
     message: `Global ${failed.length === 1 ? "service" : "services"} ${failed.join(", ")} failed to ${operation}; ${running.join(", ")} ${running.length === 1 ? "is" : "are"} running.`,
     remediation:
-      taggedErrorRemediation(firstFailure.error) ??
+      causeRemediation(firstFailure.error) ??
       (operation === "start"
         ? "Fix the error above, then run `lando global:start` to retry the global services. Run `lando doctor` if the failure persists."
         : "Fix the error above, then run `lando global:rebuild`. Run `lando doctor` if the failure persists."),

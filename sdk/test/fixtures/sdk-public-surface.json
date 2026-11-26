@@ -572,6 +572,7 @@
       "annotateFailureRole",
       "boundedDiagnosticSummary",
       "buildCommandResultEnvelope",
+      "causeRemediation",
       "commandCompletionFromExitCode",
       "commandFailureCause",
       "commandResultEnvelopePolicy",
@@ -1290,6 +1291,7 @@
     "./schema": [
       "ABSOLUTE_CONTAINER_PATH_PATTERN",
       "AGENT_SOCKET_CONTAINER_DIR",
+      "APP_SLUG_MAX_LENGTH",
       "ARTIFACT_REFRESH_EXTENSION",
       "AUTHORING_EXPRESSION_SCOPES",
       "AbsoluteContainerPath",

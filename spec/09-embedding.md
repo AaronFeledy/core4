@@ -65,7 +65,7 @@ Required behavior:
 - Host overrides MAY replace only §4 pluggable abstractions and take precedence over defaults.
 - Library defaults are `bootstrap: app`, `silent` logging, `json` rendering, non-interactive prompts, host-provided plugins only, telemetry enabled unless disabled, and no signal handlers. App bootstrap requires an authoritative cwd. Unanswered non-interactive prompts fail fast (§8.10.3).
 
-`openLandoRuntime(options)` acquires one runtime in the caller’s scope and returns retained methods `app`, `scratch`, and `run`. It MUST NOT reacquire the runtime per call.
+`openLandoRuntime(options)` acquires one runtime in the caller’s scope and returns retained methods `app`, `scratch`, and `run`. It MUST NOT reacquire the runtime per call. Scratch acquisition, whether configured through the `scratch` option or requested through `runtime.scratch`, MUST use the runtime's captured cwd, never a later ambient `process.cwd()`, for default fork Landofile discovery and for cwd-derived scratch mounts. The retained `run` provides `ScratchAppService`, and its requirement type discharges that service along with the runtime services.
 
 Construction and requirement types MUST reflect the requested tier (§22.2). Hosts invoke `openExecutionSession` through `runtime.run`, whose existing Effect-provision meaning is unchanged.
 
