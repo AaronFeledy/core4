@@ -750,7 +750,8 @@ export const makeTestRuntimeProvider = (): RuntimeProviderShape => {
       );
     },
     logs: (target, options) => {
-      const lines = runsContractServiceScript(target.plan?.services[target.service])
+      const planned = target.plan?.services[target.service];
+      const lines = runsContractServiceScript(planned)
         ? ["ready", CONTRACT_SPLIT_LINE, CONTRACT_LONG_LINE]
         : ["ready"];
       const consoleChunks: LogChunk[] = lines.map((line) => ({
@@ -761,31 +762,38 @@ export const makeTestRuntimeProvider = (): RuntimeProviderShape => {
 
       const sources = options.sources ?? [];
       const followSources = sources.filter((source) => source.strategy === "follow");
-      if (followSources.length === 0)
-        return Stream.unwrap(
-          containers.inspect(target, "logs").pipe(Effect.as(Stream.fromIterable(consoleChunks))),
-        );
-
       const fs = makeMemoryLogFileAccess();
       for (const source of followSources) {
         fs.writeFile(String(source.path), `follow:${String(source.id)}\n`);
       }
+      const chunks =
+        followSources.length === 0
+          ? Stream.fromIterable(consoleChunks)
+          : Stream.concat(
+              Stream.fromIterable(consoleChunks),
+              logFollowLineChunks(
+                followLogSources({
+                  service: target.service,
+                  sources,
+                  follow: options.follow,
+                  access: fs.access,
+                  ...(options.tail === undefined ? {} : { tail: options.tail }),
+                  ...(options.source === undefined ? {} : { source: options.source }),
+                }),
+              ),
+            );
 
-      const followers = logFollowLineChunks(
-        followLogSources({
-          service: target.service,
-          sources,
-          follow: options.follow,
-          access: fs.access,
-          ...(options.tail === undefined ? {} : { tail: options.tail }),
-          ...(options.source === undefined ? {} : { source: options.source }),
-        }),
-      );
-
+      // Like the real providers, a planned service whose container does not exist has no logs.
       return Stream.unwrap(
-        containers
-          .inspect(target, "logs")
-          .pipe(Effect.as(Stream.concat(Stream.fromIterable(consoleChunks), followers))),
+        planned === undefined
+          ? containers.inspect(target, "logs").pipe(Effect.as(chunks))
+          : containers
+              .list({ app: target.app })
+              .pipe(
+                Effect.map((rows) =>
+                  rows.some((row) => row.service === target.service) ? chunks : Stream.empty,
+                ),
+              ),
       );
     },
     snapshotVolume: (spec) =>

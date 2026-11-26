@@ -13,6 +13,7 @@
  */
 import { resolve } from "node:path";
 import { collectTestInventory, isUnitTest } from "./test-ownership.ts";
+import { withRunnerOwnedTestRoots } from "./test-preload-roots.ts";
 import { UNIT_SHARD_COUNT } from "./test-selections.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
@@ -94,6 +95,13 @@ export const runLocalUnitTests = async (
   return result;
 };
 
+/** Each command gets its own runner-owned roots, removed once its child exits. */
+export const runUnitTestCommand = (command: readonly string[], cwd: string = REPO_ROOT): Promise<number> =>
+  withRunnerOwnedTestRoots(
+    { env: process.env, live: false },
+    (env) => Bun.spawn([...command], { cwd, env, stdout: "inherit", stderr: "inherit" }).exited,
+  );
+
 const parseShardSpec = (spec: string): { readonly index: number; readonly count: number } => {
   const match = /^([1-9]\d*)\/([1-9]\d*)$/.exec(spec);
   if (match === null) {
@@ -131,13 +139,7 @@ const runShard = async (spec: string, options: { readonly updateTimings: boolean
     throw new Error(`shard ${spec} resolved to zero test files`);
   }
   console.error(`[test-shards] shard ${spec}: ${files.length} collected files`);
-  const proc = Bun.spawn({
-    cmd: [...shardedUnitTestCommand(spec, options, files)],
-    cwd: REPO_ROOT,
-    stdout: "inherit",
-    stderr: "inherit",
-  });
-  process.exit(await proc.exited);
+  process.exit(await runUnitTestCommand(shardedUnitTestCommand(spec, options, files)));
 };
 
 const main = async (): Promise<void> => {
@@ -150,15 +152,7 @@ const main = async (): Promise<void> => {
       for (const file of files) console.log(file);
       return;
     }
-    process.exitCode = await runLocalUnitTests(
-      files,
-      (command) =>
-        Bun.spawn([...command], {
-          cwd: REPO_ROOT,
-          stdout: "inherit",
-          stderr: "inherit",
-        }).exited,
-    );
+    process.exitCode = await runLocalUnitTests(files, runUnitTestCommand);
     return;
   }
   if (args[0] === "--run") {

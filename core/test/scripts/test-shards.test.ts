@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
+import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { NIGHTLY_TIER_TESTS, UNIT_SHARD_COUNT } from "../../../scripts/test-selections.ts";
 import {
   TEST_TIMINGS_FILE,
@@ -180,3 +182,45 @@ test("timings can target a fresh candidate without changing the baseline or sele
     await rm(root, { recursive: true, force: true });
   }
 }, 30_000);
+
+test("each unit command runs on runner-owned roots that are removed after its child exits", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "test-shards-roots-"));
+  const keys = [
+    "LANDO_USER_DATA_ROOT",
+    "LANDO_USER_CACHE_ROOT",
+    "LANDO_USER_CONF_ROOT",
+    "LANDO_SYSTEM_PLUGIN_ROOT",
+  ];
+  try {
+    const probe = join(dir, "probe.test.ts");
+    await writeFile(
+      probe,
+      'import { test } from "bun:test"; test("probe", () => { console.log("ROOT=" + (process.env.LANDO_USER_DATA_ROOT ?? "")); });',
+    );
+    const env = { ...process.env };
+    for (const key of [...keys, "LANDO_TEST_USE_REAL_ROOTS"]) delete env[key];
+    const runner = new URL("scripts/test-shards.ts", repoRoot).href;
+    // --isolate keeps a tree the child's own preload would create, so only the runner can remove one.
+    const command = [process.execPath, "test", "--isolate", probe];
+    const child = Bun.spawn(
+      [
+        process.execPath,
+        "--eval",
+        `import { runUnitTestCommand } from ${JSON.stringify(runner)};
+         process.exitCode = await runUnitTestCommand(${JSON.stringify(command)});`,
+      ],
+      { cwd: fileURLToPath(repoRoot), env, stdout: "pipe", stderr: "pipe" },
+    );
+    const [code, stdout, stderr] = await Promise.all([
+      child.exited,
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+    ]);
+    expect(code, `${stdout}\n${stderr}`).toBe(0);
+    const tree = dirname(/ROOT=(.+)/.exec(stdout)?.[1]?.trim() ?? "");
+    expect(tree.startsWith(join(tmpdir(), "lando-test-roots-"))).toBe(true);
+    expect(existsSync(tree)).toBe(false);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

@@ -10,6 +10,7 @@ import { missingApi, parseEngineJson } from "./engine-errors.ts";
 import { parseJsonOrUndefined } from "./engine-json.ts";
 import {
   httpResponseDetails,
+  httpStatusOf,
   redactDetails,
   redactResponseDetails,
   redactString,
@@ -198,11 +199,6 @@ const pullFailureFields = (input: PullFailureInput) => {
 
 const pullFailure = (input: PullFailureInput): ProviderUnavailableError =>
   new ProviderUnavailableError(pullFailureFields(input));
-
-const httpStatusOf = (details: unknown): number | undefined => {
-  if (typeof details !== "object" || details === null || !("status" in details)) return undefined;
-  return typeof details.status === "number" ? details.status : undefined;
-};
 
 /**
  * The stream transport rejects non-2xx responses before the pull loop sees them. Re-tag

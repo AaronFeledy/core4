@@ -29,9 +29,10 @@ import { removeSnapshots, scratchOwnedSnapshots } from "../operations/destroy-sn
 import { BuildOwner } from "../services/build-owner.ts";
 import { clearAppBuildResults } from "../services/build-results.ts";
 import { removeAppBuildOutput, warnBuildOutputCleanupFailure } from "../services/build-transcript-cleanup.ts";
-import { cleanupScratchOwnedState } from "./owned-cleanup.ts";
+import { cleanupScratchInventory, cleanupScratchOwnedState } from "./owned-cleanup.ts";
 import { ScratchRegistry } from "./registry.ts";
 import { ScratchResourceScanner } from "./scanner.ts";
+import { resolveScratchTeardown } from "./teardown-evidence.ts";
 
 export interface ScratchReapInput {
   readonly id: string;
@@ -55,33 +56,18 @@ export const makeScratchReaper = Effect.gen(function* () {
       const entry = yield* registry.get(input.id);
       const reason = input.reason ?? "acquire-failure";
       if (reason === "acquire-failure" && entry === undefined) return;
+      // The managed root as plans, inventories, and route owners record it, even once it is gone.
+      const managedRoot = AbsolutePath.make(
+        yield* canonicalMissingAppRoot(join(String(input.instanceRoot), "root")),
+      );
       // The desired cache may miss after a frame bump; recover the matching applied plan
       // before planless orphan cleanup so snapshots and provider teardown still own the app.
-      const lookupRoot = AbsolutePath.make(entry?.rootPath ?? join(String(input.instanceRoot), "root"));
-      const id = AppId.make(input.id);
-      if (input.plan === undefined) {
-        for (const provider of yield* providers.list) {
-          const inventory = yield* providers.appliedStateInventory(provider);
-          // The registry does not record which provider ran a scratch app, so a shared receipt
-          // protects it as well as a per-app receipt that names it, even with no runtime online.
-          if (inventory.unreadable.some((issue) => issue.appId === undefined || issue.appId === id))
-            yield* providers.readAppliedPlanStrict({ id, provider });
-        }
-      }
-      const plan =
-        input.plan ??
-        (yield* providers
-          .resolveTeardownEvidence(lookupRoot, { kind: "scratch", id: input.id })
-          .pipe(Effect.map((evidence) => (evidence.kind === "applied" ? evidence.plan : undefined))));
-      if (plan !== undefined && plan.id !== input.id)
-        return yield* Effect.fail(
-          new ScratchAppError({
-            operation: "destroy",
-            message: "Cached scratch plan belongs to a different app.",
-            remediation: "Repair the scratch plan cache before retrying destroy.",
-          }),
-        );
-      if (plan !== undefined) yield* providers.readAppliedPlanStrict(plan);
+      const lookupRoot = entry?.layout === "legacy" ? AbsolutePath.make(entry.rootPath) : managedRoot;
+      const { plan, ownership, inventoryOnly } = yield* resolveScratchTeardown({
+        id: input.id,
+        lookupRoot,
+        ...(input.plan === undefined ? {} : { plan: input.plan }),
+      }).pipe(Effect.provideService(RuntimeProviderRegistry, providers));
       const app = {
         kind: "scratch" as const,
         id: input.id,
@@ -110,7 +96,11 @@ export const makeScratchReaper = Effect.gen(function* () {
       const provider = plan === undefined ? undefined : yield* providers.select(plan);
       const orphan = plan === undefined ? yield* scanner.prepareScratch(input.id, keepVolumes) : undefined;
       const evidence =
-        plan === undefined || entry?.status === "acquiring" ? ("orphans" as const) : ("applied" as const);
+        plan !== undefined && entry?.status !== "acquiring"
+          ? ("applied" as const)
+          : inventoryOnly
+            ? ("inventory" as const)
+            : ("orphans" as const);
       yield* events.publish(PreScratchDestroyEvent.make({ ...payload, timestamp: DateTime.nowUnsafe() }));
       yield* Effect.gen(function* () {
         yield* events.publish(PreStopEvent.make({ scope: "app", app, timestamp: DateTime.nowUnsafe() }));
@@ -133,22 +123,19 @@ export const makeScratchReaper = Effect.gen(function* () {
             provider !== undefined && plan !== undefined
               ? (yield* provider.bringDown(
                   { app: plan.id, plan },
-                  { containers: "remove", volumes: !keepVolumes, removeState: true },
+                  { containers: "remove", volumes: !keepVolumes, removeState: false },
                 )).kind === "removed"
               : yield* orphan?.destroy ?? Effect.succeed(false);
           // Without a plan, the registry layout says which owner published; with neither, try both.
-          const managedOwner = Effect.map(
-            canonicalMissingAppRoot(join(String(input.instanceRoot), "root")),
-            (root) => routeOwnerFromRoot(input.id, AbsolutePath.make(root)),
-          );
+          const managedOwner = routeOwnerFromRoot(input.id, managedRoot);
           const routeOwners =
             plan !== undefined
               ? [routeOwnerFromPlan(plan)]
               : entry?.layout === "legacy"
                 ? [routeOwnerFromScratch(input.id)]
                 : entry?.layout === "managed"
-                  ? [yield* managedOwner]
-                  : [routeOwnerFromScratch(input.id), yield* managedOwner];
+                  ? [managedOwner]
+                  : [routeOwnerFromScratch(input.id), managedOwner];
           for (const routeOwner of routeOwners) {
             yield* withdrawOwnerRoutes(routeOwner).pipe(
               Effect.provideService(EventService, events),
@@ -159,8 +146,18 @@ export const makeScratchReaper = Effect.gen(function* () {
               Option.isSome(paths) ? Effect.provideService(PathsService, paths.value) : (effect) => effect,
             );
           }
-          if (plan !== undefined && provider !== undefined)
+          if (plan !== undefined && provider !== undefined) {
             yield* cleanupScratchOwnedState({ plan, provider, keepVolumes }).pipe(
+              Effect.provideService(RuntimeProviderRegistry, providers),
+              Effect.provideService(StateStore, stateStore),
+            );
+            // Last: a retry after any failure above recovers the plan from this receipt.
+            yield* provider.bringDown(
+              { app: plan.id, plan },
+              { containers: "remove", volumes: false, removeState: true },
+            );
+          } else
+            yield* cleanupScratchInventory({ id: input.id, ownership, keepVolumes }).pipe(
               Effect.provideService(RuntimeProviderRegistry, providers),
               Effect.provideService(StateStore, stateStore),
             );

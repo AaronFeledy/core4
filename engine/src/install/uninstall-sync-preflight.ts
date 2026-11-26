@@ -8,7 +8,12 @@ import { PrivateFileAccessService } from "@lando/state-store/private-file-access
 import { makeStateStore } from "@lando/state-store/service";
 import { Effect, Result, Schema } from "effect";
 import { uninstallCleanupFailure } from "./uninstall-cleanup-error.ts";
-import { type RuntimeExec, type UninstallRuntime, runUninstallRuntime } from "./uninstall-runtime.ts";
+import {
+  type RuntimeExec,
+  type UninstallRuntime,
+  type UninstallRuntimeSeams,
+  runUninstallRuntime,
+} from "./uninstall-runtime.ts";
 
 const missing = (cause: unknown): boolean =>
   cause instanceof Error && "code" in cause && cause.code === "ENOENT";
@@ -83,6 +88,7 @@ export const assertUninstallSyncSafe = async (input: {
   readonly runtimes: readonly UninstallRuntime[];
   readonly exec: RuntimeExec;
   readonly hostSyncPresent?: boolean;
+  readonly seams?: UninstallRuntimeSeams;
 }): Promise<void> => {
   await assertPersistedSyncSafe(input.userDataRoot);
   if (input.hostSyncPresent)
@@ -90,7 +96,7 @@ export const assertUninstallSyncSafe = async (input: {
       "Accelerated sync helper or volume exists for this data root. Run lando stop to flush, then lando destroy --volumes before purging.",
     );
   for (const runtime of input.runtimes) {
-    const run = (args: readonly string[]) => runUninstallRuntime(input.exec, runtime, { args });
+    const run = (args: readonly string[]) => runUninstallRuntime(input.exec, runtime, { args }, input.seams);
     try {
       const [containers, volumes] = await Promise.all([
         run(["ps", "-a", "--filter", "label=dev.lando.sync.kind=helper", "--format", "{{.ID}}"]),

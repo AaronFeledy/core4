@@ -237,6 +237,7 @@ describe("uninstall purge sync guard", () => {
   test("removes anonymous volumes with scoped Linux cleanup on managed", async () => {
     // Given: only the managed runtime is available, with containers under both Lando labels.
     const fixture = await withRuntime("ordinary");
+    mkdirSync(join(fixture.data, "runtime"), { recursive: true });
     try {
       const command = join(fixture.data, "runtime", "bin", "podman");
       const prefix = [
@@ -275,7 +276,9 @@ describe("uninstall purge sync guard", () => {
       };
       // When: purge sweeps the runtime through injected execution only.
       await (
-        await makePrepareUninstallCleanup([], exec, "linux")(fixture.data, join(fixture.root, "cache"))
+        await makePrepareUninstallCleanup([], exec, "linux", {
+          prepareRuntimeDir: () => Effect.succeed(join(fixture.root, "xdg")),
+        })(fixture.data, join(fixture.root, "cache"))
       ).cleanup();
       // Then: candidate labels discover only; inspected exact IDs authorize removal.
       expect(calls.filter((call) => call.includes("inspect") || call.includes("rm"))).toEqual([

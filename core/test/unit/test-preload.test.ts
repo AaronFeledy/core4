@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
@@ -30,11 +30,7 @@ process.stdout.write(child.stdout); process.exit(child.exitCode);`,
     stderr: "pipe",
   });
   expect(child.exitCode).toBe(0);
-  const roots = child.stdout.toString().trim().split("\n");
-  for (const root of roots) {
-    if (root.startsWith(join(tmpdir(), "lando-test-roots-"))) tempRoots.add(dirname(root));
-  }
-  return roots;
+  return child.stdout.toString().trim().split("\n");
 };
 
 afterEach(() => {
@@ -123,6 +119,8 @@ describe("test preload roots", () => {
     expect(parentRoots.every((root) => root.startsWith(join(tmpdir(), "lando-test-roots-")))).toBe(true);
     expect(new Set(parentRoots).size).toBe(4);
     expect(roots.slice(4)).toEqual(parentRoots);
+    const first = parentRoots[0];
+    if (first !== undefined) expect(existsSync(dirname(first))).toBe(false);
   });
 
   test("uses distinct temp trees when separate processes load the preload", () => {

@@ -453,9 +453,10 @@ test(
       eligible,
     });
     expect(result.selected).toEqual(eligible);
-    // A test that names the preload file reaches it directly instead.
-    const direct = eligible.filter((test) => result.witnesses.get(test)?.length === 2);
-    expect(result.sharedPreloadTests).toEqual(eligible.filter((test) => !direct.includes(test)));
+    // A test that names the preload file, or imports a runner that does, keeps that import witness.
+    const preloads = ["scripts/test-preload.ts", "scripts/test-preload-teardown.ts"];
+    const viaPreload = eligible.filter((test) => preloads.includes(result.witnesses.get(test)?.[1] ?? ""));
+    expect(result.sharedPreloadTests).toEqual(viaPreload);
     expect(result.unmatched).toEqual([]);
   },
   { timeout: 20_000 },

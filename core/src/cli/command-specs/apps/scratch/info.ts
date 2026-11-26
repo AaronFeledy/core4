@@ -18,7 +18,7 @@ export const appsScratchInfoSpec: LandoCommandSpec<ScratchInfo> = {
   aliases: ["scratch:info"],
   bootstrap: "scratch",
   args: {
-    id: Args.string({ description: "Scratch app id.", required: false }),
+    id: Args.string({ description: "Scratch app id or the --name it was started with.", required: false }),
   },
   run: (input) => scratchInfo(scratchIdFromInput(input)),
   render: (result, input) => renderScratchInfoResult(result, scratchListFormatFromInput(input)),
