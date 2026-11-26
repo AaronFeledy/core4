@@ -21,7 +21,6 @@ import { readGlobalLandofile } from "./global-plan.ts";
 
 export interface GlobalStatusOptions {
   readonly services?: ReadonlyArray<string>;
-  readonly format?: "json" | "table";
 }
 
 export const GlobalStatusServiceSchema = Schema.Struct({

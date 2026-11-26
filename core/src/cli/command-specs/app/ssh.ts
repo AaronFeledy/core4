@@ -12,7 +12,7 @@ import { isMachineResultFormat } from "../../format-flags";
 import { serviceLoginShellCommand, withSessionNoHistoryEnv } from "../../service-login-shell";
 import { type LandoCommandSpec, extractSpecAbortSignal } from "../../spec/command-base";
 import { extractSpecParsedArgv } from "../../spec/command-boundary";
-import { booleanFlag, specFlagsOf, stringFlag } from "../../spec/input-coercion";
+import { booleanFlag, commandResultFormat, specFlagsOf, stringFlag } from "../../spec/input-coercion";
 import { Args, Flags } from "../../spec/metadata";
 import { execInputUsesCliHostIo } from "./exec";
 
@@ -55,10 +55,9 @@ export const sshSpec: LandoCommandSpec<ExecAppResult, ExecAppError | NotImplemen
     if (stringFlag(flags, "subsystem") !== undefined)
       return yield* Effect.fail(subsystemDeferred("subsystem"));
     if (booleanFlag(flags, "sidecar")) return yield* Effect.fail(subsystemDeferred("sidecar"));
-    const format = stringFlag(flags, "format");
     const service = stringFlag(flags, "service");
     const user = stringFlag(flags, "user");
-    const machine = (format !== undefined && isMachineResultFormat(format)) || booleanFlag(flags, "json");
+    const machine = isMachineResultFormat(commandResultFormat(input));
     const signal = extractSpecAbortSignal(input);
     const base = {
       ...(signal === undefined ? {} : { signal }),

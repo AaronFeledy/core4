@@ -4,7 +4,6 @@ import type { PluginRegistry } from "@lando/sdk/services";
 import type { Effect } from "effect";
 import { renderConfigLintResult } from "../../../commands/app-config-lint";
 import type { LandoCommandSpec } from "../../../spec/command-base";
-import { Flags } from "../../../spec/metadata";
 
 export const appConfigLintSpec: LandoCommandSpec<
   ConfigLintResult,
@@ -17,12 +16,6 @@ export const appConfigLintSpec: LandoCommandSpec<
   namespace: "app",
   topLevelAlias: false,
   bootstrap: "plugins",
-  flags: {
-    format: Flags.string({
-      description: "Output format.",
-      default: "text",
-    }),
-  },
   run: () => appConfigLint(),
   completion: (result) => ({ ok: true, exitCode: result.valid ? 0 : 1 }),
   render: (result) => renderConfigLintResult(result, "text"),

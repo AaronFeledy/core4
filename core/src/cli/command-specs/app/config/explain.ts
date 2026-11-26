@@ -5,7 +5,6 @@ import {
   renderAppConfigExplainResult,
 } from "../../../commands/app-config-explain";
 import type { LandoCommandSpec } from "../../../spec/command-base";
-import { Flags } from "../../../spec/metadata";
 
 export const appConfigExplainSpec: LandoCommandSpec<AppConfigExplainResult> = {
   resultSchema: AppConfigExplainResultSchema,
@@ -15,12 +14,6 @@ export const appConfigExplainSpec: LandoCommandSpec<AppConfigExplainResult> = {
   topLevelAlias: false,
   // Reads and parses one Landofile. No translator, planner, or provider is involved.
   bootstrap: "minimal",
-  flags: {
-    format: Flags.string({
-      description: "Output format.",
-      default: "text",
-    }),
-  },
   run: () => appConfigExplain(),
   render: (result) => renderAppConfigExplainResult(result),
 };

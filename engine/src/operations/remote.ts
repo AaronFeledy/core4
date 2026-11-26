@@ -62,27 +62,23 @@ type RemoteSyncConfirmation = (message: string) => Effect.Effect<boolean | undef
 export interface RemoteListOptions {
   readonly cwd?: string;
   readonly remote?: string;
-  readonly format?: "text" | "json";
 }
 
 export interface RemoteAddOptions {
   readonly cwd?: string;
   readonly name: string;
   readonly config: RemoteConfigType;
-  readonly format?: "text" | "json";
 }
 
 export interface RemoteRemoveOptions {
   readonly cwd?: string;
   readonly name: string;
-  readonly format?: "text" | "json";
 }
 
 export interface RemoteTestOptions {
   readonly cwd?: string;
   readonly remote?: string;
   readonly env?: string;
-  readonly format?: "text" | "json";
 }
 
 export interface RemoteEnvListOptions extends RemoteTestOptions {}

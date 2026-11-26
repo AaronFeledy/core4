@@ -64,6 +64,14 @@ command schema for server-side encoding, including tagged errors, validation
 issues, warnings, deprecations, and bounded output with `output.truncated`.
 MCP envelopes do not include the CLI's optional timing `trace`.
 
+`deprecations` lists each deprecated surface the call used, once per surface
+with its notice and the time of first use. For example, an `app:shell` call
+that sends `flags.host: true` lists the deprecated `app:shell --host` flag, even
+though the call then fails for lack of a terminal. The list belongs to that
+call: calls running at the same time and earlier calls in the session never add
+to it, and a later call that uses the same surface lists it again. MCP calls
+print no deprecation warnings, so read this array to find what to migrate.
+
 Rejections that never reach the command (bad input, `Server busy`) also come
 back as a tool result with `isError: true`. Read the same envelope in
 `structuredContent` or the first `text` block: `apiVersion` is `"v4"`, `command`
@@ -73,6 +81,13 @@ are empty arrays. For `McpToolInputError`, `error.path` identifies the rejected
 input. These rejections have no command result or output capture.
 A tool outside the effective allowlist is never registered, so calling it gets
 the protocol's unknown-tool error, code `-32602`.
+
+A tool's input is the command's own `flags` and `args`, plus `appPath`. Output
+selection is not part of it. Every call returns the JSON envelope, so no
+command or plugin tool has a `format`, `json`, or `jq` input, and a call that
+sends `flags.format` fails with `McpToolInputError` naming `flags.format`. A
+tooling task that declares its own `format` flag keeps it as input, because
+that flag belongs to the task.
 
 Send integer flags as JSON numbers without a fractional part. For example, the
 `app:logs` tool declares `flags.tail` as `integer`:
@@ -543,6 +558,96 @@ expect(pending).toEqual(["shop:reindex"]);
 const malformed = yield* E.flip(validateMcpAllowlistIds({ allow: ["Not An Id"], deny: [], tooling: false }, knownIdsOf(registry)));
 expect(malformed._tag).toBe("McpToolInputError");`}
         displayCode={`const listed = buildMcpListResult({ ...registry, allow: ["db:export"] });`} />
+    </Step>
+  </Scenario>
+
+  <Scenario id="tool-input-and-call-deprecations" render={false} reason="Tool inputs carry no output selection and each call lists only its own deprecated surfaces">
+    <Step name="no-output-selection-input">
+      <Run runtime="library" code={`const { Effect: E, Layer, Result } = yield* Effect.promise(() => import("effect"));
+yield* Effect.promise(() => import("../../../../../core/src/runtime/bundled-plugins.ts"));
+const { builtInCommandEntries } = yield* Effect.promise(() => import("../../../../../core/src/cli/built-in-command-registry.ts"));
+const { mcpRegistryFromBuiltIns, mcpRegistryWithToolingEntries } = yield* Effect.promise(() => import("../../../../../core/src/cli/commands/meta/mcp.ts"));
+const { mcpRegistryWithPlugins } = yield* Effect.promise(() => import("../../../../../core/src/cli/commands/meta/mcp-plugins.ts"));
+const { buildCatalog, computeEffectiveAllowlist } = yield* Effect.promise(() => import("../../../../../mcp/src/catalog.ts"));
+const { validateToolInput } = yield* Effect.promise(() => import("../../../../../mcp/src/registry.ts"));
+const { normalizeToolingInput } = yield* Effect.promise(() => import("@lando/landofile/tooling-input-normalize"));
+const runtime = LandoCore.makeLandoRuntime({ bootstrap: "plugins", plugins: { policy: "discovery" }, cwd: context.testDir });
+const registry = yield* E.scoped(Layer.build(runtime).pipe(
+  E.orDie,
+  E.flatMap((services) => mcpRegistryWithPlugins(mcpRegistryFromBuiltIns(builtInCommandEntries)).pipe(E.provide(services))),
+));
+const ids = registry.commandEntries.map((entry) => entry.spec.id);
+const catalog = buildCatalog({ commandEntries: registry.commandEntries, effective: computeEffectiveAllowlist({ defaults: [], allow: ids }) });
+expect(catalog.tools.length).toBe(ids.length);
+for (const tool of catalog.tools)
+  for (const name of ["format", "json", "jq"]) expect(tool.inputSchema).not.toHaveProperty(["properties", "flags", "properties", name]);
+const doctor = registry.commandEntries.find((entry) => entry.spec.id === "meta:doctor");
+if (doctor === undefined) throw new Error("expected the meta:doctor tool");
+const rejected = yield* E.flip(E.try({ try: () => validateToolInput(doctor.spec, { flags: { format: "json" } }), catch: (error) => error }));
+expect(rejected).toMatchObject({ _tag: "McpToolInputError", path: "flags.format" });
+const tooling = mcpRegistryWithToolingEntries({ commandEntries: [] }, [{
+  id: "app:report", summary: "Report", _tag: "Ready", sourceKind: "tooling", visibility: "public",
+  input: Result.getOrThrow(normalizeToolingInput("report", { flags: { format: {} } })),
+}]);
+const toolingCatalog = buildCatalog({ ...tooling, effective: computeEffectiveAllowlist({ defaults: [], allow: ["app:report"] }), options: { tooling: true } });
+expect(toolingCatalog.tools[0]?.inputSchema).toHaveProperty(["properties", "flags", "properties", "format"]);`}
+        displayCode={`const { result } = await client.request("tools/call", {
+  name: "meta:doctor",
+  arguments: { flags: { format: "json" } },
+});
+// result.structuredContent.error: { _tag: "McpToolInputError", path: "flags.format" }`} />
+    </Step>
+    <Step name="deprecations-belong-to-the-call">
+      <Run runtime="library" code={`const { Fiber, Layer, Schema, Stdio } = yield* Effect.promise(() => import("effect"));
+const { builtInCommandEntries } = yield* Effect.promise(() => import("../../../../../core/src/cli/built-in-command-registry.ts"));
+const { mcpRegistryFromBuiltIns } = yield* Effect.promise(() => import("../../../../../core/src/cli/commands/meta/mcp.ts"));
+const { McpRuntimeConfig, McpService } = yield* Effect.promise(() => import("../../../../../mcp/src/service.ts"));
+const { makeStdioClient, testAppGenerations } = yield* Effect.promise(() => import("../../../../../mcp/src/testing.ts"));
+const { serviceLayer: mcpServiceLayer } = yield* Effect.promise(() => import("../../../../../core/src/mcp-command-executor.ts"));
+const { RedactionService, makeRedactionService } = yield* Effect.promise(() => import("@lando/redaction/service"));
+const registry = mcpRegistryFromBuiltIns(builtInCommandEntries.filter((entry) => entry.spec.id === "app:shell"));
+const serviceLayer = mcpServiceLayer.pipe(Layer.provide(Layer.mergeAll(
+  Layer.succeed(McpRuntimeConfig, {
+    cwd: context.testDir,
+    env: {},
+    commandEntries: registry.commandEntries,
+    defaultAllowlist: [],
+    apps: testAppGenerations(LandoCore.makeLandoRuntime({ bootstrap: "plugins", cwd: context.testDir }).pipe(Layer.orDie)),
+  }),
+  Layer.succeed(RedactionService, makeRedactionService()),
+)));
+const responses = yield* Effect.gen(function* () {
+  const client = yield* makeStdioClient();
+  const service = yield* McpService;
+  const fiber = yield* service.serve({ transport: "stdio", allow: ["app:shell"] }).pipe(
+    Effect.provideService(Stdio.Stdio, client.stdio), Effect.forkScoped,
+  );
+  yield* client.initialize({});
+  const call = (flags: Record<string, boolean>) => client.request("tools/call", { name: "app:shell", arguments: { flags } });
+  const withHost = yield* call({ host: true, "no-interactive": true });
+  const withoutHost = yield* call({ "no-interactive": true });
+  const again = yield* call({ host: true, "no-interactive": true });
+  yield* client.close;
+  yield* Fiber.join(fiber);
+  return [withHost, withoutHost, again];
+}).pipe(Effect.scoped, Effect.provide(serviceLayer), Effect.timeout("20 seconds"));
+const envelopes = responses.map((response) => Schema.decodeUnknownSync(Schema.Struct({
+  result: Schema.Struct({ structuredContent: Schema.Struct({
+    ok: Schema.Literal(false),
+    error: Schema.Struct({ _tag: Schema.String }),
+    deprecations: Schema.Array(Schema.Unknown),
+  }) }),
+}))(response).result.structuredContent);
+for (const envelope of envelopes) expect(envelope.error._tag).toBe("ShellRequiresTtyError");
+const hostFlag = { kind: "flag", id: "app:shell --host", notice: expect.objectContaining({ since: "4.2.0", severity: "warn" }), timestamp: expect.any(String) };
+expect(envelopes[0]?.deprecations).toEqual([hostFlag]);
+expect(envelopes[1]?.deprecations).toEqual([]);
+expect(envelopes[2]?.deprecations).toEqual([hostFlag]);`}
+        displayCode={`const { result } = await client.request("tools/call", {
+  name: "app:shell",
+  arguments: { flags: { host: true, "no-interactive": true } },
+});
+// result.structuredContent.deprecations[0].id: "app:shell --host"`} />
     </Step>
   </Scenario>
 

@@ -17,7 +17,7 @@ import { configRedactionTokens } from "../../commands/config-redaction.ts";
 import type { LandoCommandSpec } from "../../spec/command-base";
 import { specFlagsOf, stringFlag } from "../../spec/input-coercion";
 import { Args, Flags } from "../../spec/metadata";
-import { dryRunFlag, editorFlag, formatFlag, pathFlag, typeFlag } from "../config-flags";
+import { dryRunFlag, editorFlag, pathFlag, typeFlag } from "../config-flags";
 import { configWriteOptionsFromInput } from "../config-write-input";
 
 export const metaConfigOptionsFromInput = (
@@ -65,7 +65,6 @@ export const metaConfigSpec: LandoCommandSpec<ConfigResult> = {
       description: "Inspect raw config.yml or resolved config.",
       options: ["raw", "resolved"],
     }),
-    format: formatFlag,
     type: typeFlag,
     path: pathFlag,
     editor: editorFlag,

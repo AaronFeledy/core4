@@ -30,10 +30,6 @@ export const metaGlobalInfoSpec: LandoCommandSpec<GlobalInfoResult> = {
       description: "Filter to a specific global service (repeatable).",
       multiple: true,
     }),
-    format: Flags.string({
-      description: "Output format.",
-      default: "table",
-    }),
   },
   run: (input) => globalInfo(globalInfoOptionsFromInput(input)),
   render: (result, _input, ctx) => renderGlobalInfoResult(result, ctx),

@@ -13,6 +13,7 @@ import { renderTranslateDiagnostics } from "../../../commands/app-config-transla
 import { isMachineResultFormat } from "../../../format-flags";
 import type { LandoCommandSpec } from "../../../spec/command-base";
 import { extractSpecFlags } from "../../../spec/command-boundary";
+import { commandResultFormat } from "../../../spec/input-coercion";
 import { Flags } from "../../../spec/metadata";
 
 export const appConfigTranslateSpec: LandoCommandSpec<AppConfigTranslateResult> = {
@@ -49,10 +50,6 @@ export const appConfigTranslateSpec: LandoCommandSpec<AppConfigTranslateResult> 
         "Write the declared v4 Landofile layers through the managed-file transaction; an immutable digest-named backup is kept beside each replaced file.",
       default: false,
     }),
-    format: Flags.string({
-      description: "Output format.",
-      default: "yaml",
-    }),
   },
   run: Effect.fn("ConfigTranslateCommand.run")(function* (input: unknown) {
     const flags = extractSpecFlags(input);
@@ -71,7 +68,7 @@ export const appConfigTranslateSpec: LandoCommandSpec<AppConfigTranslateResult> 
       ...(typeof flags.to === "string" ? { to: flags.to } : {}),
       ...(files === undefined ? {} : { files }),
       privateFileAccess,
-      ...(typeof flags.format === "string" && isMachineResultFormat(flags.format)
+      ...(isMachineResultFormat(commandResultFormat(input))
         ? {}
         : {
             onWriteBlocked: (diagnostics) =>
