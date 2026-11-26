@@ -4,14 +4,15 @@ import { Effect } from "effect";
 import type { DoctorOptions } from "../../commands/doctor";
 import { resilientDoctorReport } from "../../commands/doctor-bootstrap";
 import { DOCTOR_SECTION_IDS } from "../../commands/doctor-contract";
+import { doctorNdjsonReport } from "../../commands/doctor-render-ndjson";
 import {
   type DoctorReport,
   DoctorReportSchema,
   doctorCompletion,
   renderDoctorReport,
-  renderDoctorReportAsNdjson,
 } from "../../commands/doctor-report";
 import { type DoctorViewOptions, selectDoctorView } from "../../commands/doctor-view";
+import { isMachineResultFormat } from "../../format-flags";
 import type { RenderContext } from "../../renderer-boundary";
 import { type LandoCommandSpec, extractSpecAbortSignal } from "../../spec/command-base";
 import { specFlagsOf, stringArrayFlag, stringFlag } from "../../spec/input-coercion";
@@ -62,10 +63,6 @@ export const inputDoctorOptions = (input: unknown): DoctorOptions & DoctorViewOp
   const app = flags?.app === true;
   const deprecations = flags?.deprecations === true;
   const all = flags?.all === true;
-  const format =
-    flags?.format === "json" || flags?.format === "yaml" || flags?.format === "text"
-      ? flags.format
-      : undefined;
   return {
     ...(statuses.length === 0 ? {} : { statuses }),
     ...(limit === undefined ? {} : { limit }),
@@ -76,15 +73,12 @@ export const inputDoctorOptions = (input: unknown): DoctorOptions & DoctorViewOp
     ...(app ? { app: true } : {}),
     ...(deprecations ? { deprecations: true } : {}),
     ...(all ? { all: true } : {}),
-    ...(format === undefined ? {} : { format }),
     ...(signal instanceof AbortSignal ? { signal } : {}),
   };
 };
 
 const renderDoctorReportForInput = (report: DoctorReport, input: unknown, ctx?: RenderContext): string => {
   const options = inputDoctorOptions(input);
-  const format = ctx?.format ?? options.format;
-  if (format === "ndjson") return renderDoctorReportAsNdjson(report);
   return renderDoctorReport(report, ctx, {
     all: options.all || options.statuses !== undefined || options.limit !== undefined,
     selection: [
@@ -98,8 +92,8 @@ const renderDoctorReportForInput = (report: DoctorReport, input: unknown, ctx?: 
 };
 
 const suppressDeprecationDiagnosticsForInput = (input: unknown): boolean => {
-  const options = inputDoctorOptions(input);
-  return options.format === "json" || options.format === "yaml";
+  const format = specFlagsOf(input).format;
+  return typeof format === "string" && isMachineResultFormat(format);
 };
 
 /**
@@ -110,7 +104,7 @@ const suppressDeprecationDiagnosticsForInput = (input: unknown): boolean => {
 export const metaDoctorSpec: LandoCommandSpec<DoctorReport, unknown, RuntimeLayerFactory> = {
   resultSchema: DoctorReportSchema,
   id: "meta:doctor",
-  resultFormats: ["ndjson"],
+  ndjsonReport: doctorNdjsonReport,
   helpGroup: "common",
   mcpAllowed: true,
   summary: "Run diagnostics for app config, host/provider setup, and plugin-contributed checks.",

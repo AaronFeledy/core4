@@ -15,22 +15,56 @@ export const DEFAULT_RESULT_FORMAT: ResultFormat = "text";
 export const UNIVERSAL_RESULT_FORMATS = ["text", "json", "yaml"] as const;
 
 /**
- * Formats a command must declare before it may be asked for one. Both come
- * from a command's own `render`, so a command that does not implement them has
- * nothing to emit and must refuse rather than quietly fall back to text.
+ * Formats a command offers only when it produces them. `table` comes from a
+ * command's own `render` and must be declared. `ndjson` is the frame sequence:
+ * every command that streams frames offers it (the same frames `json` emits),
+ * and a report command may supply its own frames instead (`meta:doctor`).
+ * A command that produces neither refuses rather than quietly falling back to text.
  */
 export const OPT_IN_RESULT_FORMATS = ["table", "ndjson"] as const;
 export type OptInResultFormat = (typeof OPT_IN_RESULT_FORMATS)[number];
 
 /** The capability slice of a command spec that decides its advertised formats. */
 export interface ResultFormatCapability {
-  readonly resultFormats?: ReadonlyArray<OptInResultFormat>;
+  /**
+   * The command's own render produces a table. `ndjson` is never declared: it is
+   * derived from `streaming`/`streamingMode`/`ndjsonReport`.
+   */
+  readonly rendersTable?: true;
+  /** The derived opt-in formats, precomputed on manifest-side objects, which carry no `rendersTable`. */
+  readonly advertisedFormats?: ReadonlyArray<OptInResultFormat>;
+  /** Frame schema of a command that streams output frames. */
+  readonly streaming?: unknown;
+  readonly streamingMode?: "live" | ((input: unknown) => "live" | undefined);
+  /** Report frames a command supplies for `--format=ndjson` (see `NdjsonReport`). */
+  readonly ndjsonReport?: unknown;
 }
 
-/** Every format `commandId` honors: the universal set plus whatever it declares. */
+/** True when the command emits a frame sequence under `--format=json`. */
+export const emitsFrames = (command?: ResultFormatCapability): boolean =>
+  command?.streaming !== undefined || command?.streamingMode === "live";
+
+/** The opt-in formats a command offers, in canonical order. */
+export const advertisedOptInFormats = (command?: ResultFormatCapability): ReadonlyArray<OptInResultFormat> =>
+  OPT_IN_RESULT_FORMATS.filter((format) => {
+    switch (format) {
+      case "table":
+        return command?.rendersTable === true || command?.advertisedFormats?.includes("table") === true;
+      case "ndjson":
+        return (
+          command?.advertisedFormats?.includes("ndjson") === true ||
+          command?.ndjsonReport !== undefined ||
+          emitsFrames(command)
+        );
+      default:
+        return format satisfies never;
+    }
+  });
+
+/** Every format a command honors: the universal set plus the opt-in formats it produces. */
 export const commandResultFormats = (command?: ResultFormatCapability): ReadonlyArray<ResultFormat> => [
   ...UNIVERSAL_RESULT_FORMATS,
-  ...(command?.resultFormats ?? []),
+  ...advertisedOptInFormats(command),
 ];
 
 export const supportsResultFormat = (
@@ -58,6 +92,15 @@ export const isResultFormat = (value: string): value is ResultFormat =>
  */
 export const isEnvelopeResultFormat = (value: ResultFormat | string | undefined): value is "json" | "yaml" =>
   value === "json" || value === "yaml";
+
+/**
+ * Formats whose stdout is read by a program: the envelope formats and the
+ * `ndjson` frame sequence. Execution policy (no PTY, collected or framed child
+ * output, no human progress) follows this, not the envelope question.
+ */
+export const isMachineResultFormat = (
+  value: ResultFormat | string | undefined,
+): value is "json" | "yaml" | "ndjson" => isEnvelopeResultFormat(value) || value === "ndjson";
 
 const validate = (value: string): ResultFormat => {
   if (isResultFormat(value)) return value;

@@ -19,7 +19,7 @@ export const appConfigDescribeSpec: LandoCommandSpec<
   bootstrap: "none",
   mcpAllowed: true,
   resultSchema: ConfigDescribeResultSchema,
-  resultFormats: ["table"],
+  rendersTable: true,
   args: { key: Args.string({ description: "Dot-path key; omit to list root keys.", required: false }) },
   flags: { format: formatFlag },
   run: (input) => describeAppConfig(appConfigOptionsFromInput(input)),

@@ -10,6 +10,7 @@ import {
   renderConfigTranslateResult,
 } from "../../../commands/app-config-translate";
 import { renderTranslateDiagnostics } from "../../../commands/app-config-translate-output.ts";
+import { isMachineResultFormat } from "../../../format-flags";
 import type { LandoCommandSpec } from "../../../spec/command-base";
 import { extractSpecFlags } from "../../../spec/command-boundary";
 import { Flags } from "../../../spec/metadata";
@@ -17,7 +18,7 @@ import { Flags } from "../../../spec/metadata";
 export const appConfigTranslateSpec: LandoCommandSpec<AppConfigTranslateResult> = {
   resultSchema: AppConfigTranslateResultSchema,
   id: "app:config:translate",
-  resultFormats: ["table"],
+  rendersTable: true,
   summary: "Translate a non-canonical config file into a canonical v4 Landofile.",
   namespace: "app",
   recipePostInitAllowed: true,
@@ -70,7 +71,7 @@ export const appConfigTranslateSpec: LandoCommandSpec<AppConfigTranslateResult> 
       ...(typeof flags.to === "string" ? { to: flags.to } : {}),
       ...(files === undefined ? {} : { files }),
       privateFileAccess,
-      ...(flags.format === "json" || flags.format === "yaml" || flags.format === "ndjson"
+      ...(typeof flags.format === "string" && isMachineResultFormat(flags.format)
         ? {}
         : {
             onWriteBlocked: (diagnostics) =>

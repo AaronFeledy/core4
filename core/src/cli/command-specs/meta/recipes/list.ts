@@ -10,7 +10,7 @@ import { Flags } from "../../../spec/metadata";
 export const metaRecipesListSpec: LandoCommandSpec<RecipesListResult> = {
   resultSchema: RecipesListResultSchema,
   id: "meta:recipes:list",
-  resultFormats: ["table"],
+  rendersTable: true,
   mcpAllowed: true,
   summary: "List canonical recipes shipped with the binary.",
   namespace: "meta",

@@ -59,5 +59,16 @@
       }
     ],
     "justification": "The command variant of RunProps accepts an optional capture. Existing command, shell, and library props are unchanged."
+  },
+  {
+    "fingerprint": "sha256:0fe7a7b2124dae8fe146ff758550b73b96381aaafa7a053cd7d41eaeb3118371",
+    "changeKind": "unsupported-construct",
+    "locations": [
+      {
+        "surface": "command:cli:help",
+        "path": "$.anyOf"
+      }
+    ],
+    "justification": "HelpCommandTargetDescriptor gains advertisedFormats field on all variants. The anyOf schema widened by one optional field; existing consumers that do not read advertisedFormats are unaffected."
   }
 ]

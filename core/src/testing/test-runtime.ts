@@ -457,6 +457,7 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
     lookup: () => Effect.succeed(Option.none()),
     register: () => Effect.void,
     registerAlias: () => Effect.void,
+    claimWarning: () => Effect.succeed(true),
   });
 
   const pluginTrustStoreService = PluginTrustStore.of({

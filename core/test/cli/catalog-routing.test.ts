@@ -19,8 +19,7 @@ test("deprecated plugin aliases preserve canonical identity and emit their notic
     expect(run.exit, run.stderr).toBe(0);
     const result = JSON.parse(run.stdout);
     expect(result.command).toBe("fx:inspect");
-    expect(run.stderr).toContain("Deprecated command inspect");
-    expect(run.stderr).toContain("Use fx:inspect.");
+    expect(run.stderr).toContain("command inspect (used once): Deprecated since 4.2.0. Use fx:inspect.");
   } finally {
     await f.cleanup();
   }

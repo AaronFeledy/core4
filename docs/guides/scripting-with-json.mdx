@@ -66,6 +66,25 @@ enough behind that Lando drops events instead of stalling, the result frame's
 Source and compiled `--format json` are identical because both use the same
 native registry and dispatcher.
 
+`--format=ndjson` asks for the same frames by name. On every command that
+streams, such as `lando exec`, `lando logs`, `lando start`, and
+`lando rebuild`, it writes exactly what `--format=json` writes: one JSON
+document per line, ending in the result frame. Lando also treats it as machine
+output when it decides how to run the command, so `lando exec --format=ndjson`
+never opens a terminal session inside the service. A failure that stops the
+command before it runs, such as an unknown flag, is one `{"_tag":"result",
+"envelope":{...}}` result frame rather than a whole frame stream, because
+there is no stream to end. The `help` command only accepts `text`, `json`,
+and `yaml`; `--format=table` or `--format=ndjson` returns a `RendererSelectionError`
+with exit code 2.
+
+Every machine run ends in exactly one envelope or result frame, written after
+Lando has shut down everything the command started. When that shutdown fails
+after the command succeeded, the envelope reports the shutdown failure as its
+`error` and keeps the command's `result`. When the command had already failed,
+the shutdown failure joins `error.additionalErrors` with role `cleanup`, and
+the exit code stays the command's own.
+
 Without `--follow`, `lando logs --format=json` emits a buffered frame stream.
 Its terminal `result` frame carries the app name at `envelope.result.app` and
 the collected lines at `envelope.result.lines`. Each line has `service`, `stream` (`stdout` or `stderr`), and
@@ -276,7 +295,18 @@ doesn't undo what the Bun child already did on disk. Trust you granted with
     </Step>
     <Step name="reject-ndjson-on-a-command-without-a-stream">
       <Run command="lando version --format=ndjson" expectExit={2} />
-      <Verify errorTag="RendererSelectionError" />
+      <Verify command="lando version --format=ndjson" expectExit={2} expect={{ stdout: { regex: "RendererSelectionError" } }} />
+    </Step>
+  </Scenario>
+
+  <Scenario id="streaming-commands-offer-ndjson" render={false} reason="Streaming commands advertise the ndjson frame stream; commands without one do not">
+    <Step name="read-offered-formats">
+      <Verify command="lando exec --help" expect={{ stdout: { regex: "--format \\(text, json, yaml, ndjson\\)" } }} />
+      <Verify command="lando version --help" expect={{ stdout: { regex: "--format \\(text, json, yaml\\)" } }} />
+    </Step>
+    <Step name="ndjson-failure-before-the-command-runs-is-one-result-frame">
+      <Run command="lando logs --format=ndjson --no-such-flag" expectExit={2} />
+      <Verify command="lando logs --format=ndjson --no-such-flag" expectExit={2} expect={{ stdout: { regex: "^\\{\"_tag\":\"result\",\"envelope\":\\{\"apiVersion\":\"v4\"" } }} />
     </Step>
   </Scenario>
 
@@ -289,13 +319,31 @@ doesn't undo what the Bun child already did on disk. Trust you granted with
       <Run command="lando version --json --jq ." expectExit={2} />
       <Verify errorTag="JsonJqConflictError" />
     </Step>
+    <Step name="jq-with-ndjson-is-one-result-frame">
+      <Run command="lando version --format=ndjson --jq ." expectExit={2} />
+      <Verify command="lando version --format=ndjson --jq ." expectExit={2} expect={{ stdout: { regex: "^\\{\"_tag\":\"result\",\"envelope\":\\{[^\\n]*\"_tag\":\"JsonProjectionError\"[^\\n]*\\}\\}\\n$" } }} />
+    </Step>
   </Scenario>
 
-  <Scenario id="read-flag-placement-from-help" render={false} reason="Machine help reports where Lando reads its own flags">
+  <Scenario id="read-flag-placement-from-help" render={false} reason="Machine help reports placement and advertisedFormats per command">
     <Step name="read-placement">
       <Verify command="lando help exec --format=json" expect={{ stdout: { regex: "\"landoFlags\":\\{[^}]*\"afterName\":\"command-tail\"" } }} />
       <Verify command="lando help bun --format=json" expect={{ stdout: { regex: "\"landoFlags\":\\{[^}]*\"afterName\":\"none\"" } }} />
       <Verify command="lando help logs --format=json" expect={{ stdout: { regex: "\"landoFlags\":\\{[^}]*\"commandOwned\":\\[\"--tail\"\\]" } }} />
+    </Step>
+    <Step name="machine-help-reports-advertised-formats">
+      <Verify command="lando help exec --format=json" expect={{ stdout: { regex: "\"advertisedFormats\":\\[\"text\",\"json\",\"yaml\",\"ndjson\"\\]" } }} />
+    </Step>
+  </Scenario>
+
+  <Scenario id="help-refuses-table-and-ndjson" render={false} reason="Help only produces text, json, and yaml; it refuses table and ndjson">
+    <Step name="help-refuses-ndjson">
+      <Run command="lando help --format=ndjson" expectExit={2} />
+      <Verify command="lando help --format=ndjson" expectExit={2} expect={{ stdout: { regex: "\"_tag\":\"result\",\"envelope\"" } }} />
+    </Step>
+    <Step name="help-refuses-table">
+      <Run command="lando help --format=table" expectExit={2} />
+      <Verify errorTag="RendererSelectionError" />
     </Step>
   </Scenario>
 
@@ -454,11 +502,14 @@ the same result envelope.
 
 Two more values exist, and a command offers them only when it produces them.
 `table` is a human rendering that the list, config, and recipe commands emit.
-`ndjson` is the per-check stream `lando doctor` emits: one `doctor.check` event
-for each check, one `doctor.skip` event for each skipped entry, then a result
-frame whose `result` holds the report's `version`, `provider`, and `summary`.
-That frame's `ok` and the exit code match what `--format=json` gives for the
-same report. Ask a command for a
+`ndjson` is a frame stream. Commands that stream output offer it with the same
+frames as `--format=json`. `lando doctor` offers it as a per-check stream: one
+`doctor.check` event for each check, one `doctor.skip` event for each skipped
+entry, then a result frame whose `result` holds the report's `version`,
+`provider`, and `summary`. That frame's `ok` and the exit code match what
+`--format=json` gives for the same report. `--jq` and `--json=<keys>` select
+inside an envelope, so use them with `--format=json` or `--format=yaml`, not
+`ndjson`. Ask a command for a
 format it does not produce and it fails with `RendererSelectionError` naming
 the formats it does support, rather than quietly printing its text form at
 exit 0:
@@ -478,6 +529,9 @@ guess.
 The full-envelope aliases are `--format json`, `--format=json`, `-j`, and
 `--format yaml` (or `--format=yaml`) for the same envelope as YAML.
 The failure envelope has the shape `{ "ok": false, "error": <tagged-error> }`.
+Every envelope also lists the deprecated surfaces the run used in
+`deprecations`, one record per surface with its notice, even when
+`--no-deprecation-warnings` silences the human warning.
 A failing command keeps its non-zero exit code alongside the envelope so
 scripts can branch on both. The tagged error exposes a machine `_tag` plus
 a required `message` and nonblank `remediation`, so an agent can react to the failure class without

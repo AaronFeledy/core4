@@ -8,7 +8,7 @@ import { Effect } from "effect";
 import { CliInvocation } from "../../../runtime/invocation-context";
 import { renderExecAppResult } from "../../commands/exec";
 import { attachExecHostIo, withInheritedStdinRawMode } from "../../exec-host-io";
-import { isEnvelopeResultFormat } from "../../format-flags";
+import { isMachineResultFormat } from "../../format-flags";
 import { serviceLoginShellCommand, withSessionNoHistoryEnv } from "../../service-login-shell";
 import { type LandoCommandSpec, extractSpecAbortSignal } from "../../spec/command-base";
 import { extractSpecParsedArgv } from "../../spec/command-boundary";
@@ -58,7 +58,7 @@ export const sshSpec: LandoCommandSpec<ExecAppResult, ExecAppError | NotImplemen
     const format = stringFlag(flags, "format");
     const service = stringFlag(flags, "service");
     const user = stringFlag(flags, "user");
-    const envelope = (format !== undefined && isEnvelopeResultFormat(format)) || booleanFlag(flags, "json");
+    const machine = (format !== undefined && isMachineResultFormat(format)) || booleanFlag(flags, "json");
     const signal = extractSpecAbortSignal(input);
     const base = {
       ...(signal === undefined ? {} : { signal }),
@@ -71,11 +71,11 @@ export const sshSpec: LandoCommandSpec<ExecAppResult, ExecAppError | NotImplemen
     if (!isStdioRendererIO(invocation.io))
       return yield* execApp({
         ...base,
-        tty: !envelope && invocation.io.stdoutIsTTY === true,
-        interactive: !envelope && invocation.io.stdinIsTTY === true,
+        tty: !machine && invocation.io.stdoutIsTTY === true,
+        interactive: !machine && invocation.io.stdinIsTTY === true,
         ...(invocation.io.stdin === undefined ? {} : { stdinStream: invocation.io.stdin }),
       });
-    if (envelope) return yield* execApp(attachExecHostIo({ ...base, interactive: false, tty: false }));
+    if (machine) return yield* execApp(attachExecHostIo({ ...base, interactive: false, tty: false }));
     const interactive = invocation.io.stdinIsTTY === true;
     const attached = attachExecHostIo({ ...base, tty: true, interactive });
     return yield* withInheritedStdinRawMode(attached.tty === true && interactive, execApp(attached));

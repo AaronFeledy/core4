@@ -1,10 +1,5 @@
-import {
-  encodeStreamEventFrame,
-  encodeStreamResultFrame,
-  identityRedactor,
-  resolveCommandCompletion,
-} from "@lando/sdk/command-result";
-import { Effect, Schema } from "effect";
+import { Schema } from "effect";
+import type { NdjsonReport } from "../renderer-machine-output";
 import {
   DoctorCheck,
   type DoctorNdjsonResult,
@@ -12,49 +7,26 @@ import {
   type DoctorReport,
   DoctorSkip,
 } from "./doctor-contract";
-import { doctorCompletion } from "./doctor-report-model";
 
 const encodeCheck = Schema.encodeSync(DoctorCheck);
 const encodeSkip = Schema.encodeSync(DoctorSkip);
 
-// The renderer boundary has already redacted the report.
-export const renderDoctorReportAsNdjson = (report: DoctorReport): string => {
-  const lines: string[] = [];
-  for (const check of report.checks)
-    lines.push(
-      Effect.runSync(
-        encodeStreamEventFrame({
-          event: "doctor.check",
-          payload: encodeCheck(check),
-          redactor: identityRedactor,
-        }),
-      ),
-    );
-  for (const skip of report.skipped)
-    lines.push(
-      Effect.runSync(
-        encodeStreamEventFrame({
-          event: "doctor.skip",
-          payload: encodeSkip(skip),
-          redactor: identityRedactor,
-        }),
-      ),
-    );
-  const value: DoctorNdjsonResult = {
+/**
+ * `lando doctor --format=ndjson`: one `doctor.check` event per check, one
+ * `doctor.skip` event per skipped entry, then a result frame holding the
+ * report's version, provider, summary, and page. Its `ok` and exit code come
+ * from the same completion policy as `--format=json`.
+ */
+export const doctorNdjsonReport: NdjsonReport<DoctorReport> = {
+  events: (report) => [
+    ...report.checks.map((check) => ({ event: "doctor.check", payload: encodeCheck(check) })),
+    ...report.skipped.map((skip) => ({ event: "doctor.skip", payload: encodeSkip(skip) })),
+  ],
+  resultSchema: DoctorNdjsonResultSchema,
+  result: (report): DoctorNdjsonResult => ({
     version: report.version,
     ...(report.provider === undefined ? {} : { provider: report.provider }),
     summary: report.summary,
     ...(report.page === undefined ? {} : { page: report.page }),
-  };
-  lines.push(
-    Effect.runSync(
-      encodeStreamResultFrame({
-        command: "meta:doctor",
-        resultSchema: DoctorNdjsonResultSchema,
-        outcome: resolveCommandCompletion("meta:doctor", value, () => doctorCompletion(report)),
-        redactor: identityRedactor,
-      }),
-    ),
-  );
-  return lines.join("\n");
+  }),
 };

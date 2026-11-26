@@ -32,7 +32,7 @@ const sourceFlag = Flags.string({
 export const appConfigSpec: LandoCommandSpec<AppConfigResult> = {
   resultSchema: AppConfigResultSchema,
   id: "app:config",
-  resultFormats: ["table"],
+  rendersTable: true,
   summary: "Read or write the current app's Landofile.",
   namespace: "app",
   topLevelAlias: false,
