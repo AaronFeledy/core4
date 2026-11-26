@@ -125,7 +125,7 @@ const prepareManagedLinuxRuntime = async (
  * Connection paths call exec synchronously so callers that gate on the
  * first probe still observe the call before the next microtask.
  */
-export const runUninstallRuntime = (
+export const runUninstallRuntime = async (
   exec: RuntimeExec,
   runtime: UninstallRuntime,
   request: { readonly args: readonly string[]; readonly timeout?: number },
@@ -139,7 +139,8 @@ export const runUninstallRuntime = (
     });
   };
   if (runtime.managedSpawn === "linux" && runtime.runtimeDir !== undefined) {
-    return prepareManagedLinuxRuntime(runtime, seams).then(run);
+    await access(runtime.runtimeDir);
+    return run(await prepareManagedLinuxRuntime(runtime, seams));
   }
   return run(runtime);
 };
@@ -213,14 +214,12 @@ export const availableUninstallRuntimes = async (input: {
         });
         if (!verified) continue;
       }
-      // Missing managed tree: probe without prepare so absence does not require XDG.
+      // A missing runtime/ tree is not a native runtime: do not spawn or prepare.
       if (
         runtime.managedSpawn === "linux" &&
         runtime.runtimeDir !== undefined &&
         !(await pathExists(runtime.runtimeDir))
       ) {
-        await input.exec(runtime.cmd, [...runtime.argsPrefix, "--version"], { timeout: 2_000 });
-        available.push(runtime);
         continue;
       }
       await runUninstallRuntime(input.exec, runtime, { args: ["--version"], timeout: 2_000 }, seams);
