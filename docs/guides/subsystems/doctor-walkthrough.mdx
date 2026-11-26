@@ -20,7 +20,7 @@ Doctor checks the provider setup persisted, or the one `LANDO_PROVIDER` names fo
 
 ## Read the report
 
-Doctor runs one section at a time under the same live task list `lando start` paints, with one row per section: `provider`, `certificate-authority`, `network-trust`, `subsystems`, `global-app`, `mcp`, `accelerated-starts`, `state-compatibility`, `missing-app-roots`, `orphaned-volume-snapshots`, `legacy-snapshot-catalogs`, `filesystem-watch`, and `debugger-host`. `--app` adds `app-listeners`, `database-credentials`, `app-version-constraints`, and `app-config` rows, and `--deprecations` adds a `deprecations` row. A row closes with `✓` for a clean section, `!` when it passed with warnings, and `✗` when a check failed or doctor could not run the section. A section where doctor inspected nothing closes as skipped.
+Doctor runs one section at a time under the same live task list `lando start` paints, with one row per section: `provider`, `certificate-authority`, `network-trust`, `subsystems`, `global-app`, `mcp`, `accelerated-starts`, `lando-roots`, `state-compatibility`, `missing-app-roots`, `orphaned-volume-snapshots`, `legacy-snapshot-catalogs`, `filesystem-watch`, and `debugger-host`. `--app` adds `app-listeners`, `database-credentials`, `app-version-constraints`, and `app-config` rows, and `--deprecations` adds a `deprecations` row. A row closes with `✓` for a clean section, `!` when it passed with warnings, and `✗` when a check failed or doctor could not run the section. A section where doctor inspected nothing closes as skipped.
 
 The text report names the selected provider once, at the top. Below that it shows non-passing checks grouped by section, skipped entries with their reasons, and every `doctor-self` entry. A `doctor-self` entry means doctor could not finish one of its own checks; it carries the probe, the reason, and the message. Deprecation findings stay visible when requested. Passing checks, including a valid global config, stay out of the default report, whether you read it in a terminal or pipe it to a file.
 
@@ -146,6 +146,18 @@ yet. Selection and loading errors appear as their own findings.
 | legacy-snapshot-catalogs | Review the reported count and catalog paths. These catalogs came from a development build. Their snapshots are no longer listed or restorable, but their referenced provider images stay protected from GC. Deleting a catalog directory releases that protection so GC can reclaim the images. |
 
 If doctor names a host prerequisite, fix it and rerun `lando setup`. If the managed runtime still cannot install and you have working system Docker, run `lando setup --provider=docker`. See [Pick a container provider](../setup/provider-selection.mdx).
+
+## Fix Lando files owned by root
+
+Running `lando` with `sudo` can leave files under Lando's data, config, and cache directories that belong to root, and your later runs cannot write them. Lando refuses to run as `sudo lando ...` against your own files, but files from older versions or from commands that ran as root can remain. The `lando-roots` section checks for them:
+
+```sh
+lando doctor --section lando-roots
+```
+
+Each root-owned path fails as its own `root-owned-entries` check with a command that gives it back to you, such as `sudo chown -R 1000:1000 '/home/you/.local/share/lando/setup'`. Run the commands it lists, then run `lando doctor` again. Lando never runs them for you, and it never suggests a recursive `chown` through the container runtime's storage, whose files belong to your container user IDs on purpose. `lando setup` runs the same check first and stops with `RootOwnedLandoFilesError` and the same commands.
+
+Doctor looks only at each root, its top-level entries, and the directories Lando writes first, and it stops after a fixed number of entries or a short time. When it could not finish, the check warns instead of passing.
 
 ## Check state written by another Lando
 
@@ -446,7 +458,7 @@ Each check has a `section`, a `name`, a `status` (`pass`, `warn`, or `fail`), a 
 
 Repeatable findings have a `subject`, such as an app root, journal path, or container name. Grouped text rows show up to three subjects and the number remaining, falling back to finding names when subjects are absent. Text shows the first three items of each context array unless you use `--all`, `--status`, or `--limit`, which print every record in full; it never splits scalar strings at commas. JSON and YAML preserve full arrays.
 
-The `section` is one of `global-config`, `provider`, `app-listeners`, `certificate-authority`, `network-trust`, `subsystems`, `global-app`, `mcp`, `accelerated-starts`, `state-compatibility`, `missing-app-roots`, `orphaned-volume-snapshots`, `legacy-snapshot-catalogs`, `filesystem-watch`, `debugger-host`, `app-version-constraints`, `deprecations`, or `app-config`. To read one section, filter on it:
+The `section` is one of `global-config`, `provider`, `app-listeners`, `certificate-authority`, `network-trust`, `subsystems`, `global-app`, `mcp`, `accelerated-starts`, `lando-roots`, `state-compatibility`, `missing-app-roots`, `orphaned-volume-snapshots`, `legacy-snapshot-catalogs`, `filesystem-watch`, `debugger-host`, `app-version-constraints`, `deprecations`, or `app-config`. To read one section, filter on it:
 
 ```sh
 lando doctor --format=json | jq '.result.checks[] | select(.section == "subsystems")'

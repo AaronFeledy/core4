@@ -18,6 +18,7 @@ export const DOCTOR_SECTION_LABELS = {
   "global-app": "Global app",
   mcp: "MCP",
   "accelerated-starts": "Accelerated starts",
+  "lando-roots": "Lando file ownership",
   "state-compatibility": "State compatibility",
   "missing-app-roots": "Missing app roots",
   "orphaned-volume-snapshots": "Orphaned volume snapshots",

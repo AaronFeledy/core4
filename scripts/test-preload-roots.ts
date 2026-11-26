@@ -7,6 +7,8 @@ const rootEnvKeys = [
   "LANDO_USER_CACHE_ROOT",
   "LANDO_USER_CONF_ROOT",
   "LANDO_SYSTEM_PLUGIN_ROOT",
+  // Setup appends its PATH block to this profile as the test user; never the real one.
+  "LANDO_SHELL_PROFILE",
 ] as const;
 
 // Run before the preload's application imports can capture paths. Children

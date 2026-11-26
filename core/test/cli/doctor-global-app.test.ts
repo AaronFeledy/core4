@@ -49,6 +49,7 @@ const unreadableFileSystemLayer = Layer.succeed(
     readText: () =>
       Effect.fail(new FilePermissionError({ message: "permission denied", path: String(distLandofile) })),
     write: () => Effect.void,
+    append: () => Effect.void,
     writeAtomic: () => Effect.void,
     exists: () => Effect.succeed(true),
     stat: () => Effect.succeed({ size: 10, mtimeMs: 0, isFile: true, isDirectory: false }),
@@ -68,6 +69,7 @@ const missingDistFileSystemLayer = Layer.succeed(
     read: () => Stream.empty,
     readText: () => Effect.succeed(""),
     write: () => Effect.void,
+    append: () => Effect.void,
     writeAtomic: () => Effect.void,
     exists: () => Effect.succeed(false),
     stat: () => Effect.succeed({ size: 0, mtimeMs: 0, isFile: true, isDirectory: false }),

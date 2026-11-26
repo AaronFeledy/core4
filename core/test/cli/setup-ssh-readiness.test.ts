@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { makeTestDownloader, makeTestInteractionService } from "@lando/core/testing";
 import { GlobalConfigSources } from "@lando/engine/services/config";
+import * as BunFileSystem from "@lando/engine/services/file-system";
 import * as LandoHttpClient from "@lando/http-client";
 import { makeLandoPaths } from "@lando/paths";
 import { AbsolutePath, AppId, GlobalConfig, ProviderId, ServiceName } from "@lando/sdk/schema";
@@ -132,6 +133,7 @@ test.each([
                 }),
               }),
               Layer.succeed(PathsService, makeLandoPaths()),
+              BunFileSystem.layer,
               Layer.succeed(EventService, events),
               Layer.succeed(Downloader, downloader.service),
               Layer.succeed(InteractionService, interaction.service),

@@ -239,6 +239,7 @@
       "terminateSession:(ref:FileSyncSessionRef) => Effect.Effect<void,FileSyncError>"
     ],
     "FileSystem": [
+      "append:(path:string,content:string|Uint8Array) => Effect.Effect<void,FileSystemError>",
       "exists:(path:string) => Effect.Effect<boolean,FileSystemError>",
       "lstat:(path:string) => Effect.Effect<FileStat,FileSystemError>",
       "mkdir:(path:string) => Effect.Effect<void,FileSystemError>",

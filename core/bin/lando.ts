@@ -20,6 +20,7 @@ import { runWithProcessSignalReraise } from "../src/cli/process-signals";
 import { cliUserArgv } from "../src/cli/user-argv";
 import { derivedCodegenMessage, isModuleResolveError, missingDerivedCodegen } from "./derived-codegen.ts";
 import { preservedSymlinksMessage } from "./preserve-symlinks.ts";
+import { sudoInvocationMessage, systemSudoInvocationHost } from "./sudo-invocation.ts";
 
 ensureHostProxyNoProxy("127.0.0.1");
 ensureHostProxyNoProxy("localhost");
@@ -43,6 +44,16 @@ const main = async (): Promise<void> => {
     : preservedSymlinksMessage(process.env, process.execArgv);
   if (preservedSymlinks !== undefined) {
     await writeLine("stderr", preservedSymlinks);
+    process.exit(1);
+  }
+  const sudoInvocation = sudoInvocationMessage(
+    systemSudoInvocationHost(() => {
+      const roots = resolveLandoRoots();
+      return [roots.userDataRoot, roots.userConfRoot, roots.userCacheRoot];
+    }),
+  );
+  if (sudoInvocation !== undefined) {
+    await writeLine("stderr", sudoInvocation);
     process.exit(1);
   }
   await installProcessLifecycle();

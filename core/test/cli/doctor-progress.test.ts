@@ -73,6 +73,7 @@ const DEFAULT_SECTIONS: ReadonlyArray<DoctorSectionId> = [
   "global-app",
   "mcp",
   "accelerated-starts",
+  "lando-roots",
   "state-compatibility",
   "missing-app-roots",
   "orphaned-volume-snapshots",

@@ -1,6 +1,6 @@
 import { existsSync, lstatSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
-import { homedir, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { makeLandoPaths, normalizeHostPlatform } from "@lando/paths";
 
@@ -18,6 +18,7 @@ import { type Context, DateTime, Effect, Option, Result, Schema } from "effect";
 import { writeFileAtomicViaRename } from "../cache/atomic";
 import { resolveUserCacheRoot } from "../cache/paths";
 import { resolveUserDataRoot } from "../config/roots";
+import { defaultPosixShellProfilePath } from "../host/shell-profile";
 import { inspectOwnedExecutable } from "../install/owned-executable";
 import { decodeInstallRecord } from "../install/record";
 import {
@@ -264,41 +265,6 @@ Delegate=cpu cpuset io memory pids
 `;
 
 export const DEFAULT_CGROUPS_DELEGATE_PATH = "/etc/systemd/system/user@.service.d/delegate.conf";
-
-// Lockstep with core/src/cli/commands/shellenv.ts: same delimiters, and the same
-// LANDO_SHELL_PROFILE override setup uses when writing the block.
-// Engine must not import @lando/core.
-export const LANDO_SHELLENV_BEGIN = "# >>> LANDO4 shellenv >>>";
-export const LANDO_SHELLENV_END = "# <<< LANDO4 shellenv <<<";
-
-export const defaultPosixShellProfilePath = (env: NodeJS.ProcessEnv = process.env): string => {
-  const override = env.LANDO_SHELL_PROFILE;
-  if (override !== undefined && override !== "") return override;
-  const home = env.HOME ?? env.USERPROFILE ?? homedir();
-  const shell = env.SHELL?.split(/[\\/]/u).at(-1) ?? "";
-  if (shell === "zsh") return join(home, ".zshrc");
-  if (shell === "bash") return join(home, ".bashrc");
-  return join(home, ".profile");
-};
-
-export const stripLandoShellenvBlock = (
-  content: string,
-): { readonly content: string; readonly stripped: boolean } => {
-  let result = content;
-  let stripped = false;
-  while (true) {
-    const begin = result.indexOf(LANDO_SHELLENV_BEGIN);
-    if (begin === -1) break;
-    const end = result.indexOf(LANDO_SHELLENV_END, begin + LANDO_SHELLENV_BEGIN.length);
-    if (end === -1) break;
-    let cutEnd = end + LANDO_SHELLENV_END.length;
-    if (result.startsWith("\r\n", cutEnd)) cutEnd += 2;
-    else if (result.startsWith("\n", cutEnd)) cutEnd += 1;
-    result = `${result.slice(0, begin)}${result.slice(cutEnd)}`;
-    stripped = true;
-  }
-  return { content: result, stripped };
-};
 
 const tryReadText = (path: string, readText: (path: string) => string): string | undefined => {
   try {
