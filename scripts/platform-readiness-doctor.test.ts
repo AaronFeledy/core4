@@ -49,6 +49,38 @@ const doctorEnvelope = (
   });
 
 describe("platform readiness doctor classification", () => {
+  test.each([
+    { label: "missing", finding: undefined, outcome: "failed" },
+    {
+      label: "next launch only",
+      finding: { status: "pass", context: { nextLaunch: "delegated" } },
+      outcome: "failed",
+    },
+    {
+      label: "shared",
+      finding: { status: "warn", context: { servicePlacement: "shared" } },
+      outcome: "failed",
+    },
+    {
+      label: "delegated",
+      finding: { status: "pass", context: { servicePlacement: "delegated" } },
+      outcome: "passed",
+    },
+  ])("requires observed delegated placement: $label", ({ finding, outcome }) => {
+    const report = healthyDoctorReport();
+    const checks =
+      finding === undefined
+        ? report.checks
+        : [...report.checks, { name: "managed-runtime-container-cgroups", ...finding }];
+
+    const result = classifyPlatformReadinessDoctorResult(
+      { exitCode: 0, stdout: doctorEnvelope({ ...report, checks }), stderr: "" },
+      { requireDelegatedCgroups: true },
+    );
+
+    expect(result.outcome).toBe(outcome);
+  });
+
   test("passes when doctor JSON is healthy with a warning and setup-readiness passes", () => {
     const report = healthyDoctorReport();
     expect(report.checks.some((entry) => entry.status === "warn")).toBe(true);
