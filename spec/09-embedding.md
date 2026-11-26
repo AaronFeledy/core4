@@ -63,6 +63,7 @@ Required behavior:
 - Bootstrap MUST follow §3.2 through the selected level and emit the same lifecycle events as the CLI.
 - The outer `Scope` owns all runtime resources and teardown.
 - Host overrides MAY replace only §4 pluggable abstractions and take precedence over defaults.
+- Scratch bootstrap MUST construct scratch services against the already acquired host overrides. A routed scratch MUST use the same selected `RouterService` instance for global-consumer admission, publication, and withdrawal on destroy or failed acquisition. The runtime MUST NOT reacquire the host router layer for the scratch tier.
 - Library defaults are `bootstrap: app`, `silent` logging, `json` rendering, non-interactive prompts, host-provided plugins only, telemetry enabled unless disabled, and no signal handlers. App bootstrap requires an authoritative cwd. Unanswered non-interactive prompts fail fast (§8.10.3).
 
 `openLandoRuntime(options)` acquires one runtime in the caller’s scope and returns retained methods `app`, `scratch`, and `run`. It MUST NOT reacquire the runtime per call. Scratch acquisition, whether configured through the `scratch` option or requested through `runtime.scratch`, MUST use the runtime's captured cwd, never a later ambient `process.cwd()`, for default fork Landofile discovery and for cwd-derived scratch mounts. The retained `run` provides `ScratchAppService`, and its requirement type discharges that service along with the runtime services.

@@ -27,6 +27,7 @@ import * as BunFileSystem from "@lando/engine/services/file-system";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
 import * as BunProcessRunner from "@lando/engine/services/process-runner";
 import * as EnvSecretStore from "@lando/engine/services/secret-store";
+import { layerUnavailable } from "@lando/engine/subsystems/proxy/api";
 import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService } from "@lando/redaction/service";
@@ -202,6 +203,7 @@ const makeLayer = (
     }),
   );
   const scratchDeps = Layer.mergeAll(
+    layerUnavailable,
     PrivateFileAccessService.layer,
     stateStoreLayer,
     environmentResolverLayer(),

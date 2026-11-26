@@ -1,14 +1,18 @@
 import { causeRemediation, mapFailures } from "@lando/sdk/command-result";
 import { AppPlacementError, RouteUrlBindingError, ScratchAppError } from "@lando/sdk/errors";
 import type { AppPlan, RouterConfig } from "@lando/sdk/schema";
-import { EnvironmentValueResolver, type RouterServiceShape, StateStore } from "@lando/sdk/services";
-import { type Context, Effect } from "effect";
+import {
+  EnvironmentValueResolver,
+  RouterService,
+  type RouterServiceShape,
+  StateStore,
+} from "@lando/sdk/services";
+import { Effect } from "effect";
 import { applyActivation } from "../lifecycle/activation-apply.ts";
 import { prepareRouteUrlBindings } from "../lifecycle/route-url-bindings.ts";
 import type { PreparedCertificates } from "../lifecycle/service-certificates.ts";
 import { completeStartup } from "../lifecycle/startup-completion.ts";
 import {
-  type GlobalConsumerAdmissionServices,
   requiresGlobalConsumerAdmission,
   withGlobalConsumerAdmission,
 } from "../operations/global-consumer-admission.ts";
@@ -33,7 +37,6 @@ export const applyScratchStartup = Effect.fn("ScratchApp.applyStartup")(function
     readonly environmentResolver: typeof EnvironmentValueResolver.Service;
     readonly stateStore: typeof StateStore.Service;
     readonly router: RouterServiceShape;
-    readonly admissionContext?: Context.Context<GlobalConsumerAdmissionServices>;
   },
 ) {
   const { id, plan } = request;
@@ -107,15 +110,6 @@ export const applyScratchStartup = Effect.fn("ScratchApp.applyStartup")(function
     return applied.credentialChanges;
   });
   if (!requiresGlobalConsumerAdmission(plan)) return yield* activate;
-  if (services.admissionContext === undefined)
-    return yield* Effect.fail(
-      new ScratchAppError({
-        operation: "start",
-        message: `Global service admission is unavailable for scratch app ${id}.`,
-        remediation:
-          "Provide the global runtime services when constructing ScratchAppService before starting dependent scratch applications.",
-      }),
-    );
   return yield* withGlobalConsumerAdmission(
     {
       plan,
@@ -123,7 +117,7 @@ export const applyScratchStartup = Effect.fn("ScratchApp.applyStartup")(function
     },
     activate,
   ).pipe(
-    Effect.provide(services.admissionContext),
+    Effect.provideService(RouterService, services.router),
     mapFailures((cause) =>
       cause instanceof AppPlacementError ||
       cause instanceof ScratchAppError ||

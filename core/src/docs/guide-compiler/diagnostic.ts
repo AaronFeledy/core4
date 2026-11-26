@@ -66,6 +66,7 @@ export const semanticError = (
   const corrections: Readonly<Record<string, string>> = {
     "guide.scenario.no-behavior":
       "Add a Run, Verify, or Fetch that asserts behavior on this selected path, or explicitly skip the cell. Fixtures, prose, cleanup, inspection, and inline output alone do not exercise behavior.",
+    "guide.scenario.faults-e2e": 'Remove faults or use layer="scenario" to inject them in memory.',
     "guide.fetch.requires-e2e": 'Put <Fetch> in a <Step> in a scenario with layer="e2e".',
     "guide.variable.missing": "Declare this binding on the selected scenario path before referencing it.",
     "guide.variable.hidden-reference":
