@@ -51,6 +51,35 @@ Rules the generator and linter enforce:
 - `<Verify event>` has nothing to match. The binary does not stream events
   back to the harness. Assert on stdout, stderr, exit code, or files instead.
 
+## Pass a JSON result to a later command
+
+In a test-only scenario (`render={false}`), use `capture` on a `<Run>` with
+`--format=json` to save a string from its result. The `json` path starts inside
+the envelope's `result`, so `handle.id` reads `result.handle.id`. Use the
+capture as a whole argument in a later `<Run>` or `<Verify>` command:
+
+```mdx
+<Step name="fork">
+  <Run command="lando scratch:start --fork --detach --format=json" capture={{ name: "scratchId", json: "handle.id" }} />
+  <Run command="lando scratch:info {{capture:scratchId}} --format=json" />
+</Step>
+<Step name="cleanup">
+  <Cleanup />
+  <Run command="lando scratch:destroy {{capture:scratchId}}" />
+  <Run command="lando destroy -y --volumes" />
+</Step>
+```
+
+The harness passes the value as one argument, even if it contains spaces. The
+capture token must be a whole argument after the command name, and only a
+`<Run>` or `<Verify>` `command` can use it. A capturing command can't also pass
+`--json`, `--jq`, or `--help`, because those print something other than one
+JSON envelope. Captures work in any test-only scenario, not only `e2e` ones.
+
+If the earlier command fails or cannot produce the capture, cleanup skips only
+the commands that need the missing value and prints a warning that names each
+skipped command, so a leftover resource is easy to trace.
+
 ## Prove a URL answers
 
 `lando start` checks every routed URL through the proxy after the app is ready.

@@ -2282,6 +2282,7 @@
       "RuntimeProviderRegistry",
       "SchemaValidator",
       "ScratchAppService",
+      "ScratchPublishedRoute",
       "SecretStore",
       "ServiceBuildAcquisition",
       "ServiceBuildDirectoryCommand",

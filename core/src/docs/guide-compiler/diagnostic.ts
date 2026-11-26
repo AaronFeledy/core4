@@ -81,6 +81,14 @@ export const semanticError = (
       "Assert the e2e command's output or exit code instead; events reach <Verify event> only from in-process scenario commands.",
     "guide.command.syntax":
       "Quote the argument the way a POSIX shell needs it: close every quote, and wrap operators, redirections, $ or backtick substitution, globs, braces, !, and a leading ~ or # in single quotes. Guide commands run as the argv a reader gets by pasting them into a shell.",
+    "guide.capture.hidden-only": "Move the Run to a scenario with render={false}.",
+    "guide.capture.json-required":
+      "Run the command with --format=json and without a projection or help flag.",
+    "guide.capture.duplicate": "Give each capture a distinct name in this scenario path.",
+    "guide.capture.argument": "Use {{capture:name}} as an entire command argument.",
+    "guide.capture.before-declaration":
+      "Move the Run that captures this value before the command that needs it.",
+    "guide.capture.unknown": "Declare a Run.capture with this name on the selected scenario path.",
     "guide.runtime.mixed":
       "Split CLI/shell and library execution into separate scenarios, including hidden and cleanup steps.",
     "guide.runtime.e2e-library":

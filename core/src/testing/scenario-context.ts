@@ -49,6 +49,7 @@ import { redactDetails } from "../cli/redact";
 import { type GuideCommandSyntaxError, guideCommandArgv } from "../docs/guide-compiler/command-argv.ts";
 import { withInteractionServiceOverride } from "../interaction/testing-override";
 import { makeTestInteractionService } from "./interaction";
+import { makeScenarioCapture } from "./scenario-capture.ts";
 import {
   ScenarioFetchError,
   readScenarioCa,
@@ -181,6 +182,8 @@ export interface ScenarioContext {
   readonly runtime: TestRuntime;
   /** Scenario variables keyed by variable name. */
   readonly vars: Map<string, ScenarioVariable>;
+  /** Scenario-local JSON captures used by generated hidden commands. */
+  readonly capture: ReturnType<typeof makeScenarioCapture>;
   /**
    * Runs a Lando CLI command in the current scenario working directory.
    * @param command Command string or pre-split argv. A leading `lando` is ignored.
@@ -900,6 +903,7 @@ const makeScenarioContext = (
     testDir,
     runtime,
     vars: new Map(options.vars ?? []),
+    capture: makeScenarioCapture(),
     runCli: createRunCli(
       events,
       appendFrame,

@@ -33,7 +33,7 @@ import type {
   ScratchSource,
   ScratchSummary,
 } from "@lando/sdk/services";
-import { RuntimeProviderRegistry, ScratchAppService } from "@lando/sdk/services";
+import { RuntimeProviderRegistry, ScratchAppService, ScratchPublishedRoute } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
 import { mergeAnswerSources, parseAnswerFlags, readAnswersFile } from "../prompts/answer-flags";
 import { type RenderContext, isDecoratedContext, summaryPaintOptions } from "../renderer-boundary";
@@ -144,6 +144,10 @@ export const ScratchInfoResultSchema = Schema.Struct({
   mounts: Schema.Array(ScratchMountPointResultSchema),
   network: ScratchNetworkMembershipResultSchema,
   endpoints: Schema.Array(ScratchServiceEndpointsResultSchema),
+  routes: Schema.optionalKey(Schema.Array(ScratchPublishedRoute)).annotate({
+    description:
+      "Route URLs the router confirms for this scratch. Present only when the scratch declares enabled routes; empty when none are confirmed.",
+  }),
 });
 
 export const ScratchStartResultSchema = Schema.Struct({
@@ -440,6 +444,11 @@ export const renderScratchInfoResult = (
     renderInfoNetwork(result),
     ...renderInfoMounts(result),
     ...renderInfoEndpoints(result),
+    ...(result.routes === undefined
+      ? []
+      : result.routes.length === 0
+        ? ["routes: (none confirmed by the router)"]
+        : ["routes:", ...result.routes.map(({ service, url }) => `  ${service} ${url}`)]),
   ].join("\n");
 };
 

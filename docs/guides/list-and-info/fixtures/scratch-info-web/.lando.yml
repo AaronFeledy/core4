@@ -1,0 +1,8 @@
+name: scratch-info-guide
+services:
+  web:
+    type: apache
+    routes:
+      - hostname: web.scratch-info-guide.lndo.site
+        scheme: http
+        pathPrefix: /hello
