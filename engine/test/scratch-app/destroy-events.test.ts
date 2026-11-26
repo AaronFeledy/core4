@@ -174,6 +174,23 @@ test.each(["provider", "route"] as const)(
   },
 );
 
+test("a destroy that fails after its provider phase keeps the applied receipt for the retry", async () => {
+  // Given a scratch known only by its applied receipt, whose first route withdrawal fails.
+  await withDestroyFixture({ skipDesiredPlan: true, appliedPlan: true, routeFail: "once" }, async (f) => {
+    // When destroy fails partway and is retried.
+    await expect(runDestroy(f)).rejects.toThrow();
+    const receiptAfterFailure = f.receipt();
+    await runDestroy(f);
+    // Then the receipt outlives the failure, so the retry still tears down the recovered plan.
+    expect(receiptAfterFailure).toMatchObject({ id: f.id });
+    expect(f.calls.filter((call) => call === "destroy:true")).toHaveLength(2);
+    expect(f.calls.filter((call) => call === "forget")).toHaveLength(1);
+    expect(f.calls.lastIndexOf("routes")).toBeLessThan(f.calls.indexOf("forget"));
+    expect(f.receipt()).toBeUndefined();
+    expect(f.entries.size).toBe(0);
+  });
+});
+
 test("pending-cleanup write failure preserves the original provider failure", async () => {
   // Given a provider teardown failure and an unavailable registry writer.
   await withDestroyFixture({ fail: true, registryFail: true }, async (f) => {

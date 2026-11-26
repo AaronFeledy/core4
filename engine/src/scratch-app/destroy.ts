@@ -133,7 +133,7 @@ export const makeScratchReaper = Effect.gen(function* () {
             provider !== undefined && plan !== undefined
               ? (yield* provider.bringDown(
                   { app: plan.id, plan },
-                  { containers: "remove", volumes: !keepVolumes, removeState: true },
+                  { containers: "remove", volumes: !keepVolumes, removeState: false },
                 )).kind === "removed"
               : yield* orphan?.destroy ?? Effect.succeed(false);
           // Without a plan, the registry layout says which owner published; with neither, try both.
@@ -159,11 +159,17 @@ export const makeScratchReaper = Effect.gen(function* () {
               Option.isSome(paths) ? Effect.provideService(PathsService, paths.value) : (effect) => effect,
             );
           }
-          if (plan !== undefined && provider !== undefined)
+          if (plan !== undefined && provider !== undefined) {
             yield* cleanupScratchOwnedState({ plan, provider, keepVolumes }).pipe(
               Effect.provideService(RuntimeProviderRegistry, providers),
               Effect.provideService(StateStore, stateStore),
             );
+            // Last: a retry after any failure above recovers the plan from this receipt.
+            yield* provider.bringDown(
+              { app: plan.id, plan },
+              { containers: "remove", volumes: false, removeState: true },
+            );
+          }
           return stopped || destroyed || removed > 0 ? ("destroyed" as const) : ("unchanged" as const);
         });
         const outcome = yield* reason === "gc"

@@ -76,7 +76,8 @@ interface DestroyFixtureOptions {
   readonly orphan?: boolean;
   readonly cwd?: boolean;
   readonly fail?: boolean;
-  readonly routeFail?: boolean;
+  /** `"once"` fails only the first route withdrawal, so a retry can succeed. */
+  readonly routeFail?: boolean | "once";
   readonly copyFail?: boolean;
   readonly registryFail?: boolean;
   readonly postScratchDestroyFail?: boolean;
@@ -137,6 +138,8 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
     identity: planAppIdentity({ root: planRoot }),
   };
   const calls: string[] = [];
+  let routeFailures =
+    options.routeFail === "once" ? 1 : options.routeFail === true ? Number.POSITIVE_INFINITY : 0;
   const events: LandoEvent[] = [];
   const rootObservations: { readonly tag: string; readonly exists: boolean }[] = [];
   const snapshots: SnapshotInfo[] = [id, AppId.make("user-app")].map((app) => ({
@@ -167,6 +170,8 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
   if (!options.orphan && options.skipDesiredPlan !== true)
     await seedScratchPlan(instanceRoot, plan, options.desiredPlanVersion ?? SCRATCH_DESIRED_PLAN_VERSION);
   const stateStore = makeStateStore({ privateFileAccess: ownerOnlyFileAccess });
+  // A reap brings the scratch down three times: stop, destroy, then forget its applied receipt.
+  let stopped = false;
   const provider = {
     ...TestRuntimeProvider,
     ...(options.offlineNewerReceipt
@@ -174,11 +179,13 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
       : {}),
     bringDown: (_target: unknown, request: BringDownOptions) =>
       Effect.sync(() => {
-        calls.push(request.removeState ? `destroy:${request.volumes}` : "stop");
-        return { kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } };
+        const call = request.removeState ? "forget" : stopped ? `destroy:${request.volumes}` : "stop";
+        stopped = true;
+        calls.push(call);
+        return call;
       }).pipe(
-        Effect.flatMap((outcome) =>
-          options.fail && request.removeState
+        Effect.flatMap((call) =>
+          options.fail && call.startsWith("destroy:")
             ? Effect.fail(
                 new ProviderUnavailableError({
                   providerId: "lando",
@@ -187,11 +194,15 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
                   remediation: "Install or start the `lando` provider and confirm it can perform `destroy`.",
                 }),
               )
-            : Effect.succeed(outcome),
+            : Effect.sync(() => {
+                if (call === "forget") applied = undefined;
+                return { kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } };
+              }),
         ),
       ),
   };
-  const applied =
+  // The applied receipt a forgetting bring-down removes.
+  let applied: AppPlan | undefined =
     options.appliedPlan === true
       ? {
           ...plan,
@@ -232,10 +243,10 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
       },
       appliedStateInventory: (provider) =>
         Effect.succeed({ plans: [], unreadable: provider === plan.provider ? unreadable : [] }),
-      appliedPlansFor: () => Effect.succeed(applied === undefined ? [] : [applied]),
-      resolveAppliedPlan: () => Effect.succeed(applied),
+      appliedPlansFor: () => Effect.sync(() => (applied === undefined ? [] : [applied])),
+      resolveAppliedPlan: () => Effect.sync(() => applied),
       resolveTeardownEvidence: () =>
-        Effect.succeed(
+        Effect.sync(() =>
           applied === undefined ? { kind: "absent" as const } : { kind: "applied" as const, plan: applied },
         ),
       list: Effect.succeed([ProviderId.make("docker"), ProviderId.make("lando"), ProviderId.make("podman")]),
@@ -314,7 +325,7 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
             withdrawnOwnerKeys.push(owner.ownerKey);
           }).pipe(
             Effect.andThen(
-              options.routeFail
+              routeFailures-- > 0
                 ? Effect.fail(
                     new ProxyError({
                       proxyId: "test",
@@ -341,6 +352,7 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
                 }),
               )
             : Effect.sync(() => {
+                if (event._tag === "pre-scratch-destroy") stopped = false;
                 calls.push(event._tag);
                 events.push(event);
                 const app = Predicate.hasProperty(event, "app") ? event.app : undefined;
@@ -406,6 +418,7 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
     removed,
     entries,
     stateStore,
+    receipt: () => applied,
     layer: Scratch.layer.pipe(Layer.provideMerge(dependencies)),
   };
 };
