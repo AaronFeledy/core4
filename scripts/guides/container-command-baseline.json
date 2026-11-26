@@ -626,10 +626,8 @@
   "docs/guides/tooling/db-import-export.mdx": [
     "lando db:export -",
     "lando db:export - --compression=zstd",
-    "lando db:export - --format=json",
     "lando db:export backups/app.bak --service database",
     "lando db:export backups/app.sql.gz --service database",
-    "lando db:export backups/app.sql.gz --service database --format=json",
     "lando db:export backups/app.sql.zst --service database",
     "lando db:export dump.sql.gz",
     "lando db:export dump.sql.zst",

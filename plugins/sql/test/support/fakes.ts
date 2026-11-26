@@ -301,7 +301,11 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
         );
       }
       execs.push({ command, ...(env === undefined ? {} : { env }) });
-      return sqlResult({ exitCode: options.execFails === true ? 1 : 0, stdout: "", stderr: "" });
+      return sqlResult({
+        exitCode: options.execFails === true ? 1 : 0,
+        stdout: "",
+        stderr: options.execStderr ?? "",
+      });
     },
     confirm: () => Effect.succeed(false),
     waitForReady: () => Effect.void,

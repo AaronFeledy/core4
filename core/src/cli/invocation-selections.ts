@@ -31,6 +31,7 @@ import { resolveLogLevel } from "./log-level-selection";
 import { resolveCliDeprecationWarnings, resolveCliRendererMode } from "./renderer-boundary";
 import { applyDebugRendererFlip, type readConfigCliGlobals } from "./renderer-mode-resolution";
 import { setActiveLogLevel } from "./renderer-mode-state";
+import { refusalOutputMode } from "./result-format-guard";
 import { preCommandOutputMode, renderPreCommandFailure } from "./spec/command-boundary";
 import { resolveTrace, setActiveTrace } from "./trace-selection";
 
@@ -61,7 +62,10 @@ const jsonControlConflict = (): JsonJqConflictError | JsonProjectionError | unde
   return undefined;
 };
 
-export const rejectJsonControlConflicts = async (context: CliInvocationContext): Promise<boolean> => {
+export const rejectJsonControlConflicts = async (
+  context: CliInvocationContext,
+  payloadStdout: boolean,
+): Promise<boolean> => {
   const error = jsonControlConflict();
   if (error === undefined) return false;
   setActiveCommandId("cli:json-control");
@@ -69,8 +73,8 @@ export const rejectJsonControlConflicts = async (context: CliInvocationContext):
     context,
     commandId: "cli:json-control",
     error,
-    rendererMode: activeRendererMode,
-    resultFormat: "json",
+    ...refusalOutputMode(activeResultFormat),
+    ...(payloadStdout ? { payloadStdout: true } : {}),
     usage: true,
   });
   return true;
@@ -169,6 +173,8 @@ export const applyInvocationSelections = async (
     readonly commandAbsent: boolean;
     /** Present only for an enabled, non-wrapper tooling owner. */
     readonly ownership?: { readonly taskName: string };
+    /** Parsed argv requests the owner's stdout payload grant, so machine failures move to stderr. */
+    readonly payloadStdout?: boolean;
   },
 ): Promise<boolean> => {
   let rendererSelected = false;
@@ -206,6 +212,7 @@ export const applyInvocationSelections = async (
       commandId,
       error: rendered,
       ...preCommandOutputMode({ argv: globals, env: context.env }),
+      ...(selection.payloadStdout === true ? { payloadStdout: true } : {}),
       usage: true,
     });
     return true;

@@ -73,6 +73,9 @@ const fields = {
   typeable: Schema.String,
   extras: Schema.Array(Schema.String),
   summary: Schema.String,
+  advertisedFormats: Schema.optionalKey(Schema.Array(Schema.String)).annotate({
+    description: "Result formats this command advertises (text, json, yaml plus any opt-in formats).",
+  }),
 };
 const toolingDiagnostic = Schema.Struct({
   _tag: ToolingCompileError.fields._tag,

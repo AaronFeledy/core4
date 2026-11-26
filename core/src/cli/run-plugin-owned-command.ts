@@ -88,6 +88,8 @@ const defaultPluginRuntime = (
 const compiledPluginOptions = (spec: ExecutableCommandSpec, options: RunPluginOwnedCommandOptions) => ({
   ...(options.context === undefined ? {} : { context: options.context }),
   resultSchema: spec.resultSchema,
+  // A live command gets the boundary's StreamFrameSink, exactly as a live built-in does.
+  ...(spec.streamingMode === undefined ? {} : { streamingMode: spec.streamingMode }),
   ...(options.io === undefined ? {} : { io: options.io }),
   ...(spec.redactionTokens === undefined
     ? {}
@@ -269,6 +271,10 @@ const runPluginOwnedCommand = (
     options.signal === undefined ? {} : { signal: options.signal },
   );
 
+/** Whether parsed argv requests the command's stdout payload grant, decided from its declarations alone. */
+export const pluginRequestsPayloadStdout = (spec: ExecutableCommandSpec, tokens: CommandTokens): boolean =>
+  commandStdioRequest(spec, pluginOwnedCommandInputFromArgv(spec, tokens).args).stdout === true;
+
 const dispatchPluginOwnedCommand = async (
   row: PluginCommandRow,
   token: string,
@@ -283,12 +289,11 @@ const dispatchPluginOwnedCommand = async (
   resetActiveCommandInvocation(spec.id, tokens.argv, {
     ...(catalog.context === undefined ? {} : { context: catalog.context }),
   });
-  // A plugin-owned command declares no opt-in format, so it honors exactly the
-  // universal set. Refuse before --json key listing can report success.
-  const payloadStdout =
-    commandStdioRequest(spec, pluginOwnedCommandInputFromArgv(spec, tokens).args).stdout === true;
+  // A plugin-owned command honors the universal set plus `ndjson` when it
+  // streams live. Refuse before --json key listing can report success.
+  const payloadStdout = pluginRequestsPayloadStdout(spec, tokens);
   if (
-    await rejectUnsupportedResultFormat(spec.id, undefined, {
+    await rejectUnsupportedResultFormat(spec.id, spec, {
       payloadStdout,
       ...(catalog.context === undefined ? {} : { context: catalog.context }),
     })

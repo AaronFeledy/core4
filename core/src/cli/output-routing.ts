@@ -4,10 +4,20 @@ import type { RendererMode } from "./renderer-selection";
 type NarrationRoute = "mode-narration" | "json-event-dump" | "verbose-dump";
 type EnvelopeEventRoute = "notifications-only" | "silent-lando-consumer" | "verbose-dump" | "none";
 
+/**
+ * Where one command run's output goes. `human` is the only non-machine route;
+ * every other route ends in exactly one terminal document (an envelope, or the
+ * result frame that ends a frame sequence) written after the runtime closes.
+ */
 export type OutputRouting = (
   | { readonly stdout: "human"; readonly events: NarrationRoute }
-  | { readonly stdout: "envelope"; readonly events: EnvelopeEventRoute }
+  | {
+      readonly stdout: "envelope";
+      readonly serialization: "json" | "yaml";
+      readonly events: EnvelopeEventRoute;
+    }
   | { readonly stdout: "frames"; readonly events: "frames" }
+  | { readonly stdout: "report"; readonly events: NarrationRoute }
 ) & { readonly sink: "live" | "none" };
 
 const narrationRoutes = {
@@ -27,20 +37,32 @@ const envelopeRoutes = {
 export const resolveOutputRouting = (input: {
   readonly rendererMode: RendererMode;
   readonly format: ResultFormat;
-  readonly declaresStreaming: boolean;
+  /** The command declares a frame schema. */
+  readonly frames: boolean;
   readonly live: boolean;
+  /** The command supplies its own `ndjson` report frames. */
+  readonly report: boolean;
 }): OutputRouting => {
   const sink = input.live ? "live" : "none";
+  const framed = input.frames || input.live;
   switch (input.format) {
     case "json":
-      return input.declaresStreaming || input.live
+      return framed
         ? { stdout: "frames", events: "frames", sink }
-        : { stdout: "envelope", events: envelopeRoutes[input.rendererMode], sink };
+        : { stdout: "envelope", serialization: "json", events: envelopeRoutes[input.rendererMode], sink };
+    case "ndjson":
+      return input.report && !framed
+        ? { stdout: "report", events: narrationRoutes[input.rendererMode], sink: "none" }
+        : { stdout: "frames", events: "frames", sink };
     case "yaml":
-      return { stdout: "envelope", events: envelopeRoutes[input.rendererMode], sink: "none" };
+      return {
+        stdout: "envelope",
+        serialization: "yaml",
+        events: envelopeRoutes[input.rendererMode],
+        sink: "none",
+      };
     case "text":
     case "table":
-    case "ndjson":
       return { stdout: "human", events: narrationRoutes[input.rendererMode], sink };
     default: {
       const exhaustive: never = input.format;

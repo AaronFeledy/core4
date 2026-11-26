@@ -8,6 +8,7 @@ import { Effect, Stream } from "effect";
 import { BuildOwner } from "../../src/services/build-owner.ts";
 import { openAppBuildResults } from "../../src/services/build-results.ts";
 import { makeLayer, planWith, providerId, withTempRoots } from "./build-app-runner-test-support.ts";
+import { retainedProvider } from "./build-app-settlement-support.ts";
 
 test("#2297 reruns only the replaced service while a retained container with a new start time reuses its steps", async () => {
   await withTempRoots(async () => {
@@ -196,3 +197,49 @@ test("an inspect failure preserves the ordinary app command failure", async () =
     expect(failure.failures[0]).toMatchObject({ exitCode: 7, step: { id: "web:app:install" } });
   });
 });
+
+test.each([undefined, 7])(
+  "a complete receipt with exit %s reruns while its zero-exit sibling stays cached",
+  async (exitCode) => {
+    await withTempRoots(async () => {
+      const calls: string[] = [];
+      const provider: RuntimeProviderShape = {
+        ...retainedProvider,
+        execStream: (target) => {
+          calls.push(target.service);
+          return Stream.make({ exitCode: 0 });
+        },
+      };
+      const plan = planWith({
+        web: [{ id: "install", phase: "app", command: { command: ["install"] } }],
+        node: [{ id: "install", phase: "app", command: { command: ["install"] } }],
+      });
+      const { seeded, receipts } = await Effect.runPromise(
+        Effect.gen(function* () {
+          const build = yield* BuildOrchestrator;
+          const bucket = yield* openAppBuildResults(yield* StateStore, BuildOwner.fromPlan(plan));
+          yield* build.buildApp(plan);
+          yield* bucket.update((entries) =>
+            (entries ?? []).map((entry) => {
+              if (entry.service !== "web") return entry;
+              const { exitCode: _, ...unverified } = entry;
+              return exitCode === undefined ? unverified : { ...unverified, exitCode };
+            }),
+          );
+          const seeded = yield* bucket.get;
+          calls.length = 0;
+          yield* build.buildApp(plan);
+          return { seeded, receipts: yield* bucket.get };
+        }).pipe(Effect.provide(makeLayer(provider))),
+      );
+      expect(seeded?.find((entry) => entry.service === "web")).toMatchObject({
+        outcome: "complete",
+        containerId: "retained-1",
+      });
+      expect(seeded?.find((entry) => entry.service === "web")?.exitCode).toBe(exitCode);
+      expect(seeded?.find((entry) => entry.service === "node")?.exitCode).toBe(0);
+      expect(calls).toEqual(["web"]);
+      expect(receipts?.find((entry) => entry.service === "web")?.exitCode).toBe(0);
+    });
+  },
+);

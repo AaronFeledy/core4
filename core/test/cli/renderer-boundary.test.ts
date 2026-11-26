@@ -6,7 +6,7 @@ import * as RendererOutput from "@lando/renderer/output";
 import { writeDiagnosticLine, writeResultLine } from "@lando/renderer/output";
 import { type DeprecationNotice, StreamFrame } from "@lando/sdk/schema";
 import { DeprecationService, EventService, Renderer } from "@lando/sdk/services";
-import { DateTime, Effect, Layer, Schema } from "effect";
+import { Context, DateTime, Effect, Layer, Schema } from "effect";
 import { landoRenderer } from "../../src/cli/renderer/bundled-renderers.ts";
 import { resolveCliDeprecationWarnings, runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 
@@ -40,9 +40,11 @@ describe("RendererOutput.layerServiceForMode", () => {
 describe("runWithRendererHandling", () => {
   const warningNotice: DeprecationNotice = {
     since: "4.1.0",
+    removeIn: "5.0.0",
     severity: "warn",
-    note: "Use app:up instead.",
+    note: "The old command is going away.",
     replacement: "app:up",
+    docsUrl: "https://docs.lando.dev/deprecations/app-old",
   };
   const infoNotice: DeprecationNotice = {
     since: "4.1.0",
@@ -433,7 +435,7 @@ describe("runWithRendererHandling", () => {
     expect(exitCode).toBe(1);
   });
 
-  test("emits one deprecation warning per used warn surface and keeps the summary count", async () => {
+  test("emits one actionable deprecation warning per used warn surface with its use count", async () => {
     const io = createBufferedRendererIO();
     await runWithRendererHandling(
       Effect.gen(function* () {
@@ -452,7 +454,7 @@ describe("runWithRendererHandling", () => {
     );
 
     expect(io.stderrLines()).toEqual([
-      "⚠ Deprecated command app:old (used 2 times): Use app:up instead. Replacement: app:up.",
+      "⚠ command app:old (used 2 times): Deprecated since 4.1.0; scheduled for removal in 5.0.0. Use app:up instead. The old command is going away. Docs: https://docs.lando.dev/deprecations/app-old",
     ]);
     expect(io.stdout()).toBe("ok\n");
   });
@@ -477,7 +479,7 @@ describe("runWithRendererHandling", () => {
     expect(io.stdout()).toBe("");
   });
 
-  test("suppresses only renderer warning output when requested", async () => {
+  test("suppression silences every human deprecation line, info summary included", async () => {
     const io = createBufferedRendererIO();
     await runWithRendererHandling(
       Effect.gen(function* () {
@@ -496,8 +498,89 @@ describe("runWithRendererHandling", () => {
       },
     );
 
-    expect(io.stderrLines()).toEqual(["ℹ Deprecated surfaces used: config-key legacy.key (1 use)."]);
+    expect(io.stderrLines()).toEqual([]);
     expect(io.stdout()).toBe("summary=2\n");
+  });
+
+  test("a suppressed envelope still lists the run's deprecated surfaces", async () => {
+    const io = createBufferedRendererIO();
+    await runWithRendererHandling(
+      Effect.gen(function* () {
+        const deprecations = yield* DeprecationService;
+        yield* deprecations.use({ kind: "command", id: "app:old", notice: warningNotice, timestamp });
+        yield* deprecations.use({ kind: "command", id: "app:old", notice: warningNotice, timestamp });
+        return {};
+      }),
+      {
+        runtime: DeprecationServiceLayer.layer,
+        rendererMode: "plain",
+        resultFormat: "json",
+        io,
+        deprecationWarnings: false,
+        formatError: () => "should not happen",
+        setExitCode: () => undefined,
+      },
+    );
+
+    const envelope = JSON.parse(io.stdout()) as {
+      readonly deprecations: ReadonlyArray<Record<string, unknown>>;
+    };
+    expect(envelope.deprecations.map((use) => [use.kind, use.id, "count" in use])).toEqual([
+      ["command", "app:old", false],
+    ]);
+    expect(io.stderrLines()).toEqual([]);
+  });
+
+  describe("with one deprecation service retained across invocations", () => {
+    const retainedService = () =>
+      Effect.runPromise(
+        Effect.scoped(
+          Layer.build(DeprecationServiceLayer.layer).pipe(
+            Effect.map((context) => Context.get(context, DeprecationService)),
+          ),
+        ),
+      );
+    const useOnce = (id: string, notice: DeprecationNotice) =>
+      Effect.gen(function* () {
+        yield* (yield* DeprecationService).use({ kind: "command", id, notice, timestamp });
+        return {};
+      });
+    const runOnce = (
+      service: typeof DeprecationService.Service,
+      id: string,
+      options: { readonly format?: "json"; readonly warnings?: boolean } = {},
+    ) => {
+      const io = createBufferedRendererIO();
+      return runWithRendererHandling(useOnce(id, warningNotice), {
+        runtime: Layer.succeed(DeprecationService, service),
+        rendererMode: "plain",
+        ...(options.format === undefined ? {} : { resultFormat: options.format }),
+        deprecationWarnings: options.warnings ?? true,
+        io,
+        formatError: () => "should not happen",
+        setExitCode: () => undefined,
+      }).then(() => io);
+    };
+
+    test("each envelope lists only its own invocation's uses", async () => {
+      const service = await retainedService();
+      await runOnce(service, "app:first", { format: "json" });
+      const second = await runOnce(service, "app:second", { format: "json" });
+      const envelope = JSON.parse(second.stdout()) as {
+        readonly deprecations: ReadonlyArray<{ readonly id: string }>;
+      };
+      expect(envelope.deprecations.map((use) => use.id)).toEqual(["app:second"]);
+    });
+
+    test("a surface warns a person once, and a suppressed run does not spend that warning", async () => {
+      const service = await retainedService();
+      const suppressed = await runOnce(service, "app:old", { warnings: false });
+      const first = await runOnce(service, "app:old");
+      const second = await runOnce(service, "app:old");
+      expect(suppressed.stderrLines()).toEqual([]);
+      expect(first.stderrLines()).toEqual([expect.stringContaining("command app:old (used once)")]);
+      expect(second.stderrLines()).toEqual([]);
+    });
   });
 
   test("json renderer emits structured deprecation-used diagnostics on stderr", async () => {
@@ -644,19 +727,25 @@ describe("native Windows TTY result newlines", () => {
     },
   );
 
-  test("lando renderer preserves NDJSON result LF bytes", async () => {
+  test("lando renderer preserves NDJSON frame LF bytes", async () => {
     const fixture = nativeIO();
-    const rows = ['{"answer":"ready"}', '{"answer":"next"}'].join("\n");
     await runWithRendererHandling(Effect.succeed("ready"), {
       runtime: Layer.empty,
       rendererMode: "lando",
       resultFormat: "ndjson",
+      streaming: StreamFrame,
+      resultSchema: Schema.String,
       io: fixture.io,
-      render: () => rows,
       formatError: ({ error }) => String(error),
       setExitCode: () => undefined,
     });
-    expect(fixture.stdout.join("")).toBe(`${rows}\n`);
+    const output = fixture.stdout.join("");
+    expect(output).not.toContain("\r");
+    expect(output.endsWith("}\n")).toBe(true);
+    expect(Schema.decodeUnknownSync(StreamFrame)(JSON.parse(output.trim()))).toMatchObject({
+      _tag: "result",
+      envelope: { ok: true, result: "ready" },
+    });
     expect(fixture.stderr).toEqual([]);
   });
 

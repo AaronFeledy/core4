@@ -6,10 +6,9 @@ import { mapFailures } from "@lando/sdk/command-result";
 import { ToolingCompileError, ToolingExecError } from "@lando/sdk/errors";
 import type { AppPlan } from "@lando/sdk/schema";
 import { createRedactor, isSecretEnvName } from "@lando/sdk/secrets";
-import { type RuntimeProvider, RuntimeProviderRegistry } from "@lando/sdk/services";
+import { type RuntimeProvider, RuntimeProviderRegistry, StreamFrameSink } from "@lando/sdk/services";
 import { Deferred, Effect } from "effect";
 import type { DynamicToolingVarResolver } from "../tooling/step-runner.ts";
-import { StreamFrameSink } from "./stream-frame-sink.ts";
 import { type CompileToolingInput, executeToolingInvocations, stepInvocation } from "./tooling-compile.ts";
 import type { AdmittedToolingInput } from "./tooling-input-admission.ts";
 

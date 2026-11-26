@@ -1,7 +1,7 @@
 import { RemoteEnvListResultSchema, appRemoteEnvList } from "@lando/engine/operations/remote";
 import { renderRemoteEnvListResult } from "../../../../commands/remote";
 import type { LandoCommandSpec } from "../../../../spec/command-base";
-import { remoteConfigFlags, remoteEnvListOptionsFromInput } from "../common";
+import { remoteConfigFlags, remoteEnvListOptionsFromInput, remoteFormatFromInput } from "../common";
 
 export const remoteEnvListSpec: LandoCommandSpec<typeof RemoteEnvListResultSchema.Type> = {
   id: "app:remote:env:list",
@@ -11,6 +11,5 @@ export const remoteEnvListSpec: LandoCommandSpec<typeof RemoteEnvListResultSchem
   flags: remoteConfigFlags,
   resultSchema: RemoteEnvListResultSchema,
   run: (input) => appRemoteEnvList(remoteEnvListOptionsFromInput(input)),
-  render: (result, input, ctx) =>
-    renderRemoteEnvListResult(result, remoteEnvListOptionsFromInput(input).format, ctx),
+  render: (result, input, ctx) => renderRemoteEnvListResult(result, remoteFormatFromInput(input), ctx),
 };

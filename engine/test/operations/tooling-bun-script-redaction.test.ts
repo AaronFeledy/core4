@@ -3,9 +3,13 @@ import { join } from "node:path";
 import { parseScriptFile } from "@lando/landofile/bun-sh-discovery";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { createPayloadRedactor } from "@lando/sdk/secrets";
-import { EventService, type LandoEvent } from "@lando/sdk/services";
+import {
+  EventService,
+  type LandoEvent,
+  StreamFrameSink,
+  type StreamFrameSinkFrame,
+} from "@lando/sdk/services";
 import { Effect, Layer } from "effect";
-import { StreamFrameSink, type StreamFrameSinkFrame } from "../../src/operations/stream-frame-sink.ts";
 import { runBunShellScript, runBunShellTooling } from "../../src/operations/tooling-bun-script.ts";
 import { testEnvironmentResolverLayerFor } from "../environment-values.ts";
 import { recordingScriptEvents, scriptHostLayer, withBunScript } from "./tooling-bun-script-support.ts";

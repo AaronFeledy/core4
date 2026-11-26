@@ -29,14 +29,13 @@ import {
   DoctorReportSchema,
   collectDoctorReport,
   renderDoctorReport,
-  renderDoctorReportAsNdjson,
 } from "../../src/cli/commands/doctor-report.ts";
 import { independentSection } from "../../src/cli/commands/doctor-sections";
 import { subsystemDoctor } from "../../src/cli/commands/doctor-subsystems.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 import { makeLandoRuntime } from "../../src/runtime/layer";
 import { CORE_VERSION } from "../../src/version.ts";
-import { collectRuntimeDoctor as doctorReport } from "./doctor-report-fixture";
+import { collectRuntimeDoctor as doctorReport, renderDoctorReportAsNdjson } from "./doctor-report-fixture";
 import { DefaultSubsystemDoctorLayer } from "./doctor-subsystem-fixture.ts";
 
 const makeConfig = (input: unknown = {}): GlobalConfig => Schema.decodeUnknownSync(GlobalConfig)(input);

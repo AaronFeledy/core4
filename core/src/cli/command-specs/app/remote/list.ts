@@ -1,7 +1,7 @@
 import { RemoteListResultSchema, appRemoteList } from "@lando/engine/operations/remote";
 import { renderRemoteListResult } from "../../../commands/remote";
 import type { LandoCommandSpec } from "../../../spec/command-base";
-import { remoteConfigFlags, remoteListOptionsFromInput } from "./common";
+import { remoteConfigFlags, remoteFormatFromInput, remoteListOptionsFromInput } from "./common";
 
 export const remoteListSpec: LandoCommandSpec<typeof RemoteListResultSchema.Type> = {
   id: "app:remote:list",
@@ -11,6 +11,5 @@ export const remoteListSpec: LandoCommandSpec<typeof RemoteListResultSchema.Type
   flags: remoteConfigFlags,
   resultSchema: RemoteListResultSchema,
   run: (input) => appRemoteList(remoteListOptionsFromInput(input)),
-  render: (result, input, ctx) =>
-    renderRemoteListResult(result, remoteListOptionsFromInput(input).format, ctx),
+  render: (result, input, ctx) => renderRemoteListResult(result, remoteFormatFromInput(input), ctx),
 };

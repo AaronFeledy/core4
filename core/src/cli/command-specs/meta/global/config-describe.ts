@@ -4,7 +4,6 @@ import { renderConfigKeyDescription } from "../../../commands/config-key-render"
 import { describeGlobalConfig } from "../../../commands/meta/global-config";
 import type { LandoCommandSpec } from "../../../spec/command-base";
 import { Args } from "../../../spec/metadata";
-import { formatFlag } from "../../config-flags";
 import { globalConfigOptionsFromInput } from "./config";
 
 export const metaGlobalConfigDescribeSpec: LandoCommandSpec<
@@ -18,9 +17,8 @@ export const metaGlobalConfigDescribeSpec: LandoCommandSpec<
   topLevelAlias: "global:config:describe",
   bootstrap: "none",
   resultSchema: ConfigDescribeResultSchema,
-  resultFormats: ["table"],
+  rendersTable: true,
   args: { key: Args.string({ description: "Dot-path key; omit to list root keys.", required: false }) },
-  flags: { format: formatFlag },
   run: (input) => describeGlobalConfig(globalConfigOptionsFromInput(input)),
   render: (result) => renderConfigKeyDescription(result, "Global Landofile"),
 };

@@ -30,7 +30,6 @@ import { resolveSecretsRedactor } from "./secrets-redactor";
 
 export type { DoctorReport } from "./doctor-contract";
 export { DoctorReportSchema } from "./doctor-contract";
-export { renderDoctorReportAsNdjson } from "./doctor-render-ndjson";
 export { type DoctorRenderOptions, buildDoctorReportSummary, renderDoctorReport } from "./doctor-render-text";
 export { doctorCompletion, makeDoctorReport, summarizeDoctorChecks } from "./doctor-report-model";
 

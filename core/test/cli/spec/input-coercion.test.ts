@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import {
   booleanFlag,
-  formatFlag,
+  commandResultFormat,
+  commandResultFormatAmong,
   specArgsOf,
   specFlagsOf,
   stringArrayFlag,
@@ -66,7 +67,17 @@ describe("spec input coercion", () => {
     { value: undefined, expected: "json" },
     { value: 1, expected: "json" },
   ])("selects an allowed format or fallback when format is $value", ({ value, expected }) => {
-    const result = formatFlag({ format: value }, ["json", "yaml"], "json");
+    const result = commandResultFormatAmong({ flags: { format: value } }, ["json", "yaml"], "json");
+    expect(result).toBe(expected);
+  });
+
+  test.each([
+    { input: { flags: { format: "ndjson" } }, expected: "ndjson" },
+    { input: { flags: { format: "xml" } }, expected: "text" },
+    { input: { flags: {} }, expected: "text" },
+    { input: undefined, expected: "text" },
+  ])("reads the dispatcher's selection, or text without one, from $input", ({ input, expected }) => {
+    const result = commandResultFormat(input);
     expect(result).toBe(expected);
   });
 });

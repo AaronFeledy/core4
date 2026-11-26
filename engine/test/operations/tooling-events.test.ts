@@ -22,13 +22,14 @@ import {
   LandofileService,
   RuntimeProviderRegistry,
   ShellRunner,
+  StreamFrameSink,
+  type StreamFrameSinkFrame,
   ToolingEngine,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { DateTime, Effect, Layer, Option, Redacted, Schema, Stream } from "effect";
 import { runEventToolingCommand } from "../../src/operations/event-tooling-command.ts";
-import { StreamFrameSink, type StreamFrameSinkFrame } from "../../src/operations/stream-frame-sink.ts";
 import { runTooling } from "../../src/operations/tooling.ts";
 import { withProjectEvents } from "../../src/planner/effective-events.ts";
 import {

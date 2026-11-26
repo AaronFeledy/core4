@@ -7,8 +7,8 @@ import { Schema } from "effect";
 import { assertHostProxyAllowlistSafe } from "../allowlists/host-proxy";
 import { type BugReportContext, type RendererMode, formatBugReport } from "../bug-report";
 import type { DeferredCommandPlan } from "../deferred-commands";
-import type { OptInResultFormat } from "../format-flags";
 import type { RenderContext, StreamOutputFrame } from "../renderer-boundary";
+import type { NdjsonReport } from "../renderer-machine-output";
 
 export type LandoCommandNamespace = "app" | "apps" | "meta";
 export type LandoHelpGroup = "common";
@@ -32,7 +32,10 @@ const isAliasArray = (value: LandoTopLevelAlias): value is ReadonlyArray<LandoAl
   Array.isArray(value);
 
 export interface LandoCommandSpec<A = unknown, E = unknown, R = unknown>
-  extends Omit<ExecutableCommandSpec<A, E, R, unknown>, "namespace" | "render" | "completion"> {
+  extends Omit<
+    ExecutableCommandSpec<A, E, R, unknown>,
+    "namespace" | "render" | "completion" | "streamingMode"
+  > {
   readonly namespace: LandoCommandNamespace;
   readonly summary: string;
   readonly description?: string;
@@ -53,14 +56,19 @@ export interface LandoCommandSpec<A = unknown, E = unknown, R = unknown>
   readonly hidden?: boolean;
   readonly deferred?: DeferredCommandPlan;
   /**
-   * Result formats this command's own `render` produces beyond the universal
-   * `text`/`json`/`yaml` set. A command is only ever offered — and only ever
-   * accepts — a format it declares here, so `--format` cannot name a value the
-   * command would silently drop.
+   * Set `rendersTable: true` when this command's own `render` produces a table.
+   * A command is only ever offered, and only ever accepts, a format it produces,
+   * so `--format` cannot name a value the command would silently drop.
+   * `ndjson` is never declared here: it is derived from `streaming`/`streamingMode` or `ndjsonReport`.
    */
-  readonly resultFormats?: ReadonlyArray<OptInResultFormat>;
-  /** Present only for commands that stream incremental output (logs/exec/build). */
+  readonly rendersTable?: true;
+  /**
+   * Present only for commands that stream incremental output (logs/exec/build).
+   * Declaring it also offers `--format=ndjson`, the same frames `json` emits.
+   */
   readonly streaming?: StreamFrameSchema;
+  /** A report command's own `--format=ndjson` frames; the boundary writes them. */
+  readonly ndjsonReport?: NdjsonReport<A>;
   readonly streamingMode?: "live" | ((input: unknown) => "live" | undefined);
   readonly streamFrames?: {
     bivarianceHack(result: A): ReadonlyArray<StreamOutputFrame>;

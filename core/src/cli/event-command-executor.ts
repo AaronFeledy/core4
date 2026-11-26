@@ -1,5 +1,4 @@
 import { resolveProxyDefaultDomain } from "@lando/engine/config/proxy-default-domain";
-import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
 import { RuntimeCwd } from "@lando/engine/runtime/cwd";
 import type { EventCommandExecutorInput } from "@lando/engine/services/event-command-executor";
 import { EventCommandExecutor } from "@lando/engine/services/event-command-executor";
@@ -15,7 +14,7 @@ import {
   failureOutcomeFromCause,
 } from "@lando/sdk/command-result";
 import { RENDERER_CAPABILITIES_NONE } from "@lando/sdk/renderer";
-import { Renderer } from "@lando/sdk/services";
+import { Renderer, StreamFrameSink } from "@lando/sdk/services";
 import { Cause, Context, Effect, Layer } from "effect";
 import { CliInvocation } from "../runtime/invocation-context";
 import { BuiltInCommandCatalog } from "./built-in-command-catalog-service";
@@ -144,7 +143,7 @@ export const makeEventCommandExecutor = (
         const inCwd = target.spec.namespace === "app" ? withResolvedCwd(resolved.cwd, operation) : operation;
         const streamingMode =
           target.kind !== "built-in"
-            ? undefined
+            ? target.spec.streamingMode
             : typeof target.spec.streamingMode === "function"
               ? target.spec.streamingMode(input)
               : target.spec.streamingMode;

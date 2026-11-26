@@ -13,6 +13,16 @@ import { ValidationIssue } from "./validation-issue.ts";
 export const CommandResultFormat = Schema.Literals(["text", "json", "table", "yaml", "ndjson"]);
 export type CommandResultFormat = typeof CommandResultFormat.Type;
 
+/**
+ * How a command delivers its child output. `live` streams it through the invocation's
+ * `StreamFrameSink` while the command runs, so the command offers `ndjson` and `json`
+ * emits a frame sequence that ends in one `result` frame.
+ */
+export const CommandStreamingMode = Schema.Literal("live").annotate({
+  description: "Live command output: child output streams through the invocation's frame sink as it runs.",
+});
+export type CommandStreamingMode = typeof CommandStreamingMode.Type;
+
 /** A completed command's semantic verdict, independent of its process status. */
 export const CommandCompletion = Schema.Union([
   Schema.Struct({

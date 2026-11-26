@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { StreamFrameSink, followLogsApp, logsApp, renderLogsAppResult } from "@lando/core/cli/operations";
+import { followLogsApp, logsApp, renderLogsAppResult } from "@lando/core/cli/operations";
 import { ProviderUnavailableError } from "@lando/core/errors";
 import {
   AbsolutePath,
@@ -23,6 +23,7 @@ import {
   PathsService,
   RuntimeProviderRegistry,
   StateStore,
+  StreamFrameSink,
 } from "@lando/core/services";
 import { makeTestStateStore } from "@lando/core/testing";
 import { makeGlobalAppServiceForRoot } from "@lando/engine/global-app/service";

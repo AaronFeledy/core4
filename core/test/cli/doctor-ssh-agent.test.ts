@@ -24,11 +24,12 @@ import { TestRuntimeProvider, makeTestRuntimeProviderRegistry, makeTestSshServic
 import { Effect, Fiber, Schema } from "effect";
 import { TestClock } from "effect/testing";
 import { type DoctorFinding, DoctorReportSchema } from "../../src/cli/commands/doctor-contract.ts";
-import { makeDoctorReport, renderDoctorReportAsNdjson } from "../../src/cli/commands/doctor-report.ts";
+import { makeDoctorReport } from "../../src/cli/commands/doctor-report.ts";
 import { sshAgentPostureCheck } from "../../src/cli/commands/doctor-ssh-agent.ts";
 import { subsystemDoctor } from "../../src/cli/commands/doctor-subsystems.ts";
 import { globalAppForProvider } from "../_support/global-provider.ts";
 import { globalPlanAt } from "../_support/global-teardown-harness.ts";
+import { renderDoctorReportAsNdjson } from "./doctor-report-fixture";
 import { DefaultSubsystemDoctorLayer } from "./doctor-subsystem-fixture.ts";
 
 const testPaths = makeLandoPaths();

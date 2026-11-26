@@ -1,13 +1,17 @@
 import { describe, expect, test } from "bun:test";
 import { TestRuntimeProvider, makeTestRuntime } from "@lando/core/testing";
 import { execApp } from "@lando/engine/operations/exec";
-import { StreamFrameSink, type StreamFrameSinkFrame } from "@lando/engine/operations/stream-frame-sink";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import * as RendererOutput from "@lando/renderer/output";
 import * as RendererRuntime from "@lando/renderer/runtime";
 import { AbsolutePath, AppId, ProviderId, ServiceName } from "@lando/sdk/schema";
-import { AppPlanner, type RuntimeProviderShape } from "@lando/sdk/services";
+import {
+  AppPlanner,
+  type RuntimeProviderShape,
+  StreamFrameSink,
+  type StreamFrameSinkFrame,
+} from "@lando/sdk/services";
 import { Context, DateTime, Effect, Layer, Stream } from "effect";
 
 import { execSpec } from "../../src/cli/command-specs/app/exec.ts";
