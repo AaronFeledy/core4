@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { dirname } from "node:path";
 import { volumeWitnessImage } from "@lando/container-runtime/data-plane";
 import { preflightDataRootPurge } from "@lando/container-runtime/data-root-purge";
@@ -169,8 +170,8 @@ import {
 } from "./podman-service-runner.ts";
 import {
   type LinuxHostRelease,
-  applyApprovedProviderSetupPlan,
-  inspectUidmapSetupPlan,
+  applyApprovedPrerequisitePlan,
+  inspectPrerequisiteSetupPlan,
   readLinuxHostRelease,
 } from "./prerequisite-provision.ts";
 import { LANDO_CTX, LANDO_CTX_BASE, providerContextForEnv } from "./provider-context.ts";
@@ -205,6 +206,7 @@ import {
   makeLandoStartFailureRemediation,
   startFailureRemediation,
 } from "./start-remediation.ts";
+import { type UserManagerHost, makeSystemUserManagerHost, resolveProcessUserName } from "./user-manager.ts";
 import { hasHostSystemd } from "./user-systemd-session.ts";
 import { windowsMachineNetworkPlan } from "./windows-machine-network.ts";
 import {
@@ -299,8 +301,8 @@ export {
 } from "./podman-service-runner.ts";
 export type { LinuxHostRelease } from "./prerequisite-provision.ts";
 export {
-  applyApprovedProviderSetupPlan,
-  inspectUidmapSetupPlan,
+  applyApprovedPrerequisitePlan,
+  inspectPrerequisiteSetupPlan,
   parseLinuxHostRelease,
   readLinuxHostRelease,
 } from "./prerequisite-provision.ts";
@@ -575,6 +577,7 @@ export interface ProviderLayerOptions {
   readonly podmanApiFactory?: (socketPath: string) => PodmanApiClient;
   readonly podmanService?: PodmanServiceRunner;
   readonly rootlessProbes?: RootlessProbes;
+  readonly userManagerHost?: UserManagerHost;
   /**
    * Host view for launching the managed Linux service in a delegated systemd user scope and for
    * declaring `deploy.resources`. Omitted: the service launches undelegated and the knob is withheld.
@@ -1059,6 +1062,13 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
       options.processRunner === undefined ? yield* Effect.serviceOption(ProcessRunner) : undefined;
     const processRunner =
       options.processRunner ?? (processRunnerOption?._tag === "Some" ? processRunnerOption.value : undefined);
+    // A caller that injects host probes owns every host fact, including the user manager.
+    const userManagerHost =
+      options.userManagerHost ??
+      (options.rootlessProbes === undefined
+        ? makeSystemUserManagerHost(existsSync, processRunner)
+        : undefined);
+    const setupAccountUser = userManagerHost?.account()?.user ?? resolveProcessUserName();
     const windowsStdinOptions =
       processRunner === undefined
         ? undefined
@@ -1615,7 +1625,7 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
             }
           : {}),
         ...resolvedOps,
-        planSetup: Effect.fn("RuntimeProvider.planSetup")(function* () {
+        planSetup: Effect.fn("RuntimeProvider.planSetup")(function* (inspectOptions) {
           if (shouldManageRuntime && family === "linux") {
             if (managedSocketPath !== undefined) {
               const overLimit = validateManagedSocketPathLength(managedSocketPath, {
@@ -1625,12 +1635,14 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
                 return yield* Effect.fail(overLimit);
               }
             }
-            return yield* inspectUidmapSetupPlan({
+            return yield* inspectPrerequisiteSetupPlan({
               platform,
               host: options.linuxHostRelease ?? readLinuxHostRelease(),
               probes: rootlessProbes,
-              user: process.env.USER,
+              user: setupAccountUser,
               hasSystemd: hasHostSystemd(),
+              ...(userManagerHost === undefined ? {} : { userManager: userManagerHost }),
+              lingerOptIn: Reflect.get(inspectOptions.setupFlags ?? {}, "enable-linger") === true,
             });
           }
           if (
@@ -1700,11 +1712,12 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
                     if (family === "linux") {
                       yield* progress.run(
                         "prerequisites",
-                        applyApprovedProviderSetupPlan(plan, {
+                        applyApprovedPrerequisitePlan(plan, {
                           probes: rootlessProbes,
                           privilege: setupOptions.privilege,
-                          user: process.env.USER,
+                          user: setupAccountUser,
                           hasSystemd: hasHostSystemd(),
+                          ...(userManagerHost === undefined ? {} : { userManager: userManagerHost }),
                         }).pipe(
                           Effect.andThen(
                             Effect.suspend(() => {
@@ -2041,6 +2054,12 @@ export const manifest = Schema.decodeSync(PluginManifest)({
         {
           name: "smoke",
           description: "Verify container run, image build, and healthcheck operations during setup.",
+          type: "boolean",
+        },
+        {
+          name: "enable-linger",
+          description:
+            "Approve enabling systemd lingering when no systemd user manager runs for you. It stays enabled across logout and reboot; --yes does not approve it.",
           type: "boolean",
         },
       ],

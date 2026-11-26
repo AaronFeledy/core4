@@ -2,10 +2,11 @@ import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
 
 import {
-  applyApprovedProviderSetupPlan,
-  inspectUidmapSetupPlan,
+  applyApprovedPrerequisitePlan,
+  inspectPrerequisiteSetupPlan,
   parseLinuxHostRelease,
 } from "../src/prerequisite-provision.ts";
+import type { UserManagerHost } from "../src/user-manager.ts";
 
 const probes = (hasUidmapTools: boolean) => ({
   probe: () => ({
@@ -25,7 +26,7 @@ describe("uidmap provider setup", () => {
 
     // When
     const plan = Effect.runSync(
-      inspectUidmapSetupPlan({ platform: "linux", host, probes: probes(false), user: "testuser" }),
+      inspectPrerequisiteSetupPlan({ platform: "linux", host, probes: probes(false), user: "testuser" }),
     );
 
     // Then
@@ -45,7 +46,7 @@ describe("uidmap provider setup", () => {
 
     // When: provider setup inspects rootless prerequisites.
     const plan = Effect.runSync(
-      inspectUidmapSetupPlan({ platform: "wsl", host, probes: probes(false), user: "testuser" }),
+      inspectPrerequisiteSetupPlan({ platform: "wsl", host, probes: probes(false), user: "testuser" }),
     );
 
     // Then: WSL receives the same Linux-family provisioning change.
@@ -58,7 +59,7 @@ describe("uidmap provider setup", () => {
 
     // When
     const exit = Effect.runSyncExit(
-      inspectUidmapSetupPlan({ platform: "linux", host, probes: probes(false), user: "testuser" }),
+      inspectPrerequisiteSetupPlan({ platform: "linux", host, probes: probes(false), user: "testuser" }),
     );
 
     // Then
@@ -82,7 +83,7 @@ describe("uidmap provider setup", () => {
         }),
     };
     const plan = Effect.runSync(
-      inspectUidmapSetupPlan({
+      inspectPrerequisiteSetupPlan({
         platform: "linux",
         host: { id: "ubuntu", versionId: "26.04" },
         probes: { ...probes(false), probe: () => ({ ...probes(false).probe(), hasUidmapTools: installed }) },
@@ -92,7 +93,7 @@ describe("uidmap provider setup", () => {
 
     // When
     await Effect.runPromise(
-      applyApprovedProviderSetupPlan(plan, {
+      applyApprovedPrerequisitePlan(plan, {
         privilege,
         probes: { ...probes(false), probe: () => ({ ...probes(false).probe(), hasUidmapTools: installed }) },
         user: "testuser",
@@ -104,5 +105,80 @@ describe("uidmap provider setup", () => {
       ["/usr/bin/apt-get", "update"],
       ["/usr/bin/apt-get", "install", "--yes", "--no-install-recommends", "uidmap"],
     ]);
+  });
+});
+
+describe("subordinate ID account", () => {
+  test("plans and applies subid maps for the passwd account when $USER differs", async () => {
+    const envUser = "env-user";
+    const accountUser = "passwd-account";
+    const previousUser = process.env.USER;
+    process.env.USER = envUser;
+    const userManager: UserManagerHost = {
+      account: () => ({ uid: 1001, user: accountUser }),
+      managerRunning: () => true,
+      showUnit: () => Effect.succeed({ _tag: "unknown", reason: "test" }),
+      pathExists: () => false,
+    };
+    const missingSubid = {
+      probe: () => ({
+        subidConfigured: false,
+        subidRangeSufficient: false,
+        subidRangesDisjoint: true,
+        hasUidmapTools: true,
+        cgroupsV2Delegated: true,
+        hasXdgRuntimeDir: true,
+      }),
+    };
+
+    try {
+      const plan = Effect.runSync(
+        inspectPrerequisiteSetupPlan({
+          platform: "linux",
+          host: { id: "ubuntu", versionId: "26.04" },
+          probes: missingSubid,
+          user: envUser,
+          hasSystemd: true,
+          userManager,
+        }),
+      );
+
+      expect(
+        plan.changes.filter(
+          (change) => change._tag === "provision-subuid" || change._tag === "provision-subgid",
+        ),
+      ).toEqual([
+        expect.objectContaining({ _tag: "provision-subuid", user: accountUser }),
+        expect.objectContaining({ _tag: "provision-subgid", user: accountUser }),
+      ]);
+
+      const commands: ReadonlyArray<string>[] = [];
+      await Effect.runPromise(
+        applyApprovedPrerequisitePlan(plan, {
+          probes: missingSubid,
+          privilege: {
+            ensureCredentials: () => Effect.void,
+            elevate: (command: ReadonlyArray<string>) =>
+              Effect.sync(() => {
+                commands.push(command);
+                return { exitCode: 0, stdout: "", stderr: "" };
+              }),
+          },
+          user: envUser,
+          userManager,
+        }),
+      );
+
+      expect(commands).toEqual([
+        ["/usr/sbin/usermod", "--add-subuids", expect.stringMatching(/^\d+-\d+$/u), accountUser],
+        ["/usr/sbin/usermod", "--add-subgids", expect.stringMatching(/^\d+-\d+$/u), accountUser],
+      ]);
+    } finally {
+      if (previousUser === undefined) {
+        delete process.env.USER;
+      } else {
+        process.env.USER = previousUser;
+      }
+    }
   });
 });

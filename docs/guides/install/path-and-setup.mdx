@@ -82,7 +82,7 @@ lando setup --provider=docker
 Run `lando setup` as yourself, never with `sudo`. A few steps change the system, and setup asks for administrator access itself just before the first one runs:
 
 - installing the `uidmap` package and adding subordinate user and group IDs for your account on Linux
-- letting your systemd user manager delegate cgroup controllers
+- letting your systemd user manager delegate cgroup controllers, and enabling lingering when no user manager runs for you
 - trusting Lando's local certificate authority in the system trust store
 - installing the helper that serves ports 80 and 443 on Linux
 
@@ -101,7 +101,7 @@ sudo -v
 lando setup --yes --no-interactive
 ```
 
-`--no-interactive` on its own approves no privileged change; add `--yes` for that.
+`--no-interactive` on its own approves no privileged change; add `--yes` for that. Enabling lingering keeps a systemd user manager running after you log out and after a reboot, so `--yes` does not approve it either. Setup asks about it separately in a terminal; in automation, pass `--enable-linger`. Without it, setup skips lingering and says how to enable it later. If your session also has no `/run/user/<uid>` directory, as on a host you reach only through `su` or a service account, the managed runtime cannot start until lingering is enabled, and setup stops with that remediation.
 
 Setup writes the PATH block to your shell profile as you, never as root. It picks `LANDO_SHELL_PROFILE` when set, otherwise the profile for your `$SHELL`. If it cannot write that file, setup fails with `ShellProfileIntegrationError` naming the path, and leaves the file alone.
 

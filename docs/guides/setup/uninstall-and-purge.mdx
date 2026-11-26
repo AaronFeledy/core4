@@ -88,6 +88,14 @@ sudo rm -- /etc/systemd/system/user@.service.d/delegate.conf
 sudo systemctl daemon-reload
 ```
 
+## Review lingering
+
+If you let `lando setup` enable lingering, uninstall leaves it enabled, because other user services may rely on it. If nothing else needs a user manager running while you are logged out, disable it:
+
+```sh
+loginctl disable-linger $USER
+```
+
 ## Remove the local CA
 
 Uninstall leaves the local CA that `lando setup` created in place and trusted, in both `--keep-data` and `--purge`. Every Lando installation on this machine shares that CA, and so does `mkcert` if you use it directly, so uninstalling one installation can't tell whether anything else still needs it.
