@@ -97,6 +97,7 @@ const makePlan = (logSources?: ReadonlyArray<FileLogSource>): AppPlan => {
 const makeFakeApi = (...chunks: ReadonlyArray<Uint8Array>) => {
   const calls: EngineHttpRequest[] = [];
   const api: EngineHttpApi = {
+    request: () => Effect.succeed({ status: 200, body: "{}" }),
     stream: (request) => {
       calls.push(request);
       return Stream.fromIterable(chunks);
@@ -200,6 +201,40 @@ describe("podman log followers", () => {
     expect(chunks.every((chunk) => chunk.source === fileSource.id)).toBe(true);
     expect(chunks.some((chunk) => chunk.line === "console noise")).toBe(false);
     expect(fake.calls).toEqual([]);
+  });
+
+  test("streams nothing for a planned service whose container does not exist", async () => {
+    // Given an engine that answers 404 for the service's container, as after destroy or before start
+    const fileSource = source();
+    const streamed: EngineHttpRequest[] = [];
+    const api: EngineHttpApi = {
+      request: () => Effect.succeed({ status: 404, body: '{"message":"no such container"}' }),
+      stream: (request) => {
+        streamed.push(request);
+        return Stream.fail(
+          new ProviderUnavailableError({
+            providerId: "podman",
+            operation: "podman-api",
+            message: "Container runtime stream request failed with HTTP 404.",
+            remediation: ctx.remediation,
+          }),
+        );
+      },
+    };
+
+    // When
+    const chunks = await collect(
+      logs(
+        makePlan([fileSource]),
+        { app: appId, service: node.name },
+        { follow: false, sources: [fileSource] },
+        { api, logFileAccess: makeMemoryLogFileAccess().access, ctx },
+      ),
+    );
+
+    // Then neither the console nor the file follower is read
+    expect(chunks).toEqual([]);
+    expect(streamed).toEqual([]);
   });
 
   test("tags a missing-api failure with the caller provider id and remediation", async () => {

@@ -97,6 +97,7 @@ const makeFakeApi = (...chunks: ReadonlyArray<Uint8Array>) => {
   const calls: DockerHttpRequest[] = [];
   const api: DockerApiClient = {
     info: Effect.succeed({}),
+    request: () => Effect.succeed({ status: 200, body: "{}" }),
     stream: (request) => {
       calls.push(request);
       return Stream.fromIterable(chunks);

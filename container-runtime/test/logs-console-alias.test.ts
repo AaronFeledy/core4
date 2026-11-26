@@ -14,6 +14,8 @@ import type { EngineHttpApi, EngineHttpRequest } from "../src/engine-api.ts";
 import { logs } from "../src/podman/logs.ts";
 
 const ctx = { providerId: "podman", remediation: "Run lando setup.", env: {} } as const;
+// Each service's container exists, so logs reads its streams.
+const containerPresent = () => Effect.succeed({ status: 200, body: "{}" });
 const app = AppId.make("console-alias");
 const service = ServiceName.make("web");
 const provider = ProviderId.make("lando");
@@ -76,6 +78,7 @@ test.each(["console", "redirect"] as const)(
     const calls: EngineHttpRequest[] = [];
     let acquisitions = 0;
     const api: EngineHttpApi = {
+      request: containerPresent,
       stream: (request) => {
         calls.push(request);
         return Stream.make(frame(2, "error noise"), frame(1, "last access"));
@@ -141,6 +144,7 @@ test("follows a shared stderr pipe under either alias and releases the subscript
   let closed = 0;
   const requests: EngineHttpRequest[] = [];
   const api: EngineHttpApi = {
+    request: containerPresent,
     stream: (request) => {
       requests.push(request);
       return Stream.unwrap(
@@ -205,6 +209,7 @@ test("subscribes to unfiltered console once plus genuine files, never once per a
   fs.writeFile("/app/custom.log", "file line\n");
   const calls: EngineHttpRequest[] = [];
   const api: EngineHttpApi = {
+    request: containerPresent,
     stream: (request) => {
       calls.push(request);
       return Stream.make(frame(1, "out"), frame(2, "err"));
@@ -239,6 +244,7 @@ test("does not fall back to console when the service lacks the selected source",
   const requested = alias("access", "stdout");
   let opened = 0;
   const api: EngineHttpApi = {
+    request: containerPresent,
     stream: () => {
       opened++;
       return Stream.make(frame(1, "unrelated"));

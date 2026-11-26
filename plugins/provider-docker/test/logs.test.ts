@@ -106,6 +106,12 @@ const makeFakeApi = (
           ),
         });
       }
+      const inspected = containers.find((container) => request.path === `/containers/${container.name}/json`);
+      if (inspected !== undefined)
+        return Effect.succeed({
+          status: 200,
+          body: JSON.stringify({ Id: `${inspected.name}-id`, Config: { Labels: inspected.labels } }),
+        });
       return Effect.succeed({ status: 404, body: "" });
     },
     stream: (request) => {
@@ -150,7 +156,11 @@ describe("provider-docker logs", () => {
   });
 
   test("streams Docker Engine logs when the app plan is passed in the target", async () => {
-    const fake = makeFakeApi();
+    const fake = makeFakeApi({
+      containers: [
+        { name: "lando-myapp--web", labels: { "dev.lando.app": appId, "dev.lando.service": serviceName } },
+      ],
+    });
     const provider = await Effect.runPromise(
       RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ platform: "linux", dockerApi: fake.api }))),
     );

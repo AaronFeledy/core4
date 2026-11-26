@@ -57,14 +57,14 @@ const api = {
 
 describe("provider-podman log source binding", () => {
   test("reads injected files instead of a different helper fallback", async () => {
-    // Given: injected content and a helper fallback with no request transport.
+    // Given: injected content and a helper fallback that only answers container inspection.
     const memory = makeMemoryLogFileAccess();
     memory.writeFile(source.path, "override\n");
     const provider = await Effect.runPromise(
       PodmanProvider.makeRuntimeProvider({
         platform: "linux",
         env: {},
-        podmanApi: api,
+        podmanApi: { ...api, request: () => Effect.succeed({ status: 200, body: "{}" }) },
         logFileAccess: memory.access,
         resolveContainerHelper: () => Effect.die("injected access must bypass helper resolution"),
       }),
