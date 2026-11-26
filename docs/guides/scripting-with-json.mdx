@@ -319,6 +319,10 @@ doesn't undo what the Bun child already did on disk. Trust you granted with
       <Run command="lando version --json --jq ." expectExit={2} />
       <Verify errorTag="JsonJqConflictError" />
     </Step>
+    <Step name="jq-with-ndjson-is-one-result-frame">
+      <Run command="lando version --format=ndjson --jq ." expectExit={2} />
+      <Verify command="lando version --format=ndjson --jq ." expectExit={2} expect={{ stdout: { regex: "^\\{\"_tag\":\"result\",\"envelope\":\\{[^\\n]*\"_tag\":\"JsonProjectionError\"[^\\n]*\\}\\}\\n$" } }} />
+    </Step>
   </Scenario>
 
   <Scenario id="read-flag-placement-from-help" render={false} reason="Machine help reports placement and advertisedFormats per command">

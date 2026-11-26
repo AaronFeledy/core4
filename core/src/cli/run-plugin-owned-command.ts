@@ -269,6 +269,10 @@ const runPluginOwnedCommand = (
     options.signal === undefined ? {} : { signal: options.signal },
   );
 
+/** Whether parsed argv requests the command's stdout payload grant, decided from its declarations alone. */
+export const pluginRequestsPayloadStdout = (spec: ExecutableCommandSpec, tokens: CommandTokens): boolean =>
+  commandStdioRequest(spec, pluginOwnedCommandInputFromArgv(spec, tokens).args).stdout === true;
+
 const dispatchPluginOwnedCommand = async (
   row: PluginCommandRow,
   token: string,
@@ -285,8 +289,7 @@ const dispatchPluginOwnedCommand = async (
   });
   // A plugin-owned command declares no opt-in format, so it honors exactly the
   // universal set. Refuse before --json key listing can report success.
-  const payloadStdout =
-    commandStdioRequest(spec, pluginOwnedCommandInputFromArgv(spec, tokens).args).stdout === true;
+  const payloadStdout = pluginRequestsPayloadStdout(spec, tokens);
   if (
     await rejectUnsupportedResultFormat(spec.id, undefined, {
       payloadStdout,

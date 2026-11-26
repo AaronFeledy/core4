@@ -11,12 +11,13 @@ import {
 import { renderPreCommandFailure } from "./spec/command-boundary";
 
 /**
- * How to serialize the refusal of a format we cannot emit. Under `--format=ndjson`,
+ * How to serialize a refused output selection: a format we cannot emit, or
+ * JSON controls that conflict with the format. Under `--format=ndjson`,
  * the refusal is a stream result frame. For other machine requests
  * (`--renderer=json`, `--json`, `--jq`) the refusal is a JSON envelope.
  * Human requests get the plain diagnostic.
  */
-const refusalOutputMode = (
+export const refusalOutputMode = (
   requested: ResultFormat,
 ): { readonly rendererMode: "json" | "plain"; readonly resultFormat: ResultFormat } => {
   if (requested === "ndjson") return { rendererMode: "json", resultFormat: "ndjson" };
