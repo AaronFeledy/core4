@@ -1,9 +1,9 @@
 import { expect, test } from "bun:test";
-import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
 import { McpService } from "@lando/mcp/service";
 import { MAX_OUTBOUND_QUEUED_BYTES } from "@lando/mcp/stdio-limits";
 import { makeStdioClient, startStdioClient } from "@lando/mcp/testing";
 import type { LandoEvent } from "@lando/sdk/services";
+import { StreamFrameSink } from "@lando/sdk/services";
 import { Deferred, Effect, Fiber, Layer, Schema, Stdio, Stream } from "effect";
 import { forEach as forEachChunk } from "effect/Sink";
 import { TestClock } from "effect/testing";

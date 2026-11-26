@@ -26,6 +26,8 @@ export type SqlTestOptions = {
   readonly countFails?: boolean;
   readonly countFailuresBeforeSuccess?: number;
   readonly execFails?: boolean;
+  /** Standard error the fake database client writes for commands other than count and version queries. */
+  readonly execStderr?: string;
   readonly restoreFails?: boolean;
   readonly snapshotFails?: boolean;
   readonly startFails?: boolean;

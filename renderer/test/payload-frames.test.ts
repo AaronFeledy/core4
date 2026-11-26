@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { REDACTED } from "@lando/sdk/secrets";
+import { StreamFrameSink } from "@lando/sdk/services";
 import { Effect, Layer } from "effect";
 import { createBufferedRendererIO } from "../src/io.ts";
 import { layerStreamFrameSink } from "../src/output.ts";

@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { CommandResultEnvelope, StreamFrame } from "@lando/sdk/schema";
-import { Renderer } from "@lando/sdk/services";
+import { Renderer, StreamFrameSink } from "@lando/sdk/services";
 import { Effect, Layer, Option, Schema } from "effect";
 import { formatBugReport } from "../../src/cli/bug-report";
 import type { ResultFormat } from "../../src/cli/format-flags";

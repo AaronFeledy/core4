@@ -14,10 +14,12 @@ import {
   LandofileService,
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
+  StreamFrameSink,
+  type StreamFrameSinkShape,
+  collectExecStream,
 } from "@lando/sdk/services";
 import { Effect, type Option, type Stream } from "effect";
 import { withAgentContextEnv } from "../config/agent-env.ts";
-
 import { resolveAgentEnvForwardAllowlist } from "../config/agent-env-policy.ts";
 import { withTerminalEnv } from "../config/terminal-env.ts";
 import { type ResolvedAppTarget, loadUserLandofileAt, planDesiredApp } from "../landofile/app-resolution.ts";
@@ -25,10 +27,8 @@ import { appliedAppPlan, selectCommandIdentity } from "../services/execution-ide
 import { HostExecutionDefaults } from "../services/host-execution-context.ts";
 import { registerPlanRedaction } from "../services/plan-redaction.ts";
 import { resolveContainerCwd } from "../subsystems/host-proxy/cwd-remap.ts";
-import { collectExecStream } from "./exec-stream.ts";
 import { execExitUnobserved } from "./exec-stream-drain.ts";
 import { publishNodePackageManagerWarning } from "./node-package-manager-warning.ts";
-import { StreamFrameSink, type StreamFrameSinkShape } from "./stream-frame-sink.ts";
 import { availableServiceList, unknownPlanServiceError } from "./unknown-service.ts";
 
 export type ExecAppError = SdkExecAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;

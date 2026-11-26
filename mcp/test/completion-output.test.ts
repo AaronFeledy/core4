@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
 import { commandCompletionFromExitCode } from "@lando/sdk/command-result";
+import { StreamFrameSink } from "@lando/sdk/services";
 import { Deferred, Effect, Fiber, Schema } from "effect";
 import { serverLayer, startServer } from "./server";
 

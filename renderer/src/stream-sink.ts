@@ -15,7 +15,6 @@
  * when a write fails.
  */
 
-import { StreamFrameSink, type StreamFrameSinkFrame } from "@lando/engine/operations/stream-frame-sink";
 import { LIVE_LINE_HOLD_MILLIS } from "@lando/redaction/line-stream";
 import { type LiveChannel, createLiveChannel } from "@lando/redaction/live-channel";
 import { makeLiveHoldTimer } from "@lando/redaction/live-hold-timer";
@@ -26,7 +25,7 @@ import {
   identityRedactor,
 } from "@lando/sdk/command-result";
 import type { CommandResultFormat } from "@lando/sdk/schema";
-import { Renderer } from "@lando/sdk/services";
+import { Renderer, StreamFrameSink, type StreamFrameSinkFrame } from "@lando/sdk/services";
 import { Clock, Effect, type Fiber, Layer, Option, Scope, Semaphore } from "effect";
 import { RendererHost } from "./host.ts";
 

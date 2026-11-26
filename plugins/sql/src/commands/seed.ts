@@ -7,6 +7,7 @@ export const spec = {
   id: "db:seed",
   namespace: "db",
   bootstrap: "app",
+  streamingMode: "live",
   flags: {
     service: { type: "string", description: "Target database service." },
     snapshot: { type: "string", description: "Snapshot id or label to seed from." },

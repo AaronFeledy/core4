@@ -139,7 +139,34 @@ That means the app has to be running with the schedule applied. After you add a 
 
 When the app is stopped, or the sidecar has exited, the command fails with `ServiceExecError`. Its message says the sidecar isn't running, and its remediation is to run `lando start`.
 
-Output prints when the job finishes, not line by line while it runs. The exit code of `lando schedule:run` is the job's exit code. With `--format=json`, a job that exits nonzero returns `"ok": false` and still includes `result`, with the job's `service`, `name`, `exitCode`, `stdout`, and `stderr`.
+The job's output reaches your terminal as the job prints it: stdout on stdout, stderr on stderr. `lando schedule:run` returns the job's observed exit code. If the stream ends without a status, Lando reports `ServiceExecError` instead of success and does not run the job again. Check what the job changed before rerunning it.
+
+Scripts and agents read the same run as stream frames. With `--format=ndjson`, every line on stdout is one JSON frame. Each `stdout` or `stderr` frame carries a piece of the job's output as it arrives, `event` frames report Lando's own lifecycle events, and the last line is a single `result` frame that holds the command envelope:
+
+```sh
+lando schedule:run report --format=ndjson
+```
+
+The envelope's `result` has the job's `service`, `name`, and `exitCode`. The output already went out in the frames, so it isn't repeated there. `--format=json` writes the same frames. A job that exits nonzero still ends in one `result` frame, with `"ok": false`, and the command exits with the job's code. `--format=yaml` doesn't stream: it prints one document after the job ends, with the job's output in `result.stdout` and `result.stderr`.
+
+  <Scenario id="run-now-frames" render={false} reason="The test provider echoes a job's command instead of running it, so assert the frame contract without showing that output.">
+    <Step name="scaffold">
+      <UseFixture name="schedule-demo" />
+    </Step>
+    <Step name="run-streamed">
+      <Verify command="lando schedule:run --help" expect={{ stdout: { regex: "--format [(]text, json, yaml, ndjson[)]" } }} />
+      <Run command="lando start" />
+      <Run command="lando schedule:run heartbeat --format=ndjson" />
+      <Verify command="lando schedule:run heartbeat --format=ndjson" expect={{ stdout: { regex: "(^|\\n)[{]\"_tag\":\"stdout\",\"chunk\":\"[^\"]*heartbeat" } }} />
+      <Verify command="lando schedule:run heartbeat --format=ndjson" expect={{ stdout: { regex: "\\n[{]\"_tag\":\"result\",\"envelope\":[{][^\\n]*\"ok\":true,\"result\":[{]\"service\":\"appserver\",\"name\":\"heartbeat\",\"exitCode\":0[}][^\\n]*\\n?$" } }} />
+      <Verify command="lando schedule:run heartbeat --format=json" expect={{ stdout: { regex: "(^|\\n)[{]\"_tag\":\"stdout\",[^\\n]*\\n[\\s\\S]*[{]\"_tag\":\"result\"" } }} />
+      <Verify command="lando schedule:run heartbeat --format=yaml" expect={{ stdout: { regex: "stdout: .*heartbeat" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
 
 A name that no service uses fails with `ScheduleJobNotFoundError`, which lists the jobs you can run:
 
