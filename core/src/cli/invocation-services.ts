@@ -42,6 +42,6 @@ export const withInvocationServices = <A, E, R>(
   return withHost.pipe(
     Effect.provideService(RendererHost, { io: realIO, env: sourceEnv }),
     Effect.provideService(LockHolder, command === undefined ? {} : { command: holderCommandLabel(command) }),
-    Effect.provideService(DeprecationRecorder, makeDeprecationRecorder().recorder),
+    Effect.provideService(DeprecationRecorder, makeDeprecationRecorder()),
   );
 };

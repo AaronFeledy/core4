@@ -24,15 +24,14 @@ export const DeprecationRecorder = Context.Reference<{
 export type DeprecationRecorderShape = typeof DeprecationRecorder.Service;
 
 /**
- * Creates a fresh fiber-scoped recorder for one command invocation.
- * Provide `recorder` as the `DeprecationRecorder` service around the command effect.
- * After the command completes, call `records()` to get the used surfaces (no counts),
- * or `summary()` to get per-surface use counts for human display.
+ * A fresh recorder for one command invocation. Provide it as `DeprecationRecorder`
+ * around the invocation; `records()` lists the surfaces it used (no counts) and
+ * `summary()` adds each surface's use count.
  */
-export const makeDeprecationRecorder = (): { readonly recorder: DeprecationRecorderShape } => {
+export const makeDeprecationRecorder = (): DeprecationRecorderShape => {
   const list: DeprecationUse[] = [];
   const counts = new Map<string, number>();
-  const recorder: DeprecationRecorderShape = {
+  return {
     record: (use) =>
       Effect.sync(() => {
         const key = `${use.kind}:${use.id}`;
@@ -44,7 +43,6 @@ export const makeDeprecationRecorder = (): { readonly recorder: DeprecationRecor
     summary: () =>
       Effect.succeed(list.map((use) => ({ ...use, count: counts.get(`${use.kind}:${use.id}`) ?? 1 }))),
   };
-  return { recorder };
 };
 
 export type DeprecatedEffectReturn<Return extends Effect.Effect<unknown, unknown, unknown>> =
