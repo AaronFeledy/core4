@@ -9,6 +9,7 @@ import type {
 } from "../errors/index.ts";
 import type { SecretStoreUnavailableError } from "../errors/secret.ts";
 import type { RendererContribution } from "../renderer/index.ts";
+import type { HostChangeReceipt } from "../schema/host-change.ts";
 import type { HostUninstallOutcome, HostUninstallStep } from "../schema/host-maintenance.ts";
 import type {
   AbsolutePath,
@@ -31,6 +32,7 @@ import type {
 } from "../schema/plugin-doctor.ts";
 import type { ConfigTranslatorShape } from "../services/config-translator.ts";
 import type { ContainerHelperAssets } from "../services/host-assets.ts";
+import type { HostChangeStepRunner } from "../services/host-change.ts";
 import type {
   AppFeatureDefinition,
   CertificateAuthority,
@@ -49,7 +51,6 @@ import type {
   SshService,
 } from "../services/index.ts";
 import type { AppPlanSanitizer } from "../services/plan-sanitizer.ts";
-import type { PrivilegeService } from "../services/process.ts";
 import type { TemplateEngine } from "../template/index.ts";
 import type { ExecutableCommandLoader } from "./command.ts";
 import type { LandoPluginContext, PluginStateStore } from "./index.ts";
@@ -127,7 +128,11 @@ export interface HostMaintenanceContribution {
     readonly execute: (
       input: HostUninstallInput & {
         readonly step: HostUninstallStep;
-        readonly elevate?: PrivilegeService["Service"]["elevate"];
+        /**
+         * Runs the steps `step.change` declared, privileged ones through the uninstall's one
+         * administrator session. Absent when the step declared no change or no session exists.
+         */
+        readonly run?: HostChangeStepRunner;
       },
     ) => Effect.Effect<HostUninstallOutcome, never>;
   };
@@ -136,6 +141,8 @@ export interface HostMaintenanceContribution {
 export interface HostUninstallInput {
   readonly platform: HostPlatform;
   readonly userDataRoot: string;
+  /** The host changes setup recorded for this maintainer's plugin. */
+  readonly receipts: ReadonlyArray<HostChangeReceipt>;
 }
 
 export interface HostRuntimePaths {

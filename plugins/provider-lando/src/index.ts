@@ -143,6 +143,7 @@ import { withContainerHelper } from "./convenience-helper.ts";
 import { type DelegatedScopeHost, systemDelegatedScopeHost } from "./delegated-scope.ts";
 import { ensureRuntime } from "./ensure-runtime.ts";
 import { managedConmonPath, reapLingeringExecConmons } from "./exec-conmon.ts";
+import { makeProviderHostMaintainer } from "./host-maintainer.ts";
 import { makeWindowsHostProxyBridge } from "./host-proxy-bridge.ts";
 import { rejectIntelMacHost } from "./host-support.ts";
 import type { RuntimeGenerationStore } from "./linux-runtime-generation.ts";
@@ -2074,6 +2075,7 @@ export const plugin = definePlugin({
       id: "lando-runtime-service",
       teardown: teardownManagedRuntime,
     },
+    makeProviderHostMaintainer(),
   ],
   runtimeProviders: new Map([
     [

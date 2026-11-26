@@ -62,7 +62,11 @@ test.each([
       }
     }
     const steps = await Effect.runPromise(
-      fixture.maintainer.uninstall.plan({ platform: "linux", userDataRoot: fixture.userDataRoot }),
+      fixture.maintainer.uninstall.plan({
+        platform: "linux",
+        userDataRoot: fixture.userDataRoot,
+        receipts: [],
+      }),
     );
     expect(steps).toHaveLength(1);
     expect(steps[0]).toMatchObject({ id: "socket-proxy-helper", status, preserveOnKeepData: true });
@@ -79,7 +83,9 @@ test("omits the uninstall step outside Linux and WSL", async () => {
     },
   });
   expect(
-    await Effect.runPromise(maintainer.uninstall.plan({ platform: "darwin", userDataRoot: "/unused" })),
+    await Effect.runPromise(
+      maintainer.uninstall.plan({ platform: "darwin", userDataRoot: "/unused", receipts: [] }),
+    ),
   ).toEqual([]);
 });
 
@@ -92,7 +98,11 @@ test.each(["owned", "foreign"])(
       mkdirSync(other);
       populate(fixture, kind === "owned" ? fixture.userDataRoot : other);
       const steps = await Effect.runPromise(
-        fixture.maintainer.uninstall.plan({ platform: "linux", userDataRoot: fixture.userDataRoot }),
+        fixture.maintainer.uninstall.plan({
+          platform: "linux",
+          userDataRoot: fixture.userDataRoot,
+          receipts: [],
+        }),
       );
       const step = steps[0];
       if (step === undefined) throw new Error("expected a helper step");
@@ -101,14 +111,17 @@ test.each(["owned", "foreign"])(
         fixture.maintainer.uninstall.execute({
           platform: "linux",
           userDataRoot: fixture.userDataRoot,
+          receipts: [],
           step,
           ...(kind === "foreign"
             ? {
-                elevate: () =>
-                  Effect.sync(() => {
-                    elevated++;
-                    return { exitCode: 0, stdout: "", stderr: "" };
-                  }),
+                run: {
+                  run: () =>
+                    Effect.sync(() => {
+                      elevated++;
+                      return { exitCode: 0, stdout: "", stderr: "" };
+                    }),
+                },
               }
             : {}),
         }),
@@ -207,19 +220,88 @@ test("maps unavailable flock to manual remediation through the maintainer", asyn
   try {
     populate(fixture, fixture.userDataRoot);
     const [step] = await Effect.runPromise(
-      fixture.maintainer.uninstall.plan({ platform: "linux", userDataRoot: fixture.userDataRoot }),
+      fixture.maintainer.uninstall.plan({
+        platform: "linux",
+        userDataRoot: fixture.userDataRoot,
+        receipts: [],
+      }),
     );
     if (step === undefined) throw new Error("expected a helper step");
     const result = await Effect.runPromise(
       fixture.maintainer.uninstall.execute({
         platform: "linux",
         userDataRoot: fixture.userDataRoot,
+        receipts: [],
         step,
-        elevate: () => Effect.succeed({ exitCode: 4, stdout: "", stderr: "flock unavailable" }),
+        run: { run: () => Effect.succeed({ exitCode: 4, stdout: "", stderr: "flock unavailable" }) },
       }),
     );
     expect(result.outcome).toBe("manual");
     expect(result.detail).toContain("flock");
+  } finally {
+    rmSync(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("plans the owned helper's removal as one declared change and runs only that step", async () => {
+  const fixture = sandbox();
+  try {
+    populate(fixture, realpathSync(fixture.userDataRoot));
+    const input = { platform: "linux", userDataRoot: fixture.userDataRoot, receipts: [] } as const;
+    const [step] = await Effect.runPromise(fixture.maintainer.uninstall.plan(input));
+    if (step?.change === undefined) throw new Error("expected a planned removal");
+    const ran: string[] = [];
+
+    const outcome = await Effect.runPromise(
+      fixture.maintainer.uninstall.execute({
+        ...input,
+        step,
+        run: {
+          run: (id) =>
+            Effect.sync(() => {
+              ran.push(id);
+              return { exitCode: 0, stdout: "", stderr: "" };
+            }),
+        },
+      }),
+    );
+
+    expect(step.change).toMatchObject({ consent: "standard", stage: "proxy" });
+    expect(step.change.steps.map(({ argv }) => argv.slice(0, 2))).toEqual([["/bin/sh", "-c"]]);
+    expect(ran).toEqual(["remove"]);
+    expect(outcome.outcome).toBe("completed");
+  } finally {
+    rmSync(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("a helper whose files changed after planning is not removed", async () => {
+  const fixture = sandbox();
+  try {
+    populate(fixture, realpathSync(fixture.userDataRoot));
+    const input = { platform: "linux", userDataRoot: fixture.userDataRoot, receipts: [] } as const;
+    const [step] = await Effect.runPromise(fixture.maintainer.uninstall.plan(input));
+    if (step === undefined) throw new Error("expected a helper step");
+    const first = fixture.unitPaths[0];
+    if (first === undefined) throw new Error("missing socket path");
+    writeFileSync(first, `${readFileSync(first, "utf8")}# edited\n`);
+    let ran = 0;
+
+    const outcome = await Effect.runPromise(
+      fixture.maintainer.uninstall.execute({
+        ...input,
+        step,
+        run: {
+          run: () =>
+            Effect.sync(() => {
+              ran++;
+              return { exitCode: 0, stdout: "", stderr: "" };
+            }),
+        },
+      }),
+    );
+
+    expect([outcome.outcome, ran]).toEqual(["manual", 0]);
   } finally {
     rmSync(fixture.root, { recursive: true, force: true });
   }

@@ -63,6 +63,7 @@
     "./global-app/startup-admission": "./src/global-app/startup-admission.ts",
     "./host-changes/apply": "./src/host-changes/apply.ts",
     "./host-changes/plan": "./src/host-changes/plan.ts",
+    "./host-changes/receipts": "./src/host-changes/receipts.ts",
     "./host/root-ownership": "./src/host/root-ownership.ts",
     "./host/shell-profile": "./src/host/shell-profile.ts",
     "./http/local-ca-trust": "./src/http/local-ca-trust.ts",

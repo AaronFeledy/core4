@@ -221,7 +221,6 @@ export const fetcherForSelfUpdate =
 export const uninstall = (options: Parameters<typeof uninstallEffect>[0]) =>
   uninstallEffect(options).pipe(Effect.provide(PrivateFileAccessService.layer));
 export const sandboxUninstallIo = (root: string) => ({
-  cgroupsDelegatePath: join(root, "delegate.conf"),
   shellProfilePath: join(root, ".profile"),
   socketProxyUnitPaths: [
     join(root, "lando-proxy-http.socket"),

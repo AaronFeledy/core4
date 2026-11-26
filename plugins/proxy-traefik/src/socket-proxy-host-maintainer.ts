@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import type { HostMaintenanceContribution, HostUninstallInput } from "@lando/sdk/plugins";
-import type { HostUninstallStep } from "@lando/sdk/schema";
+import { type HostChange, HostChangeId, type HostUninstallStep } from "@lando/sdk/schema";
 import { Effect, Result } from "effect";
 
 import {
@@ -16,6 +16,30 @@ import {
 } from "./socket-proxy-helper.ts";
 import type { SocketProxyPriorDigests } from "./socket-proxy-script.ts";
 import { buildUninstallScript } from "./socket-proxy-units.ts";
+
+const REMOVE_STEP = "remove";
+
+/** The privileged removal uninstall runs: one script that rechecks every file under the helper lock. */
+const removalChange = (script: string): HostChange => ({
+  id: HostChangeId.make("proxy-traefik:remove-socket-helper"),
+  owner: "@lando/proxy-traefik",
+  stage: "proxy",
+  summary: "Remove the helper that serves ports 80 and 443",
+  reason: "This Lando install owns the systemd socket proxy units and polkit rule.",
+  consent: "standard",
+  persistent: false,
+  requirement: "recommended",
+  steps: [
+    {
+      id: REMOVE_STEP,
+      summary: "Stop the owned sockets and remove their units and polkit rule",
+      argv: ["/bin/sh", "-c", script],
+      privileged: true,
+      when: "always",
+    },
+  ],
+  undo: { _tag: "none", detail: "`lando setup` installs the helper again when it needs it." },
+});
 
 export const makeSocketProxyHostMaintainer = (
   deps: {
@@ -68,9 +92,17 @@ export const makeSocketProxyHostMaintainer = (
       ownership: classifySocketProxyArtifacts(classified, root, owners),
     };
   };
+  const removalScript = (snapshot: ReturnType<typeof inspect>) =>
+    buildUninstallScript({
+      unitPaths,
+      polkitPath,
+      canonicalUserDataRoot: snapshot.root,
+      priorDigests: snapshot.digests,
+    });
   const plan = Effect.fn("SocketProxyHostMaintainer.plan")(function* (input: HostUninstallInput) {
     if (input.platform !== "linux" && input.platform !== "wsl") return [];
-    const { ownership } = yield* Effect.sync(() => inspect(input.userDataRoot));
+    const snapshot = yield* Effect.sync(() => inspect(input.userDataRoot));
+    const { ownership } = snapshot;
     let status: HostUninstallStep["status"];
     let detail: string;
     switch (ownership.kind) {
@@ -100,6 +132,7 @@ export const makeSocketProxyHostMaintainer = (
         status,
         detail,
         preserveOnKeepData: true,
+        ...(status === "owned" ? { change: removalChange(removalScript(snapshot)) } : {}),
       },
     ];
   });
@@ -112,24 +145,21 @@ export const makeSocketProxyHostMaintainer = (
     if (snapshot.ownership.kind !== "owned") {
       return { outcome: "manual", detail: foreignSocketProxyNotice(snapshot.ownership, "commands") };
     }
-    if (input.elevate === undefined) {
+    if (input.run === undefined) {
       return {
         outcome: "manual",
         detail: `Privileged removal is required.\n${SOCKET_PROXY_MANUAL_REMOVAL_COMMANDS}`,
       };
     }
-    const elevated = yield* input
-      .elevate([
-        "/bin/sh",
-        "-c",
-        buildUninstallScript({
-          unitPaths,
-          polkitPath,
-          canonicalUserDataRoot: snapshot.root,
-          priorDigests: snapshot.digests,
-        }),
-      ])
-      .pipe(Effect.result);
+    // The planned script carries the digests uninstall showed; files that changed since are
+    // removed only by a fresh plan.
+    if (input.step.change?.steps[0]?.argv[2] !== removalScript(snapshot)) {
+      return {
+        outcome: "manual",
+        detail: `The helper's files changed after uninstall planned their removal; rerun \`lando uninstall\`.\n${SOCKET_PROXY_MANUAL_REMOVAL_COMMANDS}`,
+      };
+    }
+    const elevated = yield* input.run.run(REMOVE_STEP).pipe(Effect.result);
     if (Result.isFailure(elevated)) {
       return {
         outcome: "manual",

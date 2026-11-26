@@ -1,9 +1,12 @@
 /**
  * Approve a run's planned host changes and prepare to apply them: consent first, then one
  * administrator session when an approved change runs a step as root, both before anything
- * changes. Setup and `lando doctor --fix` share it.
+ * changes. The applier records each change it makes in the user data root's receipts, so
+ * `lando uninstall` can undo it. Setup and `lando doctor --fix` share it.
  */
 import { type HostChangeRun, makeHostChangeApplier } from "@lando/engine/host-changes/apply";
+import { privilegePurpose } from "@lando/engine/host-changes/plan";
+import { makeHostChangeReceiptStore } from "@lando/engine/host-changes/receipts";
 import { MessageWarnEvent } from "@lando/sdk/events";
 import type { HostChange } from "@lando/sdk/schema";
 import {
@@ -13,6 +16,7 @@ import {
   type PrivilegeService,
   type PrivilegeSession,
   ProcessRunner,
+  StateStore,
 } from "@lando/sdk/services";
 import { type Context, DateTime, Effect, Option } from "effect";
 
@@ -43,7 +47,7 @@ const publishWarnings = Effect.fnUntraced(function* (warnings: ReadonlyArray<str
 });
 
 const sessionPurpose = (changes: ReadonlyArray<HostChange>): string =>
-  changes.map((change) => change.summary.charAt(0).toLowerCase() + change.summary.slice(1)).join(", ");
+  privilegePurpose(changes.map((change) => change.summary));
 
 /** Whether `interaction` may ask questions in this run, honoring `--no-interactive`. */
 export const askingInteraction = Effect.fnUntraced(function* (
@@ -73,12 +77,14 @@ export const approveHostChanges = Effect.fn("HostChanges.approve")(function* (
     session = yield* input.privilege.openSession(sessionPurpose(privileged));
   }
   const runner = yield* Effect.serviceOption(ProcessRunner);
+  const store = yield* Effect.serviceOption(StateStore);
   const { redact } = yield* resolveSecretsRedactor({ sourceEnv: (yield* CliInvocation).env });
   const run: HostChangeRun = makeHostChangeApplier({
     proposals: input.proposals,
     approved: consent.approved,
     ...(session === undefined ? {} : { session }),
     ...(Option.isNone(runner) ? {} : { runner: runner.value }),
+    ...(Option.isNone(store) ? {} : { receipts: makeHostChangeReceiptStore(store.value) }),
     redact,
   });
   return run;

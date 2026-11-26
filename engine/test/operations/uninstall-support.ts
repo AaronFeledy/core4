@@ -27,7 +27,6 @@ export const makeUninstallRoots = (prefix = "lando-uninstall-") => {
     userDataRoot: join(root, "data"),
     userCacheRoot: join(root, "cache"),
     userConfRoot: join(root, "config"),
-    cgroupsDelegatePath: join(root, "delegate.conf"),
     shellProfilePath: join(root, ".profile"),
   };
 };
@@ -39,7 +38,6 @@ export const sandboxUninstallOptions = (
   userDataRoot: roots.userDataRoot,
   userCacheRoot: roots.userCacheRoot,
   userConfRoot: roots.userConfRoot,
-  cgroupsDelegatePath: roots.cgroupsDelegatePath,
   shellProfilePath: roots.shellProfilePath,
   listDiscoveredApps: async () => [],
   remove: (path) =>
