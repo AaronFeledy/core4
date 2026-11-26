@@ -3,6 +3,50 @@ import { Context, DateTime, Effect, type Option } from "effect";
 import type { DeprecatedSurfaceError, DeprecationContradictionError } from "../errors/deprecation.ts";
 import type { DeprecationNotice, DeprecationSurfaceKind, DeprecationUse } from "../schema/deprecation.ts";
 
+// ==== Fiber-scoped deprecation recorder ====
+
+/** Fiber-scoped recorder of deprecated surfaces used in one invocation. */
+export const DeprecationRecorder = Context.Reference<{
+  /** Record a deprecated surface use. Only the first use per (kind,id) is kept in `records()`. */
+  readonly record: (use: DeprecationUse) => Effect.Effect<void>;
+  /** First-use-per-surface list; no count field. Used for machine output (envelope deprecations). */
+  readonly records: () => Effect.Effect<ReadonlyArray<DeprecationUse>>;
+  /** Invocation-local summary with per-surface use counts. Used for human warning display. */
+  readonly summary: () => Effect.Effect<ReadonlyArray<DeprecationSummaryEntry>>;
+}>("@lando/core/DeprecationRecorder", {
+  defaultValue: () => ({
+    record: () => Effect.void,
+    records: () => Effect.succeed([]),
+    summary: () => Effect.succeed([]),
+  }),
+});
+
+export type DeprecationRecorderShape = typeof DeprecationRecorder.Service;
+
+/**
+ * Creates a fresh fiber-scoped recorder for one command invocation.
+ * Provide `recorder` as the `DeprecationRecorder` service around the command effect.
+ * After the command completes, call `records()` to get the used surfaces (no counts),
+ * or `summary()` to get per-surface use counts for human display.
+ */
+export const makeDeprecationRecorder = (): { readonly recorder: DeprecationRecorderShape } => {
+  const list: DeprecationUse[] = [];
+  const counts = new Map<string, number>();
+  const recorder: DeprecationRecorderShape = {
+    record: (use) =>
+      Effect.sync(() => {
+        const key = `${use.kind}:${use.id}`;
+        const existing = counts.get(key) ?? 0;
+        counts.set(key, existing + 1);
+        if (existing === 0) list.push(use);
+      }),
+    records: () => Effect.succeed([...list]),
+    summary: () =>
+      Effect.succeed(list.map((use) => ({ ...use, count: counts.get(`${use.kind}:${use.id}`) ?? 1 }))),
+  };
+  return { recorder };
+};
+
 export type DeprecatedEffectReturn<Return extends Effect.Effect<unknown, unknown, unknown>> =
   Return extends Effect.Effect<infer Success, infer Failure, infer Requirements>
     ? Effect.Effect<Success, Failure | DeprecatedSurfaceError, Requirements>
@@ -89,5 +133,12 @@ export class DeprecationService extends Context.Service<
       aliasId: string,
       aliasNotice?: DeprecationNotice,
     ) => Effect.Effect<void, DeprecationContradictionError>;
+    /**
+     * Claims the right to show a human warning for a deprecated surface.
+     * Returns `true` on the first claim (the caller should display the warning),
+     * `false` on subsequent calls (already shown). Atomic under concurrency.
+     * Suppressed output must not call this.
+     */
+    readonly claimWarning: (kind: DeprecationSurfaceKind, id: string) => Effect.Effect<boolean>;
   }
 >()("@lando/core/DeprecationService") {}

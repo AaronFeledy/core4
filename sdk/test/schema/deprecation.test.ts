@@ -243,7 +243,7 @@ describe("schema deprecation annotations", () => {
     expect(jsonSchema.properties?.oldValues?.items?.deprecated).toBe(true);
     expect(jsonSchema.properties?.oldValues?.items?.["x-deprecation"]).toEqual(notice);
     expect(markdown).toContain(
-      "| `oldValues` | Yes | `array` | — | — | — | — | Deprecated since 4.2.0; remove in 5.0.0. Use newField instead. Use newField instead. |",
+      "| `oldValues` | Yes | `array` | — | — | — | — | Deprecated since 4.2.0; scheduled for removal in 5.0.0. Use newField instead. Use newField instead. Docs: https://docs.lando.dev/deprecations/old-field |",
     );
   });
 
@@ -266,7 +266,7 @@ describe("schema deprecation annotations", () => {
     expect(jsonSchema.properties?.oldField?.["x-deprecation"]).toEqual(notice);
     expect(jsonSchema.properties?.newField?.deprecated).toBeUndefined();
     expect(markdown).toContain(
-      "| `oldField` | No | `string` | — | — | — | — | Deprecated since 4.2.0; remove in 5.0.0. Use newField instead. Use newField instead. |",
+      "| `oldField` | No | `string` | — | — | — | — | Deprecated since 4.2.0; scheduled for removal in 5.0.0. Use newField instead. Use newField instead. Docs: https://docs.lando.dev/deprecations/old-field |",
     );
   });
 
@@ -421,10 +421,10 @@ describe("schema deprecation annotations", () => {
     const markdown = renderSchemaReferenceMarkdown("ExampleDeprecatedSchema", ExampleSchema);
 
     expect(markdown).toContain(
-      "> [!WARNING]\n> Deprecated since 4.2.0; remove in 5.0.0. Use newField instead. Use newField instead.",
+      "> [!WARNING]\n> Deprecated since 4.2.0; scheduled for removal in 5.0.0. Use newField instead. Use newField instead. Docs: https://docs.lando.dev/deprecations/old-field",
     );
     expect(markdown).toContain(
-      "| `oldField` | Yes | `string` | — | — | — | — | Deprecated since 4.2.0; remove in 5.0.0. Use newField instead. Use newField instead. |",
+      "| `oldField` | Yes | `string` | — | — | — | — | Deprecated since 4.2.0; scheduled for removal in 5.0.0. Use newField instead. Use newField instead. Docs: https://docs.lando.dev/deprecations/old-field |",
     );
   });
 
@@ -435,13 +435,15 @@ describe("schema deprecation annotations", () => {
     );
 
     expect(markdown).toContain(
-      "| `optionalOldField` | No | `string` | — | — | — | — | Deprecated since 4.2.0; remove in 5.0.0. Use newField instead. Use newField instead. |",
+      "| `optionalOldField` | No | `string` | — | — | — | — | Deprecated since 4.2.0; scheduled for removal in 5.0.0. Use newField instead. Use newField instead. Docs: https://docs.lando.dev/deprecations/old-field |",
     );
   });
 
   test("adds hover documentation where schema annotations support it", () => {
     const docs = AST.resolve(ExampleSchema.ast)?.documentation;
 
-    expect(docs).toBe("Deprecated since 4.2.0; remove in 5.0.0. Use newField instead. Use newField instead.");
+    expect(docs).toBe(
+      "Deprecated since 4.2.0; scheduled for removal in 5.0.0. Use newField instead. Use newField instead. Docs: https://docs.lando.dev/deprecations/old-field",
+    );
   });
 });
