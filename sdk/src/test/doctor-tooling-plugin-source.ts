@@ -5,7 +5,7 @@ import { mapFailures } from "../command-result/failure.ts";
 import { ToolingExecError } from "../errors/index.ts";
 import type { AppPlan } from "../schema/index.ts";
 import type { RuntimeProviderShape, ToolingEngineResult, ToolingInvocation } from "../services/index.ts";
-import { ContractFailure, isNonEmptyString } from "./_shared.ts";
+import { ContractFailure, isNonEmptyString, isSdkError } from "./_shared.ts";
 
 const stableUnknown = (value: unknown): unknown => {
   if (Array.isArray(value)) return value.map(stableUnknown);
@@ -453,11 +453,11 @@ export const runToolingEngineContractSuite = Effect.fnUntraced(function* (
   if (Exit.isFailure(execErrorExit)) {
     const failure = Cause.findErrorOption(execErrorExit.cause);
     yield* requireToolingEngineContract(
-      Option.isSome(failure) && failure.value instanceof ToolingExecError,
+      Option.isSome(failure) && isSdkError(failure.value, ToolingExecError),
       `${label}: failure is a tagged ToolingExecError`,
       execErrorExit.cause,
     );
-    if (Option.isSome(failure) && failure.value instanceof ToolingExecError) {
+    if (Option.isSome(failure) && isSdkError(failure.value, ToolingExecError)) {
       yield* requireToolingEngineContract(
         failure.value.tool === harness.execErrorScenario.invocation.tool,
         `${label}: ToolingExecError carries the failing task id`,

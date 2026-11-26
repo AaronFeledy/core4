@@ -44,6 +44,7 @@ import {
   concatBytes,
   contractFailure,
   decodeUtf8,
+  isSdkError,
   makeTestAppPlan,
   mapProviderFailure,
   mapProviderOrContractFailure,
@@ -247,7 +248,7 @@ export const runProviderDataPlaneContract = Effect.fnUntraced(function* (
     unsupportedExit._tag === "Failure" &&
       unsupportedExit.cause.reasons.length === 1 &&
       unsupportedExit.cause.reasons.some(
-        (reason) => reason._tag === "Fail" && reason.error instanceof DataEndpointUnsupportedError,
+        (reason) => reason._tag === "Fail" && isSdkError(reason.error, DataEndpointUnsupportedError),
       ),
     "unrealizable transfer fails DataEndpointUnsupportedError",
     unsupportedExit,
@@ -445,7 +446,7 @@ export const runProviderDataPlaneContract = Effect.fnUntraced(function* (
       .pipe(Effect.result);
     yield* requireContract(
       result._tag === "Failure" &&
-        (result.failure instanceof ProviderCapabilityError || result.failure instanceof CapabilityError),
+        (isSdkError(result.failure, ProviderCapabilityError) || isSdkError(result.failure, CapabilityError)),
       "unsupported volume snapshots fail with a typed capability error",
       result,
     );

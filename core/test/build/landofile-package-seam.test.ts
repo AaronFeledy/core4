@@ -65,7 +65,7 @@ describe("Landofile package seam", () => {
     expect(scripts).toEqual({
       build: "tsc -b",
       clean: "rm -rf dist .tsbuildinfo",
-      test: "bun test ./test",
+      test: "bun --cwd=.. test ./landofile/test",
       typecheck: "tsc -b",
     });
     expect(packageEntry).toEndWith("/landofile/src/index.ts");

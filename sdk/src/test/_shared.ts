@@ -1,4 +1,4 @@
-import { DateTime, Effect, Schema, Stream } from "effect";
+import { DateTime, Effect, Predicate, Schema, Stream } from "effect";
 
 import {
   AbsolutePath,
@@ -234,6 +234,16 @@ export const mapProviderOrContractFailure =
     details instanceof ContractFailure ? details : contractFailure(assertion, details);
 
 export const isStream = (value: unknown): boolean => Stream.TypeId in Object(value);
+
+/**
+ * Recognizes an SDK tagged error by its `_tag` (every SDK error's identifier is its tag). Plugin
+ * authors run these kits in their own process, where a second `@lando/sdk` copy is legitimate,
+ * so the kit accepts the contract's failure from any copy instead of checking class identity.
+ */
+export const isSdkError = <E extends { readonly _tag: string }>(
+  value: unknown,
+  errorClass: { readonly identifier: string; new (...args: never): E },
+): value is E => Predicate.isTagged(value, errorClass.identifier);
 
 export const CAPABILITY_KEYS = Object.keys(ProviderCapabilities.fields) as ReadonlyArray<
   keyof typeof ProviderCapabilities.fields

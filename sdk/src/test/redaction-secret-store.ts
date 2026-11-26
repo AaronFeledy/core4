@@ -13,7 +13,7 @@ import type {
   TranscriptRedactionEnv,
 } from "../secrets/index.ts";
 import type { SecretStoreShape } from "../services/index.ts";
-import { ContractFailure, isNonEmptyString } from "./_shared.ts";
+import { ContractFailure, isNonEmptyString, isSdkError } from "./_shared.ts";
 
 // ----- Redaction contract suite -------------------------------------------
 
@@ -365,11 +365,11 @@ export const runSecretStoreContractSuite = Effect.fnUntraced(function* (
   if (Exit.isFailure(unknownExit)) {
     const failure = Cause.findErrorOption(unknownExit.cause);
     yield* requireSecretStoreContract(
-      Option.isSome(failure) && failure.value instanceof SecretNotFoundError,
+      Option.isSome(failure) && isSdkError(failure.value, SecretNotFoundError),
       `${label}: get(unknown) fails with SecretNotFoundError`,
       unknownExit.cause,
     );
-    if (Option.isSome(failure) && failure.value instanceof SecretNotFoundError) {
+    if (Option.isSome(failure) && isSdkError(failure.value, SecretNotFoundError)) {
       yield* requireSecretStoreContract(
         failure.value.secret === harness.unknown,
         `${label}: SecretNotFoundError carries the requested secret id`,
@@ -385,7 +385,7 @@ export const runSecretStoreContractSuite = Effect.fnUntraced(function* (
   const invalid = yield* Effect.result(store.get(harness.invalidReference));
   yield* requireSecretStoreContract(
     Result.isFailure(invalid) &&
-      invalid.failure instanceof SecretReferenceInvalidError &&
+      isSdkError(invalid.failure, SecretReferenceInvalidError) &&
       invalid.failure.reference === harness.invalidReference,
     `${label}: get(invalidReference) fails with SecretReferenceInvalidError carrying the reference`,
   );
@@ -398,7 +398,7 @@ export const runSecretStoreContractSuite = Effect.fnUntraced(function* (
     ]) {
       yield* requireSecretStoreContract(
         Result.isFailure(result) &&
-          result.failure instanceof SecretStoreUnavailableError &&
+          isSdkError(result.failure, SecretStoreUnavailableError) &&
           result.failure.reason === reason &&
           result.failure.storeId === unavailable.id,
         `${label}: unavailable get/has preserves SecretStoreUnavailableError with store id and reason`,
@@ -429,9 +429,9 @@ export const runSecretStoreContractSuite = Effect.fnUntraced(function* (
       const failure = Cause.findErrorOption(failExit.cause);
       yield* requireSecretStoreContract(
         Option.isSome(failure) &&
-          (failure.value instanceof SecretNotFoundError ||
-            failure.value instanceof SecretStoreUnavailableError ||
-            failure.value instanceof SecretReferenceInvalidError),
+          (isSdkError(failure.value, SecretNotFoundError) ||
+            isSdkError(failure.value, SecretStoreUnavailableError) ||
+            isSdkError(failure.value, SecretReferenceInvalidError)),
         `${label}: backend/auth failure is a SecretStoreError member`,
         failExit.cause,
       );
