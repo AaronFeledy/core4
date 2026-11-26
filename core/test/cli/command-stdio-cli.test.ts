@@ -5,9 +5,19 @@ import { join } from "node:path";
 
 const cli = new URL("../../bin/lando.ts", import.meta.url).pathname;
 
-test.each([["--format=json"], ["--format=yaml"], ["--json=service"], ["--jq=."]])(
+const landofileNotFound = { ok: false, error: { _tag: "LandofileNotFoundError" } };
+const lastJsonLine = (text: string): unknown => JSON.parse(text.trim().split("\n").at(-1) ?? "");
+
+// db:export streams live, so json is a frame sequence, --jq selects the result
+// envelope after the event frames, and yaml collects one document.
+test.each([
+  ["--format=json", lastJsonLine, { _tag: "result", envelope: landofileNotFound }],
+  ["--json=service", lastJsonLine, { _tag: "result", envelope: landofileNotFound }],
+  ["--jq=.", lastJsonLine, landofileNotFound],
+  ["--format=yaml", (text: string): unknown => Bun.YAML.parse(text), landofileNotFound],
+] as const)(
   "writes a lifecycle failure only to stderr when dump stdout is requested for %j",
-  async (control) => {
+  async (control, parseLast, expected) => {
     const cwd = await mkdtemp(join(tmpdir(), "lando-payload-result-"));
     try {
       const child = Bun.spawn([process.execPath, cli, "db:export", "-", control], {
@@ -24,10 +34,7 @@ test.each([["--format=json"], ["--format=yaml"], ["--json=service"], ["--jq=."]]
 
       expect(exitCode).toBe(1);
       expect(stdout).toBe("");
-      expect(Bun.YAML.parse(stderr)).toMatchObject({
-        ok: false,
-        error: { _tag: "LandofileNotFoundError" },
-      });
+      expect(parseLast(stderr)).toMatchObject(expected);
     } finally {
       await rm(cwd, { recursive: true, force: true });
     }
@@ -146,8 +153,8 @@ test("invalid plugin input still fails inside the command lifecycle", async () =
 });
 
 test("routes an unsupported-format refusal to stderr when stdout carries the dump", async () => {
-  // Given a dash export with a format plugin commands don't support.
-  const child = Bun.spawn([process.execPath, cli, "db:export", "-", "--format=ndjson"], {
+  // Given a dash export, under the JSON renderer, with a format db:export doesn't produce.
+  const child = Bun.spawn([process.execPath, cli, "db:export", "-", "--format=table", "--renderer=json"], {
     stdin: "ignore",
     stdout: "pipe",
     stderr: "pipe",
@@ -158,11 +165,12 @@ test("routes an unsupported-format refusal to stderr when stdout carries the dum
     child.exited,
   ]);
 
-  // Then stdout stays empty and the refusal envelope is on stderr.
+  // Then stdout stays empty and the refusal's one envelope is on stderr.
   expect(exitCode).toBe(2);
   expect(stdout).toBe("");
-  expect(JSON.parse(stderr.trim().split("\n").at(-1) ?? "")).toMatchObject({
+  expect(JSON.parse(stderr)).toMatchObject({
     ok: false,
     command: "db:export",
+    error: { _tag: "RendererSelectionError", value: "table" },
   });
 });

@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { SnapshotInfo } from "@lando/sdk/schema";
 import { Schema } from "effect";
-import { decodeInfoCliEnvelope } from "./convergence-cli.ts";
+import { decodeInfoCliEnvelope, decodeResultFrameEnvelope } from "./convergence-cli.ts";
 import {
   databaseJourneyTimeout,
   databaseTransferFixture,
@@ -69,7 +69,7 @@ for (const version of ["2019", "2022"] as const) {
             "--format=json",
           ]);
           expect(failed.exitCode, failed.artifact).toBe(1);
-          const envelope = decodeInfoCliEnvelope(failed.stdout);
+          const envelope = decodeResultFrameEnvelope(failed.stdout);
           expect(envelope.ok, failed.artifact).toBe(false);
           const failure = Schema.decodeUnknownSync(sqlFailure)(envelope.error);
           expect(failure.exitCode).toBe(1);
@@ -98,7 +98,7 @@ for (const version of ["2019", "2022"] as const) {
           "--format=json",
         ]);
         expect(rejected.exitCode, rejected.artifact).toBe(1);
-        const envelope = decodeInfoCliEnvelope(rejected.stdout);
+        const envelope = decodeResultFrameEnvelope(rejected.stdout);
         expect(envelope.ok, rejected.artifact).toBe(false);
         expect(envelope.result).toBeUndefined();
         const failure = Schema.decodeUnknownSync(sqlFailure)(envelope.error);

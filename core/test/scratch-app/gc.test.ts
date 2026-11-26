@@ -27,6 +27,7 @@ import * as BunFileSystem from "@lando/engine/services/file-system";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
 import * as BunProcessRunner from "@lando/engine/services/process-runner";
 import * as EnvSecretStore from "@lando/engine/services/secret-store";
+import { layerUnavailable } from "@lando/engine/subsystems/proxy/api";
 import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService } from "@lando/redaction/service";
@@ -202,6 +203,7 @@ const makeLayer = (
     }),
   );
   const scratchDeps = Layer.mergeAll(
+    layerUnavailable,
     PrivateFileAccessService.layer,
     stateStoreLayer,
     environmentResolverLayer(),
@@ -247,6 +249,7 @@ const registryEntry = (dataRoot: string, id: string): ScratchRegistryEntry => ({
   detached: false,
   ownerPid: 999_999_999,
   rootPath: join(dataRoot, "scratch", id, "root"),
+  layout: "managed",
   status: "running",
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-01-01T00:00:00.000Z",

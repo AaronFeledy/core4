@@ -20,7 +20,7 @@ import type {
   TunnelTarget,
 } from "../schema/index.ts";
 import type { DatasetShape, LandoEvent, RemoteSourceShape, TunnelServiceShape } from "../services/index.ts";
-import { ContractFailure, TEST_APP_ID } from "./_shared.ts";
+import { ContractFailure, TEST_APP_ID, isSdkError } from "./_shared.ts";
 
 export interface RemoteSourceContractObservations {
   readonly egressRequests: () => Effect.Effect<ReadonlyArray<RemoteSourceEgressRecord>>;
@@ -173,7 +173,7 @@ export const runRemoteSourceContract = Effect.fnUntraced(function* (
     source.resolve(harness.config, harness.missingEnv, harness.supportedDataset),
   );
   yield* requireRemoteSyncContract(
-    Result.isFailure(missingEnv) && missingEnv.failure instanceof RemoteEnvNotFoundError,
+    Result.isFailure(missingEnv) && isSdkError(missingEnv.failure, RemoteEnvNotFoundError),
     "unknown env fails RemoteEnvNotFoundError",
     missingEnv,
   );
@@ -183,7 +183,7 @@ export const runRemoteSourceContract = Effect.fnUntraced(function* (
   );
   yield* requireRemoteSyncContract(
     Result.isFailure(unsupportedDataset) &&
-      unsupportedDataset.failure instanceof RemoteDatasetUnsupportedError,
+      isSdkError(unsupportedDataset.failure, RemoteDatasetUnsupportedError),
     "unknown dataset fails RemoteDatasetUnsupportedError",
     unsupportedDataset,
   );
@@ -250,7 +250,7 @@ export const runRemoteSourceContract = Effect.fnUntraced(function* (
     Effect.scoped(harness.noPushSource.send(noPushLocator, harness.artifact)),
   );
   yield* requireRemoteSyncContract(
-    Result.isFailure(noPushSend) && noPushSend.failure instanceof RemoteDatasetUnsupportedError,
+    Result.isFailure(noPushSend) && isSdkError(noPushSend.failure, RemoteDatasetUnsupportedError),
     "push is rejected when capabilities.push is false",
     noPushSend,
   );
@@ -263,7 +263,7 @@ export const runRemoteSourceContract = Effect.fnUntraced(function* (
   );
   yield* requireRemoteSyncContract(
     Result.isFailure(protectedWithoutForce) &&
-      protectedWithoutForce.failure instanceof RemoteProtectedEnvError,
+      isSdkError(protectedWithoutForce.failure, RemoteProtectedEnvError),
     "protected env push requires explicit confirmation",
     protectedWithoutForce,
   );
@@ -437,9 +437,9 @@ export const runDatasetContract = Effect.fnUntraced(function* (
   const codeTreeApply = yield* Effect.result(Effect.scoped(dataset.apply(harness.codeTreeContext, artifact)));
   yield* requireRemoteSyncContract(
     Result.isFailure(codeTreeCapture) &&
-      codeTreeCapture.failure instanceof DatasetBindingError &&
+      isSdkError(codeTreeCapture.failure, DatasetBindingError) &&
       Result.isFailure(codeTreeApply) &&
-      codeTreeApply.failure instanceof DatasetBindingError,
+      isSdkError(codeTreeApply.failure, DatasetBindingError),
     "code-tree-targeting bindings fail DatasetBindingError",
     { codeTreeCapture, codeTreeApply },
   );
@@ -525,7 +525,7 @@ export const runTunnelServiceContract = Effect.fnUntraced(function* (
     Effect.scoped(service.start({ app: TEST_APP_ID, target: harness.unsupportedTarget })),
   );
   yield* requireTunnelContract(
-    Result.isFailure(unsupportedStart) && unsupportedStart.failure instanceof TunnelTargetUnresolvedError,
+    Result.isFailure(unsupportedStart) && isSdkError(unsupportedStart.failure, TunnelTargetUnresolvedError),
     "unsupported app target fails TunnelTargetUnresolvedError",
     unsupportedStart,
   );

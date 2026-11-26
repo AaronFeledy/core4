@@ -199,6 +199,7 @@
       "localStore:(ctx:DatasetContext) => Effect.Effect<VolumeRef|null,DatasetServiceError>"
     ],
     "DeprecationService": [
+      "claimWarning:(kind:DeprecationSurfaceKind,id:string) => Effect.Effect<boolean>",
       "lookup:(kind:DeprecationSurfaceKind,id:string) => Effect.Effect<Option.Option<DeprecationNotice>>",
       "register:(source:DeprecationRegistrySource,kind:DeprecationSurfaceKind,id:string,notice:DeprecationNotice) => Effect.Effect<void>",
       "registerAlias:(source:DeprecationRegistrySource,kind:DeprecationSurfaceKind,canonicalId:string,aliasId:string,aliasNotice?:DeprecationNotice) => Effect.Effect<void,DeprecationContradictionError>",
@@ -515,6 +516,7 @@
       "open:<A,I>(spec:StateBucketSpec<A,I>) => Effect.Effect<StateBucket<A>,StateStoreError>",
       "withLock:<A,E,R>(key:string,body:Effect.Effect<A,E,R>,options?:StateLockOptions) => Effect.Effect<A,E|StateStoreError,R>"
     ],
+    "StreamFrameSink": ["emit:(frame:StreamFrameSinkFrame) => Effect.Effect<void>"],
     "Telemetry": [
       "enabled:boolean",
       "record:(event:string,data:Readonly<Record<string,unknown>>) => Effect.Effect<void,never>"
@@ -572,6 +574,7 @@
       "annotateFailureRole",
       "boundedDiagnosticSummary",
       "buildCommandResultEnvelope",
+      "causeRemediation",
       "commandCompletionFromExitCode",
       "commandFailureCause",
       "commandResultEnvelopePolicy",
@@ -1290,6 +1293,7 @@
     "./schema": [
       "ABSOLUTE_CONTAINER_PATH_PATTERN",
       "AGENT_SOCKET_CONTAINER_DIR",
+      "APP_SLUG_MAX_LENGTH",
       "ARTIFACT_REFRESH_EXTENSION",
       "AUTHORING_EXPRESSION_SCOPES",
       "AbsoluteContainerPath",
@@ -1372,6 +1376,7 @@
       "CommandResultEnvelope",
       "CommandResultFormat",
       "CommandSpec",
+      "CommandStreamingMode",
       "CommandTrace",
       "CommandTraceSpan",
       "CommandWarning",
@@ -2248,6 +2253,7 @@
       "DatabaseCredentialConvergence",
       "DatabaseCredentialConvergenceResult",
       "Dataset",
+      "DeprecationRecorder",
       "DeprecationService",
       "Downloader",
       "EnvironmentValueResolver",
@@ -2280,6 +2286,7 @@
       "RuntimeProviderRegistry",
       "SchemaValidator",
       "ScratchAppService",
+      "ScratchPublishedRoute",
       "SecretStore",
       "ServiceBuildAcquisition",
       "ServiceBuildDirectoryCommand",
@@ -2292,12 +2299,16 @@
       "SshService",
       "StateLockOptions",
       "StateStore",
+      "StreamFrameSink",
       "Telemetry",
       "ToolingEngine",
       "TunnelService",
       "UpdateService",
       "UrlScanner",
       "UserAppResolver",
+      "collectExecStream",
+      "createCollectingStreamFrameSink",
+      "makeDeprecationRecorder",
       "markDeprecated",
       "physicalVolumeLockKey"
     ],

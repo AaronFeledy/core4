@@ -146,11 +146,24 @@ lando global:start
 
 `lando global:start`, `lando global:restart`, and `lando global:rebuild` start global services that do not depend on each other separately, then wait for each group's readiness. If one fails its healthcheck or exits without an applicable restart policy, the others still start. The command exits non-zero, naming failed and running services.
 
+`lando global:restart` keeps the existing route definition while it stops and
+starts the services. This doesn't guarantee requests will succeed while the
+services are stopped. Lando updates or removes the definition only after the
+services pass readiness.
+
 A failed or interrupted group keeps the services it established, and successful
 groups stay running. If any group fails, Lando leaves the previously published
 global routes unchanged rather than publishing a partial set. A later start that
 succeeds for every selected group publishes the current routes. A failed user-app
 start never undoes shared global services.
+
+When every group succeeds but nothing remains to publish (no routes from
+running unselected services, no declared routes, or routing disabled), the
+command withdraws the global route definition without starting the router. If
+an installed router cannot withdraw it, the command fails: services stay up
+and old URLs may still resolve. Inspect with `lando global:info`, fix the
+router error, then run `lando global:start`. With no router installed,
+withdrawal is a no-op and the command succeeds.
 
 The bundled services check that they can serve before their group reports ready. Traefik checks its ping endpoint, its diagnostics service checks its local HTTP response, Mailpit checks its readiness endpoint, and the SSH sidecar waits for an agent response through its socket. Independent groups can finish at different times.
 

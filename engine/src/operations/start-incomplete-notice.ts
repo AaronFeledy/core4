@@ -1,10 +1,9 @@
+import { causeRemediation } from "@lando/sdk/command-result";
 import { ServiceNotFoundError } from "@lando/sdk/errors";
 import type { AppPlan } from "@lando/sdk/schema";
 import { RuntimeProviderRegistry } from "@lando/sdk/services";
 import { Cause, Context, Effect, Exit, Option, Ref } from "effect";
-
 import { CommandWarnings } from "../landofile/command-warnings.ts";
-import { taggedErrorRemediation } from "../providers/managed.ts";
 import { type ServiceObservation, observeServices } from "./service-observation.ts";
 
 /**
@@ -50,7 +49,7 @@ const rerunCommand = (command: IncompleteStartCommand): string => {
  */
 const unchangedNotice = (command: IncompleteStartCommand, failure: unknown): string => {
   const rerun = rerunCommand(command);
-  const remediation = taggedErrorRemediation(failure);
+  const remediation = causeRemediation(failure);
   const hasOtherCommand = [...(remediation ?? "").matchAll(/`(lando [^`]+)`/gu)].some(
     ([, named]) => named !== undefined && named !== rerun,
   );

@@ -18,7 +18,7 @@ export const globalInfoOptionsFromInput = (input: unknown): GlobalInfoOptions =>
 export const metaGlobalInfoSpec: LandoCommandSpec<GlobalInfoResult> = {
   resultSchema: InfoAppResult,
   id: "meta:global:info",
-  resultFormats: ["table"],
+  rendersTable: true,
   summary: "Print runtime information for the host-level global Lando app.",
   description: "Print runtime information for the host-level global Lando app.",
   namespace: "meta",
@@ -29,10 +29,6 @@ export const metaGlobalInfoSpec: LandoCommandSpec<GlobalInfoResult> = {
       char: "s",
       description: "Filter to a specific global service (repeatable).",
       multiple: true,
-    }),
-    format: Flags.string({
-      description: "Output format.",
-      default: "table",
     }),
   },
   run: (input) => globalInfo(globalInfoOptionsFromInput(input)),

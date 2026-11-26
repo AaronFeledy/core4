@@ -15,8 +15,10 @@ omitted. This page is generated from command metadata.
 
 Every command accepts `--format text`, `--format json`, and `--format yaml`.
 The equals forms, such as `--format=json`, work too. Text is the default.
-Commands offer `table` or `ndjson` only when they implement that format;
-check `lando <command> --help` for the formats that command supports.
+Commands that stream output, such as `lando exec` and `lando logs`, also accept
+`--format ndjson`: the same newline-delimited frames `--format json` emits.
+`lando doctor` accepts it for its per-check report. List commands accept
+`--format table`. Check `lando <command> --help` for the formats a command supports.
 
 These flags always work before the command name: `lando --format=json info`.
 Put them there for a command that hands the rest of the line to another

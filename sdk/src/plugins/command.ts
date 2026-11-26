@@ -1,7 +1,7 @@
 import type { Effect, Schema, Stream } from "effect";
 
 import type { CommandStdioError } from "../errors/command.ts";
-import type { CommandCompletion } from "../schema/machine-output.ts";
+import type { CommandCompletion, CommandStreamingMode } from "../schema/machine-output.ts";
 import type { BootstrapLevel } from "../schema/primitives.ts";
 
 /** Built-in command namespaces (`app`, `apps`, `meta`). */
@@ -101,14 +101,27 @@ export interface ExecutableCommandSpec<
   readonly flags?: Readonly<Record<string, ExecutableCommandFlagSpec>>;
   readonly args?: Readonly<Record<string, ExecutableCommandArgSpec>>;
   readonly strict?: boolean;
+  /**
+   * Declare `"live"` when `run` emits child output to `StreamFrameSink` (from
+   * `@lando/sdk/services`) as it runs. The CLI then provides the sink: a terminal
+   * shows the output as it arrives, `--format=json` and `--format=ndjson` emit
+   * stream frames that end in one `result` frame, and help advertises `ndjson`.
+   * MCP delivers the same frames as progress. Read the sink with
+   * `Effect.serviceOption` and collect output into the result only when it is
+   * absent (`--format=yaml`, a caller that does not stream); `collectExecStream`
+   * applies that rule to a provider exec stream.
+   */
+  readonly streamingMode?: CommandStreamingMode;
   readonly run: (input: Input) => Effect.Effect<A, E, R>;
   readonly resultSchema: Schema.Codec<A, unknown>;
   readonly completion?: {
     bivarianceHack(result: A, input: Input): CommandCompletion;
   }["bivarianceHack"];
   /**
-   * Optional post-run render hook. Receives the validated input, result, and
-   * captured streams; returns an Effect that performs framework-neutral output.
+   * Optional post-run render hook for human output. Receives the validated input
+   * and result after `run` completes; returns an Effect that performs
+   * framework-neutral output. A live command's output already reached the
+   * terminal through the sink, so render only what the result carries.
    */
   readonly render?: ExecutableCommandRender<A, E, R, Input>;
   /**

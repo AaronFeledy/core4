@@ -125,7 +125,7 @@
     "build:manifest": "bun run ../scripts/build-command-registry-manifest.ts",
     "build:compile": "bun run ../scripts/build-compiled-binary.ts --outfile ./dist/lando --minify --sourcemap=external && bun run ../scripts/sanitize-compiled-binary.ts ./dist/lando",
     "clean": "rm -rf dist .tsbuildinfo",
-    "test": "bun test",
+    "test": "bun --cwd=.. test ./core/test",
     "typecheck": "tsc -b",
     "prepack": "bun run build:manifest && bun run ../scripts/check-compiled-binary-notices.ts --core-dist"
   }

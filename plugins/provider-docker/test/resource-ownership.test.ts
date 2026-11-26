@@ -264,6 +264,14 @@ const failingWrites = (state: PluginStateStore): PluginStateStore => ({
               remediation: "Injected modify failure for resource-ownership fixture.",
             }),
           ),
+        mutate: () =>
+          Effect.fail(
+            new StateStoreError({
+              reason: "io",
+              operation: "mutate",
+              remediation: "Injected mutate failure for resource-ownership fixture.",
+            }),
+          ),
       })),
     ),
 });

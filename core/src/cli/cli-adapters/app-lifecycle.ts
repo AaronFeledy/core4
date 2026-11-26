@@ -4,12 +4,6 @@ import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
 import { type CliInvocationContext, processInvocationContext } from "../../runtime/invocation-context";
 import { makeLandoRuntime } from "../../runtime/layer";
 import { setupSpec } from "../command-specs/meta/setup";
-import {
-  type DoctorRenderOptions,
-  type DoctorReport,
-  renderDoctorReport,
-  renderDoctorReportAsNdjson,
-} from "../commands/doctor-report";
 import { compiledCommandInputFromArgv } from "../compiled-input";
 import {
   activeCommandId,
@@ -23,7 +17,7 @@ import {
   rejectInvalidInvocation,
 } from "../compiled-runtime";
 import type { CommandTokens } from "../invocation";
-import { type RenderContext, runWithRendererHandling } from "../renderer-boundary";
+import { runWithRendererHandling } from "../renderer-boundary";
 
 export const runSetup = async (
   tokens: CommandTokens,
@@ -70,13 +64,4 @@ export const runSetup = async (
       formatErrorAlreadyRedacted: true,
     },
   );
-};
-
-export const renderCompiledDoctorReport = (
-  value: DoctorReport,
-  ctx: RenderContext,
-  options: DoctorRenderOptions = {},
-): string | undefined => {
-  if (ctx.format === "ndjson") return renderDoctorReportAsNdjson(value);
-  return renderDoctorReport(value, ctx, options);
 };

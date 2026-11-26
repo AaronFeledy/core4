@@ -191,8 +191,7 @@ const outsideRootError = (
     path: scriptPath,
     ...(realpathValue === undefined ? {} : { realpath: realpathValue }),
     permittedRoots,
-    remediation:
-      "Move the script inside the app root (or recipe cache for recipe-bundled scripts) and ensure no symlinks escape it.",
+    remediation: "Move the script inside the app root and ensure no symlinks escape it.",
     ...(cause === undefined ? {} : { cause }),
   });
 
@@ -216,7 +215,7 @@ export const resolveScriptPath = (
         try {
           normalizedRoots.push(await normalizeRoot(root));
         } catch {
-          // Skip roots that cannot be resolved (e.g. missing recipe cache dir).
+          // Skip a root that cannot be resolved; a script cannot be contained by a missing root.
         }
       }
       const contained = normalizedRoots.some((root) => isWithinRoot(resolvedScript, root));

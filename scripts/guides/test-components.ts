@@ -1,12 +1,8 @@
+import { CAPTURE_ARG } from "../../core/src/docs/guide-compiler/capture-token.ts";
 import type { VariableProps } from "../../sdk/src/docs/components/index.ts";
 import type { GuideStepComponent, GuideStepNode } from "./model.ts";
 
 const quote = (value: string): string => JSON.stringify(value);
-// Resolution carries the shell-word argv runners execute; a missing one is a compiler bug.
-const argvLiteral = (component: Extract<GuideStepComponent, { kind: "Run" | "Verify" }>): string => {
-  if (component.argv === undefined) throw new Error(`Unresolved guide command at line ${component.line}`);
-  return JSON.stringify(component.argv);
-};
 export const sourceComment = (sourcePath: string, line: number): string =>
   `  // @source: ${sourcePath}:${line}`;
 export const renderVariableSetup = (variables: ReadonlyMap<string, VariableProps>): string =>
@@ -22,13 +18,17 @@ export const renderCleanupFinalizer = (step: GuideStepNode, sourcePath: string, 
   const marker = step.components.find((component) => component.kind === "Cleanup");
   if (marker === undefined) return "";
   const actions = step.components
-    .map((component) => renderStepComponent(component, sourcePath))
+    .map((component) => renderStepComponent(component, sourcePath, true))
     .filter(Boolean)
     .map((action) => `Effect.gen(function* () {\n${action}\n    })`);
   return `${sourceComment(sourcePath, marker.line)}\n    const cleanup${index} = yield* context.deferCleanup([${actions.join(",\n")}], ${step.hidden});`;
 };
 
-const renderRun = (component: Extract<GuideStepComponent, { kind: "Run" }>, sourcePath: string): string => {
+const renderRun = (
+  component: Extract<GuideStepComponent, { kind: "Run" }>,
+  sourcePath: string,
+  command: string,
+): string => {
   const props = component.props;
   if ("runtime" in props)
     return [
@@ -44,15 +44,21 @@ const renderRun = (component: Extract<GuideStepComponent, { kind: "Run" }>, sour
     ].join("\n");
   if ("command" in props)
     return [
-      `    lastRun = yield* context.runCli(${argvLiteral(component)}, {`,
+      `    lastRun = yield* context.runCli(${command}, {`,
       `      answers: ${JSON.stringify(props.answers ?? {})},`,
       "    });",
       "    lastEvents = lastRun.events;",
       `    expect(lastRun.exitCode, \`stdout:\\n\${lastRun.stdout}\\nstderr:\\n\${lastRun.stderr}\`).toBe(${props.expectExit ?? 0});`,
+      ...(props.capture === undefined
+        ? []
+        : [`    yield* context.capture.record(${JSON.stringify(props.capture)}, lastRun.stdout);`]),
     ].join("\n");
   return `    yield* context.shell(${quote(props.shell)});`;
 };
-const renderVerify = (component: Extract<GuideStepComponent, { kind: "Verify" }>): string => {
+const renderVerify = (
+  component: Extract<GuideStepComponent, { kind: "Verify" }>,
+  command: string,
+): string => {
   const props = component.props;
   const expected = props.expect === undefined ? undefined : JSON.stringify(props.expect, null, 2);
   if (props.event !== undefined)
@@ -65,7 +71,7 @@ const renderVerify = (component: Extract<GuideStepComponent, { kind: "Verify" }>
     ].join("\n");
   if (props.command !== undefined)
     return [
-      `    const verifyRun = yield* context.runCli(${argvLiteral(component)});`,
+      `    const verifyRun = yield* context.runCli(${command});`,
       "    lastEvents = verifyRun.events;",
       `    expect(verifyRun.exitCode, \`stdout:\\n\${verifyRun.stdout}\\nstderr:\\n\${verifyRun.stderr}\`).toBe(${props.expectExit ?? 0});`,
       ...(expected === undefined
@@ -89,15 +95,30 @@ const renderVerify = (component: Extract<GuideStepComponent, { kind: "Verify" }>
     "    expect(matched, `error tag: ${actual}\\n${failureText}`).toBe(true);",
   ].join("\n");
 };
-export const renderStepComponent = (component: GuideStepComponent, sourcePath: string): string => {
+export const renderStepComponent = (
+  component: GuideStepComponent,
+  sourcePath: string,
+  cleanup = false,
+): string => {
   if (component.kind === "Variable" || component.kind === "Cleanup") return "";
-  if (component.kind === "Run" && "runtime" in component.props) return renderRun(component, sourcePath);
+  const argv = component.kind === "Run" || component.kind === "Verify" ? component.argv : undefined;
+  if (
+    (component.kind === "Run" || component.kind === "Verify") &&
+    "command" in component.props &&
+    component.props.command !== undefined &&
+    argv === undefined
+  )
+    throw new Error(`Unresolved guide command at line ${component.line}`);
+  const usesCapture = argv?.some((word) => CAPTURE_ARG.test(word)) === true;
+  const command = usesCapture ? "argv" : JSON.stringify(argv ?? []);
+  if (component.kind === "Run" && "runtime" in component.props)
+    return renderRun(component, sourcePath, command);
   const body = (() => {
     switch (component.kind) {
       case "Run":
-        return renderRun(component, sourcePath);
+        return renderRun(component, sourcePath, command);
       case "Verify":
-        return renderVerify(component);
+        return renderVerify(component, command);
       case "Fetch": {
         const { expect, ...request } = component.props;
         const status = typeof expect.status === "number" ? [expect.status] : expect.status;
@@ -133,5 +154,8 @@ export const renderStepComponent = (component: GuideStepComponent, sourcePath: s
       }
     }
   })();
-  return `${sourceComment(sourcePath, component.line)}\n    {\n${body}\n    }`;
+  const setup = usesCapture
+    ? `    const argv = yield* context.capture.argv(${JSON.stringify(argv)}, ${cleanup});\n    if (argv === undefined) return;\n`
+    : "";
+  return `${sourceComment(sourcePath, component.line)}\n    {\n${setup}${body}\n    }`;
 };

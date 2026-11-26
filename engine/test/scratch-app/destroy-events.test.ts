@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
-import { access, lstat, mkdir, writeFile } from "node:fs/promises";
+import { access, lstat, mkdir, realpath, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { AbsolutePath, AppId, AppPlan, ServiceName } from "@lando/sdk/schema";
+import { AbsolutePath, AppId, AppPlan, ServiceName, appIdentityKey } from "@lando/sdk/schema";
 import { ScratchAppService, StateStore } from "@lando/sdk/services";
 import { makeStateStore } from "@lando/state-store/service";
 import { Effect, Schema } from "effect";
@@ -361,5 +361,35 @@ test("destroy falls back to orphan cleanup when desired and applied plans both m
       retainedArtifacts: { snapshots: "unknown-owner" },
     });
     expect(f.entries.size).toBe(0);
+  });
+});
+
+const planlessOwnerCases: ReadonlyArray<
+  readonly [
+    string,
+    { readonly cwd?: boolean; readonly orphan?: boolean },
+    ReadonlyArray<"legacy" | "managed">,
+  ]
+> = [
+  ["a managed scratch withdraws its instance-root owner", {}, ["managed"]],
+  ["a historical scratch withdraws its scratch-id owner", { cwd: true }, ["legacy"]],
+  ["an unregistered scratch withdraws both owners", { orphan: true }, ["legacy", "managed"]],
+];
+
+test.each(planlessOwnerCases)("planless destroy: %s", async (_label, options, expected) => {
+  // Given neither a desired nor an applied plan records the route owner.
+  await withDestroyFixture({ skipDesiredPlan: true, ...options }, async (f) => {
+    const owners = {
+      legacy: appIdentityKey("owner", `scratch:${f.id}`),
+      managed: appIdentityKey("owner", await realpath(join(f.instanceRoot, "root"))),
+    };
+    // An unregistered scratch is only reaped by poweroff or GC.
+    await Effect.runPromise(
+      Effect.flatMap(ScratchAppService, (scratch) =>
+        scratch.destroy(f.id, options.orphan === true ? { reason: "poweroff" } : {}),
+      ).pipe(Effect.provide(f.layer)),
+    );
+    // Then routes are withdrawn from the owner that published them.
+    expect(f.withdrawnOwnerKeys).toEqual(expected.map((layout) => owners[layout]));
   });
 });

@@ -1,9 +1,9 @@
 import { expect, test } from "bun:test";
 import type { DoctorSectionFinding, DoctorStatus } from "../../src/cli/commands/doctor-contract";
-import { renderDoctorReportAsNdjson } from "../../src/cli/commands/doctor-render-ndjson";
 import { buildDoctorReportSummary } from "../../src/cli/commands/doctor-render-text";
 import { makeDoctorReport } from "../../src/cli/commands/doctor-report-model";
 import { selectDoctorView } from "../../src/cli/commands/doctor-view";
+import { renderDoctorReportAsNdjson } from "./doctor-report-fixture";
 
 const finding = (subject: string, status: DoctorStatus = "warn"): DoctorSectionFinding => ({
   section: "missing-app-roots",

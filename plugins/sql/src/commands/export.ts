@@ -7,6 +7,7 @@ export const spec = {
   id: "db:export",
   namespace: "db",
   bootstrap: "app",
+  streamingMode: "live",
   flags: {
     service: { type: "string", description: "Source database service." },
     "compression-level": {

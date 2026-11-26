@@ -1,4 +1,5 @@
 import { Result, Schema } from "effect";
+import { captureWordAt } from "./capture-token.ts";
 
 /**
  * A guide command string with no single shell-word reading. `unterminated-quote` and
@@ -78,6 +79,7 @@ const describe = (
 const scanCommand = (
   command: string,
   boundary?: ProseBoundary,
+  guideCaptures = false,
 ): Result.Result<readonly string[], GuideCommandSyntaxError> => {
   const argv: string[] = [];
   let word = "";
@@ -114,6 +116,15 @@ const scanCommand = (
       continue;
     }
     if (!inWord) wordStart = index;
+    if (guideCaptures && !inWord && char === "{") {
+      const capture = captureWordAt(command, index);
+      if (capture !== undefined) {
+        word = capture;
+        inWord = true;
+        index += capture.length;
+        continue;
+      }
+    }
     if (boundary !== undefined) {
       if (char === "#" && !inWord) {
         const newline = command.indexOf("\n", index);
@@ -201,7 +212,9 @@ const scanCommand = (
 
 export const guideCommandArgv = (
   command: string,
-): Result.Result<readonly string[], GuideCommandSyntaxError> => scanCommand(command);
+  options?: { readonly captures: true },
+): Result.Result<readonly string[], GuideCommandSyntaxError> =>
+  scanCommand(command, undefined, options?.captures);
 
 /** Read each list member's literal argv up to its first pipe, redirect, or comment. */
 export const guideProseCommandArgvs = (source: string): readonly (readonly string[])[] => {

@@ -1,3 +1,4 @@
+import { causeRemediation } from "@lando/sdk/command-result";
 import { StateStoreError, newerStateRemediation } from "@lando/sdk/errors";
 
 export const newerStateVersionError = ({
@@ -25,4 +26,4 @@ export const isNewerVersionStoreError = (cause: unknown): cause is NewerVersionS
   cause instanceof StateStoreError && cause.reason === "newer-version";
 
 export const storeErrorRemediation = (cause: unknown, fallback: string): string =>
-  isNewerVersionStoreError(cause) ? cause.remediation : fallback;
+  (isNewerVersionStoreError(cause) ? causeRemediation(cause) : undefined) ?? fallback;

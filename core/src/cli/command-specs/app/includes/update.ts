@@ -47,10 +47,6 @@ export const appIncludesUpdateSpec: LandoCommandSpec<
       description: "Update strictly from cache and lockfile state; never touch the network.",
       default: false,
     }),
-    format: Flags.string({
-      description: "Output format.",
-      default: "text",
-    }),
   },
   run: (input) =>
     appIncludesUpdate({

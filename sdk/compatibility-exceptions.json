@@ -1,5 +1,22 @@
 [
   {
+    "fingerprint": "sha256:30746961593d48f95a9fad7efe9e9cd630f99e4621cd2cf421d9bd47d60c789b",
+    "changeKind": "property-added",
+    "locations": [
+      {
+        "surface": "persisted:scratch-registry",
+        "path": "$.items.layout"
+      }
+    ],
+    "justification": "Scratch registry v3 records whether a scratch owns a managed instance root or a historical source-root identity. Version 3 migrates v1 and v2 rows to layout legacy while preserving their recorded root, so destroy still withdraws the old route owner.",
+    "persistedState": [
+      {
+        "store": "scratch-registry",
+        "version": 3
+      }
+    ]
+  },
+  {
     "fingerprint": "sha256:2c9904508e4c224016e2ad2f981048bac6e51153cc45bd901fa366abeeb9ac4d",
     "changeKind": "union-widened",
     "locations": [
@@ -31,5 +48,27 @@
       }
     ],
     "justification": "RuntimeProvider.removeObservedService is replaced by bringDownObserved; its receipt is ObservedBringDown, which reports the per-container action with the same optional shutdown observations. No persisted state or command result embeds ObservedServiceRemoval."
+  },
+  {
+    "fingerprint": "sha256:cbf57616bf27356d4a53dacfe66f24aaed9d29bca857fb759b1afd2625e013a8",
+    "changeKind": "unsupported-construct",
+    "locations": [
+      {
+        "surface": "schema:RunProps",
+        "path": "$.anyOf"
+      }
+    ],
+    "justification": "The command variant of RunProps accepts an optional capture. Existing command, shell, and library props are unchanged."
+  },
+  {
+    "fingerprint": "sha256:0fe7a7b2124dae8fe146ff758550b73b96381aaafa7a053cd7d41eaeb3118371",
+    "changeKind": "unsupported-construct",
+    "locations": [
+      {
+        "surface": "command:cli:help",
+        "path": "$.anyOf"
+      }
+    ],
+    "justification": "HelpCommandTargetDescriptor gains advertisedFormats field on all variants. The anyOf schema widened by one optional field; existing consumers that do not read advertisedFormats are unaffected."
   }
 ]

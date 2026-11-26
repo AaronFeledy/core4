@@ -62,6 +62,9 @@ describe("exec command spec", () => {
     { command: "exec", stdinTTY: false, stdoutTTY: true, tty: false, format: "json" },
     { command: "exec", stdinTTY: true, stdoutTTY: true, tty: true },
     { command: "exec", stdinTTY: true, stdoutTTY: false, tty: false },
+    // ndjson is the same frame stream as json, so it never allocates a PTY.
+    { command: "exec", stdinTTY: true, stdoutTTY: true, tty: false, format: "ndjson", keyboard: false },
+    { command: "ssh", stdinTTY: true, stdoutTTY: true, tty: false, format: "ndjson", keyboard: false },
   ])("applies CLI terminal rules for %j", async (scenario) => {
     // Given
     const controller = new AbortController();
@@ -140,7 +143,8 @@ describe("exec command spec", () => {
     // Then
     expect(commands[0]?.signal).toBe(controller.signal);
     expect(commands[0]?.tty === true).toBe(scenario.tty);
-    expect(commands[0]?.stdin).toBe("inherit");
+    // A machine run on a terminal forwards no keystrokes: there is no PTY to receive them.
+    expect(commands[0]?.stdin).toBe("keyboard" in scenario ? undefined : "inherit");
     if (!scenario.tty) {
       expect(commands[0]?.env ?? {}).not.toHaveProperty("COLUMNS");
       expect(commands[0]?.env ?? {}).not.toHaveProperty("LINES");

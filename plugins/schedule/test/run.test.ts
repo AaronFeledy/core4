@@ -16,14 +16,17 @@ import {
   appIdentityKey,
 } from "@lando/sdk/schema";
 import {
+  type ExecChunk,
   type ExecTarget,
   type CommandSpec as ProviderCommandSpec,
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
+  StreamFrameSink,
+  type StreamFrameSinkFrame,
   UserAppResolver,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
-import { DateTime, Effect, Layer } from "effect";
+import { DateTime, Effect, Layer, Stream } from "effect";
 
 import { spec } from "../src/commands/run.ts";
 import { ScheduleJobAmbiguousError, ScheduleJobNotFoundError } from "../src/errors.ts";
@@ -122,17 +125,27 @@ const makeRuntime = (
 ) => {
   const execs: Array<{ readonly target: ExecTarget; readonly command: ProviderCommandSpec }> = [];
   const plan = makePlan(options.planServices, options.recordedRoot);
+  const order: string[] = [];
+  const encoder = new TextEncoder();
   const provider: RuntimeProviderShape = {
     ...TestRuntimeProvider,
-    exec: (target, command) => {
-      execs.push({ target, command });
-      const failed = command.command.includes("exit 3");
-      return Effect.succeed({
-        exitCode: failed ? 3 : 0,
-        stdout: "job-stdout\n",
-        stderr: failed ? "job-stderr\n" : "",
-      });
-    },
+    execStream: (target, command) =>
+      Stream.suspend(() => {
+        execs.push({ target, command });
+        const failed = command.command.includes("exit 3");
+        const output: ReadonlyArray<ExecChunk> = [
+          { kind: "stdout", chunk: encoder.encode("job-stdout\n") },
+          ...(failed ? [{ kind: "stderr" as const, chunk: encoder.encode("job-stderr\n") }] : []),
+        ];
+        // The job exits only after its output was consumed, as a running process would.
+        const exit = Stream.fromEffect(
+          Effect.sync((): ExecChunk => {
+            order.push("exit");
+            return { exitCode: failed ? 3 : 0 };
+          }),
+        );
+        return Stream.concat(Stream.fromIterable(output), exit);
+      }),
   };
   const registry = makeTestRuntimeProviderRegistry({
     capabilities: Effect.die("unused"),
@@ -158,10 +171,24 @@ const makeRuntime = (
   );
   return {
     execs,
+    order,
     run: (name: string, service?: string) =>
       Effect.runPromise(
         runScheduleJob({ name, ...(service === undefined ? {} : { service }) }).pipe(Effect.provide(layer)),
       ),
+    runLive: (name: string) => {
+      const frames: StreamFrameSinkFrame[] = [];
+      const sink = StreamFrameSink.of({
+        emit: (frame) =>
+          Effect.sync(() => {
+            frames.push(frame);
+            order.push(`frame:${frame._tag}`);
+          }),
+      });
+      return Effect.runPromise(
+        runScheduleJob({ name }).pipe(Effect.provide(layer), Effect.provideService(StreamFrameSink, sink)),
+      ).then((result) => ({ result, frames }));
+    },
   };
 };
 
@@ -206,6 +233,25 @@ describe("schedule:run", () => {
     const success = await runtime.run("ok");
     expect(success.exitCode).toBe(0);
     expect(spec.completion?.(success)).toEqual({ ok: true, exitCode: 0 });
+  });
+
+  test("streams the job's output to a live sink as it runs and leaves it out of the result", async () => {
+    // Given: a caller that streams the command's output.
+    const runtime = makeRuntime();
+
+    // When: the job runs.
+    const { result, frames } = await runtime.runLive("fail");
+
+    // Then: each chunk reached the sink before the job exited, and the result carries only the status.
+    expect(runtime.order).toEqual(["frame:stdout", "frame:stderr", "exit"]);
+    const text = (chunk: string | Uint8Array) =>
+      typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk);
+    expect(frames.map((frame) => [frame._tag, text(frame.chunk)])).toEqual([
+      ["stdout", "job-stdout\n"],
+      ["stderr", "job-stderr\n"],
+    ]);
+    expect(result).toEqual({ service: "web", name: "fail", exitCode: 3 });
+    expect(spec.streamingMode, "the spec must declare live output so the CLI provides the sink").toBe("live");
   });
 
   test("executes in the sidecar that runs the job, without a user or cwd override", async () => {

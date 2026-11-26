@@ -10,9 +10,9 @@ import {
   isMcpDefaultAllowlistFresh,
   mcpDoctor,
 } from "../../src/cli/commands/doctor-mcp.ts";
-import { renderDoctorReportAsNdjson } from "../../src/cli/commands/doctor-render-ndjson.ts";
 import { renderDoctorReport } from "../../src/cli/commands/doctor-render-text.ts";
 import { makeDoctorReport } from "../../src/cli/commands/doctor-report.ts";
+import { renderDoctorReportAsNdjson } from "./doctor-report-fixture";
 
 const runWithDefault = (): Promise<DoctorSectionResult> =>
   Effect.runPromise(mcpDoctor().pipe(Effect.provide(DefaultMcpDoctorLayer)));

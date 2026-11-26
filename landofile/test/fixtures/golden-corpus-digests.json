@@ -847,6 +847,10 @@
       "digest": "00ea8ef5a37c7d63bda4f69e73303cbc39f28e7adfedaa33c9dca66347bec41e"
     },
     {
+      "fixture": "docs/guides/list-and-info/fixtures/scratch-info-web",
+      "digest": "94a384275aa69d47e7f884b2a05cdc5c61a023e11acb9d04469f493aa6a6e922"
+    },
+    {
       "fixture": "docs/guides/locale/fixtures/locale-demo",
       "digest": "020f24b8d43a8efd4f99e762ec00d472fb5bb78c11a54bf154ec202b8588ce07"
     },
@@ -995,6 +999,14 @@
     {
       "fixture": "docs/guides/mongodb/fixtures/mongodb-e2e-port",
       "digest": "d01b31b0b3310bcfd22a7df546da2b93922a6eedaa12746c460ac216d148876c"
+    },
+    {
+      "fixture": "docs/guides/mount-and-share-flags/fixtures/cwd-destroy-source",
+      "digest": "40607115b1266d77e18f358e03a5cb6095e7e93f281de59a63c50697f7fa8c1f"
+    },
+    {
+      "fixture": "docs/guides/mount-and-share-flags/fixtures/scratch-fork-web",
+      "digest": "9d31b7fed27f306ddf2922949da5ac65197b99c3b7f9a142ded23e7e4e6026ee"
     },
     {
       "fixture": "docs/guides/mssql/fixtures/mssql-demo",

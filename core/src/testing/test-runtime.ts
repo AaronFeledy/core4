@@ -71,6 +71,7 @@ export { TestRuntimeProvider } from "@lando/sdk/test";
 export { TestClock } from "effect/testing";
 
 import {
+  SCRATCH_REGISTRY_VERSION,
   ScratchRegistry,
   type ScratchRegistryEntry,
   type ScratchRegistryEnvelope,
@@ -456,6 +457,7 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
     lookup: () => Effect.succeed(Option.none()),
     register: () => Effect.void,
     registerAlias: () => Effect.void,
+    claimWarning: () => Effect.succeed(true),
   });
 
   const pluginTrustStoreService = PluginTrustStore.of({
@@ -744,6 +746,7 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
     isolate: summary.mode,
     detached: summary.status === "detached",
     rootPath: String(paths.root),
+    layout: "managed",
     status: "running",
     createdAt: summary.created,
     updatedAt: summary.created,
@@ -810,7 +813,7 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
   const scratchRegistryService = ScratchRegistry.of({
     read: () =>
       Effect.succeed({
-        version: 2,
+        version: SCRATCH_REGISTRY_VERSION,
         entries: registryEntriesFrom(scratchRegistryEntries),
       } satisfies ScratchRegistryEnvelope),
     upsert: Effect.fn("TestScratchRegistry.upsert")(function* (

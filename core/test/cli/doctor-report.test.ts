@@ -34,15 +34,13 @@ import type {
 import { DoctorReportSchema } from "../../src/cli/commands/doctor-contract.ts";
 import { deprecationFindings, doctorDeprecations } from "../../src/cli/commands/doctor-deprecations";
 import { FilesystemWatchIO } from "../../src/cli/commands/doctor-filesystem-watch-io.ts";
-import { renderDoctorReportAsNdjson } from "../../src/cli/commands/doctor-render-ndjson.ts";
 import { renderDoctorReport } from "../../src/cli/commands/doctor-render-text.ts";
 import { collectDoctorReport, makeDoctorReport } from "../../src/cli/commands/doctor-report.ts";
 import { independentSection } from "../../src/cli/commands/doctor-sections";
 import { appVersionConstraintsForReport } from "../../src/cli/commands/doctor-version-constraint.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
-import { renderCompiledDoctorReport } from "../../src/cli/run.ts";
 import { withCwd, withEnvVar } from "../_support/temp-cwd.ts";
-import { collectRuntimeDoctor } from "./doctor-report-fixture";
+import { collectRuntimeDoctor, renderDoctorReportAsNdjson } from "./doctor-report-fixture";
 
 const isolatedUserDataRoot = mkdtempSync(join(tmpdir(), "lando-doctor-report-"));
 
@@ -398,22 +396,15 @@ describe("meta:doctor combined report", () => {
       command: "meta:doctor",
       resultSchema: DoctorReportSchema,
       io,
-      render: (value, ctx) => renderCompiledDoctorReport(value, ctx),
+      render: (value, ctx) => metaDoctorSpec.render?.(value, {}, ctx),
       formatError: ({ error }) => String(error),
     });
     const envelope = Schema.decodeUnknownSync(CommandResultEnvelope)(JSON.parse(io.stdout()));
     expect(envelope.result).toEqual(Schema.encodeSync(DoctorReportSchema)(report));
     expect(metaDoctorSpec.completion?.(report, {})).toEqual({ ok: true, exitCode: 0 });
-    const stream = renderCompiledDoctorReport(report, {
-      mode: "plain",
-      format: "ndjson",
-      columns: 80,
-      isTTY: false,
-      noColor: false,
-    });
-    expect(stream).toBeDefined();
-    expect(decodeFrames(stream ?? "")[0]).toMatchObject({ _tag: "event", event: "doctor.check" });
-    expect(resultEnvelope(stream ?? "").result).toMatchObject({ summary: report.summary });
+    const stream = renderDoctorReportAsNdjson(report);
+    expect(decodeFrames(stream)[0]).toMatchObject({ _tag: "event", event: "doctor.check" });
+    expect(resultEnvelope(stream).result).toMatchObject({ summary: report.summary });
   });
 
   test("maps deprecations to one finding per entry with severity status", () => {
@@ -595,20 +586,25 @@ describe("meta:doctor combined report", () => {
     });
   });
 
-  test("compiled doctor renderer dispatches ndjson format through the StreamFrame renderer", async () => {
+  test("the boundary writes doctor's ndjson report frames instead of its text render", async () => {
     const provider = { ...TestRuntimeProvider, id: "lando" };
     const report = await run(provider);
-    const ndjson = renderCompiledDoctorReport(report, {
-      noColor: false,
-      mode: "lando",
-      format: "ndjson",
-      columns: 80,
-      isTTY: false,
+    const io = createBufferedRendererIO();
+    await runWithRendererHandling(Effect.succeed(report), {
+      runtime: Layer.empty,
+      rendererMode: "lando",
+      resultFormat: "ndjson",
+      command: "meta:doctor",
+      resultSchema: DoctorReportSchema,
+      ...(metaDoctorSpec.ndjsonReport === undefined ? {} : { ndjsonReport: metaDoctorSpec.ndjsonReport }),
+      io,
+      render: (value, ctx) => metaDoctorSpec.render?.(value, {}, ctx),
+      formatError: ({ error }) => String(error),
+      setExitCode: () => undefined,
     });
 
-    if (ndjson === undefined) throw new Error("expected compiled doctor renderer output");
-    expect(decodeFrames(ndjson)[0]).toMatchObject({ _tag: "event", event: "doctor.check" });
-    expect(ndjson).not.toContain("selected-provider: pass");
+    expect(decodeFrames(io.stdout())[0]).toMatchObject({ _tag: "event", event: "doctor.check" });
+    expect(io.stdout()).not.toContain("selected-provider: pass");
   });
 
   test("doctor --app reports an unsatisfied lando version constraint", async () => {
@@ -1261,7 +1257,6 @@ describe("meta:doctor combined report", () => {
     expect(metaDoctorSpec.render?.(report, { flags: { format: "yaml" } }, ctx)).toBe(
       renderDoctorReport(report, ctx),
     );
-    expect(renderCompiledDoctorReport(report, ctx)).toBe(renderDoctorReport(report, ctx));
   });
 
   test("meta:doctor json renderer emits the schema-encoded command result envelope", async () => {

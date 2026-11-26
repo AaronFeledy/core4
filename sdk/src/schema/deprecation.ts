@@ -193,12 +193,14 @@ type DeprecatedSchemaAnnotations = {
   readonly documentation?: string;
 };
 
+/** The one human rendering of a notice: schedule, replacement, note, then the docs link. */
 export const formatDeprecationNotice = (notice: DeprecationNotice): string => {
   const parts = [`Deprecated since ${notice.since}`];
-  if (notice.removeIn !== undefined) parts.push(`remove in ${notice.removeIn}`);
+  if (notice.removeIn !== undefined) parts.push(`scheduled for removal in ${notice.removeIn}`);
   const schedule = `${parts.join("; ")}.`;
   const replacement = notice.replacement === undefined ? "" : ` Use ${notice.replacement} instead.`;
-  return `${schedule}${replacement} ${notice.note}`;
+  const docs = notice.docsUrl === undefined ? "" : ` Docs: ${notice.docsUrl}`;
+  return `${schedule}${replacement} ${notice.note}${docs}`;
 };
 
 const deprecatedAnnotations = (notice: DeprecationNotice): DeprecatedSchemaAnnotations => ({

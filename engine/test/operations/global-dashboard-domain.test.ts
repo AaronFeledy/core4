@@ -72,7 +72,7 @@ test("global Mailpit preserves its expression in dist and replans it after a dom
     const changed = await Effect.runPromise(loadGlobalPlan().pipe(Effect.provide(layer)));
     if (!changed.materialized) throw new Error("Global app was not materialized");
     const router = makeTestRouterService();
-    const urls = await Effect.runPromise(
+    const outcome = await Effect.runPromise(
       publishGlobalRoutes(router, TestRuntimeProvider, changed.plan, {
         started: new Set([mail]),
         failed: new Set(),
@@ -84,7 +84,7 @@ test("global Mailpit preserves its expression in dist and replans it after a dom
     expect(await Effect.runPromise(router.readRoutes(routeOwnerFromPlan(changed.plan)))).toEqual(
       changed.plan.routes,
     );
-    expect(urls).toBeUndefined();
+    expect(outcome).toMatchObject({ kind: "replaced", routes: [{ hostname: "mailpit.custom.test" }] });
   } finally {
     await rm(root, { recursive: true, force: true });
   }

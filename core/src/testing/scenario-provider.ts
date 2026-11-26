@@ -6,6 +6,8 @@ import { scratchLabelsForPlan } from "@lando/container-runtime/labels";
 import { forgetAppliedPlanUnlessKept, rememberAppliedPlan } from "@lando/container-runtime/provider-assembly";
 import { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
+import type { ScenarioProps } from "@lando/sdk/docs/components";
+import { ProxyApplyError } from "@lando/sdk/errors";
 import type { PluginStateStore } from "@lando/sdk/plugins";
 import { AbsolutePath, type AppPlan, ProviderId } from "@lando/sdk/schema";
 import {
@@ -47,7 +49,7 @@ const appliedPlanStateRoot = AbsolutePath.make("/lando-scenario-provider-state")
  * plane, and applied plans go through the same applied-state store real providers persist to,
  * so later commands read the encoded, hook-free record rather than the object that was applied.
  */
-export const makeScenarioProvider = () => {
+export const makeScenarioProvider = (faults: ScenarioProps["faults"] = []) => {
   const testProvider = makeTestRuntimeProvider();
   const stateStore = makeTestStateStore().service;
   const appliedState: PluginStateStore = {
@@ -143,9 +145,27 @@ export const makeScenarioProvider = () => {
   // containers for a real proxy to reach, and nothing listens on the routed URLs, so the post-start
   // scan has no host to probe. The CA resolver uses an in-memory `mkcert` authority to match
   // the planner's platform default without downloading or trusting a host tool.
+  const router = makeTestRouterService();
   const certificateAuthority = makeMintingCertificateAuthority({ id: "mkcert" });
   const hostServices = Layer.mergeAll(
-    Layer.succeed(RouterService, RouterService.of({ ...makeTestRouterService(), id: "traefik" })),
+    Layer.succeed(
+      RouterService,
+      RouterService.of({
+        ...router,
+        id: "traefik",
+        applyRoutes: faults.includes("router.apply-routes")
+          ? (_routes, owner) =>
+              Effect.fail(
+                new ProxyApplyError({
+                  app: owner.id,
+                  proxyId: "traefik",
+                  message: "Scenario injected a route publication failure.",
+                  remediation: "Retry with a working router.",
+                }),
+              )
+          : router.applyRoutes,
+      }),
+    ),
     Layer.succeed(UrlScanner, UrlScanner.of(makeTestUrlScanner())),
     Layer.succeed(
       CertificateAuthorityResolver,

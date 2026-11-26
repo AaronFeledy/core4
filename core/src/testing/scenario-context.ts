@@ -13,7 +13,12 @@ import {
   mapFailures,
   mergeFailure,
 } from "@lando/sdk/command-result";
-import { type FetchProps, Transcript, type TranscriptFrame } from "@lando/sdk/docs/components";
+import {
+  type FetchProps,
+  type ScenarioProps,
+  Transcript,
+  type TranscriptFrame,
+} from "@lando/sdk/docs/components";
 import {
   FileIoError,
   FileNotFoundError,
@@ -44,6 +49,7 @@ import { redactDetails } from "../cli/redact";
 import { type GuideCommandSyntaxError, guideCommandArgv } from "../docs/guide-compiler/command-argv.ts";
 import { withInteractionServiceOverride } from "../interaction/testing-override";
 import { makeTestInteractionService } from "./interaction";
+import { makeScenarioCapture } from "./scenario-capture.ts";
 import {
   ScenarioFetchError,
   readScenarioCa,
@@ -176,6 +182,8 @@ export interface ScenarioContext {
   readonly runtime: TestRuntime;
   /** Scenario variables keyed by variable name. */
   readonly vars: Map<string, ScenarioVariable>;
+  /** Scenario-local JSON captures used by generated hidden commands. */
+  readonly capture: ReturnType<typeof makeScenarioCapture>;
   /**
    * Runs a Lando CLI command in the current scenario working directory.
    * @param command Command string or pre-split argv. A leading `lando` is ignored.
@@ -238,6 +246,8 @@ export interface WithScenarioContextOptions {
   readonly scenarioId: string;
   /** Whether the scenario should be marked reader-visible in transcripts. Defaults to true. */
   readonly render?: boolean;
+  /** Faults to inject into this scenario's in-memory provider. */
+  readonly faults?: NonNullable<ScenarioProps["faults"]>;
   /** Variables available to scenario code. */
   readonly vars?: ReadonlyMap<string, ScenarioVariable>;
   /** Runtime services to expose through the context. Defaults to provider bootstrap test runtime. */
@@ -685,8 +695,9 @@ const createScenarioRunCli = (
   getWorkingDirectory: () => string,
   setWorkingDirectory: (path: string) => void,
   env: Readonly<Record<string, string | undefined>>,
+  faults: ScenarioProps["faults"],
 ): ArgvRunner => {
-  const provider = makeScenarioProvider();
+  const provider = makeScenarioProvider(faults);
   return (command, options) =>
     runInterruptibleCli((signal) => {
       const args = appendInitAnswers(command, options?.answers);
@@ -764,9 +775,10 @@ const selectRunner = (
   getWorkingDirectory: () => string,
   setWorkingDirectory: (path: string) => void,
   env: Readonly<Record<string, string | undefined>>,
+  faults: ScenarioProps["faults"],
 ): ArgvRunner => {
   if (runnerKind === "e2e") return createE2eRunCli(getWorkingDirectory, setWorkingDirectory, env);
-  return createScenarioRunCli(events, getWorkingDirectory, setWorkingDirectory, env);
+  return createScenarioRunCli(events, getWorkingDirectory, setWorkingDirectory, env, faults);
 };
 
 const createRunCli = (
@@ -776,11 +788,12 @@ const createRunCli = (
   setWorkingDirectory: (path: string) => void,
   runnerKind: ScenarioRunnerKind,
   env: Readonly<Record<string, string | undefined>>,
-  override?: (command: ReadonlyArray<string>, options?: ScenarioRunOptions) => Promise<ScenarioRunResult>,
+  options: Pick<WithScenarioContextOptions, "runCli" | "faults">,
 ): ScenarioContext["runCli"] => {
+  const { runCli: override, faults } = options;
   const runner: ArgvRunner =
     override === undefined
-      ? selectRunner(runnerKind, events, getWorkingDirectory, setWorkingDirectory, env)
+      ? selectRunner(runnerKind, events, getWorkingDirectory, setWorkingDirectory, env, faults)
       : (args, options) => Effect.tryPromise(() => override(args, options));
 
   return Effect.fn("ScenarioContext.runCli")(function* (command, options) {
@@ -890,6 +903,7 @@ const makeScenarioContext = (
     testDir,
     runtime,
     vars: new Map(options.vars ?? []),
+    capture: makeScenarioCapture(),
     runCli: createRunCli(
       events,
       appendFrame,
@@ -905,7 +919,7 @@ const makeScenarioContext = (
             LANDO_USER_CONF_ROOT: join(testDir, "host", "config"),
             LANDO_SYSTEM_PLUGIN_ROOT: join(testDir, "host", "system-plugins"),
           },
-      options.runCli,
+      options,
     ),
     shell: (command) => Effect.fail(shellNotImplemented(command)),
     inspect: createInspect(testDir, events, transcriptFrames, appendFrame),

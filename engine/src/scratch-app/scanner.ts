@@ -3,7 +3,7 @@ import {
   adoptionReceiptsFromSummary,
   decideDataRootOwnership,
 } from "@lando/container-runtime/native-ownership";
-import { mapFailures } from "@lando/sdk/command-result";
+import { causeRemediation, mapFailures } from "@lando/sdk/command-result";
 import { ScratchAppError } from "@lando/sdk/errors";
 import { type AbsolutePath, LANDO_DATA_ROOT_LABEL, ProviderId } from "@lando/sdk/schema";
 import { PathsService, RuntimeProviderRegistry, type RuntimeProviderShape } from "@lando/sdk/services";
@@ -31,7 +31,9 @@ const scannerError = (operation: string, message: string, cause: unknown): Scrat
     operation,
     message,
     cause,
-    remediation: "Run `lando doctor`, fix the provider runtime, then retry scratch resource cleanup.",
+    remediation:
+      causeRemediation(cause) ??
+      "Run `lando doctor`, fix the provider runtime, then retry scratch resource cleanup.",
   });
 
 export interface ScratchResourceScannerService {

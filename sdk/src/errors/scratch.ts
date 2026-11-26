@@ -7,6 +7,7 @@ import { Schema } from "effect";
 export class ScratchAppError extends Schema.TaggedError<ScratchAppError>()("ScratchAppError", {
   message: Schema.String,
   operation: Schema.optional(Schema.String),
+  scratchId: Schema.optionalKey(Schema.String),
   remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   cause: Schema.optional(Schema.Unknown),
 }) {}

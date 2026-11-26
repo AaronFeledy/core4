@@ -40,6 +40,7 @@ import { DateTime, Effect, Layer, Predicate, Schema, Stream } from "effect";
 import { SCRATCH_EXTENSION_KEY } from "../../src/scratch-app/identity.ts";
 import { SCRATCH_DESIRED_PLAN_VERSION } from "../../src/scratch-app/plan.ts";
 import {
+  SCRATCH_REGISTRY_VERSION,
   ScratchRegistry,
   type ScratchRegistryEntry,
   planScratchRegistryWrite,
@@ -147,12 +148,14 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
     createdAt: DateTime.makeUnsafe(0),
   }));
   const removed: string[] = [];
+  const withdrawnOwnerKeys: string[] = [];
   const entries = new Map<string, ScratchRegistryEntry>();
   const entry: ScratchRegistryEntry = {
     id,
     rootPath: planRoot,
     source: { kind: "fork" },
     isolate: options.cwd ? "cwd" : "full",
+    layout: options.cwd ? "legacy" : "managed",
     detached: false,
     ownerPid: 999999999,
     status: "running",
@@ -189,7 +192,14 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
       ),
   };
   const applied =
-    options.appliedPlan === true ? { ...plan, extensions: { [SCRATCH_EXTENSION_KEY]: { id } } } : undefined;
+    options.appliedPlan === true
+      ? {
+          ...plan,
+          extensions: {
+            [SCRATCH_EXTENSION_KEY]: options.cwd ? { id } : { id, projectRoot: planRoot },
+          },
+        }
+      : undefined;
   const unreadable =
     options.offlineNewerReceipt === undefined
       ? []
@@ -264,7 +274,8 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
       ScratchRegistry.of({
         get: (key) => Effect.sync(() => entries.get(key)),
         list: () => Effect.sync(() => [...entries.values()]),
-        read: () => Effect.sync(() => ({ version: 2, entries: [...entries.values()] })),
+        read: () =>
+          Effect.sync(() => ({ version: SCRATCH_REGISTRY_VERSION, entries: [...entries.values()] })),
         upsert: (...write) =>
           Effect.sync(() => {
             calls.push("registry:upsert");
@@ -297,9 +308,10 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
       RouterService,
       RouterService.of({
         ...makeTestRouterService(),
-        removeRoutes: (_owner) =>
+        removeRoutes: (owner) =>
           Effect.sync(() => {
             calls.push("routes");
+            withdrawnOwnerKeys.push(owner.ownerKey);
           }).pipe(
             Effect.andThen(
               options.routeFail
@@ -388,6 +400,7 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
     plan,
     instanceRoot,
     calls,
+    withdrawnOwnerKeys,
     events,
     rootObservations,
     removed,

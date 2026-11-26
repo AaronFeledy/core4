@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { McpTransportError } from "@lando/sdk/errors";
+import { StreamFrameSink } from "@lando/sdk/services";
 import { Deferred, Effect, Fiber, Layer, Schema } from "effect";
 import { testAppGenerations } from "../src/testing.ts";
 import { serverLayer, startServer } from "./server";

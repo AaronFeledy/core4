@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { type AppPlan, LandofileShape, ServiceName } from "@lando/sdk/schema";
+import { AbsolutePath, type AppPlan, LandofileShape, ServiceName } from "@lando/sdk/schema";
 import { PathsService } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect, Layer, Schema } from "effect";
@@ -75,7 +75,9 @@ test.each(["user", "global"] as const)(
 
 test("keys a scratch fork's leaf paths by its scratch owner, apart from the user app sharing its root", async () => {
   await withRoots(async ({ appRoot, cacheRoot }) => {
-    // Given: a user app and a cwd fork planned at the same root
+    const paths = appPlannerCertsPaths({ appRoot, cacheRoot });
+    const workspace = join(paths.scratchDir, "scratch-fork-1", "root");
+    await mkdir(workspace, { recursive: true });
     const user = await planAppPlannerCerts({ appRoot, cacheRoot, landofile: certsLandofile("shared-root") });
     const fork = await planAppPlannerCerts({
       appRoot,
@@ -83,14 +85,19 @@ test("keys a scratch fork's leaf paths by its scratch owner, apart from the user
       kind: "scratch",
       landofile: certsLandofile("scratch-fork-1"),
     });
-    // When: the scratch marker is attached after planning, as scratch start does
-    const marked = { ...fork, extensions: { ...fork.extensions, [SCRATCH_EXTENSION_KEY]: { id: fork.id } } };
-    // Then
-    const certsDir = appPlannerCertsPaths({ appRoot, cacheRoot }).certsDir;
+    const marked = {
+      ...fork,
+      extensions: {
+        ...fork.extensions,
+        [SCRATCH_EXTENSION_KEY]: { id: fork.id, projectRoot: AbsolutePath.make(appRoot) },
+      },
+    };
+    const certsDir = paths.certsDir;
     expect(leafOwnerDir(fork)).toBe(
       serviceCertificatesOwnerDir(certsDir, routeOwnerFromPlan(marked).ownerKey),
     );
     expect(leafOwnerDir(fork)).not.toBe(leafOwnerDir(user));
+    expect(String(fork.root)).toBe(await realpath(workspace));
   });
 });
 

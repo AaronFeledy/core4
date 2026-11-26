@@ -71,6 +71,7 @@ test.each([
         expect(f.destroyed).toHaveLength(keepOnFailure ? 0 : 1);
         const id = f.applied[0]?.id;
         if (id === undefined) throw new TypeError("Expected applied scratch plan");
+        expect(failure.scratchId).toBe(keepOnFailure ? id : undefined);
         expect(existsSync(join(f.root, "scratch", id))).toBe(keepOnFailure);
         expect(f.entries.size).toBe(keepOnFailure ? 1 : 0);
         expect(await readFile(join(f.sourceRoot, "keep.txt"), "utf8")).toBe("source survives");
@@ -158,6 +159,7 @@ test("scratch apply failure uses the same acquisition cleanup boundary", async (
       expect(failureOf(exit)).toMatchObject({
         _tag: "ScratchAppError",
         cause: { _tag: "ProviderUnavailableError" },
+        remediation: expect.stringContaining("`lando` provider"),
       });
       expect(f.destroyed).toHaveLength(1);
       expect(f.entries.size).toBe(0);

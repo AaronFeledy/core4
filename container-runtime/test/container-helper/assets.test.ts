@@ -22,6 +22,7 @@ import {
 } from "../../src/container-helper.ts";
 
 const target = { os: "linux", arch: "x64" } as const;
+
 const tempDirs: string[] = [];
 afterEach(async () => {
   for (const dir of tempDirs.splice(0)) await rm(dir, { recursive: true, force: true });
@@ -72,19 +73,31 @@ describe("resolveContainerHelper", () => {
     expect(await readFile(resolved.path)).toEqual(Buffer.from(bytes));
   });
 
-  test("uses LANDO_CONTAINER_HELPER_DIR/linux-<arch>/lando-container-helper", async () => {
+  test("delivers the LANDO_CONTAINER_HELPER_DIR helper from the cache and never writes the directory", async () => {
+    // Given prebuilt helper bytes in an override directory
     const root = await tempRoot();
     const path = join(root, "linux-x64", "lando-container-helper");
     await mkdir(join(root, "linux-x64"), { recursive: true });
     await writeFile(path, "helper-bytes");
-    const resolved = await Effect.runPromise(
-      resolveContainerHelper(target, { env: { LANDO_CONTAINER_HELPER_DIR: root } }),
-    );
-    expect(resolved).toEqual({
+    const cacheRoot = await tempRoot();
+    // When it is resolved twice
+    const resolve = () =>
+      Effect.runPromise(
+        resolveContainerHelper(target, { env: { LANDO_CONTAINER_HELPER_DIR: root }, cacheRoot }),
+      );
+    const first = await resolve();
+    const before = (await stat(first.path)).mtimeMs;
+    const second = await resolve();
+    // Then the copy is digest-addressed, written once, and the override directory keeps only its binary
+    const digest = sha256Hex(new TextEncoder().encode("helper-bytes"));
+    expect(first).toEqual({
       target,
-      digest: sha256Hex(new TextEncoder().encode("helper-bytes")),
-      path: AbsolutePath.make(path),
+      digest,
+      path: AbsolutePath.make(join(cacheRoot, "linux-x64", digest, "lando-container-helper")),
     });
+    expect(second.path).toBe(first.path);
+    expect((await stat(second.path)).mtimeMs).toBe(before);
+    expect(await readdir(join(root, "linux-x64"))).toEqual(["lando-container-helper"]);
   });
 
   test("fails with remediation when the override has no binary for the arch", async () => {
@@ -176,14 +189,18 @@ describe("resolveContainerHelper", () => {
   });
 
   test("publishes the profile stub and replaces a stale hook body at its stable path", async () => {
-    // Given a helper directory holding a hook body from an older Lando
+    // Given a delivered helper directory holding a hook body from an older Lando
     const root = await tempRoot();
-    const profile = join(root, "linux-x64", "profile");
-    await mkdir(profile, { recursive: true });
+    await mkdir(join(root, "linux-x64"), { recursive: true });
     await writeFile(join(root, "linux-x64", "lando-container-helper"), "helper-bytes");
+    const cacheRoot = await tempRoot();
+    const profile = join(cacheRoot, "linux-x64", "profile");
+    await mkdir(profile, { recursive: true });
     await writeFile(join(profile, "service-path.sh"), "# older hook body\n");
     // When
-    await Effect.runPromise(resolveContainerHelper(target, { env: { LANDO_CONTAINER_HELPER_DIR: root } }));
+    await Effect.runPromise(
+      resolveContainerHelper(target, { env: { LANDO_CONTAINER_HELPER_DIR: root }, cacheRoot }),
+    );
     // Then the body is current and the stub sources it through the helper mount
     expect(await readFile(join(profile, "service-path.sh"), "utf8")).toBe(CONTAINER_HELPER_PROFILE_HOOK);
     expect(await readFile(join(profile, "zz-lando-service-path.sh"), "utf8")).toBe(

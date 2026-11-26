@@ -1,10 +1,15 @@
 import { RedactionService } from "@lando/redaction/service";
 import { mapFailures } from "@lando/sdk/command-result";
 import { ToolingExecError } from "@lando/sdk/errors";
-import { ProcessRunner, type ShellCommandOptions, type ShellScriptOptions } from "@lando/sdk/services";
+import {
+  ProcessRunner,
+  type ShellCommandOptions,
+  type ShellScriptOptions,
+  StreamFrameSink,
+  type StreamFrameSinkShape,
+  collectExecStream,
+} from "@lando/sdk/services";
 import { Effect, Option } from "effect";
-import { collectExecStream } from "../operations/exec-stream.ts";
-import { StreamFrameSink, type StreamFrameSinkShape } from "../operations/stream-frame-sink.ts";
 import {
   type CapturedHostExecutionContext,
   captureScopedHostExecutionContext,

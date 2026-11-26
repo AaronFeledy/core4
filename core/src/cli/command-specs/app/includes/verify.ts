@@ -7,7 +7,6 @@ import {
   renderIncludesVerifyResult,
 } from "../../../commands/app-includes-verify";
 import type { LandoCommandSpec } from "../../../spec/command-base";
-import { Flags } from "../../../spec/metadata";
 
 export const appIncludesVerifySpec: LandoCommandSpec<
   IncludeVerifyReport,
@@ -20,12 +19,6 @@ export const appIncludesVerifySpec: LandoCommandSpec<
     "Verify the includes lockfile pins every remote include and the pinned content matches, without updating it.",
   namespace: "app",
   bootstrap: "minimal",
-  flags: {
-    format: Flags.string({
-      description: "Output format.",
-      default: "text",
-    }),
-  },
   run: () => appIncludesVerify(),
   completion: (result) => ({ ok: true, exitCode: result.ok ? 0 : 1 }),
   render: (result) => renderIncludesVerifyResult(result, "text"),

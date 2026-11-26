@@ -14,7 +14,7 @@ export interface ScratchRunOptions
   readonly keep: boolean;
   readonly signal?: AbortSignal;
   readonly hostIo?: "cli";
-  readonly envelopeFormat?: boolean;
+  readonly machineFormat?: boolean;
 }
 
 /** Options from the shared CLI parse: declared flags, then the verbatim command tail. */

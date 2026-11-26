@@ -28,7 +28,6 @@ import {
 import * as BunDataMover from "@lando/data-mover/service";
 import * as AppCacheService from "@lando/engine/cache/service";
 import { AGENT_CONTEXT_ENV_ALLOWLIST } from "@lando/engine/config/agent-env";
-import { StreamFrameSink, type StreamFrameSinkFrame } from "@lando/engine/operations/stream-frame-sink";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as ScratchRegistryLayer from "@lando/engine/scratch-app/registry";
 import { makeScratchRegistry } from "@lando/engine/scratch-app/registry";
@@ -43,6 +42,7 @@ import * as BunFileSystem from "@lando/engine/services/file-system";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
 import * as BunProcessRunner from "@lando/engine/services/process-runner";
 import * as EnvSecretStore from "@lando/engine/services/secret-store";
+import { layerUnavailable } from "@lando/engine/subsystems/proxy/api";
 import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService } from "@lando/redaction/service";
@@ -50,6 +50,7 @@ import { createBufferedRendererIO } from "@lando/renderer/io";
 import * as RendererOutput from "@lando/renderer/output";
 import * as RendererRuntime from "@lando/renderer/runtime";
 import { ServiceExecError } from "@lando/sdk/errors";
+import { StreamFrameSink, type StreamFrameSinkFrame } from "@lando/sdk/services";
 import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import * as StateStoreLayer from "@lando/state-store/service";
@@ -289,6 +290,7 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
     }),
   );
   const scratchDeps = Layer.mergeAll(
+    layerUnavailable,
     stateStoreLayer,
     BunFileSystem.layer,
     PrivateFileAccessService.layer,
