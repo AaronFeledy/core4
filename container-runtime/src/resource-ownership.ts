@@ -209,32 +209,39 @@ export const makeResourceOwnershipStore = (providerId: string, state?: PluginSta
   ) {
     const bucket = yield* open(inventoryKey(root));
     yield* bucket
-      .modify((current) => {
-        if (current === null) throw ownershipFailure(providerId);
-        validate(current, root, providerId);
-        const resources = current.resources.filter((item) => keyFor(item) !== keyFor(resource));
-        return [
-          undefined,
-          {
-            ...current,
-            resources,
-            appIds: [...new Set(resources.map((item) => item.appId))],
-            ...(current.adoptions === undefined
-              ? {}
-              : {
-                  adoptions: current.adoptions.map((batch) => ({
-                    ...batch,
-                    receipts: batch.receipts.filter(
-                      (receipt) =>
-                        receipt.kind !== resource.kind ||
-                        receipt.nativeName !== resource.nativeName ||
-                        receipt.appId !== resource.appId,
-                    ),
-                  })),
-                }),
+      .mutate((current) =>
+        Effect.try({
+          try: () => {
+            // Another cleanup may already have retired the last member and removed the file.
+            if (current === null) return { _tag: "Keep" as const, result: undefined };
+            validate(current, root, providerId);
+            const resources = current.resources.filter((item) => keyFor(item) !== keyFor(resource));
+            // An empty batch still records that a data root's legacy adoption was checked.
+            const adoptions = (current.adoptions ?? []).map((batch) => ({
+              ...batch,
+              receipts: batch.receipts.filter(
+                (receipt) =>
+                  receipt.kind !== resource.kind ||
+                  receipt.nativeName !== resource.nativeName ||
+                  receipt.appId !== resource.appId,
+              ),
+            }));
+            if (resources.length === 0 && adoptions.length === 0)
+              return { _tag: "Remove" as const, result: undefined };
+            return {
+              _tag: "Set" as const,
+              value: {
+                ...current,
+                resources,
+                appIds: [...new Set(resources.map((item) => item.appId))],
+                ...(adoptions.length === 0 ? {} : { adoptions }),
+              },
+              result: undefined,
+            };
           },
-        ];
-      })
+          catch: (cause) => ownershipFailure(providerId, cause),
+        }),
+      )
       .pipe(mapFailures((cause) => ownershipFailure(providerId, cause)));
   });
   const recordAdoption = Effect.fn("ResourceOwnership.recordAdoption")(function* (

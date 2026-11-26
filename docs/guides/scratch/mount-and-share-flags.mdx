@@ -57,7 +57,7 @@ lando scratch:start --fork --detach --isolate=full
 
 Do not combine `--mount-cwd` with `--isolate=full`. That pair fails with `ScratchIsolationConflictError` and creates nothing.
 
-On a fork, `--mount-cwd` defaults isolation to `cwd` unless you set `--isolate`.
+On a fork, `--mount-cwd` defaults isolation to `cwd` unless you set `--isolate`. The scratch still owns its own volumes and networks. Destroying it leaves the source app's `info` and `start` working, even if you never started that app.
 
 Isolation decides where the app mount and every mount with a relative source, such as `source: ./assets`, point:
 
@@ -108,6 +108,26 @@ Recipe scratches skip post-init hooks by default. Add `--run-post-init` when the
     <Step name="cleanup">
       <Cleanup />
       <Run command="lando scratch:destroy {{capture:scratchId}}" />
+      <Run command="lando destroy -y --volumes" />
+    </Step>
+  </Scenario>
+  <Scenario id="cwd-fork-destroy-leaves-source-info" layer="e2e" timeout={180000} platforms={["linux"]} tags={["@smoke"]} render={false} reason="Destroying a cwd scratch of a never-started source must leave source info working">
+    <Step name="fork">
+      <UseFixture name="cwd-destroy-source" />
+      <Run command="lando scratch:start --fork --mount-cwd --detach --format=json" capture={{ name: "scratchId", json: "handle.id" }} />
+    </Step>
+    <Step name="destroy-scratch">
+      <Run command="lando scratch:destroy {{capture:scratchId}}" />
+    </Step>
+    <Step name="source-info">
+      <Verify command="lando info --format=json" expect={{ stdout: { regex: "\"service\":\\s*\"web\"" } }} />
+    </Step>
+    <Step name="source-start">
+      <Run command="lando start" />
+      <Verify command="lando info --format=json" expect={{ stdout: { regex: "\"service\":\\s*\"web\"[\\s\\S]*\"status\":\\s*\"running\"" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
       <Run command="lando destroy -y --volumes" />
     </Step>
   </Scenario>

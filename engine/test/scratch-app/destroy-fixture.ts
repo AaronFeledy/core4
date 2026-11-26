@@ -148,6 +148,7 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
     createdAt: DateTime.makeUnsafe(0),
   }));
   const removed: string[] = [];
+  const withdrawnOwnerKeys: string[] = [];
   const entries = new Map<string, ScratchRegistryEntry>();
   const entry: ScratchRegistryEntry = {
     id,
@@ -307,9 +308,10 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
       RouterService,
       RouterService.of({
         ...makeTestRouterService(),
-        removeRoutes: (_owner) =>
+        removeRoutes: (owner) =>
           Effect.sync(() => {
             calls.push("routes");
+            withdrawnOwnerKeys.push(owner.ownerKey);
           }).pipe(
             Effect.andThen(
               options.routeFail
@@ -398,6 +400,7 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
     plan,
     instanceRoot,
     calls,
+    withdrawnOwnerKeys,
     events,
     rootObservations,
     removed,

@@ -18,13 +18,19 @@ const edges = {
   begin: { from: ["fresh"], to: "in-progress" },
   "finish-seeded": { from: ["in-progress"], to: "seeded" },
   "finish-failed": { from: ["in-progress"], to: "failed" },
+  retire: {
+    from: ["fresh", "in-progress", "seeded", "failed", "absent"],
+    to: "absent",
+    settledIn: ["absent"],
+  },
 } as const satisfies Record<string, TransitionEdge<VolumeInitializationPhase | "absent">>;
 
 export const transitions = defineTransitions<VolumeInitializationPhase | "absent">()(edges);
 
 export type VolumeInitializationWrite =
   | { readonly operation: "record-creation"; readonly baseline: VolumeInitializationRecord | null }
-  | { readonly operation: Exclude<keyof typeof edges, "record-creation">; readonly operationId: string };
+  | { readonly operation: "begin" | "finish-seeded" | "finish-failed"; readonly operationId: string }
+  | { readonly operation: "retire" };
 
 const matchesIdentity = (current: VolumeInitializationRecord | null, identity: VolumeIdentity) =>
   current !== null &&
@@ -55,6 +61,8 @@ const meetsPreconditions = (
         "operationId" in current.state &&
         current.state.operationId === write.operationId
       );
+    case "retire":
+      return current === null || matchesIdentity(current, identity);
     default:
       return absurd(write);
   }
@@ -87,25 +95,34 @@ export const planVolumeInitializationWrite = (
   )
     return refused;
   const phase = matchesIdentity(current, identity) ? (current?.state._tag ?? "absent") : "absent";
-  const plan = planTransition(transitions, write.operation, phase, (_to): VolumeInitializationRecord => {
-    switch (write.operation) {
-      case "record-creation":
-        return { identity, state: { _tag: "fresh" } };
-      case "begin":
-      case "finish-seeded":
-      case "finish-failed":
-        return { identity, state: { _tag: edges[write.operation].to, operationId: write.operationId } };
-      default:
-        return absurd(write);
-    }
-  });
+  const plan = planTransition(
+    transitions,
+    write.operation,
+    phase,
+    (_to): VolumeInitializationRecord | null => {
+      switch (write.operation) {
+        case "record-creation":
+          return { identity, state: { _tag: "fresh" } };
+        case "begin":
+        case "finish-seeded":
+        case "finish-failed":
+          return { identity, state: { _tag: edges[write.operation].to, operationId: write.operationId } };
+        case "retire":
+          return null;
+        default:
+          return absurd(write);
+      }
+    },
+  );
   switch (plan._tag) {
     case "Illegal":
       return refused;
     case "Keep":
       return { _tag: "Keep", result: true };
     case "Write":
-      return { _tag: "Set", value: plan.value, result: true };
+      return plan.value === null
+        ? { _tag: "Remove", result: true }
+        : { _tag: "Set", value: plan.value, result: true };
   }
 };
 
@@ -154,5 +171,8 @@ export const volumeInitialization = Effect.fn("StateStore.volumeInitialization")
           }),
         ),
       ),
+    retire: bucket.mutate((current) =>
+      Effect.succeed(planVolumeInitializationWrite(current, identity, { operation: "retire" })),
+    ),
   };
 });

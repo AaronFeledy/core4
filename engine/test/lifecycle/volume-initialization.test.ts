@@ -27,7 +27,7 @@ import { applyActivation } from "../../src/lifecycle/activation-apply.ts";
 import { HostMountPoints } from "../../src/lifecycle/host-mount-points.ts";
 import { prepareServiceCertificates } from "../../src/lifecycle/service-certificates.ts";
 import { withPlanVolumeCoordination } from "../../src/lifecycle/volume-coordination.ts";
-import { recordCreatedVolume } from "../../src/lifecycle/volume-initialization.ts";
+import { recordCreatedVolume, retireCreatedVolume } from "../../src/lifecycle/volume-initialization.ts";
 import { prepareProvider } from "../../src/providers/prepared.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 import { session, unusedResolver } from "./activation-apply-support.ts";
@@ -379,3 +379,24 @@ test.each([
     expect((await Effect.runPromise(initialization.read))?.state._tag).toBe("fresh");
   },
 );
+
+test("retiring a verified scratch deletion removes that generation and ignores keep-volumes replacements", async () => {
+  const stateStore = makeTestStateStore();
+  const initialization = await Effect.runPromise(volumeInitialization(stateStore.service, identity));
+  await Effect.runPromise(initialization.recordCreation);
+  expect(
+    await Effect.runPromise(
+      retireCreatedVolume(identity).pipe(Effect.provideService(StateStore, stateStore.service)),
+    ),
+  ).toBe(true);
+  expect(await Effect.runPromise(initialization.read)).toBeNull();
+  const replacement = { ...identity, generation: "two" };
+  const next = await Effect.runPromise(volumeInitialization(stateStore.service, replacement));
+  await Effect.runPromise(next.recordCreation);
+  expect(
+    await Effect.runPromise(
+      retireCreatedVolume(identity).pipe(Effect.provideService(StateStore, stateStore.service)),
+    ),
+  ).toBe(false);
+  expect((await Effect.runPromise(next.read))?.identity.generation).toBe("two");
+});

@@ -373,6 +373,7 @@ test("v1 inventory upgrades and destroys the legacy app without touching peer-ro
     endpointNamespace: "upgrade-fixture",
   });
   await Effect.runPromise(cleanup(old.root, { volumes: true }).pipe(Effect.provide(state.layer)));
+  // The adoption batch still records that this data root was checked, so the inventory stays.
   expect((await Effect.runPromise(inventory.load(old.root)))?.resources).toEqual([]);
 });
 

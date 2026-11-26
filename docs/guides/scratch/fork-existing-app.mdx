@@ -67,7 +67,7 @@ lando scratch:info <id>
 lando scratch:destroy <id>
 ```
 
-`scratch:destroy` removes the fork's containers, volumes, and snapshots it took. Snapshots of the app you forked stay put, even with `--isolate=cwd`. Add `--keep-volumes` to keep the fork's named volumes and snapshots for inspection; an anonymous volume from an image `VOLUME` path still leaves with its container.
+`scratch:destroy` removes the fork's containers, volumes, and snapshots it took. Snapshots of the app you forked stay put, even with `--isolate=cwd`. A cwd fork still owns its own volumes under the scratch instance, so destroying it does not break `lando info` or `lando start` in the source app. Add `--keep-volumes` to keep the fork's named volumes and snapshots for inspection; an anonymous volume from an image `VOLUME` path still leaves with its container.
 
 A fork whose services have the same build inputs as the app's reuses the images Lando already built for the app. Destroying the fork keeps the newest image Lando built for each of its services for up to seven days, so the next fork of the same stack starts without building.
 
