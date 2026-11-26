@@ -1,12 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, rmdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { APPLIED_STATE_VERSION } from "@lando/container-runtime/applied-state";
-
 import { preflightDataRootPurge } from "@lando/container-runtime/data-root-purge";
 import type { EngineHttpApi } from "@lando/container-runtime/engine-api";
+import { resolveManagedRuntimeDir } from "@lando/container-runtime/podman/managed-runtime-dir";
 import { makePrepareUninstallCleanup } from "@lando/engine/install/uninstall-discovery";
+import { makeLandoPaths } from "@lando/paths";
 import type { ProviderPurgeHook } from "@lando/sdk/plugins";
 import { Effect } from "effect";
 
@@ -237,6 +238,10 @@ describe("uninstall purge sync guard", () => {
   test("removes anonymous volumes with scoped Linux cleanup on managed", async () => {
     // Given: only the managed runtime is available, with containers under both Lando labels.
     const fixture = await withRuntime("ordinary");
+    mkdirSync(join(fixture.data, "runtime"), { recursive: true });
+    const privateDir = await Effect.runPromise(
+      resolveManagedRuntimeDir(makeLandoPaths({ userDataRoot: fixture.data }).runtimeDir),
+    );
     try {
       const command = join(fixture.data, "runtime", "bin", "podman");
       const prefix = [
@@ -275,7 +280,9 @@ describe("uninstall purge sync guard", () => {
       };
       // When: purge sweeps the runtime through injected execution only.
       await (
-        await makePrepareUninstallCleanup([], exec, "linux")(fixture.data, join(fixture.root, "cache"))
+        await makePrepareUninstallCleanup([], exec, "linux", {
+          prepareRuntimeDir: () => Effect.succeed(join(fixture.root, "xdg")),
+        })(fixture.data, join(fixture.root, "cache"))
       ).cleanup();
       // Then: candidate labels discover only; inspected exact IDs authorize removal.
       expect(calls.filter((call) => call.includes("inspect") || call.includes("rm"))).toEqual([
@@ -286,7 +293,32 @@ describe("uninstall purge sync guard", () => {
         [...prefix, "container", "inspect", "legacy-id"],
         [...prefix, "rm", "-f", "--volumes", "exact-legacy-id"],
       ]);
+      if (typeof privateDir === "string") expect(existsSync(privateDir)).toBe(false);
     } finally {
+      if (typeof privateDir === "string" && existsSync(privateDir)) rmdirSync(privateDir);
+      rmSync(fixture.root, { recursive: true, force: true });
+    }
+  });
+
+  test("Linux cleanup without a runtime tree does not create a private runtime dir", async () => {
+    const fixture = await withRuntime("ordinary");
+    const privateDir = await Effect.runPromise(
+      resolveManagedRuntimeDir(makeLandoPaths({ userDataRoot: fixture.data }).runtimeDir),
+    );
+    const calls: string[][] = [];
+    const exec = async (file: string, args: ReadonlyArray<string>) => {
+      calls.push([...args]);
+      if (file !== join(fixture.data, "runtime", "bin", "podman")) throw absentRuntime();
+      return { stdout: args.includes("--version") ? "podman" : "" };
+    };
+    try {
+      await (await makePrepareUninstallCleanup([], exec, "linux")(fixture.data, join(fixture.root, "cache")))
+        .cleanup()
+        .catch(() => undefined);
+      if (typeof privateDir === "string") expect(existsSync(privateDir)).toBe(false);
+      expect(calls).toEqual([]);
+    } finally {
+      if (typeof privateDir === "string" && existsSync(privateDir)) rmdirSync(privateDir);
       rmSync(fixture.root, { recursive: true, force: true });
     }
   });
