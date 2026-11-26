@@ -53,16 +53,15 @@ for (const mode of ["captured request", "captured fiber", "ordinary request", "s
            }`
         : ""
     }`;
-      const leader = `Bun.spawn([process.execPath, "-e", ${JSON.stringify(descendant)}], {
-      stdin:"ignore", stdout:"inherit", stderr:"inherit"
-    }); process.exit(7);`;
+      // A shell leader avoids Bun's CI orphan reaper; the socket owns fixture teardown.
+      const leader = '"$1" -e "$2" </dev/null & exit 7';
       const spawn = spyOn(Bun, "spawn");
       const controller = new AbortController();
       let released = false;
       let peer: Awaited<typeof ready.promise> | undefined;
       const request = {
-        cmd: process.execPath,
-        args: ["-e", leader],
+        cmd: "sh",
+        args: ["-c", leader, "lando-test", process.execPath, descendant],
         ...(mode === "captured fiber" || mode === "captured request" ? { capture: true } : {}),
         ...(mode === "captured fiber" ? {} : { signal: controller.signal }),
       };
