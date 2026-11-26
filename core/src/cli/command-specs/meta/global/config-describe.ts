@@ -18,7 +18,7 @@ export const metaGlobalConfigDescribeSpec: LandoCommandSpec<
   topLevelAlias: "global:config:describe",
   bootstrap: "none",
   resultSchema: ConfigDescribeResultSchema,
-  resultFormats: ["table"],
+  rendersTable: true,
   args: { key: Args.string({ description: "Dot-path key; omit to list root keys.", required: false }) },
   flags: { format: formatFlag },
   run: (input) => describeGlobalConfig(globalConfigOptionsFromInput(input)),

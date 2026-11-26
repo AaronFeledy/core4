@@ -14,11 +14,11 @@ import type { CertsDoctorStatus } from "../../src/cli/commands/doctor-certs-stat
 import { certsSubsystemCheck } from "../../src/cli/commands/doctor-certs-status.ts";
 import { DoctorFinding, type DoctorSectionResult } from "../../src/cli/commands/doctor-contract.ts";
 import { HostDnsResolver } from "../../src/cli/commands/doctor-host-dns.ts";
-import { renderDoctorReportAsNdjson } from "../../src/cli/commands/doctor-render-ndjson.ts";
 import { renderDoctorReport } from "../../src/cli/commands/doctor-render-text.ts";
 import { makeDoctorReport } from "../../src/cli/commands/doctor-report.ts";
 import { HOST_DNS_SPEC, PROXY_SPEC } from "../../src/cli/commands/doctor-subsystem-checks.ts";
 import { subsystemDoctor } from "../../src/cli/commands/doctor-subsystems.ts";
+import { renderDoctorReportAsNdjson } from "./doctor-report-fixture";
 import { DefaultSubsystemDoctorLayer, doctorPathsLayer } from "./doctor-subsystem-fixture.ts";
 
 const EXPECTED_SUBSYSTEMS = ["router", "ssh", "host-dns"] as const;

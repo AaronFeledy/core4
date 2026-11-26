@@ -79,7 +79,6 @@ import { unavailableToolingError } from "./tooling-unavailable";
 import { setActiveTrace } from "./trace-selection";
 import { unknownCommandError } from "./unknown-command-error";
 
-export { renderCompiledDoctorReport } from "./cli-adapters/app-lifecycle";
 export { normalizeCompiledCommandArgv } from "./compiled-normalize";
 export { compiledCommandInputFromArgv };
 
@@ -237,6 +236,8 @@ const runCompiledCli = async (
   };
 
   if (owner.kind === "help") {
+    // Help produces only text, json, and yaml; table and ndjson are refused with exit 2.
+    if (await rejectUnsupportedResultFormat("cli:help", {}, { context })) return;
     if (hostProxy !== undefined) {
       const target = tokens.argv.find((arg) => !arg.startsWith("-"));
       if (target === undefined || tokens.argv.includes("--all")) throw hostProxyDenied("cli:help");

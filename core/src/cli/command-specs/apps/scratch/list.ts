@@ -11,7 +11,7 @@ import { Flags } from "../../../spec/metadata";
 export const appsScratchListSpec: LandoCommandSpec<ReadonlyArray<ScratchSummary>> = {
   resultSchema: ScratchListResultSchema,
   id: "apps:scratch:list",
-  resultFormats: ["table"],
+  rendersTable: true,
   mcpAllowed: true,
   summary: "List scratch Lando apps.",
   namespace: "apps",

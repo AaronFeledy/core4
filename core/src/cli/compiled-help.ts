@@ -17,7 +17,7 @@ import { type ThisAppHelpRow, commonRows } from "./cold-path-output";
 import { buildCommandCatalog } from "./command-catalog";
 import { activeRendererMode, activeResultFormat, emitResultLine } from "./compiled-runtime";
 import { landoFlagsForPolicy, specOwnerPolicy, toolingPolicy } from "./flag-claims";
-import { formatFlagDefsForCommand, isEnvelopeResultFormat } from "./format-flags";
+import { commandResultFormats, formatFlagDefsForCommand, isEnvelopeResultFormat } from "./format-flags";
 import { COMMAND_REGISTRY_MANIFEST } from "./generated/command-registry-manifest";
 import { HelpCommandDescriptor, toolingHelpFields } from "./help-command-descriptor";
 import { commandHelpInput } from "./help-command-input";
@@ -228,6 +228,7 @@ export const printCommandHelp = (
         extras: [],
         summary: entry.spec.summary,
         source: "built-in",
+        advertisedFormats: [...commandResultFormats(entry.spec)],
         input: commandHelpInput(entry.spec),
         landoFlags: landoFlagsForPolicy(specOwnerPolicy(entry.spec, formatFlagDefsForCommand(entry.spec))),
       },

@@ -11,22 +11,19 @@ import {
 import { renderPreCommandFailure } from "./spec/command-boundary";
 
 /**
- * How to serialize the refusal of a format we cannot emit. The requested
- * format is by definition unusable, so the refusal is carried by whichever
- * surface the caller already asked for: `ndjson` is a machine request and gets
- * the JSON envelope, and so does any run that also passed `--renderer=json`,
- * `--json`, or `--jq`. Everything else is a human asking for a human rendering
- * and gets the plain diagnostic.
+ * How to serialize the refusal of a format we cannot emit. Under `--format=ndjson`,
+ * the refusal is a stream result frame. For other machine requests
+ * (`--renderer=json`, `--json`, `--jq`) the refusal is a JSON envelope.
+ * Human requests get the plain diagnostic.
  */
 const refusalOutputMode = (
   requested: ResultFormat,
-): { readonly rendererMode: "json" | "plain"; readonly resultFormat: ResultFormat } =>
-  requested === "ndjson" ||
-  activeRendererMode === "json" ||
-  activeJsonControl.mode !== "off" ||
-  activeJq !== undefined
-    ? { rendererMode: "json", resultFormat: "json" }
-    : { rendererMode: "plain", resultFormat: "text" };
+): { readonly rendererMode: "json" | "plain"; readonly resultFormat: ResultFormat } => {
+  if (requested === "ndjson") return { rendererMode: "json", resultFormat: "ndjson" };
+  if (activeRendererMode === "json" || activeJsonControl.mode !== "off" || activeJq !== undefined)
+    return { rendererMode: "json", resultFormat: "json" };
+  return { rendererMode: "plain", resultFormat: "text" };
+};
 
 /**
  * Refuses a `--format` value the resolved command does not implement, naming

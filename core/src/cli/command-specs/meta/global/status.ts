@@ -25,7 +25,7 @@ export const globalStatusOptionsFromInput = (input: unknown): GlobalStatusOption
 export const metaGlobalStatusSpec: LandoCommandSpec<GlobalStatusResult> = {
   resultSchema: GlobalStatusResultSchema,
   id: "meta:global:status",
-  resultFormats: ["table"],
+  rendersTable: true,
   summary: "Show runtime status for the host-level global Lando app.",
   description: "Show runtime status for the host-level global Lando app.",
   namespace: "meta",

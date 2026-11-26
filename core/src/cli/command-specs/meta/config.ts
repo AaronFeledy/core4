@@ -44,7 +44,7 @@ export const metaConfigSpec: LandoCommandSpec<ConfigResult> = {
   resultSchema: ConfigResultSchema,
   redactionTokens: configRedactionTokens,
   id: "meta:config",
-  resultFormats: ["table"],
+  rendersTable: true,
   summary: "Read or write the global Lando config.",
   description: "Read or write the global Lando config.",
   namespace: "meta",

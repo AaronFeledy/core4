@@ -52,7 +52,7 @@ export const appsListIncludeScratchFromInput = (input: unknown): boolean => {
 export const listSpec: LandoCommandSpec<ListServicesResult> = {
   resultSchema: AppsListResultSchema,
   id: "apps:list",
-  resultFormats: ["table"],
+  rendersTable: true,
   mcpAllowed: true,
   helpGroup: "common",
   summary: "List Lando apps applied across discovered providers on this host.",

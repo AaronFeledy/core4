@@ -62,19 +62,23 @@ describe("a format the command does not implement", () => {
     expect(result.stderr).not.toContain("valid recipe manifest");
   });
 
-  test("--format=ndjson answers a machine request with a machine failure envelope", async () => {
+  test("--format=ndjson answers a machine request with a stream result frame", async () => {
     const result = await runLando(["version", "--format=ndjson"]);
 
     expect(result.exitCode).toBe(2);
-    const envelope = JSON.parse(result.stdout) as {
-      readonly ok: boolean;
-      readonly command: string;
-      readonly error: { readonly _tag: string; readonly remediation: string };
+    const frame = JSON.parse(result.stdout) as {
+      readonly _tag: string;
+      readonly envelope: {
+        readonly ok: boolean;
+        readonly command: string;
+        readonly error: { readonly _tag: string; readonly remediation: string };
+      };
     };
-    expect(envelope.ok).toBe(false);
-    expect(envelope.command).toBe("meta:version");
-    expect(envelope.error._tag).toBe("RendererSelectionError");
-    expect(envelope.error.remediation).toContain("text, json, yaml");
+    expect(frame._tag).toBe("result");
+    expect(frame.envelope.ok).toBe(false);
+    expect(frame.envelope.command).toBe("meta:version");
+    expect(frame.envelope.error._tag).toBe("RendererSelectionError");
+    expect(frame.envelope.error.remediation).toContain("text, json, yaml");
   });
 
   test("an unsupported format is not laundered into a key listing by --json", async () => {
@@ -83,6 +87,26 @@ describe("a format the command does not implement", () => {
     expect(result.exitCode).toBe(2);
     expect(result.stdout).not.toContain('"core"');
   });
+});
+
+describe("an ndjson run that fails before the command runs", () => {
+  // Nothing ran, so the failure is one stream result frame.
+  for (const [label, args, command] of [
+    ["an unknown flag on a streaming command", ["logs", "--format=ndjson", "--no-such-flag"], "app:logs"],
+    ["an unknown command", ["--format=ndjson", "no-such-command-anywhere"], "cli:unknown-command"],
+  ] as const) {
+    test(`reports ${label} as one stream result frame`, async () => {
+      const result = await runLando(args);
+
+      expect(result.exitCode).toBe(2);
+      const lines = result.stdout.trim().split("\n");
+      expect(lines).toHaveLength(1);
+      const frame = JSON.parse(lines[0] ?? "") as Record<string, unknown>;
+      expect(frame._tag).toBe("result");
+      const envelope = frame.envelope as Record<string, unknown>;
+      expect(envelope).toMatchObject({ apiVersion: "v4", command, ok: false });
+    });
+  }
 });
 
 describe("a format the command does implement", () => {

@@ -34,7 +34,7 @@ export const metaGlobalConfigSpec: LandoCommandSpec<GlobalConfigResult> = {
   resultSchema: GlobalConfigResultSchema,
   redactionTokens: configRedactionTokens,
   id: "meta:global:config",
-  resultFormats: ["table"],
+  rendersTable: true,
   summary: "Read or write the host-level global Lando app Landofile stack.",
   description: "Read or write the host-level global Lando app Landofile stack.",
   namespace: "meta",

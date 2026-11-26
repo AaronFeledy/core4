@@ -6,12 +6,12 @@ import { ConfigService, InteractionService, Renderer } from "@lando/sdk/services
 import { Effect, Option } from "effect";
 import type { RecipeInitReview } from "../../recipes/prepared-init";
 import { CliInvocation } from "../../runtime/invocation-context";
-import { type ResultFormat, isEnvelopeResultFormat } from "../format-flags";
+import { type ResultFormat, isMachineResultFormat } from "../format-flags";
 import type { InitAppOptions } from "./init-options";
 import type { InitReviewRoutes } from "./init-review-routes";
 
 export const initUsesMachineOutput = (format: ResultFormat, rendererId: string): boolean =>
-  rendererId === "json" || isEnvelopeResultFormat(format) || format === "ndjson";
+  rendererId === "json" || isMachineResultFormat(format);
 
 const routeNotes = (routes: InitReviewRoutes): readonly string[] => {
   switch (routes.status) {
