@@ -119,22 +119,22 @@ const deliverFromCache = async (
   return artifact(target, path, bytes);
 };
 
-/** Delivers a source-built helper the way compiled mode delivers the embedded one. */
-export const publishSourceContainerHelper = (
-  sourceArtifact: ContainerHelperArtifact,
+/**
+ * Delivers a helper read from disk, a source build or `LANDO_CONTAINER_HELPER_DIR`,
+ * the way compiled mode delivers the embedded one: both directories are inputs.
+ */
+const deliverContainerHelperFile = (
+  input: ContainerHelperArtifact,
   cacheRoot: string,
 ): Promise<ContainerHelperArtifact> =>
   deliverFromCache(
-    sourceArtifact.target,
+    input.target,
     cacheRoot,
-    sourceArtifact.digest,
-    async () => new Uint8Array(await readFile(sourceArtifact.path)),
+    input.digest,
+    async () => new Uint8Array(await readFile(input.path)),
   );
 
-const fromSourceBuild = async (
-  target: ContainerHelperTarget,
-  cacheRoot: string,
-): Promise<ContainerHelperArtifact> => {
+const fromSourceBuild = async (target: ContainerHelperTarget): Promise<ContainerHelperArtifact> => {
   await containerHelperNotices(join(CONTAINER_HELPER_SOURCE_ROOT, "dist"));
   const recorded = await readIfPresent(CONTAINER_HELPER_SOURCE_DIGEST_PATH);
   if (
@@ -142,8 +142,7 @@ const fromSourceBuild = async (
     new TextDecoder().decode(recorded).trim() !== (await containerHelperSourceDigest())
   )
     throw new HelperResolveFailure("The built container helper is missing or older than its sources.");
-  const sourceArtifact = await fromFile(target, containerHelperDistPath(target.arch));
-  return publishSourceContainerHelper(sourceArtifact, cacheRoot);
+  return fromFile(target, containerHelperDistPath(target.arch));
 };
 
 const embeddedPattern = (target: ContainerHelperTarget): RegExp =>
@@ -267,7 +266,8 @@ const unavailable = (target: ContainerHelperTarget, cause: unknown, standalone: 
  * Resolves the helper executable for a container target:
  * `LANDO_CONTAINER_HELPER_DIR/linux-<arch>/lando-container-helper` when set, the
  * embedded copy in a compiled binary, otherwise the source build in
- * `core/container-helper/dist` (which must match the current sources).
+ * `core/container-helper/dist` (which must match the current sources). Every
+ * source is delivered from the digest-addressed cache under `cacheRoot`.
  */
 export const resolveContainerHelper = (
   target: ContainerHelperTarget,
@@ -282,20 +282,22 @@ export const resolveContainerHelper = (
   return Effect.tryPromise({
     try: async () => {
       const override = (input.env ?? process.env)[CONTAINER_HELPER_DIR_ENV];
+      const cacheRoot = input.cacheRoot ?? makeLandoPaths().toolDownloadsDir("container-helper");
       let artifact: ContainerHelperArtifact;
       if (override !== undefined && override.length > 0) {
-        artifact = await fromFile(target, resolve(override, `linux-${target.arch}`, CONTAINER_HELPER_FILE));
+        const built = await fromFile(
+          target,
+          resolve(override, `linux-${target.arch}`, CONTAINER_HELPER_FILE),
+        );
+        artifact = await deliverContainerHelperFile(built, cacheRoot);
       } else if (standalone) {
         artifact = await extractEmbeddedContainerHelper({
           target,
           files: input.embeddedFiles ?? embeddedFiles(),
-          cacheRoot: input.cacheRoot ?? makeLandoPaths().toolDownloadsDir("container-helper"),
+          cacheRoot,
         });
       } else {
-        artifact = await fromSourceBuild(
-          target,
-          input.cacheRoot ?? makeLandoPaths().toolDownloadsDir("container-helper"),
-        );
+        artifact = await deliverContainerHelperFile(await fromSourceBuild(target), cacheRoot);
       }
       await publishContainerHelperCommand(artifact);
       return artifact;

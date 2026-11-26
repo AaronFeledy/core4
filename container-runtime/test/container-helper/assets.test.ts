@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { chmod, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { gzipSync } from "node:zlib";
 import { makeLandoPaths } from "@lando/paths";
 import { sha256Hex } from "@lando/sdk/digest";
@@ -12,12 +12,10 @@ import {
   type EmbeddedHelperFile,
   extractEmbeddedContainerHelper,
   layerWith,
-  publishSourceContainerHelper,
   resolveContainerHelper,
 } from "../../src/container-helper/assets.ts";
 import {
   CONTAINER_HELPER_COMMANDS,
-  CONTAINER_HELPER_FILE,
   CONTAINER_HELPER_PROFILE_HOOK,
   CONTAINER_HELPER_PROFILE_STUB,
   containerHelperCommandShim,
@@ -75,19 +73,31 @@ describe("resolveContainerHelper", () => {
     expect(await readFile(resolved.path)).toEqual(Buffer.from(bytes));
   });
 
-  test("uses LANDO_CONTAINER_HELPER_DIR/linux-<arch>/lando-container-helper", async () => {
+  test("delivers the LANDO_CONTAINER_HELPER_DIR helper from the cache and never writes the directory", async () => {
+    // Given prebuilt helper bytes in an override directory
     const root = await tempRoot();
     const path = join(root, "linux-x64", "lando-container-helper");
     await mkdir(join(root, "linux-x64"), { recursive: true });
     await writeFile(path, "helper-bytes");
-    const resolved = await Effect.runPromise(
-      resolveContainerHelper(target, { env: { LANDO_CONTAINER_HELPER_DIR: root } }),
-    );
-    expect(resolved).toEqual({
+    const cacheRoot = await tempRoot();
+    // When it is resolved twice
+    const resolve = () =>
+      Effect.runPromise(
+        resolveContainerHelper(target, { env: { LANDO_CONTAINER_HELPER_DIR: root }, cacheRoot }),
+      );
+    const first = await resolve();
+    const before = (await stat(first.path)).mtimeMs;
+    const second = await resolve();
+    // Then the copy is digest-addressed, written once, and the override directory keeps only its binary
+    const digest = sha256Hex(new TextEncoder().encode("helper-bytes"));
+    expect(first).toEqual({
       target,
-      digest: sha256Hex(new TextEncoder().encode("helper-bytes")),
-      path: AbsolutePath.make(path),
+      digest,
+      path: AbsolutePath.make(join(cacheRoot, "linux-x64", digest, "lando-container-helper")),
     });
+    expect(second.path).toBe(first.path);
+    expect((await stat(second.path)).mtimeMs).toBe(before);
+    expect(await readdir(join(root, "linux-x64"))).toEqual(["lando-container-helper"]);
   });
 
   test("fails with remediation when the override has no binary for the arch", async () => {
@@ -179,14 +189,18 @@ describe("resolveContainerHelper", () => {
   });
 
   test("publishes the profile stub and replaces a stale hook body at its stable path", async () => {
-    // Given a helper directory holding a hook body from an older Lando
+    // Given a delivered helper directory holding a hook body from an older Lando
     const root = await tempRoot();
-    const profile = join(root, "linux-x64", "profile");
-    await mkdir(profile, { recursive: true });
+    await mkdir(join(root, "linux-x64"), { recursive: true });
     await writeFile(join(root, "linux-x64", "lando-container-helper"), "helper-bytes");
+    const cacheRoot = await tempRoot();
+    const profile = join(cacheRoot, "linux-x64", "profile");
+    await mkdir(profile, { recursive: true });
     await writeFile(join(profile, "service-path.sh"), "# older hook body\n");
     // When
-    await Effect.runPromise(resolveContainerHelper(target, { env: { LANDO_CONTAINER_HELPER_DIR: root } }));
+    await Effect.runPromise(
+      resolveContainerHelper(target, { env: { LANDO_CONTAINER_HELPER_DIR: root }, cacheRoot }),
+    );
     // Then the body is current and the stub sources it through the helper mount
     expect(await readFile(join(profile, "service-path.sh"), "utf8")).toBe(CONTAINER_HELPER_PROFILE_HOOK);
     expect(await readFile(join(profile, "zz-lando-service-path.sh"), "utf8")).toBe(
@@ -223,53 +237,6 @@ describe("resolveContainerHelper", () => {
     expect((await readdir(join(arch, "engines"))).filter((name) => name.includes(".lando-stage"))).toEqual(
       [],
     );
-  });
-
-  test("publishSourceContainerHelper places the binary at a digest-addressed cache path", async () => {
-    // Given: a fake source artifact whose binary lives directly in an arch dir (no digest subdir)
-    const srcRoot = await tempRoot();
-    const srcPath = join(srcRoot, `linux-${target.arch}`, CONTAINER_HELPER_FILE);
-    await mkdir(dirname(srcPath), { recursive: true });
-    const bytes = new TextEncoder().encode("fake-source-binary");
-    await writeFile(srcPath, bytes, { mode: 0o755 });
-    const fakeArtifact = {
-      target,
-      digest: sha256Hex(bytes),
-      path: AbsolutePath.make(srcPath),
-    };
-    const cacheRoot = await tempRoot();
-
-    // When: the binary is published to the cache
-    const cached = await publishSourceContainerHelper(fakeArtifact, cacheRoot);
-
-    // Then: the returned artifact path is digest-addressed inside the cache root
-    expect(cached.path).toBe(
-      AbsolutePath.make(join(cacheRoot, `linux-${target.arch}`, fakeArtifact.digest, CONTAINER_HELPER_FILE)),
-    );
-    expect(cached.digest).toBe(fakeArtifact.digest);
-    // And: the binary bytes are present at the cache path
-    expect(new Uint8Array(await readFile(cached.path))).toEqual(bytes);
-    // And: the original source dir was not modified
-    expect((await readdir(dirname(srcPath))).sort()).toEqual([CONTAINER_HELPER_FILE]);
-  });
-
-  test("publishSourceContainerHelper reuses an already-cached binary without re-writing it", async () => {
-    const srcRoot = await tempRoot();
-    const srcPath = join(srcRoot, `linux-${target.arch}`, CONTAINER_HELPER_FILE);
-    await mkdir(dirname(srcPath), { recursive: true });
-    const bytes = new TextEncoder().encode("reuse-binary");
-    await writeFile(srcPath, bytes, { mode: 0o755 });
-    const fakeArtifact = {
-      target,
-      digest: sha256Hex(bytes),
-      path: AbsolutePath.make(srcPath),
-    };
-    const cacheRoot = await tempRoot();
-    const first = await publishSourceContainerHelper(fakeArtifact, cacheRoot);
-    const before = (await stat(first.path)).mtimeMs;
-    const second = await publishSourceContainerHelper(fakeArtifact, cacheRoot);
-    expect(second.path).toBe(first.path);
-    expect((await stat(second.path)).mtimeMs).toBe(before);
   });
 });
 

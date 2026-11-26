@@ -3,12 +3,14 @@ import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { deserialize } from "node:v8";
+import { containerHelperDelivery } from "@lando/container-runtime/container-helper";
+import { resolveContainerHelper } from "@lando/container-runtime/container-helper/assets";
 import { serviceContainerName } from "@lando/container-runtime/plan";
 import { APP_PLAN_CACHE_HEADER_BYTES } from "@lando/engine/cache/app-plan";
 import { retireTempRoots } from "@lando/engine/testing/temp-root-retirement";
 import { makeLandoPaths } from "@lando/paths";
 import { CurrentExecutableAppPlan, StreamFrame } from "@lando/sdk/schema";
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
 
 // Explicit local-daemon opt-in only; never inherit a managed runtime or user app.
 const socket = process.env.LANDO_TEST_DOCKER_SOCKET;
@@ -139,6 +141,17 @@ for (const variant of variants.flatMap((entry) =>
           const payload = deserialize(cache.subarray(APP_PLAN_CACHE_HEADER_BYTES)) as { plan: unknown };
           const plan = Schema.decodeUnknownSync(CurrentExecutableAppPlan)(payload.plan);
           expect(Object.values(plan.services).flatMap((service) => service.mounts)).toEqual([]);
+          // The CLI delivers the helper from its own cache root; bind the directory it will verify.
+          const helper = await Effect.runPromise(
+            resolveContainerHelper(
+              { os: "linux", arch: process.arch === "arm64" ? "arm64" : "x64" },
+              {
+                env,
+                standalone: false,
+                cacheRoot: makeLandoPaths({ env }).toolDownloadsDir("container-helper"),
+              },
+            ),
+          );
           id = await docker([
             "create",
             "--network",
@@ -146,7 +159,7 @@ for (const variant of variants.flatMap((entry) =>
             "--name",
             serviceContainerName(plan, "web"),
             "--mount",
-            `type=bind,src=${env.LANDO_CONTAINER_HELPER_DIR}/linux-${process.arch},dst=/run/lando/helper,readonly`,
+            `type=bind,src=${containerHelperDelivery(helper).source},dst=/run/lando/helper,readonly`,
             "alpine:3.20",
             "sleep",
             "300",
