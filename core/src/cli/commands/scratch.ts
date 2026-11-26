@@ -460,7 +460,8 @@ export const scratchStop = (
     Effect.flatMap(ScratchAppService, (service) => service.stop(validId)),
   );
 
-export const renderScratchStopResult = (result: ScratchHandle): string => `stopped: ${result.id}`;
+export const renderScratchStopResult = (result: ScratchHandle): string =>
+  `stopped and destroyed: ${result.id}`;
 
 export const scratchDestroy = (
   id: string,
