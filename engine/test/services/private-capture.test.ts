@@ -10,9 +10,10 @@ import {
   type ProcessResult,
   ProcessRunner,
   ShellRunner,
+  StreamFrameSink,
+  type StreamFrameSinkFrame,
 } from "@lando/sdk/services";
 import { Effect, Queue, Stream } from "effect";
-import { StreamFrameSink, type StreamFrameSinkFrame } from "../../src/operations/stream-frame-sink.ts";
 import * as Process from "../../src/services/process-runner.ts";
 import * as Shell from "../shell-runner.ts";
 

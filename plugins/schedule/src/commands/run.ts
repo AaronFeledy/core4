@@ -6,18 +6,20 @@ import { Effect } from "effect";
 import { runScheduleJob } from "../run-job.ts";
 import { type ScheduleRunResult, ScheduleRunResult as ScheduleRunResultSchema } from "../schemas.ts";
 
+// Live runs already streamed the job's output; this prints only output a caller collected.
 const render: NonNullable<ExecutableCommandSpec<ScheduleRunResult>["render"]> = Effect.fnUntraced(function* ({
   result,
 }) {
   const renderer = yield* Renderer;
-  if (result.stdout.length > 0) yield* renderer.output.stdout(result.stdout);
-  if (result.stderr.length > 0) yield* renderer.output.stderr(result.stderr);
+  if (result.stdout !== undefined && result.stdout.length > 0) yield* renderer.output.stdout(result.stdout);
+  if (result.stderr !== undefined && result.stderr.length > 0) yield* renderer.output.stderr(result.stderr);
 });
 
 export const spec = {
   id: "schedule:run",
   namespace: "schedule",
   bootstrap: "app",
+  streamingMode: "live",
   flags: {
     service: { type: "string", description: "Parent service when the job name is used more than once." },
   },

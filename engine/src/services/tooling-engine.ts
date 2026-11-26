@@ -4,15 +4,15 @@ import {
   type CommandSpec,
   EnvironmentValueResolver,
   type RuntimeProviderShape,
+  StreamFrameSink,
   ToolingEngine,
   type ToolingEngineResult,
   type ToolingInvocation,
+  collectExecStream,
 } from "@lando/sdk/services";
 import { Effect, Layer } from "effect";
 import { withAgentContextEnv } from "../config/agent-env.ts";
 import { withTerminalEnv } from "../config/terminal-env.ts";
-import { collectExecStream } from "../operations/exec-stream.ts";
-import { StreamFrameSink } from "../operations/stream-frame-sink.ts";
 import { resolveContainerCwd } from "../subsystems/host-proxy/cwd-remap.ts";
 import { HostExecutionDefaults } from "./host-execution-context.ts";
 

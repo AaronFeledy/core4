@@ -17,6 +17,8 @@ const main = async () => {
         ...descriptor,
         pluginName: plugin.name,
         source: "bundled",
+        // Cold surfaces derive the command's advertised formats from this, without the module.
+        ...(spec.streamingMode === undefined ? {} : { streamingMode: spec.streamingMode }),
         flags: pluginFlagDefinitions(spec),
         args: spec.args ?? {},
       });
@@ -27,10 +29,10 @@ const main = async () => {
     [
       "/**\n * **GENERATED FILE** — do not edit by hand.\n *\n * Regenerate via `bun run codegen:bundled-command-descriptors`.\n */",
       "",
-      'import type { PluginManifest, CommandContribution } from "@lando/sdk/schema";',
+      'import type { PluginManifest, CommandContribution, CommandStreamingMode } from "@lando/sdk/schema";',
       'import type { ExecutableCommandArgSpec } from "@lando/sdk/plugins";',
       'import type { OclifFlagDefinition } from "../compiled-argv";',
-      'export interface BundledCommandDescriptor extends CommandContribution { readonly pluginName: string; readonly source: "bundled"; readonly flags: Readonly<Record<string, OclifFlagDefinition & { readonly default?: string | number | boolean }>>; readonly args: Readonly<Record<string, ExecutableCommandArgSpec>>; }',
+      'export interface BundledCommandDescriptor extends CommandContribution { readonly pluginName: string; readonly source: "bundled"; readonly streamingMode?: CommandStreamingMode; readonly flags: Readonly<Record<string, OclifFlagDefinition & { readonly default?: string | number | boolean }>>; readonly args: Readonly<Record<string, ExecutableCommandArgSpec>>; }',
       `export const BUNDLED_COMMAND_DESCRIPTORS: readonly BundledCommandDescriptor[] = ${JSON.stringify(commands)};`,
       `export const BUNDLED_PLUGIN_MANIFESTS: readonly (typeof PluginManifest.Encoded)[] = ${JSON.stringify(BUNDLED_PLUGIN_MODULES.map((plugin) => plugin.manifest))};`,
     ].join("\n"),
