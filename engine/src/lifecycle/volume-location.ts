@@ -1,3 +1,4 @@
+import { sep } from "node:path";
 import { VOLUME_INSTANCE_LABEL } from "@lando/container-runtime/labels";
 import {
   type AdoptionReceipt,
@@ -6,6 +7,7 @@ import {
   decideDataRootOwnership,
 } from "@lando/container-runtime/native-ownership";
 import { ownedVolumeLockTier } from "@lando/container-runtime/volume-ownership";
+import { makeLandoPaths } from "@lando/paths";
 import { mapFailures } from "@lando/sdk/command-result";
 import { VolumeOperationError } from "@lando/sdk/errors";
 import type { AppPlan, DataStorePlan, VolumeIdentity, VolumeLocator, VolumeRef } from "@lando/sdk/schema";
@@ -13,6 +15,7 @@ import { LANDO_DATA_ROOT_LABEL, type PhysicalVolumeLockTier, planDataId } from "
 import { type ProviderError, RuntimeProviderRegistry, type RuntimeProviderShape } from "@lando/sdk/services";
 import { Effect, Option } from "effect";
 
+import { scratchIdForInstanceRoot } from "../scratch-app/identity.ts";
 import { shellArg } from "../services/shell-quote.ts";
 
 // Locating a plan's volumes and proving they did not change while their locks were held.
@@ -117,14 +120,38 @@ const ownerRootMismatch = (
   ) {
     return undefined;
   }
+  const volume = `Volume ${locator.nativeName}${locator.nativeName === store.name ? "" : ` (store ${store.name})`}`;
+  const owner = locator.identity.ownerRoot;
+  const self = plan.identity?.appRoot ?? plan.root;
+  const scratchDir =
+    plan.identity?.dataRoot === undefined ? undefined : dataRootScratchDir(plan.identity.dataRoot);
+  const ownerScratch = scratchDir === undefined ? undefined : scratchIdForInstanceRoot(scratchDir, owner);
+  const selfScratch = scratchDir === undefined ? undefined : scratchIdForInstanceRoot(scratchDir, self);
+  const selfLabel = selfScratch === undefined ? self : `scratch app ${selfScratch}`;
+  if (ownerScratch !== undefined)
+    return new VolumeOperationError({
+      providerId,
+      operation: "coordinateVolume",
+      store: store.name,
+      message: `${volume} belongs to scratch app ${ownerScratch}, not ${selfLabel}.`,
+      remediation: `Run lando scratch:destroy ${shellArg(ownerScratch)} to remove that scratch app and its volumes (lando scratch:gc --prune if lando scratch:list no longer shows it), or give this app a different name: or this service a different explicit store:.`,
+    });
   return new VolumeOperationError({
     providerId,
     operation: "coordinateVolume",
     store: store.name,
-    message: `Volume ${locator.nativeName}${locator.nativeName === store.name ? "" : ` (store ${store.name})`} belongs to the app at ${locator.identity.ownerRoot}, not ${plan.identity?.appRoot ?? plan.root}.`,
-    remediation: `If that folder still exists, give this app a different name: or this service a different explicit store:. An app keeps the data name it first started with after a rename, so renaming the other app does not free its volumes. If it is gone, run lando destroy --root ${shellArg(locator.identity.ownerRoot)} --volumes to delete its leftovers (this deletes that data), or move the app back there. lando doctor lists app folders that no longer exist.`,
+    message: `${volume} belongs to the app at ${owner}, not ${selfLabel}.`,
+    remediation: `If that folder still exists, give this app a different name: or this service a different explicit store:. An app keeps the data name it first started with after a rename, so renaming the other app does not free its volumes. If it is gone, run lando destroy --root ${shellArg(owner)} --volumes to delete its leftovers (this deletes that data), or move the app back there. lando doctor lists app folders that no longer exist.`,
   });
 };
+
+/** The scratch directory of a canonical data root, as a plan's identity records it. */
+const dataRootScratchDir = (dataRoot: string): string =>
+  makeLandoPaths({
+    userDataRoot: dataRoot,
+    platform: sep === "\\" ? "win32" : "linux",
+    sources: { user: false, env: false },
+  }).scratchDir;
 
 const locatePlanVolumes = (
   plan: AppPlan,
