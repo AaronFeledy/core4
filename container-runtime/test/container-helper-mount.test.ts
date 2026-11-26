@@ -70,8 +70,11 @@ test("service creation lowers the helper directory without mutating its logical 
   expect(plan.services[service.name]?.mounts).toEqual([]);
 });
 
-test("helper delivery preserves the digest-relative executable and source-build path", () => {
+test("helper delivery resolves the executable through the digest subdirectory when present", () => {
   const digest = "c".repeat(64);
+  // Digest-addressed path (the normal case for both source and compiled mode):
+  // the helper lives at <arch-dir>/<digest>/lando-container-helper, so the
+  // container-relative executable includes the digest segment.
   expect(
     containerHelperDelivery({
       target,
@@ -83,11 +86,14 @@ test("helper delivery preserves the digest-relative executable and source-build 
     target: "/run/lando/helper",
     executable: `/run/lando/helper/${digest}/lando-container-helper`,
   });
+  // Non-digest path (e.g. a custom LANDO_CONTAINER_HELPER_DIR that places the binary
+  // directly in the arch dir without a digest subdirectory): the executable resolves
+  // at the arch-dir level.
   expect(
     containerHelperDelivery({
       target,
       digest,
-      path: AbsolutePath.make("/dist/linux-x64/lando-container-helper"),
+      path: AbsolutePath.make("/helpers/linux-x64/lando-container-helper"),
     }).executable,
   ).toBe("/run/lando/helper/lando-container-helper");
 });

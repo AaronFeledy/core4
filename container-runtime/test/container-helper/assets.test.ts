@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { chmod, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { gzipSync } from "node:zlib";
 import { makeLandoPaths } from "@lando/paths";
 import { sha256Hex } from "@lando/sdk/digest";
@@ -12,16 +12,19 @@ import {
   type EmbeddedHelperFile,
   extractEmbeddedContainerHelper,
   layerWith,
+  publishSourceContainerHelper,
   resolveContainerHelper,
 } from "../../src/container-helper/assets.ts";
 import {
   CONTAINER_HELPER_COMMANDS,
+  CONTAINER_HELPER_FILE,
   CONTAINER_HELPER_PROFILE_HOOK,
   CONTAINER_HELPER_PROFILE_STUB,
   containerHelperCommandShim,
 } from "../../src/container-helper.ts";
 
 const target = { os: "linux", arch: "x64" } as const;
+
 const tempDirs: string[] = [];
 afterEach(async () => {
   for (const dir of tempDirs.splice(0)) await rm(dir, { recursive: true, force: true });
@@ -220,6 +223,53 @@ describe("resolveContainerHelper", () => {
     expect((await readdir(join(arch, "engines"))).filter((name) => name.includes(".lando-stage"))).toEqual(
       [],
     );
+  });
+
+  test("publishSourceContainerHelper places the binary at a digest-addressed cache path", async () => {
+    // Given: a fake source artifact whose binary lives directly in an arch dir (no digest subdir)
+    const srcRoot = await tempRoot();
+    const srcPath = join(srcRoot, `linux-${target.arch}`, CONTAINER_HELPER_FILE);
+    await mkdir(dirname(srcPath), { recursive: true });
+    const bytes = new TextEncoder().encode("fake-source-binary");
+    await writeFile(srcPath, bytes, { mode: 0o755 });
+    const fakeArtifact = {
+      target,
+      digest: sha256Hex(bytes),
+      path: AbsolutePath.make(srcPath),
+    };
+    const cacheRoot = await tempRoot();
+
+    // When: the binary is published to the cache
+    const cached = await publishSourceContainerHelper(fakeArtifact, cacheRoot);
+
+    // Then: the returned artifact path is digest-addressed inside the cache root
+    expect(cached.path).toBe(
+      AbsolutePath.make(join(cacheRoot, `linux-${target.arch}`, fakeArtifact.digest, CONTAINER_HELPER_FILE)),
+    );
+    expect(cached.digest).toBe(fakeArtifact.digest);
+    // And: the binary bytes are present at the cache path
+    expect(new Uint8Array(await readFile(cached.path))).toEqual(bytes);
+    // And: the original source dir was not modified
+    expect((await readdir(dirname(srcPath))).sort()).toEqual([CONTAINER_HELPER_FILE]);
+  });
+
+  test("publishSourceContainerHelper reuses an already-cached binary without re-writing it", async () => {
+    const srcRoot = await tempRoot();
+    const srcPath = join(srcRoot, `linux-${target.arch}`, CONTAINER_HELPER_FILE);
+    await mkdir(dirname(srcPath), { recursive: true });
+    const bytes = new TextEncoder().encode("reuse-binary");
+    await writeFile(srcPath, bytes, { mode: 0o755 });
+    const fakeArtifact = {
+      target,
+      digest: sha256Hex(bytes),
+      path: AbsolutePath.make(srcPath),
+    };
+    const cacheRoot = await tempRoot();
+    const first = await publishSourceContainerHelper(fakeArtifact, cacheRoot);
+    const before = (await stat(first.path)).mtimeMs;
+    const second = await publishSourceContainerHelper(fakeArtifact, cacheRoot);
+    expect(second.path).toBe(first.path);
+    expect((await stat(second.path)).mtimeMs).toBe(before);
   });
 });
 
