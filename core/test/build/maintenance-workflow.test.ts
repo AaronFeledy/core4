@@ -416,7 +416,7 @@ describe.skipIf(process.platform === "win32")("failure issue log evidence", () =
       ...progress.map(stamp),
       stamp("##[endgroup]"),
       stamp(""),
-      stamp("\u001b[31mTomcatUpdateError: Apache tag provenance: HTTP 403\u001b[0m"),
+      stamp("\u001b[31mTomcatUpdateError: Apache tag provenance: HTTP 403\u001b[0m\u0007"),
       stamp("##[error]Process completed with exit code 1."),
       stamp("Post job cleanup."),
       stamp("##[error]Diagnostics upload failed."),
