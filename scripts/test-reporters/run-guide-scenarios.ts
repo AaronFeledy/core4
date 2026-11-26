@@ -2,6 +2,7 @@
 import { availableParallelism } from "node:os";
 import { join } from "node:path";
 import { type TrackTestChild, runWithLiveTestRoots } from "../live-test-roots.ts";
+import { allocateIsolatedTestRoots, releaseIsolatedTestRoots } from "../test-preload-roots.ts";
 import { rewriteScenarioSourceMappedOutput } from "./scenario-source-mapper.ts";
 
 export const LIVE_OUTPUT_ENV = "LANDO_GUIDE_SCENARIO_LIVE_OUTPUT";
@@ -144,12 +145,18 @@ const runTests = async (
 
 const main = async (): Promise<never> => {
   const cwd = process.cwd();
-  const env = Object.freeze({ ...process.env });
+  const env: Record<string, string | undefined> = { ...process.env };
   const args = await expandSmokeE2e(Bun.argv.slice(2), cwd);
-  const exitCode = await runWithLiveTestRoots(
-    { live: env.LANDO_GUIDE_E2E === "1", cwd, env },
-    (childEnv, track) => runTests(args, childEnv, track),
-  );
+  const live = env.LANDO_GUIDE_E2E === "1";
+  const fallbackDirectory = live ? undefined : allocateIsolatedTestRoots(env);
+  let exitCode = 1;
+  try {
+    exitCode = await runWithLiveTestRoots({ live, cwd, env }, (childEnv, track) =>
+      runTests(args, childEnv, track),
+    );
+  } finally {
+    releaseIsolatedTestRoots(fallbackDirectory);
+  }
   // Bun's empty-write callback can precede flushing; end both streams before exiting.
   await Promise.all(
     [process.stdout, process.stderr].map((stream) => new Promise<void>((resolve) => stream.end(resolve))),

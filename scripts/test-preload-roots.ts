@@ -1,4 +1,4 @@
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -9,12 +9,46 @@ const rootEnvKeys = [
   "LANDO_SYSTEM_PLUGIN_ROOT",
 ] as const;
 
-// Run before the preload's application imports can capture paths. Children
-// inherit these roots; explicitly supplied roots remain owned by the caller.
-if (process.env.LANDO_TEST_USE_REAL_ROOTS !== "1") {
-  const unsetKeys = rootEnvKeys.filter((key) => process.env[key] === undefined);
-  if (unsetKeys.length > 0) {
-    const root = mkdtempSync(join(tmpdir(), "lando-test-roots-"));
-    for (const key of unsetKeys) process.env[key] = join(root, key.toLowerCase());
+let installed = false;
+let created: string | undefined;
+
+/**
+ * Fills each unset Lando root under one `lando-test-roots-*` tree. Ownership is
+ * the returned path only; never remove a path read from env. Mutates `env`.
+ */
+export const allocateIsolatedTestRoots = (env: Record<string, string | undefined>): string | undefined => {
+  if (env.LANDO_TEST_USE_REAL_ROOTS === "1") return undefined;
+  const unsetKeys = rootEnvKeys.filter((key) => env[key] === undefined);
+  if (unsetKeys.length === 0) return undefined;
+  const root = mkdtempSync(join(tmpdir(), "lando-test-roots-"));
+  for (const key of unsetKeys) env[key] = join(root, key.toLowerCase());
+  return root;
+};
+
+export const releaseIsolatedTestRoots = (directory: string | undefined): void => {
+  if (directory === undefined) return;
+  try {
+    rmSync(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+  } catch (cause) {
+    const code =
+      cause instanceof Error && "code" in cause && cause.code !== undefined ? String(cause.code) : "unknown";
+    process.stderr.write(`failed to remove test roots ${directory} (${code})\n`);
   }
-}
+};
+
+/** Process preload: allocate once, remove on `exit` (covers `bun -e` / script import). */
+export const installProcessTestRoots = (): void => {
+  if (installed) return;
+  installed = true;
+  created = allocateIsolatedTestRoots(process.env);
+  if (created !== undefined) {
+    process.on("exit", () => {
+      releaseIsolatedTestRoots(created);
+    });
+  }
+};
+
+export const releaseCreatedTestRoots = (): void => {
+  releaseIsolatedTestRoots(created);
+  created = undefined;
+};
