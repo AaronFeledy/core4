@@ -276,9 +276,15 @@ test("record root", () => {
         stderr: "pipe",
       });
       expect(child.exitCode, `${child.stdout}\n${child.stderr}`).toBe(0);
-      const tree = treeOf(parseRoot(child.stdout.toString()));
-      expect(existsSync(tree)).toBe(true);
-      rmSync(tree, { recursive: true, force: true });
+      // --isolate gives each file a fresh env and so its own tree; remove every one.
+      const trees = new Set(
+        [...child.stdout.toString().matchAll(/ROOT=(.+)/g)].map((match) => treeOf(parseRoot(match[0]))),
+      );
+      expect(trees.size).toBeGreaterThan(0);
+      for (const tree of trees) {
+        expect(existsSync(tree)).toBe(true);
+        rmSync(tree, { recursive: true, force: true });
+      }
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
