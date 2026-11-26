@@ -21,6 +21,7 @@ const bracket = (lookupKey: string, position: "pre" | "post"): LandofileEventNam
 export interface BracketedInvocationsInput extends ExecuteToolingInput {
   /** Effective-tooling key the `pre-`/`post-` bracket names derive from. */
   readonly lookupKey: string;
+  readonly signal?: AbortSignal;
 }
 
 /**
@@ -38,8 +39,9 @@ export const runBracketedInvocations = Effect.fnUntraced(function* (
   ToolingExecutionError | EventRuntimeError,
   ToolingEngine | RuntimeProviderRegistry | EnvironmentValueResolver
 > {
-  yield* runAppEvent(input.plan, bracket(input.lookupKey, "pre"));
+  yield* runAppEvent(input.plan, bracket(input.lookupKey, "pre"), undefined, input.signal);
   const result = yield* executeToolingInvocations(input);
-  if (result.exitCode === 0) yield* runAppEvent(input.plan, bracket(input.lookupKey, "post"));
+  if (result.exitCode === 0)
+    yield* runAppEvent(input.plan, bracket(input.lookupKey, "post"), undefined, input.signal);
   return result;
 });

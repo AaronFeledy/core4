@@ -243,8 +243,10 @@ const makeHarness = (input: {
             ? { kind: "applied" as const, plan: appliedPlan }
             : { kind: "absent" as const };
         }
-        const groups = (input.orphans ?? []).filter((group) =>
-          group.services.some((service) => service.appRoot === root),
+        const groups = (input.orphans ?? []).filter(
+          (group) =>
+            group.services.some((service) => service.appRoot === root) ||
+            group.volumes.some((volume) => volume.identity?.ownerRoot === root),
         );
         if (groups.length > 0) return { kind: "orphans" as const, groups };
         if (input.ownership !== undefined) return { kind: "owned" as const, ownership: input.ownership };
@@ -376,6 +378,56 @@ describe("stopAppAtRoot", () => {
       expect(harness.cleanupRoots).toEqual([]);
       expect(harness.routeRemovals).toEqual(["owned-app"]);
       expect(harness.destroyCalls).toEqual([]);
+    });
+  });
+
+  test.each([
+    { name: "an ownership record", orphans: false },
+    { name: "an observed retained volume", orphans: true },
+  ])("selected stop treats a destroyed app with $name like one that never started", async ({ orphans }) => {
+    await withTempRoot(async (root) => {
+      const retained: VolumeInfo = {
+        ref: { app: AppId.make("owned-app"), store: "data" },
+        identity: {
+          coordinationKey: "lando:owned-app:data",
+          nativeName: "lando-owned-app--web--storage--data",
+          generation: "generation-1",
+          ownerRoot: AbsolutePath.make(root),
+          origin: "created",
+        },
+      };
+      const harness = makeHarness({
+        ownership: [ownershipAt(root)],
+        ...(orphans
+          ? { orphans: [{ providerId, appId: AppId.make("owned-app"), services: [], volumes: [retained] }] }
+          : {}),
+      });
+
+      const result = await Effect.runPromise(
+        stopAppAtRoot(root, { services: [web.name] }).pipe(Effect.provide(harness.layer)),
+      );
+
+      expect(result).toEqual({
+        app: "owned-app",
+        outcome: "unchanged",
+        servicesStopped: [],
+        servicesKeptRunning: [],
+      });
+      expect(harness.calls).toEqual([]);
+      expect(harness.removalAttempts).toEqual([]);
+    });
+  });
+
+  test("selected stop refuses containers that no applied state describes", async () => {
+    await withTempRoot(async (root) => {
+      const harness = makeHarness({ orphans: [orphanGroup(root, ["web"])] });
+
+      const result = await Effect.runPromise(
+        stopAppAtRoot(root, { services: [web.name] }).pipe(Effect.provide(harness.layer), Effect.flip),
+      );
+
+      expect(result).toMatchObject({ _tag: "AppResolveError", detail: "provider-resources" });
+      expect(harness.removalAttempts).toEqual([]);
     });
   });
 

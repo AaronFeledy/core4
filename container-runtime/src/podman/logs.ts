@@ -1,3 +1,4 @@
+import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { type LogFileAccess, followLogSources, logFollowLineChunks } from "@lando/sdk/log-follow";
 import type { AppPlan, ServiceName, ServicePlan } from "@lando/sdk/schema";
 import type { LogChunk, LogOptions, LogTarget, ProviderError } from "@lando/sdk/services";
@@ -5,6 +6,7 @@ import { DateTime, type Effect, Option, type Scope, Stream } from "effect";
 import type { EngineHttpApi, EngineHttpRequest, ProviderErrorContext } from "../engine-api.ts";
 import { missingApi, missingService } from "../engine-errors.ts";
 import { serviceContainerName } from "../plan.ts";
+import { httpStatusOf } from "../redact.ts";
 import { decodeLogStream } from "../streams.ts";
 
 export interface LogsOptions {
@@ -15,6 +17,16 @@ export interface LogsOptions {
 }
 
 const containerName = (plan: AppPlan, service: ServicePlan) => serviceContainerName(plan, service.name);
+
+// Docker and Podman answer the logs and exec-create requests for a container that does not exist
+// with HTTP 404 before streaming anything.
+const containerAbsent = (error: ProviderError): boolean =>
+  error instanceof ProviderUnavailableError && httpStatusOf(error.details) === 404;
+
+/** A service with no container (never started, or destroyed) has no logs, even when following. */
+const emptyWhenContainerAbsent = <A>(
+  logs: Stream.Stream<A, ProviderError>,
+): Stream.Stream<A, ProviderError> => logs.pipe(Stream.catchIf(containerAbsent, () => Stream.empty));
 
 const stream = (
   deps: { readonly api: EngineHttpApi; readonly ctx: ProviderErrorContext },
@@ -40,12 +52,14 @@ export const containerConsoleLogs = (
   if (options.tail !== undefined) query.set("tail", String(options.tail));
   if (options.since !== undefined) query.set("since", options.since);
   return decodeLogStream(
-    stream(
-      { api, ctx },
-      {
-        method: "GET",
-        path: `/containers/${encodeURIComponent(container)}/logs?${query}`,
-      },
+    emptyWhenContainerAbsent(
+      stream(
+        { api, ctx },
+        {
+          method: "GET",
+          path: `/containers/${encodeURIComponent(container)}/logs?${query}`,
+        },
+      ),
     ),
   ).pipe(
     Stream.filter((line) => pipe === undefined || line.stream === pipe),
@@ -93,16 +107,18 @@ export const logs = (
       const fileStream =
         logFileAccess === undefined || !logSources.some((source) => source.strategy === "follow")
           ? Stream.empty
-          : logFollowLineChunks(
-              followLogSources({
-                service: service.name,
-                sources: logSources,
-                follow: options.follow ?? true,
-                access: logFileAccess,
-                ...(options.tail === undefined ? {} : { tail: options.tail }),
-                ...(since === undefined ? {} : { since }),
-                ...(options.source === undefined ? {} : { source: options.source }),
-              }),
+          : emptyWhenContainerAbsent(
+              logFollowLineChunks(
+                followLogSources({
+                  service: service.name,
+                  sources: logSources,
+                  follow: options.follow ?? true,
+                  access: logFileAccess,
+                  ...(options.tail === undefined ? {} : { tail: options.tail }),
+                  ...(since === undefined ? {} : { since }),
+                  ...(options.source === undefined ? {} : { source: options.source }),
+                }),
+              ),
             );
 
       if (options.source !== undefined) {

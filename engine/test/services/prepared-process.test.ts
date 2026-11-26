@@ -158,42 +158,48 @@ test.skipIf(process.platform === "win32")(
   10000,
 );
 
-test("cancellation during directory preparation never acquires a launcher or invokes the runner", async () => {
-  const entered = Promise.withResolvers<void>();
-  const release = Promise.withResolvers<void>();
-  const finished = Promise.withResolvers<void>();
-  const controller = new AbortController();
-  const original = HostContext.prepareHostExecutionContext;
-  const prepare = spyOn(HostContext, "prepareHostExecutionContext").mockImplementation(async (...args) => {
-    entered.resolve();
+test.each(["fiber", "request"] as const)(
+  "cancellation by %s during directory preparation never invokes the runner",
+  async (owner) => {
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const finished = Promise.withResolvers<void>();
+    const controller = new AbortController();
+    const original = HostContext.prepareHostExecutionContext;
+    const prepare = spyOn(HostContext, "prepareHostExecutionContext").mockImplementation(async (...args) => {
+      entered.resolve();
+      try {
+        await release.promise;
+        return await original(...args);
+      } finally {
+        finished.resolve();
+      }
+    });
+    const launcher = spyOn(BunCommandEnv, "createBunCommandEnv");
+    let invoked = false;
     try {
-      await release.promise;
-      return await original(...args);
+      const running = Effect.runPromiseExit(
+        BunProcessRunner.withPreparedProcess(
+          { cmd: process.execPath, args: [], ...(owner === "request" ? { signal: controller.signal } : {}) },
+          () =>
+            Effect.sync(() => {
+              invoked = true;
+            }),
+        ).pipe(Effect.provide(BunProcessRunner.layer)),
+        owner === "fiber" ? { signal: controller.signal } : {},
+      );
+      await entered.promise;
+      controller.abort();
+      if (owner === "request") release.resolve();
+      const exit = await running;
+      expect(Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause)).toBe(true);
+      expect(invoked).toBe(false);
+      expect(launcher).not.toHaveBeenCalled();
     } finally {
-      finished.resolve();
+      release.resolve();
+      await finished.promise;
+      prepare.mockRestore();
+      launcher.mockRestore();
     }
-  });
-  const launcher = spyOn(BunCommandEnv, "createBunCommandEnv");
-  let invoked = false;
-  try {
-    const running = Effect.runPromiseExit(
-      BunProcessRunner.withPreparedProcess({ cmd: process.execPath, args: [] }, () =>
-        Effect.sync(() => {
-          invoked = true;
-        }),
-      ).pipe(Effect.provide(BunProcessRunner.layer)),
-      { signal: controller.signal },
-    );
-    await entered.promise;
-    controller.abort();
-    const exit = await running;
-    expect(Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause)).toBe(true);
-    expect(invoked).toBe(false);
-    expect(launcher).not.toHaveBeenCalled();
-  } finally {
-    release.resolve();
-    await finished.promise;
-    prepare.mockRestore();
-    launcher.mockRestore();
-  }
-});
+  },
+);

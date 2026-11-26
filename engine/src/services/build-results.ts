@@ -76,6 +76,9 @@ type AppLookup = Pick<AppBuildResult, "buildKey" | "service" | "phase" | "step">
   readonly containerId: string | undefined;
 };
 
+const hasObservedSuccess = (entry: AppBuildResult): boolean =>
+  entry.outcome === "complete" && entry.exitCode === 0;
+
 export const invalidateAppBuildResult = (
   bucket: StateBucket<ReadonlyArray<AppBuildResult>>,
   input: AppLookup,
@@ -83,7 +86,7 @@ export const invalidateAppBuildResult = (
   bucket.mutate((current) => {
     const entries = current ?? [];
     const updated = entries.map((entry) =>
-      identityOf(entry) === identityOf(input) && entry.outcome === "complete" && !entry.invalidated
+      identityOf(entry) === identityOf(input) && hasObservedSuccess(entry) && !entry.invalidated
         ? { ...entry, invalidated: true as const }
         : entry,
     );
@@ -102,7 +105,7 @@ export function findCompleteBuildResult(
     const entry = entries[index];
     if (entry !== undefined && identityOf(entry) === identityOf(input)) {
       // Only the latest recorded attempt counts: a newer failure hides an older success.
-      if (entry.outcome !== "complete" || entry.buildKey !== input.buildKey) return undefined;
+      if (!hasObservedSuccess(entry) || entry.buildKey !== input.buildKey) return undefined;
       return !entry.invalidated && input.containerId && entry.containerId === input.containerId
         ? entry
         : undefined;

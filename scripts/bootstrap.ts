@@ -6,12 +6,14 @@
  * (`scripts/container-helper-cache.ts`). A cache miss does not start the multi-minute provider
  * build unless `--build-helper` asks for it; the report names that command instead.
  *
- * Runs before `bun install`, so this file imports only Bun and Node built-ins; workspace modules
- * load after the install step.
+ * Runs before `bun install`, so this file imports only Bun and Node built-ins. Bun keeps the
+ * missing `node_modules` it saw at startup, so even after the install step this process cannot
+ * load workspace modules; `scripts/bootstrap-container-helper.ts` does that in a child.
  */
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import type { ContainerHelperRestoreReport } from "./bootstrap-container-helper.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 const BUILD_HELPER_FLAG = "--build-helper";
@@ -75,40 +77,45 @@ const steps: ReadonlyArray<readonly [string, ReadonlyArray<string>]> = [
   ["sdk build", ["run", "--filter=@lando/sdk", "build"]],
 ];
 
-const message = (cause: unknown): string => (cause instanceof Error ? cause.message : String(cause));
+const RESTORE_STATUSES = ["current", "restored", "missing", "failed"] as const;
+
+const parseRestoreReport = (text: string): ContainerHelperRestoreReport | undefined => {
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch (cause) {
+    if (cause instanceof SyntaxError) return undefined;
+    throw cause;
+  }
+  if (typeof value !== "object" || value === null || !("status" in value) || !("sourceDigest" in value))
+    return undefined;
+  const { status: reported, sourceDigest } = value;
+  const detail = "detail" in value ? value.detail : undefined;
+  const status = RESTORE_STATUSES.find((candidate) => candidate === reported);
+  if (status === undefined || typeof sourceDigest !== "string") return undefined;
+  if (typeof detail === "string") return { status, sourceDigest, detail };
+  return detail === undefined ? { status, sourceDigest } : undefined;
+};
+
+const restoreHelper = async (): Promise<ContainerHelperRestoreReport | { readonly failure: string }> => {
+  const log = join(logDir, "container-helper-restore.log");
+  const child = Bun.spawn({
+    cmd: [process.execPath, join(REPO_ROOT, "scripts/bootstrap-container-helper.ts")],
+    cwd: REPO_ROOT,
+    stdin: "ignore",
+    stdout: "pipe",
+    stderr: Bun.file(log),
+  });
+  const [exitCode, stdout] = await Promise.all([child.exited, new Response(child.stdout).text()]);
+  const report = exitCode === 0 ? parseRestoreReport(stdout) : undefined;
+  return report ?? { failure: `container helper restore exited ${exitCode} without a report (log: ${log})` };
+};
 
 const prepareHelper = async (): Promise<HelperReport> => {
-  const [{ containerHelperSourceDigest }, cache] = await Promise.all([
-    import("@lando/container-runtime/container-helper/source"),
-    import("./container-helper-cache.ts"),
-  ]);
-  const target = {
-    dist: join(REPO_ROOT, "core/container-helper/dist"),
-    sourceDigest: await containerHelperSourceDigest(),
-    cacheRoot: cache.defaultContainerHelperCacheRoot(),
-  };
-  let restored: Awaited<ReturnType<typeof cache.restoreContainerHelper>>;
-  try {
-    restored = await cache.restoreContainerHelper(target);
-  } catch (cause) {
-    return {
-      status: "failed",
-      sourceDigest: target.sourceDigest,
-      detail: `restore failed: ${message(cause)}`,
-    };
-  }
-  if (restored.status === "current") {
-    // Seed the shared cache from a checkout that already built this digest; the checkout is ready either way.
-    const detail = await cache.publishContainerHelper(target).then(
-      (published) => (published === "published" ? `published to ${target.cacheRoot}` : "cached"),
-      (cause: unknown) => `not cached: ${message(cause)}`,
-    );
-    return { status: "current", sourceDigest: target.sourceDigest, detail };
-  }
-  if (restored.status === "restored")
-    return { status: "restored", sourceDigest: target.sourceDigest, detail: restored.entry };
-  if (!args.has(BUILD_HELPER_FLAG))
-    return { status: "missing", sourceDigest: target.sourceDigest, detail: restored.reason };
+  const restored = await restoreHelper();
+  if ("failure" in restored) return { status: "failed", detail: restored.failure };
+  if (restored.status !== "missing" || !args.has(BUILD_HELPER_FLAG)) return restored;
+  const { sourceDigest } = restored;
   // build:container-helper publishes its output to the cache itself.
   const { exitCode, log } = await run("container helper", [
     "run",
@@ -116,10 +123,10 @@ const prepareHelper = async (): Promise<HelperReport> => {
     "build:container-helper",
   ]);
   return exitCode === 0
-    ? { status: "built", sourceDigest: target.sourceDigest }
+    ? { status: "built", sourceDigest }
     : {
         status: "failed",
-        sourceDigest: target.sourceDigest,
+        sourceDigest,
         detail: `build:container-helper exited ${exitCode} (log: ${log}); it needs a working provider (\`bun core/bin/lando.ts setup\`)`,
       };
 };

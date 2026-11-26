@@ -110,6 +110,7 @@ export const makePrepareUninstallCleanup =
             runtimes,
             exec,
             hostSyncPresent: observations.some(({ syncPresent }) => syncPresent),
+            seams,
           });
         const results = await Effect.runPromise(Effect.forEach(observations, (found) => found.sweep()));
         const actual = [...details, ...results.map(summary)].join(" ");
@@ -124,8 +125,8 @@ export const makePrepareUninstallCleanup =
             remediation: "Inspect retained or failed resources and recover their data before retrying purge.",
           });
         for (const runtime of runtimes) {
-          await cleanupUninstallResources(exec, runtime);
-          await assertManagedStorageResolved(exec, runtime);
+          await cleanupUninstallResources(exec, runtime, seams);
+          await assertManagedStorageResolved(exec, runtime, seams);
         }
         return actual;
       },

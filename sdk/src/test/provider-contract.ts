@@ -47,7 +47,8 @@ export const CONTRACT_MATRIX_PLATFORMS: ReadonlyArray<HostPlatform> = ["darwin",
  * lifecycle method types, fixture apply/inspect/bring-down round-trips, provider
  * identity, status, version fields, capability completeness, ApplyResult
  * shape, re-apply idempotency, list shape, both bring-down dispositions for the
- * whole app and for one observed container, and volume-preserving removal.
+ * whole app and for one observed container, volume-preserving removal, and no
+ * logs for a planned service whose container was removed.
  * Supply a digest-qualified fixture reference to also verify artifact pull integrity.
  */
 export const runProviderContract = Effect.fnUntraced(function* (
@@ -532,6 +533,24 @@ export const runProviderContract = Effect.fnUntraced(function* (
   yield* provider
     .bringDown({ app: TEST_APP_ID }, { containers: "remove", volumes: true })
     .pipe(mapFailures(mapProviderFailure("bringDown remove succeeds for the contract fixture")));
+
+  const removedLogs = yield* Effect.timeoutOrElse(
+    provider
+      .logs({ app: TEST_APP_ID, service: TEST_SERVICE_NAME, plan: testAppPlan }, { follow: true })
+      .pipe(
+        Stream.runCollect,
+        mapFailures(mapProviderFailure("logs resolve for a planned service without a container")),
+      ),
+    {
+      duration: Duration.seconds(5),
+      orElse: () => Effect.fail(contractFailure("logs end for a planned service without a container")),
+    },
+  );
+  yield* requireContract(
+    removedLogs.length === 0,
+    "logs stream no lines for a planned service without a container",
+    Array.from(removedLogs),
+  );
 
   yield* checkProviderStartupDns(provider, testAppPlan);
 
