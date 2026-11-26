@@ -11,7 +11,12 @@ import { makeLandoPaths } from "@lando/paths";
 import { mapFailures } from "@lando/sdk/command-result";
 import { VolumeOperationError } from "@lando/sdk/errors";
 import type { AppPlan, DataStorePlan, VolumeIdentity, VolumeLocator, VolumeRef } from "@lando/sdk/schema";
-import { LANDO_DATA_ROOT_LABEL, type PhysicalVolumeLockTier, planDataId } from "@lando/sdk/schema";
+import {
+  LANDO_DATA_ROOT_LABEL,
+  type PhysicalVolumeLockTier,
+  planAppIdentity,
+  planDataId,
+} from "@lando/sdk/schema";
 import { type ProviderError, RuntimeProviderRegistry, type RuntimeProviderShape } from "@lando/sdk/services";
 import { Effect, Option } from "effect";
 
@@ -113,18 +118,13 @@ const ownerRootMismatch = (
       ...dataRootRefusal(resource),
     });
   }
-  if (
-    locator.identity === undefined ||
-    isGlobalCache(store) ||
-    locator.identity.ownerRoot === (plan.identity?.appRoot ?? plan.root)
-  ) {
+  const self = planAppIdentity(plan).appRoot;
+  if (locator.identity === undefined || isGlobalCache(store) || locator.identity.ownerRoot === self) {
     return undefined;
   }
   const volume = `Volume ${locator.nativeName}${locator.nativeName === store.name ? "" : ` (store ${store.name})`}`;
   const owner = locator.identity.ownerRoot;
-  const self = plan.identity?.appRoot ?? plan.root;
-  const scratchDir =
-    plan.identity?.dataRoot === undefined ? undefined : dataRootScratchDir(plan.identity.dataRoot);
+  const scratchDir = expected === undefined ? undefined : dataRootScratchDir(expected);
   const ownerScratch = scratchDir === undefined ? undefined : scratchIdForInstanceRoot(scratchDir, owner);
   const selfScratch = scratchDir === undefined ? undefined : scratchIdForInstanceRoot(scratchDir, self);
   const selfLabel = selfScratch === undefined ? self : `scratch app ${selfScratch}`;

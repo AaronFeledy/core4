@@ -444,7 +444,7 @@ test.each([
   { releaseCaches: true, cacheKept: false },
   { releaseCaches: false, cacheKept: true },
 ])(
-  "a mixed inventory retires its shared cache member only when releaseCaches is $releaseCaches, never touching the cache volume",
+  "a mixed inventory retires its shared cache member only when caches are released (releaseCaches: $releaseCaches), never touching the cache volume",
   async ({ releaseCaches, cacheKept }) => {
     // Given an inventory holding an app data volume and a shared global cache member.
     const appId = AppId.make("scratch-mixed-abcdef");

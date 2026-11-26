@@ -1,8 +1,6 @@
 import { ScratchAppNotFoundError } from "@lando/sdk/errors";
 import { Result } from "effect";
 
-const LIST_REMEDIATION = "Run `lando apps:scratch:list` to see currently registered scratch apps.";
-
 const SCRATCH_BASE_MAX_LENGTH = 40 - "scratch-".length - "-000000".length;
 
 /** The `<base>` of a generated `scratch-<base>-<6hex>` id, built from `--name` or the source name. */
@@ -26,7 +24,7 @@ export const scratchAppNotFoundError = (
     message: `Scratch app ${reference} was not found.`,
     id: reference,
     suggestions,
-    remediation: LIST_REMEDIATION,
+    remediation: "Run `lando apps:scratch:list` to see currently registered scratch apps.",
   });
 
 /**
@@ -44,7 +42,7 @@ export const resolveScratchReference = <A extends { readonly id: string }>(
   const named = sorted.filter((entry) => idBase(entry.id) === base);
   const [only, ...others] = named;
   if (only !== undefined && others.length === 0) return Result.succeed(only);
-  if (only !== undefined) {
+  if (others.length > 0) {
     const ids = named.map((entry) => entry.id);
     return Result.fail(
       new ScratchAppNotFoundError({

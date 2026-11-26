@@ -96,13 +96,11 @@ export const makeScratchReaper = Effect.gen(function* () {
       const provider = plan === undefined ? undefined : yield* providers.select(plan);
       const orphan = plan === undefined ? yield* scanner.prepareScratch(input.id, keepVolumes) : undefined;
       const evidence =
-        plan === undefined
-          ? inventoryOnly
+        plan !== undefined && entry?.status !== "acquiring"
+          ? ("applied" as const)
+          : inventoryOnly
             ? ("inventory" as const)
-            : ("orphans" as const)
-          : entry?.status === "acquiring"
-            ? ("orphans" as const)
-            : ("applied" as const);
+            : ("orphans" as const);
       yield* events.publish(PreScratchDestroyEvent.make({ ...payload, timestamp: DateTime.nowUnsafe() }));
       yield* Effect.gen(function* () {
         yield* events.publish(PreStopEvent.make({ scope: "app", app, timestamp: DateTime.nowUnsafe() }));

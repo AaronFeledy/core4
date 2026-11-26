@@ -1,6 +1,6 @@
 import { causeRemediation, mapFailures } from "@lando/sdk/command-result";
 import { ScratchAppError } from "@lando/sdk/errors";
-import { type AppPlan, type ResourceOwnership, planAppIdentity, planDataId } from "@lando/sdk/schema";
+import { AppId, type AppPlan, type ResourceOwnership, planAppIdentity, planDataId } from "@lando/sdk/schema";
 import { type RuntimeProviderShape, StateStore } from "@lando/sdk/services";
 import { readVolumeInitialization } from "@lando/state-store/volume-initialization";
 import { Effect, Option } from "effect";
@@ -76,12 +76,9 @@ export const cleanupScratchInventory = Effect.fn("ScratchApp.cleanupInventory")(
     readonly ownership: ReadonlyArray<ResourceOwnership>;
     readonly keepVolumes: boolean;
   }) {
+    const id = AppId.make(input.id);
     for (const hints of input.ownership)
-      if (hints.appIds.some((appId) => appId === input.id))
-        yield* cleanupInventory(
-          { ...hints, appIds: hints.appIds.filter((appId) => appId === input.id) },
-          input.keepVolumes,
-        );
+      if (hints.appIds.includes(id)) yield* cleanupInventory({ ...hints, appIds: [id] }, input.keepVolumes);
   },
   (effect) => effect.pipe(mapFailures(scratchCleanupError)),
 );
