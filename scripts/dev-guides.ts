@@ -10,6 +10,7 @@ import {
   resolveGeneratedGuideTestRoot,
 } from "./build-guide-scenarios.ts";
 import type { TrackTestChild } from "./live-test-roots.ts";
+import { withRunnerOwnedTestRoots } from "./test-preload-roots.ts";
 import { rewriteScenarioSourceMappedOutput } from "./test-reporters/scenario-source-mapper.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
@@ -230,7 +231,8 @@ const typecheckGuides = async (guideIds: readonly string[]): Promise<RunResult> 
 const testGuides = async (guideIds: readonly string[], isAll: boolean): Promise<RunResult> => {
   const runTests = async (targets: readonly string[]) => {
     const command = [process.execPath, "test", ...targets];
-    if (process.env.LANDO_GUIDE_E2E !== "1") return run(command);
+    if (process.env.LANDO_GUIDE_E2E !== "1")
+      return withRunnerOwnedTestRoots({ env: process.env, live: false }, (env) => run(command, env));
     const { MissingLiveTestBinaryError, runWithLiveTestRoots } = await import("./live-test-roots.ts");
     let output = { stdout: "", stderr: "" };
     liveTestInFlight = true;

@@ -16,7 +16,7 @@ let created: string | undefined;
  * Fills each unset Lando root under one `lando-test-roots-*` tree. Ownership is
  * the returned path only; never remove a path read from env. Mutates `env`.
  */
-export const allocateIsolatedTestRoots = (env: Record<string, string | undefined>): string | undefined => {
+const allocateIsolatedTestRoots = (env: Record<string, string | undefined>): string | undefined => {
   if (env.LANDO_TEST_USE_REAL_ROOTS === "1") return undefined;
   const unsetKeys = rootEnvKeys.filter((key) => env[key] === undefined);
   if (unsetKeys.length === 0) return undefined;
@@ -25,7 +25,7 @@ export const allocateIsolatedTestRoots = (env: Record<string, string | undefined
   return root;
 };
 
-export const releaseIsolatedTestRoots = (directory: string | undefined): void => {
+const releaseIsolatedTestRoots = (directory: string | undefined): void => {
   if (directory === undefined) return;
   try {
     rmSync(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
@@ -33,6 +33,27 @@ export const releaseIsolatedTestRoots = (directory: string | undefined): void =>
     const code =
       cause instanceof Error && "code" in cause && cause.code !== undefined ? String(cause.code) : "unknown";
     process.stderr.write(`failed to remove test roots ${directory} (${code})\n`);
+  }
+};
+
+type TestEnv = Readonly<Record<string, string | undefined>>;
+
+/**
+ * Hands `run` a copy of `env` whose unset roots point into one runner-owned tree, then removes
+ * that tree once `run` settles, so `run` must settle only after its test child is reaped. A child
+ * that inherits all four keys owns nothing. Live runs get no tree: `runWithLiveTestRoots`
+ * allocates its Podman roots only while every key is unset.
+ */
+export const withRunnerOwnedTestRoots = async <A>(
+  options: { readonly env: TestEnv; readonly live: boolean },
+  run: (env: TestEnv) => Promise<A>,
+): Promise<A> => {
+  const env = { ...options.env };
+  const directory = options.live ? undefined : allocateIsolatedTestRoots(env);
+  try {
+    return await run(env);
+  } finally {
+    releaseIsolatedTestRoots(directory);
   }
 };
 

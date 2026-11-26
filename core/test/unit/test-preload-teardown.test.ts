@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { withRunnerOwnedTestRoots } from "../../../scripts/test-preload-roots.ts";
 
 const rootEnvKeys = [
   "LANDO_USER_DATA_ROOT",
@@ -299,5 +300,56 @@ test("record root", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("runner-owned test roots", () => {
+  const rootsOf = (env: Readonly<Record<string, string | undefined>>) => rootEnvKeys.map((key) => env[key]);
+
+  test("fills only unset keys under one tree that lasts until run settles, then removes it", async () => {
+    const caller = mkdtempSync(join(tmpdir(), "lando-runner-caller-"));
+    const env = { ...childEnv(), LANDO_USER_DATA_ROOT: caller };
+    try {
+      const seen = await withRunnerOwnedTestRoots({ env, live: false }, async (child) => ({
+        roots: rootsOf(child),
+        present: existsSync(dirname(child.LANDO_USER_CACHE_ROOT ?? "")),
+      }));
+      const [data, ...filled] = seen.roots;
+      expect(data).toBe(caller);
+      const trees = new Set(filled.map((root) => dirname(root ?? "")));
+      expect(trees.size).toBe(1);
+      const [tree = ""] = trees;
+      expect(tree.startsWith(treePrefix)).toBe(true);
+      expect(seen.present).toBe(true);
+      expect(existsSync(tree)).toBe(false);
+      expect(existsSync(caller)).toBe(true);
+      expect(rootsOf(env)).toEqual([caller, undefined, undefined, undefined]);
+    } finally {
+      rmSync(caller, { recursive: true, force: true });
+    }
+  });
+
+  test("removes the tree when run rejects", async () => {
+    let tree = "";
+    const failed = withRunnerOwnedTestRoots({ env: childEnv(), live: false }, async (child) => {
+      tree = dirname(child.LANDO_USER_DATA_ROOT ?? "");
+      throw new Error("child failed");
+    });
+    await expect(failed).rejects.toThrow("child failed");
+    expect(tree.startsWith(treePrefix)).toBe(true);
+    expect(existsSync(tree)).toBe(false);
+  });
+
+  test.each([
+    { name: "a live run", env: childEnv(), live: true },
+    { name: "LANDO_TEST_USE_REAL_ROOTS=1", env: childEnv({ LANDO_TEST_USE_REAL_ROOTS: "1" }), live: false },
+    {
+      name: "caller-set roots",
+      env: childEnv(Object.fromEntries(rootEnvKeys.map((key) => [key, join(tmpdir(), "caller", key)]))),
+      live: false,
+    },
+  ])("hands $name its roots unchanged", async ({ env, live }) => {
+    const roots = await withRunnerOwnedTestRoots({ env, live }, async (child) => rootsOf(child));
+    expect(roots).toEqual(rootsOf(env));
   });
 });
