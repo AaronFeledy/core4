@@ -11,7 +11,14 @@ const Workflow = Schema.Struct({
     workflow_dispatch: Schema.Null,
   }),
   jobs: Schema.Struct({
-    bump: Schema.Struct({ steps: Schema.Array(Schema.Struct({ run: Schema.optionalKey(Schema.String) })) }),
+    bump: Schema.Struct({
+      steps: Schema.Array(
+        Schema.Struct({
+          run: Schema.optionalKey(Schema.String),
+          env: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+        }),
+      ),
+    }),
   }),
 });
 
@@ -24,7 +31,9 @@ describe("Tomcat bump workflow", () => {
     ).text();
     // Then
     expect(committed).toBe(workflow);
-    expect(() => Schema.decodeUnknownSync(Workflow)(Bun.YAML.parse(workflow))).not.toThrow();
+    const parsed = Schema.decodeUnknownSync(Workflow)(Bun.YAML.parse(workflow));
+    const update = parsed.jobs.bump.steps.find((step) => step.run?.includes("bun run update:tomcat"));
+    expect(update?.env?.GH_TOKEN).toBe("${{ github.token }}");
     expect(workflow).toContain(`uses: ${pinnedAction("actions/checkout")}`);
     expect(workflow).toContain(`uses: ${pinnedAction("oven-sh/setup-bun")}`);
     expect(workflow).toContain("persist-credentials: false");
