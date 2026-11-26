@@ -31,7 +31,7 @@ export const appsScratchLogsSpec: LandoCommandSpec<LogsAppResult> = {
   aliases: ["scratch:logs"],
   bootstrap: "scratch",
   args: {
-    id: Args.string({ description: "Scratch app id.", required: false }),
+    id: Args.string({ description: "Scratch app id or the --name it was started with.", required: false }),
   },
   streaming: StreamFrame,
   streamingMode: (input) => (scratchLogsFollowFromInput(input) ? "live" : undefined),

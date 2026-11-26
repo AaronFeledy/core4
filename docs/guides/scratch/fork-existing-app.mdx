@@ -35,7 +35,7 @@ lando scratch --fork --name review --detach
 
 If cleanup fails, Lando reports the scratch id without replacing the original startup error. If the scratch still appears in `lando scratch:list`, run `lando scratch:destroy <id>` after fixing the reported problem.
 
-`--name` is only the base for the generated id (`scratch-<base>-<6hex>`). Lando shortens the base to at most 25 characters. The source Landofile is not rewritten.
+`--name` sets the base of the generated id (`scratch-<base>-<6hex>`), so `--name review` gives an id like `scratch-review-3f9a1c`. Lando shortens the base to at most 25 characters. The source Landofile is not rewritten. You can pass that name instead of the id to `scratch:info`, `scratch:logs`, `scratch:stop`, and `scratch:destroy`; see [Inspect one scratch](./list-and-info.mdx#inspect-one-scratch).
 
 ## Choose a copy or a shared tree
 

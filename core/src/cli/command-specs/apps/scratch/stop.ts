@@ -19,7 +19,7 @@ export const appsScratchStopSpec: LandoCommandSpec<ScratchHandle> = {
   bootstrap: "scratch",
   flags: { yes: nonPromptingYesFlag },
   args: {
-    id: Args.string({ description: "Scratch app id.", required: true }),
+    id: Args.string({ description: "Scratch app id or the --name it was started with.", required: true }),
   },
   run: (input) => scratchStop(scratchIdFromInput(input)),
   render: (result) => renderScratchStopResult(result),

@@ -245,9 +245,10 @@ const validateScratchId = (id: string): Effect.Effect<string, ScratchAppIdInvali
   if (id.trim().length > 0) return Effect.succeed(id);
   return Effect.fail(
     new ScratchAppIdInvalidError({
-      message: "A scratch app id is required.",
+      message: "A scratch app id or name is required.",
       id,
-      remediation: "Pass a scratch id, e.g. `lando apps:scratch:info scratch-my-app-abc123`.",
+      remediation:
+        "Pass a scratch id or the --name it was started with, e.g. `lando apps:scratch:info scratch-my-app-abc123`.",
     }),
   );
 };
