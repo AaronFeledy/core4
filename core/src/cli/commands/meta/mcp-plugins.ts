@@ -9,20 +9,48 @@ import type { McpRunInput } from "@lando/mcp/dispatch";
 import type { McpCommandEntry, McpCommandSpec } from "@lando/mcp/registry";
 import { RedactionService } from "@lando/redaction/service";
 import { McpAllowlistConflictError } from "@lando/sdk/errors";
+import type { ExecutableCommandSpec } from "@lando/sdk/plugins";
 import type { Redactor } from "@lando/sdk/secrets";
-import { Effect, Option, Schema } from "effect";
+import { DeprecationService } from "@lando/sdk/services";
+import { DateTime, Effect, Option, Schema } from "effect";
 import { CliInvocation } from "../../../runtime/invocation-context";
 import { escapeDiagnosticText } from "../../diagnostic-text";
 import { validateEventCommandInput } from "../../event-command-input";
 import { type ResolvedPluginCommandSpec, loadPluginSpec } from "../../event-command-target";
+import { UNIVERSAL_FORMAT_FLAG_NAMES } from "../../format-flags";
 import type { PluginCommandDiagnostic } from "../../plugin-command-catalog";
 import { requireConfirmation } from "../../require-confirmation";
 import type { McpCommandRegistry } from "./mcp-registry";
 
+/**
+ * A plugin's declared `format` and `json` flags receive only the CLI dispatcher's result format,
+ * never a caller value, so they are not tool input: an MCP call always returns the JSON envelope.
+ */
+const toolInputFlags = (flags: ExecutableCommandSpec["flags"]): ExecutableCommandSpec["flags"] =>
+  flags === undefined
+    ? undefined
+    : Object.fromEntries(Object.entries(flags).filter(([name]) => !UNIVERSAL_FORMAT_FLAG_NAMES.has(name)));
+
+/** A call through MCP names the command by its canonical id, so only that id's own notice applies. */
+const recordDeprecatedCommand = Effect.fnUntraced(function* (candidate: GraphCommandCandidate) {
+  const notice = candidate.descriptor.deprecated;
+  if (notice === undefined) return;
+  const deprecations = yield* Effect.serviceOption(DeprecationService);
+  if (Option.isNone(deprecations)) return;
+  yield* deprecations.value.use({
+    kind: "command",
+    id: candidate.id,
+    notice,
+    timestamp: yield* DateTime.now,
+  });
+});
+
 const pluginSpec = (candidate: GraphCommandCandidate, spec: ResolvedPluginCommandSpec): McpCommandSpec => {
-  const { completion, ...command } = spec;
+  const { completion, flags, ...command } = spec;
+  const inputFlags = toolInputFlags(flags);
   return {
     ...command,
+    ...(inputFlags === undefined ? {} : { flags: inputFlags }),
     mcpAllowed: candidate.descriptor.mcpAllowed === true,
     bindInput: Effect.fn("Mcp.bindPluginInput")(function* (input: McpRunInput) {
       const bound = yield* validateEventCommandInput(spec, {
@@ -33,6 +61,7 @@ const pluginSpec = (candidate: GraphCommandCandidate, spec: ResolvedPluginComman
       return { ...input, ...bound, interaction: "non-interactive" as const };
     }),
     run: Effect.fn("Mcp.runPluginCommand")(function* (input: McpRunInput) {
+      yield* recordDeprecatedCommand(candidate);
       const destructive = isMcpDestructiveCommand(spec);
       if (destructive) {
         yield* requireConfirmation({ yes: input.flags.yes === true, message: `Run ${spec.id}?` });

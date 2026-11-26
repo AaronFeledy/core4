@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import * as DeprecationServiceLayer from "@lando/engine/deprecation/service";
 import { PluginContributionGraph } from "@lando/engine/plugins/contribution-graph";
 import { McpRuntimeConfig, McpService } from "@lando/mcp/service";
 import { startStdioClient, testAppGenerations } from "@lando/mcp/testing";
@@ -9,10 +10,10 @@ import { mcpRegistryWithPlugins } from "../../src/cli/commands/meta/mcp-plugins"
 import { serviceLayer } from "../../src/mcp-command-executor";
 import { pluginFixtureGraph } from "./plugin-fixture";
 
-const fixture = (spec: ExecutableCommandSpec) =>
+const fixture = (spec: ExecutableCommandSpec, options: Parameters<typeof pluginFixtureGraph>[1] = {}) =>
   Layer.unwrap(
     mcpRegistryWithPlugins({ commandEntries: [] }).pipe(
-      Effect.provideService(PluginContributionGraph, pluginFixtureGraph(spec)),
+      Effect.provideService(PluginContributionGraph, pluginFixtureGraph(spec, options)),
       Effect.map((registry) =>
         serviceLayer.pipe(
           Layer.provide(
@@ -21,7 +22,7 @@ const fixture = (spec: ExecutableCommandSpec) =>
               env: { ...process.env },
               commandEntries: registry.commandEntries,
               defaultAllowlist: [],
-              apps: testAppGenerations(),
+              apps: testAppGenerations(DeprecationServiceLayer.layer),
             }),
           ),
         ),
@@ -178,4 +179,34 @@ test("cancelling a plugin call interrupts its retained-runtime work and finalize
       }),
     ),
   );
+});
+
+test("calling a deprecated plugin command lists the command in that call's deprecations", async () => {
+  // Given: a plugin whose manifest deprecates its command.
+  const notice = { since: "4.2.0", severity: "warn", note: "Use fixture:inspect-all instead." } as const;
+  const call = (client: Effect.Success<ReturnType<typeof startStdioClient>>) =>
+    client.request("tools/call", { name: base.id, arguments: {} });
+
+  // When: an MCP client calls it twice.
+  const responses = await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const service = yield* McpService;
+        const client = yield* startStdioClient(service.serve({ transport: "stdio", allow: [base.id] }));
+        return [yield* call(client), yield* call(client)];
+      }),
+    ).pipe(Effect.provide(fixture(base, { deprecated: notice }))),
+  );
+
+  // Then: each call's envelope records the command it used, as the CLI does.
+  for (const response of responses)
+    expect(response).toMatchObject({
+      result: {
+        isError: false,
+        structuredContent: {
+          ok: true,
+          deprecations: [{ kind: "command", id: base.id, notice, timestamp: expect.any(String) }],
+        },
+      },
+    });
 });

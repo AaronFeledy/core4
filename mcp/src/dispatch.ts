@@ -11,6 +11,10 @@
  * A dispatched command's own tagged failure surfaces as an `ok: false` envelope
  * (a normal result), not an MCP-level error. MCP-level errors are limited to
  * allowlist rejection and input-schema rejection.
+ *
+ * Each call records its deprecated-surface uses in its own `DeprecationRecorder`,
+ * so calls running concurrently on the retained runtime, and calls before or
+ * after it, never see each other's records in `deprecations`.
  */
 
 import { RedactionService } from "@lando/redaction/service";
@@ -24,12 +28,12 @@ import {
 import { McpToolInputError, McpToolNotAllowedError, McpTransportError } from "@lando/sdk/errors";
 import type { LandoEvent } from "@lando/sdk/events";
 import type { Redactor } from "@lando/sdk/secrets";
-import { Logger } from "@lando/sdk/services";
+import { DeprecationRecorder, Logger, makeDeprecationRecorder } from "@lando/sdk/services";
 import { Cause, Clock, Effect, Option, Predicate, type Schema } from "effect";
 import { isMcpNeverAllowed } from "./allowlist";
 import { redactBoundedJsonValue, stringifyBoundedJson } from "./bounded-json";
 import { boundedEventString, postEvent, preEvent } from "./call-events";
-import { encodeFailureEnvelope, envelopeTag, mcpToolNotAllowedError } from "./dispatch-outcome";
+import { encodeFailureEnvelope, envelopeTag, envelopeWire, mcpToolNotAllowedError } from "./dispatch-outcome";
 import { OutputCapture } from "./output-capture";
 import { encodeProgressFrame } from "./progress";
 import { type McpCommandEntry, type McpCommandSpec, type McpToolInput, validateToolInput } from "./registry";
@@ -174,6 +178,7 @@ export const dispatchTool = Effect.fn("McpService.dispatchTool")(function* (
       return entry satisfies never;
   }
   const commandId = entry?.spec.id ?? request.toolId;
+  const recorder = makeDeprecationRecorder();
 
   yield* emit(deps, preEvent(deps, { toolId: request.toolId, commandId, appRef }, startedAt));
 
@@ -203,6 +208,7 @@ export const dispatchTool = Effect.fn("McpService.dispatchTool")(function* (
     const envelope = yield* encodeFailureEnvelope(command, outcome, {
       redactor: yield* deps.resultRedactor([]),
       capture: deps.capture ?? new OutputCapture(),
+      deprecations: yield* recorder.records(),
     });
     yield* emitPost("failure", envelopeTag(envelope));
     const text = yield* stringifyBoundedJson(envelope, "MCP tool result");
@@ -248,12 +254,15 @@ export const dispatchTool = Effect.fn("McpService.dispatchTool")(function* (
         yield* emitProgressFrame(deps, frame, redactor);
       }
     }
-    const encodedEnvelope = yield* buildCommandResultEnvelope({
-      command: entry.spec.id,
-      resultSchema: entry.spec.resultSchema,
-      outcome,
-      redactor,
-    });
+    const encodedEnvelope = yield* envelopeWire(
+      yield* buildCommandResultEnvelope({
+        command: entry.spec.id,
+        resultSchema: entry.spec.resultSchema,
+        outcome,
+        redactor,
+        deprecations: yield* recorder.records(),
+      }),
+    );
     const resultPolicy = commandResultEnvelopePolicy(entry.spec.resultSchema);
     const safeEnvelope = yield* redactBoundedJsonValue(
       encodedEnvelope,
@@ -326,7 +335,9 @@ export const dispatchTool = Effect.fn("McpService.dispatchTool")(function* (
     return yield* runSelected(selection.entry, selection.execute);
   });
 
-  const exit = yield* Effect.exit(Effect.interruptible(run));
+  const exit = yield* Effect.exit(
+    Effect.interruptible(run).pipe(Effect.provideService(DeprecationRecorder, recorder)),
+  );
   if (exit._tag === "Success") return exit.value;
   if (Cause.hasInterruptsOnly(exit.cause)) {
     yield* emitPost("failure", "Interrupted");

@@ -12,7 +12,7 @@ import {
 import { attachExecHostIo, toolingHostStdin } from "../../../exec-host-io";
 import { isMachineResultFormat } from "../../../format-flags";
 import type { LandoCommandSpec } from "../../../spec/command-base";
-import { booleanFlag, specFlagsOf, stringFlag } from "../../../spec/input-coercion";
+import { commandResultFormat } from "../../../spec/input-coercion";
 import { Args, Flags } from "../../../spec/metadata";
 import { execInputUsesCliHostIo } from "../../app/exec";
 
@@ -53,10 +53,7 @@ export const appsScratchRunSpec: LandoCommandSpec<ScratchRunResult, ScratchRunEr
       "interaction" in input &&
       input.interaction === "non-interactive";
     if (!execInputUsesCliHostIo(input) || nonInteractive) return scratchRun(options);
-    const flags = specFlagsOf(input);
-    const format = stringFlag(flags, "format");
-    const machineFormat =
-      (format !== undefined && isMachineResultFormat(format)) || booleanFlag(flags, "json");
+    const machineFormat = isMachineResultFormat(commandResultFormat(input));
     const rendererMode =
       typeof input === "object" && input !== null && "rendererMode" in input ? input.rendererMode : undefined;
     const mode = toolingHostStdin(!machineFormat && rendererMode !== "json");

@@ -5,7 +5,6 @@ import {
 } from "@lando/engine/operations/global-list";
 import { renderGlobalListResult } from "../../../commands/meta/global-list";
 import type { LandoCommandSpec } from "../../../spec/command-base";
-import { Flags } from "../../../spec/metadata";
 
 export const metaGlobalListSpec: LandoCommandSpec<GlobalListResult> = {
   resultSchema: GlobalListResultSchema,
@@ -18,12 +17,6 @@ export const metaGlobalListSpec: LandoCommandSpec<GlobalListResult> = {
   namespace: "meta",
   topLevelAlias: "global:list",
   bootstrap: "plugins",
-  flags: {
-    format: Flags.string({
-      description: "Output format.",
-      default: "table",
-    }),
-  },
   run: () => globalList(),
   render: (result, _input, ctx) => renderGlobalListResult(result, ctx),
 };

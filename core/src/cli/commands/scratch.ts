@@ -38,7 +38,7 @@ import { Effect, Schema } from "effect";
 import { mergeAnswerSources, parseAnswerFlags, readAnswersFile } from "../prompts/answer-flags";
 import { type RenderContext, isDecoratedContext, summaryPaintOptions } from "../renderer-boundary";
 import { extractSpecAbortSignal } from "../spec/command-base";
-import { formatFlag, specArgsOf, specFlagsOf, stringFlag } from "../spec/input-coercion";
+import { commandResultFormatAmong, specArgsOf, specFlagsOf, stringFlag } from "../spec/input-coercion";
 import { renderLogsAppResult } from "./logs";
 import { SCRATCH_STATUS_TONES, summaryToneFromTable } from "./service-summary";
 
@@ -231,7 +231,7 @@ export const scratchStartOptionsFromInput = (input: unknown): ScratchStartOption
 export const scratchIdFromInput = (input: unknown): string => stringFlag(specArgsOf(input), "id") ?? "";
 
 export const scratchListFormatFromInput = (input: unknown): ScratchListFormat =>
-  formatFlag(specFlagsOf(input), ["json", "table"], "table");
+  commandResultFormatAmong(input, ["json", "table"], "table");
 
 const unresolvedSource = (message: string, source: string): ScratchSourceUnresolvedError =>
   new ScratchSourceUnresolvedError({

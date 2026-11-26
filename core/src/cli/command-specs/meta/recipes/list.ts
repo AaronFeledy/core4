@@ -5,7 +5,6 @@ import {
   renderRecipesListResult,
 } from "../../../commands/recipes";
 import type { LandoCommandSpec } from "../../../spec/command-base";
-import { Flags } from "../../../spec/metadata";
 
 export const metaRecipesListSpec: LandoCommandSpec<RecipesListResult> = {
   resultSchema: RecipesListResultSchema,
@@ -17,12 +16,6 @@ export const metaRecipesListSpec: LandoCommandSpec<RecipesListResult> = {
   topLevelAlias: ["recipes:list", "recipes"],
   aliases: ["recipes:list", "recipes"],
   bootstrap: "none",
-  flags: {
-    format: Flags.string({
-      description: "Output format.",
-      default: "table",
-    }),
-  },
   run: () => recipesList,
   render: (result) => renderRecipesListResult(result),
 };

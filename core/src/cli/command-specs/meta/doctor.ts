@@ -15,7 +15,7 @@ import { type DoctorViewOptions, selectDoctorView } from "../../commands/doctor-
 import { isMachineResultFormat } from "../../format-flags";
 import type { RenderContext } from "../../renderer-boundary";
 import { type LandoCommandSpec, extractSpecAbortSignal } from "../../spec/command-base";
-import { specFlagsOf, stringArrayFlag, stringFlag } from "../../spec/input-coercion";
+import { commandResultFormat, specFlagsOf, stringArrayFlag, stringFlag } from "../../spec/input-coercion";
 import { Flags } from "../../spec/metadata";
 
 export const inputDoctorOptions = (input: unknown): DoctorOptions & DoctorViewOptions => {
@@ -91,10 +91,8 @@ const renderDoctorReportForInput = (report: DoctorReport, input: unknown, ctx?: 
   });
 };
 
-const suppressDeprecationDiagnosticsForInput = (input: unknown): boolean => {
-  const format = specFlagsOf(input).format;
-  return typeof format === "string" && isMachineResultFormat(format);
-};
+const suppressDeprecationDiagnosticsForInput = (input: unknown): boolean =>
+  isMachineResultFormat(commandResultFormat(input));
 
 /**
  * Doctor bootstraps at `none` and builds the `provider` runtime inside its own
@@ -143,10 +141,6 @@ export const metaDoctorSpec: LandoCommandSpec<DoctorReport, unknown, RuntimeLaye
     all: Flags.boolean({
       description: "List every check, including passing ones, instead of only degraded checks.",
       default: false,
-    }),
-    format: Flags.string({
-      description: "Output format for doctor reports.",
-      default: "text",
     }),
   },
   run: (input) =>

@@ -14,7 +14,13 @@ import { attachExecHostIo, withInheritedStdinRawMode } from "../../exec-host-io"
 import { isMachineResultFormat } from "../../format-flags";
 import { type LandoCommandSpec, extractSpecAbortSignal } from "../../spec/command-base";
 import { extractSpecParsedArgv } from "../../spec/command-boundary";
-import { booleanFlag, specArgsOf, specFlagsOf, stringFlag } from "../../spec/input-coercion";
+import {
+  booleanFlag,
+  commandResultFormat,
+  specArgsOf,
+  specFlagsOf,
+  stringFlag,
+} from "../../spec/input-coercion";
 import { Args, Flags } from "../../spec/metadata";
 
 export const execInputUsesCliHostIo = (input: unknown): boolean =>
@@ -68,7 +74,6 @@ export const execSpec: LandoCommandSpec<ExecAppResult, ExecAppError, ExecAppServ
   run: Effect.fn("ExecCommand.run")(function* (input: unknown) {
     const invocation = yield* CliInvocation;
     const flags = specFlagsOf(input);
-    const format = stringFlag(flags, "format");
     const user = stringFlag(flags, "user");
     const service = stringFlag(flags, "service");
     const cwd = stringFlag(flags, "cwd");
@@ -80,7 +85,7 @@ export const execSpec: LandoCommandSpec<ExecAppResult, ExecAppError, ExecAppServ
         : Array.isArray(namedCommand)
           ? namedCommand.filter((arg): arg is string => typeof arg === "string")
           : [];
-    const machine = (format !== undefined && isMachineResultFormat(format)) || booleanFlag(flags, "json");
+    const machine = isMachineResultFormat(commandResultFormat(input));
     const signal = extractSpecAbortSignal(input);
     const base = {
       ...(signal === undefined ? {} : { signal }),
