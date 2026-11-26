@@ -8,33 +8,66 @@ tags: [docs, deprecations, cli]
 
 # CLI deprecation warnings and suppression
 
-The first use of a deprecated warn-level surface renders a human warning through the active
-renderer. Later uses of the same `kind/id` don't spam more warnings; the end-of-run summary retains
-the total use count.
+When a command uses a deprecated command, flag, or other surface, Lando prints one warning on stderr that says what is going away, since when, and what to do instead. `lando shell --host` uses a deprecated flag, so it shows one:
 
-Suppress human renderer warning output for the current invocation with `--no-deprecation-warnings`,
-or for scripts and CI with `LANDO_DEPRECATION_WARNINGS=0`. Machine-readable summaries and JSON
-`deprecation-used` diagnostics remain available to commands that report them.
+```text
+⚠ flag app:shell --host (used once): Deprecated since 4.2.0. lando shell now opens a host shell by default; --host is redundant and can be omitted. Pass --service <name> only to open a shell inside a service instead.
+```
 
-In JSON mode, deprecation use is written as structured stderr with the canonical payload shape:
+## Read a warning
+
+A warning starts with the surface and how many times the command used it. Then it gives the release that deprecated the surface, the release that removes it when one is scheduled (`scheduled for removal in 5.0.0`), the replacement when there is one (`Use app:up instead.`), the explanation, and a `Docs:` link when the notice has one.
+
+Each surface warns once per process. Using it again only raises the count in that same warning. Surfaces whose notice has `info` severity don't get their own warning: Lando lists them on one `Deprecated surfaces used:` line when the command finishes.
+
+## Silence the warnings
+
+Pass `--no-deprecation-warnings` for one command, or set `LANDO_DEPRECATION_WARNINGS=0` for a script or CI job:
+
+```sh
+lando shell --host --no-deprecation-warnings
+LANDO_DEPRECATION_WARNINGS=0 lando shell --host
+```
+
+Either one silences every human deprecation line, the `info` summary included. Neither stops Lando from recording the use. The `deprecation-used` event, telemetry, the records described below, and `lando doctor --deprecations` still report it.
+
+## Read deprecations as data
+
+With `--format=json` or `--format=yaml`, the result's `deprecations` array lists each deprecated surface the command used, with its full notice. Suppression doesn't remove it. This is the end of the result for `lando shell --host --no-interactive --format=json --no-deprecation-warnings`, which fails because there is no terminal but still records the flag:
 
 ```json
-{
-  "_tag": "deprecation-used",
-  "use": {
-    "kind": "…",
-    "id": "…",
-    "notice": "…",
-    "timestamp": "…"
+"deprecations": [
+  {
+    "kind": "flag",
+    "id": "app:shell --host",
+    "notice": {
+      "since": "4.2.0",
+      "severity": "warn",
+      "note": "lando shell now opens a host shell by default; --host is redundant and can be omitted. Pass --service <name> only to open a shell inside a service instead."
+    },
+    "timestamp": "2026-11-24T20:25:05.009Z"
   }
-}
+]
+```
+
+With `--renderer=json`, Lando also writes one `deprecation-used` record per surface to stderr, whatever the suppression setting:
+
+```json
+{"_tag":"event","event":"deprecation-used","payload":{"_tag":"deprecation-used","use":{"kind":"flag","id":"app:shell --host","notice":{"since":"4.2.0","severity":"warn","note":"lando shell now opens a host shell by default; --host is redundant and can be omitted. Pass --service <name> only to open a shell inside a service instead."},"timestamp":"2026-11-24T20:25:04.275Z"}}}
 ```
 
 <Guide>
-  <Scenario id="cli-deprecation-warning-dedupe" render={false} reason="Repeated DeprecationService.use calls, suppression, and JSON renderer shape above are covered by renderer-boundary and source/compiled command tests without needing a deprecated public command fixture. This scenario keeps one real CLI check in the guide harness.">
-    <Step name="config-check">
-      <Run command="lando config --format=json" />
-      <Verify command="lando config --format=json" expect={{ stdout: { regex: "\"config\":\\s*\\{" } }} />
+  <Scenario id="cli-deprecation-warning-and-records" render={false} reason="Proves the warning text, suppression, and structured records with a real deprecated flag, without a TTY or an app">
+    <Step name="warning-names-the-schedule">
+      <Run command="lando shell --host --no-interactive --renderer=plain" expectExit={1} />
+      <Verify command="lando shell --host --no-interactive --renderer=plain" expectExit={1} expect={{ stderr: { regex: "flag app:shell --host \\(used once\\): Deprecated since 4\\.2\\.0\\. lando shell now opens a host shell by default" } }} />
+    </Step>
+    <Step name="suppression-keeps-the-record">
+      <Run command="lando shell --host --no-interactive --format=json --no-deprecation-warnings" expectExit={1} />
+      <Verify command="lando shell --host --no-interactive --format=json --no-deprecation-warnings" expectExit={1} expect={{ stdout: { regex: "\"deprecations\":\\[\\{\"kind\":\"flag\",\"id\":\"app:shell --host\",\"notice\":\\{\"since\":\"4\\.2\\.0\"" }, stderr: "" }} />
+    </Step>
+    <Step name="suppression-silences-human-lines">
+      <Verify command="lando shell --host --no-interactive --renderer=plain --no-deprecation-warnings" expectExit={1} expect={{ stderr: { regex: "^(?![\\s\\S]*app:shell --host)" } }} />
     </Step>
   </Scenario>
 </Guide>

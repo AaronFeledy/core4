@@ -158,11 +158,11 @@ test("routes an unsupported-format refusal to stderr when stdout carries the dum
     child.exited,
   ]);
 
-  // Then stdout stays empty and the refusal envelope is on stderr.
+  // Then stdout stays empty and the refusal's one result frame is on stderr.
   expect(exitCode).toBe(2);
   expect(stdout).toBe("");
   expect(JSON.parse(stderr.trim().split("\n").at(-1) ?? "")).toMatchObject({
-    ok: false,
-    command: "db:export",
+    _tag: "result",
+    envelope: { ok: false, command: "db:export" },
   });
 });

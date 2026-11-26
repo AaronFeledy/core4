@@ -199,6 +199,7 @@
       "localStore:(ctx:DatasetContext) => Effect.Effect<VolumeRef|null,DatasetServiceError>"
     ],
     "DeprecationService": [
+      "claimWarning:(kind:DeprecationSurfaceKind,id:string) => Effect.Effect<boolean>",
       "lookup:(kind:DeprecationSurfaceKind,id:string) => Effect.Effect<Option.Option<DeprecationNotice>>",
       "register:(source:DeprecationRegistrySource,kind:DeprecationSurfaceKind,id:string,notice:DeprecationNotice) => Effect.Effect<void>",
       "registerAlias:(source:DeprecationRegistrySource,kind:DeprecationSurfaceKind,canonicalId:string,aliasId:string,aliasNotice?:DeprecationNotice) => Effect.Effect<void,DeprecationContradictionError>",
@@ -2250,6 +2251,7 @@
       "DatabaseCredentialConvergence",
       "DatabaseCredentialConvergenceResult",
       "Dataset",
+      "DeprecationRecorder",
       "DeprecationService",
       "Downloader",
       "EnvironmentValueResolver",
@@ -2301,6 +2303,7 @@
       "UpdateService",
       "UrlScanner",
       "UserAppResolver",
+      "makeDeprecationRecorder",
       "markDeprecated",
       "physicalVolumeLockKey"
     ],

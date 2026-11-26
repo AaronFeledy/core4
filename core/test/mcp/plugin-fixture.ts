@@ -5,7 +5,7 @@ import {
   pluginCommandCandidates,
 } from "@lando/engine/plugins/contribution-graph";
 import type { ExecutableCommandSpec } from "@lando/sdk/plugins";
-import { PluginManifest } from "@lando/sdk/schema";
+import { type DeprecationNotice, PluginManifest } from "@lando/sdk/schema";
 import { Context, Effect, Result } from "effect";
 import "../../src/runtime/bundled-plugins";
 import { Schema } from "effect";
@@ -36,6 +36,7 @@ export const pluginFixtureGraph = (
   options: {
     readonly source?: GraphCommandCandidate["source"];
     readonly mcpAllowed?: boolean;
+    readonly deprecated?: DeprecationNotice;
   } = {},
 ) => {
   const source = options.source ?? "user";
@@ -43,6 +44,7 @@ export const pluginFixtureGraph = (
     id: spec.id,
     summary: spec.summary ?? "Fixture command",
     mcpAllowed: options.mcpAllowed ?? true,
+    ...(options.deprecated === undefined ? {} : { deprecated: options.deprecated }),
   };
   const manifest = Schema.decodeUnknownSync(PluginManifest)({
     name: "@example/mcp",

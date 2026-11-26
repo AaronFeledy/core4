@@ -1,6 +1,11 @@
 import { DeprecatedSurfaceError, DeprecationContradictionError } from "@lando/sdk/errors";
 import type { DeprecationNotice, DeprecationSurfaceKind, DeprecationUse } from "@lando/sdk/schema";
-import { DeprecationService, type DeprecationSummaryEntry, EventService } from "@lando/sdk/services";
+import {
+  DeprecationRecorder,
+  DeprecationService,
+  type DeprecationSummaryEntry,
+  EventService,
+} from "@lando/sdk/services";
 import { type Context, Effect, Layer, Option, Ref } from "effect";
 
 type DeprecationKey = `${DeprecationSurfaceKind}:${string}`;
@@ -13,6 +18,8 @@ interface DeprecationUseRecord {
 interface DeprecationState {
   readonly registry: ReadonlyMap<DeprecationKey, DeprecationNotice>;
   readonly uses: ReadonlyMap<DeprecationKey, DeprecationUseRecord>;
+  /** Surfaces that have already had a human warning claimed. */
+  readonly claimed: ReadonlySet<DeprecationKey>;
 }
 
 const deprecationKey = (kind: DeprecationSurfaceKind, id: string): DeprecationKey => `${kind}:${id}`;
@@ -35,8 +42,10 @@ const makeDeprecationService = (
   eventService: Option.Option<Context.Service.Shape<typeof EventService>>,
 ): Context.Service.Shape<typeof DeprecationService> =>
   DeprecationService.of({
+    // Recording and the first-use claim are one atomic step, so concurrent first
+    // uses of a surface publish `deprecation-used` exactly once; later uses only count.
     use: (use) =>
-      Ref.update(state, (current) => {
+      Ref.modify(state, (current) => {
         const key = deprecationKey(use.kind, use.id);
         const existing = current.uses.get(key);
         const uses = new Map(current.uses);
@@ -44,15 +53,17 @@ const makeDeprecationService = (
           use: existing?.use ?? use,
           count: (existing?.count ?? 0) + 1,
         });
-        return { ...current, uses };
+        return [existing === undefined, { ...current, uses }] as const;
       }).pipe(
-        Effect.flatMap(() =>
-          Option.match(eventService, {
+        Effect.flatMap((firstUse) =>
+          Option.match(firstUse ? eventService : Option.none(), {
             onNone: () => Effect.void,
             onSome: (events) =>
               events.publish({ _tag: "deprecation-used", use }).pipe(Effect.catch(() => Effect.void)),
           }),
         ),
+        // The invocation's own recorder keeps this use apart from concurrent invocations.
+        Effect.flatMap(() => DeprecationRecorder.pipe(Effect.flatMap((recorder) => recorder.record(use)))),
         Effect.flatMap(() =>
           use.notice.severity === "error"
             ? Effect.fail(
@@ -106,12 +117,25 @@ const makeDeprecationService = (
           });
         }),
       ),
+    // One human warning per surface per service-instance lifetime, claimed atomically.
+    claimWarning: (kind, id) =>
+      Ref.modify(state, (current) => {
+        const key = deprecationKey(kind, id);
+        if (current.claimed.has(key)) return [false, current] as const;
+        const claimed = new Set(current.claimed);
+        claimed.add(key);
+        return [true, { ...current, claimed }] as const;
+      }),
   });
 
 export const layer = Layer.effect(
   DeprecationService,
   Effect.gen(function* () {
-    const state = yield* Ref.make<DeprecationState>({ registry: new Map(), uses: new Map() });
+    const state = yield* Ref.make<DeprecationState>({
+      registry: new Map(),
+      uses: new Map(),
+      claimed: new Set(),
+    });
     const eventService = yield* Effect.serviceOption(EventService);
     return makeDeprecationService(state, eventService);
   }),

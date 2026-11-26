@@ -183,7 +183,7 @@ export const scratchRun = Effect.fn("ScratchRun.run")(function* (
       // Chunks stream before the result exists, so forwarded values must reach sinks already built.
       const redaction = yield* Effect.serviceOption(RedactionService);
       if (Option.isSome(redaction)) yield* redaction.value.registerValues(redactionTokensFromEnv(env));
-      const cliTextOutput = options.hostIo === "cli" && options.envelopeFormat !== true;
+      const cliTextOutput = options.hostIo === "cli" && options.machineFormat !== true;
       if (cliTextOutput) yield* finishCommandProgress();
       const sink = yield* Effect.serviceOption(StreamFrameSink);
       const execute = execServiceCommand(

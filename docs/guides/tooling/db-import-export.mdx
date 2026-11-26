@@ -275,6 +275,14 @@ lando db:reset --yes
       <Run command="lando db:export - --compression=brotli --format=json" expectExit={2} />
       <Verify command="lando db:export - --compression=brotli --format=json" expectExit={2} expect={{ stdout: "", stderr: { regex: "\"ok\":false,\"error\":\\{\"_tag\":\"MalformedCliFlagValueError\"" } }} />
     </Step>
+    <Step name="selection-failures">
+      <Run command="lando db:export - --format=ndjson --jq=." expectExit={2} />
+      <Verify command="lando db:export - --format=ndjson --jq=." expectExit={2} expect={{ stdout: "", stderr: { regex: "^\\{\"_tag\":\"result\",\"envelope\":\\{[^\\n]*\"_tag\":\"JsonProjectionError\"" } }} />
+      <Run command="lando db:export - --format=json --log-level=bogus" expectExit={2} />
+      <Verify command="lando db:export - --format=json --log-level=bogus" expectExit={2} expect={{ stdout: "", stderr: { regex: "\"ok\":false,\"error\":\\{\"_tag\":\"LogLevelSelectionError\"" } }} />
+      <Run command="lando db:export - --format=json --renderer=bogus" expectExit={2} />
+      <Verify command="lando db:export - --format=json --renderer=bogus" expectExit={2} expect={{ stdout: "", stderr: { regex: "\"ok\":false,\"error\":\\{\"_tag\":\"RendererSelectionError\"" } }} />
+    </Step>
   </Scenario>
 
   <Scenario id="export-compression-needs-stdout" render={false} reason="Regression for --compression on a file export">

@@ -107,7 +107,7 @@ describe("share command skeleton", () => {
     for (const spec of specs) {
       expect(spec?.bootstrap).toBe("app");
       expect(spec?.resultSchema, `${spec?.id} must carry a resultSchema`).toBeDefined();
-      expect(spec?.flags, `${spec?.id} must define share skeleton flags`).toHaveProperty("format");
+      expect(spec?.flags, `${spec?.id} must leave --format to the dispatcher`).not.toHaveProperty("format");
       expect(spec?.flags, `${spec?.id} must define provider selection`).toHaveProperty("provider");
     }
   });

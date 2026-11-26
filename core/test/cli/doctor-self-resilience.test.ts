@@ -12,14 +12,11 @@ import { metaDoctorSpec } from "../../src/cli/command-specs/meta/doctor.ts";
 import { resilientDoctorReport } from "../../src/cli/commands/doctor-bootstrap.ts";
 import type { DoctorReport } from "../../src/cli/commands/doctor-contract.ts";
 import { DoctorReportSchema } from "../../src/cli/commands/doctor-contract.ts";
-import {
-  makeDoctorReport,
-  renderDoctorReport,
-  renderDoctorReportAsNdjson,
-} from "../../src/cli/commands/doctor-report.ts";
+import { makeDoctorReport, renderDoctorReport } from "../../src/cli/commands/doctor-report.ts";
 import { isolateDoctorSection } from "../../src/cli/commands/doctor-self.ts";
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
 import { withEnvVar } from "../_support/temp-cwd";
+import { renderDoctorReportAsNdjson } from "./doctor-report-fixture";
 
 const SHORT_BUDGET_ENV = { LANDO_DOCTOR_SECTION_BUDGET_MS: "1000" } as const;
 const runtimeLayerFactoryLive = Layer.succeed(

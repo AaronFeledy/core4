@@ -10,7 +10,7 @@ import type {
 import { yesFlag } from "../../../spec/confirmation-flag";
 import {
   booleanFlag,
-  formatFlag,
+  commandResultFormatAmong,
   specArgsOf,
   specFlagsOf,
   stringArrayFlag,
@@ -18,10 +18,6 @@ import {
 } from "../../../spec/input-coercion";
 import { Args, Flags } from "../../../spec/metadata";
 
-export const remoteFormatFlag = Flags.string({
-  description: "Output format.",
-  default: "text",
-});
 export const remoteNameArg = Args.string({ description: "Remote name.", required: false });
 export const remoteSourceArg = Args.string({ description: "RemoteSource id.", required: false });
 export const remoteSelectorArg = Args.string({
@@ -42,17 +38,14 @@ export const remoteSkeletonFlags = {
   force: Flags.boolean({ description: "Confirm protected remote operations." }),
   yes: yesFlag("Answer yes to confirmation prompts."),
   "no-interactive": Flags.boolean({ description: "Disable interactive confirmation prompts." }),
-  format: remoteFormatFlag,
 } as const;
 
 export const remoteConfigFlags = {
   remote: Flags.string({ description: "Remote name." }),
-  format: remoteFormatFlag,
 } as const;
 
 export const remoteAddFlags = {
   set: Flags.string({ description: "Remote config key=value pair.", multiple: true }),
-  format: remoteFormatFlag,
 } as const;
 
 export const remoteSetupFlags = {
@@ -61,7 +54,7 @@ export const remoteSetupFlags = {
 } as const;
 
 export const remoteFormatFromInput = (input: unknown): "text" | "json" =>
-  formatFlag(specFlagsOf(input), ["text", "json"], "text");
+  commandResultFormatAmong(input, ["text", "json"], "text");
 
 const onlyValue = (raw: string | undefined): ReadonlyArray<string> | undefined => {
   if (raw === undefined) return undefined;
@@ -110,8 +103,7 @@ export const remoteSyncOptionsFromInput = (input: unknown): RemoteSyncOptions =>
 
 export const remoteListOptionsFromInput = (input: unknown): RemoteListOptions => {
   const remote = stringFlag(specFlagsOf(input), "remote");
-  const format = remoteFormatFromInput(input);
-  return remote === undefined ? { format } : { remote, format };
+  return remote === undefined ? {} : { remote };
 };
 
 export const remoteAddOptionsFromInput = (input: unknown): RemoteAddOptions => {
@@ -126,11 +118,7 @@ export const remoteAddOptionsFromInput = (input: unknown): RemoteAddOptions => {
     if (eq <= 0) continue;
     config[value.slice(0, eq)] = value.slice(eq + 1);
   }
-  return {
-    name,
-    config,
-    format: remoteFormatFromInput(input),
-  };
+  return { name, config };
 };
 
 export const remoteRemoveOptionsFromInput = (input: unknown): RemoteRemoveOptions => {
@@ -138,17 +126,13 @@ export const remoteRemoveOptionsFromInput = (input: unknown): RemoteRemoveOption
   const args = specArgsOf(input);
   return {
     name: stringFlag(args, "name") ?? stringFlag(flags, "remote") ?? "default",
-    format: remoteFormatFromInput(input),
   };
 };
 
 export const remoteTestOptionsFromInput = (input: unknown): RemoteTestOptions => {
   const flags = specFlagsOf(input);
   const args = specArgsOf(input);
-  return {
-    format: remoteFormatFromInput(input),
-    ...remoteSelection(stringFlag(flags, "remote"), stringFlag(args, "env")),
-  };
+  return remoteSelection(stringFlag(flags, "remote"), stringFlag(args, "env"));
 };
 
 export const remoteSetupOptionsFromInput = (input: unknown): RemoteSetupOptions => {

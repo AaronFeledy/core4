@@ -37,7 +37,7 @@ import {
 } from "./compiled-runtime";
 import { escapeDiagnosticText } from "./diagnostic-text";
 import { attachToolingHostIo, toolingHostStdin } from "./exec-host-io";
-import { isEnvelopeResultFormat } from "./format-flags";
+import { isMachineResultFormat } from "./format-flags";
 import type { LandoFlagMatch } from "./lando-flags";
 import { rejectUnsupportedResultFormat } from "./result-format-guard";
 import { renderPreCommandFailure } from "./spec/command-boundary";
@@ -67,7 +67,7 @@ const withKeyboardHandoff = <A, E, R>(
 
 /** Live sinks only for human formats; envelope formats collect into the result document. */
 const dynamicToolingStreaming = (): { readonly streamingMode?: "live" } =>
-  isEnvelopeResultFormat(activeResultFormat) ? {} : { streamingMode: "live" };
+  isMachineResultFormat(activeResultFormat) ? {} : { streamingMode: "live" };
 
 const assertNever = (value: never): never => value;
 
@@ -98,7 +98,7 @@ export const runDynamicTooling = async (
           ...(context.io.stdin === undefined ? {} : { stdinStream: context.io.stdin }),
           restore: () => {},
         }
-      : attachToolingHostIo(!isEnvelopeResultFormat(activeResultFormat) && activeRendererMode !== "json");
+      : attachToolingHostIo(!isMachineResultFormat(activeResultFormat) && activeRendererMode !== "json");
   const interactive = hostIo.tty === true;
   return runWithProcessAbortSignal(
     (signal) =>
@@ -155,7 +155,7 @@ const runDynamicBunShellTooling = async (
   if (await emitJsonListModeIfRequested(ToolingResult, context)) return;
   const mode =
     context === undefined || isStdioRendererIO(context.io)
-      ? toolingHostStdin(!isEnvelopeResultFormat(activeResultFormat) && activeRendererMode !== "json")
+      ? toolingHostStdin(!isMachineResultFormat(activeResultFormat) && activeRendererMode !== "json")
       : context.io.stdin === undefined
         ? "none"
         : "piped";

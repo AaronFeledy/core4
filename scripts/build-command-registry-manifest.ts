@@ -4,7 +4,7 @@ import { dirname, resolve } from "node:path";
 
 import type { BuiltInCommandEntry } from "../core/src/cli/built-in-command-registry.ts";
 import { COMMAND_TOPICS } from "../core/src/cli/command-topics.ts";
-import { formatFlagDefsForCommand } from "../core/src/cli/format-flags.ts";
+import { advertisedOptInFormats, formatFlagDefsForCommand } from "../core/src/cli/format-flags.ts";
 import { resolveTopLevelAliases } from "../core/src/cli/spec/command-spec.ts";
 import { writeFormattedOutput } from "./_codegen-output.ts";
 
@@ -46,6 +46,7 @@ const toJsonValue = (value: unknown): JsonValue | undefined => {
 
 const projectSpec = (entry: BuiltInCommandEntry): JsonValue => {
   const spec = entry.spec;
+  const advertisedFormats = advertisedOptInFormats(spec);
   return (
     toJsonValue({
       id: spec.id,
@@ -64,7 +65,8 @@ const projectSpec = (entry: BuiltInCommandEntry): JsonValue => {
       deferred: spec.deferred,
       bootstrap: spec.bootstrap,
       helpGroup: spec.helpGroup,
-      resultFormats: spec.resultFormats,
+      // The derived set, so cold help offers what the command produces without the spec.
+      advertisedFormats: advertisedFormats.length === 0 ? undefined : advertisedFormats,
       flags: spec.flags,
       args: spec.args,
       streamingMode: spec.streamingMode,

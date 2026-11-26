@@ -6,9 +6,9 @@ import {
   classifyDiedEvent,
   collectOomDoctorChecks,
 } from "../../src/cli/commands/doctor-oom.ts";
-import { renderDoctorReportAsNdjson } from "../../src/cli/commands/doctor-render-ndjson.ts";
 import { renderDoctorReport } from "../../src/cli/commands/doctor-render-text.ts";
 import { makeDoctorReport } from "../../src/cli/commands/doctor-report.ts";
+import { renderDoctorReportAsNdjson } from "./doctor-report-fixture";
 
 const CONTEXT = { platform: "linux" as const };
 const REDACTOR = createStandaloneRedactor("secrets", { sourceEnv: {} });

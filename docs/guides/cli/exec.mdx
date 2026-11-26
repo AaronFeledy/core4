@@ -101,6 +101,10 @@ lando exec appserver -- tar -x -I zstd -f - -C /app/web/sites/default/files < fi
       <Run command="lando exec --cwd /srv/app -- pwd" />
       <Verify command="lando exec --cwd /srv/app -- pwd" expect={{ stdout: "pwd\n", stderr: "" }} />
     </Step>
+    <Step name="exec-as-ndjson">
+      <Run command="lando exec --format=ndjson -- echo hello world" />
+      <Verify command="lando exec --format=ndjson -- echo hello world" expect={{ stdout: { regex: "\"_tag\":\"stdout\"[\\s\\S]*\"_tag\":\"result\",\"envelope\":\\{\"apiVersion\":\"v4\",\"command\":\"app:exec\",\"ok\":true" } }} />
+    </Step>
     <Step name="cleanup">
       <Cleanup />
       <Run command="lando destroy -y" />
@@ -138,11 +142,13 @@ These exceptions apply to values discovered from configuration, not values expli
 
 ## Machine-readable output
 
-`--format json` emits newline-delimited JSON stream frames, then exactly one result frame:
+`--format=json` emits newline-delimited JSON stream frames, then exactly one result frame. `--format=ndjson` is the same stream under its own name:
 
 ```sh
-lando exec --format json -- <command>
+lando exec --format=ndjson -- <command>
 ```
+
+Both run the command without a terminal session, even when you call them from a terminal, so the stream stays machine-readable.
 
 Each data frame carries a complete line of stdout or stderr, or up to 64 KiB when a line is longer. Registered values are masked on bytes first, including across frames. Invalid UTF-8 becomes the replacement character, then the full secrets profile masks the decoded text. A partial final line is emitted at end of stream. Pattern matching restarts at each 64 KiB fragment; the registered-value matcher does not.
 
