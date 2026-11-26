@@ -26,6 +26,12 @@ const ActiveEventFrames = Context.Reference<ReadonlyArray<ActiveEventFrame>>(
   },
 );
 
+// Inherited through the canonical executor's lifecycle, not passed as authored command input.
+export const EventInvocationSignal = Context.Reference<AbortSignal | undefined>(
+  "@lando/engine/EventInvocationSignal",
+  { defaultValue: () => undefined },
+);
+
 /** Events whose steps are running on this fiber, outermost first, including through nested commands. */
 export const activeEventNames: Effect.Effect<ReadonlyArray<LandofileEventName>> = Effect.map(
   Effect.service(ActiveEventFrames),
@@ -75,6 +81,7 @@ export const runCanonicalCommand = Effect.fnUntraced(function* (
   plan: AppPlan,
   leaf: ResolvedToolingCommandStepLeaf,
   redactionTokens: ReadonlyArray<string>,
+  signal?: AbortSignal,
 ) {
   const executor = yield* Effect.serviceOption(EventCommandExecutor);
   if (Option.isNone(executor)) {
@@ -97,6 +104,7 @@ export const runCanonicalCommand = Effect.fnUntraced(function* (
         }
       : frame,
   );
+  if (signal?.aborted) return yield* Effect.interrupt;
   const result = yield* executor.value
     .run({
       command: leaf.command,
@@ -108,6 +116,9 @@ export const runCanonicalCommand = Effect.fnUntraced(function* (
       plan,
       redactionTokens,
     })
-    .pipe(Effect.provideService(ActiveEventFrames, invokingFrames));
+    .pipe(
+      Effect.provideService(ActiveEventFrames, invokingFrames),
+      Effect.provideService(EventInvocationSignal, signal),
+    );
   return { ...result, tool: leaf.command, service: ":lando" };
 });

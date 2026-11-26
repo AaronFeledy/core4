@@ -167,6 +167,7 @@ const providerExecRun = Effect.fn("ToolingEngine.run")(function* (
   let stdout = "";
   let stderr = "";
   for (const command of invocation.commands) {
+    if (invocation.signal?.aborted) return yield* Effect.interrupt;
     const target = {
       app: plan.id,
       service: service.name,
@@ -194,7 +195,7 @@ const providerExecRun = Effect.fn("ToolingEngine.run")(function* (
     );
     stdout += result.stdout ?? "";
     stderr += result.stderr ?? "";
-    exitCode = invocation.signal?.aborted === true ? 130 : result.exitCode;
+    exitCode = result.exitCode;
     if (exitCode !== 0) break;
   }
   const out: ToolingEngineResult = {

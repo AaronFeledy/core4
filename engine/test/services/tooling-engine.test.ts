@@ -912,12 +912,14 @@ describe("ProviderExecToolingEngine.layer", () => {
   });
 
   test.each([
-    { aborted: false, observed: false },
-    { aborted: true, observed: false },
-    { aborted: true, observed: true },
+    { aborted: false, observed: undefined, pending: true, expected: undefined },
+    { aborted: true, observed: undefined, pending: true, expected: undefined },
+    { aborted: true, observed: 0, pending: true, expected: undefined },
+    { aborted: true, observed: 0, pending: false, expected: 0 },
+    { aborted: true, observed: 7, pending: true, expected: 7 },
   ])(
-    "skips later commands when the stream stops, aborted=$aborted observed=$observed",
-    async ({ aborted, observed }) => {
+    "settles provider tooling with aborted=$aborted observed=$observed pending=$pending",
+    async ({ aborted, observed, pending, expected }) => {
       // Given
       const plan = makePlan([baseServicePlan("web", true)]);
       const controller = new AbortController();
@@ -930,19 +932,27 @@ describe("ProviderExecToolingEngine.layer", () => {
               calls++;
               if (aborted) controller.abort();
             }),
-          ).pipe(Stream.flatMap(() => (observed ? Stream.make({ exitCode: 0 }) : Stream.empty))),
+          ).pipe(
+            Stream.flatMap(() =>
+              observed === undefined ? Stream.empty : Stream.make({ exitCode: observed }),
+            ),
+          ),
       };
       // When
       const exit = await Effect.runPromiseExit(
         runEngine(
-          { tool: "wait", commands: [["first"], ["second"]], signal: controller.signal },
+          {
+            tool: "wait",
+            commands: pending ? [["first"], ["second"]] : [["first"]],
+            signal: controller.signal,
+          },
           plan,
           provider,
         ),
       );
       // Then
-      if (observed) {
-        expect(Exit.isSuccess(exit) && exit.value.exitCode).toBe(130);
+      if (expected !== undefined) {
+        expect(Exit.isSuccess(exit) && exit.value.exitCode).toBe(expected);
       } else {
         if (Exit.isSuccess(exit)) throw new TypeError("tooling completed without observing an exit");
         if (aborted) expect(Cause.hasInterruptsOnly(exit.cause)).toBe(true);
