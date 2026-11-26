@@ -1,0 +1,16 @@
+# Debian trixie with classic sudo, for setup-elevation-pty-live.integration.test.ts.
+# Images are pinned to multi-arch index digests (resolved with `podman pull` and checked against
+# the registry). Renovate does not cover test paths: bump these digests by hand, and keep the Bun
+# tag equal to .bun-version.
+FROM docker.io/library/debian:trixie-slim@sha256:8aa5a7bf5a1955bddbe7d74fcdd0b91ab30e74362a8b73af672b0481b35b44a0
+
+RUN apt-get update \
+  && DEBIAN_FRONTEND=noninteractive apt-get install --yes --no-install-recommends ca-certificates sudo util-linux \
+  && rm -rf /var/lib/apt/lists/* \
+  && sudo --version | grep -q '^Sudo version '
+
+COPY --from=docker.io/oven/bun:1.4.3-debian@sha256:923bedb355f7746666659f71e724998159a5c8c54bd1cb1030e1975a0698415b /usr/local/bin/bun /usr/local/bin/bun
+
+# A password and the distro's `%sudo ALL=(ALL:ALL) ALL` rule: every sudo run authenticates.
+RUN useradd --create-home --shell /bin/bash --groups sudo landotest \
+  && echo 'landotest:lando-test-pw' | chpasswd
