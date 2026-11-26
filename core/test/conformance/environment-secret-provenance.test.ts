@@ -14,16 +14,18 @@ import { RedactionService } from "@lando/redaction/service";
 import "../../src/runtime/engine-composition.ts";
 import { DEFAULT_LANDOFILE_LOAD_POLICY } from "@lando/landofile/load-expression-file";
 import { loadLandofileFile } from "@lando/landofile/service";
+import { makeLandoPaths } from "@lando/paths";
 import { AbsolutePath, type AppPlan, ServiceName } from "@lando/sdk/schema";
 import {
   AppPlanner,
   type CommandSpec,
   EnvironmentValueResolver,
+  PathsService,
   SecretStore,
   ToolingEngine,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { Effect, Layer, Stream } from "effect";
+import { Effect, Layer, Option, Schema, Stream } from "effect";
 import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
 
 const planFile = async (file: string, env: Readonly<Record<string, string>> = {}) => {
@@ -39,7 +41,9 @@ const planFile = async (file: string, env: Readonly<Record<string, string>> = {}
   );
   return Effect.runPromise(
     Effect.flatMap(AppPlanner, (planner) => planner.plan(loaded, TestRuntimeProvider.capabilities)).pipe(
-      Effect.provide(AppPlannerLayer.layer),
+      Effect.provide(
+        AppPlannerLayer.layer.pipe(Layer.provide(Layer.succeed(PathsService, makeLandoPaths()))),
+      ),
       Effect.provide(PluginRegistryLayer.layerWith({ app: false, user: false }, BUNDLED_PLUGIN_MODULES)),
     ),
   );
@@ -112,11 +116,50 @@ test.each([
     const overrides = await resolveWith(app, calls, payload);
     const durable = JSON.stringify(app);
     const requests: EngineHttpRequest[] = [];
+    const networks = new Map<string, string>();
+    const labelsSchema = Schema.Record(Schema.String, Schema.String);
+    const libpodNetworkRequest = Schema.Struct({
+      name: Schema.String,
+      driver: Schema.String,
+      labels: labelsSchema,
+    });
+    const compatNetworkRequest = Schema.Struct({
+      Name: Schema.String,
+      Driver: Schema.String,
+      Labels: labelsSchema,
+    });
+    const volumeRequest = Schema.Struct({ Name: Schema.String, Labels: labelsSchema });
     let created = false;
     const api: EngineHttpApi = {
       request: (request) =>
         Effect.sync(() => {
           requests.push(request);
+          if (
+            request.method === "POST" &&
+            (request.path === "/libpod/networks/create" || request.path === "/networks/create")
+          ) {
+            const network = Option.orElse(
+              Option.map(Schema.decodeUnknownOption(libpodNetworkRequest)(request.body), (body) => ({
+                Name: body.name,
+                Driver: body.driver,
+                Labels: body.labels,
+              })),
+              () => Schema.decodeUnknownOption(compatNetworkRequest)(request.body),
+            );
+            if (Option.isNone(network)) return { status: 400, body: "{}" };
+            const { Name, Driver, Labels } = network.value;
+            networks.set(Name, JSON.stringify({ Id: Name, Name, Driver, Labels }));
+            return { status: 201, body: "{}" };
+          }
+          if (request.method === "POST" && request.path === "/volumes/create") {
+            const volume = Schema.decodeUnknownOption(volumeRequest)(request.body);
+            if (Option.isNone(volume)) return { status: 400, body: "{}" };
+            return { status: 201, body: JSON.stringify(volume.value) };
+          }
+          if (request.method === "GET" && request.path.startsWith("/networks/")) {
+            const body = networks.get(decodeURIComponent(request.path.slice("/networks/".length)));
+            return body === undefined ? { status: 404, body: "{}" } : { status: 200, body };
+          }
           if (request.method === "GET" && request.path.startsWith("/containers/json?"))
             return { status: 200, body: "[]" };
           if (request.method === "GET" && request.path.endsWith("/json"))

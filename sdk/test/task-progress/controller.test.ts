@@ -160,6 +160,9 @@ describe("@lando/sdk/task-progress controller", () => {
       "task.complete",
       "task.tree.complete",
     ]);
+    expect(byTag(publisher.events, "task.tree.start")[0]?.children).toEqual([
+      { id: setupId, label: "Setup file-sync" },
+    ]);
     expect(byTag(publisher.events, "task.detail")[0]).toMatchObject({
       taskId: setupId,
       stream: "stdout",

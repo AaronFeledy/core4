@@ -55,43 +55,57 @@ test("destroy confirmation refusal preserves every legacy realization and its vo
   }
 });
 
-test.each(["stop", "destroy"] as const)(
-  "%s refuses a blocked transaction before retiring either name",
-  async (command) => {
-    const harness = fixture();
-    const failure = new ManagedFileTransactionError({
-      reason: "blocked",
-      phase: "recover",
-      path: current.root,
-      cause: "invariant",
-      remediation: "Resolve the managed-file conflict.",
+const blockedTransaction = new ManagedFileTransactionError({
+  reason: "blocked",
+  phase: "recover",
+  path: current.root,
+  cause: "invariant",
+  remediation: "Resolve the managed-file conflict.",
+});
+const blockedGuard = {
+  assertReadable: () => Effect.void,
+  pending: () => Effect.succeed(null),
+  ensureConsistent: () => Effect.fail(blockedTransaction),
+};
+
+test("destroy refuses a blocked transaction before retiring either name", async () => {
+  const harness = fixture();
+  try {
+    const result = await Effect.runPromise(
+      destroyApp({}, target).pipe(
+        Effect.provideService(ManagedFileTransactionGuard, blockedGuard),
+        Effect.provide(harness.layer),
+        Effect.result,
+      ),
+    );
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: { _tag: "ManagedFileTransactionError", reason: "blocked" },
     });
-    try {
-      const result = await Effect.runPromise(
-        Effect.gen(function* () {
-          if (command === "stop") yield* stopApp({}, target);
-          else yield* destroyApp({}, target);
-        }).pipe(
-          Effect.provideService(ManagedFileTransactionGuard, {
-            assertReadable: () => Effect.void,
-            pending: () => Effect.succeed(null),
-            ensureConsistent: () => Effect.fail(failure),
-          }),
-          Effect.provide(harness.layer),
-          Effect.result,
-        ),
-      );
-      expect(result).toMatchObject({
-        _tag: "Failure",
-        failure: { _tag: "ManagedFileTransactionError", reason: "blocked" },
-      });
-      expect(harness.applied.map((plan) => plan.id)).toEqual([stale.id, current.id]);
-      expect([...harness.containers]).toEqual([stale.id, current.id]);
-    } finally {
-      rmSync(harness.userDataRoot, { recursive: true, force: true });
-    }
-  },
-);
+    expect(harness.applied.map((plan) => plan.id)).toEqual([stale.id, current.id]);
+    expect([...harness.containers]).toEqual([stale.id, current.id]);
+  } finally {
+    rmSync(harness.userDataRoot, { recursive: true, force: true });
+  }
+});
+
+test("stop retires no name, so a blocked transaction does not stop it", async () => {
+  const harness = fixture();
+  try {
+    const result = await Effect.runPromise(
+      stopApp({}, target).pipe(
+        Effect.provideService(ManagedFileTransactionGuard, blockedGuard),
+        Effect.provide(harness.layer),
+      ),
+    );
+    expect(result.outcome).toBe("stopped");
+    expect(harness.applied.map((plan) => plan.id)).toEqual([stale.id, current.id]);
+    expect([...harness.containers]).toEqual([stale.id, current.id]);
+    expect([...harness.running]).toEqual([]);
+  } finally {
+    rmSync(harness.userDataRoot, { recursive: true, force: true });
+  }
+});
 
 test.each(["stop", "destroy"] as const)(
   "%s refuses an unfinished journal before retiring either name",

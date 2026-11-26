@@ -1,7 +1,7 @@
 import { lstat, realpath } from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
 import { type LandoPaths, isPathWithin } from "@lando/paths";
-import { DataTransferError, errnoCode } from "@lando/sdk/errors";
+import { DataTransferError, StateStoreError, errnoCode } from "@lando/sdk/errors";
 import type { SnapshotHandle, SnapshotInfo } from "@lando/sdk/schema";
 import { Effect } from "effect";
 
@@ -12,12 +12,18 @@ export type SnapshotAddress = Pick<SnapshotHandle, "ownerKey" | "id"> & {
   readonly store: Pick<SnapshotHandle["store"], "store">;
 };
 
+const SNAPSHOT_STORE_REMEDIATION = "Inspect the Lando snapshot store under the configured userDataRoot.";
+
+/** Map a store failure; keep upgrade remediation when the envelope is newer than this Lando. */
 export const stateFailure = (operation: string, cause: unknown): DataTransferError =>
   new DataTransferError({
     message: `Snapshot store ${operation} failed.`,
     operation,
     cause,
-    remediation: "Inspect the Lando snapshot store under the configured userDataRoot.",
+    remediation:
+      cause instanceof StateStoreError && cause.reason === "newer-version"
+        ? cause.remediation
+        : SNAPSHOT_STORE_REMEDIATION,
   });
 
 export const requireSafeSegment = (segment: string) =>

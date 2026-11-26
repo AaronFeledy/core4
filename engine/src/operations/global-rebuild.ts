@@ -25,7 +25,7 @@ import type {
   StateStoreError,
 } from "@lando/sdk/errors";
 import { PostGlobalRebuildEvent, PreGlobalRebuildEvent } from "@lando/sdk/events";
-import { StartedService } from "@lando/sdk/schema";
+import { StartAppResult, StartedService } from "@lando/sdk/schema";
 import {
   type AppPlanner,
   type BuildError,
@@ -53,6 +53,7 @@ export const GlobalRebuildResultSchema = Schema.Struct({
   app: Schema.String,
   materialized: Schema.Boolean,
   servicesRebuilt: Schema.Array(StartedService),
+  credentialChanges: StartAppResult.fields.credentialChanges,
 });
 export type GlobalRebuildResult = typeof GlobalRebuildResultSchema.Type;
 
@@ -115,7 +116,7 @@ export const globalRebuild = Effect.fn("GlobalRebuild.rebuild")(
     const builder = yield* BuildOrchestrator;
     const verifyAdmission = yield* captureGlobalStartupAdmission();
 
-    const { builtPlan, servicesRebuilt } = yield* withGlobalLifecycleEvents(
+    const { builtPlan, servicesRebuilt, credentialChanges } = yield* withGlobalLifecycleEvents(
       {
         pre: () =>
           events.publish(
@@ -139,9 +140,9 @@ export const globalRebuild = Effect.fn("GlobalRebuild.rebuild")(
       },
       Effect.gen(function* () {
         yield* verifyAdmission;
-        yield* provider.destroy(
+        yield* provider.bringDown(
           { app: loaded.plan.id, plan: loaded.plan },
-          { volumes: false, removeState: false },
+          { containers: "remove", volumes: false, removeState: false },
         );
 
         const applied = yield* applyGlobalServiceGroups(
@@ -183,10 +184,15 @@ export const globalRebuild = Effect.fn("GlobalRebuild.rebuild")(
           applied.changes,
         );
 
-        return { builtPlan, servicesRebuilt };
+        return { builtPlan, servicesRebuilt, credentialChanges: applied.credentialChanges };
       }),
     );
-    return { app: builtPlan.name, materialized: true, servicesRebuilt };
+    return {
+      app: builtPlan.name,
+      materialized: true,
+      servicesRebuilt,
+      ...(credentialChanges === undefined ? {} : { credentialChanges }),
+    };
   },
   (effect, _options: GlobalRebuildOptions = {}) => withGlobalMutation(effect),
 );

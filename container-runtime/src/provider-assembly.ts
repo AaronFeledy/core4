@@ -1,19 +1,32 @@
 import { ProviderUnavailableError } from "@lando/sdk/errors";
-import type { AppId, AppPlan } from "@lando/sdk/schema";
+import {
+  type AppId,
+  type AppPlan,
+  type BringDownOptions,
+  type BringDownOutcome,
+  type ContainerDisposition,
+  type ObservedBringDown,
+  planAppIdentity,
+} from "@lando/sdk/schema";
 import {
   AppPlanSanitizer,
   type ApplyOptions,
   ContainerHelperAssets,
-  type DestroyOptions,
   EventService,
   PathsService,
+  type ProviderError,
+  type RuntimeProviderShape,
+  type ServiceRuntimeInfo,
 } from "@lando/sdk/services";
 import { Effect, Option } from "effect";
 import { type AppliedPlanCacheOptions, makeAppliedPlanCache } from "./applied-plan-cache.ts";
+import { adoptLegacyDataRoot } from "./data-root-adoption.ts";
 import { refuseOtherAppsResources } from "./foreign-owner.ts";
+import { volumeCoordinationKey } from "./native-volume-identity.ts";
 import { removeOrphanedNetworks } from "./orphaned-networks.ts";
 import { makeOwnedResourcesCleanup } from "./resource-cleanup.ts";
 import { makeResourceOwnershipStore } from "./resource-ownership.ts";
+import { bringDownObservedContainer } from "./service-lifecycle.ts";
 
 export { makeOwnedResourcesCleanup } from "./resource-cleanup.ts";
 export { makeResourceOwnershipStore } from "./resource-ownership.ts";
@@ -23,7 +36,9 @@ export const hasExactVolumeTeardown = (provider: object): boolean =>
   "exactVolumeTeardown" in provider && provider.exactVolumeTeardown === true;
 
 import { type ProviderDataPlaneOptions, makeProviderDataPlane } from "./data-plane.ts";
-import type { ProviderErrorContext } from "./engine-api.ts";
+import type { LifecycleDialect } from "./dialect.ts";
+import type { EngineHttpApi, ProviderErrorContext } from "./engine-api.ts";
+import { bringDown, stopAppContainers } from "./podman/bring-down.ts";
 import { type EmitComposeOptions, composePath, emitCompose, renderCompose } from "./podman/compose.ts";
 import { type ResolvedProviderOpsInput, makeResolvedProviderOps } from "./runtime-provider.ts";
 
@@ -48,30 +63,167 @@ export const providerHostInputs = Effect.gen(function* () {
 type ProviderPlanStateOptions = AppliedPlanCacheOptions &
   Omit<ProviderDataPlaneOptions, "api" | "providerId" | "redactorFor"> & {
     readonly ctx: ProviderErrorContext;
+    readonly userDataRoot?: string | undefined;
     readonly api?: ProviderDataPlaneOptions["api"];
   };
 
 const makeOwnership = (options: ProviderPlanStateOptions) => {
   const store = makeResourceOwnershipStore(options.ctx.providerId, options.appliedPlanState);
+  const receiptsAt = (root: AppPlan["root"]) =>
+    store
+      .load(root)
+      .pipe(Effect.map((inventory) => inventory?.adoptions?.flatMap((batch) => batch.receipts) ?? []));
+  const receiptsFor = Effect.fnUntraced(function* (plan: AppPlan) {
+    if (plan.identity?.dataRoot === undefined) return [];
+    return yield* receiptsAt(planAppIdentity(plan).appRoot);
+  });
+  const adopt = Effect.fn("ProviderOwnership.adopt")(function* (
+    plan: AppPlan,
+    previous: AppPlan | undefined,
+    witness: Parameters<NonNullable<RuntimeProviderShape["adoptDataRoot"]>>[1],
+  ) {
+    const api = options.api;
+    if (api?.request === undefined) return;
+    yield* adoptLegacyDataRoot(plan, previous, {
+      request: api.request,
+      store,
+      volumeWitness: (name) =>
+        volumeCoordinationKey({ ...options, api, providerId: options.ctx.providerId }, name).pipe(
+          Effect.flatMap((key) => (key === undefined ? Effect.succeed(undefined) : witness(key))),
+        ),
+    });
+  });
   return {
     ...store,
-    prepare: (plan: AppPlan, previous?: AppPlan) =>
-      refuseOtherAppsResources(plan, previous, {
+    adopt,
+    receiptsFor,
+    receiptsAt,
+    prepare: Effect.fn("ProviderOwnership.prepare")(function* (plan: AppPlan, previous?: AppPlan) {
+      yield* refuseOtherAppsResources(plan, previous, {
         ctx: options.ctx,
         ...(options.api === undefined ? {} : { api: options.api }),
-      }).pipe(Effect.andThen(store.prepare(plan, previous))),
+      });
+      const owner = planAppIdentity(plan);
+      if (
+        owner.dataRoot !== undefined &&
+        previous !== undefined &&
+        previous.root === plan.root &&
+        previous.identity?.dataRoot === undefined
+      ) {
+        const inventory = yield* store.load(owner.appRoot);
+        if (
+          !inventory?.adoptions?.some(
+            (batch) => batch.dataRoot === owner.dataRoot && batch.previousAppId === previous.id,
+          )
+        ) {
+          return yield* new ProviderUnavailableError({
+            providerId: options.ctx.providerId,
+            operation: "data-root-adoption",
+            message: "The legacy applied plan has not been checked for data-root adoption.",
+            remediation:
+              "Start the app through Lando so it can verify legacy resources and volume initialization before applying the new plan.",
+          });
+        }
+      }
+      yield* store.prepare(plan, previous);
+      return yield* receiptsFor(plan);
+    }),
   };
 };
 
-export const makeProviderPlanState = (options: ProviderPlanStateOptions) => ({
+interface ProviderBringDownRuntime {
+  readonly api?: EngineHttpApi;
+  readonly dialect?: LifecycleDialect;
+}
+
+/**
+ * Shared bring-down for one provider engine client. `app` runs one disposition over a resolved plan:
+ * `stop` keeps every owned container, `remove` deletes them with networks and requested volumes,
+ * then forgets the applied plan unless it is kept. `observed` proves the live container's ownership
+ * against the provider's data root (or the recorded plan's) and the adoption receipts at the
+ * observed root before acting.
+ */
+const makeProviderBringDown =
+  (
+    options: ProviderPlanStateOptions,
+    ownership: ReturnType<typeof makeOwnership>,
+    appliedPlans: ReturnType<typeof makeAppliedPlanCache>,
+  ) =>
+  (runtime: ProviderBringDownRuntime) => ({
+    app: Effect.fn("RuntimeProvider.bringDownApp")(function* (
+      request: { readonly app: AppId; readonly plan: AppPlan; readonly options: BringDownOptions },
+      /** Runs after the containers were brought down, before applied state is forgotten. */
+      afterContainers: Effect.Effect<unknown> = Effect.void,
+    ): Effect.fn.Return<BringDownOutcome, ProviderError> {
+      const { plan, options: bringDownOptions } = request;
+      const containerRuntime = {
+        adoptionReceipts: yield* ownership.receiptsFor(plan),
+        ctx: options.ctx,
+        ...(runtime.api === undefined ? {} : { api: runtime.api }),
+        ...(runtime.dialect === undefined ? {} : { dialect: runtime.dialect }),
+      };
+      if (bringDownOptions.containers === "stop") {
+        const stopped = yield* stopAppContainers(plan, containerRuntime);
+        yield* afterContainers;
+        return {
+          kind: "stopped",
+          containers: stopped.receipts,
+          shutdownObservations: stopped.shutdownObservations,
+        };
+      }
+      const removed = yield* bringDown(plan, {
+        ...containerRuntime,
+        ...(options.endpointNamespace === undefined ? {} : { endpointNamespace: options.endpointNamespace }),
+        volumes: bringDownOptions.volumes,
+        ...(bringDownOptions.purgeCaches === undefined ? {} : { purgeCaches: bringDownOptions.purgeCaches }),
+      });
+      yield* afterContainers;
+      yield* forgetAppliedPlanUnlessKept(appliedPlans, request.app, bringDownOptions);
+      return {
+        kind: "removed",
+        containers: removed.receipts,
+        volumesRemoved: removed.volumesRemoved,
+        shutdownObservations: removed.shutdownObservations,
+        ...(removed.skipped === undefined ? {} : { skipped: removed.skipped }),
+      };
+    }),
+    observed: Effect.fn("RuntimeProvider.bringDownObserved")(function* (
+      observed: ServiceRuntimeInfo,
+      containers: ContainerDisposition,
+    ): Effect.fn.Return<ObservedBringDown, ProviderError> {
+      const plan = yield* appliedPlans.resolveMutationPlan(observed.app);
+      // The live inspect by id supplies the native name the receipts are matched against, so a
+      // listed row without one still gets them.
+      const receipts = observed.appRoot === undefined ? [] : yield* ownership.receiptsAt(observed.appRoot);
+      return yield* bringDownObservedContainer(observed, containers, {
+        ctx: options.ctx,
+        ...(runtime.api === undefined ? {} : { api: runtime.api }),
+        dataRoot: options.userDataRoot ?? plan?.identity?.dataRoot,
+        receipts,
+      });
+    }),
+  });
+
+export const makeProviderPlanState = (options: ProviderPlanStateOptions) => {
+  const ownership = makeOwnership(options);
+  const appliedPlans = makeAppliedPlanCache(options);
+  return {
+    ownership,
+    appliedPlans,
+    bringDownWith: makeProviderBringDown(options, ownership, appliedPlans),
+    ...makeProviderResources(options),
+  };
+};
+
+const makeProviderResources = (options: ProviderPlanStateOptions) => ({
   removeOrphanedNetworks: (plan: AppPlan, previous: AppPlan | undefined) =>
     removeOrphanedNetworks(plan, previous, {
       ctx: options.ctx,
       ...(options.api === undefined ? {} : { api: options.api }),
       store: makeResourceOwnershipStore(options.ctx.providerId, options.appliedPlanState),
     }),
-  ownership: makeOwnership(options),
   cleanupOwnedResources: makeOwnedResourcesCleanup({
+    userDataRoot: options.userDataRoot,
     checkAppliedState: (app) =>
       options.appliedPlanState === undefined
         ? Effect.void
@@ -99,7 +251,6 @@ export const makeProviderPlanState = (options: ProviderPlanStateOptions) => ({
             : { endpointNamespace: options.endpointNamespace }),
         }),
       }),
-  appliedPlans: makeAppliedPlanCache(options),
 });
 
 export const bindResolvedProviderOps = (
@@ -125,11 +276,13 @@ export const rememberAppliedPlan = (
     complete: applyOptions.complete === true,
   });
 
+/** A `remove` bring-down forgets the applied plan unless `removeState: false` keeps it; `stop` never does. */
 export const forgetAppliedPlanUnlessKept = (
   appliedPlans: Pick<ReturnType<typeof makeAppliedPlanCache>, "forgetPlan">,
   app: AppId,
-  destroyOptions: Pick<DestroyOptions, "removeState">,
-) => (destroyOptions.removeState === false ? Effect.void : appliedPlans.forgetPlan(app));
+  options: BringDownOptions,
+) =>
+  options.containers === "stop" || options.removeState === false ? Effect.void : appliedPlans.forgetPlan(app);
 
 export const noPlanErrorFactory =
   (options: { readonly providerId: string; readonly implementer: string; readonly remediation: string }) =>

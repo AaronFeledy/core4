@@ -10,10 +10,11 @@ import {
 } from "@lando/sdk/schema";
 import { AppPlanner } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { Cause, Effect, Exit, Option, Schema } from "effect";
+import { Cause, Effect, Exit, Layer, Option, Schema } from "effect";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";
 import { literalTestLandofile } from "../compiled-landofile.ts";
+import { pathsServiceLayer } from "../paths-service.ts";
 
 const APP_ROOT = process.cwd();
 const planExit = (service: typeof ServiceConfig.Encoded, capabilities = TestRuntimeProvider.capabilities) => {
@@ -25,7 +26,10 @@ const planExit = (service: typeof ServiceConfig.Encoded, capabilities = TestRunt
   return Effect.runPromiseExit(
     Effect.flatMap(AppPlanner, (planner) =>
       planner.plan(literalTestLandofile(landofile, APP_ROOT), capabilities),
-    ).pipe(Effect.provide(AppPlannerLayer.layer), Effect.provide(PluginRegistryLayer.layer)),
+    ).pipe(
+      Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
+      Effect.provide(PluginRegistryLayer.layer),
+    ),
   );
 };
 

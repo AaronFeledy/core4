@@ -91,6 +91,7 @@
     "./operations/confirmation-prompt": "./src/operations/confirmation-prompt.ts",
     "./operations/connection-collector": "./src/operations/connection-collector.ts",
     "./operations/connection-url": "./src/operations/connection-url.ts",
+    "./operations/database-credential-convergence": "./src/operations/database-credential-convergence.ts",
     "./operations/database-credentials": "./src/operations/database-credentials.ts",
     "./operations/destroy": "./src/operations/destroy.ts",
     "./operations/ensure-global-services": "./src/operations/ensure-global-services.ts",
@@ -137,11 +138,13 @@
     "./operations/source-cache-gc": "./src/operations/source-cache-gc.ts",
     "./operations/start": "./src/operations/start.ts",
     "./operations/start-incomplete-notice": "./src/operations/start-incomplete-notice.ts",
+    "./operations/start-warnings": "./src/operations/start-warnings.ts",
     "./operations/stop": "./src/operations/stop.ts",
     "./operations/stream-frame-sink": "./src/operations/stream-frame-sink.ts",
     "./operations/tooling": "./src/operations/tooling.ts",
     "./operations/tooling-bun-script": "./src/operations/tooling-bun-script.ts",
     "./operations/uninstall": "./src/operations/uninstall.ts",
+    "./operations/uninstall-runtime-dir": "./src/operations/uninstall-runtime-dir.ts",
     "./operations/unknown-service": "./src/operations/unknown-service.ts",
     "./operations/update": "./src/operations/update.ts",
     "./package.json": "./package.json",
@@ -234,6 +237,7 @@
     "./services/shell-quote": "./src/services/shell-quote.ts",
     "./services/shell-runner": "./src/services/shell-runner.ts",
     "./services/tooling-engine": "./src/services/tooling-engine.ts",
+    "./services/user-app-resolver": "./src/services/user-app-resolver.ts",
     "./subsystems/certs/api": "./src/subsystems/certs/api.ts",
     "./subsystems/debugger-host": "./src/subsystems/debugger-host.ts",
     "./subsystems/detached-worker/process": "./src/subsystems/detached-worker/process.ts",
@@ -249,6 +253,7 @@
     "./subsystems/host-proxy/open-target": "./src/subsystems/host-proxy/open-target.ts",
     "./subsystems/host-proxy/plan-sanitizer-live": "./src/subsystems/host-proxy/plan-sanitizer-live.ts",
     "./subsystems/host-proxy/proxy-bypass": "./src/subsystems/host-proxy/proxy-bypass.ts",
+    "./subsystems/host-proxy/run-directory": "./src/subsystems/host-proxy/run-directory.ts",
     "./subsystems/host-proxy/session-env": "./src/subsystems/host-proxy/session-env.ts",
     "./subsystems/host-proxy/shim": "./src/subsystems/host-proxy/shim.ts",
     "./subsystems/host-proxy/transport": "./src/subsystems/host-proxy/transport.ts",
@@ -287,6 +292,7 @@
     "./testing/live-provider-socket": "./src/testing/live-provider-socket.ts",
     "./testing/output-provider": "./src/testing/output-provider.ts",
     "./testing/state-store": "./src/testing/state-store.ts",
+    "./testing/temp-root-retirement": "./src/testing/temp-root-retirement.ts",
     "./version": "./src/version.ts"
   },
   "files": ["./src", "./dist", "!./dist/**/*.tsbuildinfo"],
@@ -311,7 +317,7 @@
   "scripts": {
     "build": "tsc -b",
     "clean": "rm -rf dist .tsbuildinfo",
-    "test": "bun test ./test",
+    "test": "bun --cwd=.. test ./engine/test",
     "typecheck": "tsc -b"
   }
 }

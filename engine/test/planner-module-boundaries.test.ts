@@ -4,10 +4,8 @@ const EXPECTED_RUNTIME_EXPORTS = [
   "AppPlanner",
   "layer",
   "DEFAULT_PROXY_DOMAIN",
-  "DEFAULT_APP_MOUNT_EXCLUDES",
   "applyAuthoredDependencies",
   "applyAuthoredHealthcheck",
-  "mergeDefaultExcludes",
   "validateAuthoredAppMount",
 ] as const;
 

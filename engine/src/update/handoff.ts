@@ -4,6 +4,7 @@ import { sha256Hex } from "@lando/sdk/digest";
 import type { StateStoreError } from "@lando/sdk/errors";
 import type { StateBucket, StateStoreShape, StateWrite } from "@lando/sdk/services";
 import { defineTransitions, illegalTransitionMessage } from "@lando/sdk/transitions";
+import { storeErrorRemediation } from "@lando/state-store";
 import { Effect, Schema } from "effect";
 import { CoreUpdateFailureSchema, UpdateNetworkError } from "./errors.ts";
 import { PluginUpdatePlanRowSchema } from "./plugin-plan.ts";
@@ -57,7 +58,10 @@ const handoffError = (operation: string, cause: unknown): UpdateNetworkError =>
   new UpdateNetworkError({
     message: `Failed to ${operation} the one-shot update replacement receipt.`,
     url: "state://update/handoff",
-    remediation: "Clear the update handoff receipt under the user data root and retry `lando update`.",
+    remediation: storeErrorRemediation(
+      cause,
+      "Clear the update handoff receipt under the user data root and retry `lando update`.",
+    ),
     cause,
   });
 

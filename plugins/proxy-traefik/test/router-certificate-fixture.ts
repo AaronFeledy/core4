@@ -67,6 +67,7 @@ export const makeCertificateFixture = (platform: "linux" | "win32" | "darwin" | 
           ? Effect.fail(caFailure)
           : Effect.succeed({ certificate: state.root, trusted: true });
       }),
+      trustStores: Effect.succeed([]),
       issueCert: (spec: CertificateSpec) =>
         Effect.suspend(() => {
           calls.push(spec);

@@ -15,7 +15,8 @@ import { fileModeMountIdentity } from "./file-mode-mounts.ts";
 import {
   AGENT_SESSION_LABEL,
   GPG_AGENT_OVERLAY_LABEL,
-  HOST_PROXY_SESSION_LABEL,
+  HOST_PROXY_CONTRACT_LABEL,
+  HOST_PROXY_MOUNT_TARGETS,
   SSH_AGENT_OVERLAY_LABEL,
   containerIntegrationLabels,
 } from "./labels.ts";
@@ -104,12 +105,8 @@ export const createConfigFingerprint = (
     sessionMountTargets.add(AGENT_SOCKET_CONTAINER_DIR.gpg);
     sessionMountTargets.add("/run/lando/gpg-agent-keys");
   }
-  if (integrationLabels[HOST_PROXY_SESSION_LABEL] !== undefined) {
-    sessionMountTargets.add("/run/lando/host-proxy.sock");
-    sessionMountTargets.add("/run/lando/host-proxy/credentials");
-    sessionMountTargets.add("/usr/local/bin/lando");
-    sessionMountTargets.add("/usr/local/bin/xdg-open");
-    sessionMountTargets.add("/usr/local/bin/open");
+  if (integrationLabels[HOST_PROXY_CONTRACT_LABEL] !== undefined) {
+    for (const target of HOST_PROXY_MOUNT_TARGETS) sessionMountTargets.add(target);
   }
   const projection = {
     artifactProvenance: createArtifactIdentity(service),
@@ -172,7 +169,7 @@ export const createConfigFingerprint = (
         ([key]) =>
           key !== CREATE_CONFIG_LABEL &&
           key !== AGENT_SESSION_LABEL &&
-          key !== HOST_PROXY_SESSION_LABEL &&
+          key !== HOST_PROXY_CONTRACT_LABEL &&
           key !== SSH_AGENT_OVERLAY_LABEL &&
           key !== GPG_AGENT_OVERLAY_LABEL,
       ),

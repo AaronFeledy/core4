@@ -95,7 +95,7 @@ describe("Engine package seam", () => {
     expect(scripts).toEqual({
       build: "tsc -b",
       clean: "rm -rf dist .tsbuildinfo",
-      test: "bun test ./test",
+      test: "bun --cwd=.. test ./engine/test",
       typecheck: "tsc -b",
     });
     expect(packageEntry).toEndWith("/engine/src/index.ts");

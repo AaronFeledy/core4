@@ -13,7 +13,7 @@ export type LiveRegionSpoolFactory = () => LiveRegionSpool;
 const MAX_DEFERRED_SCROLLBACK_CHARACTERS = 256 * 1024;
 
 export class DeferredScrollback {
-  private readonly lines: string[] = [];
+  private lines: string[] = [];
   private characters = 0;
   private spool: LiveRegionSpool | undefined;
 
@@ -34,21 +34,47 @@ export class DeferredScrollback {
     }
   }
 
-  async drain(): Promise<ReadonlyArray<string>> {
-    const spool = this.spool;
+  /**
+   * Commits every deferred row in arrival order, then calls `release` in the
+   * same tick that finds the buffer empty, so the caller can stop deferring
+   * with no window where a pushed row is neither committed nor deferred. Each
+   * pass detaches the current rows first; rows pushed during a spool read land
+   * in a fresh buffer that the next pass commits after them. On failure the
+   * remaining rows are dropped and `release` still runs before the error.
+   */
+  async flush(commit: (row: string) => void, release: () => void): Promise<void> {
     try {
-      return spool === undefined ? [...this.lines] : await spool.readLines();
-    } finally {
-      await this.clear();
+      while (this.lines.length > 0 || this.spool !== undefined) {
+        const { lines, spool } = this.detach();
+        if (spool === undefined) {
+          for (const line of lines) commit(line);
+          continue;
+        }
+        try {
+          for (const line of await spool.readLines()) commit(line);
+        } finally {
+          await spool.remove();
+        }
+      }
+    } catch (cause) {
+      const { spool } = this.detach();
+      release();
+      await spool?.remove();
+      throw cause;
     }
+    release();
   }
 
   async clear(): Promise<void> {
-    this.lines.length = 0;
+    await this.detach().spool?.remove();
+  }
+
+  private detach(): { readonly lines: ReadonlyArray<string>; readonly spool: LiveRegionSpool | undefined } {
+    const detached = { lines: this.lines, spool: this.spool };
+    this.lines = [];
     this.characters = 0;
-    const spool = this.spool;
     this.spool = undefined;
-    await spool?.remove();
+    return detached;
   }
 }
 

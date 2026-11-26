@@ -88,7 +88,7 @@ Required behavior:
 - `acquire` binds the root, caches, host-proxy socket, routes, containers, and volumes to the caller's `Scope`. Finalization MUST destroy resources before unlinking state.
 - CLI foreground acquisition uses the command scope so interruption reaches finalization.
 - Destroy is idempotent after success; an unresolved id raises `ScratchUnknownIdError`.
-- On a desired-plan cache miss, destroy and garbage collection MUST resolve the matching applied scratch plan before falling back to planless orphan cleanup (§12.1). Unreadable ownership evidence MUST NOT be treated as absence (§5.3.1).
+- The scratch desired plan is a regenerable record that opts into `onNewerVersion: "discard"`: an older or a newer envelope version is a miss (§12.1, §12.7.1). A miss is not permission to ignore applied state. On a miss, destroy and garbage collection MUST resolve the matching applied scratch plan before falling back to planless orphan cleanup. Unreadable ownership evidence MUST NOT be treated as absence (§5.3.1): a damaged or newer-format applied record for the scratch id is protected evidence (§5.5.2), and destroy and GC MUST refuse with the provider's diagnosis before the planless fallback, workspace removal, or registry removal, including when the runtime is offline. The registry does not record which provider ran a scratch app, so a protected shared (record-layout) receipt on any installed provider also refuses the reap; the refusal names that record and its recovery.
 - Operations for one id are serialized across callers and processes by one lifecycle lock: the app mutation lock of kind `scratch` keyed by the id and its canonical instance root `<userDataRoot>/scratch/<id>/`, also for passthrough forks whose plan root is the source app. Acquisition holds it from the registry `acquire` write through `mark-running`, covering its own failure cleanup; explicit destroy and stop, `apps:poweroff`, foreground scope-close cleanup, and each GC reap acquire it. Scope-close cleanup reacquires the lock instead of inheriting the acquisition's hold. The lock is taken before any global or app mutation lock.
 - Failures are tagged as listed in §21.14.
 
@@ -185,7 +185,7 @@ Scratch `AppFeature` code may consume permitted `globalServices.<name>.*` expres
 
 `apps:scratch:logs` resolves the registry handle and that root's exact applied plan; it never reads the acquisition plan cache. Absent applied evidence validates `--since` and returns no lines, an unknown id fails with `ScratchAppNotFoundError`, and orphan or ownership refusals propagate unchanged.
 
-Every command uses `scratch` bootstrap. `apps:list --include-scratch` adds running scratches; `apps:list --all` includes all app kinds. `apps:poweroff` destroys scratches by default; `--keep-scratch` opts out and composes with `--keep-global`.
+Every command uses `scratch` bootstrap. `apps:list --include-scratch` adds running scratches; `apps:list --all` includes all app kinds of this installation (§8.2). `apps:poweroff` destroys scratches by default; `--keep-scratch` opts out and composes with `--keep-global`.
 
 #### 21.10.1 `apps:scratch:start` flags
 

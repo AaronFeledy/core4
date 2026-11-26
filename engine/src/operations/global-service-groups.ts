@@ -12,7 +12,12 @@ import {
   projectDebuggerOverlay,
 } from "../subsystems/start-overlay-registry.ts";
 import { withGlobalConsumerReservation } from "./global-consumer-lease.ts";
-import { type GlobalSiblingRemoval, advanceGlobalRecordedPlan } from "./global-retained-plan.ts";
+import {
+  type GlobalSiblingRemoval,
+  advanceGlobalRecordedPlan,
+  retireGlobalReplacement,
+} from "./global-retained-plan.ts";
+import { publishStartWarnings } from "./start-warnings.ts";
 
 export const serviceGroups = (
   services: ReadonlyArray<ServicePlan>,
@@ -53,6 +58,7 @@ export const applyGlobalServiceGroups = Effect.fn("GlobalServices.applyGroups")(
   apply: {
     readonly provider: PreparedRuntimeProvider;
     readonly services: ReadonlyArray<ServicePlan>;
+    readonly replacement?: AppPlan;
     readonly options: Pick<ApplyOptions, "complete" | "reconcile" | "signal">;
     readonly recordedPlan?: AppPlan;
     readonly recordedDisabledIds?: ReadonlyArray<string>;
@@ -64,17 +70,21 @@ export const applyGlobalServiceGroups = Effect.fn("GlobalServices.applyGroups")(
   },
   build: (plan: AppPlan) => Effect.Effect<AppPlan, E, R>,
 ) {
+  const selectedPlan: AppPlan = {
+    ...plan,
+    services: Object.fromEntries(apply.services.map((service) => [service.name, service])),
+  };
+  // Once before the group fan-out, so a failing group build still reports them.
+  yield* publishStartWarnings(selectedPlan);
   const session = yield* (yield* EnvironmentValueResolver).openSession();
-  const preparedOverlays =
-    apply.preparedOverlays ??
-    (yield* prepareDebuggerOverlay({
-      ...plan,
-      services: Object.fromEntries(apply.services.map((service) => [service.name, service])),
-    }));
+  const preparedOverlays = apply.preparedOverlays ?? (yield* prepareDebuggerOverlay(selectedPlan));
   let recordedPlan = apply.recordedPlan ?? plan;
   const changes = new Map<string, ServiceContainerChange>();
+  const credentials: NonNullable<
+    Effect.Success<ReturnType<typeof applyActivation>>["credentialChanges"]
+  >[number][] = [];
   const outcomes = yield* Effect.forEach(
-    serviceGroups(apply.services, apply.bindings),
+    apply.replacement === undefined ? serviceGroups(apply.services, apply.bindings) : [apply.services],
     (group) =>
       Effect.gen(function* () {
         const names = new Set<string>(group.map((service) => service.name));
@@ -109,6 +119,7 @@ export const applyGlobalServiceGroups = Effect.fn("GlobalServices.applyGroups")(
               applyActivation({
                 provider: apply.provider,
                 plan: runtimePlan,
+                previousPlan: apply.recordedPlan === undefined ? undefined : recordedPlan,
                 certificates,
                 ...apply.options,
                 environment: session,
@@ -118,13 +129,16 @@ export const applyGlobalServiceGroups = Effect.fn("GlobalServices.applyGroups")(
                 completionPlan: candidateRecordedPlan,
                 beforeApply: Effect.gen(function* () {
                   if (apply.beforeApply !== undefined) yield* apply.beforeApply;
+                  if (apply.replacement !== undefined)
+                    yield* retireGlobalReplacement(apply.provider, apply.replacement, builtPlan);
                   for (const removal of removals)
-                    yield* apply.provider.removeObservedService(removal.observation);
+                    yield* apply.provider.bringDownObserved(removal.observation, "remove");
                 }),
               }),
               [...(apply.exclusive ?? []).filter((id) => names.has(id)), ...removalIds],
             );
             for (const [name, change] of Object.entries(applied.services ?? {})) changes.set(name, change);
+            credentials.push(...(applied.credentialChanges ?? []));
             recordedPlan = candidateRecordedPlan;
           }),
         );
@@ -139,7 +153,13 @@ export const applyGlobalServiceGroups = Effect.fn("GlobalServices.applyGroups")(
     outcomes.flatMap(({ names, result }) => (Result.isSuccess(result) ? [...names] : [])),
   );
   const services = Object.values(recordedPlan.services).filter((service) => startedNames.has(service.name));
-  return { builtPlan: recordedPlan, services, failures, changes: Object.fromEntries(changes) };
+  return {
+    builtPlan: recordedPlan,
+    services,
+    failures,
+    changes: Object.fromEntries(changes),
+    ...(credentials.length === 0 ? {} : { credentialChanges: credentials }),
+  };
 }, Effect.scoped);
 
 export const globalServiceGroupError = <E>(

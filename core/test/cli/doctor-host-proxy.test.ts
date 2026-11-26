@@ -14,6 +14,7 @@ import {
 import { makeLandoPaths, sanitizeAppName } from "@lando/paths";
 import { ServiceExecError } from "@lando/sdk/errors";
 import { AbsolutePath, GlobalConfig, ProviderId } from "@lando/sdk/schema";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { type Context, Deferred, Effect, Fiber, Layer, Schema } from "effect";
 import { TestClock } from "effect/testing";
 import { doctor } from "../../src/cli/commands/doctor.ts";
@@ -70,10 +71,7 @@ const tempRoot = async (): Promise<string> => {
 };
 
 const buildRegistry = (provider: typeof TestRuntimeProvider) =>
-  RuntimeProviderRegistry.of({
-    resolveAppliedPlan: () => Effect.succeed(undefined),
-    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-    appliedPlansFor: () => Effect.succeed([]),
+  makeTestRuntimeProviderRegistry({
     list: Effect.succeed([ProviderId.make(provider.id)]),
     capabilities: Effect.succeed(provider.capabilities),
     select: () => Effect.succeed(provider),
@@ -969,7 +967,7 @@ describe("meta:doctor host-proxy transport reachability", () => {
     expect(commands).toEqual([
       {
         command: ["/usr/local/bin/lando", "open", "--print", "--format=json"],
-        env: { LANDO_HOST_PROXY_SOCKET: "/run/lando/host-proxy.sock" },
+        env: {},
         stdin: "ignore",
         tty: false,
       },

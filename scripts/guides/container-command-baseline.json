@@ -58,7 +58,6 @@
   "docs/guides/recipes/astro-workflow.mdx": [
     "lando astro --help",
     "lando astro --version",
-    "lando astro dev --host 0.0.0.0 --port 4321 --allowed-hosts astro-demo.lndo.site",
     "lando exec web -- npx --yes create-astro@4.13.2 webapp -- --template minimal --install --no-git --typescript strict --yes --skip-houston --no-ai",
     "lando npm --version",
     "lando npm install",
@@ -112,8 +111,6 @@
     "lando db:import dump.sql.gz --yes",
     "lando db:restore before-update --yes",
     "lando db:snapshot --label before-update",
-    "lando drupal-cms-install",
-    "lando drupal-cms-scaffold",
     "lando drush --version",
     "lando drush cache:rebuild",
     "lando drush config:export -y",
@@ -121,7 +118,6 @@
     "lando drush status --format=json",
     "lando drush updatedb -y",
     "lando drush user:login --no-browser",
-    "lando exec --user www-data appserver -- test -w /app/web/sites/default/files",
     "lando exec appserver -- curl --fail --silent --show-error --max-time 30 --output /dev/null --write-out '%{http_code}' http://127.0.0.1/",
     "lando exec appserver -- curl --fail --silent --show-error --max-time 30 --output /dev/null --write-out '%{http_code}' http://127.0.0.1/user/login",
     "lando exec appserver -- php -r 'echo ini_get(\"memory_limit\"), PHP_EOL;'",
@@ -351,7 +347,6 @@
     "lando npm install -D @sveltejs/adapter-node",
     "lando npm run build",
     "lando npm run check",
-    "lando npm run dev",
     "lando psql -c 'SELECT version();'",
     "lando svelte --help",
     "lando svelte sync"
@@ -496,8 +491,6 @@
   ],
   "docs/guides/services/minio.mdx": ["lando mc ready local"],
   "docs/guides/services/mssql.mdx": [
-    "lando exec database -- /opt/mssql-tools18/bin/sqlcmd -S localhost,1433 -U sa -C -P",
-    "lando logs --service database",
     "lando sqlcmd -Q 'SELECT @@VERSION'",
     "lando sqlcmd -d master -Q 'SELECT name, state_desc FROM sys.databases'"
   ],
@@ -615,7 +608,6 @@
   "docs/guides/tooling/bun-shell-scripts.mdx": [
     "lando app:env:init",
     "lando bad",
-    "lando build",
     "lando count",
     "lando curl version.txt",
     "lando exec web -- cat /app/dist/version.txt",
@@ -626,9 +618,7 @@
     "lando peek",
     "lando report --format=csv",
     "lando show-note --note=guide-canary-note --format=json",
-    "lando smoke https://web.scripts-demo.lndo.site/version.txt",
     "lando stamp -- --format=json",
-    "lando stamp abc1234",
     "lando stamp abc1234 --format=json",
     "lando stamp abc1234 --format=yaml"
   ],
@@ -706,7 +696,6 @@
     "lando db:snapshots --service appserver",
     "lando db:snapshots:prune --service appserver --keep-latest=3 --preview"
   ],
-  "docs/guides/tooling/xdebug-phpstorm.mdx": ["lando xdebug off", "lando xdebug on", "lando xdebug status"],
   "recipes/astro/README.mdx": ["lando astro --version", "lando npm install"],
   "recipes/django/README.mdx": [
     "lando django migrate",

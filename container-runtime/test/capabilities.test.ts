@@ -7,6 +7,7 @@ import {
   engineInfoArchitecture,
   hostProxyCapabilities,
   hostProxyContainerTargets,
+  withPreservedPathVerdict,
 } from "@lando/container-runtime/capabilities";
 import { type AgentSocketDelivery, ProviderCapabilities } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
@@ -14,6 +15,7 @@ import { Effect, Schema } from "effect";
 const baseConstants: Omit<ProviderCapabilityConstants, "composeSpec"> = {
   bindMounts: true,
   bindMountPerformance: "native",
+  serviceHealth: "native",
   tlsCertificates: "none",
   rootless: false,
   providerExtensions: [],
@@ -180,6 +182,31 @@ describe("container runtime capability helpers", () => {
     expect(hostProxyCapabilities("win32", [], "host.containers.internal")).toEqual({
       containerTargets: [],
       tcpHostGateway: "host.containers.internal",
+    });
+  });
+
+  test("records one preserved path's verdict and keeps every other path's entry", () => {
+    // Given a declaration that already supports one path and withholds the start interval
+    const base = {
+      ...buildProviderCapabilities({ ...baseConstants, composeSpec: "native" }),
+      composePreservedPaths: {
+        supported: ["depends_on.*.restart" as const],
+        withheld: [{ key: "healthcheck.start_interval" as const, remediation: "Earlier step." }],
+      },
+    };
+    // When the start interval becomes supported, or is withheld again with a new step
+    const supported = withPreservedPathVerdict(base, "healthcheck.start_interval", { _tag: "supported" });
+    const withheld = withPreservedPathVerdict(supported, "healthcheck.start_interval", {
+      _tag: "withheld",
+      remediation: "Newer step.",
+    });
+    // Then the other path survives both changes and the start interval appears exactly once
+    expect(supported.composePreservedPaths).toEqual({
+      supported: ["depends_on.*.restart", "healthcheck.start_interval"],
+    });
+    expect(withheld.composePreservedPaths).toEqual({
+      supported: ["depends_on.*.restart"],
+      withheld: [{ key: "healthcheck.start_interval", remediation: "Newer step." }],
     });
   });
 

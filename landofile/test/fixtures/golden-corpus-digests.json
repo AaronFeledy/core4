@@ -29,6 +29,10 @@
       "digest": "454dc13afc986c631bf6031d98efd3586a524c5a3fd5a92f7b191ad29017ebd6"
     },
     {
+      "fixture": "docs/guides/app-lifecycle/fixtures/app-lifecycle-keep-containers",
+      "digest": "12c5af155d59e7b36c0f3155c1f967060bd3fdbe686724d4281220bec9b46abc"
+    },
+    {
       "fixture": "docs/guides/app-name-edge-cases/fixtures/non-kebab-landofile",
       "digest": "a405b1cb3fd658d7c4e931719704002bdd2a02e25741f3ff034ec708a67e2358"
     },
@@ -38,7 +42,7 @@
     },
     {
       "fixture": "docs/guides/build-steps/fixtures/build-steps-demo",
-      "digest": "e99e4d894c91996b3cce021214b5a072f463d2c6480f98d72df6396a1e30d736"
+      "digest": "9f68dd4acc1bd1750e7e42cbba320bf964bcc527bae777cdb498d63354c1fc80"
     },
     {
       "fixture": "docs/guides/build-steps/fixtures/build-steps-invalid-user",
@@ -77,7 +81,7 @@
     },
     {
       "fixture": "docs/guides/bun-shell-scripts/fixtures/scripts-demo",
-      "digest": "5d9430ae3101cc9c235fb83376a77bd7f6ba7ad82fa6ffdcf4348a56215a0cce"
+      "digest": "11fe427cdb5fbba8502a2c3688914f5a5b473613ffba114d1a1563481c392884"
     },
     {
       "fixture": "docs/guides/bun-shell-scripts/fixtures/service-front-matter",
@@ -411,6 +415,26 @@
       "digest": "3e8128eab07e4ea4e2ab362a7e20ec84d7a3e85905b27cc56c740b77cc6a7f8b"
     },
     {
+      "fixture": "docs/guides/db-creds-apply/fixtures/mariadb",
+      "digest": "07df80f3494bc7cfca784ee84f4359bb1cd1fa254915aa8bb99c37f6a16c2651"
+    },
+    {
+      "fixture": "docs/guides/db-creds-apply/fixtures/mongodb",
+      "digest": "84df378ea3032ca7c7bcdf93e9e309130735337048e7c094f1dfa9077fc0ca56"
+    },
+    {
+      "fixture": "docs/guides/db-creds-apply/fixtures/mssql",
+      "digest": "099debb3713827611b397d3bf3f84d575f2c170e9d9932e5a5f640d531aaf14e"
+    },
+    {
+      "fixture": "docs/guides/db-creds-apply/fixtures/mysql",
+      "digest": "d306fb1338120c1b776d46fbd6f9793723b396c6793b63837ef1e52a61bc6f11"
+    },
+    {
+      "fixture": "docs/guides/db-creds-apply/fixtures/postgres",
+      "digest": "d68f755a2c071a29b065bb988e0771682befd5825eceb4c55c3a2671a98206ae"
+    },
+    {
       "fixture": "docs/guides/db-import-export/fixtures/one-db",
       "digest": "5e950dcb15d5873532fb2c02197ca467c762bb6406bf6fe5c4b95e2f6c9101db"
     },
@@ -460,7 +484,7 @@
     },
     {
       "fixture": "docs/guides/drupal-testing/fixtures/drupal-demo",
-      "digest": "e943469b0246b93eb9560b2e813c24fa04fae471b3e511cd3534459f8803fa26"
+      "digest": "bd1ceefdc4777e9b0047c2232b253e6020017717c48e854cfe0bb9b696e9de79"
     },
     {
       "fixture": "docs/guides/e2e-smoke-scenarios/fixtures/router-page",
@@ -537,15 +561,15 @@
     },
     {
       "fixture": "docs/guides/expressions/fixtures/expressions-plan-time",
-      "digest": "356b7260d10d8f13ac2a85aceb7f4ee600cba7be8b55efcac7c0713088ed6fde"
+      "digest": "cab2941976da6c68771118712f7662c58624a28ac81e014f390bac62aa7cec1d"
     },
     {
       "fixture": "docs/guides/expressions/fixtures/expressions-public-url-live",
-      "digest": "82c2a2facf3f8cb9555b8dc46208f2001c73434d55fb4ea8d5c427372f01a9e3"
+      "digest": "188c17af79fe099ea2d0e22bdff6d7ca0b0fcae92140bdd4bb31618ccb7ffa2d"
     },
     {
       "fixture": "docs/guides/expressions/fixtures/expressions-public-url",
-      "digest": "350f208855066c7942221686e103f79319abf1da51ba728d87fe1710ffdade86"
+      "digest": "7f7ede7212d723dbd387236b9c68a207040c38f484c6cfbb51da14f7e05980e8"
     },
     {
       "fixture": "docs/guides/expressions/fixtures/expressions-service-creds",
@@ -581,8 +605,27 @@
       }
     },
     {
+      "fixture": "docs/guides/expressions/fixtures/expressions-url-event-phase",
+      "digest": "f03cba8f28d8ff5b6e7f9dfa7ea4d50be48a9dcbf57ca66a016087739312afdf"
+    },
+    {
       "fixture": "docs/guides/expressions/fixtures/expressions-url-no-route",
       "digest": "ae39c675777924609f85fe9470b92a30a96fe661533f254c7e164c02b72c21fd"
+    },
+    {
+      "fixture": "docs/guides/expressions/fixtures/expressions-url-tooling-live",
+      "digest": "71224a384de9bb76f1157c4a7f636081213dc4737a3b567fa0153425424717de"
+    },
+    {
+      "fixture": "docs/guides/expressions/fixtures/expressions-url-tooling-refused",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileLoadError"
+      }
+    },
+    {
+      "fixture": "docs/guides/expressions/fixtures/expressions-url-tooling",
+      "digest": "9d02b0782b6517d38b5ea7a54b95630b5515ffb538ad289a31111b98e10963cf"
     },
     {
       "fixture": "docs/guides/external-access/fixtures/external-access-demo",
@@ -613,12 +656,32 @@
       "digest": "537ab88131383995790ce40ad25fd7972820cd4321076cafdb6ed1ef30cf843d"
     },
     {
+      "fixture": "docs/guides/file-sync-excludes/fixtures/default-app-mount",
+      "digest": "f9d78acb18053e618650280576b10280c54ffe0291b1ce08c41d5c7952be80e7"
+    },
+    {
       "fixture": "docs/guides/file-sync-excludes/fixtures/excludes-demo",
-      "digest": "655a03023d4ccad27bed30d049ee32d422bc24b17ae97106a5f200290bab14c0"
+      "digest": "5414e37800d36ca82a65f9e6907ca692a32b9c0d49ed0b5cd2db44fbfe99d9f6"
     },
     {
       "fixture": "docs/guides/file-sync-excludes/fixtures/nested-mounts",
-      "digest": "902da5597d15933c4fc5c5abe7e255b4697873680843069e4d04ee1553308f68"
+      "digest": "14c6cf99fe19e403d24a4e7935b7ba956717cada48e547a9cb854a61a4a7b097"
+    },
+    {
+      "fixture": "docs/guides/file-sync-excludes/fixtures/no-presets",
+      "digest": "73e8bacf27a74957e57ac6f3e402b583a1d904917fed0b32db03a599478679a4"
+    },
+    {
+      "fixture": "docs/guides/file-sync-excludes/fixtures/vendor-on-host",
+      "digest": "4294e9eb6bedf2bce49e9a9ffcc8149a8df9fccceea9845b5f017b94e79f153a"
+    },
+    {
+      "fixture": "docs/guides/file-sync-excludes/fixtures/vendor-shadow-build",
+      "digest": "b4b1b5fba0ed974f81f32608c5ca2a0e8cc8636514a4bd0a34d93904309d7e64"
+    },
+    {
+      "fixture": "docs/guides/file-sync-excludes/fixtures/vendor-shadow",
+      "digest": "474db5560a9c92933077bdae5b6e4d78173275194b40bc1ab943dfdabe907eb6"
     },
     {
       "fixture": "docs/guides/file-sync-mutagen/fixtures/accelerated-excludes",
@@ -681,12 +744,28 @@
       "digest": "13571ed573adf3ab277519e4a34d7a9122b8a2516b1f2d3d72f7b20177da4176"
     },
     {
+      "fixture": "docs/guides/home-and-host/fixtures/home-and-host-bin-mount",
+      "digest": "ebe39e7ccf34768e5da0a08a0815e9e8ff35b832e1b0240ae5c50746b5875b2c"
+    },
+    {
+      "fixture": "docs/guides/home-and-host/fixtures/home-and-host-bin-tmpfs",
+      "digest": "816dcd083acd12b117ce8b3a4b14e31334cada14e487c0b3a373c25030719b8c"
+    },
+    {
       "fixture": "docs/guides/home-and-host/fixtures/home-and-host-demo",
       "digest": "8877b309bfae036b7b516a76f8b2cd63033a40632e0d171fd3df5ffa88373372"
     },
     {
       "fixture": "docs/guides/home-and-host/fixtures/home-and-host-explicit-path",
       "digest": "a007e971e60fa3c78d2e445125571aae2f63fa433a8d17d16b8599589adf1dc5"
+    },
+    {
+      "fixture": "docs/guides/home-and-host/fixtures/home-and-host-helper-overlap",
+      "digest": "cc50b5dc76f70c6fae1b23d88bc660e6f3268331c54992f4d8096d84230eaaae"
+    },
+    {
+      "fixture": "docs/guides/home-and-host/fixtures/home-and-host-host-proxy-command",
+      "digest": "f20d79ac7e6a37a22b327e735340d1237fc870da903bce74f71978ffdb0a353f"
     },
     {
       "fixture": "docs/guides/home-and-host/fixtures/home-and-host-unknown-home",
@@ -757,11 +836,11 @@
     },
     {
       "fixture": "docs/guides/laravel-horizon/fixtures/laravel-horizon",
-      "digest": "fc1ae9c33c5c3bbe5b074a003897e2cbeb977bc5c00763d66103c8325e5426e5"
+      "digest": "8a4e5fc073e4ce6c3b7e020bb0c52e4433368adfd2eb60f63400f1323cafd93a"
     },
     {
       "fixture": "docs/guides/laravel-reverb/fixtures/laravel-reverb",
-      "digest": "040d06f957a733ef342cedccb2aef5cf1da0f35dc4c0db865661cc389ae75cdc"
+      "digest": "3b1a29b3477819f66ec7e1cb563670aeccd59fb1e96003fd22545f3bf3b1730f"
     },
     {
       "fixture": "docs/guides/laravel-vite/fixtures/laravel-vite",
@@ -992,11 +1071,11 @@
     },
     {
       "fixture": "docs/guides/node-tanstack-start/fixtures/tanstack-start-demo",
-      "digest": "e1c970304aa7f411ae1b5689119ce49c8331f1ba1a2d75f3f1f489b229ed9c0b"
+      "digest": "d8de5ef818900ae4127d01725e5e0d436e269793914d45aef8ecb74967fa6b6b"
     },
     {
       "fixture": "docs/guides/node-tanstack-start/fixtures/tanstack-start-serve",
-      "digest": "54d9d70156f8a71ce995ecb1bf7f7e799c897b306803dd707f6ca113b9789a7b"
+      "digest": "40ac068f48510799f1f1a33b950cd5e80e1d1c4e2d39a05d7d4563a8b2d46da7"
     },
     {
       "fixture": "docs/guides/node-theme-assets/fixtures/php-theme-child",
@@ -1477,6 +1556,10 @@
       "digest": "7ebd87c42308f62bb70cf51309e319747b5482a21fdb59b347015b09c969c117"
     },
     {
+      "fixture": "docs/guides/ssh/fixtures/login-path",
+      "digest": "646761518153b9d07636d9f4785748dd5276f13c3bf63da3de91dfe66ce2125d"
+    },
+    {
       "fixture": "docs/guides/static/fixtures/static-caddy-demo",
       "digest": "33bdac62ad8f3a464250c1b949fc330937d5e6c0cf190d5add168378a1c6225c"
     },
@@ -1497,7 +1580,7 @@
     },
     {
       "fixture": "docs/guides/symfony-messenger/fixtures/symfony-messenger",
-      "digest": "626d6ba842cfa4a9eedb18a43ea13ee5cb795d660b9ece0043762c360943fbfa"
+      "digest": "583b20e7a61f5a1070ec36876068028494d8e437e277fe6f63da496106c63840"
     },
     {
       "fixture": "docs/guides/task-events/fixtures/bracketed-build",
@@ -1518,6 +1601,10 @@
     {
       "fixture": "docs/guides/task-events/fixtures/unknown-event",
       "digest": "93e9ad142110fcf488b4c1d01a22945a858375972ab8f7bbaade9239d1ea69e0"
+    },
+    {
+      "fixture": "docs/guides/terminal-ui-polish/fixtures/task-tree-labels",
+      "digest": "dcc1f149e85108c5bdc62433998d4794411237e313190c4af356342f97b69235"
     },
     {
       "fixture": "docs/guides/timezone/fixtures/timezone-demo",
@@ -1611,8 +1698,20 @@
       "digest": "3dc4ef3e61a3dcd96edb28a5880c84c5be9757616556b65a42d963b1a40c5807"
     },
     {
+      "fixture": "docs/guides/wait-for-your-app/fixtures/native-health",
+      "digest": "79a2578f095934e8a716aa89d565f70227ff98c8098f7d50b1a60b8dd2f0b511"
+    },
+    {
       "fixture": "docs/guides/wait-for-your-app/fixtures/native-host-invalid",
       "digest": "bcc4567082628a6d0c5a64c4b948451281715d8ae951c7d969ef5891d8e86478"
+    },
+    {
+      "fixture": "docs/guides/wait-for-your-app/fixtures/native-start-interval-cadence",
+      "digest": "6aea421df8c4dfafc04679538a1ac4c8ffb2fa2d19e2f3916b2205f6159cf421"
+    },
+    {
+      "fixture": "docs/guides/wait-for-your-app/fixtures/native-start-interval",
+      "digest": "e171da42cc4ffb02addb593a6fda0f71f54f87ef0905f60072e585df9be0ebdb"
     },
     {
       "fixture": "docs/guides/wait-for-your-app/fixtures/native-user-invalid",
@@ -1632,7 +1731,11 @@
     },
     {
       "fixture": "docs/guides/wordpress-vite/fixtures/wordpress-vite",
-      "digest": "2ca78acb2785dab169f9cb64e0c950ba1b2605e82e61a13f7cf09c7a452728c1"
+      "digest": "dec4715bdf80d32cdefa77dfce8b5d2580b66571f60c4590b53333b7d52ced0c"
+    },
+    {
+      "fixture": "docs/guides/xdebug-phpstorm/fixtures/xdebug-custom-image",
+      "digest": "73cec1681f3ba86cc4551f886f3a5dacff7a759e87882c3b77157ea3c5fe2027"
     },
     {
       "fixture": "docs/guides/xdebug-phpstorm/fixtures/xdebug-demo",
@@ -1641,6 +1744,14 @@
     {
       "fixture": "docs/guides/xdebug-phpstorm/fixtures/xdebug-invalid",
       "digest": "497659277c73b4fceb9d7eb115d3f6e744e62ed10368cdddd4b468e169f436cd"
+    },
+    {
+      "fixture": "docs/guides/xdebug-phpstorm/fixtures/xdebug-php86",
+      "digest": "020dbd6eb1e5586c87e7705c5fc149f0e76115964ef99507d1bc47028552fcca"
+    },
+    {
+      "fixture": "docs/guides/xdebug-phpstorm/fixtures/xdebug-primary",
+      "digest": "1f22fd1015406e0e727ec31054dd19664ef6b5e966319d047433510cc20e9633"
     },
     {
       "fixture": "docs/guides/xhprof-xhgui/fixtures/xhprof-demo",
@@ -1861,9 +1972,9 @@
         "digest": "60703b62deb60584757dd423b60c7ca8d39da5f0350e6a3fc1621c1ae19f0705"
       },
       "after": {
-        "digest": "67eb620f6dbb2c94dbab8b1ae5559b31bfd77abcfdec9d08e22a780048ac771f"
+        "digest": "7430ffa717b04e79daca1d812352667cb62f94012857a19028ccd2c8648ce00c"
       },
-      "reason": "The PHP images now compile bcmath, so the MageOS guide fixture no longer installs it in its artifact build step. The fixture also gained a schedule: job on appserver that runs Magento cron every minute as www-data, replacing the guide's host-terminal cron loop. The encoded document drops bcmath from that one install command and adds that one schedule entry. Composer now declares wrapper: true and describes its customized superuser environment and working directory (#2401)."
+      "reason": "The PHP images now compile bcmath, so the MageOS guide fixture no longer installs it in its artifact build step. The fixture also gained a schedule: job on appserver that runs Magento cron every minute as www-data, replacing the guide's host-terminal cron loop. The encoded document drops bcmath from that one install command and adds that one schedule entry. Composer now declares wrapper: true and describes its customized superuser environment and working directory (#2401). The fixture also gained a magento-install wrapper task whose base URL arguments read services.appserver.url (#2542)."
     },
     "docs/guides/migrating-recipes/fixtures/bare-recipe": {
       "before": {

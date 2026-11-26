@@ -1,9 +1,10 @@
 import type { GlobalAppError } from "@lando/sdk/errors";
-import type { AppPlan, RouterConfig, ServicePlan } from "@lando/sdk/schema";
+import { type AppPlan, type RouterConfig, type ServicePlan, isDownRunStatus } from "@lando/sdk/schema";
 import type { BuildOrchestrator, RouterServiceShape } from "@lando/sdk/services";
 import type { ProgressEmitter } from "@lando/sdk/task-progress";
 import { Effect } from "effect";
 import { verifyGlobalConsumerAdmission } from "../operations/global-consumer-lease.ts";
+import { observeServices } from "../operations/service-observation.ts";
 import { waitForServiceReadiness } from "../operations/service-readiness.ts";
 import { startFileSyncSessions } from "../operations/start-file-sync.ts";
 import { withRoutesStartProgress } from "../operations/start-progress-phases.ts";
@@ -28,7 +29,10 @@ type Selected = Readiness & {
   readonly routeUrls?: PreparedRouteUrls | undefined;
   readonly policy: "selected" | "selected-start";
   readonly selectedPlan: AppPlan;
-  /** The composed table whose routes are published, including unselected applied routes. */
+  /**
+   * The composed route table, including unselected applied routes. Completion publishes only the
+   * routes of services that are up; the applied record keeps the whole table.
+   */
   readonly routePlan: AppPlan;
   readonly builds: typeof BuildOrchestrator.Service;
   readonly router: RouterServiceShape;
@@ -77,6 +81,34 @@ const userStart = Effect.fn("StartupCompletion.userStart")(function* (request: U
     : withRoutesStartProgress({ events: request.events, plan: request.plan, work: routes });
   return yield* waitForServiceReadiness(request);
 });
+/**
+ * Routes to publish after a selected operation: those of the selected services, of services whose
+ * route URL another service reads (activation verifies those authorities), and of every other
+ * service unless it is verified down. An unanswered observation keeps the route.
+ */
+const publishedRoutePlan = Effect.fnUntraced(function* (request: Selected) {
+  const kept = new Set([
+    ...Object.keys(request.selectedPlan.services),
+    ...(request.routeUrls?.authorities.keys() ?? []),
+  ]);
+  const others = [
+    ...new Set(
+      request.routePlan.routes.map(({ service }) => service).filter((service) => !kept.has(service)),
+    ),
+  ];
+  if (others.length === 0) return request.routePlan;
+  const observed = yield* observeServices(Effect.succeed(request.provider), request.plan, others);
+  const down = new Set(
+    others.filter((service) => {
+      const status = observed.get(service)?.status;
+      return status !== undefined && isDownRunStatus(status);
+    }),
+  );
+  return down.size === 0
+    ? request.routePlan
+    : { ...request.routePlan, routes: request.routePlan.routes.filter(({ service }) => !down.has(service)) };
+});
+
 const selected = Effect.fn("StartupCompletion.selected")(function* (request: Selected) {
   if (request.policy === "selected") yield* startFileSyncSessions(request.selectedPlan, request.events);
   yield* withBuildProvider(
@@ -90,15 +122,13 @@ const selected = Effect.fn("StartupCompletion.selected")(function* (request: Sel
     request.provider,
   );
   yield* verifyGlobalConsumerAdmission;
-  const routes = applyAppRoutes(
-    request.router,
-    request.routePlan,
-    request.events,
-    request.landofileRouter,
-  ).pipe(Effect.flatMap(({ authorities }) => verifyPublishedRouteUrls(request.routeUrls, authorities)));
-  yield* request.routePlan.routes.length === 0
+  const routePlan = yield* publishedRoutePlan(request);
+  const routes = applyAppRoutes(request.router, routePlan, request.events, request.landofileRouter).pipe(
+    Effect.flatMap(({ authorities }) => verifyPublishedRouteUrls(request.routeUrls, authorities)),
+  );
+  yield* routePlan.routes.length === 0
     ? routes
-    : withRoutesStartProgress({ events: request.events, plan: request.routePlan, work: routes });
+    : withRoutesStartProgress({ events: request.events, plan: routePlan, work: routes });
   return yield* waitForServiceReadiness(request);
 });
 const scratch = Effect.fn("StartupCompletion.scratch")(function* (request: Scratch) {

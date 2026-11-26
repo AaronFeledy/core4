@@ -2,6 +2,7 @@ import { mapFailures } from "@lando/sdk/command-result";
 import { FileSyncStopError } from "@lando/sdk/errors";
 import type { AppPlan, AppRef } from "@lando/sdk/schema";
 import type { FileSyncError } from "@lando/sdk/services";
+import { storeErrorRemediation } from "@lando/state-store";
 import { Effect } from "effect";
 import { mapFailureErrors } from "../lifecycle/failure-compensation.ts";
 import { openJournal, readJournal, resolvePendingAcceleratedStart } from "./accelerated-start-journal.ts";
@@ -31,7 +32,7 @@ export const pendingStartDisposal = Effect.fnUntraced(function* (app: AppRef, pl
       engineId: pending.engineId,
       sessionRef: String(app.id),
       message,
-      remediation: journalRecovery(path),
+      remediation: storeErrorRemediation(cause, journalRecovery(path)),
       ...(cause === undefined ? {} : { cause }),
     });
   const bucket = yield* openJournal(app).pipe(mapFailures((cause) => failure(cause.message, cause)));

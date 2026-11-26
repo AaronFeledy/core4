@@ -185,9 +185,9 @@ export const runProviderStartRetentionContract = Effect.fnUntraced(function* (
   );
 
   // --- Destroy with volumes cleans store volumes and the private network ---
-  yield* Effect.scoped(provider.destroy({ app: plan.id, plan }, { volumes: true })).pipe(
-    mapFailures(mapProviderFailure("destroy with volumes after retention converges")),
-  );
+  yield* Effect.scoped(
+    provider.bringDown({ app: plan.id, plan }, { containers: "remove", volumes: true }),
+  ).pipe(mapFailures(mapProviderFailure("destroy with volumes after retention converges")));
   yield* requireContract(
     !hooks.hasVolume(volumeName),
     "destroy with volumes removes the retained data store",
@@ -272,6 +272,9 @@ export const runProviderStartRetentionContract = Effect.fnUntraced(function* (
   );
 
   yield* Effect.scoped(
-    provider.destroy({ app: interruptPlan.id, plan: interruptPlan }, { volumes: true }),
+    provider.bringDown(
+      { app: interruptPlan.id, plan: interruptPlan },
+      { containers: "remove", volumes: true },
+    ),
   ).pipe(mapFailures(mapProviderFailure("interrupt retention contract cleanup succeeds")));
 });

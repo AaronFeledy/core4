@@ -28,8 +28,9 @@ const notInstalled = new CaError({
 
 const unavailableCa = CertificateAuthority.of({
   id: "fake",
-  setup: () => Effect.void,
+  setup: () => Effect.succeed({ trustStores: [] }),
   root: Effect.fail(notInstalled),
+  trustStores: Effect.succeed([]),
   issueCert: () => Effect.fail(notInstalled),
 });
 
@@ -197,9 +198,7 @@ test("stop keeps the owner's leaf material", async () => {
   await withCertificates(async ({ certsPlan, ownerDir, leaf, provide }) => {
     await Bun.write(leaf.certPath, "certificate\n");
     const harness = makeHarness({ plannedApp: certsPlan, appliedPlans: [certsPlan] });
-    await Effect.runPromise(
-      provide(haltAppRuntime({}, targetOf(certsPlan))).pipe(Effect.provide(harness.layer)),
-    );
+    await Effect.runPromise(provide(haltAppRuntime(targetOf(certsPlan))).pipe(Effect.provide(harness.layer)));
     expect(await readdir(ownerDir)).toEqual([basename(leaf.certPath)]);
   });
 });

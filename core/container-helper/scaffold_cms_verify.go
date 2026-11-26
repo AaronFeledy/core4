@@ -74,7 +74,7 @@ var cmsForbiddenLockKeys = []string{
 // that guarded the staged Composer project. "locked" checks the negotiation
 // before installation; "installed" additionally proves the checkout and the
 // installed record match the reviewed projection.
-func verifyCmsProjection(root string, phase string, repositoryJSON string) error {
+func (i drupalSiteIntent) verifyCmsProjection(root string, phase string, repositoryJSON string) error {
 	expected, err := decodeJSONObject([]byte(repositoryJSON))
 	if err != nil {
 		return fmt.Errorf("invalid reviewed repository projection: %w", err)
@@ -144,7 +144,7 @@ func verifyCmsProjection(root string, phase string, repositoryJSON string) error
 		return nil
 	}
 
-	checkout, err := readJSONObject(filepath.Join(root, "web", "modules", "contrib", "svg_image", "composer.json"))
+	checkout, err := readJSONObject(filepath.Join(root, i.Webroot, "modules", "contrib", "svg_image", "composer.json"))
 	if err != nil {
 		return err
 	}

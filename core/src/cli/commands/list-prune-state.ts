@@ -1,11 +1,11 @@
 import { join } from "node:path";
 import {
   APPLIED_STATE_VERSION,
-  appliedPlansPruneError,
+  appliedStateInspectError,
+  classifyAppliedStateStoreError,
   openAppliedPlansRecord,
 } from "@lando/container-runtime/applied-state";
 import { mapFailures } from "@lando/sdk/command-result";
-
 import { StateStoreError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId } from "@lando/sdk/schema";
 import type { LandoPaths, StateStoreShape } from "@lando/sdk/services";
@@ -15,6 +15,7 @@ import { Effect, Option, Schema } from "effect";
 import type { AppsListEntry } from "./list-discovery";
 
 const APPLIED_PLAN_NAMESPACE = "applied-plans";
+const APPLIED_PLANS_RECORD_KEY = "applied-plans.json";
 const AppliedPlanIdentity = Schema.Struct({
   id: AppId,
   root: AbsolutePath,
@@ -40,14 +41,97 @@ const pluginIdForProvider = (providerId: string): string | undefined => {
   }
 };
 
+/** Structured prune skip for a record this Lando must not delete. */
+export interface AppsListPruneFailure {
+  readonly reason: "newer-version";
+  readonly providerId: string;
+  readonly path: string;
+  readonly appId?: string;
+  readonly storedVersion: number;
+  readonly supportedVersion: number;
+  readonly writtenBy?: string;
+  readonly message: string;
+  readonly remediation: string;
+}
+
+export type PruneAppliedPlanOutcome =
+  | { readonly status: "removed" }
+  | { readonly status: "kept" }
+  | { readonly status: "protected"; readonly failure: AppsListPruneFailure };
+
+const protectOrFail = (
+  error: StateStoreError,
+  meta: {
+    readonly providerId: string;
+    readonly layout: "per-app" | "record";
+    readonly appId?: string;
+  },
+): Effect.Effect<PruneAppliedPlanOutcome, StateStoreError> => {
+  const root = meta.layout === "record" ? "apps" : "plan";
+  const fallbackPath =
+    error.path ??
+    (meta.layout === "record"
+      ? APPLIED_PLANS_RECORD_KEY
+      : `${APPLIED_PLAN_NAMESPACE}/${meta.appId ?? "app"}.json`);
+  const read = classifyAppliedStateStoreError(error, root, fallbackPath);
+
+  if (read.status === "newer-version") {
+    return Effect.succeed({
+      status: "protected",
+      failure: {
+        reason: "newer-version",
+        providerId: meta.providerId,
+        path: read.path,
+        ...(meta.appId === undefined ? {} : { appId: meta.appId }),
+        storedVersion: read.storedVersion,
+        supportedVersion: read.supportedVersion,
+        ...(read.writtenBy === undefined ? {} : { writtenBy: read.writtenBy }),
+        message: error.message,
+        remediation: error.remediation,
+      },
+    });
+  }
+
+  // Podman shared-map corrupt recovery: keep move-aside remediation on decode/version damage.
+  const isCorrupt = error.reason === "decode" || error.reason === "version";
+  if (meta.layout === "record" && isCorrupt) {
+    const cause = appliedStateInspectError({
+      providerId: meta.providerId,
+      layout: "record",
+      operation: "remove",
+      read,
+      ...(meta.appId === undefined ? {} : { appId: meta.appId }),
+      cause: error,
+    });
+    return Effect.fail(
+      new StateStoreError({
+        reason: error.reason,
+        operation: error.operation,
+        path: read.path,
+        remediation: cause.remediation,
+        cause,
+      }),
+    );
+  }
+
+  return Effect.fail(error);
+};
+
+/**
+ * Remove applied-plan inventory for one stale list entry. Modern (plugin) state is
+ * inspected under one lock before any legacy delete, and a record is removed only when its
+ * stored id and root both match the entry. A newer-format modern record is never removed:
+ * it is a protected skip when it alone backs the entry, and when a legacy row also claims the
+ * root its unreadable root cannot prove they are one candidate, so both are kept unreported.
+ */
 export const pruneAppliedPlanState = Effect.fnUntraced(function* (
   paths: LandoPaths,
   stateStore: StateStoreShape,
   entry: AppsListEntry,
-): Effect.fn.Return<boolean, StateStoreError, FileSystem> {
+): Effect.fn.Return<PruneAppliedPlanOutcome, StateStoreError, FileSystem> {
   const { appId, providerId } = entry;
   const pluginId = pluginIdForProvider(providerId);
-  if (pluginId === undefined) return false;
+  if (pluginId === undefined) return { status: "kept" };
   const root = { path: AbsolutePath.make(paths.pluginStateDir(pluginId)) };
   const id = AppId.make(appId);
 
@@ -61,8 +145,54 @@ export const pruneAppliedPlanState = Effect.fnUntraced(function* (
         const { [id]: _removed, ...remaining } = current;
         return Effect.succeed({ _tag: "Set", value: remaining, result: true });
       })
-      .pipe(mapFailures(appliedPlansPruneError));
+      .pipe(
+        Effect.map(
+          (removed): PruneAppliedPlanOutcome => (removed ? { status: "removed" } : { status: "kept" }),
+        ),
+        Effect.catchTag("StateStoreError", (error) =>
+          protectOrFail(error, { providerId, layout: "record", appId }),
+        ),
+      );
   }
+
+  // Modern per-app record first: locked compare-and-remove, never get-then-remove.
+  const modernOutcome = yield* stateStore
+    .open({
+      root,
+      namespace: APPLIED_PLAN_NAMESPACE,
+      key: `${id}.json`,
+      schema: AppliedPlanIdentity,
+      version: APPLIED_STATE_VERSION,
+      codec: "json",
+      mode: 0o600,
+      lock: "advisory",
+      onCorrupt: "discard",
+      // Only older stamps reach the migrator; newer frames fail as reason newer-version first.
+      onVersionMismatch: (raw, _fromVersion) =>
+        Option.getOrNull(Schema.decodeUnknownOption(AppliedPlanIdentity)(raw)),
+    })
+    .pipe(
+      Effect.flatMap((bucket) =>
+        bucket
+          .mutate<boolean>((plan) => {
+            if (plan === null || plan.id !== id || plan.root !== entry.appRoot) {
+              return Effect.succeed({ _tag: "Keep", result: false });
+            }
+            return Effect.succeed({ _tag: "Remove", result: true });
+          })
+          .pipe(
+            Effect.map(
+              (removed): PruneAppliedPlanOutcome => (removed ? { status: "removed" } : { status: "kept" }),
+            ),
+            Effect.catchTag("StateStoreError", (error) =>
+              protectOrFail(error, { providerId, layout: "per-app", appId }),
+            ),
+          ),
+      ),
+      Effect.catchTag("StateStoreError", (error) =>
+        protectOrFail(error, { providerId, layout: "per-app", appId }),
+      ),
+    );
 
   const fs = yield* FileSystem;
   const namespace = `providers/provider-${providerId}/apps`;
@@ -80,7 +210,7 @@ export const pruneAppliedPlanState = Effect.fnUntraced(function* (
         }),
     ),
   );
-  let removedLegacy = false;
+  const matches = [];
   for (const name of names) {
     if (!name.endsWith(".json")) continue;
     const bucket = yield* stateStore.open({
@@ -101,45 +231,26 @@ export const pruneAppliedPlanState = Effect.fnUntraced(function* (
     // Another checkout may hold the same app id at a different root; that record is not this
     // candidate and must not turn the prune into a conflict.
     if (record.plan.root !== entry.appRoot) continue;
-    if (
+    const conflicting =
       (record.providerId !== undefined && record.providerId.replace(/^provider-/u, "") !== providerId) ||
-      (record.plan.provider !== undefined && record.plan.provider.replace(/^provider-/u, "") !== providerId)
-    ) {
-      return yield* Effect.fail(
-        new StateStoreError({
-          reason: "decode",
-          operation: "prune",
-          path: bucket.path,
-          remediation: "Resolve the conflicting app root or provider in legacy inventory before pruning.",
-        }),
-      );
-    }
-    yield* bucket.remove;
-    removedLegacy = true;
+      (record.plan.provider !== undefined && record.plan.provider.replace(/^provider-/u, "") !== providerId);
+    matches.push({ bucket, conflicting });
   }
-  const removedModern = yield* stateStore
-    .open({
-      root,
-      namespace: APPLIED_PLAN_NAMESPACE,
-      key: `${id}.json`,
-      schema: AppliedPlanIdentity,
-      version: APPLIED_STATE_VERSION,
-      codec: "json",
-      mode: 0o600,
-      lock: "advisory",
-      onCorrupt: "discard",
-      // Pruning needs only the identity, which every stored version keeps at the top level.
-      onVersionMismatch: (raw) => Option.getOrNull(Schema.decodeUnknownOption(AppliedPlanIdentity)(raw)),
-    })
-    .pipe(
-      Effect.flatMap((bucket) =>
-        bucket.get.pipe(
-          Effect.flatMap((plan) => {
-            if (plan === null || plan.root !== entry.appRoot) return Effect.succeed(false);
-            return bucket.remove.pipe(Effect.as(true));
-          }),
-        ),
-      ),
+  if (modernOutcome.status === "protected")
+    // The newer record's root is unreadable here, so a legacy row at this root may belong to another
+    // checkout: keep every byte without claiming the protected record is this candidate.
+    return matches.length === 0 ? modernOutcome : { status: "kept" };
+  const conflict = matches.find((match) => match.conflicting);
+  if (conflict !== undefined)
+    return yield* Effect.fail(
+      new StateStoreError({
+        reason: "decode",
+        operation: "prune",
+        path: conflict.bucket.path,
+        remediation: "Resolve the conflicting app root or provider in legacy inventory before pruning.",
+      }),
     );
-  return removedModern || removedLegacy;
+  for (const { bucket } of matches) yield* bucket.remove;
+  if (modernOutcome.status === "removed" || matches.length > 0) return { status: "removed" };
+  return { status: "kept" };
 });

@@ -1,7 +1,7 @@
 {
-  "_comment": "Pinned upstream artifacts assembled into per-platform runtime bundles by scripts/assemble-runtime-bundle.ts. Every sha256 is the authoritative upstream digest. Linux Podman, Netavark, Aardvark DNS, and passt/pasta are source-built natively during assembly. newuidmap/newgidmap are host-provided via uidmap because packaging non-setuid copies would be unsafe and unusable. nft is provisioned into the runtime bin from pinned Debian packages (nft-versions.json) so netavark can find it without a host nftables install and without setting the invalid pasta network_backend. Linux catatonit is a typed Debian package component (archive: deb) extracted to bin/catatonit with static-ELF verification during assembly; each deb pin carries an exact source archive pin (url/sha256/sizeBytes) and license.source points at that source (not the binary .deb), with upstream COPYING, the Debian package copyright text, and the static-link glibc notices required by Built-Using glibc (= 2.41-12+deb13u4): upstream COPYING.LIB (glibc-2.41) plus the Debian glibc copyright at glibc_2.41-12+deb13u5_copyright because ftp-master dropped the u4 URL (byte-identical text, same sha256; source provenance https://sourceware.org/git/glibc.git and https://deb.debian.org/debian/pool/main/g/glibc/). Debian copyright alone is not treated as a complete substitute for the LGPL license text. Published runtime-bundle-versions.json stays on the last released payload until a helper-bearing release is published.",
+  "_comment": "Pinned upstream artifacts assembled into per-platform runtime bundles by scripts/assemble-runtime-bundle.ts. Every sha256 is the authoritative upstream digest. Linux Podman, Netavark, Aardvark DNS, and passt/pasta are source-built natively during assembly. newuidmap/newgidmap are host-provided via uidmap because packaging non-setuid copies would be unsafe and unusable. nft is provisioned into the runtime bin from pinned Debian packages (nft-versions.json) so netavark can find it without a host nftables install and without setting the invalid pasta network_backend. Linux catatonit is a typed Debian package component (archive: deb) extracted to bin/catatonit with static-ELF verification during assembly; each deb pin carries an exact source archive pin (url/sha256/sizeBytes) and license.source points at that source (not the binary .deb), with upstream COPYING, the Debian package copyright text, and the static-link glibc notices required by Built-Using glibc (= 2.41-12+deb13u4): upstream COPYING.LIB (glibc-2.41) plus the Debian glibc copyright at glibc_2.41-12+deb13u5_copyright because ftp-master dropped the u4 URL (byte-identical text, same sha256; source provenance https://sourceware.org/git/glibc.git and https://deb.debian.org/debian/pool/main/g/glibc/). Debian copyright alone is not treated as a complete substitute for the LGPL license text. Published runtime-bundle-versions.json stays on the last released payload until a helper-bearing release is published. Source-built components carry the repo patches listed in sourcePatches, each pinned by its own SHA-256 and every touched file's pre/post SHA-256; from 0.1.9 Linux Podman schedules healthchecks inside the managed API service and keeps compat Healthcheck.StartInterval (scripts/patches/podman-v6.0.1-*.md). Any patch change needs a runtimeVersion bump (core/test/scripts/runtime-bundle-patch-sets.test.ts).",
   "schemaVersion": 1,
-  "runtimeVersion": "0.1.8",
+  "runtimeVersion": "0.1.9",
   "hostProvidedHelpers": ["newuidmap", "newgidmap"],
   "bundles": {
     "linux-x64": {
@@ -25,7 +25,97 @@
           "archive": "tar.gz",
           "installName": "bin/podman",
           "mode": 493,
-          "sourceBuild": "podman-linux-native"
+          "sourceBuild": "podman-linux-native",
+          "sourcePatches": [
+            {
+              "file": "scripts/patches/podman-v6.0.1-service-healthchecks.patch",
+              "sha256": "99878cb3921a1c6f384c22dbd9d765d30610dd9d87c827056408dd341c74acb9",
+              "files": [
+                {
+                  "path": "cmd/podman/system/service_abi.go",
+                  "sourceSha256": "3556ad36e58d878fc615f4a6ef82d6f768060817841ea93297aad3ae25d86280",
+                  "patchedSha256": "19a366261f3484829f36e81c1720d994c7e463db3f6640b1e10984ccf5739622"
+                },
+                {
+                  "path": "libpod/healthcheck.go",
+                  "sourceSha256": "4b6735b8b5a1dcba3b680769488d27296afae595a01d77cad2f4f3aaf516ded6",
+                  "patchedSha256": "e113bbe289eef02172308ee36ea270c0ede7ebed8bca3238ec91fe7e3de18943"
+                },
+                {
+                  "path": "libpod/healthcheck_linux.go",
+                  "sourceSha256": "c5589a69705c903daaaea53c61cdd758adc9ed08a0296e9124f6f2d5f446a71b",
+                  "patchedSha256": "acdb5ff76114b2fd5337521f88170371d92bf5d08bdda33be39a905a3f6250cb"
+                },
+                {
+                  "path": "libpod/healthcheck_nosystemd_linux.go",
+                  "sourceSha256": "43bd87fbd310378a1bd77ebcb4bf45c08d26f2e634a1a5ad73c634f8a661ad96",
+                  "patchedSha256": "22e89be5c46cc661ec559287be5ebd7000367b79e95d4e9d2770ff8807a950e9"
+                },
+                {
+                  "path": "libpod/healthcheck_service.go",
+                  "patchedSha256": "4f88ff4bb8863454cc18389902cd497347ceff1fb483af1b47381e9524b59b9e"
+                },
+                {
+                  "path": "libpod/healthcheck_service_test.go",
+                  "patchedSha256": "9b0223be97bb2d41a2d7f252bc78900011e527306046b36ca739bf9213bd893f"
+                },
+                {
+                  "path": "libpod/healthcheck_unsupported.go",
+                  "sourceSha256": "a82a3876297da95dabdea0e5b0daab72353230a707dc4e9ef6904dcaba65036f",
+                  "patchedSha256": "22da5525c3229a50d543c9bc0dd6f4c25def61ac3b1b0ad510f35e4beb4ba869"
+                },
+                {
+                  "path": "pkg/hcschedule/cadence.go",
+                  "patchedSha256": "ae8dcf3232b37e2ba3ace12e81aaa1fa66fd3dbc90b5debf112aaccfe08fa048"
+                },
+                {
+                  "path": "pkg/hcschedule/cadence_test.go",
+                  "patchedSha256": "d00220a338149856f0dcc6cad6a05d59eeb7ce1cfe8aa639aa55d7b9852edd11"
+                },
+                {
+                  "path": "pkg/hcschedule/guards.go",
+                  "patchedSha256": "03888bb707aa10ebe3826562e1c950fea1fcc6ecfd616fc805f8494a0e1f6050"
+                },
+                {
+                  "path": "pkg/hcschedule/guards_test.go",
+                  "patchedSha256": "46955e0bb9e960fdf3635666b27df8854af5909a417f56b8a822c9e2a8459c71"
+                },
+                {
+                  "path": "pkg/hcschedule/scheduler.go",
+                  "patchedSha256": "24a7156eb3770a9f2a316907f72368b26b864e88db4a0c6369eaef6176b42bf7"
+                },
+                {
+                  "path": "pkg/hcschedule/scheduler_test.go",
+                  "patchedSha256": "a0f2ea2cafe75ade3296fea860bd4faa92a16bccb9a895fdfb987598e789e466"
+                }
+              ]
+            },
+            {
+              "file": "scripts/patches/podman-v6.0.1-compat-health-start-interval.patch",
+              "sha256": "0100f13ff5a544711991fe424a2f58d9caf5b71beaf6a0f96583cb14c14b041f",
+              "files": [
+                {
+                  "path": "pkg/api/handlers/compat/containers.go",
+                  "sourceSha256": "1afcd97461d13f58da4ebf0749b91043aad31753b20d5e22aef9b9da13b0dd10",
+                  "patchedSha256": "5ad7aa1b290f9d5bda928627bb3624e2365124e78dc660aefab2e2a5c086ee41"
+                },
+                {
+                  "path": "pkg/api/handlers/compat/containers_create.go",
+                  "sourceSha256": "f28ac1b53fa12499ded3e8ce127c7787a66599d8c83a451a47321c53d33ec872",
+                  "patchedSha256": "068c654be013d115dcd9dce703bc97bf3a2a9bf495b6f743cb9bfc084e152f00"
+                },
+                {
+                  "path": "pkg/specgen/generate/container.go",
+                  "sourceSha256": "5a8b96ee35b4d209b7a7ed5328bcb9ea889d604034b213dd70b049952dd46975",
+                  "patchedSha256": "c528ab15ae222ca6e79562befde8e8c6807ffaac874dc51f75e0430863d58c58"
+                },
+                {
+                  "path": "pkg/specgen/generate/healthcheck_start_interval_test.go",
+                  "patchedSha256": "9245d8ae2c66df8c41a00d93e4243614a15d39d9c2e540ce80047f76ea97290e"
+                }
+              ]
+            }
+          ]
         },
         {
           "name": "crun",
@@ -106,6 +196,19 @@
               "source": "target/release/netavark",
               "installName": "bin/netavark",
               "mode": 493
+            }
+          ],
+          "sourcePatches": [
+            {
+              "file": "scripts/patches/netavark-v2.0.0-systemd-user-bus.patch",
+              "sha256": "1a54115b591e328c916f9fd3044cecc98d723d3a1156d80e2d48ba687474e856",
+              "files": [
+                {
+                  "path": "src/dns/aardvark.rs",
+                  "sourceSha256": "0cc2090fc5124a68f69da60215a2b7a85023d1c495d2e5685e83ccf20ecd3823",
+                  "patchedSha256": "f01cefaf9a960ead28008b6bddb9d76811dbbb44b339e70c64fff66a5c3c969d"
+                }
+              ]
             }
           ]
         },
@@ -295,7 +398,97 @@
           "archive": "tar.gz",
           "installName": "bin/podman",
           "mode": 493,
-          "sourceBuild": "podman-linux-native"
+          "sourceBuild": "podman-linux-native",
+          "sourcePatches": [
+            {
+              "file": "scripts/patches/podman-v6.0.1-service-healthchecks.patch",
+              "sha256": "99878cb3921a1c6f384c22dbd9d765d30610dd9d87c827056408dd341c74acb9",
+              "files": [
+                {
+                  "path": "cmd/podman/system/service_abi.go",
+                  "sourceSha256": "3556ad36e58d878fc615f4a6ef82d6f768060817841ea93297aad3ae25d86280",
+                  "patchedSha256": "19a366261f3484829f36e81c1720d994c7e463db3f6640b1e10984ccf5739622"
+                },
+                {
+                  "path": "libpod/healthcheck.go",
+                  "sourceSha256": "4b6735b8b5a1dcba3b680769488d27296afae595a01d77cad2f4f3aaf516ded6",
+                  "patchedSha256": "e113bbe289eef02172308ee36ea270c0ede7ebed8bca3238ec91fe7e3de18943"
+                },
+                {
+                  "path": "libpod/healthcheck_linux.go",
+                  "sourceSha256": "c5589a69705c903daaaea53c61cdd758adc9ed08a0296e9124f6f2d5f446a71b",
+                  "patchedSha256": "acdb5ff76114b2fd5337521f88170371d92bf5d08bdda33be39a905a3f6250cb"
+                },
+                {
+                  "path": "libpod/healthcheck_nosystemd_linux.go",
+                  "sourceSha256": "43bd87fbd310378a1bd77ebcb4bf45c08d26f2e634a1a5ad73c634f8a661ad96",
+                  "patchedSha256": "22e89be5c46cc661ec559287be5ebd7000367b79e95d4e9d2770ff8807a950e9"
+                },
+                {
+                  "path": "libpod/healthcheck_service.go",
+                  "patchedSha256": "4f88ff4bb8863454cc18389902cd497347ceff1fb483af1b47381e9524b59b9e"
+                },
+                {
+                  "path": "libpod/healthcheck_service_test.go",
+                  "patchedSha256": "9b0223be97bb2d41a2d7f252bc78900011e527306046b36ca739bf9213bd893f"
+                },
+                {
+                  "path": "libpod/healthcheck_unsupported.go",
+                  "sourceSha256": "a82a3876297da95dabdea0e5b0daab72353230a707dc4e9ef6904dcaba65036f",
+                  "patchedSha256": "22da5525c3229a50d543c9bc0dd6f4c25def61ac3b1b0ad510f35e4beb4ba869"
+                },
+                {
+                  "path": "pkg/hcschedule/cadence.go",
+                  "patchedSha256": "ae8dcf3232b37e2ba3ace12e81aaa1fa66fd3dbc90b5debf112aaccfe08fa048"
+                },
+                {
+                  "path": "pkg/hcschedule/cadence_test.go",
+                  "patchedSha256": "d00220a338149856f0dcc6cad6a05d59eeb7ce1cfe8aa639aa55d7b9852edd11"
+                },
+                {
+                  "path": "pkg/hcschedule/guards.go",
+                  "patchedSha256": "03888bb707aa10ebe3826562e1c950fea1fcc6ecfd616fc805f8494a0e1f6050"
+                },
+                {
+                  "path": "pkg/hcschedule/guards_test.go",
+                  "patchedSha256": "46955e0bb9e960fdf3635666b27df8854af5909a417f56b8a822c9e2a8459c71"
+                },
+                {
+                  "path": "pkg/hcschedule/scheduler.go",
+                  "patchedSha256": "24a7156eb3770a9f2a316907f72368b26b864e88db4a0c6369eaef6176b42bf7"
+                },
+                {
+                  "path": "pkg/hcschedule/scheduler_test.go",
+                  "patchedSha256": "a0f2ea2cafe75ade3296fea860bd4faa92a16bccb9a895fdfb987598e789e466"
+                }
+              ]
+            },
+            {
+              "file": "scripts/patches/podman-v6.0.1-compat-health-start-interval.patch",
+              "sha256": "0100f13ff5a544711991fe424a2f58d9caf5b71beaf6a0f96583cb14c14b041f",
+              "files": [
+                {
+                  "path": "pkg/api/handlers/compat/containers.go",
+                  "sourceSha256": "1afcd97461d13f58da4ebf0749b91043aad31753b20d5e22aef9b9da13b0dd10",
+                  "patchedSha256": "5ad7aa1b290f9d5bda928627bb3624e2365124e78dc660aefab2e2a5c086ee41"
+                },
+                {
+                  "path": "pkg/api/handlers/compat/containers_create.go",
+                  "sourceSha256": "f28ac1b53fa12499ded3e8ce127c7787a66599d8c83a451a47321c53d33ec872",
+                  "patchedSha256": "068c654be013d115dcd9dce703bc97bf3a2a9bf495b6f743cb9bfc084e152f00"
+                },
+                {
+                  "path": "pkg/specgen/generate/container.go",
+                  "sourceSha256": "5a8b96ee35b4d209b7a7ed5328bcb9ea889d604034b213dd70b049952dd46975",
+                  "patchedSha256": "c528ab15ae222ca6e79562befde8e8c6807ffaac874dc51f75e0430863d58c58"
+                },
+                {
+                  "path": "pkg/specgen/generate/healthcheck_start_interval_test.go",
+                  "patchedSha256": "9245d8ae2c66df8c41a00d93e4243614a15d39d9c2e540ce80047f76ea97290e"
+                }
+              ]
+            }
+          ]
         },
         {
           "name": "crun",
@@ -376,6 +569,19 @@
               "source": "target/release/netavark",
               "installName": "bin/netavark",
               "mode": 493
+            }
+          ],
+          "sourcePatches": [
+            {
+              "file": "scripts/patches/netavark-v2.0.0-systemd-user-bus.patch",
+              "sha256": "1a54115b591e328c916f9fd3044cecc98d723d3a1156d80e2d48ba687474e856",
+              "files": [
+                {
+                  "path": "src/dns/aardvark.rs",
+                  "sourceSha256": "0cc2090fc5124a68f69da60215a2b7a85023d1c495d2e5685e83ccf20ecd3823",
+                  "patchedSha256": "f01cefaf9a960ead28008b6bddb9d76811dbbb44b339e70c64fff66a5c3c969d"
+                }
+              ]
             }
           ]
         },

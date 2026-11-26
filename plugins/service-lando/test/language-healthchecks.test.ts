@@ -5,8 +5,9 @@ import { join } from "node:path";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
+import { makeLandoPaths } from "@lando/paths";
 import { GlobalConfig, LandofileShape } from "@lando/sdk/schema";
-import { AppPlanner, ConfigService } from "@lando/sdk/services";
+import { AppPlanner, ConfigService, PathsService } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect, Layer, Schema } from "effect";
 import { serviceFeatures } from "../src/features/index.ts";
@@ -182,7 +183,14 @@ test.each(["node:lts", "python:3.12", "ruby:3.3", "go:1.22", "dotnet"])(
     const result = await Effect.runPromise(
       Effect.flatMap(AppPlanner, (planner) =>
         planner.plan(compileTestLandofile(landofile), TestRuntimeProvider.capabilities),
-      ).pipe(Effect.result, Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(dependencies)))),
+      ).pipe(
+        Effect.result,
+        Effect.provide(
+          AppPlannerLayer.layer.pipe(
+            Layer.provide(Layer.mergeAll(dependencies, Layer.succeed(PathsService, makeLandoPaths()))),
+          ),
+        ),
+      ),
     );
     // Then
     expect(result).toMatchObject({
@@ -215,7 +223,14 @@ test.each(["app", "service"])("rejects a mismatched Flask listener from a %s env
     const result = await Effect.runPromise(
       Effect.flatMap(AppPlanner, (planner) =>
         planner.plan(compileTestLandofile(landofile), TestRuntimeProvider.capabilities),
-      ).pipe(Effect.result, Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(dependencies)))),
+      ).pipe(
+        Effect.result,
+        Effect.provide(
+          AppPlannerLayer.layer.pipe(
+            Layer.provide(Layer.mergeAll(dependencies, Layer.succeed(PathsService, makeLandoPaths()))),
+          ),
+        ),
+      ),
     );
     // Then
     expect(result).toMatchObject({

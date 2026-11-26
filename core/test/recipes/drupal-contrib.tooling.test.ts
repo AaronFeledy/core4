@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { RuntimeProviderRegistry } from "@lando/sdk/services";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect, Layer, Stream } from "effect";
 import { runCli } from "../../src/cli/index.ts";
 import { makeScenarioProvider } from "../../src/testing/scenario-provider.ts";
@@ -16,7 +17,7 @@ test("contrib start syncs the site and tooling delivers argv from the right dire
     const providerRegistry = Layer.effect(
       RuntimeProviderRegistry,
       Effect.map(RuntimeProviderRegistry, (registry) =>
-        RuntimeProviderRegistry.of({
+        makeTestRuntimeProviderRegistry({
           ...registry,
           select: (target) =>
             Effect.map(registry.select(target), (provider) => ({

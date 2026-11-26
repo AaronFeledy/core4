@@ -146,7 +146,7 @@ test("inspection failure is sanitized and exact-id deletion continues", async ()
     }),
   );
   // Then
-  expect(result.kind).toBe("removed");
+  expect(result.action).toBe("removed");
   expect(result.shutdownObservations[0]).toMatchObject({
     status: "unknown",
     reason: "inspect-failed",
@@ -168,7 +168,7 @@ test("stop absence skips inspect and delete", async () => {
   // Then
   expect(result).toEqual({
     changed: false,
-    kind: "absent",
+    action: "absent",
     shutdownObservations: [{ ...identity, status: "unknown", reason: "container-absent" }],
   });
 });

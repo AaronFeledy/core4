@@ -158,6 +158,12 @@ describe("provider assembly", () => {
     await Effect.runPromise(rememberAppliedPlan(cache, plan, reconcileOnly));
     expect(calls).toEqual([[plan, { complete: false }]]);
   });
+  test("a stop bring-down never forgets applied state", async () => {
+    const calls: string[] = [];
+    const cache = { forgetPlan: (app: string) => Effect.sync(() => calls.push(app)) };
+    await Effect.runPromise(forgetAppliedPlanUnlessKept(cache, plan.id, { containers: "stop" }));
+    expect(calls).toEqual([]);
+  });
   for (const removeState of [undefined, false, true]) {
     test(`forgets state only when removeState is not false (${removeState})`, async () => {
       const calls: string[] = [];
@@ -168,7 +174,11 @@ describe("provider assembly", () => {
           }),
       };
       await Effect.runPromise(
-        forgetAppliedPlanUnlessKept(cache, plan.id, removeState === undefined ? {} : { removeState }),
+        forgetAppliedPlanUnlessKept(cache, plan.id, {
+          containers: "remove",
+          volumes: false,
+          ...(removeState === undefined ? {} : { removeState }),
+        }),
       );
       expect(calls).toEqual(removeState === false ? [] : [plan.id]);
     });
@@ -285,7 +295,7 @@ describe("provider assembly", () => {
     await Effect.runPromise(rememberAppliedPlan(state.appliedPlans, plan, { complete: true }));
     const calls: string[] = [];
     const service = {
-      lifecycle: () =>
+      restart: () =>
         Effect.sync(() => {
           calls.push("service");
         }),
@@ -317,8 +327,8 @@ describe("provider assembly", () => {
     await Effect.runPromise(
       Effect.all(
         [
-          first.start({ app: plan.id, service: ServiceName.make("web") }),
-          second.start({ app: plan.id, service: ServiceName.make("web") }),
+          first.restart({ app: plan.id, service: ServiceName.make("web") }),
+          second.restart({ app: plan.id, service: ServiceName.make("web") }),
         ],
         { concurrency: 1 },
       ),

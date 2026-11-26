@@ -53,7 +53,7 @@ export const stopIdleApp = Effect.fnUntraced(function* (
   preflight: StopAppPreflight,
 ) {
   // Route withdrawal belongs to the public stop and teardown callers; restart and rebuild retain routes.
-  yield* cleanupAppWorkers(target.app);
+  yield* cleanupAppWorkers(target.app, "stop");
   if (Option.isSome(preflight.maybeFileSync) && preflight.maybeFileSync.value.appLifecycle === undefined) {
     const engine = preflight.maybeFileSync.value;
     yield* Effect.forEach(preflight.sessions, (session) => engine.terminateSession(session.ref), {

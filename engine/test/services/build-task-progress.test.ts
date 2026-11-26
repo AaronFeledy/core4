@@ -122,7 +122,10 @@ describe("makeBuildTaskProgress", () => {
     expect(byTag(publisher.events, "task.tree.start")[0]).toMatchObject({
       parentId,
       label: `Building ${plan.name}`,
-      children: [String(web.name), String(db.name), String(cache.name)],
+      children: [web, db, cache].map((service) => ({
+        id: String(service.name),
+        label: `Build ${String(service.name)}`,
+      })),
       mode: "list",
     });
   });

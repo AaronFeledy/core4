@@ -136,11 +136,10 @@ database schema of an installed site.
 Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pass
 `--answer=php=8.5`, `--answer=webserver=nginx`, `--answer=database=mysql:8.0`,
 `--answer=database=postgres:16`, or `--answer='drupal=^10'` when you want those
-instead. `--answer=php=8.6` uses the PHP 8.6 release-candidate image; Xdebug
-isn't available there yet.
+instead.
 
 Nginx answers add an `edge` service in front of `appserver` (`via: fpm`) and
-set `SIMPLETEST_BASE_URL` to `http://edge`. `edge` mounts the same `site`
+set `SIMPLETEST_BASE_URL` to `http://edge:{{ services.edge.port }}`. `edge` mounts the same `site`
 volume read-only, so it serves the files the sync installs. Both webserver
 choices set `uploadDirs: [sites/*/files]` on the service serving PHP.
 
@@ -229,7 +228,7 @@ service, site sync, and tooling. They do not download Drupal:
       <Run command="lando app:config --format=json" />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "/app/web/themes/custom/hello" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"via\":\\s*\"fpm\"" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"SIMPLETEST_BASE_URL\":\\s*\"http://edge\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"SIMPLETEST_BASE_URL\":\\s*\"http://edge:\{\{ services\.edge\.port \}\}\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "pgsql://" } }} />
     </Step>
   </Scenario>

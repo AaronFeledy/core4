@@ -31,6 +31,7 @@ import {
   makeTaskTree,
   withCurrentTaskDetail,
 } from "@lando/sdk/task-progress";
+import { storeErrorRemediation } from "@lando/state-store";
 import { writeFileAtomic } from "@lando/state-store/atomic";
 
 import { rejectIntelMacHost } from "./host-support.ts";
@@ -1297,8 +1298,14 @@ export const setupProviderLando = Effect.fn("ProviderLando.setup")(function* (
           ? new ProviderUnavailableError({
               providerId: "lando",
               operation: "setup",
-              message: "Cannot acquire the managed runtime installation lock.",
-              remediation: "Wait for the other runtime setup to finish, then retry `lando setup`.",
+              message:
+                cause.reason === "newer-version"
+                  ? cause.message
+                  : "Cannot acquire the managed runtime installation lock.",
+              remediation: storeErrorRemediation(
+                cause,
+                "Wait for the other runtime setup to finish, then retry `lando setup`.",
+              ),
               cause,
             })
           : cause,

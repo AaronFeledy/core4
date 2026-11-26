@@ -7,6 +7,11 @@ export interface WriteManagedRuntimeContainersConfOptions {
   readonly runtimeBinDir: string;
   readonly runtimeConfigDir: string;
   readonly nativeInit?: boolean;
+  /**
+   * The runtime schedules healthchecks inside its service. Nothing in Lando reads `health_status`
+   * events, and a one-second check would otherwise append one to the events log every second.
+   */
+  readonly serviceHealthchecks?: boolean;
 }
 
 const escapeTomlString = (value: string): string => value.replace(/\\/gu, "\\\\").replace(/"/gu, '\\"');
@@ -109,7 +114,8 @@ export const writeManagedRuntimeContainersConf = (
       // Pasta is a helper binary in this directory, not a valid backend name.
       // Netavark execs nft from PATH; Lando provisions nft into runtime/bin.
       const initPath = options.nativeInit === false ? "" : `init_path = "${binDir}/catatonit"\n`;
-      const body = `[containers]\n${initPath}cgroups = "no-conmon"\nlog_driver = "k8s-file"\n[engine]\ncgroup_manager = "cgroupfs"\nevents_logger = "file"\nhelper_binaries_dir = ["${binDir}"]\nconmon_path = ["${binDir}/conmon"]\nruntime = "crun"\n[engine.runtimes]\ncrun = ["${binDir}/crun"]\n[network]\ndefault_host_ips = [${defaultHostIps}]\n`;
+      const healthcheckEvents = options.serviceHealthchecks === true ? "healthcheck_events = false\n" : "";
+      const body = `[containers]\n${initPath}cgroups = "no-conmon"\nlog_driver = "k8s-file"\n[engine]\ncgroup_manager = "cgroupfs"\nevents_logger = "file"\n${healthcheckEvents}helper_binaries_dir = ["${binDir}"]\nconmon_path = ["${binDir}/conmon"]\nruntime = "crun"\n[engine.runtimes]\ncrun = ["${binDir}/crun"]\n[network]\ndefault_host_ips = [${defaultHostIps}]\n`;
       await mkdir(options.runtimeConfigDir, { recursive: true });
       const configDir = options.runtimeConfigDir.replace(/\/+$/u, "");
       const containersConfigDir = `${configDir}/containers`;

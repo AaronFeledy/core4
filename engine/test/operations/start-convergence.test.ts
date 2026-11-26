@@ -4,6 +4,7 @@ import { APP_LABEL, APP_ROOT_LABEL, PROVIDER_LABEL, SERVICE_LABEL } from "@lando
 import { rememberAppliedPlan } from "@lando/container-runtime/provider-assembly";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import {
+  AbsolutePath,
   type AppPlan,
   type AppliedAppPlan,
   PortablePath,
@@ -66,6 +67,7 @@ const observedAdminer = (
   providerId: desired.provider,
   service: adminer.name,
   containerId: "adminer-container",
+  nativeName: "legacy-adminer",
   status: "running",
   labels: {
     [APP_LABEL]: desired.id,
@@ -100,14 +102,14 @@ const runningContainer = () => {
   const providerOverrides = {
     list: (filter: ListFilter) =>
       Effect.succeed(containers.filter((entry) => filter.app === undefined || entry.app === filter.app)),
-    removeObservedService: (observation: ServiceRuntimeInfo) =>
+    bringDownObserved: (observation: ServiceRuntimeInfo) =>
       Effect.sync(() => {
         removed.push(String(observation.service));
         containers.splice(
           containers.findIndex((entry) => entry.containerId === observation.containerId),
           1,
         );
-        return { kind: "removed" as const };
+        return { service: observation.service, action: "removed" as const };
       }),
   };
   return { containers, removed, providerOverrides };
@@ -149,6 +151,52 @@ test("a whole-app start removes a removed service's owned container and drops it
   expect(seen[0]?.recordedPlan).toBeUndefined();
   expect(Object.keys(record.read()?.services ?? {})).toEqual([String(web.name)]);
   expect(record.read()?.stores).toEqual([]);
+});
+
+test("upgrade removes an unlabeled service dropped from the recorded plan's successor", async () => {
+  const containers = runningContainer();
+  let adoptedRoot = desired.identity?.dataRoot;
+  const harness = makeHarness({
+    plannedApp: desired,
+    resolveAppliedPlan: () => Effect.succeed(appliedPlanRecord(withAdminer)),
+    providerOverrides: {
+      ...containers.providerOverrides,
+      adoptDataRoot: (plan) =>
+        Effect.sync(() => {
+          adoptedRoot = plan.identity?.dataRoot;
+        }),
+    },
+    resourceOwnership: () =>
+      Effect.sync(() =>
+        adoptedRoot === undefined
+          ? undefined
+          : {
+              appRoot: desired.root,
+              ownerKey: planAppIdentity(desired).ownerKey,
+              providerId: desired.provider,
+              appIds: [desired.id],
+              members: [
+                {
+                  kind: "container" as const,
+                  nativeName: "legacy-adminer",
+                  nativeId: "adminer-container",
+                  dataRoot: adoptedRoot,
+                  appId: desired.id,
+                  service: adminer.name,
+                },
+              ],
+            },
+      ),
+  });
+  const scoped = {
+    ...desired,
+    identity: { ...planAppIdentity(desired), dataRoot: AbsolutePath.make(harness.userDataRoot) },
+  };
+  const result = await Effect.runPromise(
+    startApp({}, { ...target, plan: scoped }).pipe(Effect.provide(harness.layer)),
+  );
+  expect(result.servicesRemoved).toEqual([String(adminer.name)]);
+  expect(containers.containers).toEqual([]);
 });
 
 test("a second start over the converged app removes nothing and stays quiet", async () => {
@@ -195,10 +243,10 @@ test("a removed service still in the record without a container is dropped, not 
     plannedApp: desired,
     providerOverrides: {
       list: () => Effect.succeed([absent]),
-      removeObservedService: (observation: ServiceRuntimeInfo) =>
+      bringDownObserved: (observation: ServiceRuntimeInfo) =>
         Effect.sync(() => {
           removed.push(String(observation.service));
-          return { kind: "absent" as const };
+          return { service: observation.service, action: "absent" as const };
         }),
     },
     onApply: (appliedPlan, options) =>
@@ -231,7 +279,7 @@ test("a failed removal stops the sweep, keeps earlier removals, and still announ
     plannedApp: desired,
     providerOverrides: {
       list: () => Effect.succeed([removedService("worker"), removedService("cache"), observedAdminer()]),
-      removeObservedService: (observation: ServiceRuntimeInfo) =>
+      bringDownObserved: (observation: ServiceRuntimeInfo) =>
         Effect.sync(() => attempted.push(String(observation.service))).pipe(
           Effect.andThen(
             String(observation.service) === "cache"
@@ -245,7 +293,7 @@ test("a failed removal stops the sweep, keeps earlier removals, and still announ
                 )
               : Effect.sync(() => {
                   removed.push(String(observation.service));
-                  return { kind: "removed" as const };
+                  return { service: observation.service, action: "removed" as const };
                 }),
           ),
         ),
@@ -282,10 +330,10 @@ test("fails closed before removing anything when a candidate's labels contradict
     plannedApp: desired,
     providerOverrides: {
       list: () => Effect.succeed([foreign]),
-      removeObservedService: (observation) =>
+      bringDownObserved: (observation) =>
         Effect.sync(() => {
           removals.push(String(observation.service));
-          return { kind: "removed" as const };
+          return { service: observation.service, action: "removed" as const };
         }),
     },
     onApply: (appliedPlan) =>
@@ -345,8 +393,10 @@ test("whole-app rebuild replaces the record through the complete start apply", a
     appliedPlans: [withAdminer],
     resolveAppliedPlan: () => Effect.succeed(appliedPlanRecord(withAdminer)),
     providerOverrides: containers.providerOverrides,
+    // The halt stops the container and keeps it.
     onDestroy: () => {
-      containers.containers.splice(0);
+      const { health: _health, healthCheckedAt: _checkedAt, ...kept } = observedAdminer();
+      containers.containers.splice(0, 1, { ...kept, status: "exited" });
     },
     onApply: (appliedPlan, options) => {
       seen.push(options);
@@ -357,8 +407,9 @@ test("whole-app rebuild replaces the record through the complete start apply", a
   // When the whole app rebuilds.
   const result = await Effect.runPromise(rebuildApp({}, target).pipe(Effect.provide(harness.layer)));
 
-  // Then the halt removed the container, the rebuild announced it once, and the start apply
-  // replaces the record with the whole desired plan.
+  // Then the relaunch's convergence removed the stopped container and announced it once, and the
+  // start apply replaces the record with the whole desired plan.
+  expect(containers.removed).toEqual([String(adminer.name)]);
   expect(containers.containers).toEqual([]);
   expect(result.servicesRemoved).toEqual([String(adminer.name)]);
   const notices = removalNotices(harness);
@@ -369,7 +420,7 @@ test("whole-app rebuild replaces the record through the complete start apply", a
   expect(Object.keys(record.read()?.services ?? {})).toEqual([String(web.name)]);
 });
 
-test("a whole-app restart reports and announces the service its halt removed", async () => {
+test("a whole-app restart removes, reports, and announces a service the Landofile dropped", async () => {
   // Given an applied service the Landofile no longer defines and its running container.
   const containers = runningContainer();
   const record = appliedRecord(withAdminer);
@@ -378,8 +429,10 @@ test("a whole-app restart reports and announces the service its halt removed", a
     appliedPlans: [withAdminer],
     resolveAppliedPlan: () => Effect.succeed(appliedPlanRecord(withAdminer)),
     providerOverrides: containers.providerOverrides,
+    // The halt stops the container and keeps it.
     onDestroy: () => {
-      containers.containers.splice(0);
+      const { health: _health, healthCheckedAt: _checkedAt, ...kept } = observedAdminer();
+      containers.containers.splice(0, 1, { ...kept, status: "exited" });
     },
     onApply: (appliedPlan, options) =>
       options === undefined ? Effect.void : rememberAppliedPlan(record.cache, appliedPlan, options),
@@ -388,7 +441,8 @@ test("a whole-app restart reports and announces the service its halt removed", a
   // When the whole app restarts.
   const result = await Effect.runPromise(restartApp({}, target).pipe(Effect.provide(harness.layer)));
 
-  // Then the halt removed the container, named the service once, and reported it.
+  // Then the relaunch removed the stopped container, named the service once, and reported it.
+  expect(containers.removed).toEqual([String(adminer.name)]);
   expect(containers.containers).toEqual([]);
   expect(result.servicesRemoved).toEqual([String(adminer.name)]);
   const notices = removalNotices(harness);
@@ -464,10 +518,10 @@ test("an unfinished accelerated journal refuses a changed mount plan before prun
             listed += 1;
             return Effect.succeed([observedAdminer()]);
           },
-          removeObservedService: (observation) =>
+          bringDownObserved: (observation) =>
             Effect.sync(() => {
               removals.push(String(observation.service));
-              return { kind: "removed" as const };
+              return { service: observation.service, action: "removed" as const };
             }),
         },
       },

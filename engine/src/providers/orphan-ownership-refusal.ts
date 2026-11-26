@@ -1,7 +1,7 @@
 import { APP_ROOT_LABEL } from "@lando/container-runtime/labels";
 import { serviceContainerOwnershipProblem } from "@lando/container-runtime/native-ownership";
 import { AppResolveError } from "@lando/sdk/errors";
-import type { AbsolutePath } from "@lando/sdk/schema";
+import { type AbsolutePath, LANDO_DATA_ROOT_LABEL } from "@lando/sdk/schema";
 import type { ServiceRuntimeInfo } from "@lando/sdk/services";
 import { Effect } from "effect";
 
@@ -49,6 +49,7 @@ export const refuseContradictoryOrphans = (input: {
                 ? (service.labels?.[APP_ROOT_LABEL] ?? "")
                 : String(service.appRoot),
             service: String(service.service),
+            dataRoot: service.labels?.[LANDO_DATA_ROOT_LABEL],
             providerId: provider.id,
           });
           return label === undefined

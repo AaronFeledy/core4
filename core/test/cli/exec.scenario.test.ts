@@ -22,7 +22,7 @@ import { validateToolInput } from "@lando/mcp/registry";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { withOptionalStderrOutput } from "@lando/renderer/output";
 import * as RendererRuntime from "@lando/renderer/runtime";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { DateTime, Effect, Layer, Stream, Struct } from "effect";
 import { execSpec } from "../../src/cli/command-specs/app/exec";
 import { compiledCommandInputFromArgv } from "../../src/cli/compiled-input";
@@ -140,12 +140,11 @@ const makeProvider = (
     removeArtifact: () => Effect.succeed({ kind: "absent" as const }),
     listArtifacts: () => Effect.succeed([]),
     apply: () => Effect.succeed({ changed: false }),
-    start: () => Effect.void,
-    stop: () => Effect.void,
     restart: () => Effect.void,
     waitForExit: () => Effect.succeed({ exitCode: 0 }),
-    destroy: () => Effect.succeed({ kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } }),
-    removeObservedService: () => Effect.succeed({ kind: "absent" as const }),
+    bringDown: () =>
+      Effect.succeed({ kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } }),
+    bringDownObserved: (observed) => Effect.succeed({ service: observed.service, action: "absent" as const }),
     readAppEnvironment: () => Effect.succeed([]),
     exec: (target, spec) => {
       const record = {
@@ -244,10 +243,7 @@ const makeLayer = (options: {
     ),
     Layer.succeed(
       RuntimeProviderRegistry,
-      RuntimeProviderRegistry.of({
-        resolveAppliedPlan: () => Effect.succeed(undefined),
-        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-        appliedPlansFor: () => Effect.succeed([]),
+      makeTestRuntimeProviderRegistry({
         list: Effect.succeed([providerId]),
         capabilities: Effect.succeed(capabilities),
         select: () => Effect.succeed(options.provider),
@@ -706,10 +702,7 @@ describe("execApp — provider-exec scenarios (US-022)", () => {
     const { provider, calls } = makeProvider([{ exitCode: 0 }]);
     const failingRegistry = Layer.succeed(
       RuntimeProviderRegistry,
-      RuntimeProviderRegistry.of({
-        resolveAppliedPlan: () => Effect.succeed(undefined),
-        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-        appliedPlansFor: () => Effect.succeed([]),
+      makeTestRuntimeProviderRegistry({
         list: Effect.succeed([providerId]),
         capabilities: Effect.succeed(capabilities),
         select: () =>

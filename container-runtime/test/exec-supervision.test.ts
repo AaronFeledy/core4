@@ -275,13 +275,38 @@ test("warm supervision uses exactly the plain transport engine request set", asy
   ]);
 });
 
+test("refuses exec before dispatch when the observed container no longer matches the pin", async () => {
+  const f = fixture();
+  const result = await Effect.runPromiseExit(
+    Effect.scoped(
+      Stream.runDrain(
+        dispatchExecStream(
+          plan,
+          { ...target, expectedContainerId: "previous-container" },
+          { command: ["payload"] },
+          f.options,
+        ),
+      ),
+    ),
+  );
+  expect(result._tag).toBe("Failure");
+  expect(f.requests.map(({ method }) => method)).toEqual(["GET"]);
+});
+
 test.each([true, false])("supervised umask compensation requires no shell (shell=%s)", async (shell) => {
   const f = fixture();
   rememberExecUmask(f.api, "container", { status: "ok", umask: "0000" });
   rememberContainerHasShell(f.api, "container", shell);
   await Effect.runPromise(
     Effect.scoped(
-      Stream.runDrain(dispatchExecStream(plan, target, { command: ["payload", "a b"] }, f.options)),
+      Stream.runDrain(
+        dispatchExecStream(
+          plan,
+          { ...target, expectedContainerId: "container" },
+          { command: ["payload", "a b"] },
+          f.options,
+        ),
+      ),
     ),
   );
   expect(

@@ -28,7 +28,7 @@ test.each([
             appId: "test",
             transport: "unix-socket",
             socketPath: join(root, "absent.sock"),
-            protocolVersion: 3,
+            protocolVersion: 4,
             pid: process.pid,
             controlToken: "test-only",
           },

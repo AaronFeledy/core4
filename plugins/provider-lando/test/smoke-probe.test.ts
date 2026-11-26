@@ -175,6 +175,27 @@ describe("runSmokeReadinessProbe", () => {
     );
   });
 
+  test("waits for a service that schedules checks instead of triggering one", async () => {
+    const triggered = (requests: ReadonlyArray<EngineHttpRequest>) =>
+      requests.some((request) => /^\/libpod\/containers\/[^/]+\/healthcheck$/u.test(request.path));
+    const scheduled: EngineHttpRequest[] = [];
+    await Effect.runPromise(
+      Effect.scoped(
+        runSmokeReadinessProbe({ podmanApi: fakeApi(scheduled), retryPolicy, scheduledHealth: true }),
+      ),
+    );
+    expect(triggered(scheduled)).toBe(false);
+    expect(scheduled.some((request) => /^\/containers\/[^/]+\/json$/u.test(request.path))).toBe(true);
+
+    const manual: EngineHttpRequest[] = [];
+    await Effect.runPromise(
+      Effect.scoped(
+        runSmokeReadinessProbe({ podmanApi: fakeApi(manual), retryPolicy, scheduledHealth: false }),
+      ),
+    );
+    expect(triggered(manual)).toBe(true);
+  });
+
   test("reports a non-zero run exit with a redacted operation discriminator", async () => {
     const requests: EngineHttpRequest[] = [];
 

@@ -2,11 +2,13 @@
  * SSH Service Live implementation - manages SSH agent sidecar via global app.
  */
 import { chmod, mkdir, stat } from "node:fs/promises";
+import { resolveAppliedGlobalPlan } from "@lando/container-runtime/applied-global-service";
 import { mapFailures } from "@lando/sdk/command-result";
 import { SshError, causeMessage, isErrnoCode } from "@lando/sdk/errors";
-import { GlobalAppService, PathsService, SshService } from "@lando/sdk/services";
+import { ServiceName } from "@lando/sdk/schema";
+import { GlobalAppService, PathsService, RuntimeProviderRegistry, SshService } from "@lando/sdk/services";
 import { Effect, Layer } from "effect";
-import { SSH_AGENT_VOLUME } from "./socket.ts";
+import { SSH_AGENT_DIRECTORY } from "./socket.ts";
 
 const SSH_SIDECAR_ID = "sidecar" as const;
 const SSH_GLOBAL_SERVICE_NAME = "ssh-agent" as const;
@@ -52,6 +54,7 @@ export const layer = Layer.effect(
   Effect.gen(function* () {
     const globalApp = yield* GlobalAppService;
     const paths = yield* PathsService;
+    const registry = yield* RuntimeProviderRegistry;
 
     return SshService.of({
       id: SSH_SIDECAR_ID,
@@ -63,13 +66,21 @@ export const layer = Layer.effect(
         });
         yield* globalApp.ensureRunning([SSH_GLOBAL_SERVICE_NAME]);
       }, mapFailures(setupError)),
-      getAgentSocket: Effect.fn("SshService.getAgentSocket")((appId) =>
-        Effect.succeed({
+      getAgentSocket: Effect.fn("SshService.getAgentSocket")(function* (appId) {
+        const { root } = yield* globalApp.paths;
+        const plan = yield* resolveAppliedGlobalPlan(registry, {
+          appRoot: root,
+          dataRoot: paths.roots.userDataRoot,
+        });
+        const mount = plan?.services[ServiceName.make(SSH_GLOBAL_SERVICE_NAME)]?.mounts.find(
+          (mount) => mount.type === "volume" && mount.target === SSH_AGENT_DIRECTORY,
+        );
+        return {
           socketPath: `${paths.roots.userDataRoot}/ssh/ssh-agent.sock`,
-          runtimeVolume: SSH_AGENT_VOLUME,
+          ...(mount?.type === "volume" ? { runtimeVolume: mount.store } : {}),
           appId,
-        }),
-      ),
+        };
+      }, mapFailures(setupError)),
     });
   }),
 );

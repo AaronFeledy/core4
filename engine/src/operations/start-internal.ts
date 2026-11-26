@@ -1,6 +1,6 @@
 import { observeTcpListener } from "@lando/container-runtime/listener-observation";
+import { adoptionReceiptsFromSummary } from "@lando/container-runtime/native-ownership";
 import type { RedactionService } from "@lando/redaction/service";
-
 import type { StartAppError as SdkStartAppError, StartAppOptions, StartAppResult } from "@lando/sdk/app";
 import {
   AppPlacementError,
@@ -38,7 +38,7 @@ import { DateTime, Effect, Option } from "effect";
 import { resolveProxyDefaultDomain } from "../config/proxy-default-domain.ts";
 import { resolveRouterConfigForApp, routerEnabled } from "../config/router-config.ts";
 import type { ResolvedAppTarget } from "../landofile/app-resolution.ts";
-import { applyActivation } from "../lifecycle/activation-apply.ts";
+import { applyActivation, openDatabaseCredentialSession } from "../lifecycle/activation-apply.ts";
 import { mapFailureErrors } from "../lifecycle/failure-compensation.ts";
 import { type PreparedRouteUrls, prepareRouteUrlBindings } from "../lifecycle/route-url-bindings.ts";
 import { type PreparedCertificates, prepareServiceCertificates } from "../lifecycle/service-certificates.ts";
@@ -53,11 +53,6 @@ import type { AdmittedApp } from "./app-activation.ts";
 import { applyAndObserveServices } from "./apply-observe.ts";
 import { publishApplyOutcomeNotices } from "./apply-outcome-notices.ts";
 import { collectPlanConnections, observeService, startedServices } from "./connection-collector.ts";
-import {
-  openDatabaseCredentialSession,
-  publishDatabaseCredentialWarningsSafely,
-} from "./database-credential-warnings.ts";
-import { databaseCredentialCheckScope } from "./database-credentials.ts";
 import { ensureGlobalServicesRunning, requiredGlobalServicesForPlan } from "./ensure-global-services.ts";
 import { publishAndRunAppEvent, publishAndRunPostAppEvent } from "./events.ts";
 import { hasExactFileSyncSessionCoverage } from "./file-sync.ts";
@@ -71,7 +66,6 @@ import { fileSyncBundle } from "./file-sync-bundle.ts";
 import { resolveFileSyncMountPlan } from "./file-sync-plan.ts";
 import { withGlobalConsumerAdmission } from "./global-consumer-admission.ts";
 import { verifyGlobalConsumerAdmission } from "./global-consumer-lease.ts";
-import { publishLowPortWarnings } from "./low-port-warning.ts";
 import { runPostStartScan, startupScanUrls } from "./post-start-scan.ts";
 import { prepareAcceleratedStart } from "./prepare-accelerated-start.ts";
 import { selectRebuildPlan } from "./service-selection.ts";
@@ -83,6 +77,7 @@ import { markStartMutation } from "./start-incomplete-notice.ts";
 import { projectDebuggerOverlay, withAcquiredStartOverlays } from "./start-overlays.ts";
 import { withApplyProgress, withGlobalStartProgress } from "./start-progress-phases.ts";
 import { retireUnusedSshAgentWorker } from "./start-ssh-agent.ts";
+import { publishStartWarnings } from "./start-warnings.ts";
 import type { StopAppPreflight } from "./stop-internal.ts";
 
 export type StartAppError = SdkStartAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
@@ -192,7 +187,7 @@ export const launchAdmittedApp = Effect.fnUntraced(function* (
     readonly buildOptions?: BuildOptions;
     readonly forceAppBuild?: boolean;
     readonly preparedTargets?: readonly PreparedFileSyncTarget[];
-    /** Ordinary start announces replacements; a halt-and-relaunch recreates everything by design. */
+    /** Start and restart announce replacements; rebuild recreates every container by design. */
     readonly announceApplyOutcome?: boolean;
   },
 ): Effect.fn.Return<StartAppResult, StartAppError, BoundStartAppServices> {
@@ -287,7 +282,7 @@ export const announceAppLaunch = Effect.fnUntraced(function* (input: {
   const proxy = yield* RouterService;
   const ref = target.app;
 
-  yield* publishLowPortWarnings(plan);
+  yield* publishStartWarnings(plan);
   yield* events.publish(
     PreAppStartEvent.make({
       eventName: "pre-app-start",
@@ -357,10 +352,8 @@ const applyAppLaunch = Effect.fnUntraced(function* (input: {
   const { target, provider, overlays } = admitted;
   const events = yield* EventService;
   const services = Object.values(runtimePlan.services);
-  // Pre-apply observations, captured once for removed-service convergence and the
-  // credential check's before/after comparison.
-  let observedBefore: ReadonlyArray<ServiceRuntimeInfo> = [];
-  let applyOutcome: ApplyResult | undefined;
+  const registry = yield* RuntimeProviderRegistry;
+  let applyOutcome: Effect.Success<ReturnType<typeof applyActivation>> | undefined;
   let initial: ReadonlyMap<string, ServiceRuntimeInfo> = new Map();
   let servicesRemoved: ReadonlyArray<string> = [];
   yield* withApplyProgress({
@@ -374,10 +367,12 @@ const applyAppLaunch = Effect.fnUntraced(function* (input: {
         app: runtimePlan.id,
         includeUnplanned: true,
       });
-      observedBefore = observations;
       // Whole-app start names every service, so containers of services the Landofile no
       // longer defines are pruned here, after accelerated-start preparation.
       servicesRemoved = yield* convergeRemovedServices(runtimePlan, provider, {
+        receipts: (
+          registry.resourceOwnership?.(runtimePlan.provider, runtimePlan.root) ?? Effect.succeed(undefined)
+        ).pipe(Effect.map(adoptionReceiptsFromSummary)),
         app: target.app,
         events,
         observations,
@@ -388,6 +383,7 @@ const applyAppLaunch = Effect.fnUntraced(function* (input: {
         apply: applyActivation({
           provider,
           plan: runtimePlan,
+          previousPlan: admitted.placement.plan,
           certificates,
           routeUrls: input.routeUrls,
           reconcile: options.reconcile ?? false,
@@ -403,7 +399,7 @@ const applyAppLaunch = Effect.fnUntraced(function* (input: {
           // keeps every worker the still-running app may still use.
           yield* retireUnusedSshAgentWorker(plan, target.app);
           yield* retireUnusedGpgAgentWorker(plan, target.app, overlays.gpgIntent);
-          yield* retireUnusedHostProxyWorker(plan, target.app, provider.capabilities);
+          yield* retireUnusedHostProxyWorker(plan, target.app, provider.capabilities, "retire");
         }),
         provider,
         plan: runtimePlan,
@@ -414,7 +410,7 @@ const applyAppLaunch = Effect.fnUntraced(function* (input: {
       return observed.inspected.map((runtime) => observeService(runtimePlan, runtime));
     }),
   });
-  return { applyOutcome, initial, observedBefore, servicesRemoved };
+  return { applyOutcome, initial, servicesRemoved };
 });
 
 /**
@@ -426,14 +422,12 @@ const completeAppLaunch = Effect.fnUntraced(function* (input: {
   readonly plan: AppPlan;
   readonly runtimePlan: AppPlan;
   readonly options: StartAppOptions;
-  readonly environment: DatabaseCredentialSession;
-  readonly observedBefore: ReadonlyArray<ServiceRuntimeInfo>;
   readonly initial: ReadonlyMap<string, ServiceRuntimeInfo>;
   readonly applyOutcome: ApplyResult | undefined;
   readonly routeUrls: PreparedRouteUrls | undefined;
   readonly forceAppBuild?: boolean;
 }) {
-  const { admitted, plan, runtimePlan, options, environment, observedBefore, initial, applyOutcome } = input;
+  const { admitted, plan, runtimePlan, options, initial, applyOutcome } = input;
   const { target, provider } = admitted;
   const events = yield* EventService;
   const builds = yield* BuildOrchestrator;
@@ -461,30 +455,7 @@ const completeAppLaunch = Effect.fnUntraced(function* (input: {
   );
 
   yield* publishAppLaunchComplete({ target, plan });
-  // A database service is checked only when this operation could change the answer: it
-  // started or recreated that container, has no pre-apply applied plan entry, or its
-  // connection descriptors changed. `lando doctor` is the always-on check.
-  const credentialScope = new Set(
-    databaseCredentialCheckScope({
-      plan: runtimePlan,
-      ...(admitted.placement.plan === undefined ? {} : { previousPlan: admitted.placement.plan }),
-      before: observedBefore,
-      after: initial,
-    }),
-  );
-  // The credential observation and the URL scan are independent post-readiness work.
-  const credentialCheck =
-    environment === undefined || credentialScope.size === 0
-      ? Effect.succeed(undefined)
-      : publishDatabaseCredentialWarningsSafely({
-          provider,
-          plan: runtimePlan,
-          services: ready.filter((service) => credentialScope.has(service.name)),
-          session: environment,
-          ...(admitted.placement.plan === undefined ? {} : { previousPlan: admitted.placement.plan }),
-        });
-  const scan = scanAppLaunch(runtimePlan, provider, servicesStarted);
-  const [, checks] = yield* Effect.all([credentialCheck, scan], { concurrency: 2 });
+  const checks = yield* scanAppLaunch(runtimePlan, provider, servicesStarted);
   return { servicesStarted, checks };
 });
 
@@ -608,8 +579,6 @@ const activateAppLaunch = Effect.fnUntraced(function* (input: {
               plan,
               runtimePlan,
               options,
-              environment,
-              observedBefore: launch.observedBefore,
               initial: launch.initial,
               applyOutcome: launch.applyOutcome,
               ...(execution.forceAppBuild === undefined ? {} : { forceAppBuild: execution.forceAppBuild }),
@@ -618,6 +587,9 @@ const activateAppLaunch = Effect.fnUntraced(function* (input: {
               app: plan.name,
               servicesStarted: completed.servicesStarted,
               servicesRemoved: launch.servicesRemoved,
+              ...(launch.applyOutcome?.credentialChanges === undefined
+                ? {}
+                : { credentialChanges: launch.applyOutcome.credentialChanges }),
               ...(completed.checks === undefined ? {} : { checks: completed.checks }),
             };
           }),

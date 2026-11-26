@@ -8,10 +8,11 @@ import { makePluginStateStore } from "@lando/engine/plugins/context-state";
 import { layer as plannerLayer } from "@lando/engine/services/planner";
 import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
+import { makeLandoPaths } from "@lando/paths";
 import { makePodmanApiClient, makeRuntimeProvider } from "@lando/provider-podman";
 import { PluginLoadError } from "@lando/sdk/errors";
 import { AbsolutePath, LoadScopedLandofile, ProviderId, ServiceName } from "@lando/sdk/schema";
-import { AppPlanner, PluginRegistry, type ServiceType } from "@lando/sdk/services";
+import { AppPlanner, PathsService, PluginRegistry, type ServiceType } from "@lando/sdk/services";
 import { Effect, Layer, Schema } from "effect";
 import { ownerOnlyFileAccess } from "./private-file-access.ts";
 
@@ -99,7 +100,10 @@ test.skipIf(liveSocket === undefined)(
             }),
             provider.capabilities,
           ),
-        ).pipe(Effect.provide(plannerLayer), Effect.provide(registry)),
+        ).pipe(
+          Effect.provide(plannerLayer.pipe(Layer.provide(Layer.succeed(PathsService, makeLandoPaths())))),
+          Effect.provide(registry),
+        ),
       );
       try {
         // When
@@ -123,7 +127,7 @@ test.skipIf(liveSocket === undefined)(
       } finally {
         await Effect.runPromise(
           provider
-            .destroy({ app: plan.id, plan }, { volumes: true })
+            .bringDown({ app: plan.id, plan }, { containers: "remove", volumes: true })
             .pipe(Effect.provide(makeTestStateStore().layer)),
         );
       }

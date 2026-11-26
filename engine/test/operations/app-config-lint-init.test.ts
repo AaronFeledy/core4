@@ -2,11 +2,13 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { makeLandoPaths } from "@lando/paths";
 import { definePlugin } from "@lando/sdk/plugins";
 import { PluginManifest, ServiceName } from "@lando/sdk/schema";
 import {
   type AppFeatureDefinition,
   AppPlanner,
+  PathsService,
   PluginRegistry,
   type ServiceFeatureDefinition,
   type ServiceType,
@@ -113,6 +115,7 @@ test.each(cases)("lint validates %s feature init=%s in final planning", async (s
       Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, capabilities)).pipe(
         Effect.result,
         Effect.provide(Planner.layer),
+        Effect.provideService(PathsService, makeLandoPaths()),
         Effect.provide(registry),
       ),
     );
@@ -169,6 +172,7 @@ test.each(cases)(
         Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, capabilities)).pipe(
           Effect.result,
           Effect.provide(Planner.layer),
+          Effect.provideService(PathsService, makeLandoPaths()),
           Effect.provide(registry),
         ),
       );

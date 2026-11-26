@@ -1,180 +1,98 @@
 import { expect, test } from "bun:test";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { preflightDataRootPurge } from "@lando/container-runtime/data-root-purge";
+import type { EngineHttpApi } from "@lando/container-runtime/engine-api";
+import type { ProviderPurgeHook } from "@lando/sdk/plugins";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
-import { Effect, Schema } from "effect";
-import { makeCleanupDiscoveredApps } from "../../src/install/uninstall-discovery.ts";
-import type { RuntimeExec } from "../../src/install/uninstall-runtime.ts";
-import { UninstallResultSchema, uninstall } from "../../src/operations/uninstall.ts";
-import { artifactBuildStoreKey } from "../../src/services/build-artifact-name.ts";
+import { Effect } from "effect";
+import { makePrepareUninstallCleanup } from "../../src/install/uninstall-discovery.ts";
+import { uninstall } from "../../src/operations/uninstall.ts";
 import { makeUninstallRoots, sandboxUninstallOptions } from "./uninstall-support.ts";
 
-const fixture = async (runtime: "docker" | "podman", scenario: string) => {
-  const roots = makeUninstallRoots("lando-uninstall-images-");
-  mkdirSync(roots.userCacheRoot);
-  writeFileSync(join(roots.userCacheRoot, "artifact-build-results.bin"), "recovery index");
-  const store = await Effect.runPromise(artifactBuildStoreKey(roots.userCacheRoot));
-  // Podman tags compat-API builds under docker.io/library/.
-  const own = `${runtime === "podman" ? "docker.io/library/" : ""}lando-build-${store}-${runtime}-web-key:latest`;
-  // Both engines list `sha256:<hex>` IDs; Podman's inspect reports the bare hex.
-  const bare = (id: string) => id.replace(/^sha256:/u, "");
-  const images = new Map<string, { readonly store: string; tags: string[] }>([
-    ["owned", { store, tags: [own] }],
-    ["dangling", { store, tags: [] }],
-    ["other-store", { store: "other", tags: ["lando-build-other-web-key:latest"] }],
-  ]);
-  if (scenario === "foreign") images.set("foreign", { store, tags: [`${own}-second`, "user/app:latest"] });
-  const calls: string[] = [];
-  const container = { present: true };
-  const exec: RuntimeExec = async (file, args) => {
-    if (file !== runtime || scenario === "missing")
-      throw Object.assign(new Error("missing"), { code: "ENOENT" });
-    calls.push(args.join(" "));
-    if (args.includes("--version")) return { stdout: runtime };
-    if (args[0] === "ps") return { stdout: args.includes("-a") && container.present ? "container" : "" };
-    if (args[0] === "container" && args[1] === "inspect")
-      return {
-        stdout: JSON.stringify({
-          Id: "container",
-          Config: {
-            Labels: {
-              "dev.lando.app": "app",
-              "dev.lando.app-root": roots.root,
-              "dev.lando.provider": runtime,
-              "dev.lando.service": "web",
-            },
-          },
-        }),
+test.each(["clean", "foreign", "in-use", "failed", "listing-failed", "dry-run", "keep-data"] as const)(
+  "#2379 uninstall preserves recovery state until image cleanup succeeds: %s",
+  async (scenario) => {
+    const roots = makeUninstallRoots("lando-uninstall-images-");
+    const recovery = join(roots.userCacheRoot, "artifact-build-results.bin");
+    mkdirSync(roots.userCacheRoot);
+    writeFileSync(recovery, "recovery index");
+    let present = true;
+    let probeCount = 0;
+    const purge: ProviderPurgeHook = (input) => {
+      const tag = `docker.io/library/lando-build-${input.buildStore}-example:latest`;
+      const api: EngineHttpApi = {
+        request: ({ method, path }) =>
+          Effect.sync(() => {
+            const json = (value: unknown, status = 200) => ({ status, body: JSON.stringify(value) });
+            if (path === "/_ping") {
+              probeCount++;
+              return json(null);
+            }
+            if (path.startsWith("/volumes?")) return json({ Volumes: [] });
+            if (path.startsWith("/containers/json"))
+              return json(
+                scenario === "in-use" && decodeURIComponent(path).includes("ancestor")
+                  ? [{ Id: "peer" }]
+                  : [],
+              );
+            if (path.startsWith("/networks?")) return json([]);
+            if (path.startsWith("/images/json")) {
+              if (scenario === "listing-failed") return json({ message: "image listing failed" }, 500);
+              return json(
+                present && decodeURIComponent(path).includes(`dev.lando.build-store=${input.buildStore}`)
+                  ? [{ Id: "sha256:owned" }]
+                  : [],
+              );
+            }
+            if (path.startsWith("/images/") && method === "GET")
+              return json({
+                Id: "owned",
+                RepoTags: scenario === "foreign" ? [tag, "user/app:latest"] : [tag],
+                Config: { Labels: { "dev.lando.build-store": input.buildStore } },
+              });
+            if (method === "DELETE" && path === `/images/${encodeURIComponent(tag)}?noprune=true`) {
+              if (!existsSync(recovery)) throw new Error("Deleted cache before store images");
+              if (scenario === "failed") return json({ message: "storage write failed" }, 500);
+              present = false;
+              return json([]);
+            }
+            throw new Error(`Unexpected fixture request ${method} ${path}`);
+          }),
       };
-    if (args[0] === "rm") {
-      container.present = false;
-      return { stdout: "" };
-    }
-    if (args[0] === "images") {
-      expect(container.present).toBe(false);
-      expect(existsSync(roots.userCacheRoot)).toBe(true);
-      if (scenario === "listing-failed") throw new Error("image listing failed");
-      const filter = args[args.indexOf("--filter") + 1];
-      return {
-        stdout: [...images]
-          .filter(([, image]) => filter === `label=dev.lando.build-store=${image.store}`)
-          .map(([id]) => `sha256:${id}`)
-          .join("\n"),
-      };
-    }
-    if (args[0] === "image" && args[1] === "inspect") {
-      const id = bare(args[2] ?? "");
-      const image = images.get(id);
-      if (image === undefined) throw new Error("image missing");
-      return {
-        stdout: JSON.stringify([
-          {
-            Id: runtime === "podman" ? id : `sha256:${id}`,
-            RepoTags: image.tags,
-            Config: { Labels: { "dev.lando.build-store": image.store } },
-          },
-        ]),
-      };
-    }
-    if (args[0] === "image" && args[1] === "rm") {
-      expect(args).toHaveLength(3);
-      const ref = args[2];
-      // The engines' own non-forced removal conflicts.
-      if (scenario === "in-use")
-        throw new Error(
-          runtime === "docker"
-            ? `Error response from daemon: conflict: unable to remove repository reference "${ref}" (must force) - container user-container-123 is using its referenced image 4f0c`
-            : "Error: image used by user-container-123: image is in use by a container: consider listing external containers and force-removing image",
-        );
-      if (scenario === "failed") throw new Error("storage write failed");
-      for (const [id, image] of images) {
-        if (bare(ref ?? "") === id || image.tags.includes(ref ?? "")) {
-          image.tags = image.tags.filter((tag) => tag !== ref);
-          if (image.tags.length === 0) images.delete(id);
-          return { stdout: "" };
-        }
-      }
-      throw new Error("unexpected removal target");
-    }
-    return { stdout: "" };
-  };
-  return {
-    roots,
-    images,
-    calls,
-    container,
-    run: (purge = true, dryRun = false) =>
-      Effect.runPromise(
+      return preflightDataRootPurge(
+        api,
+        { providerId: "podman", remediation: "Retry", env: {} },
+        { ...input, endpoint: "/fixture.sock", pluginId: "@lando/provider-podman" },
+      );
+    };
+    try {
+      const prepareResourceCleanup = makePrepareUninstallCleanup(
+        [{ providerId: "podman", purge }],
+        async () => {
+          throw Object.assign(new Error("managed runtime not installed"), { code: "ENOENT" });
+        },
+        "linux",
+      );
+      const result = await Effect.runPromise(
         uninstall({
           ...sandboxUninstallOptions(roots),
+          prepareResourceCleanup,
           yes: true,
-          purge,
-          dryRun,
-          cleanupDiscoveredApps: makeCleanupDiscoveredApps(roots.userDataRoot, exec, "linux"),
+          purge: scenario !== "keep-data",
+          dryRun: scenario === "dry-run",
         }).pipe(Effect.provide(PrivateFileAccessService.layer)),
-      ),
-    [Symbol.dispose]: () => rmSync(roots.root, { recursive: true, force: true }),
-  };
-};
-
-for (const runtime of ["docker", "podman"] as const) {
-  test(`#2379 purge removes ${runtime} store images after containers and before caches`, async () => {
-    using f = await fixture(runtime, "clean");
-    const result = await f.run();
-    expect(result.failed).toBe(false);
-    expect([...f.images.keys()]).toEqual(["other-store"]);
-    expect(existsSync(f.roots.userCacheRoot)).toBe(false);
-    expect(Schema.decodeUnknownSync(UninstallResultSchema)(result).steps[0]).toMatchObject({
-      id: "running-apps",
-      outcome: "completed",
-      detail: expect.stringContaining(`Built images on ${runtime}. Removed: 2`),
-    });
-  });
-}
-
-test.each([
-  ["foreign", "docker"],
-  ["in-use", "docker"],
-  ["in-use", "podman"],
-] as const)("#2379 %s images on %s are reported without aborting purge", async (scenario, runtime) => {
-  using f = await fixture(runtime, scenario);
-  const own = f.images.get("owned")?.tags[0];
-  const result = await f.run();
-  expect(result.failed).toBe(false);
-  expect(existsSync(f.roots.userCacheRoot)).toBe(false);
-  expect(result.steps[0]).toMatchObject({ id: "running-apps", outcome: "completed" });
-  const detail = result.steps[0]?.detail;
-  if (scenario === "foreign") {
-    expect(f.images.get("foreign")?.tags).toEqual(["user/app:latest"]);
-    expect(detail).toContain("docker image sha256:foreign: foreign tags user/app:latest");
-  } else {
-    expect([...f.images.keys()]).toEqual(["owned", "dangling", "other-store"]);
-    expect(detail).toContain(`${runtime} image ${own}: in use:`);
-    expect(detail).toContain("user-container-123");
-  }
-});
-
-test.each(["failed", "listing-failed"])(
-  "#2379 %s images retain recovery state and report incomplete cleanup",
-  async (scenario) => {
-    using f = await fixture("docker", scenario);
-    const result = await f.run();
-    expect(result.failed).toBe(true);
-    expect(existsSync(join(f.roots.userCacheRoot, "artifact-build-results.bin"))).toBe(true);
-    expect(result.steps).toHaveLength(1);
-    expect(result.steps[0]).toMatchObject({
-      id: "running-apps",
-      outcome: "failed",
-      error: expect.stringContaining(scenario === "failed" ? "storage write failed" : "image listing failed"),
-    });
-    expect([...f.images.keys()]).toEqual(["owned", "dangling", "other-store"]);
+      );
+      expect(present).toBe(scenario !== "clean");
+      expect(existsSync(recovery)).toBe(scenario !== "clean");
+      expect(probeCount).toBe(scenario === "keep-data" ? 0 : 1);
+      const runningApps = result.steps.find((step) => step.id === "running-apps");
+      if (scenario === "dry-run") expect(runningApps?.detail).toContain("1 built image");
+      else if (scenario !== "clean" && scenario !== "keep-data")
+        expect(runningApps).toMatchObject({ outcome: "failed" });
+      else expect(result.failed).toBe(false);
+    } finally {
+      rmSync(roots.root, { recursive: true, force: true });
+    }
   },
 );
-
-test.each(["keep-data", "dry-run", "missing"])("#2379 %s skips host image cleanup", async (mode) => {
-  using f = await fixture("podman", mode);
-  const result = await f.run(mode !== "keep-data", mode === "dry-run");
-  expect(result.failed).toBe(false);
-  expect([...f.images.keys()]).toEqual(["owned", "dangling", "other-store"]);
-  expect(f.calls).toEqual([]);
-});

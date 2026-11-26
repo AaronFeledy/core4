@@ -1,7 +1,9 @@
 import { readdir, rmdir } from "node:fs/promises";
 import { UpdateResultSchema, makeUpdateHandoff } from "@lando/engine/operations/update";
+import { CORE_VERSION } from "@lando/engine/version";
 import { resolveLandoRoots, updateHandoffDir } from "@lando/paths";
 import { StateStore } from "@lando/sdk/services";
+import { isNewerVersionStoreError } from "@lando/state-store";
 import * as StateStoreLayer from "@lando/state-store/service";
 import { Effect, Layer } from "effect";
 import { formatBugReport } from "./bug-report.ts";
@@ -32,11 +34,16 @@ export const surfaceDeferredUpdateReceipts = async (argv: ReadonlyArray<string>)
         }),
       );
       for (const name of names.filter((name) => /^[0-9a-f-]{36}\.json$/u.test(name)).sort()) {
-        const result = yield* handoff.consumeDeferred(name.slice(0, -5));
+        const result = yield* handoff.consumeDeferred(name.slice(0, -5)).pipe(
+          Effect.catchIf(
+            (error) => isNewerVersionStoreError(error.cause),
+            () => Effect.succeed(undefined),
+          ),
+        );
         if (result !== undefined) return result;
       }
       return undefined;
-    }).pipe(Effect.provide(StateStoreLayer.layer)),
+    }).pipe(Effect.provide(StateStoreLayer.layerWith({ writer: CORE_VERSION }))),
   );
   await rmdir(updateHandoffDir(resolveLandoRoots().userDataRoot)).catch((cause: unknown) => {
     if (cause instanceof Error && "code" in cause && (cause.code === "ENOTEMPTY" || cause.code === "ENOENT"))

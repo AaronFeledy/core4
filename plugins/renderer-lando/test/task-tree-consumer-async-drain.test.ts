@@ -70,7 +70,7 @@ const verifyAsyncDrain = async (): Promise<void> => {
             _tag: "task.tree.start",
             parentId: "build",
             label: "Building",
-            children: ["web"],
+            children: [{ id: "web", label: "web" }],
             timestamp,
           }),
         );

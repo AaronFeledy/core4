@@ -159,6 +159,16 @@ export const duplicateMountTarget = (mounts: ReadonlyArray<MountPlan>): string |
   return undefined;
 };
 
+/**
+ * Whether a mount at container path `outer` covers `inner`: the same path or one
+ * of its ancestors, compared after POSIX normalization.
+ */
+export const mountTargetCovers = (outer: string, inner: string): boolean => {
+  const ancestor = posix.normalize(outer).replace(/\/+$/u, "");
+  const path = posix.normalize(inner).replace(/\/+$/u, "");
+  return ancestor === path || path.startsWith(`${ancestor}/`);
+};
+
 export const canonicalMountEntry = (entry: string): string =>
   entry === "" || entry.split("/").includes("..")
     ? entry

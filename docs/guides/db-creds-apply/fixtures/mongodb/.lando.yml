@@ -1,0 +1,7 @@
+name: db-creds-apply-mongo
+services:
+  db:
+    type: mongodb
+    creds:
+      database: credential_demo
+      password: mongo-fixture-pass-one

@@ -32,7 +32,7 @@ import * as DeprecationServiceLayer from "@lando/engine/deprecation/service";
 import { outputRegisteredTestProvider } from "@lando/engine/testing/output-provider";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { type Context, DateTime, Effect, Layer, Redacted, Stream } from "effect";
 import { resolveBuiltInCommand } from "../../src/cli/built-in-command-registry.ts";
 import { appShellSpec } from "../../src/cli/command-specs/app/shell.ts";
@@ -136,8 +136,6 @@ const fakeProvider = (overrides: Partial<RuntimeProviderShape> = {}): RuntimePro
     removeArtifact: () => Effect.succeed({ kind: "absent" as const }),
     listArtifacts: () => Effect.succeed([]),
     apply: () => Effect.succeed({ changed: false }),
-    start: () => Effect.void,
-    stop: () => Effect.void,
     restart: () => Effect.void,
     waitForExit: () => Effect.succeed({ exitCode: 0 }),
     exec: () => Effect.die("not used"),
@@ -189,10 +187,7 @@ const layer = (
     Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(currentTestPlan(plan)) })),
     Layer.succeed(
       RuntimeProviderRegistry,
-      RuntimeProviderRegistry.of({
-        resolveAppliedPlan: () => Effect.succeed(undefined),
-        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-        appliedPlansFor: () => Effect.succeed([]),
+      makeTestRuntimeProviderRegistry({
         list: Effect.succeed([providerId]),
         capabilities: Effect.succeed(capabilities),
         select: () => Effect.succeed(outputRegisteredTestProvider(provider, plan)),
@@ -223,10 +218,7 @@ const layerWithPlan = (appPlan: AppPlan, provider: RuntimeProviderShape) =>
     Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(currentTestPlan(appPlan)) })),
     Layer.succeed(
       RuntimeProviderRegistry,
-      RuntimeProviderRegistry.of({
-        resolveAppliedPlan: () => Effect.succeed(undefined),
-        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-        appliedPlansFor: () => Effect.succeed([]),
+      makeTestRuntimeProviderRegistry({
         list: Effect.succeed([providerId]),
         capabilities: Effect.succeed(capabilities),
         select: () => Effect.succeed(outputRegisteredTestProvider(provider, appPlan)),

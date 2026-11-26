@@ -14,7 +14,7 @@ import {
 import { DateTime } from "effect";
 
 import { CREATE_CONFIG_LABEL } from "../src/create-fingerprint.ts";
-import { HOST_PROXY_SESSION_LABEL, HOST_PROXY_TRANSPORT_EXTENSION_KEY } from "../src/labels.ts";
+import { HOST_PROXY_CONTRACT_LABEL, HOST_PROXY_TRANSPORT_EXTENSION_KEY } from "../src/labels.ts";
 import { commonContainerLabels } from "../src/plan.ts";
 import { bringUpRecreateReasons } from "../src/podman/bring-up-recreate.ts";
 
@@ -80,44 +80,28 @@ test.each([
   expect(reasons).toEqual([...expected]);
 });
 
-describe("host-proxy session reconciliation", () => {
-  const sessionDigest = (session: string): string => sha256Hex(session).slice(0, 16);
-  const trustedExtension = (session: string): ServicePlan["extensions"] => ({
-    [HOST_PROXY_TRANSPORT_EXTENSION_KEY]: { sessionDigest: sessionDigest(session) },
-  });
-  const hostProxyMounts = (sources: {
-    readonly socket: string;
-    readonly credentials: string;
-  }): ServicePlan["mounts"] => [
-    {
-      type: "bind",
-      source: sources.socket,
-      target: PortablePath.make("/run/lando/host-proxy.sock"),
-      readOnly: true,
-      realization: "passthrough",
-    },
-    {
-      type: "bind",
-      source: sources.credentials,
-      target: PortablePath.make("/run/lando/host-proxy/credentials"),
-      readOnly: true,
-      realization: "passthrough",
-    },
-  ];
-  const overlay: ServicePlan = {
+describe("host-proxy contract reconciliation", () => {
+  const contractDigest = (contract: string): string => sha256Hex(contract).slice(0, 16);
+  const withContract = (contract: string): ServicePlan => ({
     ...service,
     environment: {
-      LANDO_HOST_PROXY_SOCKET: "/run/lando/host-proxy.sock",
+      LANDO_HOST_PROXY_SOCKET: "/run/lando/host-proxy/sock",
       LANDO_HOST_PROXY_TRANSPORT: "unix-socket",
       LANDO_HOST_PROXY_DEPTH: "0",
     },
-    mounts: hostProxyMounts({
-      socket: "/home/user/session/host-proxy.sock",
-      credentials: "/home/user/session/credentials",
-    }),
-    extensions: trustedExtension("current-session"),
-  };
-  /** Pre-S3 env overlay still observed on containers created by older builds. */
+    mounts: [
+      {
+        type: "bind",
+        source: "/home/user/run/app/container",
+        target: PortablePath.make("/run/lando/host-proxy"),
+        readOnly: true,
+        realization: "passthrough",
+      },
+    ],
+    extensions: { [HOST_PROXY_TRANSPORT_EXTENSION_KEY]: { contractDigest: contractDigest(contract) } },
+  });
+  const overlay = withContract("current");
+  /** Env overlay observed on containers created by builds without the transport extension. */
   const legacyEnvOverlay: ServicePlan = {
     ...service,
     environment: {
@@ -126,148 +110,66 @@ describe("host-proxy session reconciliation", () => {
       LANDO_HOST_PROXY_APP: "app-1",
       LANDO_HOST_PROXY_SOCKET: "/run/lando/host-proxy.sock",
     },
-    mounts: [
-      {
-        type: "bind",
-        source: "/home/user/session/host-proxy.sock",
-        target: PortablePath.make("/run/lando/host-proxy.sock"),
-        readOnly: true,
-        realization: "passthrough",
-      },
-    ],
   };
 
   test("emits only a trusted extension digest and excludes it from create-config", () => {
-    // Given two sessions of the same service configuration under the transport extension.
-    const previous: ServicePlan = {
-      ...overlay,
-      extensions: trustedExtension("previous-session"),
-    };
-    // When labels are projected.
+    // When labels are projected for two contracts of the same service configuration.
     const labels = commonContainerLabels(plan, overlay);
-    // Then the digest comes from the extension, never from env, and create-config stays stable across sessions.
-    expect(labels[HOST_PROXY_SESSION_LABEL]).toBe(sessionDigest("current-session"));
-    expect(labels[CREATE_CONFIG_LABEL]).toBe(commonContainerLabels(plan, previous)[CREATE_CONFIG_LABEL]);
-    expect(commonContainerLabels(plan, service)[HOST_PROXY_SESSION_LABEL]).toBeUndefined();
-    expect(commonContainerLabels(plan, legacyEnvOverlay)[HOST_PROXY_SESSION_LABEL]).toBeUndefined();
+    // Then the digest comes from the extension, never from env, and create-config ignores it.
+    expect(labels[HOST_PROXY_CONTRACT_LABEL]).toBe(contractDigest("current"));
+    expect(labels[CREATE_CONFIG_LABEL]).toBe(
+      commonContainerLabels(plan, withContract("other"))[CREATE_CONFIG_LABEL],
+    );
+    expect(commonContainerLabels(plan, service)[HOST_PROXY_CONTRACT_LABEL]).toBeUndefined();
+    expect(commonContainerLabels(plan, legacyEnvOverlay)[HOST_PROXY_CONTRACT_LABEL]).toBeUndefined();
   });
 
-  test("spoofed authored host-proxy-session labels cannot win without a trusted extension", () => {
-    // Given a forged Compose label matching a real digest but no transport extension.
+  test("keeps a container whose contract is unchanged", () => {
+    // Given a container created under the same contract, whatever session it served.
+    const labels = commonContainerLabels(plan, overlay);
+    // When / Then the container stays, so a replaced worker never recreates it.
+    expect(bringUpRecreateReasons(plan, overlay, { labels })).toEqual([]);
+  });
+
+  test.each([
+    ["a changed contract", commonContainerLabels(plan, withContract("previous")), overlay],
+    ["an enabled overlay", commonContainerLabels(plan, service), overlay],
+    ["a disabled overlay", commonContainerLabels(plan, overlay), service],
+  ] as const)("recreates for %s as bind-source drift", (_case, labels, desired) => {
+    // When bring-up compares the container's contract label with the desired service.
+    const reasons = bringUpRecreateReasons(plan, desired, { labels });
+    // Then only the host-proxy binds drift; the create configuration does not.
+    expect(reasons).toEqual(["bind-source"]);
+  });
+
+  test("an authored label cannot keep a container that carries a stale overlay", () => {
+    // Given a forged Compose label matching the observed digest but no transport extension.
     const spoofed: ServicePlan = {
       ...service,
-      extensions: {
-        compose: { labels: { [HOST_PROXY_SESSION_LABEL]: sessionDigest("current-session") } },
-      },
+      extensions: { compose: { labels: { [HOST_PROXY_CONTRACT_LABEL]: contractDigest("current") } } },
     };
-    // When
     const labels = commonContainerLabels(plan, spoofed);
-    // Then the marker is stripped and a mismatched observed session cannot arm bind-source without the extension.
-    expect(labels[HOST_PROXY_SESSION_LABEL]).toBeUndefined();
+    // When / Then the marker is stripped, so the overlay container still recreates.
+    expect(labels[HOST_PROXY_CONTRACT_LABEL]).toBeUndefined();
     expect(
       bringUpRecreateReasons(plan, spoofed, {
-        labels: {
-          ...labels,
-          [HOST_PROXY_SESSION_LABEL]: sessionDigest("other"),
-        },
+        labels: { ...labels, [HOST_PROXY_CONTRACT_LABEL]: contractDigest("current") },
       }),
-    ).toEqual([]);
+    ).toEqual(["bind-source"]);
   });
 
-  test.each(["previous-session", undefined] as const)(
-    "recreates when inspected session is %s under a trusted extension",
-    (session) => {
-      // Given known labels with a stale or absent session marker.
-      const labels = {
-        ...commonContainerLabels(plan, overlay),
-        [HOST_PROXY_SESSION_LABEL]: session === undefined ? "" : sessionDigest(session),
-      };
-      // When bring-up checks the current overlay.
-      const reasons = bringUpRecreateReasons(plan, overlay, {
-        labels,
-        bindSources: {
-          "/run/lando/host-proxy.sock": "/home/user/session/host-proxy.sock",
-          "/run/lando/host-proxy/credentials": "/home/user/session/credentials",
-        },
-      });
-      // Then the socket's backing session requires recreation, not config drift.
-      expect(reasons).toEqual(["bind-source"]);
-    },
-  );
-
-  test.each(["socket", "credentials", "neither"] as const)(
-    "checks bind-source recreation when %s drifts under a trusted extension",
-    (drift) => {
-      // Given matching session labels and independently varying socket and credentials sources.
-      const labels = commonContainerLabels(plan, overlay);
-      const bindSources = {
-        "/run/lando/host-proxy.sock":
-          drift === "socket" ? "/home/user/old/host-proxy.sock" : "/home/user/session/host-proxy.sock",
-        "/run/lando/host-proxy/credentials":
-          drift === "credentials" ? "/home/user/old/credentials" : "/home/user/session/credentials",
-      };
-      // When bring-up compares the observed binds with the trusted overlay.
-      const reasons = bringUpRecreateReasons(plan, overlay, { labels, bindSources });
-      // Then either source drift requires recreation, while matching sources do not.
-      expect(reasons).toEqual(drift === "neither" ? [] : ["bind-source"]);
-    },
-  );
-
-  test("treats a legacy env-only running container as stale against the credentials-file overlay", () => {
-    // Given an older container that only had SESSION env + socket bind (no credentials, no extension).
+  test("recreates a container from a build without a contract label", () => {
+    // Given an older container that only had the session env and no contract label.
     const legacyLabels = {
-      // Old builds stamped the session digest from env; keep that observed shape.
-      [HOST_PROXY_SESSION_LABEL]: sessionDigest("current-session"),
       [CREATE_CONFIG_LABEL]:
         commonContainerLabels(plan, legacyEnvOverlay)[CREATE_CONFIG_LABEL] ?? "v3:legacy",
     };
-    const legacyBindSources = {
-      "/run/lando/host-proxy.sock": "/home/user/session/host-proxy.sock",
-      // credentials bind absent on the running container
-    };
-    // When the new trusted overlay is desired.
-    const reasons = bringUpRecreateReasons(plan, overlay, {
-      labels: legacyLabels,
-      bindSources: legacyBindSources,
-    });
-    // Then both the missing credentials bind and stale configuration require recreation.
-    expect(reasons).toEqual(["bind-source", "config"]);
-    // And the legacy plan itself never arms extension-gated bind checks.
-    expect(
-      bringUpRecreateReasons(plan, legacyEnvOverlay, {
-        labels: commonContainerLabels(plan, legacyEnvOverlay),
-        bindSources: {
-          "/run/lando/host-proxy.sock": "/home/user/other/host-proxy.sock",
-        },
-      }),
-    ).toEqual([]);
-  });
-
-  test("keeps matching sessions and reports config drift for an empty snapshot", () => {
-    expect(
-      bringUpRecreateReasons(plan, overlay, {
-        labels: commonContainerLabels(plan, overlay),
-        bindSources: {
-          "/run/lando/host-proxy.sock": "/home/user/session/host-proxy.sock",
-          "/run/lando/host-proxy/credentials": "/home/user/session/credentials",
-        },
-      }),
-    ).toEqual([]);
+    // When / Then the missing contract and the stale configuration both require recreation.
+    expect(bringUpRecreateReasons(plan, overlay, { labels: legacyLabels })).toEqual([
+      "bind-source",
+      "config",
+    ]);
     expect(bringUpRecreateReasons(plan, overlay, {})).toEqual(["bind-source", "config"]);
-  });
-
-  test("does not impose a session check without a trusted host-proxy extension", () => {
-    expect(bringUpRecreateReasons(plan, service, { labels: commonContainerLabels(plan, service) })).toEqual(
-      [],
-    );
-    expect(
-      bringUpRecreateReasons(plan, legacyEnvOverlay, {
-        labels: {
-          ...commonContainerLabels(plan, legacyEnvOverlay),
-          [HOST_PROXY_SESSION_LABEL]: sessionDigest("other"),
-        },
-      }),
-    ).toEqual([]);
   });
 });
 

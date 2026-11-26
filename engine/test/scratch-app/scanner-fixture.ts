@@ -1,13 +1,19 @@
 import { expect } from "bun:test";
+import { makeLandoPaths } from "@lando/paths";
 import { ProviderUnavailableError, type ScratchAppError } from "@lando/sdk/errors";
-import { AbsolutePath, AppId, ProviderId, ServiceName } from "@lando/sdk/schema";
-import { RuntimeProviderRegistry, type RuntimeProviderShape } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { AbsolutePath, AppId, LANDO_DATA_ROOT_LABEL, ProviderId, ServiceName } from "@lando/sdk/schema";
+import { PathsService, RuntimeProviderRegistry, type RuntimeProviderShape } from "@lando/sdk/services";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect } from "effect";
 import { ScratchResourceScanner } from "../../src/scratch-app/scanner.ts";
 
 export const scratchId = "scratch-demo-123456";
-export const labels = { "dev.lando.scratch": "TRUE", "dev.lando.scratch-id": scratchId };
+const paths = makeLandoPaths();
+export const labels = {
+  "dev.lando.scratch": "TRUE",
+  "dev.lando.scratch-id": scratchId,
+  [LANDO_DATA_ROOT_LABEL]: paths.roots.userDataRoot,
+};
 export const service = {
   app: AppId.make(scratchId),
   service: ServiceName.make("app"),
@@ -57,7 +63,6 @@ export const fixture = (overrides: Partial<RuntimeProviderShape> = {}) => {
     ...TestRuntimeProvider,
     id,
     setup: () => Effect.die("scanner must not set up runtimes"),
-    start: () => Effect.die("scanner must not start runtimes"),
     list: (filter) => {
       expect(filter).toEqual({ includeScratch: true, includeUnplanned: true });
       return Effect.succeed(services);
@@ -66,10 +71,10 @@ export const fixture = (overrides: Partial<RuntimeProviderShape> = {}) => {
       expect(filter).toEqual({ labels: { "dev.lando.scratch": "TRUE" } });
       return Effect.succeed([observedVolume]);
     },
-    removeObservedService: (observed) =>
+    bringDownObserved: (observed) =>
       Effect.sync(() => {
         removedServices.push(observed);
-        return { kind: "removed" as const };
+        return { service: observed.service, action: "removed" as const };
       }),
     removeVolume: (ref, generation) =>
       Effect.sync(() => {
@@ -87,14 +92,11 @@ export const runScanner = <A, E>(
   Effect.runPromise(
     Effect.flatMap(ScratchResourceScanner, use).pipe(
       Effect.provide(ScratchResourceScanner.layer),
+      Effect.provideService(PathsService, paths),
       Effect.provideService(
         RuntimeProviderRegistry,
-        RuntimeProviderRegistry.of({
-          appliedPlansFor: () => Effect.succeed([]),
-          resolveAppliedPlan: () => Effect.succeed(undefined),
-          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+        makeTestRuntimeProviderRegistry({
           list: Effect.succeed(providers.map((provider) => ProviderId.make(provider.id))),
-          capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
           select: (target) => {
             const id = typeof target === "string" ? target : target?.provider;
             const provider =

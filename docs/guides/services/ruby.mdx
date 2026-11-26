@@ -10,7 +10,9 @@ tags: [docs, ruby, service, runtime]
 Add `type: ruby:3.3` to your primary service in `.lando.yml` at the root of your Ruby project. Ruby has no bare `type: ruby` alias, so pin a version.
 Lando currently supports `ruby:3.3`, and the default image is
 `ruby:3.3-slim`. Your repository is bind-mounted read-write at `/app` by
-default, which is also the working directory:
+default, which is also the working directory. `.bundle` and `vendor/bundle`
+are volumes that belong to the service, so Bundler's settings and installed
+gems stay out of your project directory:
 
 ```yaml
 name: ruby-demo

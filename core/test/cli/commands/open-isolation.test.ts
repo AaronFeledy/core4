@@ -4,7 +4,7 @@ import { invokeOperation } from "@lando/core/cli/operations";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { AbsolutePath, ServiceName, appIdentityKey } from "@lando/sdk/schema";
 import { AppPlanner, LandofileService, RuntimeProviderRegistry } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Cause, Effect, Layer } from "effect";
 import { type OpenAppOptions, openApp } from "../../../src/cli/commands/open.ts";
 import { collectOpenConnections } from "../../../src/cli/commands/open-connections.ts";
@@ -60,7 +60,7 @@ const fixture = async (failedService = "mailpit") => {
     Layer.succeed(LandofileService, LandofileService.of({ discover: Effect.die("must use applied plan") })),
     Layer.succeed(
       RuntimeProviderRegistry,
-      RuntimeProviderRegistry.of({
+      makeTestRuntimeProviderRegistry({
         list: Effect.succeed([plan.provider]),
         capabilities: Effect.succeed(provider.capabilities),
         resolveAppliedPlan: () => Effect.succeed(plan),

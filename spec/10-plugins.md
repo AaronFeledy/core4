@@ -20,6 +20,7 @@ A plugin has a `package.json` with `name` and `version`, a manifest with `api: 4
 - Plugin entries SHOULD use ESM; Bun-loadable TypeScript and build outputs are accepted, and CommonJS is supported only through loader interop.
 - Plugins run with host permissions; there is no sandbox.
 - Plugins receive `LandoPluginContext`, never internal core objects.
+- App-scoped commands that load a user Landofile MUST use `UserAppResolver` from `@lando/sdk/services`, rather than raw `LandofileService.discover` (§7.1). They use the SDK planning and provider ports separately when they need them.
 - Contributions MAY return Effect Layers, plain values, or factories; the loader normalizes them to Layers.
 - Public contributions MUST be declared under `provides:`. Manifest validation, compatibility checks, and module containment occur before import.
 - Module top levels SHOULD remain cheap and side-effect-light. Lazy import limits execution timing but cannot detect arbitrary JavaScript side effects.
@@ -93,7 +94,7 @@ Command ids MUST be canonical and namespaced. Command descriptors carry no `name
 
 | Surface | Loaded by | Architectural rule |
 |---|---|---|
-| `providers` | Provider registry | Implements `RuntimeProvider` (§5). |
+| `providers` | Provider registry | Implements `RuntimeProvider` (§5). The contribution's required filesystem-only callbacks (`appliedPlans`, `appliedStateInventory`, `readAppliedPlanStrict`) are checked when the registry resolves it, not at plugin import (§5.3.1). |
 | `serviceTypes` | App planner | Resolves or declaratively defines service types (§6.11). |
 | `serviceFeatures` | Service planner | Mutates one service through published context. |
 | `appFeatures` | App planner | Mutates selected services through published context. |
@@ -169,6 +170,8 @@ Bundled stores:
 - Durable `lando` storage MUST use private directories, owner-only files and temporaries, a store lock, and atomic replacement. Every access MUST verify ownership and reject symlinks or insecure permissions; Windows MUST enforce owner-only ACLs. Read/write errors MUST report `insecure-storage`, not silently repair storage.
 - Durable grant rotation MUST hold the per-reference lock across refresh and atomic grant/metadata replacement (§10.12.3). Files MUST be excluded from managed-file backups, journals, exports, and support bundles.
 - File-backed values are unencrypted. Doctor MUST state that owner-only storage protects against other local users and accidental disclosure, not the same user, root, or copied backups.
+
+The private database administrator seed at `<userDataRoot>/db-admin/key.v1` (§6.12.4, §12.4) is installation-private engine state for deriving managed catalog admin passwords. It is not a `SecretStore`, not addressable as `${secret:...}`, not part of `LandoPluginContext.secrets`, and MUST NOT be confused with the durable `lando` user-grant store or a future general writable/session secret store.
 
 ### 9.6 Plugin install and update
 

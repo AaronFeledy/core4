@@ -4,14 +4,8 @@ import { fullRecipeMigratability, renderRecipeSnapshot } from "@lando/sdk/recipe
 import type { RecipeDecomposeInput } from "@lando/sdk/schema";
 import { runRecipeDecomposerContractSuite } from "@lando/sdk/test";
 import { Effect, Result, Schema } from "effect";
-import {
-  DRUPAL_CONTRIB_CHROME_IMAGE,
-  DRUPAL_CONTRIB_MINK_DRIVER_ARGS,
-  contribMountTarget,
-  contribSyncArgv,
-  mysqlSimpletestDb,
-  pgsqlSimpletestDb,
-} from "../../src/recipes/builtin/drupal-contrib/stack.ts";
+import { contribMountTarget, contribSyncArgv } from "../../src/recipes/builtin/drupal-contrib/stack.ts";
+import { DRUPAL_CHROME_IMAGE } from "../../src/recipes/builtin/drupal-testing.ts";
 import { bundledRecipe, recompiledBundledDigest } from "../_support/bundled-recipe.ts";
 
 const {
@@ -52,7 +46,7 @@ const contribDir = "/app";
 const contribAppMount = contribMountTarget("{{ recipe.type }}", "{{ recipe.project }}");
 const chromeService = {
   type: "compose",
-  image: DRUPAL_CONTRIB_CHROME_IMAGE,
+  image: DRUPAL_CHROME_IMAGE,
   appMount: false,
   home: false,
   shm_size: "2gb",
@@ -100,13 +94,15 @@ describe("drupal-contrib decomposition", () => {
           composer: "{{ recipe.composer }}",
           working_dir: contribDir,
           depends_on: ["database", "chrome"],
-          appMount: { target: contribAppMount, includes: ["vendor", "node_modules", "tmp"] },
+          appMount: { target: contribAppMount },
           mounts: ["site:/app"],
           environment: {
-            SIMPLETEST_BASE_URL: "http://appserver",
-            SIMPLETEST_DB: mysqlSimpletestDb,
+            SIMPLETEST_BASE_URL: "http://appserver:{{ service.port }}",
+            SIMPLETEST_DB:
+              "mysql://{{ url.encodeComponent(services.database.creds.user) }}:{{ url.encodeComponent(services.database.creds.password) }}@database:{{ services.database.port }}/{{ url.encodeComponent(services.database.creds.database) }}",
             BROWSERTEST_OUTPUT_DIRECTORY: "/app/web/sites/simpletest/browser_output",
-            MINK_DRIVER_ARGS_WEBDRIVER: DRUPAL_CONTRIB_MINK_DRIVER_ARGS,
+            MINK_DRIVER_ARGS_WEBDRIVER:
+              '["chrome", {"browserName":"chrome","goog:chromeOptions":{"w3c":true,"args":["--headless=new","--disable-gpu","--no-sandbox"]}}, "http://chrome:4444"]',
           },
           allowOverride: true,
           uploadDirs: ["sites/*/files"],
@@ -150,10 +146,11 @@ describe("drupal-contrib decomposition", () => {
     expect(authoring.services.appserver).toMatchObject({
       type: "php:{{ recipe.php }}",
       via: "fpm",
-      appMount: { target: contribAppMount, includes: ["vendor", "node_modules", "tmp"] },
+      appMount: { target: contribAppMount },
       environment: {
-        SIMPLETEST_BASE_URL: "http://edge",
-        SIMPLETEST_DB: pgsqlSimpletestDb,
+        SIMPLETEST_BASE_URL: "http://edge:{{ services.edge.port }}",
+        SIMPLETEST_DB:
+          "pgsql://{{ url.encodeComponent(services.database.creds.user) }}:{{ url.encodeComponent(services.database.creds.password) }}@database:{{ services.database.port }}/{{ url.encodeComponent(services.database.creds.database) }}",
       },
     });
     expect(authoring.services.edge).toEqual({
@@ -162,7 +159,7 @@ describe("drupal-contrib decomposition", () => {
       webroot: "/app/web",
       uploadDirs: ["sites/*/files"],
       routes: [{ hostname: "{{ app.name }}.{{ proxy.defaultDomain }}", scheme: "both" }],
-      appMount: { target: contribAppMount, includes: ["vendor", "node_modules", "tmp"] },
+      appMount: { target: contribAppMount },
       mounts: ["site:/app:ro"],
     });
   });

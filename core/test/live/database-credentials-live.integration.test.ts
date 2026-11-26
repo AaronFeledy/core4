@@ -2,21 +2,21 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
-import { CommandResultEnvelope } from "@lando/sdk/schema";
+import { retireTempRoots } from "@lando/engine/testing/temp-root-retirement";
+import { CommandResultEnvelope, StartAppResult } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
 import { runFixtureCli } from "./convergence-cli.ts";
 
 const cliEntry = resolve(import.meta.dir, "../../bin/lando.ts");
 const journeyTimeout = 10 * 120_000;
 
+// Guides own the Podman scenarios; keep the Docker provider cell until guides support Docker (#2391).
 const providers = [
   {
     id: "docker",
     socketPath:
       process.env.LANDO_TEST_DOCKER_SOCKET === "/var/run/docker.sock" ? "/var/run/docker.sock" : undefined,
   },
-  { id: "podman", socketPath: resolveLiveProviderSocket()?.socketPath },
 ] as const;
 
 const envelopeFrom = (stdout: string): typeof CommandResultEnvelope.Type => {
@@ -76,7 +76,7 @@ const doctorWarning = (stdout: string) => {
 for (const provider of providers)
   for (const database of databases) {
     test.skipIf(provider.socketPath === undefined)(
-      `${database.label} observes a changed password on the ${provider.id} provider`,
+      `${database.label} converges a changed password on the ${provider.id} provider`,
       async () => {
         if (provider.socketPath === undefined) throw new Error(`A live ${provider.id} socket is required.`);
         const directory = await mkdtemp(join(tmpdir(), `lando-db-creds-${provider.id}-`));
@@ -92,22 +92,14 @@ for (const provider of providers)
           LANDO_SYSTEM_PLUGIN_ROOT: join(directory, "system-plugins"),
           LANDO_PROVIDER: provider.id,
           LANDO_CONFIG__default_provider_id: provider.id,
+          LANDO_TEST_PODMAN_SOCKET: undefined,
           DOCKER_HOST: `unix://${provider.socketPath}`,
           LANDO_TELEMETRY_ENABLED: "false",
         };
+        const binary = process.env.LANDO_SCENARIO_E2E_BINARY;
+        const command = binary === undefined ? ([process.execPath, cliEntry] as const) : ([binary] as const);
         const lando = (args: readonly string[]) =>
-          Effect.runPromise(
-            runFixtureCli(
-              [
-                ...(process.env.LANDO_SCENARIO_E2E_BINARY === undefined
-                  ? [process.execPath, cliEntry]
-                  : [process.env.LANDO_SCENARIO_E2E_BINARY]),
-                ...args,
-              ],
-              root,
-              env,
-            ),
-          );
+          Effect.runPromise(runFixtureCli([...command, ...args], root, env));
         const artifact = async (label: string, value: unknown) => {
           const path = join(directory, `${label}.json`);
           await Bun.write(path, JSON.stringify(value));
@@ -127,41 +119,49 @@ for (const provider of providers)
 
           // When the author changes the password on an initialized volume.
           await Bun.write(join(root, ".lando.yml"), landofile(name, database.type, changed));
-          const restarted = await lando(["restart", "--format=json"]);
+          const restarted = await lando(["start", "--format=json"]);
           expect(restarted.exitCode, await artifact("restart", restarted)).toBe(0);
           const envelope = envelopeFrom(restarted.stdout);
           expect(envelope.ok, await artifact("restart-envelope", envelope)).toBe(true);
-          const warning = envelope.warnings.find(
-            (entry) => entry.code === "LANDO_DATABASE_CREDENTIALS_REJECTED",
+          const result = Schema.decodeUnknownSync(StartAppResult)(envelope.result);
+          expect(result.credentialChanges).toEqual([
+            { service: "db", family: database.family, changedMembers: ["password"] },
+          ]);
+          expect(envelope.warnings.map(({ code }) => code)).not.toContain(
+            "LANDO_DATABASE_CREDENTIAL_CONVERGENCE_FAILED",
           );
-          expect(warning, await artifact("warnings", envelope.warnings)).toMatchObject({
-            context: { service: "db", family: database.family, login: "app", changedMembers: "password" },
-          });
-          expect(JSON.stringify(warning)).not.toContain(changed);
-          expect(JSON.stringify(warning)).not.toContain(original);
+          expect(restarted.stdout.includes(changed) || restarted.stderr.includes(changed)).toBe(false);
+          expect(restarted.stdout.includes(original) || restarted.stderr.includes(original)).toBe(false);
 
-          // The warning describes the same failure the next client command hits.
           if (database.client !== undefined) {
-            const denied = await lando(database.client);
-            expect(denied.exitCode, await artifact("query-denied", denied)).not.toBe(0);
-            expect(denied.stderr).toContain("Access denied");
+            const query = await lando(database.client);
+            expect(query.exitCode, await artifact("query-after", query)).toBe(0);
           }
 
           // Doctor reaches the same verdict against the running applied plan.
           const doctor = await lando(["doctor", "--app", "--format=json"]);
           expect(doctor.exitCode, await artifact("doctor-doctor", doctor)).toBe(0);
-          expect(doctorWarning(doctor.stdout), await artifact("doctor-output", doctor.stdout)).toMatchObject({
-            name: "database-credentials",
-            context: { service: "db", family: database.family, login: "app" },
-          });
+          expect(
+            doctorWarning(doctor.stdout),
+            await artifact("doctor-output", doctor.stdout),
+          ).toBeUndefined();
         } finally {
           const destroyed = await lando(["destroy", "-y", "--volumes", "--format=json"]).catch(
             () => undefined,
           );
           if (destroyed !== undefined) await artifact("destroy", destroyed);
-          await rm(directory, { recursive: true, force: true });
+          const retirement = await retireTempRoots({
+            directory,
+            env,
+            endpoint: provider.socketPath,
+            command,
+          });
+          expect(
+            [...retirement.retained, ...retirement.failed],
+            JSON.stringify({ directory, ...retirement }),
+          ).toEqual([]);
         }
       },
-      journeyTimeout,
+      journeyTimeout + 240_000,
     );
   }

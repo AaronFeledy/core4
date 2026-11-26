@@ -45,7 +45,7 @@ import * as BunProcessRunner from "@lando/engine/services/process-runner";
 import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService } from "@lando/redaction/service";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import * as StateStoreLayer from "@lando/state-store/service";
 import { makeStateStore } from "@lando/state-store/service";
@@ -270,18 +270,16 @@ const makeScratchForkLayer = (
         }
         return { changed: true };
       }),
-    start: () => die("start"),
-    stop: () => die("stop"),
     restart: () => die("restart"),
     waitForExit: () => Effect.succeed({ exitCode: 0 }),
-    destroy: (target, options) =>
+    bringDown: (target, options) =>
       Effect.sync(() => {
         destroyCalls.push({
           app: String(target.app),
-          volumes: options.volumes,
+          volumes: options.volumes === true,
           removeState: options.removeState,
         });
-        return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
+        return { kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } };
       }),
     exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
     execStream: () => Stream.die("scratch fork test provider should not call execStream"),
@@ -340,10 +338,9 @@ const makeScratchForkLayer = (
   ).pipe(Layer.provide(basePlanner));
   const registryLive = Layer.succeed(
     RuntimeProviderRegistry,
-    RuntimeProviderRegistry.of({
+    makeTestRuntimeProviderRegistry({
       resolveAppliedPlan: (root) =>
         Effect.sync(() => (appliedGlobalPlan?.root === root ? appliedGlobalPlan : undefined)),
-      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
       appliedPlansFor: (root) =>
         Effect.sync(() => {
           const plan = options.globalPlan ?? appliedGlobalPlan;

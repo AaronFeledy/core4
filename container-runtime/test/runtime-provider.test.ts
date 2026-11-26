@@ -47,8 +47,8 @@ interface Call {
 }
 
 const makeService = (calls: Call[]): ResolvedProviderOpsInput["service"] => ({
-  lifecycle: (resolvedPlan, selector, action) => {
-    calls.push({ name: "lifecycle", args: [resolvedPlan, selector, action] });
+  restart: (resolvedPlan, selector) => {
+    calls.push({ name: "restart", args: [resolvedPlan, selector] });
     return Effect.void;
   },
   waitForExit: (resolvedPlan, selector, options) => {
@@ -173,17 +173,14 @@ const makeInput = (
 };
 
 describe("resolved provider operations", () => {
-  test.each(["start", "stop", "restart"] as const)(
-    "%s checks durable state even with a supplied plan",
-    async (operation) => {
-      const calls: Call[] = [];
-      const error = noPlanError(app, "applied-state.read");
-      const ops = makeResolvedProviderOps({ ...makeInput(calls), beforeMutation: () => Effect.fail(error) });
-      const failure = await Effect.runPromise(ops[operation]({ ...target, plan }).pipe(Effect.flip));
-      expect(failure).toBe(error);
-      expect(calls).toEqual([]);
-    },
-  );
+  test("restart checks durable state even with a supplied plan", async () => {
+    const calls: Call[] = [];
+    const error = noPlanError(app, "applied-state.read");
+    const ops = makeResolvedProviderOps({ ...makeInput(calls), beforeMutation: () => Effect.fail(error) });
+    const failure = await Effect.runPromise(ops.restart({ ...target, plan }).pipe(Effect.flip));
+    expect(failure).toBe(error);
+    expect(calls).toEqual([]);
+  });
 
   test("inspect does not use the strict mutation guard", async () => {
     const calls: Call[] = [];
@@ -359,8 +356,6 @@ describe("resolved provider operations", () => {
     const options = { signal: new AbortController().signal };
 
     // When
-    await Effect.runPromise(ops.start(target));
-    await Effect.runPromise(ops.stop(target));
     await Effect.runPromise(ops.restart(target));
     await Effect.runPromise(Effect.scoped(ops.waitForExit(target, options)));
     await Effect.runPromise(ops.exec(target, command));
@@ -371,13 +366,7 @@ describe("resolved provider operations", () => {
     expect(calls).toEqual([
       { name: "resolve", args: [] },
       { name: "before", args: [] },
-      { name: "lifecycle", args: [plan, target, "start"] },
-      { name: "resolve", args: [] },
-      { name: "before", args: [] },
-      { name: "lifecycle", args: [plan, target, "stop"] },
-      { name: "resolve", args: [] },
-      { name: "before", args: [] },
-      { name: "lifecycle", args: [plan, target, "restart"] },
+      { name: "restart", args: [plan, target] },
       { name: "resolve", args: [] },
       { name: "before", args: [] },
       { name: "waitForExit", args: [plan, target, options] },
@@ -427,13 +416,13 @@ describe("resolved provider operations", () => {
     const ops = makeResolvedProviderOps(makeInput(calls, () => Effect.succeed(undefined)));
 
     // When
-    const exit = await Effect.runPromiseExit(ops.start(target));
+    const exit = await Effect.runPromiseExit(ops.restart(target));
 
     // Then
     expect(Exit.isFailure(exit)).toBe(true);
     expect(calls).toEqual([]);
     if (!Exit.isFailure(exit)) throw new Error("Expected no-plan failure");
-    expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))).toEqual(noPlanError(app, "start"));
+    expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))).toEqual(noPlanError(app, "restart"));
   });
 
   test("uses a plan supplied on the selector without consulting the plan resolver", async () => {
@@ -443,7 +432,7 @@ describe("resolved provider operations", () => {
     const directTarget = { ...target, plan };
 
     // When
-    await Effect.runPromise(ops.start(directTarget));
+    await Effect.runPromise(ops.restart(directTarget));
     const inspected = await Effect.runPromise(ops.inspect(directTarget));
     await Effect.runPromise(Effect.scoped(ops.execStream(directTarget, command).pipe(Stream.runDrain)));
 
@@ -451,7 +440,7 @@ describe("resolved provider operations", () => {
     expect(inspected.service).toBe(service);
     expect(calls.map((call) => call.name)).toEqual([
       "before",
-      "lifecycle",
+      "restart",
       "before",
       "inspect",
       "before",

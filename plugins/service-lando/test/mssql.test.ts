@@ -21,7 +21,6 @@ nativeListenPortSuite({
   variable: "MSSQL_TCP_PORT",
   defaultPort: 1433,
   reservedPorts: [135, 1431, 1434],
-  startupCommand: "/bin/bash",
 });
 
 const metadata = {
@@ -224,7 +223,7 @@ describe("mssql ServiceType", () => {
           env: { SQLCMDPASSWORD: creds.rootPassword },
         });
         expect(plan.healthcheck?.command).not.toContain(creds.rootPassword);
-        expect(plan.healthcheck?.command?.at(-1)).toContain("name = N'appdb'");
+        expect(plan.healthcheck?.command?.at(-1)).toBe("SET NOCOUNT ON; SELECT 1;");
       });
 
       test("SA_PASSWORD environment drives sqlcmd tooling and healthcheck", async () => {
@@ -278,10 +277,10 @@ describe("mssql ServiceType", () => {
         expect(plan.command).toEqual(["/opt/mssql/bin/sqlservr"]);
         expect(plan.user).toBe("1000:1000");
       });
-      test("owns startup for the planner-stamped catalog image", async () => {
+      test("keeps the stock process for the planner-stamped catalog image", async () => {
         const plan = await planMssqlService(serviceType, { type: id, image, port: 14333 });
-        expect(plan.command?.[0]).toBe("/bin/bash");
-        expect(plan.command).toContain("localhost,14333");
+        expect(plan.command).toBeUndefined();
+        expect(plan.healthcheck?.command).toContain("localhost,14333");
       });
       test.each([
         { image: "acme/mssql:custom" },

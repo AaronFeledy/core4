@@ -62,7 +62,7 @@ services:
     </Step>
     <Step name="teardown">
       <Run command="lando poweroff -y" />
-      <Verify command="lando poweroff -y" expect={{ stdout: { regex: "Powered off|No Lando apps to power off" } }} />
+      <Verify command="lando poweroff -y --format=json" expect={{ stdout: { regex: "\"ok\":\\s*true" } }} />
     </Step>
     <Step name="cleanup">
       <Cleanup />

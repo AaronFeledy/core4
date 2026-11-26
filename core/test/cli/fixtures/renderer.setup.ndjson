@@ -1,4 +1,4 @@
-{"_tag":"task.tree.start","parentId":"provider-setup","label":"Setting up Lando runtime","children":["bundle","podman","socket","state"],"mode":"list","timestamp":"2026-05-20T12:00:00.000Z"}
+{"_tag":"task.tree.start","parentId":"provider-setup","label":"Setting up Lando runtime","children":[{"id":"bundle","label":"Verify runtime bundle"},{"id":"podman","label":"Detect Podman"},{"id":"socket","label":"Probe Podman API"},{"id":"state","label":"Persist setup state"}],"mode":"list","timestamp":"2026-05-20T12:00:00.000Z"}
 {"_tag":"task.start","taskId":"bundle","parentId":"provider-setup","label":"Verify runtime bundle","timestamp":"2026-05-20T12:00:00.005Z"}
 {"_tag":"task.complete","taskId":"bundle","summary":"Verify runtime bundle","durationMs":42,"timestamp":"2026-05-20T12:00:00.047Z"}
 {"_tag":"task.start","taskId":"podman","parentId":"provider-setup","label":"Detect Podman","timestamp":"2026-05-20T12:00:00.050Z"}

@@ -63,6 +63,7 @@ export * from "./renderer-contract.ts";
 export * from "./renderer-panel-contract.ts";
 export * from "./renderer-panel-protocol.ts";
 export * from "./router-service-contract.ts";
+export { makeTestRuntimeProviderRegistry } from "./runtime-provider-registry.ts";
 export * from "./service-contract.ts";
 export * from "./state-store-contract.ts";
 export { yamlRoundTripCorpus, yamlRoundTripRecord } from "./yaml-round-trip-corpus.ts";

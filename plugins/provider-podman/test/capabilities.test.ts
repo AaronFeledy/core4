@@ -80,6 +80,16 @@ describe("provider-podman capabilities", () => {
     expect(windowsPodmanCapabilities.sharedCrossAppNetwork).toBe(true);
   });
 
+  test("declares native health offline, assuming the systemd session stock Podman schedules checks with", () => {
+    for (const capabilities of [
+      linuxPodmanCapabilities,
+      macosPodmanCapabilities,
+      windowsPodmanCapabilities,
+    ]) {
+      expect(capabilities.serviceHealth).toBe("native");
+    }
+  });
+
   test("matches platform-keyed exports", () => {
     expect(podmanCapabilitiesForPlatform("linux")).toEqual(linuxPodmanCapabilities);
     expect(podmanCapabilitiesForPlatform("darwin")).toEqual(macosPodmanCapabilities);
@@ -290,7 +300,23 @@ describe("provider-podman RuntimeProvider layer", () => {
   const responsiveApi = { ping: Effect.void } as const;
   const podmanApiForArch = (arch: string) => ({
     ...responsiveApi,
-    info: Effect.succeed({ version: { Version: "6.0.2" }, host: { arch } }),
+    info: Effect.succeed({ version: { Version: "6.0.2" }, host: { arch, cgroupManager: "systemd" } }),
+  });
+
+  test("reports native health only when the live engine manages cgroups through systemd", async () => {
+    // Given engines that report systemd, cgroupfs, or no cgroup manager.
+    const serviceHealthFor = (host: Record<string, unknown>) =>
+      Effect.runPromise(
+        makeRuntimeProvider({
+          platform: "linux",
+          env: {},
+          podmanApi: { ...responsiveApi, info: Effect.succeed({ version: { Version: "6.0.2" }, host }) },
+        }),
+      ).then((provider) => provider.capabilities.serviceHealth);
+    // Then only systemd, whose timers run stock Podman's checks, schedules native health.
+    expect(await serviceHealthFor({ arch: "x64", cgroupManager: "systemd" })).toBe("native");
+    expect(await serviceHealthFor({ arch: "x64", cgroupManager: "cgroupfs" })).toBe("none");
+    expect(await serviceHealthFor({ arch: "x64" })).toBe("none");
   });
 
   test("linux advertises bind-directory", async () => {

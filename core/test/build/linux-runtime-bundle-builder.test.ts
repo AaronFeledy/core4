@@ -82,6 +82,8 @@ describe("Linux runtime bundle builder", () => {
               "scripts/entry.js",
               "scripts/patches",
               "scripts/patches/netavark-v2.0.0-systemd-user-bus.patch",
+              "scripts/patches/podman-v6.0.1-compat-health-start-interval.patch",
+              "scripts/patches/podman-v6.0.1-service-healthchecks.patch",
             ].sort(),
           );
           await writeFile(join(exported, filename), "bundle");

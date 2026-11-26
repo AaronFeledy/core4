@@ -19,7 +19,7 @@ exports[`snapshot: renderer.task-tree.concurrent.ndjson plain renderer preserves
 `;
 
 exports[`snapshot: renderer.task-tree.concurrent.ndjson json renderer preserves event arrival order and tags (snapshot) 1`] = `
-"{"_tag":"event","event":"task.tree.start","payload":{"_tag":"task.tree.start","parentId":"build-app","label":"Building app dependencies","children":["appserver","node","queue"],"mode":"list","timestamp":"2026-05-19T12:00:00.000Z"}}
+"{"_tag":"event","event":"task.tree.start","payload":{"_tag":"task.tree.start","parentId":"build-app","label":"Building app dependencies","children":[{"id":"appserver","label":"composer install"},{"id":"node","label":"npm ci"},{"id":"queue","label":"queue:warmup"}],"mode":"list","timestamp":"2026-05-19T12:00:00.000Z"}}
 {"_tag":"event","event":"task.start","payload":{"_tag":"task.start","parentId":"build-app","taskId":"appserver","label":"composer install","timestamp":"2026-05-19T12:00:00.010Z"}}
 {"_tag":"event","event":"task.start","payload":{"_tag":"task.start","parentId":"build-app","taskId":"node","label":"npm ci","timestamp":"2026-05-19T12:00:00.011Z"}}
 {"_tag":"event","event":"task.start","payload":{"_tag":"task.start","parentId":"build-app","taskId":"queue","label":"queue:warmup","timestamp":"2026-05-19T12:00:00.012Z"}}

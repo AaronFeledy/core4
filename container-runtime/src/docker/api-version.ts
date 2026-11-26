@@ -87,6 +87,32 @@ export const maxDockerApiVersion = (left: string, right: string): string => {
   return comparison !== undefined && comparison >= 0 ? left : right;
 };
 
+export interface DockerRequestPrefixInput {
+  /** Prefix the request would use without features: a pin, a negotiated version, or the preferred one. */
+  readonly prefix: string;
+  /** An explicit `DOCKER_HOST` path or `DOCKER_API_VERSION` pin, which a feature never moves. */
+  readonly pinned: boolean;
+  readonly advertised: string | undefined;
+  readonly wanted: ReadonlyArray<string>;
+}
+
+/**
+ * The API prefix for one request: the highest wanted feature floor the daemon advertises. It never
+ * drops below the prefix already in use, which a daemon minimum may have raised, and never moves an
+ * explicit pin. A floor the daemon does not advertise is not requested, so its field is not honored.
+ */
+export const dockerRequestPrefix = (input: DockerRequestPrefixInput): string => {
+  const { advertised } = input;
+  if (input.pinned || advertised === undefined) return input.prefix;
+  const honored = input.wanted.filter((version) => (compareDockerApiVersion(advertised, version) ?? -1) >= 0);
+  if (honored.length === 0) return input.prefix;
+  const highest = honored.reduce(maxDockerApiVersion);
+  const current = dockerApiVersionFromPrefix(input.prefix);
+  return current !== undefined && (compareDockerApiVersion(current, highest) ?? -1) >= 0
+    ? input.prefix
+    : dockerApiPrefixFor(highest);
+};
+
 export const formatDockerApiRange = (min?: string, max?: string): string => {
   if (min !== undefined && max !== undefined) return min === max ? min : `${min}-${max}`;
   if (min !== undefined) return `${min}+`;

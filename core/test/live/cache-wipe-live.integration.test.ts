@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
+import { retireTempRoots } from "@lando/engine/testing/temp-root-retirement";
 import { InfoAppResult } from "@lando/sdk/schema";
 import { Schema } from "effect";
 
@@ -43,22 +44,22 @@ test.skipIf(socket === undefined && !required)(
       LANDO_SYSTEM_PLUGIN_ROOT: join(directory, "system-plugins"),
       LANDO_PROVIDER: "podman",
       DOCKER_HOST: `unix://${socket.socketPath}`,
+      LANDO_TEST_DOCKER_SOCKET: undefined,
+      LANDO_TEST_WINDOWS_DOCKER_SOCKET: undefined,
       LANDO_CONFIG__default_provider_id: "podman",
       LANDO_TELEMETRY_ENABLED: "false",
     };
+    const command = binary === undefined ? ([process.execPath, cliEntry] as const) : ([binary] as const);
     const lando = async (args: readonly string[]) => {
-      const proc = Bun.spawn(
-        [...(binary === undefined ? [process.execPath, cliEntry] : [binary]), ...args, "--format=json"],
-        {
-          cwd: root,
-          env,
-          stdin: "ignore",
-          stdout: "pipe",
-          stderr: "pipe",
-          timeout: childTimeout,
-          killSignal: "SIGKILL",
-        },
-      );
+      const proc = Bun.spawn([...command, ...args, "--format=json"], {
+        cwd: root,
+        env,
+        stdin: "ignore",
+        stdout: "pipe",
+        stderr: "pipe",
+        timeout: childTimeout,
+        killSignal: "SIGKILL",
+      });
       const [exitCode, stdout, stderr] = await Promise.all([
         proc.exited,
         new Response(proc.stdout).text(),
@@ -135,26 +136,12 @@ services:
       expect(Schema.decodeUnknownSync(Schema.Array(scratchSummary))(await cli(["scratch:list"]))).toEqual([]);
     } finally {
       console.log("CACHE_WIPE_CLEANUP_PENDING", JSON.stringify({ name, root, scratchIds: [...scratchIds] }));
-      try {
-        const results = await Promise.allSettled([
-          ...[...scratchIds].map((id) => lando(["scratch:destroy", id, "--yes"])),
-          lando(["destroy", "--yes", "--volumes"]),
-        ]);
-        console.log("CACHE_WIPE_CLEANUP_RESULT", JSON.stringify({ name, root, results }));
-        for (const result of results) {
-          expect(result.status, JSON.stringify(result)).toBe("fulfilled");
-          switch (result.status) {
-            case "fulfilled":
-              expect(result.value.exitCode, JSON.stringify(result.value)).toBe(0);
-              break;
-            case "rejected":
-              break;
-          }
-        }
-      } finally {
-        await rm(directory, { recursive: true, force: true });
-      }
+      const retirement = await retireTempRoots({ directory, env, endpoint: socket.socketPath, command });
+      expect(
+        [...retirement.retained, ...retirement.failed],
+        JSON.stringify({ directory, endpoint: socket.socketPath, ...retirement }),
+      ).toEqual([]);
     }
   },
-  13 * childTimeout + 60_000,
+  13 * childTimeout + 120_000,
 );

@@ -18,6 +18,7 @@ import {
   makeMintingCertificateAuthority,
   makeTestRouterService,
   makeTestRuntimeProvider,
+  makeTestRuntimeProviderRegistry,
   makeTestUrlScanner,
 } from "@lando/sdk/test";
 import { Effect, Layer } from "effect";
@@ -94,12 +95,14 @@ export const makeScenarioProvider = () => {
       testProvider
         .apply(plan, options)
         .pipe(Effect.tap(() => rememberAppliedPlan(appliedPlanCache, plan, options))),
-    destroy: (target, options) =>
+    bringDown: (target, options) =>
       testProvider
-        .destroy(target, options)
+        .bringDown(target, options)
         .pipe(Effect.tap(() => forgetAppliedPlanUnlessKept(appliedPlanCache, target.app, options))),
   };
-  const registry = RuntimeProviderRegistry.of({
+  const registry = makeTestRuntimeProviderRegistry({
+    readAppliedPlanStrict: ({ id }) => store.loadAppliedPlanStrict(appliedState, id),
+    appliedStateInventory: () => store.listAppliedPlans(appliedState),
     observeRuntime: Effect.all({ appliedPlans, services: provider.list({}) }).pipe(
       Effect.map(({ appliedPlans, services }) => [
         {

@@ -107,6 +107,7 @@ test("repair commands remain available under invalid config and notification pro
       "network-trust",
       "orphaned-volume-snapshots",
       "provider",
+      "state-compatibility",
       "subsystems",
     ]);
     expect(report.checks.find((check: { readonly section: string }) => check.section === "mcp")?.status).toBe(

@@ -2,12 +2,13 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { AppPlanner, LandofileService } from "@lando/core/services";
+import { AppPlanner, LandofileService, PathsService } from "@lando/core/services";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
+import { makeLandoPaths } from "@lando/paths";
 import type { LoadScopedLandofile } from "@lando/sdk/schema";
-import { Effect } from "effect";
+import { Effect, Layer } from "effect";
 import { BUILTIN_RECIPE_DECOMPOSERS } from "../../src/recipes/builtin/decomposers.ts";
 import { BUNDLED_RECIPES } from "../../src/recipes/bundled.ts";
 import * as TestLandofileServiceLayer from "../_support/landofile-layer.ts";
@@ -159,7 +160,9 @@ const discoverFrom = async (cwd: string): Promise<LoadScopedLandofile> => {
 const planLandofile = (landofile: LoadScopedLandofile) =>
   Effect.runPromise(
     Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, providerCapabilities)).pipe(
-      Effect.provide(AppPlannerLayer.layer),
+      Effect.provide(
+        AppPlannerLayer.layer.pipe(Layer.provide(Layer.succeed(PathsService, makeLandoPaths()))),
+      ),
       Effect.provide(PluginRegistryLayer.layer),
       Effect.provide(BunFileSystem.layer),
     ),

@@ -273,23 +273,30 @@ describe("tunnel registry version migration", () => {
     });
   });
 
-  test("surfaces StateStore version errors for unknown on-disk frame versions", async () => {
+  test("surfaces StateStore errors for future on-disk frame versions without discarding", async () => {
     await withTempRoots(async ({ dataRoot }) => {
-      // Given a future/unknown frame version that the migrator rejects.
       const registryPath = join(dataRoot, "tunnels", "registry.bin");
       await writeBinaryRegistry(registryPath, 99, []);
+      const before = await Bun.file(registryPath).bytes();
 
       // When reconcile reads through StateStore.
       const result = await Effect.runPromise(
         Effect.result(reconcileTunnelRegistry().pipe(Effect.provide(stateStoreLayer))),
       );
 
-      // Then the failure is classified as a version error, not silent discard.
+      // Then the failure is not silent discard and bytes stay intact.
       expect(result._tag).toBe("Failure");
       if (result._tag !== "Failure") return;
       const error = result.failure;
       expect(error).toBeInstanceOf(StateStoreError);
-      expect(error).toMatchObject({ reason: "version", operation: "get" });
+      expect(error).toMatchObject({
+        reason: "newer-version",
+        operation: "get",
+        path: registryPath,
+        storedVersion: 99,
+        supportedVersion: TUNNEL_REGISTRY_VERSION,
+      });
+      expect(await Bun.file(registryPath).bytes()).toEqual(before);
     });
   });
 });

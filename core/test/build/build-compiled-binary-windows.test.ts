@@ -29,6 +29,8 @@ describe("compiled Windows branding", () => {
     expect(received?.compile).toEqual({
       target: `bun-${target}`,
       outfile,
+      autoloadDotenv: false,
+      autoloadBunfig: false,
       execArgv: ["--disallow-code-generation-from-strings=strict"],
       windows: {
         icon,

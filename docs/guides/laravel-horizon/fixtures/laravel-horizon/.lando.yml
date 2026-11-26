@@ -14,10 +14,6 @@ services:
       artifact:
         - run: a2enmod rewrite
           user: root
-    appMount:
-      target: /app
-      includes:
-        - vendor
     depends_on:
       - database
       - cache
@@ -36,10 +32,6 @@ services:
     environment:
       APP_URL: "{{ services.appserver.url }}"
     restart: unless-stopped
-    appMount:
-      target: /app
-      includes:
-        - vendor
     depends_on:
       database:
         condition: service_healthy

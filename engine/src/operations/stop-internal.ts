@@ -13,7 +13,12 @@ import {
   PreServiceStopEvent,
   PreStopEvent,
 } from "@lando/sdk/events";
-import type { AppPlan, FileSyncSessionInfo, ServiceShutdownObservation } from "@lando/sdk/schema";
+import type {
+  AppPlan,
+  ContainerBringDownReceipt,
+  FileSyncSessionInfo,
+  ServiceShutdownObservation,
+} from "@lando/sdk/schema";
 import {
   type AppPlanner,
   type AppliedFileSyncInspection,
@@ -37,11 +42,15 @@ import { resolvePendingAcceleratedStart } from "./accelerated-start-journal.ts";
 import { recordedSessionInventory } from "./accelerated-start-resume.ts";
 import { cleanupAppWorkers } from "./destroy-provider.ts";
 import { publishAndRunAppEvent, publishAndRunPostAppEvent, runAppInitEvents } from "./events.ts";
-import { hasExactFileSyncSessionCoverage, terminateFileSyncSessions } from "./file-sync.ts";
+import { hasStopFileSyncCoverage, terminateFileSyncSessions } from "./file-sync.ts";
 import { acquireFileSyncEngine } from "./file-sync-acquire.ts";
 import { fileSyncBundle } from "./file-sync-bundle.ts";
 import { resolveLandofileEventPlan } from "./landofile-events.ts";
+import { mergeShutdownObservations } from "./shutdown-observations.ts";
 import { idleStopEventPlan, stopIdleApp } from "./stop-idle.ts";
+import { mergeContainerReceipts, servicesTakenDown } from "./stop-receipts.ts";
+import { absentPlannedServices } from "./stop-selection.ts";
+import { stopUnplannedContainers } from "./stop-unplanned.ts";
 
 export type StopAppError = SdkStopAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
 export type { StopAppOptions, StopAppResult } from "@lando/sdk/app";
@@ -64,6 +73,7 @@ export interface StopAppPreflight {
   readonly maybeFileSync: Option.Option<FileSyncEngineShape>;
   readonly fileSyncAvailable: boolean;
   readonly sessions: ReadonlyArray<FileSyncSessionInfo>;
+  readonly absentServices: ReadonlySet<string>;
   readonly retainedWriters?: AppPlan;
   /**
    * With an unfinished start, the journal is judged against the desired plan, but applied
@@ -123,6 +133,7 @@ export const preflightStopApp = Effect.fnUntraced(function* (
       maybeFileSync: Option.some(inventory.engine),
       fileSyncAvailable: true,
       sessions: inventory.sessions,
+      absentServices: new Set(),
       ...(retainedWriters === undefined ? {} : { retainedWriters }),
       ...(applied === undefined ? {} : { teardownPlan: mergeAppliedPlan(applied, plan) }),
     };
@@ -161,6 +172,10 @@ export const preflightStopApp = Effect.fnUntraced(function* (
     fileSyncAvailable && Option.isSome(maybeFileSync)
       ? yield* maybeFileSync.value.listSessions({ app: ref })
       : [];
+  const absentServices =
+    runtimeState !== "idle" && appliedFileSync.status === "accelerated"
+      ? absentPlannedServices(plan, yield* provider.list({ app: plan.id, includeUnplanned: true }))
+      : new Set<string>();
   // An idle runtime runs no writer and idle stop flushes and removes nothing, so the
   // proof that guards writer shutdown does not apply; providers may not observe volumes then.
   if (
@@ -169,7 +184,7 @@ export const preflightStopApp = Effect.fnUntraced(function* (
       (appliedFileSync.status === "accelerated" &&
         (Option.isNone(maybeFileSync) ||
           maybeFileSync.value.id !== appliedFileSync.engineId ||
-          !hasExactFileSyncSessionCoverage(appliedFileSync.sessions, sessions))))
+          !hasStopFileSyncCoverage(appliedFileSync.sessions, sessions, absentServices))))
   ) {
     return yield* Effect.fail(
       new FileSyncStopError({
@@ -189,7 +204,15 @@ export const preflightStopApp = Effect.fnUntraced(function* (
     );
   }
 
-  return { runtimeState, provider, appliedFileSync, maybeFileSync, fileSyncAvailable, sessions };
+  return {
+    runtimeState,
+    provider,
+    appliedFileSync,
+    maybeFileSync,
+    fileSyncAvailable,
+    sessions,
+    absentServices,
+  };
 });
 
 const stopAppWithResolvedPlan = Effect.fnUntraced(function* (
@@ -206,7 +229,15 @@ const stopAppWithResolvedPlan = Effect.fnUntraced(function* (
   const plan = target.plan;
   const ref = target.app;
   const preflight = prepared ?? (yield* preflightStopApp(target));
-  const { runtimeState, provider, appliedFileSync, maybeFileSync, fileSyncAvailable, sessions } = preflight;
+  const {
+    runtimeState,
+    provider,
+    appliedFileSync,
+    maybeFileSync,
+    fileSyncAvailable,
+    sessions,
+    absentServices,
+  } = preflight;
   const resolvedEvents = yield* resolveLandofileEventPlan(target);
   const landofileEvents = resolvedEvents.outcome;
   const eventPlan =
@@ -243,23 +274,40 @@ const stopAppWithResolvedPlan = Effect.fnUntraced(function* (
 
   const quiesceRetained = provider.quiesceRetainedFileSync;
   const retainedWriters = preflight.retainedWriters;
-  let retainedStopped: readonly string[] = [];
+  // Windows still removes the retained writers of an unfinished accelerated start before stopping.
+  let retainedRemoved: readonly ContainerBringDownReceipt[] = [];
   if (retainedWriters !== undefined && quiesceRetained !== undefined) {
     const before = yield* provider.list({ app: plan.id, includeUnplanned: true });
     yield* quiesceRetained(retainedWriters);
-    retainedStopped = before.flatMap((row) =>
+    retainedRemoved = before.flatMap((row) =>
       row.containerId !== undefined && Object.hasOwn(retainedWriters.services, row.service)
-        ? [String(row.service)]
+        ? [{ service: row.service, containerId: row.containerId, action: "removed" as const }]
         : [],
     );
   }
-  const destroyOutcome = yield* runtimeState === "idle"
+  // App workers retire only once the app's containers are proven stopped; a failed stop keeps them.
+  const stopOutcome = yield* runtimeState === "idle"
     ? stopIdleApp(target, preflight)
-    : provider
-        .destroy({ app: plan.id, plan: teardownPlan }, { volumes: false, removeState: false })
-        .pipe(Effect.ensuring(cleanupAppWorkers(ref)));
-  const shutdownObservations: readonly ServiceShutdownObservation[] | undefined =
-    "shutdownObservations" in destroyOutcome ? destroyOutcome.shutdownObservations : undefined;
+    : provider.bringDown({ app: plan.id, plan: teardownPlan }, { containers: "stop" });
+  const unplanned =
+    runtimeState === "idle"
+      ? undefined
+      : yield* stopUnplannedContainers(teardownPlan, provider).pipe(
+          Effect.tap(() => cleanupAppWorkers(ref, "stop")),
+        );
+  const shutdownObservations: readonly ServiceShutdownObservation[] | undefined = mergeShutdownObservations(
+    "shutdownObservations" in stopOutcome ? stopOutcome.shutdownObservations : undefined,
+    unplanned?.shutdownObservations,
+  );
+  const receipts =
+    unplanned === undefined
+      ? undefined
+      : mergeContainerReceipts(
+          retainedRemoved,
+          "containers" in stopOutcome ? stopOutcome.containers : [],
+          unplanned.containers,
+        );
+  const servicesStopped = servicesTakenDown(receipts);
 
   if (
     appliedFileSync.status === "accelerated" &&
@@ -269,7 +317,11 @@ const stopAppWithResolvedPlan = Effect.fnUntraced(function* (
     // An unfinished attempt may not have created any session yet; there is nothing to drain.
     if (runtimeState === "running" && sessions.length > 0) yield* maybeFileSync.value.appLifecycle.drain(ref);
   } else if (runtimeState === "running" && appliedFileSync.status === "accelerated") {
-    const terminate = terminateFileSyncSessions(ref, fileSyncAvailable ? sessions : undefined);
+    const terminate = terminateFileSyncSessions(
+      ref,
+      fileSyncAvailable ? sessions : undefined,
+      absentServices,
+    );
     yield* Option.isSome(maybeFileSync)
       ? terminate.pipe(Effect.provideService(FileSyncEngine, maybeFileSync.value))
       : terminate;
@@ -302,22 +354,9 @@ const stopAppWithResolvedPlan = Effect.fnUntraced(function* (
     result: {
       app: plan.name,
       runtimeState,
-      ...(runtimeState === "idle" ? { outcome: "stopped" as const } : {}),
-      servicesStopped:
-        runtimeState === "idle"
-          ? []
-          : shutdownObservations === undefined
-            ? services.map((service) => String(service.name))
-            : [
-                ...new Set([
-                  ...retainedStopped,
-                  ...shutdownObservations.flatMap((row) =>
-                    row.status === "unknown" && row.reason === "container-absent"
-                      ? []
-                      : [String(row.service)],
-                  ),
-                ]),
-              ],
+      outcome: runtimeState === "idle" || servicesStopped.length > 0 ? "stopped" : "unchanged",
+      servicesStopped,
+      ...(receipts === undefined ? {} : { containers: receipts }),
       landofileEvents: failedPostEvent ?? landofileEvents,
       ...(shutdownObservations === undefined ? {} : { shutdownObservations }),
     },

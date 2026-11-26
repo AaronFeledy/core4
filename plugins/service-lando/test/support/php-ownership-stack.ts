@@ -8,6 +8,7 @@ import * as Planner from "@lando/engine/services/planner";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import { loadAuthoredDocuments } from "@lando/landofile/root-compile";
+import { makeLandoPaths } from "@lando/paths";
 import { bringDown, bringUp, makePodmanApiClient, layer as providerLayer } from "@lando/provider-lando";
 import { emitLandofileYaml } from "@lando/sdk/landofile";
 import {
@@ -17,7 +18,7 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
-import { AppPlanner, RuntimeProvider } from "@lando/sdk/services";
+import { AppPlanner, PathsService, RuntimeProvider } from "@lando/sdk/services";
 import { Effect, Layer, Schema } from "effect";
 import * as ServiceLando from "../../src/index.ts";
 import { acquireTempAppRoot, writeFixture } from "./live-app-scope.ts";
@@ -75,7 +76,7 @@ export const planPhpFixture = Effect.fn("PhpAcceptance.plan")(function* (
     { appRoot: root, file },
   );
   return yield* Effect.flatMap(AppPlanner, (planner) => planner.plan(loaded, capabilities)).pipe(
-    Effect.provide(Planner.layer),
+    Effect.provide(Planner.layer.pipe(Layer.provide(Layer.succeed(PathsService, makeLandoPaths())))),
     Effect.provide(
       Layer.mergeAll(ServiceLando.services, Registry.layerWith({}, [ServiceLando.plugin]), FileSystem.layer),
     ),

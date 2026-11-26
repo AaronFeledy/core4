@@ -1,10 +1,5 @@
 import type { GlobalStopResult } from "@lando/engine/operations/global-stop";
-import { teardownLine } from "../service-summary";
-import { shutdownServiceRows } from "../shutdown-summary";
+import { renderStopAppResult } from "../stop";
 
-export const renderGlobalStopResult = (result: GlobalStopResult): string =>
-  teardownLine(
-    result.outcome,
-    result.app,
-    shutdownServiceRows(result.servicesStopped, result.shutdownObservations),
-  );
+/** A global stop reads like an app stop, including which containers were already stopped. */
+export const renderGlobalStopResult = (result: GlobalStopResult): string => renderStopAppResult(result);

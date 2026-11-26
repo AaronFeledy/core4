@@ -1,5 +1,6 @@
 import { SchemaCompatibilityInputError, parseJson } from "../schema-compatibility-artifacts.ts";
-import type { CompatibilityException, JsonValue, PersistedStateRef } from "./model.ts";
+import { FINGERPRINT_PATTERN } from "./fingerprint.ts";
+import type { CompatibilityException, CompatibilityLocation, JsonValue, PersistedStateRef } from "./model.ts";
 import { isJsonObject, isPersistedStoreId } from "./model.ts";
 
 const parsePersistedState = (value: JsonValue, source: string): PersistedStateRef => {
@@ -17,6 +18,38 @@ const parsePersistedState = (value: JsonValue, source: string): PersistedStateRe
   return { store: value.store, version: value.version };
 };
 
+const ENTRY_KEYS = new Set(["fingerprint", "changeKind", "locations", "justification", "persistedState"]);
+
+const parseLocations = (
+  value: JsonValue | undefined,
+  source: string,
+): ReadonlyArray<CompatibilityLocation> => {
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new SchemaCompatibilityInputError(`${source} has an exception without locations.`);
+  }
+  const seen = new Set<string>();
+  return value.map((location) => {
+    if (
+      !isJsonObject(location) ||
+      Object.keys(location).length !== 2 ||
+      typeof location.surface !== "string" ||
+      typeof location.path !== "string"
+    ) {
+      throw new SchemaCompatibilityInputError(
+        `${source} has an invalid location; expected { surface, path }.`,
+      );
+    }
+    const key = `${location.surface}\0${location.path}`;
+    if (seen.has(key)) {
+      throw new SchemaCompatibilityInputError(
+        `${source} repeats location ${location.surface} ${location.path} in one exception.`,
+      );
+    }
+    seen.add(key);
+    return { surface: location.surface, path: location.path };
+  });
+};
+
 export const parseCompatibilityExceptions = (
   text: string,
   source: string,
@@ -27,21 +60,24 @@ export const parseCompatibilityExceptions = (
   return value.map((entry) => {
     if (
       !isJsonObject(entry) ||
-      typeof entry.surface !== "string" ||
+      Object.keys(entry).some((key) => !ENTRY_KEYS.has(key)) ||
+      typeof entry.fingerprint !== "string" ||
+      !FINGERPRINT_PATTERN.test(entry.fingerprint) ||
       typeof entry.changeKind !== "string" ||
-      typeof entry.path !== "string" ||
       typeof entry.justification !== "string" ||
       entry.justification.trim().length === 0
     ) {
-      throw new SchemaCompatibilityInputError(`${source} contains an invalid compatibility exception.`);
-    }
-    const key = `${entry.surface}\0${entry.changeKind}\0${entry.path}`;
-    if (seen.has(key)) {
       throw new SchemaCompatibilityInputError(
-        `${source} contains duplicate exception ${entry.surface} ${entry.path}.`,
+        `${source} contains an invalid compatibility exception; expected { fingerprint, changeKind, locations, justification, persistedState? } as printed by check:schema-compatibility.`,
       );
     }
-    seen.add(key);
+    if (seen.has(entry.fingerprint)) {
+      throw new SchemaCompatibilityInputError(
+        `${source} contains duplicate exception ${entry.fingerprint}; merge its locations into one entry.`,
+      );
+    }
+    seen.add(entry.fingerprint);
+    const locations = parseLocations(entry.locations, source);
     const persistedState =
       entry.persistedState === undefined
         ? undefined
@@ -49,9 +85,9 @@ export const parseCompatibilityExceptions = (
           ? entry.persistedState.map((ref) => parsePersistedState(ref, source))
           : parsePersistedState(entry.persistedState, source);
     return {
-      surface: entry.surface,
+      fingerprint: entry.fingerprint,
       changeKind: entry.changeKind,
-      path: entry.path,
+      locations,
       justification: entry.justification,
       ...(persistedState === undefined ? {} : { persistedState }),
     };

@@ -13,7 +13,7 @@ import {
   RuntimeProvider,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
-import { makeTestRuntimeProvider } from "@lando/sdk/test";
+import { makeTestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Context, Effect, Fiber, Layer, Schema } from "effect";
 import { serviceLayer } from "../../src/mcp-command-executor";
 import { resources } from "../../src/mcp-resources";
@@ -37,10 +37,8 @@ const withResourceSession = async <A, E>(
   const provider = RuntimeProvider.of({
     ...baseProvider,
     apply: rejectMutation,
-    start: rejectMutation,
-    stop: rejectMutation,
     restart: rejectMutation,
-    destroy: rejectMutation,
+    bringDown: rejectMutation,
     setup: rejectMutation,
   });
   if (withApp)
@@ -66,10 +64,7 @@ const withResourceSession = async <A, E>(
           Layer.succeed(RuntimeProvider, provider),
           Layer.succeed(
             RuntimeProviderRegistry,
-            RuntimeProviderRegistry.of({
-              resolveAppliedPlan: () => Effect.succeed(undefined),
-              resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-              appliedPlansFor: () => Effect.succeed([]),
+            makeTestRuntimeProviderRegistry({
               list: Effect.succeed([ProviderId.make(provider.id)]),
               capabilities: Effect.succeed(provider.capabilities),
               select: () => Effect.succeed(provider),

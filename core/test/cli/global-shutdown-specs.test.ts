@@ -44,8 +44,14 @@ for (const spec of [metaGlobalStopSpec, metaGlobalDestroySpec]) {
       const harness = await globalTeardownHarness(root, {
         plan: globalPlanAt(AbsolutePath.make(join(root, "global"))),
         destroyOutcome: {
-          kind: "destroyed",
+          kind: "removed",
+          containers: [],
           volumesRemoved: { data: 0, cache: 0 },
+          shutdownObservations: observations,
+        },
+        stopOutcome: {
+          kind: "stopped",
+          containers: [{ service: identity.service, containerId: "agent-current", action: "stopped" }],
           shutdownObservations: observations,
         },
       });

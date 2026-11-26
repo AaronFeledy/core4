@@ -1,12 +1,15 @@
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import {
   type AppPlan,
+  LANDO_DATA_ROOT_LABEL,
   LANDO_SHARED_CROSS_APP_NETWORK,
   appIdentityKey,
   landoSharedNetworkName,
   planAppIdentity,
 } from "@lando/sdk/schema";
 import { Effect, Option, Schema } from "effect";
+import { dataRootLabels } from "./data-root-labels.ts";
+import { type AdoptionReceipt, dataRootRefusal, decideDataRootOwnership } from "./data-root-ownership.ts";
 import type { EngineHttpRequest, EngineHttpResponse, ProviderErrorContext } from "./engine-api.ts";
 import {
   APP_LABEL,
@@ -19,6 +22,13 @@ import {
 import { isOwnershipRoot } from "./ownership-root.ts";
 import { serviceContainerOwnershipProblem } from "./service-container-ownership.ts";
 
+export { ownsSharedCrossAppNetwork } from "./data-root-labels.ts";
+export {
+  type AdoptionReceipt,
+  adoptionReceiptsFromSummary,
+  dataRootRefusal,
+  decideDataRootOwnership,
+} from "./data-root-ownership.ts";
 export {
   type ServiceContainerIdentity,
   serviceContainerOwnershipLabels,
@@ -34,6 +44,7 @@ const Observation = Schema.Struct({
   name: Schema.optionalKey(Schema.String),
   Labels: Schema.optionalKey(Schema.NullOr(Labels)),
   labels: Schema.optionalKey(Schema.NullOr(Labels)),
+  Containers: Schema.optionalKey(Schema.NullOr(Schema.Record(Schema.String, Schema.Unknown))),
   Config: Schema.optionalKey(Schema.Struct({ Labels: Schema.optionalKey(Labels) })),
 });
 export type NativeObservation = typeof Observation.Type;
@@ -57,6 +68,7 @@ export const coherentContainerOwnership = (
     serviceContainerOwnershipProblem(labels, {
       app,
       appRoot: labels[APP_ROOT_LABEL] ?? "",
+      dataRoot: labels[LANDO_DATA_ROOT_LABEL],
       service: labels[SERVICE_LABEL] ?? "",
       providerId,
     }) === undefined
@@ -68,18 +80,37 @@ export const ownsServiceContainer = (
   plan: AppPlan,
   observation: {
     readonly containerId?: string;
+    readonly nativeName?: string;
     readonly service: string;
     readonly labels?: Readonly<Record<string, string>>;
   },
+  receipts: readonly AdoptionReceipt[] = [],
 ): boolean => {
   const labels = observation.labels;
   if (labels === undefined || !observation.containerId) return false;
+  const owner = labels[LANDO_DATA_ROOT_LABEL];
+  const dataRoot = plan.identity?.dataRoot;
+  if (
+    dataRoot === undefined
+      ? owner !== undefined
+      : decideDataRootOwnership(
+          {
+            kind: "container",
+            nativeName: observation.nativeName ?? "",
+            nativeId: observation.containerId,
+            labels,
+          },
+          { dataRoot, receipts },
+        ) !== "owned"
+  )
+    return false;
   if (
     serviceContainerOwnershipProblem(labels, {
       app: plan.id,
       appRoot: planAppIdentity(plan).appRoot,
       service: observation.service,
       providerId: plan.provider,
+      dataRoot: owner,
     }) !== undefined
   )
     return false;
@@ -100,29 +131,30 @@ export const coherentPrivateNetworkOwnership = (
   const scratchId = labels[SCRATCH_ID_LABEL];
   if ((scratch !== undefined || scratchId !== undefined) && (scratch !== "TRUE" || scratchId !== appId))
     return false;
-  return (
-    networkLabelsDecision(
-      labels,
-      privateNetworkLabels({
-        appId,
-        appRoot,
-        ownerKey: appIdentityKey("owner", appRoot),
-        providerId,
-        ...(scratch === "TRUE" ? { scratchId: appId } : {}),
-      }),
-    ) === "owned"
+  return matchesPrivateNetworkLabels(
+    labels,
+    privateNetworkLabels({
+      appId,
+      appRoot,
+      dataRoot: labels[LANDO_DATA_ROOT_LABEL],
+      ownerKey: appIdentityKey("owner", appRoot),
+      providerId,
+      ...(scratch === "TRUE" ? { scratchId: appId } : {}),
+    }),
   );
 };
 
 export const privateNetworkLabels = (resource: {
   readonly appId: string;
   readonly appRoot: string;
+  readonly dataRoot?: string | undefined;
   readonly ownerKey: string;
   readonly providerId: string;
   readonly scratchId?: string;
 }) => ({
   [APP_LABEL]: resource.appId,
   [APP_ROOT_LABEL]: resource.appRoot,
+  ...dataRootLabels(resource.dataRoot),
   "dev.lando.owner": resource.ownerKey,
   "dev.lando.provider": resource.providerId,
   ...(resource.scratchId === undefined
@@ -134,6 +166,7 @@ export const containerOwnershipLabels = (plan: AppPlan, service: string) => ({
   [APP_LABEL]: plan.id,
   [APP_ROOT_LABEL]: planAppIdentity(plan).appRoot,
   [SERVICE_LABEL]: service,
+  ...dataRootLabels(plan.identity?.dataRoot),
   ...scratchLabelsForPlan(plan),
 });
 
@@ -148,16 +181,16 @@ export const networkOwnershipLabels = (plan: AppPlan) => {
 };
 
 /** Legacy labels require separate exact-name proof because native lookup also accepts ID prefixes. */
-export const networkLabelsDecision = (
-  labels: Readonly<Record<string, string>> | undefined,
+export const matchesPrivateNetworkLabels = (
+  labels: Readonly<Record<string, string>>,
   expected: Readonly<Record<string, string>>,
-): "owned" | "legacy" | "foreign" => {
-  if (labels === undefined || Object.keys(labels).length === 0)
-    return SCRATCH_ID_LABEL in expected ? "foreign" : "legacy";
-  return Object.keys(labels).length === Object.keys(expected).length &&
-    Object.entries(expected).every(([key, value]) => labels[key] === value)
-    ? "owned"
-    : "foreign";
+): boolean => {
+  const { [LANDO_DATA_ROOT_LABEL]: _observedRoot, ...observed } = labels;
+  const { [LANDO_DATA_ROOT_LABEL]: _expectedRoot, ...proof } = expected;
+  return (
+    Object.keys(observed).length === Object.keys(proof).length &&
+    Object.entries(proof).every(([key, value]) => observed[key] === value)
+  );
 };
 
 export const isSharedNetwork = (plan: Pick<AppPlan, "networking">, name: string): boolean =>
@@ -205,7 +238,11 @@ export const verifiedNativeId = Effect.fnUntraced(function* (
   body: string,
   expected: Readonly<Record<string, string>>,
   ctx: ProviderErrorContext,
-  resource: { readonly kind: "container" | "network"; readonly name?: string } = {
+  resource: {
+    readonly kind: "container" | "network";
+    readonly name?: string;
+    readonly receipts?: readonly AdoptionReceipt[];
+  } = {
     kind: "container",
   },
 ) {
@@ -221,6 +258,19 @@ export const verifiedNativeId = Effect.fnUntraced(function* (
     (typeof observedName === "string" && observedName.length > 0
       ? observedName.replace(/^\//u, "")
       : "resource");
+  const dataRoot = expected[LANDO_DATA_ROOT_LABEL];
+  const native = { kind: resource.kind, nativeName: name, nativeId: id, labels };
+  if (
+    dataRoot === undefined
+      ? labels[LANDO_DATA_ROOT_LABEL] !== undefined
+      : decideDataRootOwnership(native, { dataRoot, receipts: resource.receipts ?? [] }) !== "owned"
+  ) {
+    return yield* new ProviderUnavailableError({
+      providerId: ctx.providerId,
+      operation: "resource-ownership",
+      ...dataRootRefusal(native),
+    });
+  }
   const ownershipProblem =
     expected[APP_LABEL] === undefined
       ? Object.entries(expected).some(([key, value]) => labels[key] !== value)
@@ -231,6 +281,7 @@ export const verifiedNativeId = Effect.fnUntraced(function* (
           appRoot: expected[APP_ROOT_LABEL] ?? "",
           service: expected[SERVICE_LABEL] ?? "",
           providerId: ctx.providerId,
+          dataRoot: dataRoot === undefined ? undefined : labels[LANDO_DATA_ROOT_LABEL],
         });
   const scratchExpected = expected[SCRATCH_LABEL];
   const scratchMatches =
@@ -255,11 +306,12 @@ export const inspectOwnedNativeId = Effect.fn("NativeOwnership.inspect")(functio
     readonly request?: (request: EngineHttpRequest) => Effect.Effect<EngineHttpResponse, E>;
   },
   target: (
-    | { readonly kind: "container" }
+    | { readonly kind: "container"; readonly receipts?: readonly AdoptionReceipt[] }
     | {
         readonly kind: "network";
         readonly legacy: "accept" | "reject";
         readonly exactName?: true;
+        readonly receipts?: readonly AdoptionReceipt[];
       }
   ) & {
     readonly name: string;
@@ -292,6 +344,7 @@ export const inspectOwnedNativeId = Effect.fn("NativeOwnership.inspect")(functio
       return yield* verifiedNativeId(response.body, target.labels, ctx, {
         kind: "container",
         name: target.name,
+        ...(target.receipts === undefined ? {} : { receipts: target.receipts }),
       });
     case "network": {
       const decoded = Schema.decodeUnknownOption(Observations)(response.body);
@@ -299,16 +352,33 @@ export const inspectOwnedNativeId = Effect.fn("NativeOwnership.inspect")(functio
       const observed = Array.isArray(decoded.value) ? decoded.value[0] : decoded.value;
       const id = observed?.Id ?? observed?.ID ?? observed?.id;
       const labels = observed?.Labels ?? observed?.labels ?? {};
-      const decision = networkLabelsDecision(
-        Object.keys(labels).length === 0 ? undefined : labels,
-        target.labels,
-      );
+      const exactName = (observed?.Name ?? observed?.name) === target.name;
+      const dataRoot = target.labels[LANDO_DATA_ROOT_LABEL];
+      const native = { kind: "network", nativeName: target.name, nativeId: id, labels } as const;
+      if (
+        dataRoot === undefined
+          ? labels[LANDO_DATA_ROOT_LABEL] !== undefined
+          : decideDataRootOwnership(native, {
+              dataRoot,
+              receipts: exactName ? (target.receipts ?? []) : [],
+            }) !== "owned"
+      ) {
+        return yield* new ProviderUnavailableError({
+          providerId: ctx.providerId,
+          operation: "resource-ownership",
+          ...dataRootRefusal(native),
+        });
+      }
+      const unscopedUnnamedLabels =
+        dataRoot === undefined &&
+        target.legacy === "accept" &&
+        exactName &&
+        Object.keys(labels).length === 0 &&
+        !(SCRATCH_ID_LABEL in target.labels);
       if (
         !id ||
-        (target.exactName === true && (observed?.Name ?? observed?.name) !== target.name) ||
-        decision === "foreign" ||
-        (decision === "legacy" &&
-          (target.legacy === "reject" || (observed?.Name ?? observed?.name) !== target.name))
+        (target.exactName === true && !exactName) ||
+        (!unscopedUnnamedLabels && !matchesPrivateNetworkLabels(labels, target.labels))
       )
         return yield* Effect.fail(refused(ctx, { ...target, labels, expected: target.labels }));
       return id;

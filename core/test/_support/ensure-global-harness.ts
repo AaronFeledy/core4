@@ -35,6 +35,7 @@ import * as AppPlannerLayer from "@lando/engine/services/planner";
 import { RedactionService } from "@lando/redaction/service";
 import type { ServiceRuntimeInfo } from "@lando/sdk/services";
 import { PathsService } from "@lando/sdk/services";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { DateTime, Effect, Layer, Queue, Schema, Stream } from "effect";
 
@@ -173,6 +174,9 @@ export const makeHarness = async (
             labels: {
               "dev.lando.app": plan.id,
               "dev.lando.app-root": plan.root,
+              ...(plan.identity?.dataRoot === undefined
+                ? {}
+                : { "dev.lando.data-root": plan.identity.dataRoot }),
               "dev.lando.service": service.name,
             },
             status: "running" as const,
@@ -243,7 +247,11 @@ export const makeHarness = async (
     Layer.succeed(PluginRegistry, pluginRegistry),
     Layer.succeed(
       RuntimeProviderRegistry,
-      RuntimeProviderRegistry.of({
+      makeTestRuntimeProviderRegistry({
+        readAppliedPlanStrict: ({ id, provider }) =>
+          Effect.sync(() =>
+            recordedPlan?.id === id && recordedPlan.provider === provider ? recordedPlan : undefined,
+          ),
         resolveAppliedPlan: (root) =>
           Effect.sync(() => (recordedPlan?.root === root ? recordedPlan : undefined)),
         resolveTeardownEvidence: (root) =>
@@ -288,6 +296,17 @@ export const makeHarness = async (
           Layer.succeed(PluginRegistry, pluginRegistry),
           AppCacheService.layer,
           LandoConfigService.layer,
+          Layer.succeed(
+            PathsService,
+            makeLandoPaths({
+              userDataRoot: dataRoot,
+              userCacheRoot: join(dataRoot, "cache"),
+              userConfRoot: process.env.LANDO_USER_CONF_ROOT ?? join(dataRoot, "conf"),
+              systemPluginRoot: join(dataRoot, "sys"),
+              env: {},
+              platform: "linux",
+            }),
+          ),
         ),
       ),
     ),

@@ -7,7 +7,12 @@ import { readGlobalConfigSources } from "@lando/paths/config-sources";
 import { canonicalJson, sha256Hex } from "@lando/sdk/digest";
 import { GlobalAppError } from "@lando/sdk/errors";
 import { isPlainRecord } from "@lando/sdk/landofile";
-import type { AppPlan, LoadScopedLandofile, ServiceName } from "@lando/sdk/schema";
+import {
+  type AppPlan,
+  LANDO_DATA_ROOT_LABEL,
+  type LoadScopedLandofile,
+  type ServiceName,
+} from "@lando/sdk/schema";
 import {
   ConfigService,
   PathsService,
@@ -243,6 +248,7 @@ export const observeWarmGlobalServices = Effect.fnUntraced(
         (row) =>
           row.app === record.plan.id &&
           row.appRoot === record.plan.root &&
+          row.labels?.[LANDO_DATA_ROOT_LABEL] === record.plan.identity?.dataRoot &&
           row.providerId === record.plan.provider &&
           row.service === service &&
           row.containerId === expected.slice(0, expected.lastIndexOf(":")),
@@ -252,8 +258,9 @@ export const observeWarmGlobalServices = Effect.fnUntraced(
       if (
         runtimeIdentity(runtime) !== expected ||
         runtime.status !== "running" ||
-        runtime.health === "unhealthy" ||
-        runtime.health === "starting"
+        // Native health nothing schedules is stale whatever it says, so it is not a reason to re-ensure.
+        (provider.capabilities.serviceHealth !== "none" &&
+          (runtime.health === "unhealthy" || runtime.health === "starting"))
       )
         return undefined;
       observed.set(service, runtime);

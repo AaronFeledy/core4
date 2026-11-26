@@ -1,11 +1,12 @@
 /**
  * `meta:setup` completion summary rendering.
  *
- * Builds the decorated `SummaryDocument` (and its plain fallback line) shown
+ * Builds the decorated `SummaryDocument` (and its plain fallback lines) shown
  * after setup completes, mapping the file-sync status into a tone and a
- * human-readable line.
+ * human-readable line, and listing each host trust store the CA manages.
  */
-import type { SummaryDocument, SummaryTone } from "@lando/renderer/summary";
+import type { SummaryDocument, SummaryRow, SummarySection, SummaryTone } from "@lando/renderer/summary";
+import type { TrustStoreChange } from "@lando/sdk/schema";
 
 export const fileSyncStatusLine = (status: string): string => {
   switch (status) {
@@ -36,7 +37,22 @@ export interface SetupSummaryInput {
   readonly installDir: string;
   readonly fileSyncStatus: string;
   readonly notes: ReadonlyArray<string>;
+  readonly trustStores?: ReadonlyArray<TrustStoreChange> | undefined;
 }
+
+const trustValue = ({ state, changed }: TrustStoreChange): string => (changed ? `${state} (updated)` : state);
+
+/** Plain-text line for one trust store. */
+export const trustStoreLine = (store: TrustStoreChange): string =>
+  `trust: ${store.name}${store.location === undefined ? "" : ` (${store.location})`}: ${trustValue(store)}`;
+
+const trustRow = (store: TrustStoreChange): SummaryRow => ({
+  label: store.name,
+  tone: store.state === "trusted" ? "ok" : "warn",
+  value: trustValue(store),
+  ...(store.location === undefined ? {} : { detail: store.location }),
+  ...(store.state === "trusted" || store.remediation === undefined ? {} : { remedy: store.remediation }),
+});
 
 /** Setup runs before any app plan, so this note never includes a CA count that could mismatch what a service actually trusts. */
 export const caInjectionNote =
@@ -44,10 +60,14 @@ export const caInjectionNote =
 
 export const buildSetupSummary = (input: SetupSummaryInput): SummaryDocument => {
   const status = input.fileSyncStatus;
+  const trustStores = input.trustStores ?? [];
+  const trustSection: ReadonlyArray<SummarySection> =
+    trustStores.length === 0 ? [] : [{ title: "trust", rows: trustStores.map(trustRow) }];
+  const degraded = status === "unavailable" || trustStores.some(({ state }) => state !== "trusted");
   return {
     title: "SETUP",
     subtitle: "complete",
-    tone: status === "unavailable" ? "warn" : "ok",
+    tone: degraded ? "warn" : "ok",
     sections: [
       {
         title: "runtime",
@@ -67,6 +87,7 @@ export const buildSetupSummary = (input: SetupSummaryInput): SummaryDocument => 
         ],
         ...(input.notes.length === 0 ? {} : { notes: input.notes }),
       },
+      ...trustSection,
     ],
     footer: `Lando runtime ready (${input.providerId})`,
   };

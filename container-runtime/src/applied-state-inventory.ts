@@ -4,6 +4,7 @@ import { type ProviderUnavailableError, isErrnoCode } from "@lando/sdk/errors";
 import { AppId, type AppliedStateInventory } from "@lando/sdk/schema";
 import { Effect, Option, Schema } from "effect";
 import type { AppliedPlanRead } from "./applied-state-read.ts";
+import { unreadableEntryFromRead } from "./applied-state-read.ts";
 
 export const APPLIED_PLAN_NAMESPACE = "applied-plans";
 
@@ -40,7 +41,9 @@ export const listAppliedPlanInventory = (
       (reads): AppliedStateInventory => ({
         plans: reads.flatMap(({ read }) => (read.status === "readable" ? [read.plan] : [])),
         unreadable: reads.flatMap(({ appId, read }) =>
-          read.status === "unreadable" ? [{ appId, path: read.path }] : [],
+          read.status === "unreadable" || read.status === "newer-version"
+            ? [unreadableEntryFromRead(read, appId)]
+            : [],
         ),
       }),
     ),

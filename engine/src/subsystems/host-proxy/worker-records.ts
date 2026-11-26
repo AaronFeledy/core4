@@ -1,7 +1,8 @@
 import { HostPlatform } from "@lando/sdk/schema";
 import { Schema } from "effect";
 
-export const HOST_PROXY_WORKER_PROTOCOL_VERSION = 3 as const;
+// 4: the socket and credentials live in the run directory's container-facing subdirectory.
+export const HOST_PROXY_WORKER_PROTOCOL_VERSION = 4 as const;
 
 // Private worker wire data. Never persist or include this secret-bearing payload in diagnostics.
 export const HostProxyWorkerPaths = Schema.Struct({

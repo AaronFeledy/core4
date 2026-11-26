@@ -98,9 +98,7 @@ test.skipIf(!liveEnabled)(
       await mark("cache");
 
       expect(await hooksOf(["restart"])).toEqual([...init, "pre-restart", ...stopAndStart, "post-restart"]);
-      expect([await kept("web"), await kept("cache")]).toEqual([false, false]);
-      await mark("web");
-      await mark("cache");
+      expect([await kept("web"), await kept("cache")]).toEqual([true, true]);
 
       expect(await hooksOf(["restart", "--service", "web"])).toEqual([
         ...init,

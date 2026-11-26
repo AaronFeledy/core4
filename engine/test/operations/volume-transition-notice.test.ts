@@ -1,7 +1,137 @@
 import { expect, test } from "bun:test";
-import { ServiceName } from "@lando/sdk/schema";
-import { web } from "./start-progress-topology-support.ts";
+import {
+  type AppPlan,
+  type BindMountPlan,
+  type MountPlan,
+  PortablePath,
+  ServiceName,
+} from "@lando/sdk/schema";
+import { SERVICE_FEATURES_EXTENSION_KEY } from "../../src/planner/extensions.ts";
+import { plan, web } from "./start-progress-topology-support.ts";
 import { paths, previousHome, runNotice, runTransition, withHome } from "./volume-transition-support.ts";
+
+const bindMount: BindMountPlan = {
+  type: "bind",
+  source: plan.root,
+  target: PortablePath.make("/app"),
+  readOnly: false,
+  realization: "passthrough",
+};
+const appMount = { ...bindMount, role: "app" } as const;
+const vendorShadow = {
+  type: "volume",
+  origin: "derived",
+  store: "lando-test-web-shadow-vendor",
+  target: PortablePath.make("/app/vendor"),
+  readOnly: false,
+} as const satisfies MountPlan;
+const withMounts = (...mounts: readonly MountPlan[]): AppPlan => ({
+  ...plan,
+  services: { [web.name]: { ...web, mounts } },
+});
+const shadowedVendor = withMounts({ ...appMount, excludes: ["vendor"] }, vendorShadow);
+
+test.each([
+  ["removed exclude", appMount],
+  ["authored include", { ...appMount, excludes: ["vendor"], includes: ["vendor"] }],
+] as const)("rebuild warns once before apply when a %s exposes vendor", async (_change, bind) => {
+  const { warnings, timeline, appliedReads } = await runTransition(
+    "rebuild",
+    shadowedVendor,
+    withMounts(bind),
+  );
+  expect(warnings).toHaveLength(1);
+  expect(warnings[0]?.body).toContain(`Service ${web.name} `);
+  expect(warnings[0]?.body).toContain(vendorShadow.target);
+  expect(warnings[0]?.body).toContain(vendorShadow.store);
+  expect(timeline.indexOf("warn")).toBeLessThan(timeline.indexOf("apply"));
+  expect(appliedReads).toBe(0);
+});
+
+test.each([
+  ["app", false],
+  ["build", true],
+] as const)("a removed shadow keeps the warning with a %s-phase step", async (phase, advisesReinstall) => {
+  const desired = {
+    ...plan,
+    services: {
+      [web.name]: {
+        ...web,
+        mounts: [appMount],
+        extensions: {
+          [SERVICE_FEATURES_EXTENSION_KEY]: {
+            buildSteps: [{ id: "install", phase, command: { command: ["install"] } }],
+          },
+        },
+      },
+    },
+  };
+  const warnings = await runNotice(shadowedVendor, desired);
+  expect(warnings).toHaveLength(1);
+  const body = warnings[0]?.body ?? "";
+  expect(body).toContain(
+    `Lando left ${vendorShadow.store} untouched and did not copy its contents to the host.`,
+  );
+  expect(body.includes("Rerun the dependency install or other setup the service needs there.")).toBe(
+    advisesReinstall,
+  );
+  expect(body).not.toContain("lando rebuild");
+});
+
+test.each([
+  ["authored storage", withMounts(appMount, { ...vendorShadow, origin: "authored", store: "custom" })],
+  ["a different derived store", withMounts(appMount, { ...vendorShadow, store: "dependency-environment" })],
+  ["tmpfs", withMounts(appMount, { type: "tmpfs", target: vendorShadow.target, readOnly: false })],
+  ["authored bind", withMounts(appMount, { ...bindMount, origin: "authored", target: vendorShadow.target })],
+  ["unchanged shadow", shadowedVendor],
+  ["a still-excluded path without a desired shadow", withMounts({ ...appMount, excludes: ["vendor"] })],
+  ["app mount removed", withMounts()],
+  ["app mount moved", withMounts({ ...appMount, target: PortablePath.make("/other") })],
+  ["service removed", { ...plan, services: {} }],
+] as const)("a vendor shadow does not warn with %s", async (_change, desired) => {
+  expect(await runNotice(shadowedVendor, desired)).toEqual([]);
+});
+
+test("a removed nested include bind does not warn", async () => {
+  const include = {
+    ...bindMount,
+    origin: "derived",
+    target: PortablePath.make("/app/vendor/acme"),
+  } as const;
+  expect(await runNotice(withMounts(appMount, vendorShadow, include), shadowedVendor)).toEqual([]);
+});
+
+test("a desired mount between the app bind and a removed nested shadow suppresses the notice", async () => {
+  const nestedShadow = { ...vendorShadow, target: PortablePath.make("/app/vendor/acme") };
+  const previous = withMounts({ ...appMount, excludes: ["vendor/acme"] }, nestedShadow);
+  const desired = withMounts(appMount, { ...bindMount, origin: "authored", target: vendorShadow.target });
+  expect(await runNotice(previous, desired)).toEqual([]);
+});
+
+test("selected restart warns once before apply when the selected service's vendor shadow is removed", async () => {
+  const { warnings, timeline } = await runTransition(
+    "selected restart",
+    shadowedVendor,
+    withMounts(appMount),
+  );
+  expect(warnings).toHaveLength(1);
+  expect(warnings[0]?.body).toContain(vendorShadow.target);
+  expect(warnings[0]?.body).toContain(vendorShadow.store);
+  expect(timeline.indexOf("warn")).toBeLessThan(timeline.indexOf("apply"));
+});
+
+test("selected rebuild ignores a removed vendor shadow on an unselected service", async () => {
+  const extra = ServiceName.make("extra");
+  const previous = {
+    ...plan,
+    services: { [web.name]: web, [extra]: { ...web, name: extra, mounts: [appMount, vendorShadow] } },
+  };
+  const desired = {
+    ...plan,
+    services: { [web.name]: web, [extra]: { ...web, name: extra, mounts: [appMount] } },
+  };
+  expect((await runTransition("selected rebuild", previous, desired)).warnings).toEqual([]);
+});
 
 for (const path of paths) {
   test.each([

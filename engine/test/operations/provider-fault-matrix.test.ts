@@ -24,34 +24,28 @@ const target = {
 
 const operations: readonly {
   readonly name: string;
-  readonly member: "apply" | "destroy" | "stop";
+  readonly member: "apply" | "bringDown" | "bringDownObserved";
   readonly run: () => Effect.Effect<unknown, unknown, Layer.Success<ReturnType<typeof makeHarness>["layer"]>>;
 }[] = [
   { name: "start", member: "apply", run: () => startAppForTarget({}, target) },
-  { name: "stop", member: "destroy", run: () => stopAppForTarget({}, target) },
-  { name: "destroy", member: "destroy", run: () => destroyAppForTarget({}, target) },
-  { name: "rebuild", member: "destroy", run: () => rebuildApp({}, target) },
-  { name: "restart", member: "destroy", run: () => restartApp({}, target) },
+  { name: "stop", member: "bringDown", run: () => stopAppForTarget({}, target) },
+  { name: "destroy", member: "bringDown", run: () => destroyAppForTarget({}, target) },
+  { name: "rebuild", member: "bringDown", run: () => rebuildApp({}, target) },
+  { name: "restart", member: "bringDown", run: () => restartApp({}, target) },
   {
     name: "rebuild selected",
-    member: "stop",
+    member: "bringDownObserved",
     run: () => rebuildApp({ services: [web.name] }, target),
   },
   {
     name: "restart selected",
-    member: "stop",
+    member: "bringDownObserved",
     run: () => restartApp({ services: [web.name] }, target),
   },
 ];
 
 for (const operation of operations) {
   for (const [tag, fault] of Object.entries(providerFaults)) {
-    // A selected relaunch treats a missing container as already stopped; rebuild-selected-absent.test.ts covers it.
-    if (
-      (operation.name === "rebuild selected" || operation.name === "restart selected") &&
-      tag === "ServiceNotFoundError"
-    )
-      continue;
     test(`${operation.name} preserves ${tag} from provider.${operation.member} as primary`, async () => {
       // Given an ownership-matched applied record and the real registry's output policy.
       const harness = makeHarness({ plannedApp: applied });
@@ -61,7 +55,7 @@ for (const operation of operations) {
         Effect.sync(() => calls.push(operation.member)).pipe(Effect.andThen(Effect.fail(fault)));
       const provider = { ...baseline, [operation.member]: fail };
       const registry = registryLayer(provider, {
-        contribution: { appliedPlans: () => Effect.succeed([applied]) },
+        contribution: { appliedStateInventory: () => Effect.succeed({ plans: [applied], unreadable: [] }) },
       });
       try {
         // When the first mutating provider member fails, through the operation entry point.

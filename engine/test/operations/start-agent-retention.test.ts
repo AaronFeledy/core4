@@ -9,6 +9,7 @@ import type {
 } from "@lando/sdk/errors";
 import { AbsolutePath } from "@lando/sdk/schema";
 import { type EventService, PathsService, RuntimeProviderRegistry } from "@lando/sdk/services";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Cause, Deferred, Effect, Exit, Fiber, Scope } from "effect";
 import { rebuildApp } from "../../src/operations/rebuild.ts";
@@ -267,14 +268,17 @@ test("a whole-app start keeps the GPG agent relay a needed service still uses", 
           }),
         },
       ).pipe(
-        Effect.provideService(RuntimeProviderRegistry, {
-          ...harness.runtimeProviderRegistry,
-          select: () =>
-            Effect.succeed({
-              ...provider,
-              capabilities: { ...provider.capabilities, agentSocket: { delivery: "bind-directory" } },
-            }),
-        }),
+        Effect.provideService(
+          RuntimeProviderRegistry,
+          makeTestRuntimeProviderRegistry({
+            ...harness.runtimeProviderRegistry,
+            select: () =>
+              Effect.succeed({
+                ...provider,
+                capabilities: { ...provider.capabilities, agentSocket: { delivery: "bind-directory" } },
+              }),
+          }),
+        ),
         Effect.provide(harness.layer),
       ),
     );

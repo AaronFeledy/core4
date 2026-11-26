@@ -25,7 +25,7 @@ test.skipIf(prerequisite !== undefined && !required)(
   `compiled CLI start -> stop reports handler exit and marker${prerequisite === undefined ? "" : ` (SKIP: ${prerequisite})`}`,
   async () => {
     if (prerequisite !== undefined) throw new Error(prerequisite);
-    // Given: a unique app whose actual TERM handler writes outside the removed container.
+    // Given: a unique app whose actual TERM handler writes outside its container.
     const root = await mkdtemp(join(tmpdir(), "lando-native-init-cli-"));
     const name = `init-cli-${crypto.randomUUID()}`;
     const marker = `handled-${crypto.randomUUID()}`;

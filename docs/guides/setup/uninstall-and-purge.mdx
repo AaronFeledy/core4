@@ -14,7 +14,7 @@ Without `--yes`, Lando refuses destructive execution and tells you to rerun afte
 
 ## Keep data vs purge
 
-Choose one mode after reviewing the dry run. `--keep-data` removes the managed CLI while leaving runtime state available. `--purge` removes Lando-owned runtime resources and the data, cache, and config roots; back up any application data you need before using it. Purge can also remove Lando 3 leftovers identified by their ownership labels.
+Choose one mode after reviewing the dry run. `--keep-data` removes the managed CLI while leaving runtime state available. `--purge` removes Lando-owned runtime resources and the data, cache, and config roots; back up any application data you need before using it. Use `lando uninstall --purge --dry-run` to see the engine connections and resource counts before confirming.
 
 ```sh
 # Removes the managed CLI while preserving app data, the managed VM,
@@ -27,16 +27,13 @@ lando uninstall --yes --purge
 
 `--keep-data` leaves running apps and their managed VM in place. It also retains the provider setup state, runtime service, host-proxy sessions, and Mutagen tools so those apps can keep using them. The managed CLI binary is removed; keep the retained runtime files until you no longer need the app data.
 
-With `--purge`, Lando removes the container-runtime resources it can prove it owns before it deletes anything on disk. It never runs a label-wide prune. For each available runtime (Docker, system Podman, and the managed `lando` runtime) it:
+On host Docker and Podman, `--purge` uses each provider's own engine connection, such as `DOCKER_HOST`, a Unix socket, or a Windows named pipe. It does not look for the `docker` or `podman` command on `PATH`. The plan names each reachable connection and counts the containers, networks, volumes, and built images in scope. It also names connections it could not reach; purge skips those engines.
 
-- Finds candidate containers, private networks, and volumes through Lando's ownership labels, including the supported Lando 3 container marker. A label match alone does not authorize deletion.
-- Inspects each candidate and verifies its ownership metadata. It rechecks a named volume's identity immediately before deletion; a mismatch stops that cleanup.
-- Removes verified containers and networks by native ID, and verified volumes by name. Container removal also requests cleanup of unused anonymous volumes. Named volumes are never force-deleted.
-- Stops if cleanup is incomplete and reports what was removed, retained, or failed. Unverified candidate resources and shared cross-app networks are not deleted through this cleanup path.
+Lando inspects each container, network, or named volume labeled for this data root before removing it. It stops and removes owned containers first, including their unused anonymous volumes. It then removes private networks, this root's shared bridge if nothing remains attached, and named volumes whose identity still matches. Named volumes and images are never force-deleted. Lando leaves other installations' resources and older resources without a data-root label alone.
 
-Any retained or failed entry fails the purge and preserves the managed runtime, storage, and uninstall state. On the managed `lando` runtime, Lando then confirms that the private installation holds zero containers and zero local volumes. Unlabeled volumes that an earlier Lando build left behind inside that storage count there and block the purge; they do not disappear silently. Recover or remove them explicitly, then rerun. On Docker or system Podman, unlabeled or externally owned volumes stay in that runtime untouched.
+Lando also removes images built for this cache root. It removes owned tags by name and keeps images with foreign tags or containers still using them. If in-scope cleanup is incomplete, Lando reports what it removed, kept, or could not delete and stops before removing the installation's files. `--keep-data` leaves images alone.
 
-`--purge` also removes the images this Lando install built from host Docker and Podman, before it deletes its caches. Images in the managed `lando` runtime go with that runtime's storage. Lando keeps an image that a container still uses or that you tagged with another name, and reports it in the detail of the `running-apps` step. `--keep-data` leaves built images alone.
+In private managed `lando` storage, purge also verifies that no containers or local volumes remain before deleting the storage and its images. On macOS and Windows, this whole-storage check and VM removal require a record that this installation created the VM and a match against the current VM. If Lando reused the VM, purge cleans only this data root's resources and keeps the VM.
 
 Only after that check passes, together with the ownership and Windows file-sync guards below, does `--purge` remove the Lando-owned managed VM, runtime service, provider bundle, and file-sync tools. This also removes built-in and residual network configuration inside the verified private installation roots. It does not authorize deletion of unverified networks in system Docker or Podman, or files outside those roots. Purge removes:
 
@@ -45,8 +42,6 @@ Only after that check passes, together with the ownership and Windows file-sync 
 - User config root (`~/.config/lando` or `$LANDO_USER_CONF_ROOT`)
 
 On Windows, Podman keeps network definitions in the Windows host config outside its managed VM. Removing the VM does not remove those definitions. Current definitions have no Lando ownership label, so the purge plan reports them for manual review. Check `$env:APPDATA\containers\networks` after purge, and leave any entry whose ownership you cannot verify. Lando does not delete those files.
-
-**If Lando cannot verify recorded user apps or safely complete runtime cleanup**, `--purge` fails and preserves the data roots rather than deleting their state. Fresh roots or setup-only state do not require an installed runtime when no user apps are recorded.
 
 On Windows, purge also refuses when accelerated file-sync state is active, unreadable, or still has helpers or sync volumes. Run `lando stop` for the affected app to flush pending file changes, then `lando destroy --volumes` only after backing up any database or other volume data you need. That destroy deletes the app’s data volumes as well as verified sync resources. Resolve any reported sync errors before retrying purge.
 
@@ -83,6 +78,27 @@ sudo systemctl daemon-reload
 ```
 
 Review who owns those units before you run them. If you would rather hand the helper to this install than remove it, run `lando setup` instead; see [Use the Traefik proxy](../subsystems/proxy-traefik.mdx).
+
+## Review systemd cgroup delegation
+
+Lando leaves `/etc/systemd/system/user@.service.d/delegate.conf` in place. Setup does not record which installation wrote that system-wide drop-in. If no other installation or program needs it, remove it on the host and reload systemd:
+
+```sh
+sudo rm -- /etc/systemd/system/user@.service.d/delegate.conf
+sudo systemctl daemon-reload
+```
+
+## Remove the local CA
+
+Uninstall leaves the local CA that `lando setup` created in place and trusted, in both `--keep-data` and `--purge`. Every Lando installation on this machine shares that CA, and so does `mkcert` if you use it directly, so uninstalling one installation can't tell whether anything else still needs it.
+
+The plan lists the CA as a manual step in both modes, with what you need to remove it from the trust stores Lando knows about: its fingerprint, the directory that holds it and its private key, and one command for each of those stores on this machine that may hold it. That covers the system trust store (on Windows and under WSL, both your user store and, if the CA was added for all users, the machine store), browser certificate databases, Homebrew's CA bundle, and the Java keystore older Lando setups wrote when `JAVA_HOME` is set. If you added the CA anywhere else by hand, such as a browser's own certificate settings, remove it there too. The commands use your operating system's tools, not Lando, so they still work after `--purge` removes Lando. Preview them with:
+
+```sh
+lando uninstall --purge --dry-run
+```
+
+Run them after you've uninstalled every Lando installation that uses the CA. Then delete the directory the step names, unless another tool uses it.
 
 ## Shell profile entries
 

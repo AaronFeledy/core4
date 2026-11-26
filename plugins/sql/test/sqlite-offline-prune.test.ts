@@ -17,7 +17,7 @@ import { DateTime, Effect } from "effect";
 import type { SqlCommandDeps } from "../src/command-types.ts";
 import { executeSqliteCommand } from "../src/sqlite-execute.ts";
 import { sqliteSnapshotStore } from "../src/sqlite-path.ts";
-import { sqliteManualPruneSelection } from "../src/sqlite-retention.ts";
+import { sqlitePruneSelection } from "../src/sqlite-retention.ts";
 import type { SqliteSnapshotDeps } from "../src/sqlite-snapshot.ts";
 import { cleanupSqlTestDeps, makeSqlTestDeps } from "./support/fakes.ts";
 
@@ -48,7 +48,7 @@ const setup = () => {
       service?: string;
       path?: string;
       family?: string;
-      reason?: "manual" | "reset";
+      reason?: "manual" | "reset" | "import";
     } = {},
   ) =>
     SnapshotInfo.make({
@@ -292,14 +292,59 @@ describe("offline SQLite manual snapshot pruning", () => {
 
   test("keeps the newest service/path snapshot across renamed app IDs in the selected owner scope", () => {
     const f = setup();
-    const selected = sqliteManualPruneSelection(
+    const selected = sqlitePruneSelection(
       f.catalog.filter(
         (entry) => entry.owner.appRoot === f.sourceRoot && entry.metadata?.service === f.target.name,
       ),
       1,
+      false,
     )
       .candidates.map((entry) => entry.id)
       .sort();
     expect(selected).toEqual(["a-new", "a-old", "b-new", "b-old"]);
+  });
+
+  for (const preview of [true, false]) {
+    test(`--recovery keep0 ${preview ? "preview" : "apply"} selects only automatic recovery snapshots`, async () => {
+      const f = setup();
+      f.catalog.push(f.snapshot("import-recovery", { reason: "import" }));
+      const result = await Effect.runPromise(
+        executeSqliteCommand(
+          f.deps,
+          { action: "prune", yes: true, keepLatest: 0, recovery: true, preview, fromPath: f.sourceRoot },
+          f.target,
+        ),
+      );
+      const expected = ["automatic", "import-recovery"];
+      expect([...(result.pruneCandidates ?? [])].sort()).toEqual(expected);
+      expect(f.removed.map((entry) => entry.id).sort()).toEqual(preview ? [] : expected);
+      expect(f.catalog.some((entry) => entry.id === "a-old")).toBe(true);
+      f.assertOffline();
+    });
+  }
+
+  test("--recovery keeps the newest automatic snapshots and confirms the recovery bucket", async () => {
+    const f = setup();
+    f.catalog.push(f.snapshot("import-recovery", { reason: "import" }));
+    const confirmations: string[] = [];
+    const deps = {
+      ...f.deps,
+      confirm: (message: string) =>
+        Effect.sync(() => {
+          confirmations.push(message);
+          return true;
+        }),
+    };
+    const result = await Effect.runPromise(
+      executeSqliteCommand(
+        deps,
+        { action: "prune", yes: false, keepLatest: 1, recovery: true, fromPath: f.sourceRoot },
+        f.target,
+      ),
+    );
+    expect(result.prunedSnapshotIds).toEqual(["automatic"]);
+    expect(confirmations).toHaveLength(1);
+    expect(confirmations[0]).toContain("delete 1 recovery SQLite snapshot(s)");
+    f.assertOffline();
   });
 });

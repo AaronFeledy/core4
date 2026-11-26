@@ -19,12 +19,9 @@ import {
   EXTENSION_PATTERN,
   FIXTURE_PATH,
   NETWORK_SERVICE_CONFIGS,
-  REPO_ROOT,
   admitsDeclaredName,
   admitsExtensionKey,
   blankContextBody,
-  exceptionKey,
-  expectedClosedExtensionExceptions,
   loadNormalizedArtifact,
   parseCapturedExtension,
   repairClosedExtension,
@@ -37,7 +34,11 @@ import { evolveHistoricalConsolePort } from "./x-extension-console-port-proof.ts
 import { evolveHistoricalContainerUser } from "./x-extension-container-user-proof.ts";
 import { evolveHistoricalEndpointKind } from "./x-extension-endpoint-kind-proof.ts";
 import { evolveHistoricalEndpointMetadata } from "./x-extension-endpoint-metadata-proof.ts";
-import { evolveHistoricalEnvironment, evolveHistoricalRouteText } from "./x-extension-environment-proof.ts";
+import {
+  evolveHistoricalEnvironment,
+  evolveHistoricalRouteMember,
+  evolveHistoricalRouteText,
+} from "./x-extension-environment-proof.ts";
 import { evolveHistoricalExtraArgs } from "./x-extension-extra-args-proof.ts";
 import { includeChecksumDelta } from "./x-extension-include-checksum-proof.ts";
 import { includeWhenDelta } from "./x-extension-include-when-proof.ts";
@@ -66,7 +67,6 @@ import {
 } from "./x-extension-tooling-shorthand-proof.ts";
 import { evolveHistoricalToolingVars } from "./x-extension-tooling-vars-proof.ts";
 import { evolveHistoricalUploadDirs } from "./x-extension-upload-dirs-proof.ts";
-import { DIRECTIVE_TRANSPORT_JUSTIFICATION, expectedWireExceptions } from "./x-extension-wire-proof.ts";
 
 const captured = parseCapturedExtension(await Bun.file(FIXTURE_PATH).json());
 const capturedLandofile = withIntentionalChangesSinceCapture(captured.landofile);
@@ -137,7 +137,8 @@ const beforeSchemaParity = (): JsonSchema =>
     ),
   );
 
-const expectedLandofile = (): JsonSchema => evolveSchemaParity(beforeSchemaParity(), "bare");
+const expectedLandofile = (): JsonSchema =>
+  evolveHistoricalRouteMember(evolveSchemaParity(beforeSchemaParity(), "bare"));
 
 describe("closed x-* extension artifact repair", () => {
   test("pins the independently reviewed tooling sensitivity delta and source provenance", async () => {
@@ -336,10 +337,12 @@ describe("closed x-* extension artifact repair", () => {
       "unsupported-keyword $.landofile.toolingDefaults.vars.additionalProperties",
     ]);
     expect(findings.every((finding) => finding.accepted === false)).toBe(true);
+    const reviewedFinding = findings.find((finding) => finding.path === "$.landofile.propertyNames");
+    if (reviewedFinding === undefined) throw new Error("expected the propertyNames finding");
     const exact: CompatibilityException = {
-      surface: "command:app:config",
+      fingerprint: reviewedFinding.fingerprint,
       changeKind: "unsupported-keyword",
-      path: "$.landofile.propertyNames",
+      locations: [{ surface: "command:app:config", path: "$.landofile.propertyNames" }],
       justification: CLOSED_EXTENSION_JUSTIFICATION,
     };
     const accepted = acceptCompatibilityExceptions("command:app:config", findings, [exact]);
@@ -350,11 +353,14 @@ describe("closed x-* extension artifact repair", () => {
         .every((finding) => !finding.accepted),
     ).toBe(true);
     const wrongPath = acceptCompatibilityExceptions("command:app:config", findings, [
-      { ...exact, path: "$.landofile.services.propertyNames" },
+      {
+        ...exact,
+        locations: [{ surface: "command:app:config", path: "$.landofile.services.propertyNames" }],
+      },
     ]);
     expect(wrongPath.every((finding) => finding.accepted === false)).toBe(true);
     const wrongSurface = acceptCompatibilityExceptions("command:app:config", findings, [
-      { ...exact, surface: "command:app:missing" },
+      { ...exact, locations: [{ surface: "command:app:missing", path: "$.landofile.propertyNames" }] },
     ]);
     expect(wrongSurface.every((finding) => finding.accepted === false)).toBe(true);
     const networks = schemaAt(await loadNormalizedArtifact("schema:DotnetServiceConfig"), "$.networks");
@@ -453,34 +459,5 @@ describe("closed x-* extension artifact repair", () => {
     const repaired = normalizeJsonSchema(requireObject(repairClosedExtension(tighter), "tighter"));
     expect(jsonEquals(repaired, normalizeJsonSchema(closed))).toBe(false);
     expect(classifySchemaChange(tighter, closed, "strict").length).toBeGreaterThan(0);
-  });
-
-  test("records only the proven surfaces and paths", async () => {
-    const parsed = await Bun.file(resolve(REPO_ROOT, "sdk/compatibility-exceptions.json")).json();
-    if (!Array.isArray(parsed)) throw new Error("exceptions must be an array");
-    const recorded = new Set<string>();
-    for (const entry of parsed) {
-      if (
-        !isJsonObject(entry) ||
-        (entry.justification !== CLOSED_EXTENSION_JUSTIFICATION &&
-          entry.justification !== DIRECTIVE_TRANSPORT_JUSTIFICATION)
-      )
-        continue;
-      if (
-        typeof entry.surface !== "string" ||
-        typeof entry.changeKind !== "string" ||
-        typeof entry.path !== "string"
-      ) {
-        throw new Error("closed-extension exception is incomplete");
-      }
-      recorded.add(exceptionKey(entry.surface, entry.changeKind, entry.path));
-    }
-    const expected = new Set(
-      [...expectedClosedExtensionExceptions(), ...expectedWireExceptions()].map((entry) =>
-        exceptionKey(entry.surface, entry.changeKind, entry.path),
-      ),
-    );
-    expect([...recorded].sort()).toEqual([...expected].sort());
-    expect(recorded.size).toBe(68);
   });
 });

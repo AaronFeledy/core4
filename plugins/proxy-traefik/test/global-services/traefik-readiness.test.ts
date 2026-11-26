@@ -2,10 +2,11 @@ import { expect, test } from "bun:test";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
 import { loadAuthoredDocuments } from "@lando/landofile/root-compile";
+import { makeLandoPaths } from "@lando/paths";
 import { ServiceConfig, ServiceName, effectiveReadiness } from "@lando/sdk/schema";
-import { AppPlanner } from "@lando/sdk/services";
+import { AppPlanner, PathsService } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { Effect, Schema } from "effect";
+import { Effect, Layer, Schema } from "effect";
 import diagnostics from "../../src/global-services/diagnostics.ts";
 import { buildTraefikServiceConfig } from "../../src/global-services/traefik.ts";
 
@@ -31,7 +32,9 @@ test("the bundled Traefik plan gates startup on ping with subsecond retries", as
 
   const plan = await Effect.runPromise(
     Effect.flatMap(AppPlanner, (planner) => planner.plan(compiled, TestRuntimeProvider.capabilities)).pipe(
-      Effect.provide(AppPlannerLayer.layer),
+      Effect.provide(
+        AppPlannerLayer.layer.pipe(Layer.provide(Layer.succeed(PathsService, makeLandoPaths()))),
+      ),
       Effect.provide(PluginRegistryLayer.layer),
     ),
   );

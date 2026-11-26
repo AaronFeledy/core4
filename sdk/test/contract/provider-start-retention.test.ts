@@ -154,7 +154,7 @@ const makeRetentionDouble = (): {
     ...TestRuntimeProvider,
     apply: (plan, options) => apply(plan, options),
     inspect: (target) => Effect.succeed(inspectRecord(target)),
-    destroy: (target, destroyOptions) =>
+    bringDown: (target, destroyOptions) =>
       Effect.sync(() => {
         const plan = target.plan;
         if (plan === undefined) return { kind: "no-op" as const, reason: "no-applied-plan" as const };
@@ -168,7 +168,7 @@ const makeRetentionDouble = (): {
             if (volumes.delete(store.name)) volumesRemoved[store.kind === "cache" ? "cache" : "data"] += 1;
           }
         }
-        return { kind: "destroyed" as const, volumesRemoved };
+        return { kind: "removed" as const, containers: [], volumesRemoved };
       }),
   };
 

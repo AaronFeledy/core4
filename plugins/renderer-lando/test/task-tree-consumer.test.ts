@@ -60,7 +60,7 @@ const treeStart = (children: ReadonlyArray<string>, parentId = "build", label = 
     _tag: "task.tree.start",
     parentId,
     label,
-    children,
+    children: children.map((id) => ({ id, label: id })),
     timestamp: ts,
   });
 const taskStart = (taskId: string, transcriptPath?: string, parentId?: string): LandoEvent =>

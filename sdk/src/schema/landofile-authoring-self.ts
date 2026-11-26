@@ -23,7 +23,7 @@ export const authoringSelfScope = Schema.makeFilter((value: unknown) => {
         issues.push({
           path,
           issue:
-            "service.port is available only in a service command, entrypoint, or container probe command.",
+            "service.port is available only in a service command, entrypoint, map-form environment, or container probe command.",
         });
       return;
     }

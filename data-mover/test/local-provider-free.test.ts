@@ -11,6 +11,7 @@ import {
   RuntimeProviderRegistry,
   StateStore,
 } from "@lando/sdk/services";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { makeTestStateStore } from "@lando/state-store/testing";
 import { Effect, Layer, Stream } from "effect";
 import { layer } from "../src/service.ts";
@@ -19,7 +20,7 @@ test("copies local bytes with no RuntimeProvider binding or provider selection",
   const dir = await mkdtemp(resolve(process.cwd(), ".tmp-data-local-"));
   const source = resolve(dir, "in.txt");
   const target = resolve(dir, "out.txt");
-  const registry = RuntimeProviderRegistry.of({
+  const registry = makeTestRuntimeProviderRegistry({
     list: Effect.die("Local copy must not enumerate providers"),
     capabilities: Effect.die("Local copy must not inspect provider capabilities"),
     appliedPlansFor: () => Effect.die("Local copy must not inspect applied plans"),

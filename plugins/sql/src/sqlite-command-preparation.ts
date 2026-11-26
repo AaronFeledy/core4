@@ -10,7 +10,7 @@ import { ensureExportDestination } from "./export-destination.ts";
 import { confirmOrFail, publishTree } from "./progress.ts";
 import { DEFAULT_SNAPSHOT_KEEP_LATEST } from "./snapshot-retention.ts";
 import { resolveSnapshotSource } from "./snapshot-source.ts";
-import { sqliteManualPruneSelection } from "./sqlite-retention.ts";
+import { sqlitePruneSelection } from "./sqlite-retention.ts";
 import { sqliteSnapshotVolume } from "./sqlite-snapshot.ts";
 import type { SqlFileTarget } from "./target.ts";
 import { sqlPlanIdentity } from "./views.ts";
@@ -108,7 +108,7 @@ export const prepareSqliteCommand = Effect.fn("Sql.prepareSqliteCommand")(functi
   if (input.action === "restore") {
     const scope = yield* resolveSnapshotSource({
       plan: deps.plan,
-      appliedPlans: deps.appliedPlans,
+      findAppliedSource: deps.findAppliedSource,
       store: store.store,
       ownerKey: owner.ownerKey,
       service: target.name,
@@ -123,7 +123,7 @@ export const prepareSqliteCommand = Effect.fn("Sql.prepareSqliteCommand")(functi
   if (input.action === "prune") {
     const sourceFilter = yield* resolveSnapshotSource({
       plan: deps.plan,
-      appliedPlans: deps.appliedPlans,
+      findAppliedSource: deps.findAppliedSource,
       store: store.store,
       ownerKey: owner.ownerKey,
       ...(deps.plan.identity?.repoGroupKey === undefined
@@ -139,7 +139,8 @@ export const prepareSqliteCommand = Effect.fn("Sql.prepareSqliteCommand")(functi
     const keepLatest = input.keepLatest ?? DEFAULT_SNAPSHOT_KEEP_LATEST;
     const snapshots = yield* deps.listSnapshots(filter);
     pruneFilter = filter;
-    pruneCandidates = sqliteManualPruneSelection(snapshots, keepLatest).candidates;
+    const recovery = input.recovery === true;
+    pruneCandidates = sqlitePruneSelection(snapshots, keepLatest, recovery).candidates;
     if (input.preview !== true && sqlite.removeSnapshot === undefined)
       return yield* Effect.fail(
         new SqlRecoveryUnavailableError({
@@ -156,7 +157,7 @@ export const prepareSqliteCommand = Effect.fn("Sql.prepareSqliteCommand")(functi
         deps.confirm,
         target.name,
         steps,
-        `Retention will delete ${pruneCandidates.length} manual SQLite snapshot(s) for ${target.name} from ${input.fromPath ?? input.fromApp ?? owner.appRoot}, keeping ${keepLatest} per service and path.`,
+        `Retention will delete ${pruneCandidates.length} ${recovery ? "recovery" : "manual"} SQLite snapshot(s) for ${target.name} from ${input.fromPath ?? input.fromApp ?? owner.appRoot}, keeping ${keepLatest} per service and path.`,
       );
     }
   }

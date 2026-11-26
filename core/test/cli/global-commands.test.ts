@@ -32,11 +32,11 @@ import {
   type AppPlanner,
   type AppSelector,
   type ApplyOptions,
+  type BringDownOptions,
   type BuildOptions,
   BuildOrchestrator,
   type CacheService,
   type ConfigService,
-  type DestroyOptions,
   EventService,
   type FileSystem,
   GlobalAppService,
@@ -75,7 +75,7 @@ import * as AppPlannerLayer from "@lando/engine/services/planner";
 import { parseLandofile } from "@lando/landofile/parser";
 import { RedactionService } from "@lando/redaction/service";
 import { PreAppStartEvent } from "@lando/sdk/events";
-import { makeTestRouterService } from "@lando/sdk/test";
+import { makeTestRouterService, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Cause, DateTime, Deferred, Effect, Exit, Fiber, Layer, Queue, Schema, Stream } from "effect";
 import { globalConfigOptionsFromInput } from "../../src/cli/command-specs/meta/global/config.ts";
@@ -96,7 +96,7 @@ interface ApplyCall {
 
 interface DestroyCall {
   readonly target: AppSelector;
-  readonly options: DestroyOptions;
+  readonly options: BringDownOptions;
 }
 
 interface InspectCall {
@@ -352,6 +352,9 @@ const makeHarness = async (
                         labels: {
                           "dev.lando.app": plan.id,
                           "dev.lando.app-root": options.observationRoot ?? plan.root,
+                          ...(plan.identity?.dataRoot === undefined
+                            ? {}
+                            : { "dev.lando.data-root": plan.identity.dataRoot }),
                           "dev.lando.provider": options.observationProviderId ?? providerId,
                           "dev.lando.service": service,
                         },
@@ -419,7 +422,7 @@ const makeHarness = async (
               );
         }),
       ),
-    destroy: (target, destroyOptions) =>
+    bringDown: (target, destroyOptions) =>
       options.failDestroy
         ? Effect.fail(
             new ProviderUnavailableError({
@@ -431,14 +434,26 @@ const makeHarness = async (
           )
         : Effect.sync(() => {
             calls.destroy.push({ target, options: destroyOptions });
+            if (destroyOptions.containers === "stop") {
+              const containers = Object.values(target.plan?.services ?? {}).map((service) => ({
+                service: service.name,
+                containerId: `${service.name}-container`,
+                action: runningServices.has(service.name)
+                  ? ("stopped" as const)
+                  : ("already-stopped" as const),
+              }));
+              runningServices.clear();
+              return { kind: "stopped" as const, containers };
+            }
             runningServices.clear();
             if (destroyOptions.removeState) appliedPlan = undefined;
             return {
-              kind: "destroyed" as const,
+              kind: "removed" as const,
+              containers: [],
               volumesRemoved: options.destroyedVolumes ?? { data: 0, cache: 0 },
             };
           }),
-    removeObservedService: (service) =>
+    bringDownObserved: (service) =>
       options.failRemove || options.failRemoveServices?.includes(String(service.service))
         ? Effect.fail(
             new ProviderUnavailableError({
@@ -451,7 +466,7 @@ const makeHarness = async (
         : Effect.sync(() => {
             calls.removed.push(String(service.service));
             runningServices.delete(service.service);
-            return { kind: "removed" as const };
+            return { service: service.service, action: "removed" as const };
           }),
     inspect: (target) => {
       calls.inspect.push({ target });
@@ -649,16 +664,16 @@ const makeHarness = async (
     Layer.succeed(BuildOrchestrator, buildOrchestrator),
     Layer.succeed(
       RuntimeProviderRegistry,
-      RuntimeProviderRegistry.of({
-        resolveAppliedPlan: () => Effect.succeed(undefined),
-        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+      makeTestRuntimeProviderRegistry({
         appliedStateInventory: () =>
           Effect.sync(() => ({
             plans: [
               ...(options.missingAppliedState || appliedPlan === undefined ? [] : [appliedPlan]),
               ...(options.consumerPlans ?? []),
             ],
-            unreadable: options.unreadableConsumerState ? [{ path: "/protected/unreadable-app.json" }] : [],
+            unreadable: options.unreadableConsumerState
+              ? [{ path: "/protected/unreadable-app.json", reason: "unreadable" }]
+              : [],
           })),
         appliedPlansFor: () =>
           Effect.sync(() => (options.missingAppliedState || appliedPlan === undefined ? [] : [appliedPlan])),
@@ -1064,10 +1079,11 @@ describe("meta:global command effects", () => {
             expect(result.materialized).toBe(true);
             expect(harness.calls.destroy).toHaveLength(1);
             expect(harness.calls.destroy[0]?.target.plan).toEqual(applied);
-            expect(harness.calls.destroy[0]?.options).toEqual({
-              volumes: false,
-              removeState: command === "destroy",
-            });
+            expect(harness.calls.destroy[0]?.options).toEqual(
+              command === "stop"
+                ? { containers: "stop" }
+                : { containers: "remove", volumes: false, removeState: true },
+            );
             expect(harness.calls.routesRemoved).toEqual(["global"]);
             expect(
               harness.events.filter((event) => !event._tag.startsWith("task.")).map((event) => event._tag),
@@ -1097,7 +1113,7 @@ describe("meta:global command effects", () => {
         expect(harness.events).toEqual([]);
       });
     });
-    test(`${command} removes applied services after authored services change`, async () => {
+    test(`${command} acts on applied services after authored services change`, async () => {
       await withHarness(async (harness) => {
         const applied = await applyGlobalDist(harness);
         await materializeDist(harness, { replacement: { type: "lando", home: false } });
@@ -1107,7 +1123,7 @@ describe("meta:global command effects", () => {
         expect(Object.keys(harness.calls.destroy[0]?.target.plan?.services ?? {})).toEqual(["proxy"]);
       });
     });
-    test(`${command} tears down applied resources when the dist file is gone`, async () => {
+    test(`${command} acts on applied resources when the dist file is gone`, async () => {
       await withHarness(async (harness) => {
         const applied = await applyGlobalDist(harness);
         await rm(distPath(harness.dataRoot));
@@ -1697,17 +1713,44 @@ describe("meta:global command effects", () => {
     });
   });
 
-  test("stop destroys provider resources without volumes or state removal", async () => {
+  test("stop keeps provider resources and a repeated stop is unchanged", async () => {
     await withHarness(async (harness) => {
       await applyGlobalDist(harness);
 
-      const result = await Effect.runPromise(globalStop().pipe(Effect.provide(harness.layer)));
+      const first = await Effect.runPromise(globalStop().pipe(Effect.provide(harness.layer)));
+      const second = await Effect.runPromise(globalStop().pipe(Effect.provide(harness.layer)));
 
-      expect(harness.calls.destroy).toHaveLength(1);
+      expect(harness.calls.destroy.map((call) => call.options)).toEqual([
+        { containers: "stop" },
+        { containers: "stop" },
+      ]);
       expect(String(harness.calls.destroy[0]?.target.app)).toBe("global");
-      expect(harness.calls.destroy[0]?.options).toEqual({ volumes: false, removeState: false });
-      expect(result.materialized).toBe(true);
-      expect(result.servicesStopped).toEqual(["proxy"]);
+      expect(harness.calls.removed).toEqual([]);
+      expect(first).toMatchObject({
+        outcome: "stopped",
+        materialized: true,
+        servicesStopped: ["proxy"],
+        containers: [{ service: "proxy", containerId: "proxy-container", action: "stopped" }],
+      });
+      expect(second).toMatchObject({
+        outcome: "unchanged",
+        servicesStopped: [],
+        containers: [{ service: "proxy", containerId: "proxy-container", action: "already-stopped" }],
+      });
+    });
+  });
+
+  test("destroy still removes provider resources after a stop", async () => {
+    await withHarness(async (harness) => {
+      await applyGlobalDist(harness);
+
+      await Effect.runPromise(globalStop().pipe(Effect.provide(harness.layer)));
+      await Effect.runPromise(globalDestroy({}).pipe(Effect.provide(harness.layer)));
+
+      expect(harness.calls.destroy.map((call) => call.options)).toEqual([
+        { containers: "stop" },
+        { containers: "remove", volumes: false, removeState: true },
+      ]);
     });
   });
 
@@ -1908,7 +1951,11 @@ describe("meta:global command effects", () => {
       const result = await Effect.runPromise(globalDestroy({}).pipe(Effect.provide(harness.layer)));
 
       expect(harness.calls.destroy).toHaveLength(1);
-      expect(harness.calls.destroy[0]?.options).toEqual({ volumes: false, removeState: true });
+      expect(harness.calls.destroy[0]?.options).toEqual({
+        containers: "remove",
+        volumes: false,
+        removeState: true,
+      });
       expect(result.materialized).toBe(true);
       expect(result.dataVolumesRemoved).toBe(false);
       expect(result.cacheVolumesRemoved).toBe(false);
@@ -1924,7 +1971,11 @@ describe("meta:global command effects", () => {
           globalDestroy({ volumes: true }).pipe(Effect.provide(harness.layer)),
         );
 
-        expect(harness.calls.destroy[0]?.options).toEqual({ volumes: true, removeState: true });
+        expect(harness.calls.destroy[0]?.options).toEqual({
+          containers: "remove",
+          volumes: true,
+          removeState: true,
+        });
         expect(result.dataVolumesRemoved).toBe(true);
         expect(result.cacheVolumesRemoved).toBe(false);
       },
@@ -1941,7 +1992,11 @@ describe("meta:global command effects", () => {
           globalDestroy({ purge: true }).pipe(Effect.provide(harness.layer)),
         );
 
-        expect(harness.calls.destroy[0]?.options).toEqual({ volumes: true, removeState: true });
+        expect(harness.calls.destroy[0]?.options).toEqual({
+          containers: "remove",
+          volumes: true,
+          removeState: true,
+        });
         expect(result.dataVolumesRemoved).toBe(true);
       },
       { destroyedVolumes: { data: 1, cache: 0 } },
@@ -3545,7 +3600,7 @@ describe("meta:global command effects", () => {
     });
   });
 
-  test("restart stops then starts the global app (stop destroy precedes start apply)", async () => {
+  test("restart stops then starts the global app, keeping its containers", async () => {
     await withHarness(async (harness) => {
       await applyGlobalDist(harness, {
         proxy: { type: "lando", home: false },
@@ -3554,7 +3609,8 @@ describe("meta:global command effects", () => {
 
       const result = await Effect.runPromise(globalRestart().pipe(Effect.provide(harness.layer)));
 
-      expect(harness.calls.destroy).toHaveLength(1);
+      expect(harness.calls.destroy.map((call) => call.options)).toEqual([{ containers: "stop" }]);
+      expect(harness.calls.removed).toEqual([]);
       expect(harness.calls.apply).toHaveLength(2);
       expect(result.servicesStarted.map((service) => service.name).sort()).toEqual(["mail", "proxy"]);
 
@@ -3728,7 +3784,11 @@ describe("meta:global command effects", () => {
       expect(harness.calls.buildOptions).toEqual([{ refresh: true }, { refresh: true }]);
 
       expect(harness.calls.destroy).toHaveLength(1);
-      expect(harness.calls.destroy[0]?.options).toEqual({ volumes: false, removeState: false });
+      expect(harness.calls.destroy[0]?.options).toEqual({
+        containers: "remove",
+        volumes: false,
+        removeState: false,
+      });
       expect(harness.calls.build).toHaveLength(2);
       expect(harness.calls.apply).toHaveLength(2);
       expect(harness.calls.apply[0]?.options.reconcile).toBe(true);
@@ -3882,11 +3942,7 @@ describe("meta:global command effects", () => {
         harness.layer,
         Layer.succeed(
           RuntimeProviderRegistry,
-          RuntimeProviderRegistry.of({
-            resolveAppliedPlan: () => Effect.succeed(undefined),
-            resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-            appliedPlansFor: () => Effect.succeed([]),
-            list: Effect.succeed([]),
+          makeTestRuntimeProviderRegistry({
             capabilities: Effect.fail(missingProvider),
             select: () => Effect.fail(missingProvider),
           }),

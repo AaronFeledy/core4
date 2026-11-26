@@ -18,6 +18,7 @@
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
+    "./data-root-purge": "./src/data-root-purge.ts",
     ".": "./src/index.ts",
     "./command-output": "./src/command-output.ts",
     "./transport": "./src/transport.ts",
@@ -47,6 +48,7 @@
     "./volume-archive": "./src/volume-archive.ts",
     "./provider-images": "./src/generated/provider-images.ts",
     "./capabilities": "./src/capabilities.ts",
+    "./applied-global-service": "./src/applied-global-service.ts",
     "./applied-state": "./src/applied-state.ts",
     "./applied-plan-cache": "./src/applied-plan-cache.ts",
     "./volume-classes": "./src/volume-classes.ts",
@@ -96,7 +98,6 @@
     "./podman/managed-status-io": "./src/podman/managed-status-io.ts",
     "./podman/runtime-shutdown": "./src/podman/runtime-shutdown.ts",
     "./podman/container-events": "./src/podman/container-events.ts",
-    "./podman/health": "./src/podman/health.ts",
     "./podman/version-floor": "./src/podman/version-floor.ts",
     "./provider-assembly": "./src/provider-assembly.ts",
     "./project-user-realization": "./src/project-user-realization.ts"
@@ -113,7 +114,7 @@
   "scripts": {
     "build": "tsc -b",
     "clean": "rm -rf dist .tsbuildinfo",
-    "test": "bun test ./test",
+    "test": "bun --cwd=.. test ./container-runtime/test",
     "typecheck": "tsc -b"
   }
 }

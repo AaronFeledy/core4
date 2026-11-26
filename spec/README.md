@@ -15,7 +15,7 @@ The split is almost one section per file, with these principled merges and addit
 - **§17** is filed as part 15, after the appendices, because build and release engineering operationalize §13 distribution and quality policy.
 - **§18** is filed as part 16 because one cross-cutting contract governs deprecation across every public surface.
 - **§19** is filed as part 17 because executable guides connect authored documentation to §13 scenario testing.
-- **§20** is filed as part 18 because the global app is a cross-cutting host-level app used by routing and shared services.
+- **§20** is filed as part 18 because the global app is a cross-cutting per-installation app used by routing and shared services.
 - **§21** is filed as part 19 because scratch apps are scope-bounded peers to user and global apps with distinct identity and persistence rules.
 - **§22** is filed as part 20 because programmable execution composes existing environments, operations, and scopes without changing Lando's local-development focus.
 - **§23** is filed as part 21 because templates compose recipes, the template engine, source acquisition, scratch apps, and execution sessions into project generation.
@@ -91,10 +91,10 @@ If you are looking for a public surface or policy:
 | Container create-config identity and ordinary apply recreate | 05 | §5.3.2 |
 | Shutdown observations: `ServiceShutdownObservation`, `FileSyncQuiesceResult`, optional `shutdownObservations` on teardown receipts, no graceful/forced verdict | 05 | §5.3.3 |
 | Durable ownership manifest and verified teardown cleanup | 05 + 12 | §5.3.1 + §12.4.2 |
-| `AppPlan` and `ServicePlan` schema families; applied-state v1–v11 readers, v7-to-v8 `kind` migration, v9 `keepAlive` intent, v10 `RouteText` environments, v11 event-intent removal, and strict applied-map writers | 05 | §5.5 + §5.5.2 |
+| `AppPlan` and `ServicePlan` schema families; applied-state v1–v13 readers, v7-to-v8 `kind` migration, v9 `keepAlive` intent, v10 `RouteText` environments, v11 event-intent removal, v12 planned ports, v13 route-fact members, strict applied-map writers, newer-format protection on the stamp alone (`AppliedStateVersionError`), required contribution and registry inventory and targeted strict read | 05 | §5.3.1 + §5.5 + §5.5.2 |
 | Runtime-owned helper creation mount, logical/applied-plan exclusion, non-root cache permissions, and file-log delivery | 05 + 06 + 12 | §5.5 + §6.2.1 + §6.4 + §6.14.3 + §12.1 |
 | Environment values and executable-plan eligibility | 05 + 07 | §5.5.2 + §7.3.1 |
-| Provider extensions and error family | 05 | §5.6 + §5.7 |
+| Provider extensions and error family, including `AppliedStateVersionError` | 05 | §5.6 + §5.7 |
 | Bundled providers (managed init helper ownership, `0.1.7` bridge, existing-runtime rescue) and multi-provider non-goal | 05 | §5.8 + §5.9 |
 | Service bases and common service schema, including `extraArgs` | 06 | §6.1 + §6.2 |
 | Native container init: one authored `init` key, canonical `ServicePlan.init`, base default, opt-out, `serviceInit` capability, and signal guarantees | 06 | §6.2.1 |
@@ -108,10 +108,11 @@ If you are looking for a public surface or policy:
 | Logical endpoint identity, authored endpoint shorthand and `kind` objects, plan and applied `kind` discriminators, mandatory endpoint normalization with route-declared numeric HTTP listeners, hostnames, routes, `RouteFilter.kind`, and cross-app priority | 06 | §6.6 |
 | Independent native healthcheck and lifecycle readiness authoring, defaults, disabling, terminal dependency evidence, observed listener diagnosis, and start-failure retention | 06 | §6.7 |
 | Engine readiness-attempt delegation, provider start-graph ownership, and private bounded capture | 05 + 11 | §5.3 + §10.5.1 |
-| Native-health observations and readiness configuration metadata, without last-proof inference | 06 | §6.10 |
+| Native-health observations (including who schedules native checks, `serviceHealth`, and the managed Linux runtime's in-service scheduler) and readiness configuration metadata, without last-proof inference | 05 + 06 | §5.4 + §5.8.1 + §6.10 |
 | Certificates and trust injection | 06 | §6.8 |
 | Reserved service environment variables and agent context | 06 | §6.9 |
 | `ServiceInfo`, scoped `ServiceConnection`, and connection observation/projection | 06 | §6.10 |
+| `InfoAppResult.appliedStateIssue` for a protected applied-state record | 05 + 06 + 08 | §5.5.2 + §6.10 + §8.2 |
 | `ServiceType` (including planned primary listen-port selection), `ServiceFeature`, and `AppFeature` contracts | 06 | §6.11 |
 | Provider-independent service/app endpoint declarations (`EndpointDeclaration.Encoded`, strict decode once, tagged feature failures), effective numeric route declarations before application, finalization replay from original inputs, immutable selection facts, and non-endpoint application | 06 | §6.11.0 + §6.11.4 |
 | Read-only service-type resolution metadata in app-feature declaration and application | 06 | §6.11.4 |
@@ -121,16 +122,20 @@ If you are looking for a public surface or policy:
 | Service-type configuration issues and service-relative paths | 06 | §6.11 |
 | Explicit webroot declarations, pre-cache diagnostics, and language root context | 06 | §6.11.0 + §6.12.2 |
 | Authored versus resolved service credentials and explicit credential claims | 06 | §6.11 + §6.12.4 |
-| Post-readiness database credential observation, the `LANDO_DATABASE_CREDENTIALS_REJECTED` and `LANDO_DATABASE_MISSING` warnings, and the `database-credentials` doctor section | 06 + 11 | §6.12.4 + §10.9.1 |
+| Catalog database credential convergence on activation, managed `lando_admin`, native-container-bound writes, `credentialChanges`, `db:creds:apply`, and observe-only doctor | 05 + 06 + 08 + 11 | §5.3 + §6.12.4 + §6.15 + §8.3.1 + §10.7 + §10.9.1 |
+| Credential-free catalog database liveness probes and SQL Server stock process/health | 06 | §6.7 + §6.12.1 |
+| `DatabaseCredentialConvergence` SDK port and `UserAppResolver` | 03 + 09 + 10 | §3.2 + §3.4 + §9.2 + §16.3 |
+| Private database admin seed and unchanged applied-state version | 05 + 12 | §5.5.2 + §12.4 |
+| MCP never-allow for `db:creds:apply` and lifecycle convergence distinction | 11 | §10.14 |
 | Canonical service-type catalog and credentials | 06 | §6.12 |
 | Stock Python project environment, mount precedence, and Django and FastAPI recipe contracts | 06 + 08 | §6.4 + §6.5 + §6.12.1 + §8.8.10 |
 | Tomcat catalog configuration and custom-image ownership | 06 | §6.12.1 |
-| PHP resolved runtime policy, default non-root home, custom-image/build ownership, retained explicit tooling, and Mailpit sender diagnostics | 06 | §6.12.5 |
+| PHP resolved runtime policy, default non-root home, custom-image/build ownership, retained explicit tooling, stock Xdebug release selection, security baseline, and Mailpit sender diagnostics | 06 | §6.12.5 |
 | Primary listen-port authority, native-variable validation, reserved ports, and Lando-owned clients | 06 | §6.2 + §6.12.1 |
 | MinIO console ports and effective Mailpit/MailHog secondary listeners | 06 | §6.12.1 |
 | Explicit MinIO BYO image/build and typed mail wildcard-bind reachability | 06 | §6.12.1 |
 | `BuildOrchestrator`, `BuildPlan`, owner-scoped results and transcripts, app-step settlement, container-bound app-step reuse, and errors | 06 + 05 + 12 | §6.13 + §5.3 + §12.1 |
-| Whole-app and selected start, convergence, failure warning, restart, rebuild, and physical-volume lock policy | 06 | §6.15 |
+| Whole-app and selected start, convergence, failure warning, restart, rebuild, selected stop, and physical-volume lock policy | 06 | §6.15 |
 | Early conditional non-root low-port warning without runtime probing | 06 | §6.15 |
 | User-app admission order, single admission for whole-app restart and rebuild, and the activation applier | 06 + 11 | §6.15 + §10.3 |
 | Pathless console aliases, pipe selection, file followers, and PHP Apache/FPM routing | 06 | §6.10 + §6.14 |
@@ -140,7 +145,7 @@ If you are looking for a public surface or policy:
 | Compilation carrier and evaluation stages | 07 | §7.2.1 |
 | External file loading, expressions, and templates | 07 | §7.3 |
 | Landofile self-port scope, planner text rendering, and deferred list-form `extra_hosts` | 07 | §7.3.1 |
-| Landofile self port, public service URL bindings, and activation evidence | 06 + 07 + 12 + 19 | §6.11 + §7.3.1 + §12.1 + §21.9 |
+| Landofile self port, public service route facts, and activation evidence | 06 + 07 + 12 + 19 | §6.11 + §7.3.1 + §7.3.1.1 + §12.1 + §21.9 |
 | Top-level Landofile and Compose-subset keys, per-folder data identity, and rename reconciliation | 07 | §7.4 |
 | Config translation contracts, diagnostics, and Lando 3 proxy selector lowering | 07 | §7.4.1 |
 | Translation sources, `translate:` refresh, and drift | 07 | §7.4.2 |
@@ -168,6 +173,7 @@ If you are looking for a public surface or policy:
 | Token ownership between the dispatcher and a command: command tails for exec/ssh/run, plugin commands, wrappers, and `bun`/`x`; declared tooling flags; unknown-flag rejection | 08 | §8.3, §8.5 |
 | Tooling schemas, named-first binding, boolean projection, sensitivity, retained input revisions, and live MCP catalog replacement | 08 | §8.5.1 |
 | Tooling steps, expressions, events, and scripts | 08 | §8.5 |
+| Service-contributed tooling precedence and ambiguous Node manager tasks | 06 + 08 | §6.11.3 + §8.5 |
 | Bun Shell script metadata, positional policy, sparse named inputs, data-only environment, and disabled refusal | 08 | §8.5.9 |
 | Automatic tooling metadata rebuild, failure reporting, and help recovery | 08 | §8.7 |
 | Strict load failures versus per-task normalization errors, unavailable tasks, and `LANDO_TOOLING_INVALID` | 07 + 08 + 12 | §7.8 + §8.2.1 + §8.5 + §8.7 + §12.2 |
@@ -181,6 +187,7 @@ If you are looking for a public surface or policy:
 | Host color opt-out (`NO_COLOR`, `TERM=dumb`) for narration, result decoration, help, and hyperlinks | 08 | §8.4.2 + §8.9 |
 | `InteractionService`, prompt schemas, and interaction errors | 08 | §8.10 |
 | Command completion, result projection, machine envelopes, bounded output capture, streams, closed pipes, and shared stdio descriptors | 08 + 11 | §8.3 + §8.11 + §10.14 |
+| `apps:list --prune` selection, `pruneFailures`, and partial-failure completion with a retained result | 05 + 08 | §5.5.2 + §8.2 + §8.11.1 |
 | Output routing table, JSON frame-stream events, and dropped-event warnings | 08 | §8.11.3 |
 | History-plus-live event subscriptions (`subscribeWithHistory`) | 03 | §11.1 |
 | Library entry points and runtime factory | 09 | §16.2 + §16.3 |
@@ -204,12 +211,12 @@ If you are looking for a public surface or policy:
 | Probe, healthcheck, and app-check contracts | 11 | §10.5 |
 | Endpoint-scoped URL scan defaults, explicit override precedence and global disable policy | 06 + 11 | §6.6 + §10.5.3 |
 | File-sync engine and Mutagen implementation | 11 | §10.6 |
-| Scope-aware accelerated-start journal, resume, and stop/destroy from any phase | 11 + 05 | §10.6.3 + §5.3.1 |
+| Scope-aware accelerated-start journal, resume, whole-app stop/destroy from any phase, and selected-stop refusal | 11 + 05 | §10.6.3 + §5.3.1 |
 | Setup and host integration | 11 | §10.8 |
 | Doctor diagnostics and resilience | 11 | §10.9 |
 | Host-proxy protocol and errors | 11 | §10.10 |
 | In-container helper: static Go client, Lando-built toolchain, embedding | 02 + 11 + 15 | §2.1 + §10.10.2 + §17.3 |
-| Host-proxy worker reuse, session recreation, and selected restart and rebuild | 11 | §10.10.1 + §12.4 |
+| Host-proxy worker reuse, contract recreation, and selected restart and rebuild | 11 | §10.10.1 + §12.4 |
 | `DataMover`, endpoints, typed provider volume archives, role-aware host-file diagnostics, owner-keyed snapshot sidecars, handle-only mutations, and orphan GC | 11 | §10.11 |
 | Remote source and dataset contracts | 11 | §10.12 |
 | Code sync, post-processing, remote setup, and vendor tools | 11 | §10.12.1 + §10.12.4 |
@@ -227,7 +234,7 @@ If you are looking for a public surface or policy:
 | Managed-file transaction journal and recovery | 12 | §12.4.1 |
 | Durable resource-ownership manifest | 12 | §12.4.2 |
 | Hot-path caches, compiled decoder targets, and offline-state policies | 12 | §12.5 + §12.6 |
-| `StateStore`, buckets, kernel lock modes and waits, app/worker locks, consumers, and plugin access | 12 | §12.7 |
+| `StateStore`, buckets, newer-version policy (`newer-version` reason, `onNewerVersion` discard opt-ins, record classes), kernel lock modes and waits, app/worker locks, consumers, and plugin access | 12 | §12.1 + §12.7 |
 | Source store: layout, integrity, publication and leases, offline reuse, and `meta:sources:gc` | 12 | §12.8 |
 | Test and contract-suite layers | 13 | §13.1 |
 | Schema, documentation, type, native-lock, and PR gates, including merge-gate job results and automatic reruns after runner loss | 13 | §13.2 + §13.4 |
@@ -239,7 +246,7 @@ If you are looking for a public surface or policy:
 | Paired Tomcat image/config maintenance, offline catalog generation, and automation failure reporting | 15 | §17.2 |
 | Signing, supply chain, update, and installation | 15 | §17.4 + §17.7 |
 | Release workflow and shipping criteria | 15 | §17.8 + §17.9 |
-| Unreleased endpoint/filter `kind` vocabulary, declaration wire form, applied/cache bumps, and authored spelling removals | 16 | §18.1 |
+| Unreleased endpoint/filter `kind` vocabulary, declaration wire form, applied/cache bumps, and authored spelling removals; unreleased provider applied-state contract changes for newer-format protection | 16 | §18.1 |
 | Deprecation schema, service, event, and surface matrix | 16 | §18.2 + §18.5 |
 | Deprecation presentation, removal, and gates | 16 | §18.6 + §18.8 |
 | Executable-guide model, components, scenario runtime, and display vs. execute bindings | 17 | §19.2 + §19.4 + §19.5 |
@@ -251,6 +258,7 @@ If you are looking for a public surface or policy:
 | Global service, lifecycle, CLI, networking, and storage | 18 | §20.5 + §20.9 |
 | Global restart/rebuild and router startup revalidation | 18 | §20.6.5 |
 | Selected global stop and its orphan fail-closed rule | 18 | §20.7 |
+| Selected user-app stop: admission order, file-sync preflight, routes, workers, and result fields | 06 + 05 + 11 | §6.15 + §5.3.1 + §10.6.3 |
 | Global proxy realization, error family, and non-goals | 18 | §20.10 + §20.14 |
 | Scratch identity, roots, sources, service, and applied-plan fallback at teardown | 19 | §21.2 + §21.5 |
 | Scratch lifecycle, isolation, storage, and routes | 19 | §21.6 + §21.9 |

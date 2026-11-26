@@ -9,6 +9,7 @@ import { Effect } from "effect";
 import { globalDestroy } from "../../src/operations/global-destroy.ts";
 import { globalStop } from "../../src/operations/global-stop.ts";
 import { globalPlanAt, globalTeardownHarness } from "../../src/testing/global-teardown.ts";
+import { ownedGlobalOrphan } from "./owned-global-orphan.ts";
 
 const withDataRoot = async (use: (dataRoot: string) => Promise<void>) => {
   const dataRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-global-observation-")));
@@ -18,6 +19,22 @@ const withDataRoot = async (use: (dataRoot: string) => Promise<void>) => {
     await rm(dataRoot, { recursive: true, force: true });
   }
 };
+
+test("selected global stop removes a pre-upgrade container while its legacy plan is still applied", async () => {
+  await withDataRoot(async (dataRoot) => {
+    const root = AbsolutePath.make(join(dataRoot, "global"));
+    const legacy = ownedGlobalOrphan(root, dataRoot);
+    const { "dev.lando.data-root": _owner, ...labels } = legacy.labels ?? {};
+    const harness = await globalTeardownHarness(dataRoot, {
+      plan: globalPlanAt(root),
+      services: [{ ...legacy, labels }],
+    });
+    const result = await Effect.runPromise(
+      globalStop({ services: ["ssh-agent"] }).pipe(Effect.provide(harness.layer)),
+    );
+    expect(result.servicesStopped).toEqual(["ssh-agent"]);
+  });
+});
 
 test.each(["stop", "destroy"] as const)("global %s handles an idle applied owner", async (command) => {
   await withDataRoot(async (dataRoot) => {
@@ -44,7 +61,7 @@ test.each(["stop", "destroy"] as const)("global %s handles an idle applied owner
         : await Effect.runPromise(globalDestroy({}).pipe(Effect.provide(harness.layer)));
     expect(result.outcome).toBe(command === "stop" ? "stopped" : "destroyed");
     expect(calls.filter((call) => call === "ensureReady")).toHaveLength(command === "stop" ? 0 : 1);
-    expect(calls.filter((call) => call === "destroy")).toHaveLength(command === "stop" ? 0 : 1);
+    expect(calls.filter((call) => call === "bringDown")).toHaveLength(command === "stop" ? 0 : 1);
     if (command === "stop") expect(statusReads).toBe(1);
   });
 });
@@ -89,7 +106,7 @@ for (const command of ["stop", "destroy"] as const) {
         const plan = globalPlanAt(root);
         const harness = await globalTeardownHarness(
           alias,
-          mode === "applied" ? { plan } : { orphanRoot: root },
+          mode === "applied" ? { plan } : { services: [ownedGlobalOrphan(root, dataRoot)] },
         );
         // When teardown resolves exact ownership before any desired config read.
         const result =
@@ -101,16 +118,21 @@ for (const command of ["stop", "destroy"] as const) {
         expect("servicesStopped" in result ? result.servicesStopped : result.servicesDestroyed).toEqual([
           "ssh-agent",
         ]);
-        expect(harness.calls).toContain(mode === "applied" ? "destroy" : "removeObservedService");
+        expect(harness.calls).toContain(mode === "applied" ? "bringDown" : "bringDownObserved");
         if (mode === "applied") {
-          expect(harness.destroyed).toEqual([plan]);
-          expect(harness.destroyed[0]?.identity).toEqual({
+          const actedOn = command === "stop" ? harness.stoppedPlans : harness.destroyed;
+          expect(actedOn).toEqual([plan]);
+          expect(actedOn[0]?.identity).toEqual({
             appRoot: root,
             ownerKey: appIdentityKey("owner", root),
           });
+        } else if (command === "stop") {
+          expect(harness.stopped.map((service) => service.appRoot)).toEqual([root]);
         } else {
           expect(harness.selectedRoots.at(-1)).toBe(root);
         }
+        if (command === "stop") expect(harness.destroyed).toEqual([]);
+        if (command === "stop") expect(harness.removed).toEqual([]);
         if (command === "stop") expect(harness.eventRoots).toEqual([root, root]);
         expect(harness.calls).not.toContain("ensureReady");
       });

@@ -200,6 +200,7 @@ export * from "./template.ts";
 export * from "./tool-manifest.ts";
 export * from "./tooling-input.ts";
 export * from "./tooling-run-summary.ts";
+export * from "./trust-store.ts";
 export * from "./tunnel.ts";
 export * from "./update-manifest.ts";
 export * from "./validation-issue.ts";

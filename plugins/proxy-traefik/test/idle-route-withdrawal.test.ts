@@ -6,12 +6,14 @@ import * as GlobalAppRuntime from "@lando/engine/global-app/runtime";
 import * as EventService from "@lando/engine/services/event-service";
 import { makeGlobalLifecycleFixture } from "@lando/engine/testing/global-lifecycle";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
+import { AbsolutePath, planAppIdentity } from "@lando/sdk/schema";
 import {
   BuildOrchestrator,
   EnvironmentValueResolver,
   GlobalAppService,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect, Layer } from "effect";
 import { makeTraefikRouterService } from "../src/proxy.ts";
 import { routeFile } from "../src/proxy-paths.ts";
@@ -29,6 +31,11 @@ test.each([
     const base = await realpath(await mkdtemp(join(tmpdir(), "lando-idle-windows-routes-")));
     try {
       const global = makeGlobalLifecycleFixture(base);
+      const applied = global.planFor(["traefik"]);
+      global.setApplied({
+        ...applied,
+        identity: { ...planAppIdentity(applied), dataRoot: AbsolutePath.make(base) },
+      });
       global.setOnline(state === "running");
       const failure = new ProviderUnavailableError({
         providerId: "lando",
@@ -46,10 +53,13 @@ test.each([
         Layer.provide(EventService.layer),
         Layer.provide(
           Layer.mergeAll(
-            Layer.succeed(RuntimeProviderRegistry, {
-              ...global.registry,
-              select: () => Effect.succeed(provider),
-            }),
+            Layer.succeed(
+              RuntimeProviderRegistry,
+              makeTestRuntimeProviderRegistry({
+                ...global.registry,
+                select: () => Effect.succeed(provider),
+              }),
+            ),
             Layer.succeed(BuildOrchestrator, {
               build: () => Effect.die("withdrawal must not build"),
               buildApp: () => Effect.die("withdrawal must not build"),

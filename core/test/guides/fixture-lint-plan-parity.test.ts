@@ -6,8 +6,9 @@ import * as Plugins from "@lando/engine/plugins/registry";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import { lintLandofileSnapshot } from "@lando/engine/services/landofile-live";
 import * as Planner from "@lando/engine/services/planner";
+import { makeLandoPaths } from "@lando/paths";
 import type { ProviderCapabilities, ProviderId } from "@lando/sdk/schema";
-import { AppPlanner, PluginRegistry } from "@lando/sdk/services";
+import { AppPlanner, PathsService, PluginRegistry } from "@lando/sdk/services";
 import { makeTestCertificateAuthority } from "@lando/sdk/test";
 import { Effect, Layer, Result } from "effect";
 import { expectInvalidReason } from "../../../scripts/guides/fixture-marker.ts";
@@ -102,6 +103,7 @@ for (const fixture of fixtures) {
                     Layer.succeed(CertificateAuthorityResolver, {
                       resolve: Effect.succeed(makeTestCertificateAuthority()),
                     }),
+                    Layer.succeed(PathsService, makeLandoPaths()),
                   ),
                 ),
               ),

@@ -75,35 +75,99 @@ export const FileSyncQuiesceResult = Schema.Struct({
 }).annotate({ description: "Shutdown facts from quiescing file sync writers, without deleting app data." });
 export type FileSyncQuiesceResult = typeof FileSyncQuiesceResult.Type;
 
-export const DestroyOutcome = Schema.Union([
+// ==== Bring-down dispositions and receipts
+// What a provider bring-down did to each owned container: stop keeps it, remove deletes it.
+
+export const ContainerDisposition = Schema.Literals(["stop", "remove"]).annotate({
+  description: "What bring-down does to each owned container: `stop` keeps it, `remove` deletes it.",
+});
+export type ContainerDisposition = typeof ContainerDisposition.Type;
+
+export const BringDownOptions = Schema.Union([
   Schema.Struct({
-    kind: Schema.Literal("destroyed").annotate({ description: "The provider destroyed applied resources." }),
+    containers: Schema.Literal("stop").annotate({
+      description: "Stop owned containers and keep them with their networks, volumes, and applied state.",
+    }),
+    volumes: Schema.optionalKey(Schema.Never).annotate({ description: "Stopping removes no volumes." }),
+    purgeCaches: Schema.optionalKey(Schema.Never).annotate({ description: "Stopping removes no caches." }),
+    removeState: Schema.optionalKey(Schema.Never).annotate({
+      description: "Stopping always keeps applied state.",
+    }),
+  }),
+  Schema.Struct({
+    containers: Schema.Literal("remove").annotate({
+      description: "Remove owned containers and networks.",
+    }),
+    volumes: Schema.Boolean.annotate({ description: "Also remove app-scoped data volumes." }),
+    purgeCaches: Schema.optionalKey(Schema.Boolean).annotate({
+      description: "Also remove app-scoped cache volumes.",
+    }),
+    removeState: Schema.optionalKey(Schema.Boolean).annotate({
+      description: "Forget the applied plan afterwards; `false` keeps it. Defaults to forgetting it.",
+    }),
+  }),
+]).annotate({ description: "Container disposition and removal flags for a provider bring-down." });
+export type BringDownOptions = typeof BringDownOptions.Type;
+
+export const ContainerBringDownAction = Schema.Literals([
+  "stopped",
+  "already-stopped",
+  "removed",
+  "absent",
+]).annotate({
+  description:
+    "What bring-down did to one container: stopped it, found it already stopped, removed it, or found none.",
+});
+export type ContainerBringDownAction = typeof ContainerBringDownAction.Type;
+
+const containerReceiptFields = {
+  service: ServiceName.annotate({ description: "Service the container belongs to." }),
+  containerId: Schema.optionalKey(Schema.String).annotate({
+    description: "Native container id acted on; omitted when no container was found.",
+  }),
+  action: ContainerBringDownAction,
+};
+
+export const ContainerBringDownReceipt = Schema.Struct(containerReceiptFields).annotate({
+  description: "What bring-down did to one owned service container.",
+});
+export type ContainerBringDownReceipt = typeof ContainerBringDownReceipt.Type;
+
+const containerReceipts = Schema.Array(ContainerBringDownReceipt).annotate({
+  description: "One receipt per owned container the bring-down addressed.",
+});
+
+export const BringDownOutcome = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("stopped").annotate({
+      description: "The provider stopped owned containers and kept every resource.",
+    }),
+    containers: containerReceipts,
+    shutdownObservations,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("removed").annotate({
+      description: "The provider removed owned containers and networks, and volumes as requested.",
+    }),
+    containers: containerReceipts,
     volumesRemoved: VolumeRemovalCounts,
     skipped: OwnedResourcesCleanupResult.fields.skipped,
     shutdownObservations,
   }),
   Schema.Struct({
-    kind: Schema.Literal("no-op").annotate({ description: "The provider removed no applied resources." }),
+    kind: Schema.Literal("no-op").annotate({ description: "The provider acted on no resources." }),
     reason: Schema.Literal("no-applied-plan").annotate({
       description: "No applied plan exists for this app.",
     }),
     shutdownObservations,
   }),
-]).annotate({ description: "What provider destroy actually removed, with optional shutdown observations." });
-export type DestroyOutcome = typeof DestroyOutcome.Type;
+]).annotate({ description: "What a provider bring-down did, with optional shutdown observations." });
+export type BringDownOutcome = typeof BringDownOutcome.Type;
 
-export const ObservedServiceRemoval = Schema.Union([
-  Schema.Struct({
-    kind: Schema.Literal("removed").annotate({ description: "The exact observed container was removed." }),
-    shutdownObservations,
-  }),
-  Schema.Struct({
-    kind: Schema.Literal("absent").annotate({
-      description: "The exact observed container was already absent.",
-    }),
-    shutdownObservations,
-  }),
-]).annotate({
-  description: "Result of removing an observed service container, with optional shutdown facts.",
+export const ObservedBringDown = Schema.Struct({
+  ...containerReceiptFields,
+  shutdownObservations,
+}).annotate({
+  description: "Result of bringing down one observed service container, with optional shutdown facts.",
 });
-export type ObservedServiceRemoval = typeof ObservedServiceRemoval.Type;
+export type ObservedBringDown = typeof ObservedBringDown.Type;

@@ -11,7 +11,7 @@ import { validateHealthcheckExecution } from "../subsystems/healthcheck/attempt.
 import { type AppBuildGateResult, runAppBuildGate } from "./build-app-gates.ts";
 import { buildAppGraph } from "./build-app-graph.ts";
 import { isScratchPlan } from "./build-app-kind.ts";
-import { appSteps } from "./build-app-plan.ts";
+import { appStepLabel, appSteps } from "./build-app-plan.ts";
 import { makeAppBuildSettlement } from "./build-app-settlement.ts";
 import { makeAppStepExecution } from "./build-app-step-execution.ts";
 import type { AppBuildInput } from "./build-app-step-runner.ts";
@@ -69,7 +69,7 @@ export const runAppBuild = Effect.fn("BuildOrchestrator.runAppBuild")(function* 
           if (blockedNode?._tag === "gate") {
             return gateId(String(blockedNode.service), blockedNode.condition);
           }
-          if (blockedNode?._tag === "step") return blockedNode.appStep.step.id;
+          if (blockedNode?._tag === "step") return appStepLabel(blockedNode.appStep);
           return id;
         });
         return settlement.run(
@@ -97,7 +97,7 @@ export const runAppBuild = Effect.fn("BuildOrchestrator.runAppBuild")(function* 
           ? listenerAuthorityAction(service)
           : undefined);
       // Each failure carries its own remediation; repeating the first one here would print it twice.
-      const remediation = "Fix each failed build step and rebuild.";
+      const remediation = "Fix each failed build step, then run lando start.";
       yield* new BuildPhaseFailedError({
         app: {
           kind: isScratchPlan(input.plan) ? "scratch" : "user",

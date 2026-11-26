@@ -660,7 +660,7 @@ test("names no transcript path in a failed scratch app step remediation", async 
     if (error._tag !== "BuildPhaseFailedError") throw error;
     const failure = error.failures[0];
     expect(failure?.remediation).toBe(
-      "Fix step web:app:install, and rebuild. The scratch app and its build output are removed after a failed start unless it is kept; keep it with lando scratch:start --keep-on-failure.",
+      "Fix step web:app:install, then run lando start. The scratch app and its build output are removed after a failed start unless it is kept; keep it with lando scratch:start --keep-on-failure.",
     );
     expect(failure?.remediation).not.toContain(String(failure?.transcriptPath));
     expect(failure?.remediation).not.toContain("/builds/");
@@ -712,7 +712,7 @@ test("treats a user app named scratch-* as a user app", async () => {
     expect(result.appEntries).toHaveLength(1);
     expect(result.scratchEntries).toEqual([]);
     expect(failure?.remediation).toContain(
-      `Inspect the build transcript at ${String(failure?.transcriptPath)}, fix step web:app:install, and rebuild.`,
+      `Inspect the build transcript at ${String(failure?.transcriptPath)}, fix step web:app:install, then run lando start.`,
     );
     expect(failure?.remediation).toEndWith('Run "lando logs --build --service web" to print it.');
   });

@@ -75,8 +75,19 @@ export interface LiveRegionControllerOptions {
   readonly onResize?: (width: number, height: number) => void;
 }
 
+/** OpenTUI turns raw mode off and pauses this stream when it is destroyed. */
+export interface LiveRegionStdin {
+  readonly isTTY?: boolean;
+  readonly isRaw?: boolean;
+  readonly readableFlowing?: boolean | null;
+  setRawMode?(mode: boolean): unknown;
+  resume(): unknown;
+}
+
 export interface LiveRegionControllerDeps<TRenderer extends LiveRegionRendererLike = LiveRegionRendererLike> {
   readonly loadModule?: () => Promise<OpenTuiLiveRegionModuleLike<TRenderer>>;
   readonly createRenderer?: (module: OpenTuiLiveRegionModuleLike<TRenderer>) => Promise<TRenderer>;
+  /** The terminal input OpenTUI reads; defaults to `process.stdin`. */
+  readonly stdin?: LiveRegionStdin;
   readonly spool?: LiveRegionSpoolFactory;
 }

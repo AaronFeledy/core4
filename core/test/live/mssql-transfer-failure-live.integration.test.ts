@@ -27,7 +27,7 @@ for (const version of ["2019", "2022"] as const) {
     async () => {
       const fixture = await databaseTransferFixture(`mssql-${version}-failure`);
       const { root, name, marker, invalidBackup, lando } = fixture;
-      const admin = ["sqlcmd", "--", "-b", "-r1", "-d", "master", "-Q"] as const;
+      const admin = ["sqlcmd", "--", "-b", "-r1", "-h", "-1", "-W", "-d", "master", "-Q"] as const;
       try {
         // Given a real backup and a full automatic-recovery retention budget.
         await Bun.write(join(root, ".lando.yml"), mssqlTransferLandofile(fixture, version));
@@ -121,6 +121,30 @@ for (const version of ["2019", "2022"] as const) {
         for (const snapshot of prior) expect(retained.map((item) => item.id)).toContain(snapshot.id);
         const recovery = retained.find((snapshot) => snapshot.id === failure.recoverySnapshotId);
         expect(recovery?.metadata?.recoveryReason).toBe("import");
+        const dropped = await lando([
+          ...admin,
+          "ALTER DATABASE [transfer_journey] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [transfer_journey];",
+        ]);
+        expect(dropped.exitCode, dropped.artifact).toBe(0);
+        const absent = [
+          ...admin,
+          "SET NOCOUNT ON; SELECT CASE WHEN DB_ID(N'transfer_journey') IS NULL THEN 'absent' ELSE 'present' END;",
+        ];
+        const beforeMissing = await lando(absent);
+        expect(beforeMissing.exitCode, beforeMissing.artifact).toBe(0);
+        expect(beforeMissing.stdout.trim()).toBe("absent");
+        const missingExport = await lando([
+          "db:export",
+          "missing.bak",
+          "--service=database",
+          "--yes",
+          "--format=json",
+        ]);
+        expect(missingExport.exitCode, missingExport.artifact).not.toBe(0);
+        expect(await Bun.file(join(root, "missing.bak")).exists()).toBe(false);
+        const afterMissing = await lando(absent);
+        expect(afterMissing.exitCode, afterMissing.artifact).toBe(0);
+        expect(afterMissing.stdout.trim()).toBe("absent");
       } finally {
         await fixture.cleanup();
       }

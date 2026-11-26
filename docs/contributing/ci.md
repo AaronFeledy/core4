@@ -5,7 +5,7 @@ description: Reproduce CI checks locally and inspect their failure artifacts.
 
 # CI runbook
 
-Use this runbook to reproduce a failing CI job and find its diagnostics. Run commands from the repository root with the Bun version pinned in `.bun-version`. A clean checkout needs `bun install` and `bun run codegen`; tests that compile or run the container helper also need the [helper build](#in-container-helper).
+Use this runbook to reproduce a failing CI job and find its diagnostics. Run commands from the repository root with the Bun version pinned in `.bun-version`. A clean checkout or new worktree needs `bun run bootstrap`, which runs `bun install`, `bun run codegen`, and the SDK build, then restores the container helper when another checkout already built it for the same sources. Tests that compile or run the container helper need that helper; see [In-container helper](#in-container-helper) to build it.
 
 For a pre-PR check, use `bun run gate:pr` as described in the root repository instructions. To investigate a specific failure, go directly to [static checks](#static-checks), [generated schema checks](#generated-schema-and-bundled-codegen-gates), [guide scenarios](#guide-e2e-smoke-subset), or the [docs build](#docs-build). Live provider sections have additional host prerequisites; do not run their setup commands as part of a static-only check.
 
@@ -189,9 +189,9 @@ bun run test:affected --file sdk/src/schema/landofile.ts --file sdk/src/schema/j
 
 Even with `--file`, selection walks imports from every shard-eligible test. Its time and memory use depend on the repository graph and the machine.
 
-The selector also follows the test preloads configured in `bunfig.toml` as shared dependencies of every eligible test. A changed preload or one of its static imports can therefore select the full set. If a configured preload cannot be resolved inside the repository, the selector reports the uncertainty and selects the full eligible set.
+The selector treats each test preload configured in `bunfig.toml`, and every module a preload loads while it runs, as a dependency of every eligible test. A change to one of them therefore selects the full set. The bundled plugins are the exception. `scripts/test-preload.ts` loads them the first time a test reads the engine composition global (`__landoEngineCompositionInputs`), so a test that never reads it never evaluates them. The selector verifies that the lazy `require` runs only from that global's value. It then attributes the plugins to the files that name the global or read `globalThis` through a computed key, so a bundled plugin change selects the tests that reach `engine/src/composition.ts` instead of every test. Selection treats each test file as if it ran alone. In a combined run, plugins that one file loads stay loaded for the files after it. If a configured preload cannot be resolved inside the repository, the selector reports the uncertainty and selects the full eligible set.
 
-The selector follows static and statically evaluable imports, re-exports, and `require` calls through workspace exports. It also uses fixture path references as a heuristic, including sibling files in a fixture app directory. Changes to package manifests, TypeScript configuration, Bun configuration, the lockfile, or the Bun version select every shard-eligible test, preserving the shard exclusions. Computed imports, unresolved local modules, runtime file reads, and other generated or configuration effects can leave gaps; import paths through barrels can also select extra tests. Prior import edges are reconstructed only for the changed source paths supplied. If you use `--file` for a deleted module but omit a rewritten importer, that historical edge may be missing. Review the uncertain and unmatched lists before relying on a narrow result. The CI profile still runs its full selected shards.
+The selector follows static and statically evaluable imports, re-exports, and `require` calls through workspace exports. A data import, such as a JSON file, selects the tests that import it. A string literal in a test-tree file that names a repository source file, such as `"core/bin/lando.ts"`, `"../../bin/lando.ts"`, the tail of `` `${repo}/core/bin/lando.ts` ``, or the literal segments of `join(repo, "core", "bin", "lando.ts")`, counts as an edge too, because the test may run that file in a child process or read it. It also uses fixture path references as a heuristic, including sibling files in a fixture app directory. Changes to package manifests, TypeScript configuration, Bun configuration, the lockfile, or the Bun version select every shard-eligible test, preserving the shard exclusions. Computed imports, unresolved local modules, runtime file reads, and other generated or configuration effects can leave gaps; import paths through barrels can also select extra tests. Prior import edges are reconstructed only for the changed source paths supplied. If you use `--file` for a deleted module but omit a rewritten importer, that historical edge may be missing. Review the uncertain and unmatched lists before relying on a narrow result. The CI profile still runs its full selected shards.
 
 Heavy meta-suites that re-run generators or other test files (`core/test/scripts/codegen-ci.test.ts`, `core/test/build/linux-acceptance-criteria-10-14.test.ts`) run in the nightly `nightly-tier-unit-tests-linux-x64` job instead of per-PR shards; per-PR workflow drift is covered by `bun run codegen:check` in `static-checks-platform`.
 
@@ -242,7 +242,7 @@ For focused local checks, CI regenerates the HEAD schemas with `bun run codegen:
 
 The checker creates a detached temporary worktree at that commit, installs its dependencies from `bun.lock` with `bun install --frozen-lockfile`, runs its codegen catalog to materialize the base schemas, then removes the worktree and underlying OS temp directory.
 
-Set `LANDO_SCHEMA_COMPATIBILITY_BASE_REF=<ref>` to compare against another base locally. There is no fallback to committed artifacts, so any failure materializing the base schemas fails the gate closed. The checker fails on unaccepted `breaking` or `unknown` findings, with exact reviewed exceptions recorded in `sdk/compatibility-exceptions.json`. A family is skipped only when the base commit predates its generator (`scripts/build-schema-snapshot.ts` for SDK and command schemas, `scripts/build-persisted-schema-snapshot.ts` for internal stores). The summary reports per-family skip counts. Once a generator lands, compare against a base containing it to enforce that family's history.
+Set `LANDO_SCHEMA_COMPATIBILITY_BASE_REF=<ref>` to compare against another base locally. There is no fallback to committed artifacts, so any failure materializing the base schemas fails the gate closed. The checker fails on unaccepted `breaking` or `unknown` findings, with exact reviewed exceptions recorded in `sdk/compatibility-exceptions.json`. Each exception carries the `fingerprint` of the change it reviewed (its kind plus the normalized before and after schema values, so description-only edits do not affect it) and the `locations` (surface and path) it accepts. A later change at the same path has a different fingerprint and needs its own review. For every unreviewed finding the gate prints a ready-to-paste entry, grouping all surfaces that embed the same changed subschema; fill in its `justification` (the parser rejects an empty one) and add it, or replace the existing entry when the fingerprint already exists. Entries stop matching once their change is in the base ref, so the file holds only the open change's reviews and may be pruned of older ones. A family is skipped only when the base commit predates its generator (`scripts/build-schema-snapshot.ts` for SDK and command schemas, `scripts/build-persisted-schema-snapshot.ts` for internal stores). The summary reports per-family skip counts. Once a generator lands, compare against a base containing it to enforce that family's history.
 
 Internal StateStore buckets are registered in `scripts/schema-compatibility/internal-stores.ts` with their exact decode schemas and version constants. The derived generator writes `dist/persisted-schemas/`; run it alone with `bun run scripts/build-persisted-schema-snapshot.ts`. The compatibility gate regenerates these working artifacts automatically and compares them as input contracts. A narrowing or unknown change on `persisted:<store-id>` requires a version increase over the generated baseline and an exact exception with `persistedState: { "store": "<store-id>", "version": <new-version> }`. Implement the migration in the bucket owner and explain it in the exception justification; the gate checks the version and review record, not the migration's behavior.
 
@@ -275,9 +275,29 @@ Replace `/path/to/podman.sock` with a running Podman-compatible provider socket.
 
 Normal codegen is offline: it checks local hashes and template invariants and derives the ignored embedded TypeScript catalog. Commit only paired inputs and the generated workflow, not the derived catalog. The daily/dispatch `tomcat-bump` workflow merges `main` into its rolling branch, prepares candidates, runs focused unit checks before proposing, then explicitly dispatches `ci.yml` on the proposal branch. That CI run includes service-lando live integration tests; the workflow does not auto-merge.
 
+## Update the Xdebug pins
+
+Run the network updater from the repository root:
+
+```bash
+bun run update:xdebug
+```
+
+The updater verifies the committed tarballs against their SHA-256 checksums before looking for updates. It picks the newest compatible stable release it finds for each PHP version, or the newest compatible pre-release if it finds no stable release. It skips a candidate release whose tarball is missing or unreadable and prints a warning, but a committed pin that fails verification fails the run. It writes `plugins/service-lando/src/services/php-xdebug-pins.json` only if a pin changes.
+
+With Docker running, check a changed pin locally. For example, to check PHP 8.6, run:
+
+```bash
+bun run scripts/check-xdebug-build.ts 8.6
+```
+
+The check runs Lando's install command on the stock PHP CLI Bookworm image and confirms PHP loads the pinned Xdebug version. Pass each changed PHP version to check them in one run.
+
+The daily `xdebug-bump` workflow builds only changed pins before it opens or updates the PR. It does not auto-merge. If you see an `xdebug-bump automation failure` issue, open the linked run to see which check failed. A URL or checksum failure means a stock PHP image build that uses that pin may fail. Investigate the upstream tarball before accepting a replacement checksum.
+
 ## Extend the internal maintenance workflows
 
-`scripts/maintenance-workflow.ts` renders the shared envelope used by `build-tomcat-bump-workflow.ts`, `build-compose-vendor-bump-workflow.ts`, and `build-node-releases-bump-workflow.ts`. It owns schedule/manual dispatch, concurrency, the `main` guard, reviewed action pins, frozen install, bot authentication, merge-based rolling-branch reconciliation, owned-path no-op detection and staging, commit/push, PR create-or-edit, explicit `ci.yml` dispatch, and failure issues scoped by `GH_REPO`. It never force-pushes or auto-merges.
+`scripts/maintenance-workflow.ts` renders the shared envelope used by `build-tomcat-bump-workflow.ts`, `build-compose-vendor-bump-workflow.ts`, `build-node-releases-bump-workflow.ts`, and `build-xdebug-bump-workflow.ts`. It owns schedule/manual dispatch, concurrency, the `main` guard, reviewed action pins, frozen install, bot authentication, merge-based rolling-branch reconciliation, owned-path no-op detection and staging, commit/push, PR create-or-edit, explicit `ci.yml` dispatch, and failure issues scoped by `GH_REPO`. It never force-pushes or auto-merges.
 
 The `report-failure` job runs after every run that was not cancelled as a whole, and it is the only job with `issues: write`. It reports every job whose result is not `success` or `skipped`, so a timeout (reported as `cancelled`), a lost runner (`abandoned`), and any result GitHub adds later all count. When nothing failed, it exits without touching issues. Otherwise it searches open issues in `GH_REPO` for the title `<workflow name> automation failure`, keeps only exact title matches, comments on the oldest match, and files a new issue only when none is open. The issue or comment links the run and lists the failed jobs, marking them `(timed out or cancelled)` or with their result name, such as `(abandoned)`.
 
@@ -353,15 +373,19 @@ bun test core/test/recipes core/test/cli/init.canonical-recipes.test.ts
 
 Every compiled `lando` embeds a static Go helper for `linux-x64` and `linux-arm64`. Inside a container it is the host-proxy `lando` client and the reader behind `lando logs --source`. You don't need Go installed: the helper builds with Lando itself, in the pinned `golang` image from `core/container-helper/.lando.yml`.
 
-Before building, run `bun install` and `bun run codegen` on a clean checkout and configure a working provider with `lando setup`. If default setup fails on Linux, use `lando setup --provider=docker` with a working system Docker. No host Go installation is needed.
+Run `bun run bootstrap` first. When it reports the helper as `current` or `restored`, you're done: some checkout on this machine already built the helper for these sources. Otherwise configure a working provider with `lando setup` before building. If default setup fails on Linux, use `lando setup --provider=docker` with a working system Docker. No host Go installation is needed.
 
 Build the helper before `bun test` on Linux or compiling `lando` on any host:
 
 ```bash
-bun run --filter='@lando/core' build:container-helper
+bun run bootstrap --build-helper
 ```
 
-That starts the `lando-container-helper` builder app with the source-mode CLI, writes `core/container-helper/dist/linux-{x64,arm64}/lando-container-helper` plus the source digest they were built from, and destroys the builder. Every checkout shares that app name, so builds in several git worktrees work one after another, not at the same time. Pass `--test` (`bun run scripts/build-container-helper.ts --test`) to run `go vet` and `go test` first. `bun run build` doesn't run it: compiling embeds the helper already in `dist/` and refuses a missing or stale one, so rerun the helper build after editing `core/container-helper/` sources or `core/container-helper/.lando.yml`. To embed prebuilt binaries instead, set `LANDO_CONTAINER_HELPER_DIR` to a directory laid out the same way. When that directory has a `source-digest` file, as every helper build writes, the compile checks it against the current sources and fails with the rebuild command if they differ.
+That runs the bootstrap steps and then `bun run --filter='@lando/core' build:container-helper`, which you can also run on its own.
+
+The helper build starts the `lando-container-helper` builder app with the source-mode CLI, writes `core/container-helper/dist/linux-{x64,arm64}/lando-container-helper` plus the source digest they were built from, and destroys the builder. Every checkout shares that app name, so builds in several git worktrees work one after another, not at the same time. Pass `--test` (`bun run scripts/build-container-helper.ts --test`) to run `go vet` and `go test` first. `bun run build` doesn't run it: compiling embeds the helper already in `dist/` and refuses a missing or stale one, so rerun the helper build after editing `core/container-helper/` sources or `core/container-helper/.lando.yml`. To embed prebuilt binaries instead, set `LANDO_CONTAINER_HELPER_DIR` to a directory laid out the same way. When that directory has a `source-digest` file, as every helper build writes, the compile checks it against the current sources and fails with the rebuild command if they differ.
+
+Every successful helper build also copies its output into a per-user cache at `<userCacheRoot>/dev/container-helper/<source digest>/` (`~/.cache/lando/dev/container-helper/` on Linux by default). `bun run bootstrap` in any other checkout or worktree restores the entry whose digest matches its own sources, so only the first checkout pays for the build. Bootstrap checks each cached file's SHA-256 before copying it and ignores an entry recorded for other sources, and entries are written to a staging directory and renamed into place, so worktrees that bootstrap or build at the same time never see a partial entry. Nothing in shipped Lando reads this cache; delete the directory to reclaim space.
 
 Verify the host-architecture helper on Linux:
 
@@ -672,6 +696,18 @@ The live region exists so a hung job leaves evidence of where it stopped; see th
 
 The e2e `@smoke` scenarios run in their own job, `guide-e2e-linux-x64`, so the generated-scenario job above no longer waits for the binary or spends its time limit on them. The job runs as two shards. Each one downloads the Linux x64 compiled binary, provisions the same managed Podman socket that provider integration uses, sets `LANDO_GUIDE_E2E=1`, and runs half of the generated scenarios tagged `@smoke` on the `e2e` layer, one at a time. The wrapper's `--smoke-e2e` flag selects those files from the header that the scenario generator writes into each one, and Bun's `--shard=<i>/<n>` splits them by sorted path. E2e guide scenarios without the `@smoke` tag are not part of the PR gate; the nightly job below runs every `[e2e]` scenario.
 
+With an explicit `LANDO_TEST_PODMAN_SOCKET`, guide runs with `LANDO_GUIDE_E2E=1` and test selections that opt into runner-owned Podman roots use one temporary directory for the data, config, cache, and system-plugin roots. An `[e2e]` name filter alone does not enable guide e2e or allocate roots. The runner allocates roots only if none of the four root variables is set and `LANDO_TEST_USE_REAL_ROOTS` is not `1`. Before the tests run, it runs `lando setup` in those roots for the Podman provider and the local CA tooling, so routed scenarios can issue certificates. It skips the router helper, shell integration, the file-sync engine, and trust-store changes, which belong to your installation. If that setup fails, the runner skips the tests and still retires the roots. Selections that need an existing managed installation use the job's or caller's roots instead. The runner never retires those roots. A fixture that supplies its own temporary roots retires them itself.
+
+After reaping the test child, even if it fails, the runner gives the compiled CLI a bounded time to run `lando uninstall --purge --yes --format=json` with the test roots and a private `LANDO_SHELL_PROFILE`. Purge can remove the data, config, and cache roots itself. Before deleting the enclosing temporary directory, the runner checks the same endpoint for containers, networks, and volumes labeled for the original data root and images labeled for its build store. Shared cache volumes without a data-root label are outside this check.
+
+If purge fails or verification cannot confirm cleanup, the runner exits nonzero and preserves the enclosing directory and anything purge did not remove. Its error reports the original test exit status, the directory, the socket, and what it kept or could not verify. After you resolve the cause, run this from the repository root, using the socket and runner-owned directory from the report:
+
+```bash
+LANDO_TEST_PODMAN_SOCKET=<socket> bun scripts/live-test-roots.ts retire <directory>
+```
+
+Use the same `LANDO_SCENARIO_E2E_BINARY` if the original run did not use `core/dist/lando`. On `SIGINT` or `SIGTERM`, the runner forwards the signal, reaps the child, and attempts retirement before exiting with status 130 or 143, respectively. `SIGKILL` cannot be handled and can prevent cleanup.
+
 Run the whole subset locally, or add `--shard=1/2` to run the first CI shard:
 
 ```bash
@@ -714,7 +750,7 @@ Cells cover Docker Desktop, Docker Engine, Podman Desktop, Podman, Lima, and Orb
 
 The native machine cells are advisory because GitHub-hosted macOS and Windows runners do not provide a dependable nested-virtualization contract. Prepared runners opt in with `LANDO_TEST_PROVIDER_LANDO_MACHINE_LIFECYCLE=1` or `LANDO_TEST_PROVIDER_PODMAN_MACHINE_LIFECYCLE=1`; `LANDO_TEST_PODMAN_COMMAND` may select the prepared Podman binary. Missing opt-in, unsupported hosts, and absent Podman tooling produce structured skips. Once opted in with tooling present, start/stop/restart/destroy failures are recorded as failed cells, never passes. The Docker Engine, Lando-managed Linux, and system Podman 6 Linux cells remain release-blocking.
 
-Every cell regenerates derived sources before acceptance so plugin tests can import generated bundled modules. The system Podman 6 Linux cell installs Podman from the Homebrew `podman` formula (Podman >= 6.0.0 with Netavark v2, Aardvark-dns v2, `passt`/pasta, `crun`, and `conmon`) because Ubuntu 24.04 apt ships Podman 4.9.x. The install and `podman --version` floor assertion steps live in `scripts/ci-podman-install.ts`. The `docker-engine-linux-latest` cell runs on `ubuntu-26.04` and installs unpinned `docker-ce` from Docker's apt repository. It then asserts that `exec-umask-mode` passed: a missing, skipped, or failed check fails the job even though the cell is not marked release-blocking. Keep this cell out of required status checks until it has a record of passing on `main`.
+Every cell regenerates derived sources before acceptance so plugin tests can import generated bundled modules. The system Podman 6 Linux cell installs Podman from the Homebrew `podman` formula (Podman >= 6.0.0 with Netavark v2, Aardvark-dns v2, `passt`/pasta, `crun`, and `conmon`) because Ubuntu 24.04 apt ships Podman 4.9.x. The install and `podman --version` floor assertion steps live in `scripts/ci-podman-install.ts`. The `docker-engine-linux-latest` cell runs on `ubuntu-26.04` and installs unpinned `docker-ce` from Docker's apt repository. It then asserts that its feature checks `exec-umask-mode` and `health-start-interval` passed: a missing, skipped, or failed check fails the job even though the cell is not marked release-blocking. Keep this cell out of required status checks until it has a record of passing on `main`.
 
 Release-blocking installable cells run the relevant provider contract suite plus live acceptance checks for setup readiness, app bring-up/bring-down, exec, logs, inspect/health, image resolution, and volume cleanup:
 
@@ -751,9 +787,15 @@ If assembly reports a Bun pin mismatch, install and run the Bun version committe
 
 Each toolchain version is an `ARG` at the top of `scripts/runtime-bundle-builder/Dockerfile`: `GO_VERSION`, `RUST_VERSION`, and `BUN_VERSION`. Change a version together with its image digest on the matching `FROM` line; the Rust toolchain path and the in-build version checks read the same `ARG`. `BUN_VERSION` must equal `.bun-version`, and the assembler refuses to build when they differ, so change both in one reviewed toolchain update. The signed snapshot is `UBUNTU_SNAPSHOT` in `scripts/runtime-bundle-builder/prerequisites.sh`, and the Noble base image must predate it; `core/test/build/runtime-bundle-supply-chain.test.ts` checks that ordering. Verify component and license SHA-256 values before updating `plugins/provider-lando/runtime-bundle-sources.json`. Then regenerate workflows and run `bun run codegen:check` and the focused bundle tests.
 
+### Change a carried source patch
+
+Source-built components list their patches in `sourcePatches` in `plugins/provider-lando/runtime-bundle-sources.json`. Each entry pins the patch file under `scripts/patches/`, its SHA-256, and the SHA-256 of every file it touches before and after patching; a created file has no before value. The assembler checks all of them and applies each patch with zero fuzz, so a patch that no longer matches its source fails the build instead of drifting. Every patch has a note next to it that explains the change and when to drop it.
+
+A published runtime never changes, so any patch change needs a new `runtimeVersion` and a new entry in `scripts/patches/runtime-patch-sets.json`. `core/test/scripts/runtime-bundle-patch-sets.test.ts` fails when the patch set differs from the one recorded for the current version, and its message gives the digest to record. Edit an existing entry only while that version is unpublished.
+
 ### Bundle builds in CI
 
-`runtime-bundle-linux-x64` runs whenever CI tests guide scenarios or providers, and `runtime-bundle-linux-arm64` runs on a native arm64 runner for every pull request that changes code. Both run on pushes to `main`, which saves the caches pull requests reuse. Each job reuses a cached archive when its cache key matches and assembles only on a miss. The key is a SHA-256 of the exact build context (Dockerfile, prerequisites script, bundled assembly script, bundle source pins, and patch) plus the target platform and repository build arguments. The bundled assembly script contains only bundle-assembly code, so unrelated changes keep the key and the cached archive. Print the key a build would use:
+`runtime-bundle-linux-x64` runs whenever CI tests guide scenarios or providers, and `runtime-bundle-linux-arm64` runs on a native arm64 runner for every pull request that changes code. Both run on pushes to `main`, which saves the caches pull requests reuse. Each job reuses a cached archive when its cache key matches and assembles only on a miss. The key is a SHA-256 of the exact build context (Dockerfile, prerequisites script, bundled assembly script, bundle source pins, and every source patch the pins list) plus the target platform and repository build arguments. The bundled assembly script contains only bundle-assembly code, so unrelated changes keep the key and the cached archive. Print the key a build would use:
 
 ```bash
 bun run scripts/assemble-runtime-bundle.ts --platform linux-x64 --cache-key
@@ -801,7 +843,7 @@ The live Drupal recipe path is a separate gate from compile smoke and from linux
 
 The generated workflow is `.github/workflows/drupal-journey.yml`, produced by `scripts/build-drupal-journey-workflow.ts`. Do not hand-edit the YAML. The gate script is `scripts/drupal-journey.ts`.
 
-The live path is `lando init --recipe drupal`, `lando start`, `lando info`, README scaffold plus Drush (`drupal-scaffold` then `drush`), then `lando destroy -y`. It runs on all six compile targets.
+The live path is `lando init --recipe drupal`, `lando start` (first start scaffolds Drupal and Drush), `lando info`, README Drush check (`drush`), then `lando destroy -y`. It runs on all six compile targets.
 
 The journey runs on its schedule and manual dispatch, not on pull requests. Linux x64 uses Ubuntu 26.04; Linux arm64 uses `ubuntu-24.04-arm`. Darwin and Windows use self-hosted labels `[self-hosted, lando-virt, <OS>, <ARCH>]`, restricted to `main`. A missing runner is a job error, not a skip.
 

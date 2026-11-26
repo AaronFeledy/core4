@@ -78,8 +78,11 @@ route URLs or host-file entries.
 certificate source. `generated` means Lando issues and maintains the certificate
 when it starts the service; it doesn't tell you the files exist yet. `health.check`, when present, gives the ongoing probe's
 kind and timings without its command or URL. `health.state` is the provider's
-reported health status or `unknown` if it hasn't reported one; it is separate
-from the service's `status`. These plan fields can be absent on older plans,
+reported health status, or `unknown` if it hasn't reported one or nothing
+schedules native checks for this provider; it is separate
+from the service's `status`. With a reported status, `health.checkedAt` is when
+the engine last finished a check in the current run, on the engine's clock;
+compare it with the check interval to judge freshness. These plan fields can be absent on older plans,
 and `providerInfo` is reserved for providers that explicitly supply JSON-safe
 details. Lando currently omits it.
 

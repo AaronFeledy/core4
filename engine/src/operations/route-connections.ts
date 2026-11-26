@@ -8,7 +8,7 @@ import type {
   ServiceState,
 } from "@lando/sdk/schema";
 import { connectionActivity } from "./connection-state.ts";
-import { connectionHost, routeUrl } from "./connection-url.ts";
+import { connectionHost, primaryConcreteRoute, routeUrl, routeUrlScheme } from "./connection-url.ts";
 
 const matchesRoute = (left: RoutePlan, right: RoutePlan): boolean =>
   left.hostname.toLowerCase() === right.hostname.toLowerCase() &&
@@ -97,4 +97,30 @@ export const projectRouteConnections = (input: {
     }
   }
   return connections;
+};
+
+/**
+ * The public URL `{{ services.<name>.url }}` names: the service's primary concrete route in `routes`
+ * (the applied route table when one exists), read from the assigned route connection already
+ * projected for it. Undefined when the service has no concrete route or the router reports no
+ * authority for that route.
+ */
+export const primaryRouteConnectionUrl = (
+  routes: readonly RoutePlan[],
+  service: string,
+  connections: readonly ServiceConnection[],
+): string | undefined => {
+  const route = primaryConcreteRoute(routes, service);
+  if (route === undefined) return undefined;
+  const scheme = routeUrlScheme(route);
+  const host = connectionHost(route.hostname);
+  const pathPrefix = route.pathPrefix ?? "";
+  return connections.find(
+    (connection) =>
+      connection.source === "route" &&
+      connection.binding === "assigned" &&
+      connection.protocol === scheme &&
+      connection.host === host &&
+      connection.pathPrefix === pathPrefix,
+  )?.url;
 };

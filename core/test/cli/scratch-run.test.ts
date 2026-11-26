@@ -50,6 +50,7 @@ import { createBufferedRendererIO } from "@lando/renderer/io";
 import * as RendererOutput from "@lando/renderer/output";
 import * as RendererRuntime from "@lando/renderer/runtime";
 import { ServiceExecError } from "@lando/sdk/errors";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import * as StateStoreLayer from "@lando/state-store/service";
 import { makeStateStore } from "@lando/state-store/service";
@@ -204,18 +205,16 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
         }
         return { changed: true };
       }),
-    start: () => die("start"),
-    stop: () => die("stop"),
     restart: () => die("restart"),
     waitForExit: () => Effect.succeed({ exitCode: 0 }),
-    destroy: (target, destroyOptions) =>
+    bringDown: (target, destroyOptions) =>
       Effect.sync(() => {
-        const call = { app: String(target.app), volumes: destroyOptions.volumes };
+        const call = { app: String(target.app), volumes: destroyOptions.volumes === true };
         if (destroyOptions.removeState === false) options.stopCalls?.push(call);
         else recorded.destroyCalls.push(call);
-        return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
+        return { kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } };
       }),
-    removeObservedService: () => Effect.succeed({ kind: "absent" as const }),
+    bringDownObserved: (observed) => Effect.succeed({ service: observed.service, action: "absent" as const }),
     readAppEnvironment: () => Effect.succeed([]),
     exec: () => die("exec"),
     execStream: (target, spec) => {
@@ -283,10 +282,7 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
   const pathsLive = Layer.succeed(PathsService, makeLandoPaths());
   const registryLive = Layer.succeed(
     RuntimeProviderRegistry,
-    RuntimeProviderRegistry.of({
-      resolveAppliedPlan: () => Effect.succeed(undefined),
-      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-      appliedPlansFor: () => Effect.succeed([]),
+    makeTestRuntimeProviderRegistry({
       list: Effect.succeed([providerId]),
       capabilities: Effect.succeed(provider.capabilities),
       select: () => Effect.succeed(provider),

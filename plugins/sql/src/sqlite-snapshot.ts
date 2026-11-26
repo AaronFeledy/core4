@@ -3,7 +3,7 @@ import { mkdir } from "node:fs/promises";
 import { snapshotArchivePath, snapshotPaths } from "@lando/data-mover/snapshot-paths";
 
 import { mapFailures } from "@lando/sdk/command-result";
-import { SqlRecoveryUnavailableError } from "@lando/sdk/errors";
+import { SqlRecoveryUnavailableError, StateStoreError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   SNAPSHOT_INFO_VERSION,
@@ -13,6 +13,7 @@ import {
   snapshotHandle,
 } from "@lando/sdk/schema";
 import type { DataMover, StateStoreShape } from "@lando/sdk/services";
+import { storeErrorRemediation } from "@lando/state-store";
 import { DateTime, Effect, Schema } from "effect";
 
 import { packSqliteTarFile } from "./sqlite-archive.ts";
@@ -98,8 +99,12 @@ export const sqliteSnapshotCatalogFailure = (service: string, message: string, c
   new SqlRecoveryUnavailableError({
     message,
     service,
-    reason: String(cause),
-    remediation: "Inspect the Lando snapshot store under the configured userDataRoot.",
+    reason: cause instanceof StateStoreError ? cause.reason : String(cause),
+    ...(cause instanceof StateStoreError && cause.reason === "newer-version" ? { cause } : {}),
+    remediation: storeErrorRemediation(
+      cause,
+      "Inspect the Lando snapshot store under the configured userDataRoot.",
+    ),
   });
 
 export const persistSqliteSnapshot = Effect.fn("Sql.persistSqliteSnapshot")(function* (
@@ -149,9 +154,13 @@ export const persistSqliteSnapshot = Effect.fn("Sql.persistSqliteSnapshot")(func
     new SqlRecoveryUnavailableError({
       message: `SQLite recovery archive ${id} was captured but could not be cataloged.`,
       service: target.name,
-      reason: String(cause),
+      reason: cause instanceof StateStoreError ? cause.reason : String(cause),
+      ...(cause instanceof StateStoreError && cause.reason === "newer-version" ? { cause } : {}),
       recoveryFile: archivePath,
-      remediation: `Preserve ${archivePath}, which contains only ${target.path} on ${target.name}. The snapshot is not cataloged, so db:restore cannot resolve its ID yet. Resolve snapshot-store access before retrying.`,
+      remediation: storeErrorRemediation(
+        cause,
+        `Preserve ${archivePath}, which contains only ${target.path} on ${target.name}. The snapshot is not cataloged, so db:restore cannot resolve its ID yet. Resolve snapshot-store access before retrying.`,
+      ),
     });
   const info: typeof SqliteSnapshotInfo.Type = {
     owner,

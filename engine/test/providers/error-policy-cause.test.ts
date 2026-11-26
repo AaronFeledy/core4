@@ -33,7 +33,7 @@ test.each(["effect", "stream", "availability"] as const)(
       {
         ...TestRuntimeProvider,
         isAvailable: Effect.failCause(cause),
-        start: () => Effect.failCause(cause),
+        restart: () => Effect.failCause(cause),
         exportArtifact: () => Stream.failCause(cause),
       },
       createStandaloneRedactor("secrets", { redactionTokens: [secret] }),
@@ -43,7 +43,7 @@ test.each(["effect", "stream", "availability"] as const)(
         mode === "availability"
           ? provider.isAvailable
           : mode === "effect"
-            ? provider.start(target)
+            ? provider.restart(target)
             : provider.exportArtifact({ providerId: plan.provider, ref: "fixture" }).pipe(Stream.runDrain),
       ),
     );
@@ -79,11 +79,11 @@ test("a provider failure Effect carries as a defect after its cleanup died is st
   const provider = withProviderErrorRedaction(
     {
       ...TestRuntimeProvider,
-      start: () => Effect.fail(error).pipe(Effect.ensuring(Effect.die(new Error("release crashed")))),
+      restart: () => Effect.fail(error).pipe(Effect.ensuring(Effect.die(new Error("release crashed")))),
     },
     createStandaloneRedactor("secrets", { redactionTokens: [secret] }),
   );
-  const exit = await Effect.runPromiseExit(provider.start(target));
+  const exit = await Effect.runPromiseExit(provider.restart(target));
   if (!Exit.isFailure(exit)) throw new Error("Expected failure");
   // Then the secret never leaves the registry, and the failure still projects as the typed primary.
   expect(

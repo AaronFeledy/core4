@@ -9,7 +9,7 @@ tags: [docs, php, service, runtime]
 
 In `.lando.yml`, set the service `type: php:<version>` to `8.1`, `8.2`, `8.3`, `8.4`, `8.5`, or `8.6`. Every other version, including `8.0`, fails Landofile validation before any build or container work happens.
 
-Each supported version resolves to an official bookworm image. 8.1 through 8.5 use `php:<version>-apache-bookworm`. 8.6 uses the official RC tag `php:8.6-rc-apache-bookworm` until GA. Stock `type: php:8.6` plans that RC tag. Override with `image:` if you need a different tag:
+Each supported version resolves to an official bookworm image `php:<version>-apache-bookworm`. Override with `image:` if you need a different tag:
 
 ```yaml
 name: php-version-matrix-demo

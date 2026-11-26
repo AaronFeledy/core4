@@ -318,3 +318,179 @@ test("skips argv host tooling commands", async () => {
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("lint reports route-fact reads that cannot resolve at invocation as errors", async () => {
+  // Given
+  const root = await mkdtemp(join(tmpdir(), "lando-lint-service-url-"));
+  try {
+    await writeFile(
+      join(root, ".lando.yml"),
+      [
+        "name: urls",
+        "services:",
+        "  web:",
+        "    type: compose",
+        "    image: nginx:1.27",
+        "    endpoints: ['http:80']",
+        "    routes: ['*.wild.test']",
+        "  api:",
+        "    type: compose",
+        "    image: nginx:1.27",
+        "    endpoints: ['http:80']",
+        "    routes: [api.test]",
+        "tooling:",
+        "  ping:",
+        "    service: ':host'",
+        "    cmd: curl {{ services.web.hostname }} {{ services.ghost.origin }} {{ services.api.url }}",
+        "events:",
+        "  pre-start:",
+        "    - curl {{ services.api.url }}",
+        "  post-start:",
+        "    - curl {{ services.api.url }}",
+        "",
+      ].join("\n"),
+    );
+    // When
+    const result = await Effect.runPromise(appConfigLint({ cwd: root }).pipe(Effect.provide(registryLayer)));
+    // Then
+    expect(
+      result.violations
+        .filter((issue) => issue.rule === "landofile.tooling")
+        .map((issue) => [issue.path.join("."), issue.reason, issue.severity]),
+    ).toEqual([
+      ["events.pre-start.0", "event-phase", "error"],
+      ["tooling.ping.cmd", "no-route", "error"],
+      ["tooling.ping.cmd", "unknown-service", "error"],
+    ]);
+    expect(result.violations).toContainEqual(
+      expect.objectContaining({
+        reason: "unknown-service",
+        message: "services.ghost.origin names no service in this app.",
+      }),
+    );
+    expect(result.valid).toBe(false);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("lint only warns about a route-fact read when routing is disabled", async () => {
+  // Given
+  const root = await mkdtemp(join(tmpdir(), "lando-lint-service-url-disabled-"));
+  try {
+    await writeFile(
+      join(root, ".lando.yml"),
+      [
+        "name: urls",
+        "router:",
+        "  enabled: false",
+        "services:",
+        "  web:",
+        "    type: compose",
+        "    image: nginx:1.27",
+        "    endpoints: ['http:80']",
+        "tooling:",
+        "  ping:",
+        "    service: ':host'",
+        "    cmd: curl {{ services.web.origin }}",
+        "",
+      ].join("\n"),
+    );
+    // When
+    const result = await Effect.runPromise(appConfigLint({ cwd: root }).pipe(Effect.provide(registryLayer)));
+    // Then
+    expect(
+      result.violations
+        .filter((issue) => issue.rule === "landofile.tooling")
+        .map((issue) => [issue.path.join("."), issue.reason, issue.severity]),
+    ).toEqual([["tooling.ping.cmd", "routing-disabled", "warning"]]);
+    expect(result.valid).toBe(true);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("lint tells a generated default route from a service with no HTTP listener and skips unresolved services", async () => {
+  // Given three services without authored routes: one serves HTTP, one serves only TCP, and one
+  // has a type lint cannot resolve
+  const root = await mkdtemp(join(tmpdir(), "lando-lint-service-url-default-"));
+  try {
+    await writeFile(
+      join(root, ".lando.yml"),
+      [
+        "name: urls",
+        "services:",
+        "  web:",
+        "    type: compose",
+        "    image: nginx:1.27",
+        "    endpoints: ['http:80']",
+        "  cache:",
+        "    type: compose",
+        "    image: redis:7",
+        "    endpoints: ['tcp:6379']",
+        "  mystery:",
+        "    type: not-a-registered-type",
+        "tooling:",
+        "  ping:",
+        "    service: ':host'",
+        "    cmd: curl {{ services.web.url }} {{ services.cache.url }} {{ services.mystery.url }}",
+        "",
+      ].join("\n"),
+    );
+    // When
+    const result = await Effect.runPromise(appConfigLint({ cwd: root }).pipe(Effect.provide(registryLayer)));
+    // Then only the TCP-only service is reported
+    expect(
+      result.violations
+        .filter((issue) => issue.rule === "landofile.tooling")
+        .map((issue) => [issue.path.join("."), issue.reason, issue.message]),
+    ).toEqual([
+      [
+        "tooling.ping.cmd",
+        "no-route",
+        "cache declares no routes and has no HTTP listener, so it gets no default route.",
+      ],
+    ]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test.each(["url", "hostname", "origin"])(
+  "lint refuses a placement field that follows a var reading %s",
+  async (fact) => {
+    // Given
+    const root = await mkdtemp(join(tmpdir(), "lando-lint-service-url-var-"));
+    try {
+      await writeFile(
+        join(root, ".lando.yml"),
+        [
+          "name: urls",
+          "tooling:",
+          "  ping:",
+          "    service: ':host'",
+          "    cmd: echo body",
+          "    dir: '{{ vars.home }}'",
+          "    vars:",
+          "      home: '{{ vars.site }}'",
+          `      site: '{{ services.web.${fact} }}'`,
+          "",
+        ].join("\n"),
+      );
+      // When
+      const result = await Effect.runPromise(
+        appConfigLint({ cwd: root }).pipe(Effect.provide(registryLayer)),
+      );
+      // Then
+      expect(result.violations).toContainEqual(
+        expect.objectContaining({
+          rule: "landofile.tooling",
+          reason: "service-url-placement",
+          path: ["tooling", "ping", "dir"],
+        }),
+      );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+);

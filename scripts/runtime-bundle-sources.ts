@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
@@ -58,7 +59,7 @@ const PositiveSize = Schema.Number.pipe(Schema.check(Schema.isInt()), Schema.che
 
 const SafeInstallName = Schema.String.pipe(Schema.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9._/-]*$/u)));
 
-const isSafeDebMember = (value: string): boolean => {
+const isSafeRelativePath = (value: string): boolean => {
   if (value.length === 0 || value.startsWith("/") || value.includes(String.fromCharCode(92))) return false;
   const parts = value.split("/");
   return parts.every(
@@ -66,14 +67,30 @@ const isSafeDebMember = (value: string): boolean => {
   );
 };
 
-const SafeDebMember = Schema.String.pipe(
+const SafeRelativePath = Schema.String.pipe(
   Schema.check(Schema.isMinLength(1)),
   Schema.check(
     Schema.makeFilter((value: string) =>
-      isSafeDebMember(value) ? undefined : "Debian member must be a relative path without . or .. segments",
+      isSafeRelativePath(value) ? undefined : "must be a relative path without . or .. segments",
     ),
   ),
 );
+
+/** A repo patch the source build applies with zero fuzz, pinned with its own bytes and every touched file. */
+const RuntimeBundleSourcePatch = Schema.Struct({
+  file: Schema.String.pipe(
+    Schema.check(Schema.isPattern(/^scripts\/patches\/[A-Za-z0-9][A-Za-z0-9._-]*\.patch$/u)),
+  ),
+  sha256: Sha256,
+  files: Schema.Array(
+    Schema.Struct({
+      path: SafeRelativePath,
+      /** Absent when the patch creates the file. */
+      sourceSha256: Schema.optionalKey(Sha256),
+      patchedSha256: Sha256,
+    }),
+  ).pipe(Schema.check(Schema.isMinLength(1))),
+});
 
 const RuntimeBundleBinaryComponent = Schema.Struct({
   license: License,
@@ -86,6 +103,7 @@ const RuntimeBundleBinaryComponent = Schema.Struct({
   installName: SafeInstallName,
   mode: Schema.Number.pipe(Schema.check(Schema.isInt()), Schema.check(Schema.isGreaterThanOrEqualTo(0))),
   sourceBuild: Schema.optionalKey(Schema.Literal(LinuxPodmanSourceBuild)),
+  sourcePatches: Schema.optionalKey(Schema.Array(RuntimeBundleSourcePatch)),
 });
 
 /** Exact upstream/Debian source archive pin for a Debian binary component (not the .deb). */
@@ -106,11 +124,11 @@ const RuntimeBundleDebianComponent = Schema.Struct({
   sizeBytes: PositiveSize,
   /** Actual source archive (orig/tarball), never the binary .deb. */
   source: RuntimeBundleDebianSourcePin,
-  member: SafeDebMember,
+  member: SafeRelativePath,
   binarySha256: Sha256,
   binarySizeBytes: PositiveSize,
   elfMachine: Schema.Literals([62, 183]),
-  installName: SafeDebMember,
+  installName: SafeRelativePath,
   mode: Schema.Number.pipe(Schema.check(Schema.isInt()), Schema.check(Schema.isGreaterThanOrEqualTo(0))),
 });
 
@@ -125,6 +143,7 @@ const RuntimeBundleSourceComponent = Schema.Struct({
   ]),
   inputs: Schema.Array(RuntimeBundleSourceInput).pipe(Schema.check(Schema.isMinLength(1))),
   outputs: Schema.Array(RuntimeBundleSourceOutput).pipe(Schema.check(Schema.isMinLength(1))),
+  sourcePatches: Schema.optionalKey(Schema.Array(RuntimeBundleSourcePatch)),
 });
 
 const RuntimeBundleComponent = Schema.Union([
@@ -148,6 +167,34 @@ export type RuntimeBundleSources = Schema.Schema.Type<typeof RuntimeBundleSource
 export type RuntimeBundleComponent = Schema.Schema.Type<typeof RuntimeBundleComponent>;
 export type RuntimeBundleBinaryComponent = Schema.Schema.Type<typeof RuntimeBundleBinaryComponent>;
 export type RuntimeBundleDebianComponent = Schema.Schema.Type<typeof RuntimeBundleDebianComponent>;
+export type RuntimeBundleSourcePatch = Schema.Schema.Type<typeof RuntimeBundleSourcePatch>;
+
+/** Absolute path of a pinned patch file, in the repo and in the staged builder context alike. */
+export const runtimeBundlePatchPath = (patch: RuntimeBundleSourcePatch): string =>
+  join(REPO_ROOT, patch.file);
+
+/** Patches the source build applies to `component`, in order; notices link the same files. */
+export const sourcePatchesOf = (component: RuntimeBundleComponent): readonly RuntimeBundleSourcePatch[] =>
+  "sourcePatches" in component ? (component.sourcePatches ?? []) : [];
+
+/**
+ * SHA-256 identity of every source patch the runtime applies, per host and component. Published
+ * runtimes are immutable, so a different identity needs a new runtimeVersion.
+ */
+export const runtimeBundlePatchSetDigest = (sources: RuntimeBundleSources): string => {
+  const hash = createHash("sha256");
+  for (const hostKey of Object.keys(sources.bundles).sort()) {
+    for (const component of sources.bundles[hostKey]?.components ?? []) {
+      for (const patch of sourcePatchesOf(component)) {
+        const files = patch.files.map((file) => [file.path, file.sourceSha256 ?? null, file.patchedSha256]);
+        hash.update(
+          `${JSON.stringify([hostKey, component.name, component.version, patch.file, patch.sha256, files])}\n`,
+        );
+      }
+    }
+  }
+  return hash.digest("hex");
+};
 
 const decodeSources = Schema.decodeUnknownSync(RuntimeBundleSources);
 
@@ -241,6 +288,14 @@ const validateComponent = (hostKey: string, component: RuntimeBundleComponent): 
         throw new Error("assemble-runtime-bundle: newuidmap/newgidmap must not be bundled");
       }
     }
+  }
+  if (
+    sourcePatchesOf(component).length > 0 &&
+    (!("sourceBuild" in component) || component.sourceBuild === undefined)
+  ) {
+    throw new Error(
+      `assemble-runtime-bundle: ${component.name} declares source patches without a source build`,
+    );
   }
   if (!isLinuxRuntimeBundle(hostKey)) return;
   const installsPodman =

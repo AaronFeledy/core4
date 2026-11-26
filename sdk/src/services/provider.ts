@@ -1,6 +1,7 @@
 import { Context, type Effect, type Redacted, Schema, type Scope, type Stream } from "effect";
 import type {
   AppResolveError,
+  AppliedStateVersionError,
   ArtifactBuildError,
   ArtifactTransferError,
   EnvironmentValueResolutionError,
@@ -72,15 +73,19 @@ import type {
 import type { OwnedResourcesCleanupResult, ResourceOwnership } from "../schema/resource-ownership.ts";
 import type { MountObservation } from "../schema/service-mount.ts";
 import type {
-  DestroyOutcome,
+  BringDownOptions,
+  BringDownOutcome,
+  ContainerDisposition,
   FileSyncQuiesceResult,
-  ObservedServiceRemoval,
+  ObservedBringDown,
 } from "../schema/service-shutdown.ts";
 
 export type {
-  DestroyOutcome,
+  BringDownOptions,
+  BringDownOutcome,
+  ContainerDisposition,
   FileSyncQuiesceResult,
-  ObservedServiceRemoval,
+  ObservedBringDown,
 } from "../schema/service-shutdown.ts";
 
 import type { PrivilegeService, ProcessResult } from "./process.ts";
@@ -99,6 +104,7 @@ export type ProviderError =
   | ProviderSetupProvisioningError
   | ProviderSetupUnsupportedHostError
   | ProviderUnavailableError
+  | AppliedStateVersionError
   | ServiceExecError
   | ServiceNotFoundError
   | ServiceStartError
@@ -237,6 +243,7 @@ export interface AppSelector {
 
 export interface ExecTarget extends ServiceSelector {
   readonly user?: string;
+  readonly expectedContainerId?: string;
 }
 
 export interface CommandSpec {
@@ -347,6 +354,7 @@ export interface ServiceRuntimeFields {
   /** Native container identity: stable across in-place restarts, different after replacement.
    * Omission means consumers cannot prove that container-local work can be reused. */
   readonly containerId?: string;
+  readonly nativeName?: string;
   readonly labels?: Readonly<Record<string, string>>;
   readonly imageIdentity?: string;
   readonly publications: PublicationObservation;
@@ -427,19 +435,29 @@ export class RuntimeProviderRegistry extends Context.Service<
      */
     readonly appliedPlansFor: (
       root: AbsolutePath,
-      providerId?: ProviderId,
-    ) => Effect.Effect<ReadonlyArray<AppPlan>, ProviderUnavailableError | NoProviderInstalledError>;
+      options?: { readonly providerId?: ProviderId; readonly observe?: true },
+    ) => Effect.Effect<
+      ReadonlyArray<AppPlan>,
+      ProviderUnavailableError | AppliedStateVersionError | NoProviderInstalledError
+    >;
     /** Strict host-wide inventory for one provider, preserving unreadable ownership records.
      * Filesystem-only: never constructs, initializes, or contacts a runtime. */
-    readonly appliedStateInventory?: (
+    readonly appliedStateInventory: (
       providerId: ProviderId,
-    ) => Effect.Effect<AppliedStateInventory, ProviderUnavailableError | NoProviderInstalledError>;
+    ) => Effect.Effect<
+      AppliedStateInventory,
+      ProviderUnavailableError | AppliedStateVersionError | NoProviderInstalledError
+    >;
     readonly hasRecordedOwnership?: (
       providerId: ProviderId,
     ) => Effect.Effect<boolean, ProviderUnavailableError | NoProviderInstalledError>;
-    readonly assertAppliedStateReadable?: (
-      plan: Pick<AppPlan, "id" | "provider">,
-    ) => Effect.Effect<void, ProviderUnavailableError | NoProviderInstalledError>;
+    /** Filesystem-only targeted read. Returns undefined only when the app has no record. */
+    readonly readAppliedPlanStrict: (
+      target: Pick<AppPlan, "id" | "provider">,
+    ) => Effect.Effect<
+      AppPlan | undefined,
+      ProviderUnavailableError | AppliedStateVersionError | NoProviderInstalledError
+    >;
     readonly select: (
       target?: AppPlan | ProviderId,
     ) => Effect.Effect<RuntimeProviderShape, ProviderSelectionError>;
@@ -490,7 +508,7 @@ export class RuntimeProvider extends Context.Service<
     readonly appliedPlans?: Effect.Effect<ReadonlyArray<AppPlan>, ProviderError>;
     readonly cleanupOwnedResources?: (
       root: AbsolutePath,
-      options: DestroyOptions,
+      options: OwnedResourcesCleanupOptions,
     ) => Effect.Effect<OwnedResourcesCleanupResult, ProviderError>;
     readonly planSetup: (
       options: ProviderSetupInspectOptions,
@@ -569,8 +587,6 @@ export class RuntimeProvider extends Context.Service<
       plan: AppPlan,
       options: ApplyOptions,
     ) => Effect.Effect<ApplyResult, ProviderError, Scope.Scope>;
-    readonly start: (target: ServiceSelector) => Effect.Effect<void, ProviderError>;
-    readonly stop: (target: ServiceSelector) => Effect.Effect<void, ProviderError>;
     readonly restart: (target: ServiceSelector) => Effect.Effect<void, ProviderError>;
     readonly resume?: (
       target: ServiceSelector,
@@ -584,18 +600,28 @@ export class RuntimeProvider extends Context.Service<
       target: ServiceSelector,
       options?: WaitForExitOptions,
     ) => Effect.Effect<ServiceExitResult, ProviderError, Scope.Scope>;
-    readonly destroy: (
-      target: AppSelector,
-      options: DestroyOptions,
-    ) => Effect.Effect<DestroyOutcome, ProviderError>;
     /**
-     * Stops and removes the single container behind one observation this provider reported from
-     * `list`. It never resolves an applied plan, so resources no plan accounts for are addressed by
-     * the identity they were observed under. An observation carrying no container id is `absent`.
+     * Brings down every container the app's services own: planned names inspected with adoption
+     * receipts plus owned containers still carrying an earlier name, deduplicated by native id.
+     * `stop` stops each one and keeps containers, networks, volumes, and applied state. `remove`
+     * deletes containers and networks, volumes as requested, and forgets applied state unless
+     * `removeState` is false. With no plan given and none applied, the outcome is `no-op`.
      */
-    readonly removeObservedService: (
+    readonly bringDown: (
+      target: AppSelector,
+      options: BringDownOptions,
+    ) => Effect.Effect<BringDownOutcome, ProviderError>;
+    /**
+     * Stops, or stops and removes, the single container behind one observation this provider
+     * reported from `list`. The container is addressed by its native id, never by a plan: the app's
+     * applied state is read only to refuse an unreadable record and to learn the data root, and the
+     * container's live labels must prove the observed app, root, service, provider, and data root
+     * before anything changes. An observation carrying no container id is `absent`.
+     */
+    readonly bringDownObserved: (
       observed: ServiceRuntimeInfo,
-    ) => Effect.Effect<ObservedServiceRemoval, ProviderError>;
+      containers: ContainerDisposition,
+    ) => Effect.Effect<ObservedBringDown, ProviderError>;
     /** Stop app writers while keeping accelerated mount targets available for a final sync flush. */
     readonly quiesceForFileSync?: (
       target: AppSelector,
@@ -663,6 +689,10 @@ export class RuntimeProvider extends Context.Service<
     ) => Effect.Effect<void, ProviderError | E, Scope.Scope | R>;
     readonly listVolumes: (filter: VolumeFilter) => Effect.Effect<ReadonlyArray<VolumeInfo>, ProviderError>;
     readonly locateVolume: (ref: VolumeRef) => Effect.Effect<VolumeLocator, ProviderError>;
+    readonly adoptDataRoot?: (
+      plan: AppPlan,
+      volumeWitness: (coordinationKey: string) => Effect.Effect<string | undefined, ProviderError>,
+    ) => Effect.Effect<void, ProviderError>;
     readonly inspectResourceNames?: (
       query: DoctorResourceNameQuery,
     ) => Effect.Effect<ReadonlyArray<string>, ProviderError>;
@@ -695,12 +725,11 @@ export class RuntimeProvider extends Context.Service<
   }
 >()("@lando/core/RuntimeProvider") {}
 
-export interface DestroyOptions {
+export interface OwnedResourcesCleanupOptions {
   readonly volumes: boolean;
   /** Restrict ownership-inventory cleanup to these app identities at a shared root. */
   readonly appIds?: ReadonlyArray<AppId>;
   readonly purgeCaches?: boolean;
-  readonly removeState?: boolean;
 }
 
 export type RuntimeProviderShape = RuntimeProvider["Service"];

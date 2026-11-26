@@ -2,6 +2,7 @@ import { expect, spyOn, test } from "bun:test";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import type { AppPlan } from "@lando/sdk/schema";
 import { BuildOrchestrator, RuntimeProviderRegistry } from "@lando/sdk/services";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Deferred, Effect, Exit, Fiber, Scope } from "effect";
 import * as composition from "../../src/composition.ts";
 import { restartApp } from "../../src/operations/restart.ts";
@@ -149,14 +150,17 @@ for (const outcome of ["success", "failure", "interrupted"] as const) {
                 return value;
               }),
           }),
-          Effect.provideService(RuntimeProviderRegistry, {
-            ...harness.runtimeProviderRegistry,
-            select: () =>
-              Effect.succeed({
-                ...provider,
-                capabilities: { ...provider.capabilities, agentSocket: { delivery: "volume-relay" } },
-              }),
-          }),
+          Effect.provideService(
+            RuntimeProviderRegistry,
+            makeTestRuntimeProviderRegistry({
+              ...harness.runtimeProviderRegistry,
+              select: () =>
+                Effect.succeed({
+                  ...provider,
+                  capabilities: { ...provider.capabilities, agentSocket: { delivery: "volume-relay" } },
+                }),
+            }),
+          ),
           Effect.provide(harness.layer),
         ),
       );

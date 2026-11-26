@@ -95,7 +95,7 @@ test("blocks failed descendants while independent app siblings continue", async 
       ["web:app:prepare", "Build step web:app:prepare for service web exited with code 7."],
       [
         "web:app:install",
-        "Build step web:app:install for service web did not run: blocked by web:app:prepare.",
+        "Build step web:app:install for service web did not run: blocked by Build web (1 of 2).",
       ],
     ]);
     // A blocked step never dispatches, so neither its error nor its start advertises a transcript.
@@ -110,7 +110,23 @@ test("blocks failed descendants while independent app siblings continue", async 
         .filter((event) => event._tag === "build-step-skip")
         .map((event) => [event.serviceName, event.reason, event.cached]),
     ).toContainEqual([ServiceName.make("web"), "phase-aborted", false]);
-    expect(result.events.filter((event) => event._tag === "task.fail")).toHaveLength(2);
+    // Rows for a service's several steps are told apart by position, never by step id.
+    expect(result.events.find((event) => event._tag === "task.tree.start")).toMatchObject({
+      children: [
+        { id: "web:app:prepare", label: "Build web (1 of 2)" },
+        { id: "web:app:install", label: "Build web (2 of 2)" },
+        { id: "node:app:install", label: "Build node" },
+      ],
+    });
+    expect(
+      result.events.flatMap((event) => (event._tag === "task.fail" ? [[event.taskId, event.summary]] : [])),
+    ).toEqual([
+      ["web:app:prepare", "web (1 of 2) failed"],
+      ["web:app:install", "web (2 of 2) did not run: blocked by Build web (1 of 2)"],
+    ]);
+    expect(result.events.flatMap((event) => (event._tag === "task.complete" ? [event.summary] : []))).toEqual(
+      ["Built node"],
+    );
     expect(result.events.find((event) => event._tag === "task.tree.complete")).toMatchObject({
       succeeded: 1,
       failed: 2,

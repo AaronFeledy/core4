@@ -1,6 +1,5 @@
 import { expect, test } from "bun:test";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
-import { MessageWarnEvent } from "@lando/sdk/events";
 import {
   type AppPlan,
   type DatabaseConnection,
@@ -10,16 +9,10 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import type { CommandSpec, ExecChunk } from "@lando/sdk/services";
-import { EnvironmentValueResolver, EventService } from "@lando/sdk/services";
+import { EnvironmentValueResolver } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { Deferred, Effect, Fiber, Layer, Logger, References, Schema, Stream } from "effect";
+import { Deferred, Effect, Fiber, Layer, Stream } from "effect";
 import { TestClock } from "effect/testing";
-import { CommandWarnings, makeCommandWarnings } from "../../src/landofile/command-warnings.ts";
-import {
-  publishDatabaseCredentialWarnings,
-  publishDatabaseCredentialWarningsSafely,
-  selectDatabaseCredentialWarnings,
-} from "../../src/operations/database-credential-warnings.ts";
 import {
   type DatabaseCredentialCheckInput,
   type DatabaseCredentialOutcome,
@@ -28,7 +21,7 @@ import {
 } from "../../src/operations/database-credentials.ts";
 import { failReadiness } from "../../src/operations/service-readiness-error.ts";
 import * as Resolver from "../../src/services/environment-value-resolver.ts";
-import { EventPublicationObserver, layer as eventLayer } from "../../src/services/event-service.ts";
+import { layer as eventLayer } from "../../src/services/event-service.ts";
 import * as Secrets from "../../src/services/secret-store.ts";
 import { plan } from "./start-progress-topology-support.ts";
 
@@ -166,14 +159,13 @@ test("skips a database service that did not start", async () => {
   expect(fake.calls).toEqual([]);
 });
 
-test("accepts the configured credentials without a warning", async () => {
+test("accepts the configured credentials", async () => {
   // Given
   const fake = fakeProvider(accepted);
   // When
   const outcomes = await run(check(fake.provider, { plan: withDatabase(service(mariadbConnection())) }));
   // Then
   expect(outcomes.filter((outcome) => outcome.login === "app")).toMatchObject([{ state: "accepted" }]);
-  expect(selectDatabaseCredentialWarnings(outcomes)).toEqual([]);
 });
 
 test("runs exactly one check per login for a MariaDB service", async () => {
@@ -184,7 +176,7 @@ test("runs exactly one check per login for a MariaDB service", async () => {
   expect(fake.calls[1]?.env?.MYSQL_PWD).toBe("rootpass");
 });
 
-test("warns for a rejected app login and names changed descriptors without values", async () => {
+test("observes a rejected app login and names changed descriptors without values", async () => {
   // Given: the running app was applied with a different password.
   const fake = fakeProvider((spec) =>
     spec.env?.MYSQL_PWD === "rootpass" ? accepted() : rejected("mariadb"),
@@ -197,21 +189,20 @@ test("warns for a rejected app login and names changed descriptors without value
       previousPlan: withDatabase(service(mariadbConnection({ password: "original" }))),
     }),
   );
-  const warnings = selectDatabaseCredentialWarnings(outcomes);
   // Then
-  expect(warnings).toHaveLength(1);
-  expect(warnings[0]).toMatchObject({
-    code: "LANDO_DATABASE_CREDENTIALS_REJECTED",
-    context: { service: "db", family: "mariadb", login: "app", changedMembers: "password" },
+  expect(outcomes.find((outcome) => outcome.login === "app")).toMatchObject({
+    state: "rejected",
+    service: "db",
+    family: "mariadb",
+    changedMembers: ["password"],
   });
-  const serialized = JSON.stringify(warnings);
+  const serialized = JSON.stringify(outcomes);
   expect(serialized).not.toContain("sw0rdfish");
   expect(serialized).not.toContain("original");
   expect(serialized).not.toContain("rootpass");
-  expect(serialized).toContain("docs.lando.dev/guides/services/mariadb");
 });
 
-test("warns for a rejected administrator login when the app login still works", async () => {
+test("observes a rejected administrator login when the app login still works", async () => {
   const fake = fakeProvider((spec) =>
     spec.env?.MYSQL_PWD === "new-root" ? rejected("mariadb") : accepted(),
   );
@@ -221,27 +212,23 @@ test("warns for a rejected administrator login when the app login still works", 
       previousPlan: withDatabase(service(mariadbConnection())),
     }),
   );
-  const warnings = selectDatabaseCredentialWarnings(outcomes);
-  expect(warnings).toMatchObject([
-    {
-      code: "LANDO_DATABASE_CREDENTIALS_REJECTED",
-      context: { login: "root", changedMembers: "rootPassword" },
-    },
-  ]);
+  expect(outcomes.find((outcome) => outcome.login === "root")).toMatchObject({
+    state: "rejected",
+    changedMembers: ["rootPassword"],
+  });
+  expect(outcomes.find((outcome) => outcome.login === "app")?.state).toBe("accepted");
 });
 
-test("reports a missing database with its own warning", async () => {
+test("distinguishes a missing database from a rejected login", async () => {
   const fake = fakeProvider(() => [
     stderr("ERROR 1044 (42000): Access denied for user 'lando'@'%' to database 'missingdb'\n"),
     { exitCode: 1 },
   ]);
   const outcomes = await run(check(fake.provider, { plan: withDatabase(service(mariadbConnection())) }));
-  expect(selectDatabaseCredentialWarnings(outcomes)).toMatchObject([
-    { code: "LANDO_DATABASE_MISSING", context: { service: "db", login: "app" } },
-  ]);
+  expect(outcomes.find((outcome) => outcome.login === "app")?.state).toBe("database-missing");
 });
 
-test("keeps a missing client unverified and silent", async () => {
+test("keeps a missing client unverified", async () => {
   const fake = fakeProvider(() => [
     stderr(
       "Error: crun: executable file `mariadb` not found in $PATH: No such file or directory: OCI runtime attempted to invoke a command that was not found\n",
@@ -250,7 +237,6 @@ test("keeps a missing client unverified and silent", async () => {
   ]);
   const outcomes = await run(check(fake.provider, { plan: withDatabase(service(mariadbConnection())) }));
   expect(outcomes.every((outcome) => outcome.state === "unverified")).toBe(true);
-  expect(selectDatabaseCredentialWarnings(outcomes)).toEqual([]);
 });
 
 test("sends the resolved secret the session holds, not the descriptor", async () => {
@@ -304,43 +290,6 @@ test("registers the resolved credential for redaction before running the client"
   expect(values().substring).toContain("resolved-app");
 });
 
-test("records one machine warning and prints it once in human output", async () => {
-  for (const machineOutput of [true, false]) {
-    // Given
-    const warnings = makeCommandWarnings(machineOutput);
-    const fake = fakeProvider((spec) =>
-      spec.env?.MYSQL_PWD === "rootpass" ? accepted() : rejected("mariadb"),
-    );
-    // When
-    const result = await Effect.runPromise(
-      Effect.gen(function* () {
-        const session = yield* (yield* EnvironmentValueResolver).openSession();
-        yield* publishDatabaseCredentialWarnings({
-          provider: fake.provider,
-          plan: withDatabase(service(mariadbConnection())),
-          services: [{ name: "db", state: "ready" }],
-          session,
-        });
-        const events = yield* EventService;
-        return { warnings: yield* warnings.list, human: yield* events.query("message.warn") };
-      }).pipe(
-        Effect.scoped,
-        Effect.provideService(CommandWarnings, warnings),
-        Effect.provideService(EventPublicationObserver, (event) => {
-          if (!machineOutput || !Schema.is(MessageWarnEvent)(event)) return Effect.void;
-          return warnings.add({ code: "LANDO_MESSAGE_WARN", message: event.body });
-        }),
-        Effect.provide(baseLayer()),
-      ),
-    );
-    // Then
-    expect(
-      result.warnings.filter((warning) => warning.code === "LANDO_DATABASE_CREDENTIALS_REJECTED"),
-    ).toHaveLength(1);
-    expect(result.human).toHaveLength(machineOutput ? 0 : 1);
-  }
-});
-
 test("a hanging client expires its budget as unverified, never rejected", async () => {
   // Given: a stream that never completes.
   const hanging = { execStream: () => Stream.never };
@@ -359,7 +308,6 @@ test("a hanging client expires its budget as unverified, never rejected", async 
   );
   // Then: the per-check timeout expires as unverified and never becomes a credential claim.
   expect(outcomes.every((outcome) => outcome.state === "unverified")).toBe(true);
-  expect(selectDatabaseCredentialWarnings(outcomes)).toEqual([]);
 });
 
 test("compares credential descriptors only", () => {
@@ -390,48 +338,8 @@ test.each([
     // Then: redaction rewrote the evidence, not the verdict.
     expect(app).toMatchObject({ state: "rejected" });
     expect(app?.detail ?? "").not.toContain(password);
-    expect(selectDatabaseCredentialWarnings(outcomes)).toMatchObject([
-      { code: "LANDO_DATABASE_CREDENTIALS_REJECTED", context: { family, login: "app" } },
-    ]);
   },
 );
-
-test("logs a failed warning publish at warning level without failing the operation", async () => {
-  // Given: the warning sink itself is broken.
-  const logs: Array<{ readonly level: string; readonly message: string }> = [];
-  const logger = Logger.make<unknown, void>(({ message, logLevel }) => {
-    logs.push({ level: String(logLevel), message: String(message) });
-  });
-  const fake = fakeProvider(() => rejected("mariadb"));
-  const brokenWarnings = {
-    ...makeCommandWarnings(false),
-    add: () => Effect.die("warning sink unavailable"),
-  };
-  // When
-  const completed = await Effect.runPromise(
-    Effect.gen(function* () {
-      const session = yield* (yield* EnvironmentValueResolver).openSession();
-      yield* publishDatabaseCredentialWarningsSafely({
-        provider: fake.provider,
-        plan: withDatabase(service(mariadbConnection())),
-        services: [{ name: "db", state: "ready" }],
-        session,
-      });
-      return "completed";
-    }).pipe(
-      Effect.scoped,
-      Effect.provideService(CommandWarnings, brokenWarnings),
-      Effect.provide(baseLayer()),
-      Effect.provideService(References.CurrentLoggers, new Set([logger])),
-    ),
-  );
-  // Then: the start is unaffected and the swallow left a warning-level record.
-  expect(completed).toBe("completed");
-  expect(logs.map((entry) => entry.level.toLowerCase())).toContain("warn");
-  expect(logs.map((entry) => entry.message).join("\n")).toContain(
-    "Database credential warnings could not be published",
-  );
-});
 
 test("a SQL Server readiness failure tail gains credential remediation without replacing its reason", async () => {
   // Given: SQL Server's startup launcher exits after repeated 18456 logins.
@@ -476,7 +384,8 @@ test("a SQL Server readiness failure tail gains credential remediation without r
   );
   // Then
   expect(error).toMatchObject({ _tag: "ServiceNotReadyError", reason: "not-running" });
-  expect(error.remediation).toContain("Restore the previous creds values");
+  expect(error.remediation).toContain("lando db:creds:apply --service db");
+  expect(error.remediation).not.toContain("<svc>");
   expect(error.remediation).toContain("guides/services/mssql");
 });
 
@@ -520,7 +429,7 @@ test("classifies the raw log tail before redaction removes a password-shaped sig
     ).pipe(Effect.provideService(RedactionService, redaction)),
   );
   // Then: the verdict comes from the raw bytes, while only the redacted tail is retained.
-  expect(error.remediation).toContain("Restore the previous creds values");
+  expect(error.remediation).toContain("lando db:creds:apply");
   expect(error.remediation).toContain("guides/services/mssql");
   expect(error.logTail?.lines.join("\n")).not.toContain("Login");
 });
@@ -561,7 +470,7 @@ test("an unobserved exit code adds no credential remediation to a readiness fail
     ),
   );
   // Then: without an exit status the tail is not classified as a credential rejection.
-  expect(error.remediation).not.toContain("Restore the previous creds values");
+  expect(error.remediation).not.toContain("lando db:creds:apply");
   expect(error.remediation).toContain("lando logs");
 });
 
@@ -624,7 +533,6 @@ test("an app-wide budget marks every unfinished login unverified, never rejected
     ["root", "unverified"],
   ]);
   expect(outcomes[0]?.detail).toContain("budget expired");
-  expect(selectDatabaseCredentialWarnings(outcomes)).toEqual([]);
 });
 
 test("an expiring app-wide budget keeps a rejection another login already proved", async () => {
@@ -652,7 +560,4 @@ test("an expiring app-wide budget keeps a rejection another login already proved
     state: "unverified",
     detail: expect.stringContaining("budget expired"),
   });
-  expect(selectDatabaseCredentialWarnings(outcomes)).toMatchObject([
-    { code: "LANDO_DATABASE_CREDENTIALS_REJECTED", context: { login: "app" } },
-  ]);
 });

@@ -13,7 +13,7 @@ import { makeTestStateStore } from "../../src/testing/state-store.ts";
 import { makeHarness, plan } from "./start-progress-topology-support.ts";
 
 for (const operation of ["stop", "destroy"] as const) {
-  test(`${operation} removes the retained owned network after a failed apply`, async () => {
+  test(`${operation} ${operation === "stop" ? "keeps" : "removes"} the retained owned network after a failed apply`, async () => {
     // Given a failed first apply with success-only applied state.
     const plannedApp: AppPlan = {
       ...plan,
@@ -88,9 +88,10 @@ for (const operation of ["stop", "destroy"] as const) {
       ).pipe(Effect.provide(harness.layer)),
     );
 
-    // Then network-only cleanup is observable work, not an unchanged result.
-    expect(networkExists).toBe(false);
-    expect(result).toBe(operation === "stop" ? "stopped" : "destroyed");
+    // Then destroy's network-only cleanup is observable work; stop removes nothing, so the network
+    // stays (resource-ownership-teardown.test.ts pins stop's outcome for an inventory-only root).
+    expect(networkExists).toBe(operation === "stop");
+    if (operation === "destroy") expect(result).toBe("destroyed");
   });
 }
 
@@ -122,14 +123,11 @@ test("internal selected stop preserves unrelated ownership hints", async () => {
   });
   // When
   await Effect.runPromise(
-    haltAppRuntime(
-      {},
-      {
-        plan: plannedApp,
-        root: plannedApp.root,
-        app: { kind: "user", id: plannedApp.id, root: plannedApp.root },
-      },
-    ).pipe(Effect.provide(harness.layer)),
+    haltAppRuntime({
+      plan: plannedApp,
+      root: plannedApp.root,
+      app: { kind: "user", id: plannedApp.id, root: plannedApp.root },
+    }).pipe(Effect.provide(harness.layer)),
   );
   // Then
   expect(cleanups).toBe(0);
