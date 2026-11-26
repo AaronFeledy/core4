@@ -1,3 +1,4 @@
+import * as BunFileSystem from "@lando/engine/services/file-system";
 import type {
   ConfigService,
   PathsService,
@@ -23,6 +24,7 @@ import { DefaultMcpDoctorLayer, mcpDoctor } from "./doctor-mcp";
 import { missingAppRootsDoctor } from "./doctor-missing-app-roots";
 import { networkTrustDoctorStatus } from "./doctor-network-trust";
 import { orphanedSnapshotsDoctor } from "./doctor-orphaned-snapshots";
+import { rootOwnershipDoctor } from "./doctor-root-ownership";
 import { stateCompatibilityDoctor } from "./doctor-state-compatibility";
 import { subsystemDoctor } from "./doctor-subsystems";
 import { appVersionConstraintsForReport } from "./doctor-version-constraint";
@@ -124,6 +126,14 @@ export const doctorSections = (input: {
     configSection({
       id: "accelerated-starts",
       run: acceleratedStartsDoctor(redact).pipe(Effect.map((checks): DoctorSectionResult => ({ checks }))),
+    }),
+    configSection({
+      id: "lando-roots",
+      // The config tier provides roots but not file access, so the producer brings its own.
+      run: rootOwnershipDoctor(redact).pipe(
+        Effect.provide(BunFileSystem.layer),
+        Effect.map((checks): DoctorSectionResult => ({ checks })),
+      ),
     }),
     configSection({
       id: "state-compatibility",

@@ -66,7 +66,18 @@ export class ShellProfileIntegrationError extends Schema.TaggedError<ShellProfil
   "ShellProfileIntegrationError",
   {
     message: Schema.String,
+    path: Schema.String,
     stderr: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
+  },
+) {}
+
+/** Lando's roots hold root-owned entries, so setup would fail later with generic write errors. */
+export class RootOwnedLandoFilesError extends Schema.TaggedError<RootOwnedLandoFilesError>()(
+  "RootOwnedLandoFilesError",
+  {
+    message: Schema.String,
+    paths: Schema.Array(Schema.String),
     remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}

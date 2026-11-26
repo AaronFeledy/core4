@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { makeTestDownloader, makeTestInteractionService } from "@lando/core/testing";
 import { GlobalConfigSources } from "@lando/engine/services/config";
+import * as BunFileSystem from "@lando/engine/services/file-system";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport";
 import { layerWith as httpClientLayerWith } from "@lando/http-client/live";
 import { makeLandoPaths } from "@lando/paths";
@@ -93,6 +94,7 @@ const makeSetupLayer = async (sink: EventSink, stateDir: string) => {
   });
   return Layer.mergeAll(
     Layer.succeed(PathsService, makeLandoPaths()),
+    BunFileSystem.layer,
     Layer.succeed(RuntimeProviderRegistry, registry),
     makeEventServiceLayer(sink),
     makeConfigServiceLayer(),
@@ -237,6 +239,7 @@ describe("meta:setup task tree progress", () => {
       });
       const layer = Layer.mergeAll(
         Layer.succeed(PathsService, makeLandoPaths()),
+        BunFileSystem.layer,
         Layer.succeed(RuntimeProviderRegistry, registry),
         makeEventServiceLayer(sink),
         makeConfigServiceLayer(),

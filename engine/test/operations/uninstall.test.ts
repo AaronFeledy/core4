@@ -15,19 +15,21 @@ import { join } from "node:path";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Effect } from "effect";
 import {
-  CGROUPS_DELEGATE_CONF_CONTENT,
   LANDO_SHELLENV_BEGIN,
   LANDO_SHELLENV_END,
+  defaultPosixShellProfilePath,
+  stripLandoShellenvBlock,
+} from "../../src/host/shell-profile.ts";
+import {
+  CGROUPS_DELEGATE_CONF_CONTENT,
   type RemoveRuntimeDirDeps,
   UninstallRuntimeDirError,
   buildUninstallPlan,
   chmodTreeUserWritable,
-  defaultPosixShellProfilePath,
   defaultRemoveRuntimeDir,
   formatUninstallRuntimeDirStepError,
   leftoverUninstallRuntimeDirError,
   managedPodmanUnshareRmInvocation,
-  stripLandoShellenvBlock,
   uninstall as uninstallEffect,
   uninstallRuntimeDirRemediation,
 } from "../../src/operations/uninstall.ts";

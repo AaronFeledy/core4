@@ -1,3 +1,4 @@
+import { scanRootOwnership } from "@lando/engine/host/root-ownership";
 import { config as writeConfig } from "@lando/engine/operations/config";
 import {
   preflightGlobalProviderSwitch,
@@ -17,9 +18,10 @@ import { AppPlacementError } from "@lando/sdk/errors";
 import {
   ConfigService,
   type Downloader,
+  type FileSystem,
   GlobalAppService,
   InteractionService,
-  type PathsService,
+  PathsService,
   PrivilegeService,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
@@ -53,11 +55,36 @@ import {
 import { runProviderSetupStep } from "./setup-provider-step";
 import { renderSetupResult } from "./setup-render";
 import { runProxySetupStep, runShellProfileSetupStep, runShellServiceSetupStep } from "./setup-service-steps";
-import { SetupStepFailedError, makeSetupReadinessRecorder, runFileSyncSetupStep } from "./setup-steps";
+import {
+  RootOwnedLandoFilesError,
+  SetupStepFailedError,
+  makeSetupReadinessRecorder,
+  runFileSyncSetupStep,
+} from "./setup-steps";
 
 export { SetupResultSchema } from "./setup-inputs";
 export { maybeSelectSetupProvider } from "./setup-provider-selection";
-export { SetupStepFailedError, ShellProfileIntegrationError } from "./setup-steps";
+export { RootOwnedLandoFilesError, SetupStepFailedError, ShellProfileIntegrationError } from "./setup-steps";
+
+/**
+ * Root-owned files under Lando's roots (usually from running lando with sudo) break later writes
+ * with generic IO errors. Setup checks first and names the fix; it never repairs them as root.
+ */
+const refuseRootOwnedLandoFiles = Effect.fnUntraced(function* () {
+  const uid = process.getuid?.();
+  const gid = process.getgid?.();
+  if (uid === undefined || gid === undefined) return;
+  const paths = yield* PathsService;
+  const { rootOwned } = yield* scanRootOwnership({ paths, uid, gid });
+  if (rootOwned.length === 0) return;
+  return yield* Effect.fail(
+    new RootOwnedLandoFilesError({
+      message: `Lando's files include ${rootOwned.length} owned by root, usually left by running lando with sudo, so setup cannot write them.`,
+      paths: rootOwned.map((entry) => entry.path),
+      remediation: `Give them back to your user, then rerun \`lando setup\` without sudo (Lando asks for administrator access itself when a step needs it):\n${rootOwned.map((entry) => entry.remediation).join("\n")}`,
+    }),
+  );
+});
 
 export const setupSpec: LandoCommandSpec<
   SetupResult,
@@ -69,6 +96,7 @@ export const setupSpec: LandoCommandSpec<
   | HttpClient.HttpClient
   | Downloader
   | InteractionService
+  | FileSystem
 > = {
   resultSchema: SetupResultSchema,
   id: "meta:setup",
@@ -107,6 +135,7 @@ export const setupSpec: LandoCommandSpec<
     const userDataRootRaw = globalConfig.userDataRoot;
     const userDataRoot =
       typeof userDataRootRaw === "string" && userDataRootRaw.length > 0 ? userDataRootRaw : undefined;
+    yield* refuseRootOwnedLandoFiles();
     const redaction = yield* Effect.serviceOption(RedactionService);
     const recorder = makeSetupReadinessRecorder(
       userDataRoot,
@@ -193,8 +222,8 @@ export const setupSpec: LandoCommandSpec<
     yield* runProxySetupStep(input, recorder, selectedProviderId).pipe(withHostProvider);
     yield* runShellServiceSetupStep(input, recorder, selectedProviderId).pipe(withHostProvider);
 
-    if (privilege._tag === "Some" && userDataRoot !== undefined) {
-      yield* runShellProfileSetupStep(input, privilege.value, userDataRoot, recorder);
+    if (userDataRoot !== undefined) {
+      yield* runShellProfileSetupStep(input, userDataRoot, recorder);
     }
 
     const fileSyncStatus = yield* runFileSyncSetupStep({

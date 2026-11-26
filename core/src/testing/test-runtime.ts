@@ -110,6 +110,7 @@ export interface FileSystemCall {
     | "read"
     | "readText"
     | "write"
+    | "append"
     | "writeAtomic"
     | "exists"
     | "stat"
@@ -531,6 +532,12 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
         calls.fileSystem.push({ operation: "write", path, content: text });
         directories.delete(path);
         files.set(path, text);
+      }),
+    append: (path: string, content: string | Uint8Array) =>
+      Effect.sync(() => {
+        const text = textFromContent(content);
+        calls.fileSystem.push({ operation: "append", path, content: text });
+        files.set(path, `${files.get(path) ?? ""}${text}`);
       }),
     writeAtomic: (path: string, content: string | Uint8Array) =>
       Effect.sync(() => {

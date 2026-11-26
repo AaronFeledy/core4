@@ -70,5 +70,20 @@
       }
     ],
     "justification": "HelpCommandTargetDescriptor gains advertisedFormats field on all variants. The anyOf schema widened by one optional field; existing consumers that do not read advertisedFormats are unaffected."
+  },
+  {
+    "fingerprint": "sha256:089adac7aedb2d084710bb642b7d4ba97ad6fd782730e4dbb066376db9eb46d9",
+    "changeKind": "enum-widened",
+    "locations": [
+      {
+        "surface": "command:meta:doctor",
+        "path": "$.checks.items.section"
+      },
+      {
+        "surface": "command:meta:doctor",
+        "path": "$.skipped.items.section"
+      }
+    ],
+    "justification": "Doctor gains a lando-roots section that reports root-owned files under Lando's own roots. Existing section ids are unchanged; consumers that filter on known sections keep working and can ignore the new id."
   }
 ]

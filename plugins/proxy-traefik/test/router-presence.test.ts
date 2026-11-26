@@ -210,6 +210,7 @@ test.each([false, true])(
       readText: read,
       readFile: read,
       write,
+      append: write,
       writeAtomic: write,
       writeFile: write,
       exists: (path) => Effect.succeed(files.has(path) || path.endsWith("/dynamic")),
