@@ -376,7 +376,7 @@ services:
 
 ### Check what a service mounts
 
-`lando info --format=json` lists each service's mounts under `services[].mounts` and its application source mount under `services[].appMount`. Ordinary `info` reads the one container inspection it already performs per service; it does not query images or volumes, so it reports evidence rather than guesses:
+`lando info --format=json` lists each service's mounts under `services[].mounts` and its application source mount under `services[].appMount`. Ordinary `info` builds these rows from the one container inspection it already performs per service, not from image or volume queries, so it reports evidence rather than guesses:
 
 | Field | Values | Meaning |
 | --- | --- | --- |
@@ -442,6 +442,12 @@ that was never started reports `unchanged` and exits 0, even when its Landofile
 does not validate. If a plain `destroy` kept your named data volumes, a later
 `lando destroy -y --volumes` still removes them and tells you what it removed.
 
+After a plain `destroy`, the app behaves like one that never started, apart from
+the named volumes it kept. `lando info` lists each service as `stopped` and still
+shows those volumes under `services[].mounts` with `lifetime: retained`.
+`lando logs` succeeds with no lines, and `lando stop -s <service>` reports
+`unchanged`.
+
 The next commands affect the whole host, not just this tutorial app. Poweroff also removes scratch apps and their disposable data unless you pass `--keep-scratch`. Run it only when you mean to stop all targeted apps:
 
 ```sh
@@ -501,6 +507,14 @@ it stopped. Results stay on stdout; progress goes to stderr:
       </Step>
       <Step name="restore-stopped-service">
         <Verify command="lando start --format=json" expect={{ stdout: { regex: "\"name\":\\s*\"app\"(?:(?!\"name\")[\\s\\S])*?\"action\":\\s*\"kept\"" } }} />
+      </Step>
+    </Hidden>
+    <Hidden reason="A plain destroy keeps data volumes, and the app then behaves like one that never started">
+      <Step name="destroy-keeps-data">
+        <Verify command="lando destroy -y --format=json" expect={{ stdout: { regex: "\"outcome\":\\s*\"destroyed\"[\\s\\S]*\"dataVolumesRemoved\":\\s*false" } }} />
+        <Verify command="lando info --format=json" expect={{ stdout: { regex: "\"service\":\\s*\"db\"[^}]*\"status\":\\s*\"stopped\"(?:(?!\"service\":)[\\s\\S])*?\"lifetime\":\\s*\"retained\"" } }} />
+        <Verify command="lando logs --format=json" expect={{ stdout: { regex: "\"ok\":\\s*true[\\s\\S]*\"lines\":\\s*\\[\\s*\\]" } }} />
+        <Verify command="lando stop -s db --format=json" expect={{ stdout: { regex: "\"outcome\":\\s*\"unchanged\"" } }} />
       </Step>
     </Hidden>
     <Step name="cleanup">
