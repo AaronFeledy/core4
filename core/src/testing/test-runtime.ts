@@ -615,6 +615,7 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
   });
 
   const privilegeService = PrivilegeService.of({
+    ensureCredentials: () => Effect.void,
     elevate: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
   });
 

@@ -149,7 +149,7 @@
       "id:string",
       "issueCert:(spec:CertificateSpec) => Effect.Effect<IssuedCertificate,CaError>",
       "root:Effect.Effect<CaRootCertificate,CaError>",
-      "setup:(options:CaSetupOptions) => Effect.Effect<CaSetupReport,CaError>",
+      "setup:(options:CaSetupOptions) => Effect.Effect<CaSetupReport,CaError|PrivilegeError>",
       "trustStores:Effect.Effect<ReadonlyArray<TrustStoreStatus>,CaError>"
     ],
     "CommandFramework": ["id:string"],
@@ -359,7 +359,10 @@
       "trustPlugin:(name:string) => Effect.Effect<void,ConfigError>",
       "untrustPlugin:(name:string) => Effect.Effect<void,ConfigError>"
     ],
-    "PrivilegeService": ["elevate:(command:ReadonlyArray<string>) => Effect.Effect<ProcessResult,never>"],
+    "PrivilegeService": [
+      "elevate:(command:ReadonlyArray<string>) => Effect.Effect<ProcessResult,PrivilegeError>",
+      "ensureCredentials:(purpose:string) => Effect.Effect<void,PrivilegeError>"
+    ],
     "ProcessRunner": [
       "run:(options:ProcessSpawnOptions) => Effect.Effect<ProcessResult,ProcessExecError|ProcessTimeoutError>",
       "stream:(options:ProcessSpawnOptions) => Stream.Stream<ProcessStreamChunk,ProcessExecError|ProcessTimeoutError>",
@@ -829,6 +832,9 @@
       "PluginManifestError",
       "PluginPackageOperationError",
       "PortCollisionError",
+      "PrivilegeAuthorizationFailedError",
+      "PrivilegeCredentialsRequiredError",
+      "PrivilegeUnavailableError",
       "ProcessExecError",
       "ProcessTimeoutError",
       "PromptValidationError",

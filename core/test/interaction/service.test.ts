@@ -182,6 +182,23 @@ describe("InteractionServiceLive — answer-source precedence", () => {
     await expect(Effect.runPromise(service.isInteractive)).resolves.toBe(true);
   });
 
+  test.each([
+    ["auto", true],
+    ["interactive", true],
+    ["non-interactive", false],
+  ] as const)(
+    "isInteractive with terminals follows the %s invocation mode",
+    async (defaultMode, expected) => {
+      // Given real terminals, as in a library host or an MCP session on a developer machine.
+      const tty = Object.assign(new Readable({ read() {} }), { isTTY: true });
+      const stderr = Object.assign(capturingWritable().stream, { isTTY: true });
+      const service = makeInteractionService({ stdin: tty, stderr, defaultMode });
+
+      // Then the answer matches what a prompt would do in that mode.
+      await expect(Effect.runPromise(service.isInteractive)).resolves.toBe(expected);
+    },
+  );
+
   for (const inputTTY of [true, false]) {
     for (const stderrTTY of [true, false]) {
       for (const stdoutTTY of [true, false]) {

@@ -87,6 +87,7 @@ const unusedRunner = {
 };
 
 const unusedPrivilege = {
+  ensureCredentials: () => Effect.void,
   elevate: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
 };
 
@@ -305,6 +306,7 @@ describe("persistPortAcquisition reuse", () => {
           readText: (path) => Effect.succeed(store.files.get(path) ?? ""),
           processRunner: unusedRunner,
           privilege: {
+            ensureCredentials: () => Effect.void,
             elevate: (command) =>
               Effect.sync(() => {
                 calls.push(command[2] ?? "");
@@ -1082,6 +1084,7 @@ describe("persistPortAcquisition helper-owned preferred ports", () => {
                 }),
             },
             privilege: {
+              ensureCredentials: () => Effect.void,
               elevate: (command) =>
                 Effect.sync(() => {
                   commands.push([...command]);
@@ -1196,6 +1199,7 @@ describe("persistPortAcquisition helper-owned preferred ports", () => {
                 }),
             },
             privilege: {
+              ensureCredentials: () => Effect.void,
               elevate: (command) =>
                 Effect.sync(() => {
                   elevations.push(command);
@@ -1251,6 +1255,7 @@ describe("persistPortAcquisition helper-owned preferred ports", () => {
             run: () => Effect.succeed({ exitCode: 1, stdout: "", stderr: "refused" }),
           },
           privilege: {
+            ensureCredentials: () => Effect.void,
             elevate: (command) =>
               Effect.sync(() => {
                 elevations.push(command);
@@ -1442,6 +1447,7 @@ describe("persistPortAcquisition EACCES helper install", () => {
               }),
           },
           privilege: {
+            ensureCredentials: () => Effect.void,
             elevate: () =>
               Effect.sync(() => {
                 mutations.push("elevate");

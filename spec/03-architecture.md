@@ -31,8 +31,8 @@ Levels form a chain `none` → `minimal` → `plugins` → `commands`; `tooling`
 | Level | Meaning | Service membership |
 |---|---|---|
 | `none` | Command-base depth with no prebuilt runtime; dispatcher-routed commands receive the internal runtime-factory and captured-config-source ports but no decoded configuration or minimal runtime; the static fast-path subset skips dispatcher and Effect entirely and constructs no services | none |
-| `minimal` | Host configuration and safe local primitives | eager: `PathsService`, `ConfigService`, `FileSystem`, `ProcessRunner`, `EmbeddedAssetService`, `CacheService`, `StateStore`, `EventService`, `DeprecationService`, `RedactionService`, `TemplateEngineRegistry`, `TemplateRenderer`, `HttpClient`, `Downloader`; lazy: `Logger`, `Renderer`, `Telemetry`, `ShellRunner`, `InteractionService`, `ManagedFileService`, `ExecutionSessionService` |
-| `plugins` | Plugin discovery, manifest validation, and contribution graph | `minimal` + eager `PluginRegistry`, `ConfigTranslatorRegistry`, `DoctorService`; lazy `PrivilegeService`; plugin implementations register here |
+| `minimal` | Host configuration and safe local primitives | eager: `PathsService`, `ConfigService`, `FileSystem`, `ProcessRunner`, `PrivilegeService`, `EmbeddedAssetService`, `CacheService`, `StateStore`, `EventService`, `DeprecationService`, `RedactionService`, `TemplateEngineRegistry`, `TemplateRenderer`, `HttpClient`, `Downloader`; lazy: `Logger`, `Renderer`, `Telemetry`, `ShellRunner`, `InteractionService`, `ManagedFileService`, `ExecutionSessionService` |
+| `plugins` | Plugin discovery, manifest validation, and contribution graph | `minimal` + eager `PluginRegistry`, `ConfigTranslatorRegistry`, `DoctorService`; plugin implementations register here |
 | `commands` | Complete native command registry and command-cache refresh | `plugins` + `CommandRegistry` and `UserAppResolver` |
 | `tooling` | Command services plus cache-only `ToolingProgram` and app-plan access | `commands` + lazy selected `ToolingEngine`; no live provider or full planner |
 | `provider` | Provider selection and provider-dependent subsystems | `commands` + eager `RuntimeProviderRegistry`, engine-private `FileSyncResolver`; lazy `CertificateAuthority` and `DataMover`; `RouterService` is selected at bootstrap, where an unselectable router becomes the unavailable router (§10.2) and a selected implementation's layer-build failure is a bootstrap failure |
@@ -103,7 +103,7 @@ All services are consumed through their tags inside Effect. Core-provided does n
 | Effect `effect/http` `HttpClient` | Standard HTTP contract implemented by `@lando/http-client`, the single Lando-owned host-side network-egress boundary (§10.3.1–§10.3.2); replaces the SDK-owned HttpClient contract/tag |
 | `Downloader` | Verified artifact acquisition over `HttpClient` (§10.3.3) |
 | `DataMover` | Canonical local/volume byte movement and snapshots (§10.11); not plugin-replaceable |
-| `PrivilegeService` | Platform elevation boundary |
+| `PrivilegeService` | Platform elevation boundary: a non-mutating credential check, then elevated argv; never prompts in a non-interactive invocation (§10.8) |
 | `EmbeddedAssetService` | Unified compiled-binary and library asset access; host/test-overridable, never plugin-contributed |
 | `ContainerHelperAssets` | Resolves the static in-container helper executable for a Linux target (§17.3), extracting it under `PathsService` roots; host/test-overridable, never plugin-contributed |
 | `PathsService` | Authoritative Lando roots and derived paths (§7.5.1) |

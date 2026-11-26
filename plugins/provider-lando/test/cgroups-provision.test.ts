@@ -58,6 +58,7 @@ describe("cgroups delegation setup", () => {
   test("does not run systemctl when applying a leftover drop-in plan on a tini host", async () => {
     const commands: ReadonlyArray<string>[] = [];
     const privilege = {
+      ensureCredentials: () => Effect.void,
       elevate: (command: ReadonlyArray<string>) =>
         Effect.sync(() => {
           commands.push(command);

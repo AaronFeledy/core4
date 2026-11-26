@@ -50,6 +50,7 @@ const makePrivilege = (
   const calls: Array<ReadonlyArray<string>> = [];
   return {
     service: {
+      ensureCredentials: () => Effect.void,
       elevate: (command) =>
         Effect.sync(() => {
           calls.push([...command]);

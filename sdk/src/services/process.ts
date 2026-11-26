@@ -1,6 +1,7 @@
 import { Context, type Effect, type Stream } from "effect";
 
 import type {
+  PrivilegeError,
   ProcessExecError,
   ProcessTimeoutError,
   SecretStoreError,
@@ -160,9 +161,17 @@ export class ShellRunner extends Context.Service<
   }
 >()("@lando/core/ShellRunner") {}
 
+/**
+ * Platform elevation boundary. `ensureCredentials` makes later elevation possible without
+ * running a caller command: it may hand the terminal to the platform's own prompt in an
+ * interactive run, and never prompts otherwise. `elevate` runs one argv with administrator
+ * privilege; a nonzero exit is the command's `ProcessResult`, while failing to obtain the
+ * privilege is a `PrivilegeError`. `purpose` is human text for messages only.
+ */
 export class PrivilegeService extends Context.Service<
   PrivilegeService,
   {
-    readonly elevate: (command: ReadonlyArray<string>) => Effect.Effect<ProcessResult, never>;
+    readonly ensureCredentials: (purpose: string) => Effect.Effect<void, PrivilegeError>;
+    readonly elevate: (command: ReadonlyArray<string>) => Effect.Effect<ProcessResult, PrivilegeError>;
   }
 >()("@lando/core/PrivilegeService") {}

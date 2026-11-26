@@ -10,7 +10,7 @@ import { type Context, Effect } from "effect";
 import { type ResolvedSetupNetworkTrust, networkTrustFromResolved } from "../../commands/setup-network-trust";
 import { contributedSetupFlagsForProvider } from "./setup-command-flags";
 import { inputBooleanFlag, inputStringFlag } from "./setup-inputs";
-import { authorizeProviderSetupPlan } from "./setup-provider-authorization";
+import { authorizeProviderSetupPlan, providerSetupChangePurpose } from "./setup-provider-authorization";
 import { SYSTEM_RUNTIME_PROVIDERS, systemRuntimeUnavailableError } from "./setup-provider-selection";
 import { type SetupReadinessRecorder, runtimeServiceReadinessFor } from "./setup-steps";
 
@@ -70,6 +70,13 @@ export const runProviderSetupStep = Effect.fn("SetupCommand.runProviderSetupStep
     nonInteractive: inputBooleanFlag(input, "no-interactive"),
     interaction,
   }).pipe(Effect.tapError((cause) => recorder.recordFailure("provider", cause)));
+  // Ask for administrator access once, after consent and before the runtime download and the
+  // first privileged change, so a run that cannot get it fails before mutating anything.
+  if (approvedPlan.changes.length > 0 && privilegeOptions.privilege !== undefined) {
+    yield* privilegeOptions.privilege
+      .ensureCredentials(approvedPlan.changes.map(providerSetupChangePurpose).join(", "))
+      .pipe(Effect.tapError((cause) => recorder.recordFailure("provider", cause)));
+  }
   yield* Effect.scoped(
     provider.setup(approvedPlan, {
       ...inspectOptions,

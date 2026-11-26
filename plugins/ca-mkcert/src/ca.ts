@@ -4,10 +4,8 @@
  * `setup` provisions the pinned mkcert binary through `Downloader`, creates the
  * local root when `CAROOT` has none, and installs that root into the host trust
  * stores unless the caller opts out. mkcert elevates its own trust-store writes
- * on Unix, so elevation through `PrivilegeService` is the fallback for hosts
- * where the unelevated attempt fails; the resolved `CAROOT` is passed
- * explicitly on that retry because elevation does not preserve the invoking
- * user's environment.
+ * on Unix through its own sudo; `PrivilegeService` only confirms beforehand that
+ * sudo can be satisfied, so the downloaded binary never runs as root.
  *
  * Every trust store the authority manages (the system store, each Linux
  * browser NSS database, each Homebrew CA bundle, and the Windows store under
@@ -29,8 +27,11 @@
  * keeps no copy.
  */
 
+import { closeSync, openSync } from "node:fs";
+import { join } from "node:path";
+
 import { mapFailures } from "@lando/sdk/command-result";
-import { CaError } from "@lando/sdk/errors";
+import { CaError, type PrivilegeError } from "@lando/sdk/errors";
 import type {
   CaSetupOptions,
   CertificateAuthorityShape,
@@ -69,7 +70,19 @@ export interface MkcertCertificateAuthorityOptions {
   readonly linuxSystemBundles?: ReadonlyArray<string> | undefined;
   /** WSL interop markers and the `certutil.exe` fallback; defaults to the WSL paths. */
   readonly windowsTrustPaths?: WindowsTrustPaths | undefined;
+  /** Whether this process has a controlling terminal; defaults to opening `/dev/tty`. */
+  readonly hasControllingTerminal?: (() => boolean) | undefined;
 }
+
+const processHasControllingTerminal = (): boolean => {
+  try {
+    closeSync(openSync("/dev/tty", "r"));
+    return true;
+  } catch (cause) {
+    if (cause instanceof Error && "code" in cause && typeof cause.code === "string") return false;
+    throw cause;
+  }
+};
 
 export const makeMkcertCertificateAuthority = (
   options: MkcertCertificateAuthorityOptions,
@@ -126,28 +139,41 @@ export const makeMkcertCertificateAuthority = (
       }),
     ).pipe(Effect.provideService(Downloader, options.downloader), mapFailures(provisionError));
 
-  const trustInstallError = (result: ProcessResult): CaError =>
-    caError(
-      `mkcert could not install the local CA into the host trust store: ${failureDetail(result)}. Re-run \`lando setup\` with sufficient privileges, or run \`lando setup --skip-install-ca\` to skip host trust installation.`,
+  const hasControllingTerminal = options.hasControllingTerminal ?? processHasControllingTerminal;
+  const trustInstallError = (result: ProcessResult, caroot: string): CaError => {
+    if (platform !== "win32" && !hasControllingTerminal()) {
+      const pem = join(caroot, "rootCA.pem");
+      return caError(
+        "mkcert could not install the local CA into the host trust store because it asks sudo for the password itself, and that needs a terminal.",
+        {
+          remediation: `Run \`lando setup\` in a terminal, give this account passwordless sudo, or rerun with \`lando setup --skip-install-ca\` and trust \`${pem}\` yourself.`,
+        },
+      );
+    }
+    return caError(
+      `mkcert could not install the local CA into the host trust store: ${failureDetail(result)}. Fix the problem it reports and rerun \`lando setup\`, or run \`lando setup --skip-install-ca\` to skip host trust installation.`,
+      {
+        remediation:
+          "Fix the problem mkcert reports and rerun `lando setup`, or skip host trust with `lando setup --skip-install-ca`.",
+      },
     );
+  };
 
+  /**
+   * mkcert asks sudo for the system store itself on POSIX, so the credential check runs first:
+   * a run that cannot prompt fails before mkcert starts, and an interactive run has handed the
+   * terminal to sudo. Windows has no POSIX check; mkcert's own Security Warning handles it.
+   */
   const installTrust = Effect.fn("CertificateAuthority.installTrust")(function* (
     root: string,
     privilege: CaSetupOptions["privilege"],
-  ): Effect.fn.Return<void, CaError> {
+  ): Effect.fn.Return<void, CaError | PrivilegeError> {
+    if (platform !== "win32" && privilege !== undefined) {
+      yield* privilege.ensureCredentials("trust Lando's local certificate authority in the system store");
+    }
     // Only the system store: Lando writes the browser databases itself.
     const attempt = yield* runMkcert(["-install"], { CAROOT: root, TRUST_STORES: "system" });
-    if (attempt.exitCode === 0) return;
-    if (privilege === undefined) return yield* Effect.fail(trustInstallError(attempt));
-
-    const elevated = yield* privilege.elevate([
-      "env",
-      `CAROOT=${root}`,
-      "TRUST_STORES=system",
-      binary,
-      "-install",
-    ]);
-    if (elevated.exitCode !== 0) return yield* Effect.fail(trustInstallError(elevated));
+    if (attempt.exitCode !== 0) return yield* Effect.fail(trustInstallError(attempt, root));
   });
 
   const issueCert = makeIssueCert(currentRoot, issueInto);

@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { FileSyncEngine } from "@lando/core/services";
 import { makeRedactionService } from "@lando/redaction/service";
 import { mergeFailure } from "@lando/sdk/command-result";
+import { PrivilegeCredentialsRequiredError } from "@lando/sdk/errors";
 import { TestFileSyncEngine } from "@lando/sdk/test";
 import { Cause, Effect, Exit, Layer } from "effect";
 
@@ -202,6 +203,27 @@ describe("setup readiness recorder", () => {
           },
         ],
       });
+    } finally {
+      await rm(userDataRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("a failure that names its own fix records that fix instead of the platform hint", async () => {
+    // Given
+    const userDataRoot = await mkdtemp(join(tmpdir(), "lando-setup-own-remediation-"));
+    try {
+      const recorder = makeSetupReadinessRecorder(userDataRoot, "lando");
+      const cause = new PrivilegeCredentialsRequiredError({
+        purpose: "install uidmap",
+        message:
+          "Lando needs administrator access to install uidmap, and this run cannot ask for a password.",
+        remediation: "Run `sudo -v` in this terminal, then rerun `lando setup`.",
+      });
+      // When
+      await Effect.runPromise(recorder.recordFailure("provider", cause));
+      // Then
+      const remediation = recorder.firstFailedStep()?.remediation ?? "";
+      expect(remediation.startsWith("Run `sudo -v` in this terminal, then rerun `lando setup`.")).toBe(true);
     } finally {
       await rm(userDataRoot, { recursive: true, force: true });
     }

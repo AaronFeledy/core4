@@ -1,3 +1,4 @@
+import type { PrivilegeError } from "@lando/sdk/errors";
 import type { PrivilegeService, ProcessResult, ProcessRunner } from "@lando/sdk/services";
 import { type Context, Effect } from "effect";
 
@@ -49,6 +50,8 @@ export type SocketProxyInstallOutcome =
       readonly stderr: string;
     }
   | { readonly kind: "elevation-refused"; readonly exitCode: number; readonly stderr: string }
+  /** Lando could not obtain administrator access; nothing was changed. */
+  | { readonly kind: "privilege-unavailable"; readonly message: string; readonly remediation: string }
   | { readonly kind: "proxyd-missing" };
 
 export type SocketProxyStartOutcome =
@@ -147,6 +150,8 @@ const hopsMatchTargets = Effect.fnUntraced(function* (
   return hopTargetPattern(httpTarget).test(httpUnit) && hopTargetPattern(httpsTarget).test(httpsUnit);
 });
 
+const SOCKET_PROXY_INSTALL_PURPOSE = "install the helper that serves ports 80 and 443";
+
 const mapElevatedInstall = (elevated: ProcessResult): SocketProxyInstallOutcome => {
   if (elevated.exitCode === 0) return { kind: "installed" };
   if (elevated.exitCode === SOCKET_PROXY_EXIT_FOREIGN) return { kind: "foreign" };
@@ -213,8 +218,17 @@ export const installSocketProxy = Effect.fn("SocketProxy.installSocketProxy")(fu
       ? { priorOwnerRoot: ownership.ownerRoot }
       : {}),
   });
-  const elevated = yield* input.privilege.elevate(["/bin/sh", "-c", script]);
-  return mapElevatedInstall(elevated);
+  return yield* input.privilege.ensureCredentials(SOCKET_PROXY_INSTALL_PURPOSE).pipe(
+    Effect.andThen(input.privilege.elevate(["/bin/sh", "-c", script])),
+    Effect.map(mapElevatedInstall),
+    Effect.catch((error: PrivilegeError) =>
+      Effect.succeed<SocketProxyInstallOutcome>({
+        kind: "privilege-unavailable",
+        message: error.message,
+        remediation: error.remediation,
+      }),
+    ),
+  );
 });
 
 const controlSockets = Effect.fn("SocketProxy.controlSockets")(function* (
@@ -252,7 +266,15 @@ const controlSockets = Effect.fn("SocketProxy.controlSockets")(function* (
     .run({ cmd: "/bin/sh", args: ["-c", script] })
     .pipe(Effect.catch((error) => Effect.succeed(failedResult(1, error.message))));
   const result =
-    unelevated.exitCode === 0 ? unelevated : yield* input.privilege.elevate(["/bin/sh", "-c", script]);
+    unelevated.exitCode === 0
+      ? unelevated
+      : yield* input.privilege
+          .elevate(["/bin/sh", "-c", script])
+          .pipe(
+            Effect.catch((error: PrivilegeError) =>
+              Effect.succeed(failedResult(1, `${error.message} ${error.remediation}`)),
+            ),
+          );
   if (result.exitCode !== 0) {
     return { kind: "failed", exitCode: result.exitCode, stderr: result.stderr };
   }

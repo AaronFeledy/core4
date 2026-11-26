@@ -70,7 +70,10 @@ const withResourceSession = async <A, E>(
               select: () => Effect.succeed(provider),
             }),
           ),
-          Layer.succeed(PrivilegeService, PrivilegeService.of({ elevate: rejectMutation })),
+          Layer.succeed(
+            PrivilegeService,
+            PrivilegeService.of({ ensureCredentials: () => Effect.void, elevate: rejectMutation }),
+          ),
         ],
       },
     });

@@ -3,12 +3,13 @@ import { dirname } from "node:path";
 
 import { redactString, standaloneSecretsRedactor } from "@lando/container-runtime/redact";
 import {
+  type PrivilegeError,
   ProviderSetupPrivilegeUnavailableError,
   ProviderSetupProvisioningError,
   ProviderSetupUnsupportedHostError,
 } from "@lando/sdk/errors";
 import { type HostPlatform, ProviderId, type ProviderSetupPlan, hostPlatformFamily } from "@lando/sdk/schema";
-import type { PrivilegeService } from "@lando/sdk/services";
+import type { PrivilegeService, ProcessResult } from "@lando/sdk/services";
 import { Effect } from "effect";
 
 import {
@@ -222,15 +223,25 @@ const findNextAvailableRange = (path: string, requestedStart: number): number =>
   return Math.max(requestedStart, maxEnd);
 };
 
+const privilegeUnavailable = (change: ProviderSetupPlan["changes"][number]["_tag"], error: PrivilegeError) =>
+  new ProviderSetupPrivilegeUnavailableError({
+    providerId: PROVIDER_ID,
+    change,
+    message: error.message,
+    remediation: error.remediation,
+    cause: error,
+  });
+
 export const applyApprovedPrerequisitePlan = Effect.fn("ProviderLando.applyApprovedPrerequisitePlan")(
   function* (
     plan: ProviderSetupPlan,
     input: PrerequisiteApply,
   ): Effect.fn.Return<void, ProviderSetupPrivilegeUnavailableError | ProviderSetupProvisioningError> {
     const user = input.user ?? process.env.USER ?? "";
+    const privilege = input.privilege;
 
     for (const change of plan.changes) {
-      if (input.privilege === undefined) {
+      if (privilege === undefined) {
         return yield* Effect.fail(
           new ProviderSetupPrivilegeUnavailableError({
             providerId: PROVIDER_ID,
@@ -244,11 +255,18 @@ export const applyApprovedPrerequisitePlan = Effect.fn("ProviderLando.applyAppro
         );
       }
 
+      const elevate = (
+        command: ReadonlyArray<string>,
+      ): Effect.Effect<ProcessResult, ProviderSetupPrivilegeUnavailableError> =>
+        privilege
+          .elevate(command)
+          .pipe(Effect.catch((error) => Effect.fail(privilegeUnavailable(change._tag, error))));
+
       switch (change._tag) {
         case "install-uidmap": {
-          const update = yield* input.privilege.elevate(APT_GET_UPDATE);
+          const update = yield* elevate(APT_GET_UPDATE);
           if (update.exitCode !== 0) return yield* Effect.fail(provisioningFailure("update", update));
-          const install = yield* input.privilege.elevate(APT_GET_INSTALL_UIDMAP);
+          const install = yield* elevate(APT_GET_INSTALL_UIDMAP);
           if (install.exitCode !== 0) return yield* Effect.fail(provisioningFailure("install", install));
           if (!input.probes.probe().hasUidmapTools) {
             return yield* Effect.fail(
@@ -282,7 +300,7 @@ export const applyApprovedPrerequisitePlan = Effect.fn("ProviderLando.applyAppro
             user,
           ] as const;
 
-          const result = yield* input.privilege.elevate(usermodCmd);
+          const result = yield* elevate(usermodCmd);
 
           if (result.exitCode !== 0) {
             return yield* Effect.fail(
@@ -320,7 +338,7 @@ export const applyApprovedPrerequisitePlan = Effect.fn("ProviderLando.applyAppro
             // Create the drop-in directory if it doesn't exist
             const dir = dirname(path);
             const mkdirCmd = ["/usr/bin/mkdir", "-p", dir] as const;
-            const mkdirResult = yield* input.privilege.elevate(mkdirCmd);
+            const mkdirResult = yield* elevate(mkdirCmd);
             if (mkdirResult.exitCode !== 0) {
               return yield* Effect.fail(
                 new ProviderSetupProvisioningError({
@@ -338,7 +356,7 @@ export const applyApprovedPrerequisitePlan = Effect.fn("ProviderLando.applyAppro
 
             // Write the delegation config using sh -c with echo
             const writeCmd = ["/bin/sh", "-c", `echo '${DELEGATE_CONF_CONTENT}' > ${path}`] as const;
-            const writeResult = yield* input.privilege.elevate(writeCmd);
+            const writeResult = yield* elevate(writeCmd);
             if (writeResult.exitCode !== 0) {
               return yield* Effect.fail(
                 new ProviderSetupProvisioningError({
@@ -356,7 +374,7 @@ export const applyApprovedPrerequisitePlan = Effect.fn("ProviderLando.applyAppro
 
             // Reload systemd to pick up the new drop-in
             const reloadCmd = ["/usr/bin/systemctl", "daemon-reload"] as const;
-            const reload = yield* input.privilege.elevate(reloadCmd);
+            const reload = yield* elevate(reloadCmd);
             if (reload.exitCode !== 0) {
               return yield* Effect.fail(
                 new ProviderSetupProvisioningError({
