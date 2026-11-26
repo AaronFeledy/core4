@@ -112,8 +112,8 @@ describe("compose-go bump workflow", () => {
     );
     expect(workflow).toContain("gh issue list --state open");
     expect(workflow).toContain('select(.title == "compose-vendor-bump automation failure")');
-    expect(workflow).toContain('gh issue comment "$ISSUE_NUMBER" --body "$BODY"');
-    expect(workflow).toContain('gh issue create --title "$TITLE" --body "$BODY"');
+    expect(workflow).toContain('gh issue comment "$ISSUE_NUMBER" --body-file "$BODY_FILE"');
+    expect(workflow).toContain('gh issue create --title "$TITLE" --body-file "$BODY_FILE"');
     expect(workflow).not.toContain("--label");
   });
 
