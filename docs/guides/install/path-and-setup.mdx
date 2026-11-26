@@ -77,16 +77,39 @@ lando setup --provider=docker
 
 `--yes` consents to confirmation and privileged host changes. It does not switch providers. See [Pick a container provider](../setup/provider-selection.mdx).
 
+## Preview what setup changes
+
+`--dry-run` shows the host changes setup would make, the exact commands it would run, and whether sudo would need your password. It changes nothing: it never prompts, downloads nothing, and writes no configuration:
+
+```sh
+lando setup --dry-run
+```
+
+Pass the flags you plan to use, such as `lando setup --dry-run --yes --enable-linger`, to see what that run would do. With `--format=json`, `result.changes` lists each change with the `approval` saying what a real run with those flags in the same terminal would do with it: `approved` (applies it without asking), `will-ask` (asks you), `will-skip` (skips a recommended change and warns), `blocked` (stops before changing anything, because a required change has no approval), or `not-offered` (cannot offer it, such as a change only a terminal run without `--yes` asks about). `approvedBy` lists the flags that approve the change in a run that cannot ask, such as `--yes` or `--enable-linger`; it is empty for a change only a terminal can approve. `result.elevation.state` says how a real run would get administrator access, for example `will-prompt` in a terminal or `required` when the run cannot ask.
+
+The preview lists the provider's changes. Trusting the local CA and installing the router's port helper are still decided when setup reaches them, so the preview names them in `result.notices` instead.
+
+<Guide>
+  <Scenario id="setup-dry-run-changes-nothing" render>
+    <Step name="dry-run">
+      <Run command="lando setup --dry-run --skip-provider --skip-proxy --skip-install-ca --format=json" expectExit={0} />
+      <Verify command="lando setup --dry-run --skip-provider --skip-proxy --skip-install-ca --format=json" expect={{ stdout: { regex: "dryRun.:true" } }} />
+      <Verify command="lando setup --dry-run --skip-provider --skip-proxy --skip-install-ca --format=json" expect={{ stdout: { regex: "changes.:\\[\\]" } }} />
+      <Verify command="lando setup --dry-run --skip-provider --skip-proxy --skip-install-ca --format=json" expect={{ stdout: { regex: "state.:.not-needed" } }} />
+    </Step>
+  </Scenario>
+</Guide>
+
 ## When setup needs administrator access
 
-Run `lando setup` as yourself, never with `sudo`. A few steps change the system, and setup asks for administrator access itself just before the first one runs:
+Run `lando setup` as yourself, never with `sudo`. A few steps change the system, and setup asks for administrator access itself before the first one runs:
 
 - installing the `uidmap` package and adding subordinate user and group IDs for your account on Linux
 - letting your systemd user manager delegate cgroup controllers, and enabling lingering when no user manager runs for you
 - trusting Lando's local certificate authority in the system trust store
 - installing the helper that serves ports 80 and 443 on Linux
 
-In a terminal, setup tells you what it needs, then `sudo` asks for your password with its own prompt. It asks once per run, however many steps change the system: setup keeps sudo's credentials fresh while it works (a long runtime download does not outlast them) and tells sudo to forget them when it finishes, unless you already had them from your own `sudo -v`. Progress keeps rendering after the prompt. Lando never asks for or sees the password. If you run `sudo lando ...` against your own Lando files, Lando refuses and asks you to rerun without `sudo`, because files it wrote as root would break your later runs.
+Before setup changes anything, it plans the provider's host changes and asks you once to approve them, listing each one. Lingering gets its own question (see below). Then setup tells you what it needs, and `sudo` asks for your password with its own prompt. It asks once per run, however many steps change the system: setup keeps sudo's credentials fresh while it works (a long runtime download does not outlast them) and tells sudo to forget them when it finishes, unless you already had them from your own `sudo -v`. Progress keeps rendering after the prompt. Lando never asks for or sees the password. If you run `sudo lando ...` against your own Lando files, Lando refuses and asks you to rerun without `sudo`, because files it wrote as root would break your later runs.
 
 Without a terminal (`--no-interactive`, a CI job, or an agent), setup cannot prompt. Before it changes anything, it stops with `PrivilegeCredentialsRequiredError` unless one of these is true:
 

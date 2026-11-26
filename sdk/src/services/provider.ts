@@ -11,9 +11,6 @@ import type {
   ProviderCapabilityError,
   ProviderConfigError,
   ProviderInternalError,
-  ProviderSetupConsentDeniedError,
-  ProviderSetupPrivilegeUnavailableError,
-  ProviderSetupProvisioningError,
   ProviderSetupUnsupportedHostError,
   ProviderUnavailableError,
   SecretStoreError,
@@ -51,7 +48,6 @@ import type {
   ProviderArtifactRef,
   ProviderCapabilities,
   ProviderId,
-  ProviderSetupPlan,
   RetainedFileSyncQuiescence,
   ServiceContainerChange,
   ServiceCopyInSpec,
@@ -88,7 +84,8 @@ export type {
   ObservedBringDown,
 } from "../schema/service-shutdown.ts";
 
-import type { PrivilegeService, ProcessResult } from "./process.ts";
+import type { HostChangeApplier, HostChangeApplyError, HostChangeProposal } from "./host-change.ts";
+import type { ProcessResult } from "./process.ts";
 
 export type ProviderError =
   | HealthcheckTargetUnsupportedError
@@ -99,9 +96,6 @@ export type ProviderError =
   | ProviderCapabilityError
   | ProviderConfigError
   | ProviderInternalError
-  | ProviderSetupConsentDeniedError
-  | ProviderSetupPrivilegeUnavailableError
-  | ProviderSetupProvisioningError
   | ProviderSetupUnsupportedHostError
   | ProviderUnavailableError
   | AppliedStateVersionError
@@ -117,17 +111,19 @@ export type ProviderSelectionError =
   | ProviderConfigError
   | ProviderUnavailableError;
 
-export interface ProviderSetupOptions {
+export interface ProviderSetupInspectOptions {
   readonly force: boolean;
   readonly runtimeBundleUrl?: string;
   readonly runtimeBundleSha256?: string;
   readonly network?: NetworkConfig;
-  readonly privilege?: Context.Service.Shape<typeof PrivilegeService>;
   /** Parsed values of the setup flags this provider's plugin contributed via `setup.flags`. */
   readonly setupFlags?: Readonly<Record<string, unknown>>;
 }
 
-export type ProviderSetupInspectOptions = Omit<ProviderSetupOptions, "privilege">;
+export interface ProviderSetupOptions extends ProviderSetupInspectOptions {
+  /** The run's approved host changes; the provider applies the ones it planned, in its own order. */
+  readonly hostChanges?: HostChangeApplier;
+}
 
 /** Idle proves no workloads are running, but does not describe stored resources. */
 export const ProviderStatus = Schema.Union([
@@ -510,13 +506,16 @@ export class RuntimeProvider extends Context.Service<
       root: AbsolutePath,
       options: OwnedResourcesCleanupOptions,
     ) => Effect.Effect<OwnedResourcesCleanupResult, ProviderError>;
-    readonly planSetup: (
+    /**
+     * Inspect the host read-only and propose the host changes setup needs. Never mutates the
+     * host, downloads, or prompts. Absent means the provider needs no host changes.
+     */
+    readonly planHostChanges?: (
       options: ProviderSetupInspectOptions,
-    ) => Effect.Effect<ProviderSetupPlan, ProviderError>;
+    ) => Effect.Effect<ReadonlyArray<HostChangeProposal>, ProviderError>;
     readonly setup: (
-      plan: ProviderSetupPlan,
       options: ProviderSetupOptions,
-    ) => Effect.Effect<void, ProviderError, Scope.Scope>;
+    ) => Effect.Effect<void, ProviderError | HostChangeApplyError, Scope.Scope>;
     /** Ensure a selected provider runtime is reachable before host-dependent planning. */
     readonly ensureReady?: Effect.Effect<void, ProviderError>;
     readonly getStatus: Effect.Effect<ProviderStatus, ProviderError>;

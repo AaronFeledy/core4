@@ -1,7 +1,9 @@
 /**
- * One administrator session for a whole `lando setup` run. The first stage that needs sudo opens
- * it, every later stage reuses it, and it closes with the run, forgetting a ticket it created.
- * So sudo asks at most once per run, however many stages make host changes.
+ * One administrator session for a whole `lando setup` run. Approval opens it, after consent and
+ * before the first change, when an approved change runs a step as root. Any later `openSession`
+ * or `elevate` in the run reuses that session, or opens it when no approved change needed one. It
+ * closes with the run, forgetting a ticket it created, so sudo asks at most once per run, however
+ * many stages make host changes.
  */
 import type { PrivilegeService, PrivilegeSession } from "@lando/sdk/services";
 import { type Context, Effect, Scope, Semaphore } from "effect";

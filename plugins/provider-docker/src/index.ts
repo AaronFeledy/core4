@@ -667,9 +667,6 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CT
           : listAppliedPlans(options.appliedPlanState, options.appliedPlanStateDir).pipe(
               Effect.map(({ plans }) => plans),
             ),
-      planSetup: Effect.fn("RuntimeProvider.planSetup")(() =>
-        Effect.succeed({ providerId: ProviderId.make(PROVIDER_ID), changes: [] }),
-      ),
       setup: Effect.fn("RuntimeProvider.setup")(() => Effect.void),
       getStatus: dockerApi.info.pipe(
         Effect.as({ state: "running" as const, message: "ready" }),

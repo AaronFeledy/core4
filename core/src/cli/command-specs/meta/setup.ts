@@ -1,4 +1,5 @@
 import { scanRootOwnership } from "@lando/engine/host/root-ownership";
+import { previewApprovals } from "@lando/engine/host-changes/plan";
 import { config as writeConfig } from "@lando/engine/operations/config";
 import {
   preflightGlobalProviderSwitch,
@@ -30,14 +31,15 @@ import {
  *
  * Provider precedence is flag, environment, configuration, interactive choice, default.
  */
-import { Effect } from "effect";
+import { Effect, Option } from "effect";
 import type * as HttpClient from "effect/http/HttpClient";
 import { CliInvocation } from "../../../runtime/invocation-context";
-import { validateSetupNetworkTrust } from "../../commands/setup-network-trust";
+import { resolveSetupNetworkTrust, validateSetupNetworkTrust } from "../../commands/setup-network-trust";
 
 import type { LandoCommandSpec } from "../../spec/command-base";
 import { runCaSetupStep } from "./setup-ca-step";
 import { SETUP_COMMAND_FLAGS } from "./setup-command-flags";
+import { approveSetupHostChanges, planSetupHostChanges, setupCanAsk } from "./setup-host-changes";
 import {
   type SetupResult,
   SetupResultSchema,
@@ -86,6 +88,12 @@ const refuseRootOwnedLandoFiles = Effect.fnUntraced(function* () {
     }),
   );
 });
+
+// Stages that still decide their host changes when they run, so a dry run cannot list them yet.
+const DRY_RUN_NOTICES = [
+  "The network trust probe was skipped.",
+  "Trusting the local CA in the system store and installing the router's port helper are not previewed yet; setup asks about them when it reaches them.",
+];
 
 export const setupSpec: LandoCommandSpec<
   SetupResult,
@@ -136,16 +144,20 @@ export const setupSpec: LandoCommandSpec<
     const userDataRootRaw = globalConfig.userDataRoot;
     const userDataRoot =
       typeof userDataRootRaw === "string" && userDataRootRaw.length > 0 ? userDataRootRaw : undefined;
+    // A dry run writes nothing, not even the readiness record.
+    const dryRun = inputBooleanFlag(input, "dry-run");
     yield* refuseRootOwnedLandoFiles();
     const redaction = yield* Effect.serviceOption(RedactionService);
     const recorder = makeSetupReadinessRecorder(
-      userDataRoot,
+      dryRun ? undefined : userDataRoot,
       resolution.providerId,
       redaction._tag === "Some" ? redaction.value : undefined,
       (yield* CliInvocation).env,
     );
-    yield* recorder.start;
-    yield* Effect.addFinalizer(recorder.finish);
+    if (!dryRun) {
+      yield* recorder.start;
+      yield* Effect.addFinalizer(recorder.finish);
+    }
 
     const interactionOption = yield* Effect.serviceOption(InteractionService);
     const interaction = interactionOption._tag === "Some" ? interactionOption.value : undefined;
@@ -153,7 +165,7 @@ export const setupSpec: LandoCommandSpec<
     const selection = yield* maybeSelectSetupProvider({
       resolution,
       yes: inputBooleanFlag(input, "yes"),
-      nonInteractive: inputBooleanFlag(input, "no-interactive"),
+      nonInteractive: dryRun || inputBooleanFlag(input, "no-interactive"),
       skipProvider: inputBooleanFlag(input, "skip-provider"),
       ...(interaction === undefined ? {} : { interaction }),
     });
@@ -184,16 +196,41 @@ export const setupSpec: LandoCommandSpec<
     }
     const withHostProvider = Effect.provideService(HostProviderOverride, selectedProvider);
     const provider = yield* registry.select(setupProviderPlan(selectedProvider));
-    const networkProbe = inputNetworkProbe(input);
     const hostPrivilege = yield* Effect.serviceOption(PrivilegeService);
+    const selectedProviderId = String(selectedProvider);
+
+    if (dryRun) {
+      // The live trust probe is the one network call setup makes before changing anything.
+      const network = yield* resolveSetupNetworkTrust(globalConfig);
+      const plan = yield* planSetupHostChanges({
+        input,
+        provider,
+        selectedProviderId,
+        network,
+        privilege: Option.getOrUndefined(hostPrivilege),
+        recorder,
+      });
+      return {
+        dryRun: true,
+        providerId: provider.id,
+        selectionSource: selection.source,
+        elevation: plan.elevation,
+        changes: previewApprovals(plan.changes, {
+          yes: inputBooleanFlag(input, "yes"),
+          optInFlags: plan.optInFlags,
+          canAsk: yield* setupCanAsk(input, interaction),
+        }),
+        notices: DRY_RUN_NOTICES,
+      } satisfies SetupResult;
+    }
+
     const privilege =
       hostPrivilege._tag === "Some" ? yield* makeRunPrivilege(hostPrivilege.value) : undefined;
     const privilegeOptions = privilege === undefined ? {} : { privilege };
     const withRunPrivilege = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
       privilege === undefined ? effect : Effect.provideService(effect, PrivilegeService, privilege);
 
-    const selectedProviderId = String(selectedProvider);
-    const network = yield* validateSetupNetworkTrust(globalConfig, networkProbe).pipe(
+    const network = yield* validateSetupNetworkTrust(globalConfig, inputNetworkProbe(input)).pipe(
       Effect.tapError((cause) => recorder.recordFailure("network", cause)),
     );
 
@@ -203,13 +240,23 @@ export const setupSpec: LandoCommandSpec<
       Effect.tapError((cause) => recorder.recordFailure("provider", cause)),
     );
 
+    const plan = yield* planSetupHostChanges({
+      input,
+      provider,
+      selectedProviderId,
+      network,
+      privilege,
+      recorder,
+    });
+    const hostChanges = yield* approveSetupHostChanges({ plan, input, interaction, privilege, recorder });
+
     yield* runProviderSetupStep({
       input,
       provider,
       selectedProviderId,
       network,
-      privilegeOptions,
-      interaction,
+      inspectOptions: plan.inspectOptions,
+      hostChanges: hostChanges.applier,
       recorder,
     });
 
@@ -260,13 +307,15 @@ export const setupSpec: LandoCommandSpec<
     const networkCaInjectionConfigured = network.ca.injectIntoServices && network.ca.loadedCerts.length > 0;
 
     return {
+      dryRun: false,
       providerId: provider.id,
       installDir: inputInstallDir(input) ?? sourceInstallDir(),
       fileSyncStatus,
       networkCaInjectionConfigured,
       ...(providerSwitch === undefined ? {} : { providerSwitch }),
       ...(trustStores === undefined ? {} : { trustStores }),
-    };
+      hostChanges: hostChanges.outcomes(),
+    } satisfies SetupResult;
   }, Effect.scoped),
   render: renderSetupResult,
 };

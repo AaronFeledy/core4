@@ -17,6 +17,7 @@ export * from "./global.ts";
 export * from "./gpg.ts";
 export * from "./guide.ts";
 export * from "./healthcheck.ts";
+export * from "./host-change.ts";
 export * from "./host-proxy.ts";
 export * from "./http-client.ts";
 export * from "./interaction.ts";

@@ -171,9 +171,7 @@ describe("RuntimeProviderRegistryLayer.layer", () => {
         Effect.gen(function* () {
           const registry = yield* RuntimeProviderRegistry;
           const provider = yield* registry.select(appPlan);
-          yield* Effect.scoped(
-            provider.setup({ providerId: ProviderId.make("lando"), changes: [] }, { force: false }),
-          );
+          yield* Effect.scoped(provider.setup({ force: false }));
         }).pipe(Effect.provide(registryLayer("lando", { userDataRoot, eventService, downloader }))),
       );
       expect(Exit.isFailure(exit)).toBe(true);

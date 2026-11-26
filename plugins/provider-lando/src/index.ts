@@ -110,7 +110,6 @@ import {
   type HostPlatform,
   PluginManifest,
   ProviderId,
-  type ProviderSetupPlan,
   hostPlatformFamily,
   landoServiceNetworkAttachments,
 } from "@lando/sdk/schema";
@@ -168,10 +167,10 @@ import {
   buildPodmanServiceArgs,
   makeSystemPodmanServiceRunner,
 } from "./podman-service-runner.ts";
+import { applyPrerequisiteHostChanges } from "./prerequisite-changes.ts";
 import {
   type LinuxHostRelease,
-  applyApprovedPrerequisitePlan,
-  inspectPrerequisiteSetupPlan,
+  planPrerequisiteHostChanges,
   readLinuxHostRelease,
 } from "./prerequisite-provision.ts";
 import { LANDO_CTX, LANDO_CTX_BASE, providerContextForEnv } from "./provider-context.ts";
@@ -299,11 +298,11 @@ export {
   buildPodmanServiceArgs,
   makeSystemPodmanServiceRunner,
 } from "./podman-service-runner.ts";
+export { PREREQUISITE_APPLY_ORDER, PREREQUISITE_CHANGES } from "./prerequisite-changes.ts";
 export type { LinuxHostRelease } from "./prerequisite-provision.ts";
 export {
-  applyApprovedPrerequisitePlan,
-  inspectPrerequisiteSetupPlan,
   parseLinuxHostRelease,
+  planPrerequisiteHostChanges,
   readLinuxHostRelease,
 } from "./prerequisite-provision.ts";
 export type {
@@ -1625,7 +1624,7 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
             }
           : {}),
         ...resolvedOps,
-        planSetup: Effect.fn("RuntimeProvider.planSetup")(function* (inspectOptions) {
+        planHostChanges: Effect.fn("RuntimeProvider.planHostChanges")(function* () {
           if (shouldManageRuntime && family === "linux") {
             if (managedSocketPath !== undefined) {
               const overLimit = validateManagedSocketPathLength(managedSocketPath, {
@@ -1635,14 +1634,13 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
                 return yield* Effect.fail(overLimit);
               }
             }
-            return yield* inspectPrerequisiteSetupPlan({
+            return yield* planPrerequisiteHostChanges({
               platform,
               host: options.linuxHostRelease ?? readLinuxHostRelease(),
               probes: rootlessProbes,
               user: setupAccountUser,
               hasSystemd: hasHostSystemd(),
               ...(userManagerHost === undefined ? {} : { userManager: userManagerHost }),
-              lingerOptIn: Reflect.get(inspectOptions.setupFlags ?? {}, "enable-linger") === true,
             });
           }
           if (
@@ -1661,9 +1659,9 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
               }),
             );
           }
-          return { providerId, changes: [] };
+          return [];
         }),
-        setup: Effect.fn("RuntimeProvider.setup")(function* (plan: ProviderSetupPlan, setupOptions) {
+        setup: Effect.fn("RuntimeProvider.setup")(function* (setupOptions) {
           const smokeEnabled = Reflect.get(setupOptions.setupFlags ?? {}, "smoke") === true;
           const result = yield* setupProviderLando({
             withRuntimeLock: withLaunchLock,
@@ -1712,13 +1710,7 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
                     if (family === "linux") {
                       yield* progress.run(
                         "prerequisites",
-                        applyApprovedPrerequisitePlan(plan, {
-                          probes: rootlessProbes,
-                          privilege: setupOptions.privilege,
-                          user: setupAccountUser,
-                          hasSystemd: hasHostSystemd(),
-                          ...(userManagerHost === undefined ? {} : { userManager: userManagerHost }),
-                        }).pipe(
+                        applyPrerequisiteHostChanges(setupOptions.hostChanges).pipe(
                           Effect.andThen(
                             Effect.suspend(() => {
                               const failure = classifyRootlessFailure(rootlessProbes.probe(), undefined, {

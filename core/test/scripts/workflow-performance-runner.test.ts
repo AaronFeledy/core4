@@ -41,10 +41,12 @@ const setupStdout = (fileSyncStatus?: "deferred" | "installed" | "satisfied" | "
     command: "meta:setup",
     ok: true,
     result: {
+      dryRun: false,
       providerId: "lando",
       installDir: "/opt/lando",
       fileSyncStatus,
       networkCaInjectionConfigured: false,
+      hostChanges: [],
     },
     warnings: [],
     deprecations: [],

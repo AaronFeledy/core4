@@ -117,7 +117,6 @@ const makeRecordingProvider = (
     platform: "linux",
     capabilities: stubCapabilities,
     isAvailable: Effect.succeed(true),
-    planSetup: () => Effect.die("not used"),
     setup: () => Effect.void,
     getStatus: Effect.succeed({ state: "running" as const }),
     getVersions: Effect.succeed({ provider: "0.0.0" }),
