@@ -1,10 +1,15 @@
 import { expect, spyOn, test } from "bun:test";
-import { rm } from "node:fs/promises";
-import { dirname } from "node:path";
+import { chmod, mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import { TEST_ROOT_ENV_KEYS } from "@lando/engine/testing/temp-root-retirement";
-import { runWithLiveTestRoots } from "./live-test-roots.ts";
+import { MissingLiveTestBinaryError, runWithLiveTestRoots } from "./live-test-roots.ts";
 
-const socketEnv = { LANDO_TEST_PODMAN_SOCKET: "/unused-fake.sock", LANDO_SHELL_PROFILE: "/caller-profile" };
+const socketEnv = {
+  LANDO_TEST_PODMAN_SOCKET: "/unused-fake.sock",
+  LANDO_SHELL_PROFILE: "/caller-profile",
+  LANDO_SCENARIO_E2E_BINARY: process.execPath,
+};
 const prepared = async () => 0;
 
 test("forwards TERM and waits for the test child before retiring", async () => {
@@ -156,4 +161,154 @@ test("a failed root preparation skips the tests, still retires, and reports its 
   expect(exit).toBe(3);
   expect(ran).toBe(false);
   expect(retirements).toBe(1);
+});
+
+test("missing override binary rejects before allocating and leaves an isolated base unchanged", async () => {
+  const base = await mkdtemp(join(tmpdir(), "lando-live-base-"));
+  const missing = join(base, "missing-lando");
+  await writeFile(join(base, "sentinel"), "keep");
+  const before = await readdir(base);
+  try {
+    const error = await runWithLiveTestRoots(
+      { live: true, cwd: base, env: { ...socketEnv, LANDO_SCENARIO_E2E_BINARY: missing } },
+      async () => {
+        throw new Error("run must not start");
+      },
+      async () => {
+        throw new Error("retire must not run");
+      },
+      async () => {
+        throw new Error("prepare must not run");
+      },
+    ).then(
+      () => new Error("expected missing binary to reject"),
+      (cause: unknown) => cause,
+    );
+    expect(error).toBeInstanceOf(MissingLiveTestBinaryError);
+    if (!(error instanceof MissingLiveTestBinaryError)) throw error;
+    expect(error.reason).toBe("missing");
+    expect(error.message).toContain(missing);
+    expect(error.message).toContain("(cd core && bun run build)");
+    expect(error.message).toContain("LANDO_SCENARIO_E2E_BINARY");
+    expect(error.message).toContain("points at a missing file");
+    expect(await readdir(base)).toEqual(before);
+  } finally {
+    await rm(base, { recursive: true, force: true });
+  }
+});
+
+test("no override names cwd/core/dist/lando and does not allocate", async () => {
+  const base = await mkdtemp(join(tmpdir(), "lando-live-cwd-"));
+  const expected = resolve(base, "core/dist/lando");
+  const { LANDO_SCENARIO_E2E_BINARY: _binary, ...env } = socketEnv;
+  try {
+    const error = await runWithLiveTestRoots(
+      { live: true, cwd: base, env },
+      async () => {
+        throw new Error("run must not start");
+      },
+      async () => {
+        throw new Error("retire must not run");
+      },
+      async () => {
+        throw new Error("prepare must not run");
+      },
+    ).then(
+      () => new Error("expected missing default binary to reject"),
+      (cause: unknown) => cause,
+    );
+    expect(error).toBeInstanceOf(MissingLiveTestBinaryError);
+    if (!(error instanceof MissingLiveTestBinaryError)) throw error;
+    expect(error.path).toBe(expected);
+    expect(error.message).toContain(expected);
+    expect(error.message).toContain("(cd core && bun run build)");
+    expect(error.message).toContain("LANDO_SCENARIO_E2E_BINARY");
+    expect(error.message).not.toContain("points at a missing file");
+    expect(await readdir(base)).toEqual([]);
+  } finally {
+    await rm(base, { recursive: true, force: true });
+  }
+});
+
+test("directory override is distinguished from a missing file", async () => {
+  const base = await mkdtemp(join(tmpdir(), "lando-live-dir-"));
+  try {
+    const error = await runWithLiveTestRoots(
+      { live: true, cwd: base, env: { ...socketEnv, LANDO_SCENARIO_E2E_BINARY: base } },
+      async () => 0,
+      async () => {
+        throw new Error("retire must not run");
+      },
+      async () => 0,
+    ).then(
+      () => new Error("expected directory binary to reject"),
+      (cause: unknown) => cause,
+    );
+    expect(error).toBeInstanceOf(MissingLiveTestBinaryError);
+    if (!(error instanceof MissingLiveTestBinaryError)) throw error;
+    expect(error.reason).toBe("directory");
+    expect(error.message).toContain("is a directory");
+    expect(error.message).toContain("LANDO_SCENARIO_E2E_BINARY points at a directory");
+    expect(await readdir(base)).toEqual([]);
+  } finally {
+    await rm(base, { recursive: true, force: true });
+  }
+});
+
+test.skipIf(process.platform === "win32")(
+  "non-executable override is distinguished from a missing file",
+  async () => {
+    const base = await mkdtemp(join(tmpdir(), "lando-live-mode-"));
+    const binary = join(base, "lando");
+    await writeFile(binary, "not executable");
+    await chmod(binary, 0o644);
+    try {
+      const error = await runWithLiveTestRoots(
+        { live: true, cwd: base, env: { ...socketEnv, LANDO_SCENARIO_E2E_BINARY: binary } },
+        async () => 0,
+        async () => {
+          throw new Error("retire must not run");
+        },
+        async () => 0,
+      ).then(
+        () => new Error("expected non-executable binary to reject"),
+        (cause: unknown) => cause,
+      );
+      expect(error).toBeInstanceOf(MissingLiveTestBinaryError);
+      if (!(error instanceof MissingLiveTestBinaryError)) throw error;
+      expect(error.reason).toBe("not-executable");
+      expect(error.message).toContain("not executable");
+      expect(await readdir(base)).toEqual(["lando"]);
+    } finally {
+      await rm(base, { recursive: true, force: true });
+    }
+  },
+);
+
+test("retire command with a missing binary exits 2 without posix_spawn and leaves the directory", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "lando-live-retire-"));
+  await mkdir(join(directory, "keep"), { recursive: true });
+  const missing = join(directory, "missing-lando");
+  const child = Bun.spawnSync({
+    cmd: [process.execPath, join(import.meta.dir, "live-test-roots.ts"), "retire", directory],
+    cwd: directory,
+    env: {
+      ...process.env,
+      LANDO_TEST_PODMAN_SOCKET: "/unused-fake.sock",
+      LANDO_SCENARIO_E2E_BINARY: missing,
+    },
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  try {
+    expect(child.exitCode).toBe(2);
+    const stderr = child.stderr.toString();
+    expect(stderr).toContain("(cd core && bun run build)");
+    expect(stderr).toContain("LANDO_SCENARIO_E2E_BINARY");
+    expect(stderr).not.toContain("posix_spawn");
+    expect(stderr).not.toContain("ENOENT");
+    expect(await readdir(directory)).toContain("keep");
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });

@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import { availableParallelism } from "node:os";
 import { join } from "node:path";
-import { type TrackTestChild, runWithLiveTestRoots } from "../live-test-roots.ts";
+import { MissingLiveTestBinaryError, type TrackTestChild, runWithLiveTestRoots } from "../live-test-roots.ts";
 import { allocateIsolatedTestRoots, releaseIsolatedTestRoots } from "../test-preload-roots.ts";
 import { rewriteScenarioSourceMappedOutput } from "./scenario-source-mapper.ts";
 
@@ -154,6 +154,9 @@ const main = async (): Promise<never> => {
     exitCode = await runWithLiveTestRoots({ live, cwd, env }, (childEnv, track) =>
       runTests(args, childEnv, track),
     );
+  } catch (error) {
+    if (!(error instanceof MissingLiveTestBinaryError)) throw error;
+    console.error(error.message);
   } finally {
     releaseIsolatedTestRoots(fallbackDirectory);
   }

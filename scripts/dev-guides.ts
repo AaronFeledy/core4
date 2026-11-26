@@ -231,20 +231,27 @@ const testGuides = async (guideIds: readonly string[], isAll: boolean): Promise<
   const runTests = async (targets: readonly string[]) => {
     const command = [process.execPath, "test", ...targets];
     if (process.env.LANDO_GUIDE_E2E !== "1") return run(command);
-    const { runWithLiveTestRoots } = await import("./live-test-roots.ts");
+    const { MissingLiveTestBinaryError, runWithLiveTestRoots } = await import("./live-test-roots.ts");
     let output = { stdout: "", stderr: "" };
     liveTestInFlight = true;
-    const exitCode = await runWithLiveTestRoots(
-      { live: true, cwd: REPO_ROOT, env: process.env },
-      async (env, track) => {
-        const result = await run([...command, "--max-concurrency=1"], env, track);
-        output = result;
-        return result.exitCode;
-      },
-    ).finally(() => {
+    try {
+      const exitCode = await runWithLiveTestRoots(
+        { live: true, cwd: REPO_ROOT, env: process.env },
+        async (env, track) => {
+          const result = await run([...command, "--max-concurrency=1"], env, track);
+          output = result;
+          return result.exitCode;
+        },
+      );
+      return { ...output, exitCode };
+    } catch (error) {
+      if (error instanceof MissingLiveTestBinaryError) {
+        return { stdout: "", stderr: `${error.message}\n`, exitCode: 1 };
+      }
+      throw error;
+    } finally {
       liveTestInFlight = false;
-    });
-    return { ...output, exitCode };
+    }
   };
   if (isAll) {
     if (!(await dirExists(resolve(REPO_ROOT, GENERATED_ROOT)))) return noGeneratedOutput([]);
