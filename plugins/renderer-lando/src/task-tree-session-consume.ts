@@ -40,8 +40,7 @@ export const commitOpenSession = Effect.fnUntraced(function* <E>(
     yield* substrate.transcriptTail.close;
     substrate.viewModel.collapse();
   }
-  const lines = substrate.closeSession();
-  if (lines.length > 0) substrate.controller.setFooter(lines);
+  substrate.closeSession();
   substrate.controller.setFooter([]);
   return markSessionCommitted(session);
 });
