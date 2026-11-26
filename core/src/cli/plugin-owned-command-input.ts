@@ -9,7 +9,7 @@ import { parseFlagsAndPositionals, setParsedFlag } from "./compiled-argv";
 import { specTailKind } from "./flag-claims";
 import { normalizeCliFlagTokens } from "./flag-tokens";
 import { validateCommandCliFlags } from "./flag-value-validation";
-import type { ResultFormat } from "./format-flags";
+import { type ResultFormat, advertisedOptInFormats } from "./format-flags";
 import type { CommandTokens } from "./invocation";
 import { pluginFlagDefinitions } from "./plugin-flag-definitions";
 
@@ -89,6 +89,7 @@ export const renderPluginOwnedCommandHelp = (
       },
     ]),
   );
+  const advertisedFormats = advertisedOptInFormats(spec);
   const entry: CommandHelpEntry = {
     spec: {
       id: spec.id,
@@ -97,6 +98,7 @@ export const renderPluginOwnedCommandHelp = (
       args,
       flags: pluginFlagDefinitions(spec),
       ...(spec.strict === undefined ? {} : { strict: spec.strict }),
+      ...(advertisedFormats.length === 0 ? {} : { advertisedFormats }),
     },
     status: { kind: "implemented" },
   };

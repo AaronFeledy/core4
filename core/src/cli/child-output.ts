@@ -1,6 +1,6 @@
-import type { StreamFrameSinkShape } from "@lando/engine/operations/stream-frame-sink";
 import { ProcessExecError } from "@lando/sdk/errors";
 import type { CommandOutput } from "@lando/sdk/schema";
+import type { StreamFrameSinkShape } from "@lando/sdk/services";
 import { Context, Effect } from "effect";
 
 export interface ChildOutputPolicy {

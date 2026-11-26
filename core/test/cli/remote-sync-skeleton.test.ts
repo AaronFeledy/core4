@@ -128,7 +128,7 @@ const isCommandSpec = (
   typeof (value as { readonly id?: unknown }).id === "string";
 
 describe("remote sync command skeleton", () => {
-  test("registers app command specs with result schemas and remote flags", async () => {
+  test("registers app command specs with result schemas and no command-owned format flag", async () => {
     const modules = await Promise.all([
       import("../../src/cli/command-specs/app/pull.ts"),
       import("../../src/cli/command-specs/app/push.ts"),
@@ -145,7 +145,7 @@ describe("remote sync command skeleton", () => {
     for (const spec of specs) {
       expect(spec?.bootstrap).toBe("app");
       expect(spec?.resultSchema, `${spec?.id} must carry a resultSchema`).toBeDefined();
-      expect(spec?.flags, `${spec?.id} must define remote skeleton flags`).toHaveProperty("format");
+      expect(spec?.flags, `${spec?.id} must leave --format to the dispatcher`).not.toHaveProperty("format");
     }
   });
 

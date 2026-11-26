@@ -21,8 +21,10 @@ Only the canonical inventory fields are emitted: `version`, `targetVersion`, `ch
 
 ## Deprecation usage
 
-`DeprecationService` publishes a `deprecation-used` runtime event after recording usage; `Telemetry`
-observes that shared event stream instead of running a parallel deprecation reporter. Deprecation
+`DeprecationService` publishes a `deprecation-used` runtime event the first time a process uses
+each deprecated surface, after recording that use. Later uses of the same surface only add to its
+count, so telemetry sees one record per surface per process. `Telemetry` observes that shared event
+stream instead of running a parallel deprecation reporter. Deprecation
 telemetry carries only `kind`, `id`, `since`, and `severity`. It omits callsites,
 app ids, plugin ids, and timestamps.
 

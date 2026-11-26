@@ -10,14 +10,16 @@ import {
   renderConfigTranslateResult,
 } from "../../../commands/app-config-translate";
 import { renderTranslateDiagnostics } from "../../../commands/app-config-translate-output.ts";
+import { isMachineResultFormat } from "../../../format-flags";
 import type { LandoCommandSpec } from "../../../spec/command-base";
 import { extractSpecFlags } from "../../../spec/command-boundary";
+import { commandResultFormat } from "../../../spec/input-coercion";
 import { Flags } from "../../../spec/metadata";
 
 export const appConfigTranslateSpec: LandoCommandSpec<AppConfigTranslateResult> = {
   resultSchema: AppConfigTranslateResultSchema,
   id: "app:config:translate",
-  resultFormats: ["table"],
+  rendersTable: true,
   summary: "Translate a non-canonical config file into a canonical v4 Landofile.",
   namespace: "app",
   recipePostInitAllowed: true,
@@ -48,10 +50,6 @@ export const appConfigTranslateSpec: LandoCommandSpec<AppConfigTranslateResult> 
         "Write the declared v4 Landofile layers through the managed-file transaction; an immutable digest-named backup is kept beside each replaced file.",
       default: false,
     }),
-    format: Flags.string({
-      description: "Output format.",
-      default: "yaml",
-    }),
   },
   run: Effect.fn("ConfigTranslateCommand.run")(function* (input: unknown) {
     const flags = extractSpecFlags(input);
@@ -70,7 +68,7 @@ export const appConfigTranslateSpec: LandoCommandSpec<AppConfigTranslateResult> 
       ...(typeof flags.to === "string" ? { to: flags.to } : {}),
       ...(files === undefined ? {} : { files }),
       privateFileAccess,
-      ...(flags.format === "json" || flags.format === "yaml" || flags.format === "ndjson"
+      ...(isMachineResultFormat(commandResultFormat(input))
         ? {}
         : {
             onWriteBlocked: (diagnostics) =>

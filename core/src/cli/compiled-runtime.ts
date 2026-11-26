@@ -93,6 +93,7 @@ export const compiledCommandTransportOptions = (
   ...(spec?.streaming === undefined ? {} : { streaming: spec.streaming }),
   ...(streamingMode === undefined ? {} : { streamingMode }),
   ...(spec?.streamFrames === undefined ? {} : { streamFrames: spec.streamFrames }),
+  ...(spec?.ndjsonReport === undefined ? {} : { ndjsonReport: spec.ndjsonReport }),
 });
 
 export const runCompiledCommand = <A, E, R, RE>(
@@ -157,6 +158,7 @@ export const runCompiledCommand = <A, E, R, RE>(
       RE | ConfigError | LandoRuntimeBootstrapError
     >,
     rendererMode: activeRendererMode,
+    // Under --format=ndjson, a pre-command failure is one stream result frame, so ndjson passes through.
     resultFormat: activeResultFormat,
     command: activeCommandId,
     ...(options.preCommand !== true && invocation !== undefined ? { invocation } : {}),

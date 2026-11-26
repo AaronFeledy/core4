@@ -26,6 +26,7 @@ import { CliInvocation } from "../../runtime/invocation-context";
 import { type ResolvedAppTarget, loadUserLandofile } from "../app-resolution";
 import { isEnvelopeResultFormat } from "../format-flags";
 import type { RenderContext } from "../renderer-boundary";
+import { commandResultFormat } from "../spec/input-coercion";
 import { appendTerminalQr } from "../terminal-qr";
 import { collectOpenConnections } from "./open-connections";
 import { OpenTargetSchema, resolveOpenTargets } from "./open-targets";
@@ -72,7 +73,6 @@ interface OpenFlags {
   readonly all?: boolean;
   readonly print?: boolean;
   readonly qr?: boolean;
-  readonly format?: string;
 }
 
 const flagsFromInput = (input: unknown): OpenFlags =>
@@ -86,7 +86,7 @@ export const openOptionsFromInput = (input: unknown): OpenAppOptions => {
     ...(flags.all === undefined ? {} : { all: flags.all }),
     ...(flags.print === undefined ? {} : { print: flags.print }),
     ...(flags.qr === true ? { qr: true } : {}),
-    json: isEnvelopeResultFormat(flags.format),
+    json: isEnvelopeResultFormat(commandResultFormat(input)),
   };
 };
 

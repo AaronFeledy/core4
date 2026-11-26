@@ -399,7 +399,8 @@ const cwdBindSource = (id: string) =>
   Object.values(appliedPlans.get(id)?.services ?? {})
     .flatMap((service) => service.mounts)
     .flatMap((mount) => (mount.type === "bind" && mount.target === "/cwd" ? [mount.source] : []))[0];
-expect(canonical(appliedPlans.get(fork.id)?.root)).toBe(canonical(context.testDir));
+// A cwd fork's resources belong to its own scratch instance, not to the source app it reads from.
+expect(String(appliedPlans.get(fork.id)?.root)).toBe(join(realpathSync.native(join(context.testDir, "data", "scratch")), fork.id, "root"));
 expect(appliedPlans.get(fork.id)?.requires?.globalServices).toEqual(["traefik"]);
 expect(canonical(cwdBindSource(fork.id))).toBe(canonical(nested));
 expect(canonical(cwdBindSource(recipe.id))).toBe(canonical(nested));

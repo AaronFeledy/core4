@@ -1,11 +1,10 @@
 import { expect, test } from "bun:test";
 import { resolve } from "node:path";
-import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { CommandStdioError, type EventError } from "@lando/sdk/errors";
 import type { ExecutableCommandSpec } from "@lando/sdk/plugins";
 import { StreamFrame } from "@lando/sdk/schema";
-import { EventService } from "@lando/sdk/services";
+import { EventService, StreamFrameSink } from "@lando/sdk/services";
 import { Effect, Layer, Schema } from "effect";
 import { CommandPayloadStdout } from "../../src/cli/command-payload-stdout";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary";

@@ -1,12 +1,12 @@
 import type { ExecutableCommandSpec } from "@lando/sdk/plugins";
 import type { OclifFlagDefinition } from "./compiled-argv";
-import { universalFormatFlagDefs } from "./format-flags";
+import { commandResultFormats, universalFormatFlagDefs } from "./format-flags";
 import { yesFlag } from "./spec/confirmation-flag";
 
 // Code generators import this before the command registry and its generated
 // tables exist, so it must stay free of runtime imports from the argv parser.
 export const pluginFlagDefinitions = (
-  spec: Pick<ExecutableCommandSpec, "flags">,
+  spec: Pick<ExecutableCommandSpec, "flags" | "streamingMode">,
 ): Readonly<Record<string, OclifFlagDefinition>> => {
   const flags: Record<string, OclifFlagDefinition> = { ...universalFormatFlagDefs };
   for (const [name, definition] of Object.entries(spec.flags ?? {})) {
@@ -23,5 +23,7 @@ export const pluginFlagDefinitions = (
       ...(definition.options === undefined ? {} : { options: definition.options }),
     };
   }
+  // `--format` is always Lando's: it offers exactly the formats the command produces.
+  flags.format = { ...flags.format, options: [...commandResultFormats(spec)] };
   return flags;
 };

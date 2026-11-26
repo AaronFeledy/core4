@@ -12,7 +12,7 @@ import { CliInvocation } from "../runtime/invocation-context";
 import { makeLandoRuntime } from "../runtime/layer";
 import { refreshAppCache } from "./commands/app-cache-refresh";
 import { activeRendererMode, activeResultFormat, emitDiagnosticLine } from "./compiled-session";
-import { isEnvelopeResultFormat } from "./format-flags";
+import { isMachineResultFormat } from "./format-flags";
 import { readConfigCliGlobals } from "./renderer-mode-resolution";
 import type { CliAppCommandCacheReadResult } from "./tooling-cache-status";
 import type { ReadCliAppCommandCacheOptions } from "./tooling-command-cache";
@@ -66,7 +66,7 @@ const withSlowRebuildNotice = <A, E, R>(
     enabled &&
     invocation.io.isTTY === true &&
     activeRendererMode !== "json" &&
-    !isEnvelopeResultFormat(activeResultFormat)
+    !isMachineResultFormat(activeResultFormat)
       ? Effect.gen(function* () {
           const notice = yield* Effect.forkChild(
             Effect.sleep(SLOW_REBUILD_NOTICE_DELAY).pipe(

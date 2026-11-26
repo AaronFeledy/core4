@@ -1,32 +1,30 @@
 import type { ShareListOptions, ShareOptions, ShareStopOptions } from "@lando/engine/operations/share";
 import { ServiceName } from "@lando/sdk/schema";
 import { yesFlag } from "../../../spec/confirmation-flag";
-import { booleanFlag, formatFlag, specArgsOf, specFlagsOf, stringFlag } from "../../../spec/input-coercion";
+import {
+  booleanFlag,
+  commandResultFormatAmong,
+  specArgsOf,
+  specFlagsOf,
+  stringFlag,
+} from "../../../spec/input-coercion";
 import { Flags } from "../../../spec/metadata";
-
-export const shareFormatFlag = Flags.string({
-  description: "Output format.",
-  default: "text",
-});
 
 export const shareFlags = {
   target: Flags.string({ description: "Tunnel target as service[:port], route id, or loopback URL." }),
   provider: Flags.string({ description: "TunnelService provider id." }),
   detach: Flags.boolean({ description: "Record the tunnel as a detached session." }),
   yes: yesFlag("Answer yes to confirmation prompts."),
-  format: shareFormatFlag,
 } as const;
 
 export const shareListFlags = {
   provider: Flags.string({ description: "TunnelService provider id." }),
-  format: shareFormatFlag,
 } as const;
 
 export const shareStopFlags = {
   session: Flags.string({ description: "Tunnel session id." }),
   provider: Flags.string({ description: "TunnelService provider id." }),
   force: Flags.boolean({ description: "Force tunnel stop when supported by the provider." }),
-  format: shareFormatFlag,
 } as const;
 
 const targetValue = (raw: string | undefined): ShareOptions["target"] => {
@@ -40,14 +38,13 @@ const targetValue = (raw: string | undefined): ShareOptions["target"] => {
 };
 
 export const shareFormatFromInput = (input: unknown): "text" | "json" =>
-  formatFlag(specFlagsOf(input), ["text", "json"], "text");
+  commandResultFormatAmong(input, ["text", "json"], "text");
 
 export const shareOptionsFromInput = (input: unknown): ShareOptions => {
   const flags = specFlagsOf(input);
   const target = targetValue(stringFlag(flags, "target"));
   const provider = stringFlag(flags, "provider");
   return {
-    format: shareFormatFromInput(input),
     ...(target === undefined ? {} : { target }),
     ...(provider === undefined ? {} : { provider }),
     ...(booleanFlag(flags, "detach") ? { detach: true } : {}),
@@ -58,10 +55,7 @@ export const shareOptionsFromInput = (input: unknown): ShareOptions => {
 export const shareListOptionsFromInput = (input: unknown): ShareListOptions => {
   const flags = specFlagsOf(input);
   const provider = stringFlag(flags, "provider");
-  return {
-    ...(provider === undefined ? {} : { provider }),
-    format: shareFormatFromInput(input),
-  };
+  return provider === undefined ? {} : { provider };
 };
 
 export const shareStopOptionsFromInput = (input: unknown): ShareStopOptions => {
@@ -74,7 +68,6 @@ export const shareStopOptionsFromInput = (input: unknown): ShareStopOptions => {
     ...(sessionId === undefined ? {} : { sessionId }),
     ...(provider === undefined ? {} : { provider }),
     ...(booleanFlag(flags, "force") ? { force: true } : {}),
-    format: shareFormatFromInput(input),
   };
   return options as unknown as ShareStopOptions;
 };

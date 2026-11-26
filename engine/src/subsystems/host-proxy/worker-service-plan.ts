@@ -1,5 +1,6 @@
 import { type AppPlan, type ServicePlan, serviceAppMount } from "@lando/sdk/schema";
 import { Predicate } from "effect";
+import { scratchProjectRoot } from "../../scratch-app/identity.ts";
 
 import type { HostProxyMountInfo } from "./cwd-remap.ts";
 
@@ -22,5 +23,5 @@ export const hostProxyMountInfoFromPlan = (plan: AppPlan): HostProxyMountInfo =>
     if (appMount !== undefined)
       return { containerRoot: String(appMount.target), hostRoot: String(appMount.source) };
   }
-  return { containerRoot: "/app", hostRoot: String(plan.root) };
+  return { containerRoot: "/app", hostRoot: scratchProjectRoot(plan) };
 };

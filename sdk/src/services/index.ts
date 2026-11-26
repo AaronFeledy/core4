@@ -33,6 +33,7 @@ export * from "./remote-sync.ts";
 export * from "./scratch.ts";
 export * from "./service-readiness.ts";
 export * from "./state-store.ts";
+export * from "./stream-frame-sink.ts";
 export * from "./tunnel.ts";
 export * from "./user-app-resolver.ts";
 export type { VolumeInitialization } from "./volume-initialization.ts";

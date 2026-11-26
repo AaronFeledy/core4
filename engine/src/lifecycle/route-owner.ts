@@ -6,7 +6,7 @@ import {
   appIdentityKey,
   planAppIdentity,
 } from "@lando/sdk/schema";
-import { SCRATCH_EXTENSION_KEY } from "../scratch-app/identity.ts";
+import { SCRATCH_EXTENSION_KEY, isManagedScratchPlan } from "../scratch-app/identity.ts";
 
 export const routeOwnerFromScratch = (id: string): AppRouteOwner => ({
   id: AppId.make(id),
@@ -21,10 +21,13 @@ export const routeOwnerFromRoot = (id: string, canonicalRoot: AbsolutePath): App
 
 export const routeOwnerFromPlan = (
   plan: Pick<AppPlan, "id" | "root" | "identity" | "extensions">,
-): AppRouteOwner =>
-  Object.hasOwn(plan.extensions, SCRATCH_EXTENSION_KEY)
-    ? routeOwnerFromScratch(plan.id)
-    : { id: plan.id, ownerKey: planAppIdentity(plan).ownerKey };
+): AppRouteOwner => {
+  if (!Object.hasOwn(plan.extensions, SCRATCH_EXTENSION_KEY))
+    return { id: plan.id, ownerKey: planAppIdentity(plan).ownerKey };
+  return isManagedScratchPlan(plan)
+    ? { id: plan.id, ownerKey: planAppIdentity(plan).ownerKey }
+    : routeOwnerFromScratch(plan.id);
+};
 
 export const routeOwnerFromGlobalTeardown = (resolved: {
   readonly paths: { readonly root: AbsolutePath };

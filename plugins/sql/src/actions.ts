@@ -103,6 +103,7 @@ export const runExport = Effect.fn("Sql.export")(function* (
         ...input,
         command: backup,
         stdout: "discard",
+        live: true,
       });
       return {
         _tag: "servicePath",
@@ -199,6 +200,7 @@ export const runImport = Effect.fn("Sql.import")(function* (
       ...input,
       command: restore,
       stdout: "discard",
+      live: true,
     });
     return transfer;
   }
@@ -234,5 +236,6 @@ export const runReset = Effect.fn("Sql.reset")(function* (
     env: resetEnv,
     secrets,
     stdout: "discard",
+    live: true,
   });
 });

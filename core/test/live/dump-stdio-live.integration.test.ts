@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { join, resolve } from "node:path";
 import { Schema } from "effect";
-import { decodeInfoCliEnvelope } from "./convergence-cli.ts";
+import { decodeResultFrameEnvelope } from "./convergence-cli.ts";
 import { databaseJourneyTimeout, databaseTransferFixture } from "./database-transfer-fixture.ts";
 import { liveEnabled } from "./scanner-live-fixture.ts";
 
@@ -40,8 +40,6 @@ const spawnDash = async (
   ]);
   return { exitCode, stdout, stderr };
 };
-
-const lastLine = (text: string): string => text.trimEnd().split("\n").at(-1) ?? "";
 
 test.skipIf(!liveEnabled)(
   "PostgreSQL dumps stream through stdout and stdin byte-exact, and truncated stdin is refused",
@@ -116,7 +114,7 @@ test.skipIf(!liveEnabled)(
       const refused = await dash(["db:import", "-", "--service=database", "--yes", "--format=json"], cut);
       // Then it is refused before a recovery snapshot, and the data is untouched.
       expect(refused.exitCode, refused.stderr).toBe(1);
-      const envelope = decodeInfoCliEnvelope(new TextDecoder().decode(refused.stdout));
+      const envelope = decodeResultFrameEnvelope(new TextDecoder().decode(refused.stdout));
       const failure = Schema.decodeUnknownSync(incomplete)(envelope.error);
       expect(failure.recoverySnapshotId).toBeUndefined();
       const untouched = await lando([...query, "SELECT marker FROM stdio_probe"]);
@@ -128,7 +126,7 @@ test.skipIf(!liveEnabled)(
       const structuredText = new TextDecoder().decode(structured.stdout);
       expect(structuredText.startsWith("--\n-- PostgreSQL database dump")).toBe(true);
       expect(structuredText.includes("-- PostgreSQL database dump complete")).toBe(true);
-      const result = decodeInfoCliEnvelope(lastLine(structured.stderr));
+      const result = decodeResultFrameEnvelope(structured.stderr);
       expect(result.ok, structured.stderr).toBe(true);
       expect(result.command).toBe("db:export");
 
@@ -145,7 +143,7 @@ test.skipIf(!liveEnabled)(
       const [seedExit, seedOut] = await Promise.all([seeding.exited, new Response(seeding.stdout).text()]);
       await seeding.stdin.end();
       expect(seedExit, seedOut).toBe(1);
-      const seedRefusal = decodeInfoCliEnvelope(seedOut);
+      const seedRefusal = decodeResultFrameEnvelope(seedOut);
       expect(seedRefusal.error).toMatchObject({ _tag: "SqlSeedStateError" });
 
       // When the reader closes early, the export stops with the SIGPIPE convention.
@@ -285,7 +283,7 @@ test.skipIf(!liveEnabled)(
       );
       // Then it is refused, and the data is untouched.
       expect(mysqlRefused.exitCode, mysqlRefused.stderr).toBe(1);
-      expect(decodeInfoCliEnvelope(new TextDecoder().decode(mysqlRefused.stdout)).error).toMatchObject({
+      expect(decodeResultFrameEnvelope(new TextDecoder().decode(mysqlRefused.stdout)).error).toMatchObject({
         _tag: "SqlDumpIncompleteError",
         reason: "truncated",
       });
@@ -310,7 +308,7 @@ test.skipIf(!liveEnabled)(
       );
       // Then it is refused before mongorestore runs, and the full archive restores every document.
       expect(mongoRefused.exitCode, mongoRefused.stderr).toBe(1);
-      expect(decodeInfoCliEnvelope(new TextDecoder().decode(mongoRefused.stdout)).error).toMatchObject({
+      expect(decodeResultFrameEnvelope(new TextDecoder().decode(mongoRefused.stdout)).error).toMatchObject({
         _tag: "SqlDumpIncompleteError",
         reason: "truncated",
       });

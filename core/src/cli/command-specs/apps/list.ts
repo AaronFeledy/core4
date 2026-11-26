@@ -10,11 +10,17 @@ import {
   renderAppsListResult,
 } from "../../commands/list";
 import type { LandoCommandSpec } from "../../spec/command-base";
-import { booleanFlag, formatFlag, specFlagsOf, stringArrayFlag, stringFlag } from "../../spec/input-coercion";
+import {
+  booleanFlag,
+  commandResultFormatAmong,
+  specFlagsOf,
+  stringArrayFlag,
+  stringFlag,
+} from "../../spec/input-coercion";
 import { Flags } from "../../spec/metadata";
 
 const extractFormat = (input: unknown): "json" | "table" =>
-  formatFlag(specFlagsOf(input), ["json", "table"], "table");
+  commandResultFormatAmong(input, ["json", "table"], "table");
 
 const isAppsListStatus = (value: string): value is AppsListStatus =>
   (APPS_LIST_STATUSES as readonly string[]).includes(value);
@@ -52,7 +58,7 @@ export const appsListIncludeScratchFromInput = (input: unknown): boolean => {
 export const listSpec: LandoCommandSpec<ListServicesResult> = {
   resultSchema: AppsListResultSchema,
   id: "apps:list",
-  resultFormats: ["table"],
+  rendersTable: true,
   mcpAllowed: true,
   helpGroup: "common",
   summary: "List Lando apps applied across discovered providers on this host.",
@@ -61,7 +67,6 @@ export const listSpec: LandoCommandSpec<ListServicesResult> = {
   aliases: ["list"],
   bootstrap: "minimal",
   flags: {
-    format: Flags.string({ description: "Output format.", default: "table" }),
     path: Flags.string({
       description:
         "Match existing paths and apps beneath them; bare words and nonexistent paths match root substrings.",

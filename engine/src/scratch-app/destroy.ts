@@ -20,14 +20,16 @@ import {
   StateStore,
 } from "@lando/sdk/services";
 import { DateTime, Effect, Option } from "effect";
-import { routeOwnerFromScratch } from "../lifecycle/route-owner.ts";
+import { routeOwnerFromPlan, routeOwnerFromRoot, routeOwnerFromScratch } from "../lifecycle/route-owner.ts";
 import { withdrawOwnerRoutes } from "../lifecycle/route-withdrawal.ts";
 import { removeServiceCertificates } from "../lifecycle/service-certificate-paths.ts";
+import { canonicalMissingAppRoot } from "../operations/app-mutation-lock.ts";
 import { withDestroyProgress } from "../operations/destroy-progress.ts";
 import { removeSnapshots, scratchOwnedSnapshots } from "../operations/destroy-snapshots.ts";
 import { BuildOwner } from "../services/build-owner.ts";
 import { clearAppBuildResults } from "../services/build-results.ts";
 import { removeAppBuildOutput, warnBuildOutputCleanupFailure } from "../services/build-transcript-cleanup.ts";
+import { cleanupScratchOwnedState } from "./owned-cleanup.ts";
 import { ScratchRegistry } from "./registry.ts";
 import { ScratchResourceScanner } from "./scanner.ts";
 
@@ -134,14 +136,34 @@ export const makeScratchReaper = Effect.gen(function* () {
                   { containers: "remove", volumes: !keepVolumes, removeState: true },
                 )).kind === "removed"
               : yield* orphan?.destroy ?? Effect.succeed(false);
-          yield* withdrawOwnerRoutes(routeOwnerFromScratch(input.id)).pipe(
-            Effect.provideService(EventService, events),
-            Effect.provideService(RouterService, router),
+          // Without a plan, the registry layout says which owner published; with neither, try both.
+          const managedOwner = Effect.map(
+            canonicalMissingAppRoot(join(String(input.instanceRoot), "root")),
+            (root) => routeOwnerFromRoot(input.id, AbsolutePath.make(root)),
           );
-          yield* removeServiceCertificates(routeOwnerFromScratch(input.id).ownerKey).pipe(
-            Effect.provideService(EventService, events),
-            Option.isSome(paths) ? Effect.provideService(PathsService, paths.value) : (effect) => effect,
-          );
+          const routeOwners =
+            plan !== undefined
+              ? [routeOwnerFromPlan(plan)]
+              : entry?.layout === "legacy"
+                ? [routeOwnerFromScratch(input.id)]
+                : entry?.layout === "managed"
+                  ? [yield* managedOwner]
+                  : [routeOwnerFromScratch(input.id), yield* managedOwner];
+          for (const routeOwner of routeOwners) {
+            yield* withdrawOwnerRoutes(routeOwner).pipe(
+              Effect.provideService(EventService, events),
+              Effect.provideService(RouterService, router),
+            );
+            yield* removeServiceCertificates(routeOwner.ownerKey).pipe(
+              Effect.provideService(EventService, events),
+              Option.isSome(paths) ? Effect.provideService(PathsService, paths.value) : (effect) => effect,
+            );
+          }
+          if (plan !== undefined && provider !== undefined)
+            yield* cleanupScratchOwnedState({ plan, provider, keepVolumes }).pipe(
+              Effect.provideService(RuntimeProviderRegistry, providers),
+              Effect.provideService(StateStore, stateStore),
+            );
           return stopped || destroyed || removed > 0 ? ("destroyed" as const) : ("unchanged" as const);
         });
         const outcome = yield* reason === "gc"

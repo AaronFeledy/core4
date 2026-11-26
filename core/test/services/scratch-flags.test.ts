@@ -281,15 +281,15 @@ describe("ScratchAppServiceLayer.layer --mount-cwd transform", () => {
           type: "bind",
           source: dir,
         });
+        expect(String(acquired.root)).not.toBe(dir);
         if (isolate === "baked") {
-          expect(String(acquired.root)).toBe(dir);
           expect(serviceAppMount(primary)).toBeUndefined();
           expect(relative).toBeUndefined();
           expect(primary.mounts.find((mount) => mount.target === "/app/vendor")).toBeUndefined();
           expect(worker?.mounts.find((mount) => mount.target === "/jobs")).toBeUndefined();
           expect(acquired.fileSync).toEqual([]);
         } else {
-          const expectedRoot = isolate === "cwd" ? dir : acquired.root;
+          const expectedRoot = isolate === "cwd" ? dir : String(acquired.root);
           expect(relative).toMatchObject({
             type: "bind",
             source: join(expectedRoot, "config"),
@@ -301,7 +301,6 @@ describe("ScratchAppServiceLayer.layer --mount-cwd transform", () => {
           });
           expect(serviceAppMount(primary)?.source).toBe(expectedRoot);
           expect(primary.mounts.some((mount) => mount.target === "/outside")).toBe(isolate === "cwd");
-          if (isolate === "full") expect(acquired.root).not.toBe(dir);
         }
       });
     },

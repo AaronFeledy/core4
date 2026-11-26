@@ -10,9 +10,9 @@ import {
   scratchRunRedactionTokens,
 } from "../../../commands/scratch-run";
 import { attachExecHostIo, toolingHostStdin } from "../../../exec-host-io";
-import { isEnvelopeResultFormat } from "../../../format-flags";
+import { isMachineResultFormat } from "../../../format-flags";
 import type { LandoCommandSpec } from "../../../spec/command-base";
-import { booleanFlag, specFlagsOf, stringFlag } from "../../../spec/input-coercion";
+import { commandResultFormat } from "../../../spec/input-coercion";
 import { Args, Flags } from "../../../spec/metadata";
 import { execInputUsesCliHostIo } from "../../app/exec";
 
@@ -53,13 +53,10 @@ export const appsScratchRunSpec: LandoCommandSpec<ScratchRunResult, ScratchRunEr
       "interaction" in input &&
       input.interaction === "non-interactive";
     if (!execInputUsesCliHostIo(input) || nonInteractive) return scratchRun(options);
-    const flags = specFlagsOf(input);
-    const format = stringFlag(flags, "format");
-    const envelopeFormat =
-      (format !== undefined && isEnvelopeResultFormat(format)) || booleanFlag(flags, "json");
+    const machineFormat = isMachineResultFormat(commandResultFormat(input));
     const rendererMode =
       typeof input === "object" && input !== null && "rendererMode" in input ? input.rendererMode : undefined;
-    const mode = toolingHostStdin(!envelopeFormat && rendererMode !== "json");
+    const mode = toolingHostStdin(!machineFormat && rendererMode !== "json");
     const hostIo =
       mode === "none"
         ? {}
@@ -68,7 +65,7 @@ export const appsScratchRunSpec: LandoCommandSpec<ScratchRunResult, ScratchRunEr
             tty: mode === "keyboard",
             interactive: mode === "keyboard",
           });
-    return scratchRun({ ...options, ...hostIo, hostIo: "cli", envelopeFormat });
+    return scratchRun({ ...options, ...hostIo, hostIo: "cli", machineFormat });
   },
   redactionTokens: (value) => scratchRunRedactionTokens(value),
   completion: (result) => commandCompletionFromExitCode(result.exitCode),

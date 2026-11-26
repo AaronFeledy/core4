@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -335,9 +335,9 @@ const makeScratchForkLayer = (
     AppPlanner,
     Effect.map(AppPlanner, (planner) =>
       AppPlanner.of({
-        plan: (landofile, capabilities) =>
+        plan: (landofile, capabilities, planOptions) =>
           planner
-            .plan(landofile, capabilities)
+            .plan(landofile, capabilities, planOptions)
             .pipe(
               Effect.map((plan) =>
                 options.requiredGlobalServices === undefined
@@ -554,6 +554,122 @@ describe("ScratchAppServiceLayer.layer fork acquire", () => {
     });
   });
 
+  test("two cwd forks from a subdirectory get distinct owner roots and keep source-relative inputs", async () => {
+    const yaml = [
+      "name: forkme",
+      "runtime: 4",
+      "provider: lando",
+      "services:",
+      "  appserver:",
+      "    image: node:20-alpine",
+      "    primary: true",
+      "    home: false",
+      "    environment:",
+      "      SOURCE_TOKEN: from-source",
+      "    mounts:",
+      "      - ./config:/etc/project",
+      "",
+    ].join("\n");
+    await withTempProject(yaml, async (dir) => {
+      await mkdir(join(dir, "config"), { recursive: true });
+      await writeFile(join(dir, "config", "app.conf"), "source-config\n");
+      const sub = join(dir, "sub");
+      await mkdir(sub);
+      const appliedPlans: AppPlan[] = [];
+      const layer = makeScratchForkLayer(sub, appliedPlans);
+      const acquire = () =>
+        Effect.runPromise(
+          Effect.flatMap(ScratchAppService, (service) =>
+            Effect.scoped(
+              service.acquire({ source: { kind: "fork" }, detached: true, isolate: "cwd", mountCwd: {} }),
+            ),
+          ).pipe(Effect.provide(layer)),
+        );
+      const first = await acquire();
+      const second = await acquire();
+      expect(appliedPlans).toHaveLength(2);
+      const [left, right] = appliedPlans;
+      if (left === undefined || right === undefined) throw new Error("expected two cwd fork plans");
+      expect(String(left.root)).not.toBe(dir);
+      expect(String(right.root)).not.toBe(dir);
+      expect(String(left.root)).not.toBe(String(right.root));
+      expect(planAppIdentity(left).ownerKey).not.toBe(planAppIdentity(right).ownerKey);
+      expect(planAppIdentity(left).ownerKey).not.toBe(appIdentityKey("owner", dir));
+      expect(first.app.root).toBe(left.root);
+      expect(second.app.root).toBe(right.root);
+      for (const plan of [left, right]) {
+        const primary = Object.values(plan.services).find((service) => service.primary === true);
+        if (primary === undefined) throw new Error("expected a primary service");
+        expect(serviceAppMount(primary)?.source).toBe(sub);
+        expect(primary.mounts.find((mount) => mount.target === "/etc/project")).toMatchObject({
+          type: "bind",
+          source: join(sub, "config"),
+        });
+        expect(primary?.environment.SOURCE_TOKEN).toBe("from-source");
+      }
+    });
+  });
+
+  test.each(["cwd", "full"] as const)(
+    "keeps %s fork binds when the project or data root is reached through a symlink",
+    async (isolate) => {
+      const yaml = [
+        "name: forkme",
+        "runtime: 4",
+        "provider: lando",
+        "router:",
+        "  enabled: false",
+        "services:",
+        "  appserver:",
+        "    image: node:20-alpine",
+        "    primary: true",
+        "    home: false",
+        "    mounts:",
+        "      - ./config:/etc/project",
+        "",
+      ].join("\n");
+      await withTempProject(yaml, async (dir) => {
+        await mkdir(join(dir, "config"), { recursive: true });
+        await writeFile(join(dir, "config", "app.conf"), "source-config\n");
+        await mkdir(join(dir, "sub"));
+        // The link lives under another parent, so raw and canonical paths differ by more than one segment.
+        const links = await realpath(await mkdtemp(join(tmpdir(), "lando-scratch-fork-links-")));
+        try {
+          const project = join(links, "project");
+          await symlink(dir, project, "junction");
+          const dataRoot = join(links, "data");
+          await symlink(process.env.LANDO_USER_DATA_ROOT ?? "", dataRoot, "junction");
+          if (isolate === "full") process.env.LANDO_USER_DATA_ROOT = dataRoot;
+          const cwd = isolate === "cwd" ? join(project, "sub") : project;
+          const appliedPlans: AppPlan[] = [];
+          await Effect.runPromise(
+            Effect.flatMap(ScratchAppService, (service) =>
+              Effect.scoped(
+                service.acquire({
+                  source: { kind: "fork" },
+                  detached: true,
+                  isolate,
+                  ...(isolate === "cwd" ? { mountCwd: {} } : {}),
+                }),
+              ),
+            ).pipe(Effect.provide(makeScratchForkLayer(cwd, appliedPlans))),
+          );
+          const primary = Object.values(appliedPlans.at(0)?.services ?? {}).find(
+            (service) => service.primary === true,
+          );
+          const root = isolate === "cwd" ? cwd : await realpath(String(appliedPlans.at(0)?.root));
+          expect(serviceAppMount(primary ?? { mounts: [] })?.source).toBe(root);
+          expect(primary?.mounts.find((mount) => mount.target === "/etc/project")).toMatchObject({
+            type: "bind",
+            source: join(root, "config"),
+          });
+        } finally {
+          await rm(links, { recursive: true, force: true });
+        }
+      });
+    },
+  );
+
   test.each(["full", "cwd"] as const)(
     "applies distinct %s scratch route ownership and removes it on scope finalize",
     async (isolate) => {
@@ -580,13 +696,14 @@ describe("ScratchAppServiceLayer.layer fork acquire", () => {
         );
 
         expect(handleId).toMatch(/^scratch-a{25}-[0-9a-f]{6}$/u);
-        expect(routes.applied).toEqual([
-          { id: AppId.make(handleId), ownerKey: appIdentityKey("owner", `scratch:${handleId}`) },
-        ]);
-        expect(routes.removed).toEqual(routes.applied);
         const [appliedPlan] = appliedPlans;
         if (appliedPlan === undefined) throw new Error("scratch plan missing");
-        expect(routes.applied[0]?.ownerKey).not.toBe(planAppIdentity(appliedPlan).ownerKey);
+        expect(routes.applied).toEqual([
+          { id: AppId.make(handleId), ownerKey: planAppIdentity(appliedPlan).ownerKey },
+        ]);
+        expect(routes.removed).toEqual(routes.applied);
+        expect(String(appliedPlan.root)).not.toBe(dir);
+        expect(routes.applied[0]?.ownerKey).not.toBe(appIdentityKey("owner", dir));
         expect(appliedPlans[0]?.routes[0]?.hostname).toBe(`forkme--${handleId}.lndo.site`);
         expect(appliedPlans[0]?.routes[0]?.backend).toMatchObject({ service: "appserver", port: 3000 });
         expect(appliedPlans[0]?.routes[0]?.backend.host).toBeUndefined();
@@ -964,7 +1081,7 @@ describe("ScratchAppServiceLayer.layer fork acquire", () => {
     });
   });
 
-  test("isolate=none (default) shares the source app root in registry-backed handles", async () => {
+  test("isolate=none (default) binds the source tree while owning a managed root", async () => {
     await withTempProject(forkLandofile, async (dir) => {
       const appliedPlans: AppPlan[] = [];
       const destroyCalls: DestroyCall[] = [];
@@ -983,7 +1100,8 @@ describe("ScratchAppServiceLayer.layer fork acquire", () => {
           return { destroyed, handle, keepHandle, resolved, stopped };
         }).pipe(Effect.provide(makeScratchForkLayer(dir, appliedPlans, destroyCalls))),
       );
-      expect(String(appliedPlans.at(0)?.root)).toBe(dir);
+      expect(String(appliedPlans.at(0)?.root)).not.toBe(dir);
+      expect(String(appliedPlans.at(0)?.root)).toContain(join("scratch", result.handle.id, "root"));
       const primaryService = Object.values(appliedPlans.at(0)?.services ?? {}).find(
         (service) => service.primary,
       );

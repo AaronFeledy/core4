@@ -1001,6 +1001,10 @@
       "digest": "d01b31b0b3310bcfd22a7df546da2b93922a6eedaa12746c460ac216d148876c"
     },
     {
+      "fixture": "docs/guides/mount-and-share-flags/fixtures/cwd-destroy-source",
+      "digest": "40607115b1266d77e18f358e03a5cb6095e7e93f281de59a63c50697f7fa8c1f"
+    },
+    {
       "fixture": "docs/guides/mount-and-share-flags/fixtures/scratch-fork-web",
       "digest": "9d31b7fed27f306ddf2922949da5ac65197b99c3b7f9a142ded23e7e4e6026ee"
     },

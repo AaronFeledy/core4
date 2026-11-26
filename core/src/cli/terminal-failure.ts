@@ -1,16 +1,15 @@
 import * as LandoLogger from "@lando/engine/logging/service";
 import { activeLogLevel } from "@lando/engine/runtime/cli-options";
-import { type RendererIO, createStdioRendererIO } from "@lando/renderer/io";
-import { writeDiagnosticLine, writeResultLine } from "@lando/renderer/output";
-import { layerPlainService } from "@lando/renderer/runtime";
-import { encodeCommandResult } from "@lando/sdk/command-result";
+import type { RendererIO } from "@lando/renderer/io";
+import { encodeCommandResult, encodeStreamResultFrame } from "@lando/sdk/command-result";
 import type { Redactor } from "@lando/sdk/secrets";
 import { Cause, Effect, Schema } from "effect";
 import { formatBugReport } from "./bug-report";
 import { commandFailureOutcome, commandInterruptionExitCode } from "./command-interruption";
-import { machineOutputOnStderr } from "./command-payload-stdout";
-import { DEFAULT_RESULT_FORMAT, isEnvelopeResultFormat } from "./format-flags";
+import { DEFAULT_RESULT_FORMAT } from "./format-flags";
+import { resolveOutputRouting } from "./output-routing";
 import type { RunWithRendererHandlingOptions } from "./renderer-boundary";
+import { type TerminalDocument, diagnosticLine, resultLine } from "./terminal-document";
 
 export const recordCliDefect = (cause: Cause.Cause<unknown>, redactor: Redactor, io: RendererIO) =>
   Cause.hasDies(cause)
@@ -27,46 +26,51 @@ export const recordCliDefect = (cause: Cause.Cause<unknown>, redactor: Redactor,
       )
     : Effect.void;
 
-export const renderTerminalFailure = async <A, R, RE>(
+/**
+ * The failure document for a failure outside the run's own planning: a defect
+ * in the boundary itself, or a planner that failed before anything was
+ * committed. The run's committer writes it.
+ */
+export const planTerminalFailure = <A, R, RE>(
   cause: Cause.Cause<unknown>,
   options: RunWithRendererHandlingOptions<A, R, RE>,
   redactor: Redactor,
-): Promise<void> => {
+): Effect.Effect<TerminalDocument, unknown> => {
   const outcome = commandFailureOutcome(cause, options.signal);
-  const format = options.resultFormat ?? DEFAULT_RESULT_FORMAT;
-  const realIO =
-    options.io ??
-    createStdioRendererIO(undefined, undefined, undefined, {
-      terminalNewlines: !isEnvelopeResultFormat(format),
-    });
-  const io =
-    options.payloadStdout === true && isEnvelopeResultFormat(format) ? machineOutputOnStderr(realIO) : realIO;
-  await Effect.runPromise(
-    Effect.gen(function* () {
-      yield* recordCliDefect(cause, redactor, io);
-      if (isEnvelopeResultFormat(format)) {
-        const line = yield* encodeCommandResult({
-          command: options.command ?? "cli:unknown",
-          resultSchema: Schema.Unknown,
-          outcome,
-          redactor,
-          format,
-        });
-        yield* writeResultLine(line);
-      } else {
-        yield* writeDiagnosticLine(
-          formatBugReport({
-            ...outcome,
-            context: { commandId: options.command ?? "cli:unknown" },
-            rendererMode: "plain",
-            redactor,
-          }),
-        );
-      }
-    }).pipe(Effect.provide(layerPlainService(io))),
-  );
-  const setExitCode = options.setExitCode;
+  const routing = resolveOutputRouting({
+    rendererMode: options.rendererMode,
+    format: options.resultFormat ?? DEFAULT_RESULT_FORMAT,
+    frames: options.streaming !== undefined,
+    live: options.streamingMode === "live",
+    report: options.ndjsonReport !== undefined,
+  });
   const exitCode = Cause.hasInterruptsOnly(cause) ? commandInterruptionExitCode(options.signal) : 1;
-  if (setExitCode == null) process.exitCode = exitCode;
-  else setExitCode(exitCode);
+  const result = {
+    command: options.command ?? "cli:unknown",
+    resultSchema: Schema.Unknown,
+    outcome,
+    redactor,
+  };
+  switch (routing.stdout) {
+    case "envelope":
+      return encodeCommandResult({ ...result, format: routing.serialization }).pipe(
+        Effect.map((line): TerminalDocument => ({ writes: [resultLine(line)], exitCode })),
+      );
+    case "frames":
+    case "report":
+      return encodeStreamResultFrame(result).pipe(
+        Effect.map((line): TerminalDocument => ({ writes: [resultLine(line)], exitCode })),
+      );
+    case "human": {
+      const message = formatBugReport({
+        ...outcome,
+        context: { commandId: options.command ?? "cli:unknown" },
+        rendererMode: "plain",
+        redactor,
+      });
+      return Effect.succeed({ writes: [diagnosticLine(message)], exitCode });
+    }
+    default:
+      return routing satisfies never;
+  }
 };

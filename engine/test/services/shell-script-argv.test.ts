@@ -1,9 +1,14 @@
 import { expect, test } from "bun:test";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { createPayloadRedactor } from "@lando/sdk/secrets";
-import { EventService, type LandoEvent, ProcessRunner } from "@lando/sdk/services";
+import {
+  EventService,
+  type LandoEvent,
+  ProcessRunner,
+  StreamFrameSink,
+  type StreamFrameSinkFrame,
+} from "@lando/sdk/services";
 import { Effect, Queue, Stream } from "effect";
-import { StreamFrameSink, type StreamFrameSinkFrame } from "../../src/operations/stream-frame-sink.ts";
 import * as BunProcessRunner from "../../src/services/process-runner.ts";
 import { streamArgvCommand } from "../../src/services/shell-script-stream.ts";
 
@@ -37,6 +42,34 @@ test("argv data bypasses shell parsing and forwards stdin with nonzero result da
     ),
   );
   expect(result).toEqual({ exitCode: 7, stdout: `${literal}stdin-value`, stderr: "diagnostic" });
+});
+
+test("host argv reports output-only EOF without claiming an exit or exposing argv", async () => {
+  const privateExecutable = "private-executable";
+  const privateArg = "private-argv";
+  const privateOutput = "private-output";
+  const error = await Effect.runPromise(
+    streamArgvCommand(
+      [privateExecutable, privateArg],
+      {},
+      { tool: "argv-test", redaction: { substring: [] } },
+    ).pipe(
+      Effect.provideService(
+        ProcessRunner,
+        ProcessRunner.of({
+          run: () => Effect.die("unexpected collected process"),
+          stream: () => Stream.die("unexpected output stream"),
+          streamWithExit: () =>
+            Stream.make({ kind: "stdout", chunk: new TextEncoder().encode(privateOutput) }),
+        }),
+      ),
+      Effect.flip,
+    ),
+  );
+  expect(error).toMatchObject({ _tag: "ToolingExecError", cause: { _tag: "ProcessExecError" } });
+  expect(error).not.toHaveProperty("exitCode");
+  for (const value of [privateExecutable, privateArg, privateOutput])
+    expect(JSON.stringify(error)).not.toContain(value);
 });
 
 test.each([

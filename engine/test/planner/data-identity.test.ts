@@ -1,7 +1,8 @@
 import { expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { makeLandoPaths } from "@lando/paths";
 import { LandofileShape, ServiceName } from "@lando/sdk/schema";
 import { AppPlanner } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
@@ -110,6 +111,7 @@ test("corrupt user records fail closed while scratch and global planning ignore 
         ).pipe(Effect.provide(layer)),
       );
 
+    await mkdir(join(makeLandoPaths().scratchDir, "current", "root"), { recursive: true });
     await expect(plan("user")).rejects.toMatchObject({ _tag: "AppDataIdentityError" });
     expect((await plan("scratch")).identity?.dataName).toBe("current");
     expect((await plan("global")).identity?.dataName).toBe("current");

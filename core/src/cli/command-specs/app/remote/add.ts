@@ -2,7 +2,13 @@ import { appRemoteAdd } from "@lando/engine/operations/remote";
 import { AppRemoteMutationResult } from "@lando/sdk/schema";
 import { renderRemoteMutationResult } from "../../../commands/remote";
 import type { LandoCommandSpec } from "../../../spec/command-base";
-import { remoteAddFlags, remoteAddOptionsFromInput, remoteNameArg, remoteSourceArg } from "./common";
+import {
+  remoteAddFlags,
+  remoteAddOptionsFromInput,
+  remoteFormatFromInput,
+  remoteNameArg,
+  remoteSourceArg,
+} from "./common";
 
 export const remoteAddSpec: LandoCommandSpec<AppRemoteMutationResult> = {
   id: "app:remote:add",
@@ -14,5 +20,5 @@ export const remoteAddSpec: LandoCommandSpec<AppRemoteMutationResult> = {
   resultSchema: AppRemoteMutationResult,
   run: (input) => appRemoteAdd(remoteAddOptionsFromInput(input)),
   render: (result, input, ctx) =>
-    renderRemoteMutationResult(result, "added", remoteAddOptionsFromInput(input).format, ctx),
+    renderRemoteMutationResult(result, "added", remoteFormatFromInput(input), ctx),
 };
