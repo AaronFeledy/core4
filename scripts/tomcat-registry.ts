@@ -133,24 +133,29 @@ export const resolveTomcatImage = async (major: TomcatMajor, request: TomcatFetc
   return { version: first.version, indexDigest: index.digest };
 };
 
-export const resolveTomcatBaseline = async (version: string, request: TomcatFetch) => {
-  const github = async (path: string) =>
-    JSON.parse(
-      await readTomcatResponse(
-        await request(`https://api.github.com/repos/apache/tomcat/git/${path}`, {
-          headers: { Accept: "application/vnd.github+json" },
-        }),
-        "Apache tag provenance",
-      ),
-    );
-  const reference = Schema.decodeUnknownSync(Reference)(await github(`ref/tags/${version}`));
+export const resolveTomcatBaseline = async (version: string, request: TomcatFetch, githubToken?: string) => {
+  // Unauthenticated GitHub API calls share a small per-IP limit that hosted runners exhaust.
+  const github = async (path: string, mediaType: string, label: string) => {
+    const headers = new Headers({ Accept: mediaType });
+    if (githubToken !== undefined) headers.set("Authorization", `Bearer ${githubToken}`);
+    const response = await request(`https://api.github.com/repos/apache/tomcat/${path}`, { headers });
+    if (githubToken === undefined && (response.status === 403 || response.status === 429)) {
+      throw new TomcatUpdateError(
+        `${label}: HTTP ${response.status}; set GITHUB_TOKEN or GH_TOKEN to authenticate GitHub API requests`,
+      );
+    }
+    return readTomcatResponse(response, label);
+  };
+  const git = async (path: string) =>
+    JSON.parse(await github(`git/${path}`, "application/vnd.github+json", "Apache tag provenance"));
+  const reference = Schema.decodeUnknownSync(Reference)(await git(`ref/tags/${version}`));
   let commit: string;
   switch (reference.object.type) {
     case "commit":
       commit = reference.object.sha;
       break;
     case "tag": {
-      const tag = Schema.decodeUnknownSync(Tag)(await github(`tags/${reference.object.sha}`));
+      const tag = Schema.decodeUnknownSync(Tag)(await git(`tags/${reference.object.sha}`));
       if (tag.tag !== version) throw new TomcatUpdateError("Apache tag version mismatch");
       switch (tag.object.type) {
         case "commit":
@@ -166,8 +171,9 @@ export const resolveTomcatBaseline = async (version: string, request: TomcatFetc
     default:
       return assertNever(reference.object.type);
   }
-  const xml = await readTomcatResponse(
-    await request(`https://raw.githubusercontent.com/apache/tomcat/${commit}/conf/server.xml`),
+  const xml = await github(
+    `contents/conf/server.xml?ref=${commit}`,
+    "application/vnd.github.raw+json",
     "Apache server.xml",
   );
   return { upstreamCommit: commit, configSha256: sha256(xml), xml };

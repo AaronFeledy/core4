@@ -94,6 +94,30 @@ describe("paired Tomcat updater", () => {
     expect(requested.some((url) => url.includes("storage.example"))).toBe(false);
   });
 
+  test("sends the GitHub token only to the GitHub API", async () => {
+    // Given
+    const fixture = await tomcatRegistryFixture();
+    // When
+    await prepareTomcatUpdate(fixture.snapshot, fixture.request, "github-test-token");
+    // Then
+    const authorized = fixture.authorizations.filter(([, value]) => value === "Bearer github-test-token");
+    expect(authorized.map(([url]) => new URL(url).host)).toEqual(Array(6).fill("api.github.com"));
+    expect(authorized.some(([url]) => url.includes("/contents/conf/server.xml?ref="))).toBe(true);
+  });
+
+  test("names the GitHub token when unauthenticated API requests are refused", async () => {
+    // Given
+    const fixture = await tomcatRegistryFixture();
+    const request: TomcatFetch = async (url, init) =>
+      url.startsWith("https://api.github.com/")
+        ? new Response("rate limited", { status: 403 })
+        : fixture.request(url, init);
+    // When / Then
+    await expect(prepareTomcatUpdate(fixture.snapshot, request)).rejects.toThrow(
+      "Apache tag provenance: HTTP 403; set GITHUB_TOKEN or GH_TOKEN",
+    );
+  });
+
   test("prepares a new patch version with the release-matched baseline", async () => {
     // Given
     const fixture = await tomcatRegistryFixture();
