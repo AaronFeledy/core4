@@ -114,6 +114,8 @@ The fixture's `app` service is `node:22` and marked `primary: true`, so it is th
 
 `app:exec` sets its own command exit code to the executed command's `exitCode`. A non-zero result is mirrored onto the CLI process, so `lando exec` propagates the target command's failure to the shell.
 
+If the output stream ends on its own before Lando sees the command's exit status, `lando exec` fails with `ServiceExecError` instead of reporting a successful exit. Lando does not run the command again. The command may have finished or may still be running, so check what it changed before you rerun it. The same rule applies to `lando ssh`, `lando shell --service`, `lando run`, and streamed tooling tasks.
+
 ## Interrupt a command
 
 At a terminal, Ctrl-C reaches the command through its terminal, the same as in any shell.
@@ -146,4 +148,6 @@ Each data frame carries a complete line of stdout or stderr, or up to 64 KiB whe
 
 The same stream carries `event` frames, shaped `{"_tag":"event","event":"<name>","payload":{...}}`. They hold the events Lando's progress display would otherwise show, starting with `cli-app:exec-init`, plus any `message.warn` or `message.info` a plugin publishes. Internal startup markers are left out. Events keep their own order; a data frame can land before or after a nearby event because it waits for its complete line. Read frames by `_tag`, not by position.
 
-An empty stream emits no data frames. Exactly one result frame comes last, carrying an [`ExecAppResult`](../../reference/schemas/exec-app-result.mdx) with the app, service, command, and exit code. If your reader falls far enough behind that Lando has to drop events rather than stall the command, the result's `warnings` include `LANDO_EVENT_FRAMES_DROPPED` with the count; output frames are never dropped. The result omits stdout and stderr when the live frames delivered them. YAML and library calls without a live sink collect stdout and stderr in the result instead, including empty strings for an empty capture; that uses memory proportional to the output.
+An empty stream emits no data frames. When Lando observes the command exit, the result frame carries an [`ExecAppResult`](../../reference/schemas/exec-app-result.mdx) with the app, service, command, and exit code. If the stream ends on its own without an exit status, any output frames already received still count as output, not proof of completion. The final envelope has `ok: false` and `error._tag: "ServiceExecError"`, with no `result` or command exit code.
+
+If your reader falls far enough behind that Lando has to drop events rather than stall the command, the result's `warnings` include `LANDO_EVENT_FRAMES_DROPPED` with the count; output frames are never dropped. The result omits stdout and stderr when the live frames delivered them. YAML and library calls without a live sink collect stdout and stderr in the result instead, including empty strings for an empty capture; that uses memory proportional to the output.

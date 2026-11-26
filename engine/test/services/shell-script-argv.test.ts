@@ -39,6 +39,34 @@ test("argv data bypasses shell parsing and forwards stdin with nonzero result da
   expect(result).toEqual({ exitCode: 7, stdout: `${literal}stdin-value`, stderr: "diagnostic" });
 });
 
+test("host argv reports output-only EOF without claiming an exit or exposing argv", async () => {
+  const privateExecutable = "private-executable";
+  const privateArg = "private-argv";
+  const privateOutput = "private-output";
+  const error = await Effect.runPromise(
+    streamArgvCommand(
+      [privateExecutable, privateArg],
+      {},
+      { tool: "argv-test", redaction: { substring: [] } },
+    ).pipe(
+      Effect.provideService(
+        ProcessRunner,
+        ProcessRunner.of({
+          run: () => Effect.die("unexpected collected process"),
+          stream: () => Stream.die("unexpected output stream"),
+          streamWithExit: () =>
+            Stream.make({ kind: "stdout", chunk: new TextEncoder().encode(privateOutput) }),
+        }),
+      ),
+      Effect.flip,
+    ),
+  );
+  expect(error).toMatchObject({ _tag: "ToolingExecError", cause: { _tag: "ProcessExecError" } });
+  expect(error).not.toHaveProperty("exitCode");
+  for (const value of [privateExecutable, privateArg, privateOutput])
+    expect(JSON.stringify(error)).not.toContain(value);
+});
+
 test.each([
   ["collected", 0],
   ["live", 0],

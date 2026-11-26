@@ -6,6 +6,26 @@ import { ProcessRunner, type ProcessSpawnOptions, ShellRunner } from "@lando/sdk
 import { Effect, Layer, Stream } from "effect";
 import * as BunShellRunner from "../../src/services/shell-runner.ts";
 
+test("the streamed shell fails without embedding the command or a fabricated exit when the child status is absent", async () => {
+  const runner = ProcessRunner.of({
+    run: () => Effect.die("unexpected collected process"),
+    stream: () => Stream.die("unexpected output stream"),
+    streamWithExit: () => Stream.empty,
+  });
+  const shell = BunShellRunner.layer(() => {
+    throw new TypeError("Unexpected interactive shell");
+  }).pipe(Layer.provide(Layer.succeed(ProcessRunner, runner)));
+  const error = await Effect.runPromise(
+    Effect.flatMap(ShellRunner, (service) => service.exec("echo private-source")).pipe(
+      Effect.provide(shell),
+      Effect.flip,
+    ),
+  );
+  expect(error).toMatchObject({ _tag: "ShellExecError", cause: { _tag: "ProcessExecError" } });
+  expect(error).not.toHaveProperty("exitCode");
+  expect(JSON.stringify(error)).not.toContain("private-source");
+});
+
 test.each([true, false])(
   "both shell paths retain the injected process runner with capture=%s",
   async (capture) => {
