@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { makeLandoPaths } from "@lando/paths";
@@ -17,7 +17,9 @@ import {
   AppPlan,
   LandofileShape,
   ProviderId,
+  type ResourceOwnership,
   type SnapshotInfo,
+  appIdentityKey,
   planAppIdentity,
 } from "@lando/sdk/schema";
 import {
@@ -27,6 +29,7 @@ import {
   EventService,
   type LandoEvent,
   LandofileService,
+  type OwnedResourcesCleanupOptions,
   PathsService,
   RouterService,
   RuntimeProviderRegistry,
@@ -89,6 +92,11 @@ interface DestroyFixtureOptions {
   readonly appliedPlan?: boolean;
   /** A newer receipt protects this scratch app, by name or as the provider's shared record. */
   readonly offlineNewerReceipt?: "app" | "provider";
+  /**
+   * The scratch survives only as a provider ownership inventory under its managed root, beside a
+   * source app's inventory that also records a scratch id.
+   */
+  readonly ownershipOnly?: boolean;
 }
 
 export const withDestroyFixture = async (
@@ -165,9 +173,27 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
     createdAt: "2026-01-01T00:00:00Z",
     updatedAt: "2026-01-01T00:00:00Z",
   };
-  if (!options.orphan) entries.set(id, entry);
-  await mkdir(join(instanceRoot, "root"), { recursive: true });
-  if (!options.orphan && options.skipDesiredPlan !== true)
+  if (!options.orphan && !options.ownershipOnly) entries.set(id, entry);
+  if (!options.ownershipOnly) await mkdir(join(instanceRoot, "root"), { recursive: true });
+  const managedRoot = AbsolutePath.make(join(await realpath(root), "scratch", id, "root"));
+  const sourceRoot = AbsolutePath.make(join(root, "source-app"));
+  let ownership: ReadonlyArray<ResourceOwnership> = options.ownershipOnly
+    ? [
+        {
+          appRoot: managedRoot,
+          ownerKey: appIdentityKey("owner", managedRoot),
+          providerId: ProviderId.make("lando"),
+          appIds: [id],
+        },
+        {
+          appRoot: sourceRoot,
+          ownerKey: appIdentityKey("owner", sourceRoot),
+          providerId: ProviderId.make("lando"),
+          appIds: [AppId.make("scratch-legacy-654321")],
+        },
+      ]
+    : [];
+  if (!options.orphan && !options.ownershipOnly && options.skipDesiredPlan !== true)
     await seedScratchPlan(instanceRoot, plan, options.desiredPlanVersion ?? SCRATCH_DESIRED_PLAN_VERSION);
   const stateStore = makeStateStore({ privateFileAccess: ownerOnlyFileAccess });
   // A reap brings the scratch down three times: stop, destroy, then forget its applied receipt.
@@ -177,6 +203,12 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
     ...(options.offlineNewerReceipt
       ? { isAvailable: Effect.succeed(false), getStatus: Effect.succeed({ state: "idle" as const }) }
       : {}),
+    cleanupOwnedResources: (cleanupRoot: AbsolutePath, request: OwnedResourcesCleanupOptions) =>
+      Effect.sync(() => {
+        calls.push(`cleanup:${request.appIds?.join(",")}:releaseCaches=${request.releaseCaches}`);
+        ownership = ownership.filter((hints) => hints.appRoot !== cleanupRoot);
+        return { servicesRemoved: [], networksRemoved: 0, volumesRemoved: { data: 0, cache: 0 } };
+      }),
     bringDown: (_target: unknown, request: BringDownOptions) =>
       Effect.sync(() => {
         const call = request.removeState ? "forget" : stopped ? `destroy:${request.volumes}` : "stop";
@@ -245,10 +277,16 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
         Effect.succeed({ plans: [], unreadable: provider === plan.provider ? unreadable : [] }),
       appliedPlansFor: () => Effect.sync(() => (applied === undefined ? [] : [applied])),
       resolveAppliedPlan: () => Effect.sync(() => applied),
-      resolveTeardownEvidence: () =>
-        Effect.sync(() =>
-          applied === undefined ? { kind: "absent" as const } : { kind: "applied" as const, plan: applied },
-        ),
+      resolveTeardownEvidence: (lookupRoot) =>
+        Effect.sync(() => {
+          if (applied !== undefined) return { kind: "applied" as const, plan: applied };
+          const owned = ownership.filter((hints) => hints.appRoot === lookupRoot);
+          return owned.length === 0
+            ? { kind: "absent" as const }
+            : { kind: "owned" as const, ownership: owned };
+        }),
+      listResourceOwnership: (provider) =>
+        Effect.sync(() => ownership.filter((hints) => hints.providerId === provider)),
       list: Effect.succeed([ProviderId.make("docker"), ProviderId.make("lando"), ProviderId.make("podman")]),
       capabilities: Effect.succeed(provider.capabilities),
       select: () => Effect.succeed(provider),

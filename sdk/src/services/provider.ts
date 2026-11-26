@@ -465,6 +465,10 @@ export class RuntimeProviderRegistry extends Context.Service<
       providerId: ProviderId,
       root: AbsolutePath,
     ) => Effect.Effect<ResourceOwnership | undefined, ProviderUnavailableError | NoProviderInstalledError>;
+    /** Every ownership inventory one provider recorded, read from the filesystem only. */
+    readonly listResourceOwnership?: (
+      providerId: ProviderId,
+    ) => Effect.Effect<ReadonlyArray<ResourceOwnership>, ProviderUnavailableError | NoProviderInstalledError>;
     /**
      * The applied plan for a lookup root, failing closed on contradictory state. With no matching
      * plan the root is not applied (`undefined`) unless workloads may still run there: containers

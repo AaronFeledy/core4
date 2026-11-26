@@ -349,6 +349,26 @@ test("GC recovers the applied plan when the desired cache misses an old frame", 
   });
 });
 
+test("GC reaps a scratch whose only trace is its provider ownership inventory", async () => {
+  // Given an inventory under a scratch's managed root that no registry entry, workspace, or plan
+  // knows, beside a source app inventory that recorded a scratch before scratches had their own root.
+  await withDestroyFixture({ ownershipOnly: true }, async (f) => {
+    const gc = (prune: boolean) =>
+      Effect.runPromise(
+        Effect.flatMap(ScratchAppService, (s) => s.gc({ prune })).pipe(Effect.provide(f.layer)),
+      );
+    // When GC prunes, then looks again.
+    const pruned = await gc(true);
+    const after = await gc(false);
+    // Then only the managed root's scratch is a candidate, its reap releases the inventory, and
+    // nothing is left to find.
+    expect(pruned).toMatchObject({ candidates: [f.id], reaped: [f.id], errors: [] });
+    expect(f.calls).toContain(`cleanup:${f.id}:releaseCaches=true`);
+    expect(f.events.find((event) => event._tag === "post-destroy")).toMatchObject({ evidence: "inventory" });
+    expect(after.candidates).toEqual([]);
+  });
+});
+
 test.each(["app", "provider"] as const)(
   "scratch destroy preserves the workspace and registry when the offline %s receipt is newer",
   async (scope) => {

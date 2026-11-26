@@ -84,6 +84,7 @@ import { applyScratchHostnames } from "./hostnames.ts";
 import {
   SCRATCH_EXTENSION_KEY,
   decodeScratchExtension,
+  isCanonicalScratchId,
   isUnsafeScratchId,
   scratchPathsFor,
   stampScratchExtension,
@@ -94,7 +95,6 @@ import { applyMountCwd, isolateScratchMounts } from "./mount-isolation.ts";
 import { openScratchPlan } from "./plan.ts";
 import { resolveScratchReference, sanitizeScratchBase, scratchAppNotFoundError } from "./reference.ts";
 import { ScratchRegistry, type ScratchRegistryEntry, makeScratchRegistry } from "./registry.ts";
-import { isCanonicalScratchId } from "./scanner.ts";
 import { applyScratchStartup } from "./startup.ts";
 
 export { isUnsafeScratchId, scratchProjectRoot } from "./identity.ts";

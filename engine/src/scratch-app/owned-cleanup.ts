@@ -1,11 +1,31 @@
 import { causeRemediation, mapFailures } from "@lando/sdk/command-result";
 import { ScratchAppError } from "@lando/sdk/errors";
-import { type AppPlan, planAppIdentity, planDataId } from "@lando/sdk/schema";
+import { type AppPlan, type ResourceOwnership, planAppIdentity, planDataId } from "@lando/sdk/schema";
 import { type RuntimeProviderShape, StateStore } from "@lando/sdk/services";
 import { readVolumeInitialization } from "@lando/state-store/volume-initialization";
 import { Effect, Option } from "effect";
 import { retireCreatedVolume } from "../lifecycle/volume-initialization.ts";
 import { prepareOwnedResourceCleanupFrom } from "../operations/owned-resource-teardown.ts";
+
+const scratchCleanupError = (cause: unknown): ScratchAppError =>
+  cause instanceof ScratchAppError
+    ? cause
+    : new ScratchAppError({
+        operation: "destroy",
+        message: "Unable to retire scratch ownership or volume initialization records.",
+        cause,
+        remediation:
+          causeRemediation(cause) ?? "Repair the provider or volume state, then retry scratch destroy.",
+      });
+
+// Shared caches outlive the scratch, so only its inventory member goes.
+const cleanupInventory = Effect.fnUntraced(function* (ownership: ResourceOwnership, keepVolumes: boolean) {
+  const cleanup = yield* prepareOwnedResourceCleanupFrom([ownership], ownership.appRoot, {
+    volumes: !keepVolumes,
+    releaseCaches: true,
+  });
+  yield* cleanup;
+});
 
 export const cleanupScratchOwnedState = Effect.fn("ScratchApp.cleanupOwnedState")(
   function* (input: {
@@ -15,22 +35,16 @@ export const cleanupScratchOwnedState = Effect.fn("ScratchApp.cleanupOwnedState"
   }) {
     const { plan, provider, keepVolumes } = input;
     const ownerRoot = plan.identity?.appRoot ?? plan.root;
-    if (provider.cleanupOwnedResources !== undefined) {
-      const cleanup = yield* prepareOwnedResourceCleanupFrom(
-        [
-          {
-            appRoot: ownerRoot,
-            ownerKey: planAppIdentity(plan).ownerKey,
-            providerId: plan.provider,
-            appIds: [plan.id],
-          },
-        ],
-        ownerRoot,
-        // Shared caches outlive the scratch, so only its inventory member goes.
-        { volumes: !keepVolumes, releaseCaches: true },
+    if (provider.cleanupOwnedResources !== undefined)
+      yield* cleanupInventory(
+        {
+          appRoot: ownerRoot,
+          ownerKey: planAppIdentity(plan).ownerKey,
+          providerId: plan.provider,
+          appIds: [plan.id],
+        },
+        keepVolumes,
       );
-      yield* cleanup;
-    }
     if (keepVolumes) return;
     const store = yield* Effect.serviceOption(StateStore);
     if (Option.isNone(store)) return;
@@ -49,18 +63,25 @@ export const cleanupScratchOwnedState = Effect.fn("ScratchApp.cleanupOwnedState"
       yield* retireCreatedVolume(recorded.identity);
     }
   },
-  (effect) =>
-    effect.pipe(
-      mapFailures((cause) =>
-        cause instanceof ScratchAppError
-          ? cause
-          : new ScratchAppError({
-              operation: "destroy",
-              message: "Unable to retire scratch ownership or volume initialization records.",
-              cause,
-              remediation:
-                causeRemediation(cause) ?? "Repair the provider or volume state, then retry scratch destroy.",
-            }),
-      ),
-    ),
+  (effect) => effect.pipe(mapFailures(scratchCleanupError)),
+);
+
+/**
+ * A planless teardown's only record of what a scratch still owns is its inventories; each is
+ * cleaned up for that scratch id alone, even where it shares a root with another app.
+ */
+export const cleanupScratchInventory = Effect.fn("ScratchApp.cleanupInventory")(
+  function* (input: {
+    readonly id: string;
+    readonly ownership: ReadonlyArray<ResourceOwnership>;
+    readonly keepVolumes: boolean;
+  }) {
+    for (const hints of input.ownership)
+      if (hints.appIds.some((appId) => appId === input.id))
+        yield* cleanupInventory(
+          { ...hints, appIds: hints.appIds.filter((appId) => appId === input.id) },
+          input.keepVolumes,
+        );
+  },
+  (effect) => effect.pipe(mapFailures(scratchCleanupError)),
 );
