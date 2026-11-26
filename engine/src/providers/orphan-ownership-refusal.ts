@@ -19,7 +19,7 @@ const orphanOwnershipRefusal = (input: {
     message: `Container ${container} claims app root ${input.root} but its ${input.label} label does not prove ownership by app ${input.service.app} service ${input.service.service} on provider ${input.providerId}.`,
     reason: "mismatch",
     detail: "provider-resources",
-    remediation: `Inspect container ${container} with your container runtime and restore its Lando ownership labels or remove it there before retrying teardown.`,
+    remediation: `Inspect container ${container} with your container runtime and restore its Lando ownership labels or remove it there, then retry.`,
   });
 };
 

@@ -378,8 +378,8 @@ export interface ServiceRuntimeIdentity {
 export interface ListFilter {
   readonly app?: AppId;
   readonly includeScratch?: boolean;
-  /** Also report Lando-labeled containers no applied plan accounts for. Used by teardown evidence
-   * and host-wide observation; providers that already discover by label may ignore this flag. */
+  /** Also report Lando-labeled containers no applied plan accounts for. Used by applied-state
+   * evidence and host-wide observation; providers that already discover by label may ignore this flag. */
   readonly includeUnplanned?: boolean;
 }
 
@@ -466,9 +466,12 @@ export class RuntimeProviderRegistry extends Context.Service<
       root: AbsolutePath,
     ) => Effect.Effect<ResourceOwnership | undefined, ProviderUnavailableError | NoProviderInstalledError>;
     /**
-     * The applied plan for a lookup root, failing closed on contradictory or orphaned runtime
-     * state. With the default `"ancestor"` lookup a working directory inside an app resolves
-     * that app; `"exact"` never returns an enclosing app's plan.
+     * The applied plan for a lookup root, failing closed on contradictory state. With no matching
+     * plan the root is not applied (`undefined`) unless workloads may still run there: containers
+     * a running runtime reports, recorded containers on a runtime that could not be checked, or an
+     * ownership record that does not name its resources. Retained volumes and recorded networks
+     * never block. With the default `"ancestor"` lookup a working directory inside an app
+     * resolves that app; `"exact"` never returns an enclosing app's plan.
      */
     readonly resolveAppliedPlan: (
       root: AbsolutePath,
