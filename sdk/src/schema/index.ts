@@ -164,6 +164,7 @@ export * from "./plugin.ts";
 export * from "./plugin-doctor.ts";
 export * from "./plugin-trust.ts";
 export * from "./primitives.ts";
+export * from "./privilege.ts";
 export * from "./prompt.ts";
 export * from "./provider-setup.ts";
 export * from "./proxy.ts";

@@ -15,7 +15,11 @@ import {
 import { TestRuntimeProvider } from "@lando/core/testing";
 import { makeLandoPaths } from "@lando/paths";
 import type { LandoRuntime } from "@lando/sdk/app";
-import { TestRouterService, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
+import {
+  TestRouterService,
+  makeTestPrivilegeService,
+  makeTestRuntimeProviderRegistry,
+} from "@lando/sdk/test";
 import { Effect, Layer, Schema } from "effect";
 
 const Registry = Schema.Struct({ data: Schema.Array(Schema.Struct({ id: Schema.String })) });
@@ -76,10 +80,11 @@ const providerLayers = () => {
     Layer.succeed(RuntimeProvider, provider),
     Layer.succeed(
       PrivilegeService,
-      PrivilegeService.of({
-        ensureCredentials: () => Effect.void,
-        elevate: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
-      }),
+      PrivilegeService.of(
+        makeTestPrivilegeService({
+          elevate: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
+        }),
+      ),
     ),
     Layer.succeed(RouterService, RouterService.of({ ...TestRouterService, id: "traefik" })),
     Layer.succeed(

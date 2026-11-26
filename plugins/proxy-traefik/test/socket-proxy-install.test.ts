@@ -9,7 +9,7 @@ import type {
   ProcessRunner,
   ProcessSpawnOptions,
 } from "@lando/sdk/services";
-import { makeTestCertificateAuthority } from "@lando/sdk/test";
+import { makeTestCertificateAuthority, makeTestPrivilegeService } from "@lando/sdk/test";
 import { Cause, type Context, Effect, Exit, Schema } from "effect";
 import {
   DEFAULT_BACKEND_HTTPS_TRY_LIST,
@@ -89,14 +89,13 @@ const makePrivilege = (
 } => {
   const calls: Array<ReadonlyArray<string>> = [];
   return {
-    service: {
-      ensureCredentials: () => Effect.void,
+    service: makeTestPrivilegeService({
       elevate: (command) =>
         Effect.sync(() => {
           calls.push([...command]);
           return typeof result === "function" ? result(command) : result;
         }),
-    },
+    }),
     calls: () => [...calls],
   };
 };
@@ -408,14 +407,14 @@ describe("installSocketProxy", () => {
         exists: hostFiles({ [packagedProxyd]: "binary" }).exists,
         readText: hostFiles().readText,
         processRunner: makeRunner(() => ok()).service,
-        privilege: {
-          ensureCredentials: () => Effect.fail(denied),
+        privilege: makeTestPrivilegeService({
           elevate: (command) =>
             Effect.sync(() => {
               calls.push(command);
               return ok();
             }),
-        },
+          open: () => Effect.fail(denied),
+        }),
         httpTarget: 8080,
         httpsTarget: 8443,
       }),

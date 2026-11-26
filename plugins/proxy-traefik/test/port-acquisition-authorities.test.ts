@@ -6,7 +6,7 @@ import type {
   ProcessRunner,
   ProcessSpawnOptions,
 } from "@lando/sdk/services";
-import { makeTestCertificateAuthority } from "@lando/sdk/test";
+import { makeTestCertificateAuthority, makeTestPrivilegeService } from "@lando/sdk/test";
 import { type Context, Effect, Schema } from "effect";
 import { AcquisitionState } from "../src/port-acquisition-state.ts";
 import { makeTraefikRouterService } from "../src/proxy.ts";
@@ -59,14 +59,13 @@ const makePrivilege = (
 } => {
   const calls: Array<ReadonlyArray<string>> = [];
   return {
-    service: {
-      ensureCredentials: () => Effect.void,
+    service: makeTestPrivilegeService({
       elevate: (command) =>
         Effect.sync(() => {
           calls.push([...command]);
           return result;
         }),
-    },
+    }),
     calls: () => [...calls],
   };
 };

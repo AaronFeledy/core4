@@ -47,6 +47,7 @@ import {
   inputProviderFlag,
   sourceInstallDir,
 } from "./setup-inputs";
+import { makeRunPrivilege } from "./setup-privilege";
 import {
   SYSTEM_RUNTIME_PROVIDERS,
   maybeSelectSetupProvider,
@@ -184,8 +185,12 @@ export const setupSpec: LandoCommandSpec<
     const withHostProvider = Effect.provideService(HostProviderOverride, selectedProvider);
     const provider = yield* registry.select(setupProviderPlan(selectedProvider));
     const networkProbe = inputNetworkProbe(input);
-    const privilege = yield* Effect.serviceOption(PrivilegeService);
-    const privilegeOptions = privilege._tag === "Some" ? { privilege: privilege.value } : {};
+    const hostPrivilege = yield* Effect.serviceOption(PrivilegeService);
+    const privilege =
+      hostPrivilege._tag === "Some" ? yield* makeRunPrivilege(hostPrivilege.value) : undefined;
+    const privilegeOptions = privilege === undefined ? {} : { privilege };
+    const withRunPrivilege = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+      privilege === undefined ? effect : Effect.provideService(effect, PrivilegeService, privilege);
 
     const selectedProviderId = String(selectedProvider);
     const network = yield* validateSetupNetworkTrust(globalConfig, networkProbe).pipe(
@@ -219,7 +224,7 @@ export const setupSpec: LandoCommandSpec<
     const trustStores = yield* runCaSetupStep(input, privilegeOptions, recorder, selectedProviderId).pipe(
       withHostProvider,
     );
-    yield* runProxySetupStep(input, recorder, selectedProviderId).pipe(withHostProvider);
+    yield* runProxySetupStep(input, recorder, selectedProviderId).pipe(withHostProvider, withRunPrivilege);
     yield* runShellServiceSetupStep(input, recorder, selectedProviderId).pipe(withHostProvider);
 
     if (userDataRoot !== undefined) {

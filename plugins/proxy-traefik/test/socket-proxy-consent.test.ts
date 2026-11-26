@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { ProxyConfig } from "@lando/sdk/schema";
-import { makeTestCertificateAuthority } from "@lando/sdk/test";
+import { makeTestCertificateAuthority, makeTestPrivilegeService } from "@lando/sdk/test";
 import { Effect, Schema, Stream } from "effect";
 import { makeTraefikRouterService } from "../src/proxy.ts";
 import type { SocketProxyDependencies } from "../src/proxy-types.ts";
@@ -22,14 +22,13 @@ const harness = (isInteractive: boolean) => {
       stream: () => Stream.empty,
       streamWithExit: () => Stream.empty,
     },
-    privilege: {
-      ensureCredentials: () => Effect.void,
+    privilege: makeTestPrivilegeService({
       elevate: (command) =>
         Effect.sync(() => {
           elevations.push(command);
           return { exitCode: 0, stdout: "", stderr: "" };
         }),
-    },
+    }),
     interaction: {
       isInteractive: Effect.succeed(isInteractive),
       confirm: (spec) =>

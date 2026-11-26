@@ -95,7 +95,11 @@ const EXPECTED_TAGS = [
     ],
   },
   { tag: ProcessRunner, key: "@lando/core/ProcessRunner", methods: ["run", "stream"] },
-  { tag: PrivilegeService, key: "@lando/core/PrivilegeService", methods: ["ensureCredentials", "elevate"] },
+  {
+    tag: PrivilegeService,
+    key: "@lando/core/PrivilegeService",
+    methods: ["credentialStatus", "openSession", "elevate"],
+  },
   {
     tag: ShellRunner,
     key: "@lando/core/ShellRunner",
@@ -178,7 +182,7 @@ describe("Effect service tags", () => {
         "writeFile",
       ],
       ["run", "stream"],
-      ["ensureCredentials", "elevate"],
+      ["credentialStatus", "openSession", "elevate"],
       ["exec", "run", "runScript", "interactive"],
     ];
 

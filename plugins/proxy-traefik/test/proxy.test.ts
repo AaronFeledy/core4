@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { makeRedactionService } from "@lando/redaction/service";
 import { AppPlacementError, FileNotFoundError, type GlobalAppError } from "@lando/sdk/errors";
 import { AbsolutePath, ServiceName } from "@lando/sdk/schema";
-import { makeTestCertificateAuthority } from "@lando/sdk/test";
+import { makeTestCertificateAuthority, makeTestPrivilegeService } from "@lando/sdk/test";
 import { Cause, Effect, Exit, Option, Schema } from "effect";
 import { renderTraefikDiagnosticHtml } from "../src/diagnostics.ts";
 import type { SchemeProbe } from "../src/port-acquisition.ts";
@@ -46,10 +46,9 @@ const unusedRunner = {
   },
 };
 
-const unusedPrivilege = {
-  ensureCredentials: () => Effect.void,
+const unusedPrivilege = makeTestPrivilegeService({
   elevate: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
-};
+});
 
 type WatcherDependencies = {
   readonly readTraefikState?: () => Effect.Effect<"running" | "stopped" | "unknown", unknown>;

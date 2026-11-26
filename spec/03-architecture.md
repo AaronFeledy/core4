@@ -103,7 +103,7 @@ All services are consumed through their tags inside Effect. Core-provided does n
 | Effect `effect/http` `HttpClient` | Standard HTTP contract implemented by `@lando/http-client`, the single Lando-owned host-side network-egress boundary (§10.3.1–§10.3.2); replaces the SDK-owned HttpClient contract/tag |
 | `Downloader` | Verified artifact acquisition over `HttpClient` (§10.3.3) |
 | `DataMover` | Canonical local/volume byte movement and snapshots (§10.11); not plugin-replaceable |
-| `PrivilegeService` | Platform elevation boundary: a non-mutating credential check, then elevated argv; never prompts in a non-interactive invocation (§10.8) |
+| `PrivilegeService` | Platform elevation boundary: a non-prompting credential status, a scoped session that obtains credentials once, and elevated argv through it; never prompts in a non-interactive invocation (§10.8) |
 | `EmbeddedAssetService` | Unified compiled-binary and library asset access; host/test-overridable, never plugin-contributed |
 | `ContainerHelperAssets` | Resolves the static in-container helper executable for a Linux target (§17.3), extracting it under `PathsService` roots; host/test-overridable, never plugin-contributed |
 | `PathsService` | Authoritative Lando roots and derived paths (§7.5.1) |

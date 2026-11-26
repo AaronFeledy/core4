@@ -361,8 +361,9 @@
       "untrustPlugin:(name:string) => Effect.Effect<void,ConfigError>"
     ],
     "PrivilegeService": [
-      "elevate:(command:ReadonlyArray<string>) => Effect.Effect<ProcessResult,PrivilegeError>",
-      "ensureCredentials:(purpose:string) => Effect.Effect<void,PrivilegeError>"
+      "credentialStatus:Effect.Effect<PrivilegeCredentialStatus>",
+      "elevate:(command:ReadonlyArray<string>,options?:PrivilegeElevateOptions) => Effect.Effect<ProcessResult,PrivilegeError>",
+      "openSession:(purpose:string) => Effect.Effect<PrivilegeSession,PrivilegeError,Scope.Scope>"
     ],
     "ProcessRunner": [
       "run:(options:ProcessSpawnOptions) => Effect.Effect<ProcessResult,ProcessExecError|ProcessTimeoutError>",
@@ -1739,6 +1740,8 @@
       "PreGlobalRebuildEvent",
       "PreHttpCallEvent",
       "PreparedFileSyncTarget",
+      "PrivilegeCredentialState",
+      "PrivilegeCredentialStatus",
       "ProjectUserExplanation",
       "PromptAnswer",
       "PromptChoice",
@@ -2386,6 +2389,7 @@
       "makeSecretStoreContractSuite",
       "makeTestCertificateAuthority",
       "makeTestHealthcheckRunner",
+      "makeTestPrivilegeService",
       "makeTestRouterService",
       "makeTestRuntimeProvider",
       "makeTestRuntimeProviderRegistry",
