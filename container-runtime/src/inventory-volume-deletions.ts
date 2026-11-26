@@ -52,6 +52,10 @@ export const planInventoryVolumeDeletions = Effect.fnUntraced(function* (input: 
     const dataRoot = input.userDataRoot ?? resource.dataRoot;
     if (options.appIds !== undefined && !options.appIds.includes(resource.appId)) continue;
     const shared = resource.volumeScope === "global" && resource.volumeClass === "cache";
+    if (shared && options.releaseCaches === true && options.purgeCaches !== true) {
+      yield* input.store.retire(root, resource);
+      continue;
+    }
     const retainedGlobal =
       resource.volumeScope === "global" &&
       resource.volumeClass === "data" &&

@@ -825,7 +825,7 @@ describe("ScratchAppServiceLayer.layer fork acquire", () => {
       expect(Exit.hasInterrupts(exit)).toBe(true);
       expect(applied).toHaveLength(1);
       // Reaping stops with volumes kept, then destroys with volumes removed.
-      expect(destroyed.map((call) => call.volumes)).toEqual(keepOnFailure ? [] : [false, true]);
+      expect(destroyed.map((call) => call.volumes)).toEqual(keepOnFailure ? [] : [false, true, false]);
       expect(routes.removed).toHaveLength(keepOnFailure ? 0 : 1);
     });
   });
@@ -911,7 +911,7 @@ describe("ScratchAppServiceLayer.layer fork acquire", () => {
         // is retained.
         expect(hostRoutes.removed).toEqual(keepOnFailure || reapFails ? [] : hostRoutes.applied);
         expect(destroyed.map((call) => call.volumes)).toEqual(
-          keepOnFailure || reapFails ? [] : [false, true],
+          keepOnFailure || reapFails ? [] : [false, true, false],
         );
         expect(await readFile(join(dir, ".lando.yml"), "utf8")).toBe(routedForkLandofile);
       });
@@ -1113,7 +1113,9 @@ describe("ScratchAppServiceLayer.layer fork acquire", () => {
       expect(result.destroyed).toEqual(result.keepHandle);
       expect(destroyCalls).toEqual([
         { app: result.handle.id, volumes: false, removeState: false },
-        { app: result.handle.id, volumes: true, removeState: true },
+        { app: result.handle.id, volumes: true, removeState: false },
+        { app: result.handle.id, volumes: false, removeState: true },
+        { app: result.keepHandle.id, volumes: false, removeState: false },
         { app: result.keepHandle.id, volumes: false, removeState: false },
         { app: result.keepHandle.id, volumes: false, removeState: true },
       ]);
@@ -1139,7 +1141,8 @@ describe("ScratchAppServiceLayer.layer fork acquire", () => {
       expect(appliedPlans).toHaveLength(1);
       expect(destroyCalls).toEqual([
         { app: String(appliedPlans.at(0)?.id), volumes: false, removeState: false },
-        { app: String(appliedPlans.at(0)?.id), volumes: true, removeState: true },
+        { app: String(appliedPlans.at(0)?.id), volumes: true, removeState: false },
+        { app: String(appliedPlans.at(0)?.id), volumes: false, removeState: true },
       ]);
     });
   });

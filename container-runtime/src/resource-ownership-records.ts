@@ -3,14 +3,19 @@ import { join, sep } from "node:path";
 import { isPathWithin, makeLandoPaths } from "@lando/paths";
 import { mapFailures } from "@lando/sdk/command-result";
 import { isErrnoCode } from "@lando/sdk/errors";
-import { AbsolutePath } from "@lando/sdk/schema";
+import type { PluginStateStore } from "@lando/sdk/plugins";
+import { AbsolutePath, type ResourceOwnership } from "@lando/sdk/schema";
 import { realpathOrDeepestExisting } from "@lando/state-store/paths";
 import { makePluginStateStore } from "@lando/state-store/plugin";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { makeStateStore } from "@lando/state-store/service";
 import { Effect } from "effect";
 import type { AdoptionReceipt, DataRootOwnershipContext } from "./data-root-ownership.ts";
-import { makeResourceOwnershipStore, ownershipFailure } from "./resource-ownership.ts";
+import {
+  makeResourceOwnershipStore,
+  ownershipFailure,
+  resourceOwnershipSummary,
+} from "./resource-ownership.ts";
 import { RESOURCE_OWNERSHIP_NAMESPACE } from "./resource-ownership-inventory.ts";
 
 const inventoryDir = (pluginStateRoot: string) => join(pluginStateRoot, RESOURCE_OWNERSHIP_NAMESPACE);
@@ -32,6 +37,27 @@ export const hasResourceOwnershipRecords = (providerId: string, pluginStateRoot:
     mapFailures((cause) => ownershipFailure(providerId, cause)),
     Effect.map((entries) => entries.length > 0),
   );
+
+/**
+ * The summary of every inventory a provider recorded, read through its ownership store. An
+ * unreadable record fails the listing rather than disappearing from it.
+ */
+export const listResourceOwnershipRecords = Effect.fn("ResourceOwnership.listRecords")(function* (
+  providerId: string,
+  pluginStateRoot: string,
+  state: PluginStateStore,
+) {
+  const records = yield* listRecords(inventoryDir(pluginStateRoot)).pipe(
+    mapFailures((cause) => ownershipFailure(providerId, cause)),
+  );
+  const store = makeResourceOwnershipStore(providerId, state);
+  const summaries: ResourceOwnership[] = [];
+  for (const record of records) {
+    const summary = resourceOwnershipSummary(yield* store.loadRecord(record));
+    if (summary !== undefined) summaries.push(summary);
+  }
+  return summaries;
+});
 
 export const readDataRootAdoptionReceipts = Effect.fn("ResourceOwnership.readDataRootAdoptionReceipts")(
   function* (providerId: string, input: { readonly dataRoot: string; readonly pluginId: string }) {

@@ -530,7 +530,10 @@ describe("scratchRun", () => {
 
       expect(recorded.destroyCalls).toHaveLength(1);
       expect(recorded.destroyCalls[0]?.app).toBe(String(plan.id));
-      expect(stopCalls).toEqual([{ app: String(plan.id), volumes: false }]);
+      expect(stopCalls).toEqual([
+        { app: String(plan.id), volumes: false },
+        { app: String(plan.id), volumes: true },
+      ]);
 
       const toolboxService = plan.services[Object.keys(plan.services)[0] as keyof typeof plan.services];
       const appBind = toolboxService === undefined ? undefined : serviceAppMount(toolboxService);

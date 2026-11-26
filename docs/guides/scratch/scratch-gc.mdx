@@ -56,6 +56,7 @@ Orphans include:
 - a foreground registry entry whose owner process is gone
 - a scratch whose destroy failed partway, even if its owner is still running or it was detached
 - saved build output for a scratch id that is gone from the registry
+- a provider's ownership record for a scratch id that is gone from the registry, even after its containers and volumes are gone
 
 To remove one known scratch instead of scanning for orphans, replace `<id>` with
 its id from `lando scratch:list` and run:

@@ -198,6 +198,7 @@
     "./runtime/runtime-layer-factory": "./src/runtime/runtime-layer-factory.ts",
     "./runtime/runtime-options": "./src/runtime/runtime-options.ts",
     "./scratch-app/plan": "./src/scratch-app/plan.ts",
+    "./scratch-app/reference": "./src/scratch-app/reference.ts",
     "./scratch-app/registry": "./src/scratch-app/registry.ts",
     "./scratch-app/scanner": "./src/scratch-app/scanner.ts",
     "./scratch-app/service": "./src/scratch-app/service.ts",
