@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { createPayloadRedactor } from "@lando/sdk/secrets";
 import { EventService, type LandoEvent, ProcessRunner } from "@lando/sdk/services";
-import { Effect, Queue, Stream } from "effect";
+import { Cause, Effect, Exit, Queue, Stream } from "effect";
 import { StreamFrameSink, type StreamFrameSinkFrame } from "../../src/operations/stream-frame-sink.ts";
 import * as BunProcessRunner from "../../src/services/process-runner.ts";
 import { streamArgvCommand } from "../../src/services/shell-script-stream.ts";
@@ -171,20 +171,12 @@ test("argv cancellation aborts the running process after its ready frame", async
         }),
     }),
   );
-  const completion = Effect.runPromise(Effect.result(run));
+  const completion = Effect.runPromiseExit(run);
   try {
     await Effect.runPromise(Effect.promise(() => ready.promise).pipe(Effect.timeout("3 seconds")));
     controller.abort(new Error("argv-test-cancelled"));
-    const result = await Effect.runPromise(
-      Effect.promise(() => completion).pipe(Effect.timeout("3 seconds")),
-    );
-    expect(result).toMatchObject({
-      _tag: "Failure",
-      failure: {
-        _tag: "ToolingExecError",
-        message: expect.stringContaining("argv-test-cancelled"),
-      },
-    });
+    const exit = await Effect.runPromise(Effect.promise(() => completion).pipe(Effect.timeout("3 seconds")));
+    expect(Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause)).toBe(true);
   } finally {
     controller.abort();
   }

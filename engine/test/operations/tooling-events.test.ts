@@ -26,7 +26,7 @@ import {
 } from "@lando/sdk/services";
 import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
-import { DateTime, Effect, Layer, Option, Redacted, Schema, Stream } from "effect";
+import { Cause, DateTime, Effect, Exit, Layer, Option, Redacted, Schema, Stream } from "effect";
 import { runEventToolingCommand } from "../../src/operations/event-tooling-command.ts";
 import { StreamFrameSink, type StreamFrameSinkFrame } from "../../src/operations/stream-frame-sink.ts";
 import { runTooling } from "../../src/operations/tooling.ts";
@@ -38,6 +38,7 @@ import {
   resolveEffectiveTooling,
 } from "../../src/planner/effective-tooling.ts";
 import { attachInvocationAuthority } from "../../src/planner/invocation-authority.ts";
+import { EventCommandExecutor } from "../../src/services/event-command-executor.ts";
 import * as LandoEventService from "../../src/services/event-service.ts";
 import * as BunProcessRunner from "../../src/services/process-runner.ts";
 import { outputRegisteredTestProvider } from "../../src/testing/output-provider.ts";
@@ -79,6 +80,8 @@ const harness = (input: {
   readonly provenance?: ToolingProvenance;
   readonly events?: LandofileEvents;
   readonly failOn?: string;
+  readonly abortOn?: { readonly label: string; readonly controller: AbortController };
+  readonly waitForAbort?: string;
   readonly omitEventRuntime?: boolean;
   readonly live?: boolean;
   readonly failureOutput?: ReadonlyArray<string | Uint8Array>;
@@ -114,6 +117,7 @@ const harness = (input: {
 
   const record = (label: string) => {
     executed.push(label);
+    if (label === input.abortOn?.label) input.abortOn.controller.abort();
     return label === input.failOn ? 7 : 0;
   };
   const provider = {
@@ -208,11 +212,20 @@ const harness = (input: {
       ShellRunner,
       ShellRunner.of({
         exec: (source, options) =>
-          Effect.sync(() => ({
-            exitCode: record([source, ...(options?.argv ?? [])][2] ?? source),
-            stdout: "",
-            stderr: "",
-          })),
+          Effect.suspend(() => {
+            const label = [source, ...(options?.argv ?? [])][2] ?? source;
+            const exitCode = record(label);
+            if (label !== input.waitForAbort) return Effect.succeed({ exitCode, stdout: "", stderr: "" });
+            const signal = options?.signal;
+            if (signal === undefined)
+              return Effect.succeed({ exitCode, stdout: "ran without cancellation", stderr: "" });
+            return Effect.callback<never>((resume) => {
+              const abort = () => resume(Effect.interrupt);
+              if (signal.aborted) abort();
+              else signal.addEventListener("abort", abort, { once: true });
+              return Effect.sync(() => signal.removeEventListener("abort", abort));
+            });
+          }),
         runScript: () => Effect.die("unused script"),
         run: () => Effect.die("unused run"),
         interactive: () => Effect.die("unused interactive"),
@@ -223,6 +236,25 @@ const harness = (input: {
     input.live === true
       ? Layer.succeed(StreamFrameSink, { emit: (frame) => Effect.sync(() => frames.push(frame)) })
       : Layer.empty;
+  const canonical = Layer.succeed(EventCommandExecutor, {
+    run: (resolved) => {
+      const name = resolved.command.slice(4);
+      const task = input.tooling[name];
+      return task === undefined
+        ? Effect.die(new TypeError(`Unexpected canonical command ${resolved.command}`))
+        : runEventToolingCommand({
+            plan,
+            name,
+            task,
+            input: {
+              _tag: "NamedMaps",
+              flags: resolved.flags,
+              args: resolved.args,
+              passthroughArgv: resolved.argv,
+            },
+          }).pipe(Effect.provide(layer));
+    },
+  });
   return {
     redaction,
     executed,
@@ -231,8 +263,78 @@ const harness = (input: {
     plan,
     run: (name: string) =>
       Effect.runPromise(runTooling({ name }).pipe(Effect.provide(Layer.merge(layer, sink)), Effect.result)),
+    runWithSignal: (name: string, signal: AbortSignal) =>
+      Effect.runPromiseExit(
+        runTooling({ name, signal }).pipe(Effect.provide(Layer.mergeAll(layer, sink, canonical))),
+      ),
   };
 };
+
+test.each(["nested-var", "nested-body"] as const)(
+  "interrupts a canonical post-hook while running %s",
+  async (active) => {
+    const controller = new AbortController();
+    const h = harness({
+      tooling: {
+        build: { service: ":host", cmd: "body" },
+        child: {
+          service: ":host",
+          cmd: "nested-body",
+          ...(active === "nested-var" ? { vars: { V: { sh: "nested-var" } } } : {}),
+        },
+      },
+      events: { "post-build": [{ command: "app:child" }] },
+      abortOn: { label: active, controller },
+      waitForAbort: active,
+    });
+    const exit = await h.runWithSignal("build", controller.signal);
+    expect(Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause)).toBe(true);
+    expect(h.executed).toEqual(["body", active]);
+  },
+);
+
+test.each(["absent", "skipped", "runnable", "next step", "failed body"] as const)(
+  "settles an abort after the body with %s",
+  async (pending) => {
+    const controller = new AbortController();
+    const h = harness({
+      tooling: {
+        build: {
+          service: ":host",
+          cmds: pending === "next step" ? ["body", { cmd: "later", service: "web" }] : ["body"],
+        },
+      },
+      abortOn: { label: "body", controller },
+      ...(pending === "failed body" ? { failOn: "body" } : {}),
+      ...(pending === "skipped" || pending === "runnable" || pending === "failed body"
+        ? { events: { "post-build": [{ cmd: "after", service: ":host", if: pending !== "skipped" }] } }
+        : {}),
+    });
+    const exit = await h.runWithSignal("build", controller.signal);
+    if (pending === "runnable" || pending === "next step") {
+      expect(Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause)).toBe(true);
+    } else {
+      expect(Exit.isSuccess(exit) && exit.value.exitCode).toBe(pending === "failed body" ? 7 : 0);
+    }
+    expect(h.executed).toEqual(["body"]);
+  },
+);
+
+test("keeps the observed dynamic-var failure when the caller aborts as the var exits", async () => {
+  const controller = new AbortController();
+  const h = harness({
+    tooling: { build: { service: ":host", cmd: "body", vars: { X: { sh: "fail-var" } } } },
+    failOn: "fail-var",
+    abortOn: { label: "fail-var", controller },
+  });
+  const exit = await h.runWithSignal("build", controller.signal);
+  if (Exit.isSuccess(exit)) throw new TypeError("Expected an observed var failure");
+  expect(Cause.findErrorOption(exit.cause)).toMatchObject({
+    _tag: "Some",
+    value: { _tag: "ToolingExecError", variable: "X", exitCode: 7 },
+  });
+  expect(h.executed).toEqual(["fail-var"]);
+});
 
 test("dynamic failure precedes task brackets and does not reach the ambient output sink", async () => {
   const h = harness({
