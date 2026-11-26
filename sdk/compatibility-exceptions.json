@@ -1,5 +1,22 @@
 [
   {
+    "fingerprint": "sha256:30746961593d48f95a9fad7efe9e9cd630f99e4621cd2cf421d9bd47d60c789b",
+    "changeKind": "property-added",
+    "locations": [
+      {
+        "surface": "persisted:scratch-registry",
+        "path": "$.items.layout"
+      }
+    ],
+    "justification": "Scratch registry v3 records whether a scratch owns a managed instance root or a historical source-root identity. Version 3 migrates v1 and v2 rows to layout legacy while preserving their recorded root, so destroy still withdraws the old route owner.",
+    "persistedState": [
+      {
+        "store": "scratch-registry",
+        "version": 3
+      }
+    ]
+  },
+  {
     "fingerprint": "sha256:2c9904508e4c224016e2ad2f981048bac6e51153cc45bd901fa366abeeb9ac4d",
     "changeKind": "union-widened",
     "locations": [

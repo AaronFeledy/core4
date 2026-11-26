@@ -51,6 +51,7 @@ const entry = (id: string): ScratchRegistryEntry => ({
   isolate: "full",
   detached: true,
   rootPath: join(makeLandoPaths().scratchDir, id, "root"),
+  layout: "managed",
   status: "running",
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-01-01T00:00:00.000Z",
@@ -153,22 +154,37 @@ describe("scratch registry", () => {
 
   test("migrates v1 stopping entries without losing other entries or quarantining the registry", async () => {
     await withTempRoots(async () => {
-      const stopping = { ...entry("scratch-stopping-000001"), status: "stopping" };
+      const stopping = { ...entry("scratch-stopping-000001"), status: "stopping" as const };
       const running = entry("scratch-running-000002");
       const acquiring = { ...entry("scratch-acquiring-000003"), status: "acquiring" as const };
+      const omitLayout = (item: { layout: string }) => {
+        const { layout: _layout, ...rest } = item;
+        return rest;
+      };
       await mkdir(makeLandoPaths().scratchDir, { recursive: true });
-      await writeFile(registryFile(), JSON.stringify({ version: 1, data: [stopping, running, acquiring] }));
+      await writeFile(
+        registryFile(),
+        JSON.stringify({
+          version: 1,
+          data: [omitLayout(stopping), omitLayout(running), omitLayout(acquiring)],
+        }),
+      );
 
       const registry = testRegistry();
       const migrated = await Effect.runPromise(registry.list());
 
-      const pending = { ...stopping, status: "destroyed-pending-cleanup" as const };
-      expect(migrated).toEqual([pending, running, acquiring]);
+      const pending = {
+        ...stopping,
+        status: "destroyed-pending-cleanup" as const,
+        layout: "legacy" as const,
+      };
+      const legacy = (value: ReturnType<typeof entry>) => ({ ...value, layout: "legacy" as const });
+      expect(migrated).toEqual([pending, legacy(running), legacy(acquiring)]);
       expect(await readdir(makeLandoPaths().scratchDir)).toEqual(["registry.bin"]);
       await Effect.runPromise(registry.upsert("mark-pending-cleanup", pending));
       expect(JSON.parse(await readFile(registryFile(), "utf8"))).toEqual({
-        version: 2,
-        data: [acquiring, running, pending],
+        version: 3,
+        data: [legacy(acquiring), legacy(running), pending],
       });
     });
   });

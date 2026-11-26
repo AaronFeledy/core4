@@ -10,6 +10,7 @@ import {
   ShellRunner,
 } from "@lando/sdk/services";
 import { Effect } from "effect";
+import { scratchProjectRoot } from "../../scratch-app/identity.ts";
 import { bunShellDialectIssues, describeBunShellIssue } from "../../services/bun-shell-dialect.ts";
 
 export { interruptOnAbort } from "@lando/container-runtime/healthcheck-attempt";
@@ -95,7 +96,7 @@ export const prepareHealthcheckAttempt = Effect.fnUntraced(function* (input: {
     });
   if (probe.executionTarget === "host") {
     const command = probe.command;
-    const cwd = input.plan?.root;
+    const cwd = input.plan === undefined ? undefined : scratchProjectRoot(input.plan);
     if (command === undefined || cwd === undefined)
       return yield* Effect.fail(unsupportedHealthcheckTarget(service, probe));
     if (typeof command === "string") {
