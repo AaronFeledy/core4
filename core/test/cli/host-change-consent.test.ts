@@ -37,6 +37,7 @@ const takeover = hostChange("takeover", { consent: "interactive-only", requireme
 
 const answering = (answers: Record<string, boolean>) => {
   const asked: string[] = [];
+  const questions: string[] = [];
   const interaction: InteractionServiceShape = {
     id: "test",
     isInteractive: Effect.succeed(true),
@@ -46,12 +47,13 @@ const answering = (answers: Record<string, boolean>) => {
       Effect.sync(() => {
         const name = spec.name ?? "";
         asked.push(name);
+        questions.push(spec.message);
         return answers[name] ?? false;
       }),
     select: () => Effect.die("unused"),
     secret: () => Effect.die("unused"),
   };
-  return { interaction, asked };
+  return { interaction, asked, questions };
 };
 
 const failure = (exit: Exit.Exit<unknown, unknown>) => {
@@ -66,6 +68,7 @@ describe("decideHostChangeConsent", () => {
   test("--yes approves standard changes but neither separate nor terminal-only ones", async () => {
     const result = await Effect.runPromise(
       decideHostChangeConsent([uidmap, linger, takeover], {
+        command: "setup",
         yes: true,
         optInFlags: none,
         interaction: undefined,
@@ -80,7 +83,12 @@ describe("decideHostChangeConsent", () => {
   test("the opt-in flag approves its separate change without asking", async () => {
     const { interaction, asked } = answering({});
     const result = await Effect.runPromise(
-      decideHostChangeConsent([linger], { yes: false, optInFlags: new Set(["enable-linger"]), interaction }),
+      decideHostChangeConsent([linger], {
+        command: "setup",
+        yes: false,
+        optInFlags: new Set(["enable-linger"]),
+        interaction,
+      }),
     );
 
     expect([...result.approved]).toEqual([linger.id]);
@@ -90,6 +98,7 @@ describe("decideHostChangeConsent", () => {
   test("a run that cannot ask fails before any prompt, naming every flag it needs", async () => {
     const exit = await Effect.runPromiseExit(
       decideHostChangeConsent([uidmap, requiredLinger, tuning], {
+        command: "setup",
         yes: false,
         optInFlags: none,
         interaction: undefined,
@@ -114,7 +123,12 @@ describe("decideHostChangeConsent", () => {
 
   test("a separate change missing alone names only its own flag, never --yes", async () => {
     const exit = await Effect.runPromiseExit(
-      decideHostChangeConsent([requiredLinger], { yes: true, optInFlags: none, interaction: undefined }),
+      decideHostChangeConsent([requiredLinger], {
+        command: "setup",
+        yes: true,
+        optInFlags: none,
+        interaction: undefined,
+      }),
     );
 
     const error = failure(exit);
@@ -132,6 +146,7 @@ describe("decideHostChangeConsent", () => {
     });
     const result = await Effect.runPromise(
       decideHostChangeConsent([uidmap, tuning, linger, takeover], {
+        command: "setup",
         yes: false,
         optInFlags: none,
         interaction,
@@ -150,7 +165,12 @@ describe("decideHostChangeConsent", () => {
   test("declining a required change fails at once", async () => {
     const { interaction, asked } = answering({ "setup-host-changes": false });
     const exit = await Effect.runPromiseExit(
-      decideHostChangeConsent([uidmap, linger], { yes: false, optInFlags: none, interaction }),
+      decideHostChangeConsent([uidmap, linger], {
+        command: "setup",
+        yes: false,
+        optInFlags: none,
+        interaction,
+      }),
     );
 
     expect(failure(exit)).toBeInstanceOf(HostChangeDeclinedError);
@@ -160,7 +180,7 @@ describe("decideHostChangeConsent", () => {
   test("declining only recommended standard changes skips them with a warning", async () => {
     const { interaction } = answering({ "setup-host-changes": false });
     const result = await Effect.runPromise(
-      decideHostChangeConsent([tuning], { yes: false, optInFlags: none, interaction }),
+      decideHostChangeConsent([tuning], { command: "setup", yes: false, optInFlags: none, interaction }),
     );
 
     expect(result.approved.size).toBe(0);
@@ -186,7 +206,12 @@ describe("decideHostChangeConsent", () => {
     });
 
     const result = await Effect.runPromise(
-      decideHostChangeConsent([trust], { yes: false, optInFlags: none, interaction: undefined }),
+      decideHostChangeConsent([trust], {
+        command: "setup",
+        yes: false,
+        optInFlags: none,
+        interaction: undefined,
+      }),
     );
 
     expect(result.warnings[0]).toContain(
@@ -194,6 +219,46 @@ describe("decideHostChangeConsent", () => {
     );
     expect(result.warnings[0]).toContain(`\`${trust.manual}\``);
     expect(result.warnings[0]).not.toContain("never its private key");
+  });
+
+  test("doctor asks and explains in its own words, never pointing at setup's flags or preview", async () => {
+    // Given doctor asking about a required change in a terminal.
+    const { interaction, asked, questions } = answering({ "doctor-host-changes": false });
+
+    // When the user declines.
+    const declined = failure(
+      await Effect.runPromiseExit(
+        decideHostChangeConsent([uidmap], { command: "doctor", yes: false, optInFlags: none, interaction }),
+      ),
+    );
+
+    // Then the question and the failure name doctor, and only setup is offered as the alternative.
+    expect(asked).toEqual(["doctor-host-changes"]);
+    expect(questions[0]).toStartWith("Doctor needs to change your system:");
+    expect(questions[0]).not.toContain("--dry-run");
+    expect(declined).toBeInstanceOf(HostChangeDeclinedError);
+    expect(Reflect.get(Object(declined), "message")).toStartWith("Doctor cannot finish without this change:");
+    expect(Reflect.get(Object(declined), "remediation")).toContain(
+      "Rerun `lando doctor --fix` and approve it",
+    );
+  });
+
+  test("doctor without a terminal names doctor --fix in a terminal and setup, not a doctor --yes", async () => {
+    const exit = await Effect.runPromiseExit(
+      decideHostChangeConsent([uidmap], {
+        command: "doctor",
+        yes: false,
+        optInFlags: none,
+        interaction: undefined,
+      }),
+    );
+
+    const error = failure(exit);
+    expect(error).toBeInstanceOf(HostChangeConsentRequiredError);
+    expect(Reflect.get(Object(error), "message")).toStartWith("Doctor needs your approval");
+    expect(Reflect.get(Object(error), "remediation")).toBe(
+      "Rerun `lando doctor --fix` in a terminal to approve them, or run `lando setup` with `--yes`, which makes the same changes.",
+    );
   });
 });
 
@@ -212,6 +277,7 @@ describe("the dry-run preview and the real run decide alike", () => {
     const { interaction, asked } = answering({});
     const exit = await Effect.runPromiseExit(
       decideHostChangeConsent([candidate], {
+        command: "setup",
         yes: inputs.yes,
         optInFlags: inputs.optInFlags,
         interaction: inputs.interactive ? interaction : undefined,
@@ -232,6 +298,7 @@ describe("the dry-run preview and the real run decide alike", () => {
     const { interaction } = answering({});
     const exit = await Effect.runPromiseExit(
       decideHostChangeConsent([candidate], {
+        command: "setup",
         yes: inputs.yes,
         optInFlags: inputs.optInFlags,
         interaction: inputs.interactive ? interaction : undefined,

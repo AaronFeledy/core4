@@ -1,7 +1,7 @@
 import { realpath, stat } from "node:fs/promises";
 import { isErrnoCode } from "@lando/sdk/errors";
-import type { InteractionService, PrivilegeService, ProcessRunner } from "@lando/sdk/services";
-import { Effect, absurd } from "effect";
+import type { ProcessRunner } from "@lando/sdk/services";
+import { Effect, Result } from "effect";
 
 import { hasHostSystemd } from "./host-systemd.ts";
 import {
@@ -9,22 +9,17 @@ import {
   DESIRED_HTTPS_PORT,
   DESIRED_HTTP_PORT,
   defaultAcquisitionFingerprint,
-  probeBind,
 } from "./port-acquisition.ts";
 import type { SocketProxyDependencies } from "./proxy-types.ts";
-import {
-  SOCKET_PROXY_MANUAL_REMOVAL_COMMANDS,
-  type SocketProxyArtifactClassification,
-  foreignSocketProxyNotice,
-} from "./socket-proxy-helper.ts";
+import { type SocketProxyArtifactClassification, foreignSocketProxyNotice } from "./socket-proxy-helper.ts";
 import {
   classifySocketProxy,
-  installSocketProxy,
+  hopsMatchTargets,
   isSocketProxyInstalled,
   probeSocketProxy,
-  readAnyHelperHopTargets,
   startSockets,
 } from "./socket-proxy-install.ts";
+import { SOCKET_HELPER_CHANGE } from "./socket-proxy-plan.ts";
 
 export type HelperHopTargets = {
   readonly httpTarget: number;
@@ -41,301 +36,108 @@ const helperDecision = (mode: "needs-helper" | "socket-helper"): AcquisitionDeci
   fingerprint: defaultAcquisitionFingerprint(),
 });
 
-const privilegeNotice = (outcome: { readonly message: string; readonly remediation: string }): string =>
-  `${outcome.message} Lando kept its fallback ports. ${outcome.remediation}`;
+/** `lando start` never installs the helper; setup or `doctor --fix` does, after asking. */
+const HELPER_SETUP_NOTICE =
+  "Ports 80 and 443 need Lando's port helper, which only `lando setup` or `lando doctor --fix` installs, after asking. Lando keeps its fallback ports until then.";
+
+/** Starting the helper never elevates; repairing it as root is the approved helper change. */
+const HELPER_START_FAILED_NOTICE =
+  "Lando's port helper is installed, but its sockets did not start with the access it grants this account, so Lando keeps its fallback ports. Run `lando doctor --fix` to repair it, after asking.";
 
 const foreignNotice = (
   ownership: SocketProxyArtifactClassification,
   intent: SocketProxySetupIntent,
 ): string => foreignSocketProxyNotice(ownership, intent === "configure" ? "commands" : "brief");
 
-const consentToInstall = Effect.fnUntraced(function* (
-  socketProxy: SocketProxyDependencies,
-  alreadyInstalled: boolean,
-): Effect.fn.Return<boolean> {
-  if (alreadyInstalled || socketProxy.autoApprove === true) return true;
-  // Only `--yes` or a real interactive answer consents to a privileged host change.
-  const interaction = socketProxy.interaction;
-  if (interaction === undefined) return false;
-  if (!(yield* interaction.isInteractive)) return false;
-  return yield* Effect.scoped(
-    interaction.confirm({
-      name: "install-socket-proxy",
-      message: "Install a systemd socket proxy so Lando can serve local HTTP/HTTPS on ports 80 and 443?",
-      default: true,
-    }),
-  ).pipe(Effect.catch(() => Effect.succeed(false)));
+type HelperResolution = {
+  readonly decision: AcquisitionDecision;
+  readonly helperInstalled: boolean;
+  readonly socketsActive: boolean;
+};
+
+const fallback = (notices: ReadonlyArray<string>, helperInstalled = false): HelperResolution => ({
+  decision: { ...helperDecision("needs-helper"), notices: notices.filter((notice) => notice.length > 0) },
+  helperInstalled,
+  socketsActive: false,
 });
 
-/** Real interactive confirm only. Missing interaction, errors, and cancel decline. */
-const confirmReplace = Effect.fnUntraced(function* (
-  socketProxy: SocketProxyDependencies,
-  message: string,
-  name: string,
-): Effect.fn.Return<"yes" | "no" | "cancel"> {
-  const interaction = socketProxy.interaction;
-  if (interaction === undefined) return "no";
-  return yield* Effect.scoped(interaction.confirm({ name, message, default: true })).pipe(
-    Effect.map((ok) => (ok ? ("yes" as const) : ("no" as const))),
-    Effect.catch(() => Effect.succeed("cancel" as const)),
-  );
-});
-
-const hopsFreeOrOwned = Effect.fnUntraced(function* (
-  socketProxy: SocketProxyDependencies,
-  hops: HelperHopTargets | undefined,
-  ownedPorts: ReadonlySet<number> | undefined,
-): Effect.fn.Return<boolean> {
-  // Automatic replacement must prove BOTH old hop targets; unknown hops never auto-replace.
-  if (hops === undefined) return false;
-  const probe = socketProxy.probeBind ?? probeBind;
-  for (const port of [hops.httpTarget, hops.httpsTarget]) {
-    const bind = yield* probe("127.0.0.1", port);
-    if (bind.kind === "success") continue;
-    if (bind.kind === "EADDRINUSE" && ownedPorts?.has(port) === true) continue;
-    return false;
-  }
-  return true;
-});
-
-/**
- * Whether configure may replace a foreign helper automatically (autoApprove / non-interactive).
- * missing-root: only when both old hop targets are free or provider-owned by this root.
- * unattributed: never automatic (interactive confirm only).
- */
-const mayAutoReplace = Effect.fnUntraced(function* (
-  socketProxy: SocketProxyDependencies,
-  ownership: SocketProxyArtifactClassification,
-): Effect.fn.Return<boolean> {
-  if (ownership.kind !== "foreign") return false;
-  if (ownership.reason !== "missing-root") return false;
-  const hops = yield* readAnyHelperHopTargets(socketProxy);
-  return yield* hopsFreeOrOwned(socketProxy, hops, socketProxy.ownedRouterPorts);
-});
-
-const sessionIsInteractive = Effect.fnUntraced(function* (
-  socketProxy: SocketProxyDependencies,
-): Effect.fn.Return<boolean> {
-  const interaction = socketProxy.interaction;
-  if (interaction === undefined) return false;
-  return yield* interaction.isInteractive;
-});
-
-const replacementSuccessNotice = (ownership: SocketProxyArtifactClassification): string => {
-  if (ownership.kind !== "foreign")
-    return "This install now serves ports 80 and 443 through its socket proxy.";
+const replacementSuccessNotice = (ownership: SocketProxyArtifactClassification): string | undefined => {
+  if (ownership.kind !== "foreign") return undefined;
   if (ownership.reason === "missing-root") {
     return `Took over the socket proxy left by a removed Lando install${ownership.ownerRoot === undefined ? "" : ` (${ownership.ownerRoot})`}; this install now serves ports 80 and 443.`;
   }
   if (ownership.reason === "unattributed") {
     return "Took over the socket proxy from an older Lando build; this install now serves ports 80 and 443.";
   }
-  return "This install now serves ports 80 and 443 through its socket proxy.";
+  return undefined;
 };
 
+/**
+ * Start (or confirm) the sockets of a helper this run installed or already owned. Starting goes
+ * only through the helper's polkit grant, never as root.
+ */
+const activate = Effect.fnUntraced(function* (
+  socketProxy: SocketProxyDependencies,
+  installedNow: boolean,
+  notice: string | undefined,
+): Effect.fn.Return<HelperResolution> {
+  const started = yield* installedNow ? probeSocketProxy(socketProxy) : startSockets(socketProxy);
+  if (started.kind === "started" && started.http.kind === "success" && started.https.kind === "success") {
+    return {
+      decision: { ...helperDecision("socket-helper"), notices: notice === undefined ? [] : [notice] },
+      helperInstalled: true,
+      socketsActive: true,
+    };
+  }
+  if (!installedNow) return fallback([HELPER_START_FAILED_NOTICE], true);
+  return fallback(
+    [
+      `${notice === undefined ? "" : `${notice} `}The helper is installed but its sockets are not active yet; run \`lando setup\` again.`,
+    ],
+    true,
+  );
+});
+
+/**
+ * The router's helper decision once ports 80 and 443 need it. `ensure` (app start) only starts a
+ * helper this data root already owns with the right hops. `configure` (setup, doctor --fix)
+ * also applies the run's approved `proxy-traefik:install-socket-helper` change, which installs,
+ * retargets, or takes over the helper with exactly the planned script. A failure keeps the
+ * fallback ports with a notice; the router itself never fails over its helper.
+ */
 export const resolveNeedsHelper = Effect.fnUntraced(
   function* (
     socketProxy: SocketProxyDependencies,
     hops: HelperHopTargets,
-  ): Effect.fn.Return<{
-    readonly decision: AcquisitionDecision;
-    readonly helperInstalled: boolean;
-    readonly socketsActive: boolean;
-  }> {
+  ): Effect.fn.Return<HelperResolution> {
     const intent: SocketProxySetupIntent = socketProxy.intent ?? "ensure";
-    if (!socketProxy.hasHostSystemd()) {
-      return { decision: helperDecision("needs-helper"), helperInstalled: false, socketsActive: false };
-    }
+    if (!socketProxy.hasHostSystemd()) return fallback([]);
     const ownership = yield* classifySocketProxy(socketProxy);
-
-    // ensure: never write/retarget/start/stop foreign or unmarked artifacts.
-    if (ownership.kind === "foreign" || ownership.kind === "unmarked") {
-      if (intent === "ensure") {
-        const notice = foreignNotice(ownership, intent);
-        return {
-          decision: {
-            ...helperDecision("needs-helper"),
-            notices: notice.length > 0 ? [notice] : [],
-          },
-          helperInstalled: false,
-          socketsActive: false,
-        };
+    const approved =
+      intent === "configure" && socketProxy.hostChanges?.approved(SOCKET_HELPER_CHANGE) !== undefined
+        ? socketProxy.hostChanges
+        : undefined;
+    const foreign = ownership.kind === "foreign" || ownership.kind === "unmarked";
+    const alreadyInstalled = !foreign && (yield* isSocketProxyInstalled(socketProxy));
+    if (approved === undefined) {
+      if (foreign) return fallback([foreignNotice(ownership, intent)]);
+      if (alreadyInstalled && (yield* hopsMatchTargets(socketProxy, hops.httpTarget, hops.httpsTarget))) {
+        return yield* activate(socketProxy, false, undefined);
       }
-
-      // configure: other-root / unmarked / mixed NEVER replace.
-      if (
-        ownership.kind === "unmarked" ||
-        (ownership.kind === "foreign" && (ownership.reason === "other-root" || ownership.reason === "mixed"))
-      ) {
-        const notice = foreignNotice(ownership, "configure");
-        return {
-          decision: {
-            ...helperDecision("needs-helper"),
-            notices: notice.length > 0 ? [notice] : [],
-          },
-          helperInstalled: false,
-          socketsActive: false,
-        };
-      }
-
-      const interactive = yield* sessionIsInteractive(socketProxy);
-      const mayAuto = socketProxy.autoApprove === true || !interactive;
-      let replace = false;
-      if (ownership.kind === "foreign" && ownership.reason === "missing-root") {
-        if (mayAuto) {
-          replace = yield* mayAutoReplace(socketProxy, ownership);
-        } else {
-          const answer = yield* confirmReplace(
-            socketProxy,
-            `A Lando install that no longer exists (${ownership.ownerRoot}) left a socket proxy on ports 80 and 443. Take it over for this install?`,
-            "replace-missing-root-socket-proxy",
-          );
-          replace = answer === "yes";
-        }
-      } else if (ownership.kind === "foreign" && ownership.reason === "unattributed") {
-        // Unattributed: ONLY a real interactive confirm may replace.
-        if (interactive && socketProxy.autoApprove !== true) {
-          const answer = yield* confirmReplace(
-            socketProxy,
-            "An older Lando build installed the socket proxy on ports 80 and 443 without recording its owner. Take it over for this install? Any other Lando install using it will switch to fallback ports.",
-            "replace-unattributed-socket-proxy",
-          );
-          replace = answer === "yes";
-        }
-      }
-
-      if (!replace) {
-        const notice = foreignNotice(ownership, "configure");
-        return {
-          decision: {
-            ...helperDecision("needs-helper"),
-            notices: notice.length > 0 ? [notice] : [],
-          },
-          helperInstalled: false,
-          socketsActive: false,
-        };
-      }
-
-      const installed = yield* installSocketProxy({
-        ...socketProxy,
-        httpTarget: hops.httpTarget,
-        httpsTarget: hops.httpsTarget,
-        replaceForeign: true,
-      });
-      switch (installed.kind) {
-        case "installed":
-        case "already-installed":
-          break;
-        case "privilege-unavailable":
-          return {
-            decision: { ...helperDecision("needs-helper"), notices: [privilegeNotice(installed)] },
-            helperInstalled: false,
-            socketsActive: false,
-          };
-        case "elevation-refused":
-        case "proxyd-missing":
-        case "needs-helper":
-        case "foreign":
-          return {
-            decision: {
-              ...helperDecision("needs-helper"),
-              notices: [
-                foreignNotice(yield* classifySocketProxy(socketProxy), "configure") ||
-                  `Socket proxy helper could not be replaced. Review it before manual removal:\n${SOCKET_PROXY_MANUAL_REMOVAL_COMMANDS}`,
-              ],
-            },
-            helperInstalled: false,
-            socketsActive: false,
-          };
-        default:
-          return absurd<never>(installed);
-      }
-      const started = yield* installed.kind === "installed"
-        ? probeSocketProxy(socketProxy)
-        : startSockets(socketProxy);
-      const successExplanation = replacementSuccessNotice(ownership);
-      if (started.kind === "started" && started.http.kind === "success" && started.https.kind === "success") {
-        return {
-          decision: { ...helperDecision("socket-helper"), notices: [successExplanation] },
-          helperInstalled: true,
-          socketsActive: true,
-        };
-      }
-      return {
-        decision: {
-          ...helperDecision("needs-helper"),
-          notices: [
-            `${successExplanation} The helper is installed but sockets are not active yet; run \`lando setup\` or start the proxy sockets.`,
-          ],
-        },
-        helperInstalled: true,
-        socketsActive: false,
-      };
+      return fallback(intent === "ensure" ? [HELPER_SETUP_NOTICE] : [], alreadyInstalled);
     }
-
-    const alreadyInstalled = yield* isSocketProxyInstalled(socketProxy);
-    if (!(yield* consentToInstall(socketProxy, alreadyInstalled))) {
-      return {
-        decision: helperDecision("needs-helper"),
-        helperInstalled: alreadyInstalled,
-        socketsActive: false,
-      };
+    const applied = yield* approved.apply(SOCKET_HELPER_CHANGE).pipe(Effect.result);
+    if (Result.isFailure(applied)) {
+      const error = applied.failure;
+      return fallback([`${error.message} ${error.remediation}`], alreadyInstalled);
     }
-    const installed = yield* installSocketProxy({
-      ...socketProxy,
-      httpTarget: hops.httpTarget,
-      httpsTarget: hops.httpsTarget,
-    });
-    switch (installed.kind) {
-      case "installed":
-      case "already-installed":
-        break;
-      case "privilege-unavailable":
-        return {
-          decision: { ...helperDecision("needs-helper"), notices: [privilegeNotice(installed)] },
-          helperInstalled: alreadyInstalled,
-          socketsActive: false,
-        };
-      case "elevation-refused":
-      case "proxyd-missing":
-      case "needs-helper":
-        return {
-          decision: helperDecision("needs-helper"),
-          helperInstalled: alreadyInstalled,
-          socketsActive: false,
-        };
-      case "foreign":
-        return {
-          decision: {
-            ...helperDecision("needs-helper"),
-            notices: [
-              foreignNotice(yield* classifySocketProxy(socketProxy), intent) ||
-                (intent === "configure"
-                  ? `Socket proxy helper ownership changed during installation. Review it before manual removal:\n${SOCKET_PROXY_MANUAL_REMOVAL_COMMANDS}`
-                  : "socket proxy ownership changed during installation"),
-            ],
-          },
-          helperInstalled: false,
-          socketsActive: false,
-        };
-      default:
-        return absurd<never>(installed);
-    }
-    const started = yield* installed.kind === "installed"
-      ? probeSocketProxy(socketProxy)
-      : startSockets(socketProxy);
-    if (started.kind === "started" && started.http.kind === "success" && started.https.kind === "success") {
-      return { decision: helperDecision("socket-helper"), helperInstalled: true, socketsActive: true };
-    }
-    return { decision: helperDecision("needs-helper"), helperInstalled: true, socketsActive: false };
+    return yield* activate(
+      socketProxy,
+      applied.success.outcome === "applied",
+      replacementSuccessNotice(ownership),
+    );
   },
-  Effect.catch(() =>
-    Effect.succeed({
-      decision: helperDecision("needs-helper"),
-      helperInstalled: false,
-      socketsActive: false,
-    }),
-  ),
+  Effect.catch(() => Effect.succeed(fallback([]))),
 );
 
 // Owner roots are directories, which `Bun.file(path).exists()` reports as absent. Only a
@@ -351,11 +153,9 @@ const hostReadText = (path: string): Effect.Effect<string, unknown> =>
 
 export const liveSocketProxy = (input: {
   readonly userDataRoot: string;
-  readonly privilege: typeof PrivilegeService.Service | undefined;
   readonly processRunner: typeof ProcessRunner.Service | undefined;
-  readonly interaction: typeof InteractionService.Service | undefined;
 }): SocketProxyDependencies | undefined => {
-  if (input.privilege === undefined || input.processRunner === undefined) return undefined;
+  if (input.processRunner === undefined) return undefined;
   return {
     user: process.env.USER ?? process.env.LOGNAME ?? "lando",
     userDataRoot: input.userDataRoot,
@@ -364,7 +164,5 @@ export const liveSocketProxy = (input: {
     exists: hostExists,
     readText: hostReadText,
     processRunner: input.processRunner,
-    privilege: input.privilege,
-    ...(input.interaction === undefined ? {} : { interaction: input.interaction }),
   };
 };

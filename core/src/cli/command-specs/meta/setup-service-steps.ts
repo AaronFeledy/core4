@@ -21,7 +21,7 @@ import {
 import { mapFailures } from "@lando/sdk/command-result";
 import { SshAgentUnavailableError } from "@lando/sdk/errors";
 import { MessageWarnEvent } from "@lando/sdk/events";
-import { EventService, RouterService, SshService } from "@lando/sdk/services";
+import { EventService, type HostChangeApplier, RouterService, SshService } from "@lando/sdk/services";
 import { DateTime, Duration, Effect, Result } from "effect";
 import { CliInvocation } from "../../../runtime/invocation-context";
 import { resolveSecretsRedactor } from "../../commands/secrets-redactor";
@@ -49,6 +49,7 @@ export const recordAbsentHostIntegration = (
 export const runProxySetupStep = Effect.fn("SetupCommand.runProxySetupStep")(function* (
   input: unknown,
   recorder: SetupReadinessRecorder,
+  hostChanges: HostChangeApplier,
   selectedProviderId = "lando",
 ) {
   if (inputBooleanFlag(input, "skip-proxy")) {
@@ -63,12 +64,10 @@ export const runProxySetupStep = Effect.fn("SetupCommand.runProxySetupStep")(fun
   if (proxy._tag === "Some") {
     const defaultDomain = yield* resolveProxyDefaultDomain;
     const { router, routerPin } = yield* resolveRouterConfigForApp();
-    // `--no-interactive` declines privileged host changes; only `--yes` approves them.
-    const autoApprove = inputBooleanFlag(input, "yes");
     yield* Effect.scoped(
       proxy.value.setup(
         { defaultDomain, router, routerPin },
-        { intent: "configure", autoApprove, reacquirePorts: true },
+        { intent: "configure", hostChanges, reacquirePorts: true },
       ),
     ).pipe(Effect.tapError((cause) => recorder.recordFailure("proxy", cause)));
     yield* recorder.record({ id: "proxy", status: "satisfied", evidence: "Router setup completed." });

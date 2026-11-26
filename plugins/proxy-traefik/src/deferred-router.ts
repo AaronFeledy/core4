@@ -33,6 +33,8 @@ export const deferredRouter = Effect.fnUntraced(function* (
   return RouterService.of({
     ...identity,
     prepare: (config) => Effect.flatMap(forSetup, (router) => router.prepare?.(config) ?? Effect.void),
+    planHostChanges: (config) =>
+      Effect.flatMap(resolve, (router) => router.planHostChanges?.(config) ?? Effect.succeed([])),
     setup: (config, options) => Effect.flatMap(forSetup, (router) => router.setup(config, options)),
     revalidateStartup: Effect.flatMap(resolve, (router) => router.revalidateStartup),
     routeAuthorities: (routes) =>
