@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { SCRATCH_DESIRED_PLAN_VERSION } from "@lando/engine/scratch-app/plan";
 import { type ScratchRegistryEntry, makeScratchRegistry } from "@lando/engine/scratch-app/registry";
 import { ProxyError } from "@lando/sdk/errors";
 import type { RouteEvidence, RoutePlan } from "@lando/sdk/schema";
@@ -47,7 +48,7 @@ const seedScratchPlan = (instanceRoot: string, plan: AppPlan): Promise<void> =>
         root: { path: AbsolutePath.make(instanceRoot) },
         key: "plan.bin",
         schema: AppPlanSchema,
-        version: 3,
+        version: SCRATCH_DESIRED_PLAN_VERSION,
         codec: "binary",
         mode: 0o600,
         onCorrupt: "quarantine",
@@ -173,6 +174,7 @@ const seedEntry = (dataRoot: string, overrides: Partial<ScratchRegistryEntry>): 
     isolate: "full",
     detached: false,
     rootPath: join(dataRoot, "scratch", id, "root"),
+    layout: "managed",
     status: "running",
     createdAt: "2026-05-31T18:00:00.000Z",
     updatedAt: "2026-05-31T18:00:00.000Z",

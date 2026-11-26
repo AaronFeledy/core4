@@ -22,6 +22,7 @@ import { PrivateFileAccessService } from "@lando/state-store/private-file-access
 import { makeStateStore } from "@lando/state-store/service";
 import { Effect, Layer, Schema, Stream } from "effect";
 import {
+  SCRATCH_REGISTRY_VERSION,
   ScratchRegistry,
   type ScratchRegistryEntry,
   planScratchRegistryWrite,
@@ -158,7 +159,7 @@ const makeFixture = async (
   const registry = ScratchRegistry.of({
     get: (id) => Effect.sync(() => entries.get(id)),
     list: () => Effect.sync(() => [...entries.values()]),
-    read: () => Effect.sync(() => ({ version: 2, entries: [...entries.values()] })),
+    read: () => Effect.sync(() => ({ version: SCRATCH_REGISTRY_VERSION, entries: [...entries.values()] })),
     upsert: (...write) =>
       (write[0] === "mark-running" ? registration : Effect.void).pipe(
         Effect.andThen(planScratchRegistryWrite(entries.get(write[1].id), ...write)),

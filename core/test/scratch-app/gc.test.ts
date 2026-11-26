@@ -249,6 +249,7 @@ const registryEntry = (dataRoot: string, id: string): ScratchRegistryEntry => ({
   detached: false,
   ownerPid: 999_999_999,
   rootPath: join(dataRoot, "scratch", id, "root"),
+  layout: "managed",
   status: "running",
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-01-01T00:00:00.000Z",

@@ -20,7 +20,7 @@ import {
   StateStore,
 } from "@lando/sdk/services";
 import { DateTime, Effect, Option } from "effect";
-import { routeOwnerFromScratch } from "../lifecycle/route-owner.ts";
+import { routeOwnerFromPlan, routeOwnerFromScratch } from "../lifecycle/route-owner.ts";
 import { withdrawOwnerRoutes } from "../lifecycle/route-withdrawal.ts";
 import { removeServiceCertificates } from "../lifecycle/service-certificate-paths.ts";
 import { withDestroyProgress } from "../operations/destroy-progress.ts";
@@ -134,11 +134,12 @@ export const makeScratchReaper = Effect.gen(function* () {
                   { containers: "remove", volumes: !keepVolumes, removeState: true },
                 )).kind === "removed"
               : yield* orphan?.destroy ?? Effect.succeed(false);
-          yield* withdrawOwnerRoutes(routeOwnerFromScratch(input.id)).pipe(
+          const routeOwner = plan === undefined ? routeOwnerFromScratch(input.id) : routeOwnerFromPlan(plan);
+          yield* withdrawOwnerRoutes(routeOwner).pipe(
             Effect.provideService(EventService, events),
             Effect.provideService(RouterService, router),
           );
-          yield* removeServiceCertificates(routeOwnerFromScratch(input.id).ownerKey).pipe(
+          yield* removeServiceCertificates(routeOwner.ownerKey).pipe(
             Effect.provideService(EventService, events),
             Option.isSome(paths) ? Effect.provideService(PathsService, paths.value) : (effect) => effect,
           );

@@ -116,7 +116,7 @@ export interface PlanAppInput {
 function* assemblePlan(
   input: PlanAppInput,
 ): Effect.fn.Return<CurrentExecutableAppPlan, AppPlannerError, PluginRegistry | FileSyncPolicy> {
-  const { landofile: authoredLandofile, providerCapabilities, appRoot: knownAppRoot, kind } = input;
+  const { landofile: authoredLandofile, providerCapabilities, appRoot: knownAppRoot, kind, mode } = input;
   const pluginRegistry = yield* PluginRegistry;
   const contributionGraph = Option.getOrUndefined(yield* Effect.serviceOption(PluginContributionGraph));
   const plugins = loadedPluginImplementations(contributionGraph);
@@ -223,7 +223,7 @@ function* assemblePlan(
     yield* selectFileSyncEngine;
   const cacheRoot = pathsService?.roots.userCacheRoot ?? resolveUserCacheRoot();
   const sourceFingerprint =
-    input.mode === "validate"
+    mode === "validate"
       ? undefined
       : yield* readAppPlanSourceFingerprint(appRoot, landofileProvenance).pipe(
           Effect.catch(() => Effect.succeed(undefined)),
@@ -408,8 +408,8 @@ function* assemblePlan(
       },
     },
   });
-  // Validation never touches the persisted plan; neither does a plan built from unknown plugin code.
-  const planCache = input.mode !== "validate" && plugins.cacheable ? cacheService : undefined;
+  // Validation, unknown plugin code, and scratches (their plan.bin is the cache) skip the app plan cache.
+  const planCache = mode !== "validate" && plugins.cacheable && kind !== "scratch" ? cacheService : undefined;
   const routeUrlContext = { filePath: landofilePath, enabled: routerEnabled, global: kind === "global" };
   if (planCache !== undefined) {
     const cached = yield* readCachedAppPlan({
@@ -537,7 +537,7 @@ function* assemblePlan(
         valueModel: 1,
         name: appName,
         slug: appSlug,
-        root: AbsolutePath.make(appRoot),
+        root: input.identity?.appRoot ?? AbsolutePath.make(appRoot),
         ...(input.identity === undefined ? {} : { identity: input.identity }),
         provider,
         router: router.field(finalized.routes.length),

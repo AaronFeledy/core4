@@ -5,7 +5,7 @@ import { provideRuntime, runtimeServiceContext } from "@lando/engine/runtime/obs
 import * as ScratchRegistryLayer from "@lando/engine/scratch-app/registry";
 import * as ScratchResourceScannerLayer from "@lando/engine/scratch-app/scanner";
 import * as ScratchAppServiceLayer from "@lando/engine/scratch-app/service";
-import { acquireScratchAppWithPlan } from "@lando/engine/scratch-app/service";
+import { acquireScratchAppWithPlan, scratchProjectRoot } from "@lando/engine/scratch-app/service";
 import type { App, AppSelector, LandoRuntime, ScratchAcquireError } from "@lando/sdk/app";
 import type { AppResolveError, ConfigError, LandoRuntimeBootstrapError } from "@lando/sdk/errors";
 import { AbsolutePath } from "@lando/sdk/schema";
@@ -60,7 +60,12 @@ export const openLandoRuntime = Effect.fn("LandoRuntime.open")(function* (
     scratchInput === undefined
       ? undefined
       : yield* acquireScratchAppWithPlan(scratchInput).pipe(
-          Effect.map(({ handle, plan }) => ({ plan, root: plan.root, app: handle.app })),
+          // The handle owns the managed root; tooling and Landofile lookups use the project it binds.
+          Effect.map(({ handle, plan }) => ({
+            plan,
+            root: AbsolutePath.make(scratchProjectRoot(plan)),
+            app: handle.app,
+          })),
           (program) => provideRuntime(program, context),
         );
 
