@@ -410,7 +410,8 @@ describe.skipIf(process.platform === "win32")("failure issue log evidence", () =
     // Given
     await using fixture = await createMaintenanceFixture({ domain: "tomcat" });
     const progress = Array.from({ length: 40 }, (_, index) => `progress ${index + 1}`);
-    const log = [
+    // GitHub serves job logs with a byte-order mark; CRLF endings must not leak into the quote either.
+    const log = `\uFEFF${[
       stamp("##[group]Run bun run update:tomcat"),
       ...progress.map(stamp),
       stamp("##[endgroup]"),
@@ -418,7 +419,8 @@ describe.skipIf(process.platform === "win32")("failure issue log evidence", () =
       stamp("\u001b[31mTomcatUpdateError: Apache tag provenance: HTTP 403\u001b[0m"),
       stamp("##[error]Process completed with exit code 1."),
       stamp("Post job cleanup."),
-    ].join("\n");
+      stamp("##[error]Diagnostics upload failed."),
+    ].join("\r\n")}`;
     // When
     const result = await fixture.failure(
       renderTomcatBumpWorkflow(),
@@ -446,6 +448,46 @@ describe.skipIf(process.platform === "win32")("failure issue log evidence", () =
         "```",
         "",
       ].join("\n"),
+    );
+  });
+
+  test("quotes the end of a log with no error under a heading without a failed step", async () => {
+    // Given: a job cut off by its timeout, where no step concluded as failed.
+    await using fixture = await createMaintenanceFixture({ domain: "tomcat" });
+    const log = ["test 1 started", "test 1 passed", "test 2 started"].map(stamp).join("\n");
+    // When
+    const result = await fixture.failure(
+      renderTomcatBumpWorkflow(),
+      [],
+      { bump: { result: "cancelled" } },
+      { jobs: [{ id: 7, name: "bump", conclusion: "cancelled", steps: [] }], logs: { 7: log } },
+    );
+    // Then
+    expect(result.exitCode, result.stderr).toBe(0);
+    expect(await fixture.issueBody()).toEndWith(
+      "\n### bump\n\n```\ntest 1 started\ntest 1 passed\ntest 2 started\n```\n",
+    );
+  });
+
+  test("still files the summary when GitHub rejects the body with quoted logs", async () => {
+    // Given
+    await using fixture = await createMaintenanceFixture({ domain: "tomcat" });
+    // When
+    const result = await fixture.failure(
+      renderTomcatBumpWorkflow(),
+      [{ number: 34, title: "tomcat-bump automation failure" }],
+      { bump: { result: "failure" } },
+      {
+        jobs: [failedBump(7)],
+        logs: { 7: stamp("##[error]Process completed with exit code 1.") },
+        rejectBodyContaining: "Process completed",
+      },
+    );
+    // Then
+    expect(result.exitCode, result.stderr).toBe(0);
+    expect((await fixture.commands()).match(/^gh issue comment 34 /gm)).toHaveLength(2);
+    expect(await fixture.issueBody()).toBe(
+      "Workflow run failed: https://example.invalid/fixture/repository/actions/runs/42\n\nFailed jobs: bump\n",
     );
   });
 
