@@ -60,7 +60,7 @@ test("the maintenance reporter is gated only on run cancellation and owns issue 
   };
   expect(workflow.jobs["report-failure"]).toMatchObject({
     if: "${{ !cancelled() }}",
-    permissions: { issues: "write" },
+    permissions: { actions: "read", issues: "write" },
   });
   expect(workflow.permissions.issues).not.toBe("write");
   expect(workflow.jobs.bump?.permissions?.issues).not.toBe("write");

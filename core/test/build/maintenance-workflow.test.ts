@@ -314,7 +314,9 @@ for (const domain of ["tomcat", "compose"] as const) {
           exactMatch ? "gh issue comment 34 --body" : `gh issue create --title ${title} --body`,
         );
         expect(commands).not.toContain(exactMatch ? "gh issue create" : "gh issue comment");
-        expect(commands).toContain("https://example.invalid/fixture/repository/actions/runs/42");
+        expect(await fixture.issueBody()).toContain(
+          "https://example.invalid/fixture/repository/actions/runs/42",
+        );
       });
     }
 
@@ -350,7 +352,8 @@ for (const domain of ["tomcat", "compose"] as const) {
         `gh issue list --state open --search in:title "${title}" sort:created-asc --limit 100 --json number,title --jq`,
       );
       expect(commands).toContain(`repo=${repository}`);
-      expect(commands).toContain(`https://example.invalid/${repository}/actions/runs/42`);
+      expect(commands).toContain(`gh api repos/${repository}/actions/runs/42/attempts/1/jobs`);
+      expect(await fixture.issueBody()).toContain(`https://example.invalid/${repository}/actions/runs/42`);
       expect(commands).not.toContain("fixture/repository");
     });
   });
@@ -384,7 +387,172 @@ test.skipIf(process.platform === "win32").each([
     expect(commands).toBe("");
   } else {
     expect(commands.match(/^gh issue (create|comment) /gm)).toEqual(["gh issue create "]);
-    expect(commands.match(/^Failed jobs: (.+) repo=\S+$/m)?.[1]).toBe(label);
-    expect(commands).toContain("https://example.invalid/fixture/repository/actions/runs/42");
+    const body = await fixture.issueBody();
+    expect(body.match(/^Failed jobs: (.+)$/m)?.[1]).toBe(label);
+    expect(body).toContain("https://example.invalid/fixture/repository/actions/runs/42");
   }
+});
+
+describe.skipIf(process.platform === "win32")("failure issue log evidence", () => {
+  const stamp = (text: string) => `2026-11-25T14:43:33.4188249Z ${text}`;
+  const failedBump = (id: number, name = "bump") => ({
+    id,
+    name,
+    conclusion: "failure",
+    steps: [
+      { name: "Set up job", conclusion: "success" },
+      { name: "Prepare and check paired Tomcat update", conclusion: "failure" },
+      { name: "Post Run actions/checkout", conclusion: "success" },
+    ],
+  });
+
+  test("shows the failing step and the log lines that lead to its error", async () => {
+    // Given
+    await using fixture = await createMaintenanceFixture({ domain: "tomcat" });
+    const progress = Array.from({ length: 40 }, (_, index) => `progress ${index + 1}`);
+    // GitHub serves job logs with a byte-order mark; CRLF endings must not leak into the quote either.
+    const log = `\uFEFF${[
+      stamp("##[group]Run bun run update:tomcat"),
+      ...progress.map(stamp),
+      stamp("##[endgroup]"),
+      stamp(""),
+      stamp("\u001b[31mTomcatUpdateError: Apache tag provenance: HTTP 403\u001b[0m"),
+      stamp("##[error]Process completed with exit code 1."),
+      stamp("Post job cleanup."),
+      stamp("##[error]Diagnostics upload failed."),
+    ].join("\r\n")}`;
+    // When
+    const result = await fixture.failure(
+      renderTomcatBumpWorkflow(),
+      [],
+      { bump: { result: "failure" } },
+      { jobs: [failedBump(7)], logs: { 7: log } },
+    );
+    // Then
+    expect(result.exitCode, result.stderr).toBe(0);
+    const tail = [
+      ...progress.slice(12),
+      "TomcatUpdateError: Apache tag provenance: HTTP 403",
+      "##[error]Process completed with exit code 1.",
+    ];
+    expect(await fixture.issueBody()).toBe(
+      [
+        "Workflow run failed: https://example.invalid/fixture/repository/actions/runs/42",
+        "",
+        "Failed jobs: bump",
+        "",
+        "### bump: Prepare and check paired Tomcat update",
+        "",
+        "```",
+        ...tail,
+        "```",
+        "",
+      ].join("\n"),
+    );
+  });
+
+  test("quotes the end of a log with no error under a heading without a failed step", async () => {
+    // Given: a job cut off by its timeout, where no step concluded as failed.
+    await using fixture = await createMaintenanceFixture({ domain: "tomcat" });
+    const log = ["test 1 started", "test 1 passed", "test 2 started"].map(stamp).join("\n");
+    // When
+    const result = await fixture.failure(
+      renderTomcatBumpWorkflow(),
+      [],
+      { bump: { result: "cancelled" } },
+      { jobs: [{ id: 7, name: "bump", conclusion: "cancelled", steps: [] }], logs: { 7: log } },
+    );
+    // Then
+    expect(result.exitCode, result.stderr).toBe(0);
+    expect(await fixture.issueBody()).toEndWith(
+      "\n### bump\n\n```\ntest 1 started\ntest 1 passed\ntest 2 started\n```\n",
+    );
+  });
+
+  test("still files the summary when GitHub rejects the body with quoted logs", async () => {
+    // Given
+    await using fixture = await createMaintenanceFixture({ domain: "tomcat" });
+    // When
+    const result = await fixture.failure(
+      renderTomcatBumpWorkflow(),
+      [{ number: 34, title: "tomcat-bump automation failure" }],
+      { bump: { result: "failure" } },
+      {
+        jobs: [failedBump(7)],
+        logs: { 7: stamp("##[error]Process completed with exit code 1.") },
+        rejectBodyContaining: "Process completed",
+      },
+    );
+    // Then
+    expect(result.exitCode, result.stderr).toBe(0);
+    expect((await fixture.commands()).match(/^gh issue comment 34 /gm)).toHaveLength(2);
+    expect(await fixture.issueBody()).toBe(
+      "Workflow run failed: https://example.invalid/fixture/repository/actions/runs/42\n\nFailed jobs: bump\n",
+    );
+  });
+
+  test("fences log text that contains its own code fences", async () => {
+    // Given
+    await using fixture = await createMaintenanceFixture({ domain: "tomcat" });
+    const log = [stamp("```"), stamp("````"), stamp("##[error]Process completed with exit code 1.")].join(
+      "\n",
+    );
+    // When
+    const result = await fixture.failure(
+      renderTomcatBumpWorkflow(),
+      [],
+      { bump: { result: "failure" } },
+      { jobs: [failedBump(7)], logs: { 7: log } },
+    );
+    // Then
+    expect(result.exitCode, result.stderr).toBe(0);
+    expect(await fixture.issueBody()).toEndWith(
+      "\n`````\n```\n````\n##[error]Process completed with exit code 1.\n`````\n",
+    );
+  });
+
+  test("files the issue without evidence when the run's jobs cannot be read", async () => {
+    // Given
+    await using fixture = await createMaintenanceFixture({ domain: "tomcat" });
+    // When
+    const result = await fixture.failure(
+      renderTomcatBumpWorkflow(),
+      [],
+      { bump: { result: "failure" } },
+      { jobsUnavailable: true },
+    );
+    // Then
+    expect(result.exitCode, result.stderr).toBe(0);
+    expect(await fixture.commands()).toContain("gh issue create --title tomcat-bump automation failure");
+    expect(await fixture.issueBody()).toBe(
+      "Workflow run failed: https://example.invalid/fixture/repository/actions/runs/42\n\nFailed jobs: bump\n",
+    );
+  });
+
+  test("shows logs for at most five failed jobs and skips a job whose log is unreadable", async () => {
+    // Given
+    await using fixture = await createMaintenanceFixture({ domain: "tomcat" });
+    const jobs = Array.from({ length: 7 }, (_, index) => failedBump(index + 1, `job-${index + 1}`));
+    const logs = Object.fromEntries(
+      jobs.slice(1).map(({ id }) => [id, stamp(`##[error]job ${id} failed`)] as const),
+    );
+    // When
+    const result = await fixture.failure(
+      renderTomcatBumpWorkflow(),
+      [],
+      { bump: { result: "failure" } },
+      { jobs, logs },
+    );
+    // Then
+    expect(result.exitCode, result.stderr).toBe(0);
+    const body = await fixture.issueBody();
+    expect(body.match(/^### (job-\d+):/gm)).toEqual([
+      "### job-2:",
+      "### job-3:",
+      "### job-4:",
+      "### job-5:",
+      "### job-6:",
+    ]);
+    expect(body).toEndWith("```\n\nLogs for the remaining failed jobs are in the run.\n");
+  });
 });
