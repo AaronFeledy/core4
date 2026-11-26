@@ -289,24 +289,17 @@ const withRuntimeProvider = async <A>(
 
 describe("provider-lando ensureRuntime factory wiring", () => {
   test("logs uses the existing runtime without downloading, configuring, or launching it", async () => {
-    // Given: an answering runtime transport, an existing container, and no prepared native init helper.
+    // Given: an answering runtime transport with no prepared native init helper.
     const events: string[] = [];
     // When: planful logs are requested through the provider.
-    await withRuntimeProvider(
-      events,
-      async (provider, tempDir) => {
-        const logs = await Effect.runPromise(
-          Stream.runCollect(provider.logs({ app: appId, service: serviceName, plan }, { follow: false })),
-        );
-        expect(Array.from(logs).map((entry) => entry.line)).toEqual(["ok"]);
-        expect(await readdir(tempDir)).toEqual(["bin"]);
-        expect(await readdir(join(tempDir, "bin"))).toEqual([".runtime-installed-version"]);
-      },
-      1,
-      1,
-      fastReadinessPolicy,
-      serviceContainerName(plan, serviceName),
-    );
+    await withRuntimeProvider(events, async (provider, tempDir) => {
+      const logs = await Effect.runPromise(
+        Stream.runCollect(provider.logs({ app: appId, service: serviceName, plan }, { follow: false })),
+      );
+      expect(Array.from(logs).map((entry) => entry.line)).toEqual(["ok"]);
+      expect(await readdir(tempDir)).toEqual(["bin"]);
+      expect(await readdir(join(tempDir, "bin"))).toEqual([".runtime-installed-version"]);
+    });
     // Then: only the existing transport is used; no runtime preparation occurs.
     expect(events.filter((event) => event === "service.launch")).toHaveLength(0);
     expect(events.filter((event) => event === "artifact.download")).toHaveLength(0);

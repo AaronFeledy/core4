@@ -89,7 +89,6 @@ const makeFakeApi = (...chunks: ReadonlyArray<Uint8Array>) => {
   const api: PodmanApiClient = {
     info: Effect.succeed({}),
     ping: Effect.succeed(undefined),
-    request: () => Effect.succeed({ status: 200, body: "{}" }),
     stream: (request) => {
       calls.push(request);
       return Stream.fromIterable(chunks);
@@ -105,7 +104,7 @@ const collectLines = (chunks: Iterable<LogChunk>) => Array.from(chunks, (chunk) 
 
 describe("provider-lando logs", () => {
   test("prefers injected file access over a different helper fallback", async () => {
-    // Given: an injected file and a fallback API that only answers container inspection.
+    // Given: an injected file and a fallback API without helper request transport.
     const source = Schema.decodeUnknownSync(FileLogSource)({
       id: "file",
       path: "/app.log",
@@ -118,11 +117,7 @@ describe("provider-lando logs", () => {
       LandoProvider.makeRuntimeProvider({
         platform: "linux",
         sanitizeAppliedPlan: stripHostProxyRunLando,
-        podmanApi: {
-          info: Effect.succeed({ host: { arch: "x64" } }),
-          ping: Effect.void,
-          request: () => Effect.succeed({ status: 200, body: "{}" }),
-        },
+        podmanApi: { info: Effect.succeed({ host: { arch: "x64" } }), ping: Effect.void },
         logFileAccess: memory.access,
         resolveContainerHelper: () => Effect.die("injected access must bypass helper resolution"),
       }),

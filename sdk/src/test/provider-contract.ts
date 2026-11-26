@@ -542,7 +542,7 @@ export const runProviderContract = Effect.fnUntraced(function* (
         mapFailures(mapProviderFailure("logs resolve for a planned service without a container")),
       ),
     {
-      duration: Duration.seconds(30),
+      duration: Duration.seconds(5),
       orElse: () => Effect.fail(contractFailure("logs end for a planned service without a container")),
     },
   );

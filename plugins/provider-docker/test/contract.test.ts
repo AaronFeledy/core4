@@ -15,6 +15,7 @@ import {
   supervisedExecFixtureOptions,
 } from "@lando/container-runtime/testing/exec-supervision";
 import { installNonCompensatingExecUmask } from "@lando/container-runtime/testing/exec-umask";
+import { missingContainerStream } from "@lando/container-runtime/testing/missing-container";
 import {
   makeVolumeArchiveFakeState,
   volumeArchiveFakeReadsStdin,
@@ -460,6 +461,10 @@ const makeFakeApi = () => {
         return Stream.fromIterable([attachFrame(1, "exec-ok\n")]);
       }
       if (request.path.includes("/logs?")) {
+        const name = decodeURIComponent(
+          request.path.slice("/containers/".length, request.path.indexOf("/logs?")),
+        );
+        if (!existing.has(name)) return missingContainerStream("docker", request, name);
         return Stream.fromIterable([
           attachFrame(1, "2026-05-17T12:00:00.000Z ready\n"),
           attachFrame(1, "2026-05-17T12:00:00.000Z lando-contract-split-"),
@@ -1366,7 +1371,6 @@ describe("provider-docker RuntimeProvider contract", () => {
       "POST /containers/lando-myapp--web/exec",
       "POST /exec/lando-myapp--web-exec/start",
       "GET /exec/lando-myapp--web-exec/json",
-      "GET /containers/lando-myapp--web/json",
       "GET /containers/lando-myapp--web/logs?stdout=true&stderr=true&follow=false&timestamps=true",
       "GET /volumes",
       "GET /containers/json?all=true&filters=%7B%22label%22%3A%5B%22dev.lando.app%3Dmyapp%22%5D%7D",
@@ -1899,7 +1903,6 @@ describe("provider-docker RuntimeProvider contract", () => {
       "POST /containers/lando-myapp--web/exec",
       "POST /exec/lando-myapp--web-exec/start",
       "GET /exec/lando-myapp--web-exec/json",
-      "GET /containers/lando-myapp--web/json",
       "GET /containers/lando-myapp--web/logs?stdout=true&stderr=true&follow=false&timestamps=true",
       "GET /volumes",
       "GET /containers/json?all=true&filters=%7B%22label%22%3A%5B%22dev.lando.app%3Dmyapp%22%5D%7D",

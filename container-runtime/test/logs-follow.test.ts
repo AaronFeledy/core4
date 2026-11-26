@@ -1,4 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { createServer } from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { makeMemoryLogFileAccess } from "@lando/sdk/log-follow";
 import {
@@ -15,6 +19,9 @@ import type { LogChunk } from "@lando/sdk/services";
 import { DateTime, Effect, Schema, Stream } from "effect";
 
 import type { EngineHttpApi, EngineHttpRequest } from "../src/engine-api.ts";
+import { scopedDockerLogFileAccess } from "../src/log-file-access.ts";
+import { serviceContainerName } from "../src/plan.ts";
+import { makePodmanApiClient } from "../src/podman/api-client.ts";
 import { logs } from "../src/podman/logs.ts";
 
 const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry.", env: {} } as const;
@@ -97,7 +104,6 @@ const makePlan = (logSources?: ReadonlyArray<FileLogSource>): AppPlan => {
 const makeFakeApi = (...chunks: ReadonlyArray<Uint8Array>) => {
   const calls: EngineHttpRequest[] = [];
   const api: EngineHttpApi = {
-    request: () => Effect.succeed({ status: 200, body: "{}" }),
     stream: (request) => {
       calls.push(request);
       return Stream.fromIterable(chunks);
@@ -111,6 +117,74 @@ const rawConsole = (line: string): Uint8Array => textEncoder.encode(`2026-05-14T
 
 const collect = (stream: Stream.Stream<LogChunk, unknown>): Promise<ReadonlyArray<LogChunk>> =>
   Effect.runPromise(Stream.runCollect(stream).pipe(Effect.map((chunks) => [...chunks])));
+
+// Podman's answers, byte for byte, to a request naming a missing container and to an engine fault.
+const noSuchContainer = {
+  status: "404 Not Found",
+  body: JSON.stringify({
+    cause: "no such container",
+    message: 'no container with name or ID "lando-logfollowapp--node" found: no such container',
+    response: 404,
+  }),
+} as const;
+const engineFault = {
+  status: "500 Internal Server Error",
+  body: JSON.stringify({ cause: "storage", message: "reading container state: storage", response: 500 }),
+} as const;
+
+/** A Podman socket that gives every request one answer; records each request's method and path. */
+const withEngine = async (
+  answer: { readonly status: string; readonly body: string },
+  run: (endpoint: string, requests: string[]) => Promise<void>,
+) => {
+  const dir = await mkdtemp(join(tmpdir(), "lando-logs-engine-"));
+  const endpoint = join(dir, "podman.sock");
+  const requests: string[] = [];
+  const server = createServer((socket) => {
+    let head = "";
+    socket.on("data", (chunk) => {
+      if (head.includes("\r\n\r\n")) return;
+      head += chunk.toString("latin1");
+      if (!head.includes("\r\n\r\n")) return;
+      const [method, target] = head.split(" ");
+      requests.push(`${method} ${target?.split("?")[0]}`);
+      socket.end(
+        `HTTP/1.1 ${answer.status}\r\nContent-Type: application/json\r\nContent-Length: ${answer.body.length}\r\n\r\n${answer.body}`,
+      );
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(endpoint, resolve));
+  try {
+    await run(endpoint, requests);
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    await rm(dir, { recursive: true, force: true });
+  }
+};
+
+/** Follows a service's console and file logs through the real Podman client and helper file access. */
+const followThrough = (endpoint: string) => {
+  const fileSource = source();
+  const plan = makePlan([fileSource]);
+  const api = makePodmanApiClient(endpoint, ctx);
+  const logFileAccess = scopedDockerLogFileAccess({
+    providerId: ctx.providerId,
+    api,
+    container: serviceContainerName(plan, node.name),
+    resolveHelper: Effect.succeed({
+      target: { os: "linux", arch: "x64" },
+      path: AbsolutePath.make(import.meta.filename),
+      digest: "1".repeat(64),
+    }),
+    sourceEnv: {},
+  });
+  return logs(
+    plan,
+    { app: appId, service: node.name },
+    { follow: true, sources: [fileSource] },
+    { api, logFileAccess, ctx },
+  );
+};
 
 describe("podman log followers", () => {
   test("merges finite console and file-follow logs when follow is false", async () => {
@@ -203,38 +277,30 @@ describe("podman log followers", () => {
     expect(fake.calls).toEqual([]);
   });
 
-  test("streams nothing for a planned service whose container does not exist", async () => {
-    // Given an engine that answers 404 for the service's container, as after destroy or before start
-    const fileSource = source();
-    const streamed: EngineHttpRequest[] = [];
-    const api: EngineHttpApi = {
-      request: () => Effect.succeed({ status: 404, body: '{"message":"no such container"}' }),
-      stream: (request) => {
-        streamed.push(request);
-        return Stream.fail(
-          new ProviderUnavailableError({
-            providerId: "podman",
-            operation: "podman-api",
-            message: "Container runtime stream request failed with HTTP 404.",
-            remediation: ctx.remediation,
-          }),
-        );
-      },
-    };
+  test("ends without lines when following a planned service whose container does not exist", async () => {
+    // Given an engine with no container for the service, as after destroy or before the first start
+    await withEngine(noSuchContainer, async (endpoint, requests) => {
+      // When following its console and file logs
+      const chunks = await collect(followThrough(endpoint));
 
-    // When
-    const chunks = await collect(
-      logs(
-        makePlan([fileSource]),
-        { app: appId, service: node.name },
-        { follow: false, sources: [fileSource] },
-        { api, logFileAccess: makeMemoryLogFileAccess().access, ctx },
-      ),
-    );
+      // Then both followers end at the engine's 404, with no inspection first
+      expect(chunks).toEqual([]);
+      expect(requests.toSorted()).toEqual([
+        "GET /v6.0.0/containers/lando-logfollowapp--node/logs",
+        "POST /v6.0.0/containers/lando-logfollowapp--node/exec",
+      ]);
+    });
+  });
 
-    // Then neither the console nor the file follower is read
-    expect(chunks).toEqual([]);
-    expect(streamed).toEqual([]);
+  test("fails when the engine answers with an error other than a missing container", async () => {
+    // Given an engine that fails every request
+    await withEngine(engineFault, async (endpoint) => {
+      // When following the service's logs
+      const error = await Effect.runPromise(Stream.runCollect(followThrough(endpoint)).pipe(Effect.flip));
+
+      // Then the failure surfaces instead of an empty stream
+      expect(error).toBeInstanceOf(ProviderUnavailableError);
+    });
   });
 
   test("tags a missing-api failure with the caller provider id and remediation", async () => {
