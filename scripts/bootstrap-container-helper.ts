@@ -1,9 +1,8 @@
 #!/usr/bin/env bun
 /**
- * The container-helper step of `bun run bootstrap`: restores `core/container-helper/dist` from the
- * per-user cache keyed by its source digest and prints one JSON report on stdout. Bootstrap runs
- * this in its own process after `bun install`, because Bun keeps the missing `node_modules` it saw
- * when bootstrap started and so cannot load workspace modules there on a fresh checkout's first run.
+ * The container-helper step of `bun run bootstrap`, run in a child process (see `scripts/bootstrap.ts`):
+ * restores `core/container-helper/dist` from the per-user cache keyed by its source digest and prints
+ * one JSON report on stdout.
  */
 import { join, resolve } from "node:path";
 

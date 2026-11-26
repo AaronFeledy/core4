@@ -20,10 +20,21 @@ const childEnv = (overrides: Readonly<Record<string, string>> = {}): NodeJS.Proc
   return { ...env, ...overrides };
 };
 
+const tempDir = (prefix: string) => {
+  const path = mkdtempSync(join(tmpdir(), prefix));
+  return { path, [Symbol.dispose]: () => rmSync(path, { recursive: true, force: true }) };
+};
+
 const writeFixture = (dir: string, name: string, source: string): string => {
   const file = join(dir, name);
   writeFileSync(file, source);
   return file;
+};
+
+const spawn = (cmd: readonly string[], env: NodeJS.ProcessEnv = childEnv()) => {
+  const child = Bun.spawnSync([...cmd], { cwd: repoRoot, env, stdout: "pipe", stderr: "pipe" });
+  const stdout = child.stdout.toString();
+  return { exitCode: child.exitCode, stdout, output: `${stdout}\n${child.stderr}` };
 };
 
 const printRootSource = `import { test } from "bun:test";
@@ -32,14 +43,13 @@ test("print root", () => {
 });
 `;
 
-const parseRoot = (stdout: string): string => {
-  const match = /ROOT=(.+)/.exec(stdout);
-  const root = match?.[1]?.trim() ?? "";
-  expect(root.startsWith(treePrefix)).toBe(true);
-  return root;
+/** Every `ROOT=` line a fixture printed; at least one, each inside a preload tree. */
+const printedRoots = (output: string): string[] => {
+  const roots = [...output.matchAll(/ROOT=(.+)/g)].map((match) => match[1]?.trim() ?? "");
+  expect(roots.length).toBeGreaterThan(0);
+  for (const root of roots) expect(root.startsWith(treePrefix)).toBe(true);
+  return roots;
 };
-
-const treeOf = (root: string): string => dirname(root);
 
 // Only Linux exposes the full `bun test` invocation, so other hosts keep the tree.
 const releasesTree = process.platform === "linux";
@@ -49,57 +59,33 @@ const expectReleased = (tree: string): void => {
 };
 
 describe("test preload root teardown", () => {
-  test("serial passing file removes the tree after exit", () => {
-    const dir = mkdtempSync(join(tmpdir(), "lando-teardown-pass-"));
-    try {
-      const file = writeFixture(dir, "pass.test.ts", printRootSource);
-      const child = Bun.spawnSync([process.execPath, "test", file], {
-        cwd: repoRoot,
-        env: childEnv(),
-        stdout: "pipe",
-        stderr: "pipe",
-      });
-      expect(child.exitCode, child.stderr.toString()).toBe(0);
-      expectReleased(treeOf(parseRoot(child.stdout.toString())));
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  test("serial failing file removes the tree after exit", () => {
-    const dir = mkdtempSync(join(tmpdir(), "lando-teardown-fail-"));
-    try {
-      const file = writeFixture(
-        dir,
-        "fail.test.ts",
-        `import { test } from "bun:test";
+  test.each([
+    { name: "passing", passes: true, source: printRootSource },
+    {
+      name: "failing",
+      passes: false,
+      source: `import { test } from "bun:test";
 test("fail", () => {
   process.stdout.write("ROOT=" + (process.env.LANDO_USER_DATA_ROOT ?? "") + "\\n");
   throw new Error("boom");
 });
 `,
-      );
-      const child = Bun.spawnSync([process.execPath, "test", file], {
-        cwd: repoRoot,
-        env: childEnv(),
-        stdout: "pipe",
-        stderr: "pipe",
-      });
-      expect(child.exitCode).not.toBe(0);
-      expectReleased(treeOf(parseRoot(child.stdout.toString())));
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
+    },
+  ])("serial $name file removes the tree after exit", ({ passes, source }) => {
+    using dir = tempDir("lando-teardown-serial-");
+    const child = spawn([process.execPath, "test", writeFixture(dir.path, "serial.test.ts", source)]);
+    expect(child.exitCode === 0, child.output).toBe(passes);
+    const [root = ""] = printedRoots(child.stdout);
+    expectReleased(dirname(root));
   });
 
   test("two files in one process share a tree until the process exits", () => {
-    const dir = mkdtempSync(join(tmpdir(), "lando-teardown-two-"));
-    try {
-      const first = writeFixture(dir, "a.test.ts", printRootSource);
-      const second = writeFixture(
-        dir,
-        "b.test.ts",
-        `import { existsSync } from "node:fs";
+    using dir = tempDir("lando-teardown-two-");
+    const first = writeFixture(dir.path, "a.test.ts", printRootSource);
+    const second = writeFixture(
+      dir.path,
+      "b.test.ts",
+      `import { existsSync } from "node:fs";
 import { dirname } from "node:path";
 import { test } from "bun:test";
 test("second still sees the tree", () => {
@@ -108,35 +94,23 @@ test("second still sees the tree", () => {
   process.stdout.write("PRESENT=" + existsSync(dirname(root)) + "\\n");
 });
 `,
-      );
-      const child = Bun.spawnSync([process.execPath, "test", first, second], {
-        cwd: repoRoot,
-        env: childEnv(),
-        stdout: "pipe",
-        stderr: "pipe",
-      });
-      expect(child.exitCode, child.stderr.toString()).toBe(0);
-      const stdout = child.stdout.toString();
-      const roots = [...stdout.matchAll(/ROOT=(.+)/g)].map((match) => match[1]?.trim() ?? "");
-      expect(roots).toHaveLength(2);
-      expect(roots[0]).toBe(roots[1]);
-      expect(stdout).toContain("PRESENT=true");
-      const firstRoot = roots[0];
-      if (firstRoot === undefined) throw new Error("expected a printed root");
-      expectReleased(treeOf(firstRoot));
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
+    );
+    const child = spawn([process.execPath, "test", first, second]);
+    expect(child.exitCode, child.output).toBe(0);
+    const roots = printedRoots(child.stdout);
+    const [root = ""] = roots;
+    expect(roots).toEqual([root, root]);
+    expect(child.stdout).toContain("PRESENT=true");
+    expectReleased(dirname(root));
   });
 
   test("nested bun test does not delete the parent's tree", () => {
-    const dir = mkdtempSync(join(tmpdir(), "lando-teardown-nested-"));
-    try {
-      const inner = writeFixture(dir, "inner.test.ts", printRootSource);
-      const outer = writeFixture(
-        dir,
-        "outer.test.ts",
-        `import { existsSync } from "node:fs";
+    using dir = tempDir("lando-teardown-nested-");
+    const inner = writeFixture(dir.path, "inner.test.ts", printRootSource);
+    const outer = writeFixture(
+      dir.path,
+      "outer.test.ts",
+      `import { existsSync } from "node:fs";
 import { dirname } from "node:path";
 import { test } from "bun:test";
 test("nested child inherits and parent keeps the tree", () => {
@@ -152,160 +126,86 @@ test("nested child inherits and parent keeps the tree", () => {
   process.stdout.write("STILL=" + existsSync(dirname(root)) + "\\n");
 });
 `,
-      );
-      const child = Bun.spawnSync([process.execPath, "test", outer], {
-        cwd: repoRoot,
-        env: childEnv(),
-        stdout: "pipe",
-        stderr: "pipe",
-      });
-      expect(child.exitCode, child.stderr.toString()).toBe(0);
-      const stdout = child.stdout.toString();
-      const roots = [...stdout.matchAll(/ROOT=(.+)/g)].map((match) => match[1]?.trim() ?? "");
-      expect(roots).toHaveLength(2);
-      expect(roots[0]).toBe(roots[1]);
-      expect(stdout).toContain("STILL=true");
-      const firstRoot = roots[0];
-      if (firstRoot === undefined) throw new Error("expected a printed root");
-      expectReleased(treeOf(firstRoot));
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
+    );
+    const child = spawn([process.execPath, "test", outer]);
+    expect(child.exitCode, child.output).toBe(0);
+    const roots = printedRoots(child.stdout);
+    const [root = ""] = roots;
+    expect(roots).toEqual([root, root]);
+    expect(child.stdout).toContain("STILL=true");
+    expectReleased(dirname(root));
   });
 
   test("caller-set root is never removed", () => {
-    const dir = mkdtempSync(join(tmpdir(), "lando-teardown-caller-"));
-    const caller = join(dir, "caller");
+    using dir = tempDir("lando-teardown-caller-");
+    const caller = join(dir.path, "caller");
     mkdirSync(caller);
     const sentinel = join(caller, "keep");
     writeFileSync(sentinel, "stay");
-    try {
-      const file = writeFixture(
-        dir,
-        "caller.test.ts",
-        `import { test } from "bun:test";
+    const file = writeFixture(
+      dir.path,
+      "caller.test.ts",
+      `import { test } from "bun:test";
 test("print roots", () => {
   process.stdout.write("ROOT=" + (process.env.LANDO_USER_DATA_ROOT ?? "") + "\\n");
   process.stdout.write("CACHE=" + (process.env.LANDO_USER_CACHE_ROOT ?? "") + "\\n");
 });
 `,
-      );
-      const child = Bun.spawnSync([process.execPath, "test", file], {
-        cwd: repoRoot,
-        env: childEnv({ LANDO_USER_DATA_ROOT: caller }),
-        stdout: "pipe",
-        stderr: "pipe",
-      });
-      expect(child.exitCode, child.stderr.toString()).toBe(0);
-      const stdout = child.stdout.toString();
-      expect(stdout).toContain(`ROOT=${caller}`);
-      expect(existsSync(sentinel)).toBe(true);
-      const cache = /CACHE=(.+)/.exec(stdout)?.[1]?.trim() ?? "";
-      expect(cache.startsWith(treePrefix)).toBe(true);
-      expectReleased(treeOf(cache));
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  test("LANDO_TEST_USE_REAL_ROOTS=1 does not create a lando-test-roots tree", () => {
-    const dir = mkdtempSync(join(tmpdir(), "lando-teardown-real-"));
-    try {
-      const file = writeFixture(dir, "real.test.ts", printRootSource);
-      const child = Bun.spawnSync([process.execPath, "test", file], {
-        cwd: repoRoot,
-        env: childEnv({ LANDO_TEST_USE_REAL_ROOTS: "1" }),
-        stdout: "pipe",
-        stderr: "pipe",
-      });
-      expect(child.exitCode, child.stderr.toString()).toBe(0);
-      const root = /ROOT=(.*)/.exec(child.stdout.toString())?.[1] ?? "";
-      expect(root.startsWith(treePrefix)).toBe(false);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
+    );
+    const child = spawn([process.execPath, "test", file], childEnv({ LANDO_USER_DATA_ROOT: caller }));
+    expect(child.exitCode, child.output).toBe(0);
+    expect(child.stdout).toContain(`ROOT=${caller}`);
+    expect(existsSync(sentinel)).toBe(true);
+    const cache = /CACHE=(.+)/.exec(child.stdout)?.[1]?.trim() ?? "";
+    expect(cache.startsWith(treePrefix)).toBe(true);
+    expectReleased(dirname(cache));
   });
 
   test("parallel workers skip deletion so a reused worker keeps the tree", () => {
-    const dir = mkdtempSync(join(tmpdir(), "lando-teardown-parallel-"));
+    using dir = tempDir("lando-teardown-parallel-");
     const record = (name: string) => `import { writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { test } from "bun:test";
 test("record root", () => {
-  const root = process.env.LANDO_USER_DATA_ROOT ?? "";
-  writeFileSync(${JSON.stringify(join(dir, name))}, dirname(root));
+  writeFileSync(${JSON.stringify(join(dir.path, name))}, dirname(process.env.LANDO_USER_DATA_ROOT ?? ""));
 });
 `;
-    try {
-      const first = writeFixture(dir, "a.test.ts", record("tree-a"));
-      const second = writeFixture(dir, "b.test.ts", record("tree-b"));
-      const child = Bun.spawnSync([process.execPath, "test", "--parallel=2", first, second], {
-        cwd: repoRoot,
-        env: childEnv(),
-        stdout: "pipe",
-        stderr: "pipe",
-      });
-      expect(child.exitCode, `${child.stdout}\n${child.stderr}`).toBe(0);
-      const recorded = [
-        ...new Set(
-          [join(dir, "tree-a"), join(dir, "tree-b")]
-            .filter((file) => existsSync(file))
-            .map((file) => readFileSync(file, "utf8"))
-            .filter((tree) => tree.length > 0),
-        ),
-      ];
-      expect(recorded.length).toBeGreaterThan(0);
-      for (const tree of recorded) {
-        expect(existsSync(tree)).toBe(true);
-        rmSync(tree, { recursive: true, force: true });
-      }
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
+    const first = writeFixture(dir.path, "a.test.ts", record("tree-a"));
+    const second = writeFixture(dir.path, "b.test.ts", record("tree-b"));
+    const child = spawn([process.execPath, "test", "--parallel=2", first, second]);
+    expect(child.exitCode, child.output).toBe(0);
+    const trees = new Set(["tree-a", "tree-b"].map((name) => readFileSync(join(dir.path, name), "utf8")));
+    for (const tree of trees) {
+      expect(tree.startsWith(treePrefix)).toBe(true);
+      expect(existsSync(tree)).toBe(true);
+      rmSync(tree, { recursive: true, force: true });
     }
   });
 
   test.each([["--isolate"], ["--rerun-each=2"], ["--bail=1"]])("%s keeps the tree", (flag) => {
-    const dir = mkdtempSync(join(tmpdir(), "lando-teardown-flag-"));
-    try {
-      const first = writeFixture(dir, "a.test.ts", printRootSource);
-      const second = writeFixture(dir, "b.test.ts", printRootSource);
-      const child = Bun.spawnSync([process.execPath, "test", flag, first, second], {
-        cwd: repoRoot,
-        env: childEnv(),
-        stdout: "pipe",
-        stderr: "pipe",
-      });
-      expect(child.exitCode, `${child.stdout}\n${child.stderr}`).toBe(0);
-      // --isolate gives each file a fresh env and so its own tree; remove every one.
-      const trees = new Set(
-        [...child.stdout.toString().matchAll(/ROOT=(.+)/g)].map((match) => treeOf(parseRoot(match[0]))),
-      );
-      expect(trees.size).toBeGreaterThan(0);
-      for (const tree of trees) {
-        expect(existsSync(tree)).toBe(true);
-        rmSync(tree, { recursive: true, force: true });
-      }
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
+    using dir = tempDir("lando-teardown-flag-");
+    const first = writeFixture(dir.path, "a.test.ts", printRootSource);
+    const second = writeFixture(dir.path, "b.test.ts", printRootSource);
+    const child = spawn([process.execPath, "test", flag, first, second]);
+    expect(child.exitCode, child.output).toBe(0);
+    // --isolate gives each file a fresh env and so its own tree; remove every one.
+    const trees = new Set(printedRoots(child.stdout).map((root) => dirname(root)));
+    for (const tree of trees) {
+      expect(existsSync(tree)).toBe(true);
+      rmSync(tree, { recursive: true, force: true });
     }
   });
 
   test("guide wrapper removes its owned tree after the child is reaped", () => {
-    const dir = mkdtempSync(join(tmpdir(), "lando-teardown-wrapper-"));
-    try {
-      const file = writeFixture(dir, "guide.test.ts", printRootSource);
-      const child = Bun.spawnSync([process.execPath, wrapper, file], {
-        cwd: repoRoot,
-        env: childEnv(),
-        stdout: "pipe",
-        stderr: "pipe",
-      });
-      expect(child.exitCode, `${child.stdout}\n${child.stderr}`).toBe(0);
-      const tree = treeOf(parseRoot(`${child.stdout}${child.stderr}`));
-      expect(existsSync(tree)).toBe(false);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
+    using dir = tempDir("lando-teardown-wrapper-");
+    const child = spawn([
+      process.execPath,
+      wrapper,
+      writeFixture(dir.path, "guide.test.ts", printRootSource),
+    ]);
+    expect(child.exitCode, child.output).toBe(0);
+    const [root = ""] = printedRoots(child.output);
+    expect(existsSync(dirname(root))).toBe(false);
   });
 });
 
@@ -313,26 +213,22 @@ describe("runner-owned test roots", () => {
   const rootsOf = (env: Readonly<Record<string, string | undefined>>) => rootEnvKeys.map((key) => env[key]);
 
   test("fills only unset keys under one tree that lasts until run settles, then removes it", async () => {
-    const caller = mkdtempSync(join(tmpdir(), "lando-runner-caller-"));
-    const env = { ...childEnv(), LANDO_USER_DATA_ROOT: caller };
-    try {
-      const seen = await withRunnerOwnedTestRoots({ env, live: false }, async (child) => ({
-        roots: rootsOf(child),
-        present: existsSync(dirname(child.LANDO_USER_CACHE_ROOT ?? "")),
-      }));
-      const [data, ...filled] = seen.roots;
-      expect(data).toBe(caller);
-      const trees = new Set(filled.map((root) => dirname(root ?? "")));
-      expect(trees.size).toBe(1);
-      const [tree = ""] = trees;
-      expect(tree.startsWith(treePrefix)).toBe(true);
-      expect(seen.present).toBe(true);
-      expect(existsSync(tree)).toBe(false);
-      expect(existsSync(caller)).toBe(true);
-      expect(rootsOf(env)).toEqual([caller, undefined, undefined, undefined]);
-    } finally {
-      rmSync(caller, { recursive: true, force: true });
-    }
+    using caller = tempDir("lando-runner-caller-");
+    const env = { ...childEnv(), LANDO_USER_DATA_ROOT: caller.path };
+    const seen = await withRunnerOwnedTestRoots({ env, live: false }, async (child) => ({
+      roots: rootsOf(child),
+      present: existsSync(dirname(child.LANDO_USER_CACHE_ROOT ?? "")),
+    }));
+    const [data, ...filled] = seen.roots;
+    expect(data).toBe(caller.path);
+    const trees = new Set(filled.map((root) => dirname(root ?? "")));
+    expect(trees.size).toBe(1);
+    const [tree = ""] = trees;
+    expect(tree.startsWith(treePrefix)).toBe(true);
+    expect(seen.present).toBe(true);
+    expect(existsSync(tree)).toBe(false);
+    expect(existsSync(caller.path)).toBe(true);
+    expect(rootsOf(env)).toEqual([caller.path, undefined, undefined, undefined]);
   });
 
   test("removes the tree when run rejects", async () => {

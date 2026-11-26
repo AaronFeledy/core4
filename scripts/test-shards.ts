@@ -152,7 +152,7 @@ const main = async (): Promise<void> => {
       for (const file of files) console.log(file);
       return;
     }
-    process.exitCode = await runLocalUnitTests(files, (command) => runUnitTestCommand(command));
+    process.exitCode = await runLocalUnitTests(files, runUnitTestCommand);
     return;
   }
   if (args[0] === "--run") {

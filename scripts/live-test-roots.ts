@@ -19,31 +19,19 @@ type TestChild = Pick<Bun.Subprocess, "kill" | "exited" | "exitCode" | "signalCo
 export type TrackTestChild = (child: TestChild) => void;
 type LiveTestBinaryReason = "missing" | "directory" | "not-executable";
 
-const LIVE_TEST_BINARY_COPY = {
-  missing: {
-    subject: (path: string) => `Live test CLI not found at ${path}.`,
-    override: " LANDO_SCENARIO_E2E_BINARY points at a missing file.",
-  },
-  directory: {
-    subject: (path: string) => `Live test CLI path ${path} is a directory.`,
-    override: " LANDO_SCENARIO_E2E_BINARY points at a directory.",
-  },
-  "not-executable": {
-    subject: (path: string) => `Live test CLI at ${path} is not executable.`,
-    override: " LANDO_SCENARIO_E2E_BINARY points at a non-executable file.",
-  },
-} as const satisfies Record<
-  LiveTestBinaryReason,
-  { readonly subject: (path: string) => string; readonly override: string }
->;
+const LIVE_TEST_BINARY_PROBLEMS = {
+  missing: "does not exist",
+  directory: "is a directory",
+  "not-executable": "is not executable",
+} as const satisfies Record<LiveTestBinaryReason, string>;
 
 export class MissingLiveTestBinaryError extends Error {
   readonly path: string;
   readonly reason: LiveTestBinaryReason;
   constructor(path: string, reason: LiveTestBinaryReason, overrideSet: boolean) {
-    const copy = LIVE_TEST_BINARY_COPY[reason];
+    const source = overrideSet ? " (LANDO_SCENARIO_E2E_BINARY)" : "";
     super(
-      `${copy.subject(path)}${overrideSet ? copy.override : ""} Run (cd core && bun run build) or set LANDO_SCENARIO_E2E_BINARY.`,
+      `Live test CLI ${path}${source} ${LIVE_TEST_BINARY_PROBLEMS[reason]}. Run (cd core && bun run build) or set LANDO_SCENARIO_E2E_BINARY.`,
     );
     this.name = "MissingLiveTestBinaryError";
     this.path = path;
@@ -51,24 +39,21 @@ export class MissingLiveTestBinaryError extends Error {
   }
 }
 
-export const resolveLiveTestBinaryPath = (cwd: string, env: Env): string =>
+const resolveLiveTestBinaryPath = (cwd: string, env: Env): string =>
   resolve(cwd, env.LANDO_SCENARIO_E2E_BINARY ?? "core/dist/lando");
 
-export const assertLiveTestBinary = async (cwd: string, env: Env): Promise<string> => {
+const assertLiveTestBinary = async (cwd: string, env: Env): Promise<void> => {
   const path = resolveLiveTestBinaryPath(cwd, env);
-  const overrideSet = env.LANDO_SCENARIO_E2E_BINARY !== undefined;
+  let reason: LiveTestBinaryReason | undefined;
   try {
-    const info = await stat(path);
-    if (info.isDirectory()) throw new MissingLiveTestBinaryError(path, "directory", overrideSet);
-    await access(path, constants.X_OK);
+    if ((await stat(path)).isDirectory()) reason = "directory";
+    else await access(path, constants.X_OK);
   } catch (cause) {
-    if (cause instanceof MissingLiveTestBinaryError) throw cause;
-    if (cause instanceof Error && "code" in cause && cause.code === "ENOENT") {
-      throw new MissingLiveTestBinaryError(path, "missing", overrideSet);
-    }
-    throw new MissingLiveTestBinaryError(path, "not-executable", overrideSet);
+    reason =
+      cause instanceof Error && "code" in cause && cause.code === "ENOENT" ? "missing" : "not-executable";
   }
-  return path;
+  if (reason !== undefined)
+    throw new MissingLiveTestBinaryError(path, reason, env.LANDO_SCENARIO_E2E_BINARY !== undefined);
 };
 
 async function allocateLiveTestRoots(env: Env, cwd: string): Promise<TempRootRetirement | undefined> {

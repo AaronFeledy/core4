@@ -227,14 +227,9 @@ test("a missing runtime tree is not prepared or spawned", async () => {
     throw new Error("missing runtime tree must not be spawned");
   };
 
-  const failure = await runUninstallRuntime(exec, f.runtime, { args: ["--version"] }, f.seams).then(
-    () => new Error("expected missing runtime tree to fail"),
-    (cause: unknown) => cause,
-  );
-
-  expect(failure).toBeInstanceOf(Error);
-  if (!(failure instanceof Error)) throw failure;
-  expect((failure as Error & { code?: string }).code).toBe("ENOENT");
+  await expect(runUninstallRuntime(exec, f.runtime, { args: ["--version"] }, f.seams)).rejects.toMatchObject({
+    code: "ENOENT",
+  });
   expect(f.prepareCalls).toEqual([]);
 });
 
@@ -258,10 +253,7 @@ test.skipIf(process.platform !== "linux")(
           argsPrefix: [],
         },
         { args: ["--version"] },
-      ).then(
-        () => undefined,
-        () => undefined,
-      );
+      ).catch(() => undefined);
       expect(typeof privateDir).toBe("string");
       if (typeof privateDir === "string") expect(existsSync(privateDir)).toBe(false);
     } finally {

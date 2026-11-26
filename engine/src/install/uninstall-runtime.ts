@@ -98,7 +98,6 @@ const prepareManagedLinuxRuntime = async (
   seams: UninstallRuntimeSeams = {},
 ): Promise<UninstallRuntime> => {
   if (runtime.managedSpawn !== "linux" || runtime.runtimeDir === undefined) return runtime;
-  if (!(await pathExists(runtime.runtimeDir))) return runtime;
   const prepare = seams.prepareRuntimeDir ?? prepareLaunchedManagedRuntimeDir;
   const prepared = await Effect.runPromise(
     Effect.result(

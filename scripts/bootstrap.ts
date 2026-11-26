@@ -97,7 +97,6 @@ const parseRestoreReport = (text: string): ContainerHelperRestoreReport | undefi
   return detail === undefined ? { status, sourceDigest } : undefined;
 };
 
-/** Restores in a child: this process still sees the `node_modules` that was missing at startup. */
 const restoreHelper = async (): Promise<ContainerHelperRestoreReport | { readonly failure: string }> => {
   const log = join(logDir, "container-helper-restore.log");
   const child = Bun.spawn({

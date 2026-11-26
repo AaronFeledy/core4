@@ -9,7 +9,6 @@ const rootEnvKeys = [
   "LANDO_SYSTEM_PLUGIN_ROOT",
 ] as const;
 
-let installed = false;
 let created: string | undefined;
 
 /**
@@ -57,16 +56,10 @@ export const withRunnerOwnedTestRoots = async <A>(
   }
 };
 
-/** Process preload: allocate once, remove on `exit` (covers `bun -e` / script import). */
+/** Process preload: allocate, remove on `exit` (covers `bun -e` / script import). */
 export const installProcessTestRoots = (): void => {
-  if (installed) return;
-  installed = true;
   created = allocateIsolatedTestRoots(process.env);
-  if (created !== undefined) {
-    process.on("exit", () => {
-      releaseIsolatedTestRoots(created);
-    });
-  }
+  if (created !== undefined) process.on("exit", releaseCreatedTestRoots);
 };
 
 export const releaseCreatedTestRoots = (): void => {

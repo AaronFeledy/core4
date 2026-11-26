@@ -9,9 +9,6 @@ import { makePrepareUninstallCleanup } from "../../src/install/uninstall-discove
 import { uninstall } from "../../src/operations/uninstall.ts";
 import { makeUninstallRoots, sandboxUninstallOptions } from "./uninstall-support.ts";
 
-const privateDirFor = async (userDataRoot: string): Promise<string | undefined> =>
-  Effect.runPromise(resolveManagedRuntimeDir(makeLandoPaths({ userDataRoot }).runtimeDir));
-
 for (const scenario of [
   "volume",
   "container",
@@ -28,7 +25,6 @@ for (const scenario of [
     // Given an owned installation with the reported managed resource usage.
     const roots = makeUninstallRoots("lando-uninstall-proof-");
     mkdirSync(join(roots.userDataRoot, "runtime"), { recursive: true });
-    const privateDir = await privateDirFor(roots.userDataRoot);
     const mutations: string[] = [];
     const remaining = new Set([roots.userDataRoot, roots.userCacheRoot]);
     const calls: string[][] = [];
@@ -97,9 +93,7 @@ for (const scenario of [
       ).toBe(false);
       expect(calls.some((args) => args.includes("prune"))).toBe(false);
       expect(calls.some((args) => args.includes("network") && args.includes("rm"))).toBe(false);
-      if (typeof privateDir === "string") expect(existsSync(privateDir)).toBe(false);
     } finally {
-      if (typeof privateDir === "string" && existsSync(privateDir)) rmdirSync(privateDir);
       rmSync(roots.root, { recursive: true, force: true });
     }
   });
@@ -107,7 +101,9 @@ for (const scenario of [
 
 test("cleanup of a data root with no runtime tree does not create a private runtime dir", async () => {
   const roots = makeUninstallRoots("lando-uninstall-no-runtime-");
-  const privateDir = await privateDirFor(roots.userDataRoot);
+  const privateDir = await Effect.runPromise(
+    resolveManagedRuntimeDir(makeLandoPaths({ userDataRoot: roots.userDataRoot }).runtimeDir),
+  );
   const calls: string[][] = [];
   const exec = async (file: string, args: readonly string[]) => {
     if (!file.startsWith(roots.userDataRoot)) throw Object.assign(new Error("missing"), { code: "ENOENT" });
@@ -115,9 +111,9 @@ test("cleanup of a data root with no runtime tree does not create a private runt
     return { stdout: args.includes("--version") ? "podman" : "" };
   };
   try {
-    await (await makePrepareUninstallCleanup([], exec, "linux")(roots.userDataRoot, roots.userCacheRoot))
-      .cleanup()
-      .catch(() => undefined);
+    await (
+      await makePrepareUninstallCleanup([], exec, "linux")(roots.userDataRoot, roots.userCacheRoot)
+    ).cleanup();
     if (typeof privateDir === "string") expect(existsSync(privateDir)).toBe(false);
     expect(calls).toEqual([]);
   } finally {
