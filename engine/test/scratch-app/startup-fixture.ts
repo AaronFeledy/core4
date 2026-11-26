@@ -29,6 +29,7 @@ import {
 import { ScratchResourceScanner } from "../../src/scratch-app/scanner.ts";
 import * as Scratch from "../../src/scratch-app/service.ts";
 import * as FileSystem from "../../src/services/file-system.ts";
+import { layerUnavailable } from "../../src/subsystems/proxy/api.ts";
 import { literalTestLandofile } from "../compiled-landofile.ts";
 import { testEnvironmentResolverLayer } from "../environment-values.ts";
 import { emptySnapshotsLayer } from "../operations/data-mover-support.ts";
@@ -176,7 +177,7 @@ const makeFixture = async (
   );
   const dependencies = Layer.mergeAll(
     PrivateFileAccessService.layer,
-    router === undefined ? Layer.empty : Layer.succeed(RouterService, router),
+    router === undefined ? layerUnavailable : Layer.succeed(RouterService, router),
     Layer.succeed(
       ConfigService,
       ConfigService.of({

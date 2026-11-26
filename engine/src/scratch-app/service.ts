@@ -63,7 +63,7 @@ import {
 import { routeUrlRouterError } from "../lifecycle/route-url-bindings.ts";
 import { prepareServiceCertificates } from "../lifecycle/service-certificates.ts";
 import {
-  captureGlobalConsumerAdmission,
+  type GlobalConsumerAdmissionServices,
   requireSelectableRouter,
 } from "../operations/global-consumer-admission.ts";
 import { publishStartWarnings } from "../operations/start-warnings.ts";
@@ -84,7 +84,6 @@ import { makeScratchLifecycleLock } from "./lifecycle-lock.ts";
 import { applyMountCwd, isolateScratchMounts } from "./mount-isolation.ts";
 import { openScratchPlan } from "./plan.ts";
 import { ScratchRegistry, type ScratchRegistryEntry, makeScratchRegistry } from "./registry.ts";
-import { captureScratchRouter } from "./router.ts";
 import { isCanonicalScratchId } from "./scanner.ts";
 import { applyScratchStartup } from "./startup.ts";
 
@@ -490,13 +489,12 @@ const makeScratchAppService = Effect.fnUntraced(function* (
   const environmentResolver = yield* EnvironmentValueResolver;
   const planner = yield* AppPlanner;
   const providerRegistry = yield* RuntimeProviderRegistry;
-  const consumerAdmission = yield* captureGlobalConsumerAdmission;
   const scratchRegistry = yield* ScratchRegistry;
   const dataMover = yield* DataMover;
   const buildOrchestrator = yield* Effect.serviceOption(BuildOrchestrator);
   const initAppPort = yield* ScratchInitAppPort;
   const reapScratch = yield* makeScratchReaper;
-  const scratchRouter = yield* captureScratchRouter;
+  const router = yield* RouterService;
   const withLifecycleLock = yield* makeScratchLifecycleLock;
   const startupOwnership = {
     registry: scratchRegistry,
@@ -508,6 +506,7 @@ const makeScratchAppService = Effect.fnUntraced(function* (
   };
   const globalApp = yield* Effect.serviceOption(GlobalAppService);
   const context = yield* Effect.context<never>();
+  const admissionContext = Context.makeUnsafe<GlobalConsumerAdmissionServices>(context.mapUnsafe);
   const preflightGlobalPlacement: Effect.Effect<void, AppPlacementError | ScratchAppError> =
     globalApp._tag === "None"
       ? Effect.void
@@ -664,7 +663,6 @@ const makeScratchAppService = Effect.fnUntraced(function* (
     readonly landofileRouter?: RouterConfig;
   }) {
     const { id: scratchId, plan: markedPlan, planCache, landofileRouter } = request;
-    const router = yield* scratchRouter;
     // A routed scratch start without a selectable router refuses before placement, builds, or certificates.
     yield* requireSelectableRouter(markedPlan).pipe(
       Effect.provideService(RouterService, router),
@@ -733,10 +731,9 @@ const makeScratchAppService = Effect.fnUntraced(function* (
         provider,
         environmentResolver,
         stateStore,
-        ...(consumerAdmission === undefined ? {} : { admissionContext: consumerAdmission }),
         router,
       },
-    );
+    ).pipe(Effect.provide(admissionContext), Effect.provideService(RouterService, router));
     return {
       id: scratchId,
       app: { kind: "scratch", id: scratchId, root: markedPlan.root },

@@ -28,6 +28,7 @@ import {
   LandofileService,
   PathsService,
   RouterService,
+  type RouterServiceShape,
   RuntimeProvider,
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
@@ -239,6 +240,7 @@ const makeScratchForkLayer = (
     readonly onCapabilities?: () => void;
     readonly routes?: RouteRecorder;
     readonly applyRoutes?: Effect.Effect<void>;
+    readonly router?: RouterServiceShape;
     readonly destroyFailure?: ProviderUnavailableError;
     readonly globalPlan?: AppPlan;
     readonly setupRouter?: Effect.Effect<void, AppPlacementError>;
@@ -406,26 +408,27 @@ const makeScratchForkLayer = (
   const proxyLayers = [
     Layer.succeed(
       RouterService,
-      RouterService.of({
-        id: "traefik",
-        capabilities: { wildcardHostnames: true, tls: true, pathPrefixes: true },
-        setup: () => options.setupRouter ?? Effect.void,
-        revalidateStartup: Effect.void,
-        observeRoutes: () =>
-          Effect.succeed({ configuredAuthorities: [], observation: { status: "unknown" } }),
-        applyRoutes: (routes, app) =>
-          (options.applyRoutes ?? Effect.void).pipe(
-            Effect.andThen(
-              Effect.sync(() => {
-                routeRecorder.applied.push(app);
-                return { app: app.id, appliedRoutes: routes, authorities: [] };
-              }),
+      options.router ??
+        RouterService.of({
+          id: "traefik",
+          capabilities: { wildcardHostnames: true, tls: true, pathPrefixes: true },
+          setup: () => options.setupRouter ?? Effect.void,
+          revalidateStartup: Effect.void,
+          observeRoutes: () =>
+            Effect.succeed({ configuredAuthorities: [], observation: { status: "unknown" } }),
+          applyRoutes: (routes, app) =>
+            (options.applyRoutes ?? Effect.void).pipe(
+              Effect.andThen(
+                Effect.sync(() => {
+                  routeRecorder.applied.push(app);
+                  return { app: app.id, appliedRoutes: routes, authorities: [] };
+                }),
+              ),
             ),
-          ),
-        removeRoutes: (app) => Effect.sync(() => void routeRecorder.removed.push(app)),
-        status: Effect.succeed({ state: "running" as const, authorities: [], configuredApps: [] }),
-        stop: Effect.void,
-      }),
+          removeRoutes: (app) => Effect.sync(() => void routeRecorder.removed.push(app)),
+          status: Effect.succeed({ state: "running" as const, authorities: [], configuredApps: [] }),
+          stop: Effect.void,
+        }),
     ),
   ];
   const scratchDeps = Layer.mergeAll(
@@ -718,11 +721,9 @@ describe("ScratchAppServiceLayer.layer fork acquire", () => {
     "a route publication failure that wrote routes is %s",
     async (_label, { keepOnFailure, reapFails }) => {
       await withTempProject(routedForkLandofile, async (dir) => {
-        // Given: a host-provided router that writes the scratch routes and then rejects them,
-        // over the router the scratch service was built with.
+        // Given: the construction-time router writes the scratch routes and then rejects them.
         const applied: AppPlan[] = [];
         const destroyed: DestroyCall[] = [];
-        const builtRoutes: RouteRecorder = { applied: [], removed: [] };
         const hostRoutes: RouteRecorder = { applied: [], removed: [] };
         const rejection = new ProxyApplyError({
           proxyId: "host-router",
@@ -732,7 +733,7 @@ describe("ScratchAppServiceLayer.layer fork acquire", () => {
         });
         const hostRouter = RouterService.of({
           ...makeTestRouterService(),
-          id: "host-router",
+          id: "traefik",
           applyRoutes: (_routes, owner) =>
             Effect.sync(() => void hostRoutes.applied.push(owner)).pipe(
               Effect.andThen(Effect.fail(rejection)),
@@ -742,13 +743,11 @@ describe("ScratchAppServiceLayer.layer fork acquire", () => {
         // When
         const exit = await Effect.runPromiseExit(
           Effect.flatMap(ScratchAppService, (service) =>
-            Effect.scoped(service.acquire({ source: { kind: "fork" }, detached: false, keepOnFailure })).pipe(
-              Effect.provideService(RouterService, hostRouter),
-            ),
+            Effect.scoped(service.acquire({ source: { kind: "fork" }, detached: false, keepOnFailure })),
           ).pipe(
             Effect.provide(
               makeScratchForkLayer(dir, applied, destroyed, {
-                routes: builtRoutes,
+                router: hostRouter,
                 ...(reapFails
                   ? {
                       destroyFailure: new ProviderUnavailableError({
@@ -792,9 +791,8 @@ describe("ScratchAppServiceLayer.layer fork acquire", () => {
         expect(applied).toHaveLength(1);
         expect(hostRoutes.applied).toHaveLength(1);
         // The router that wrote the routes withdraws them under the scratch owner unless the instance
-        // is retained; the router the service was built with is never used.
+        // is retained.
         expect(hostRoutes.removed).toEqual(keepOnFailure || reapFails ? [] : hostRoutes.applied);
-        expect(builtRoutes).toEqual({ applied: [], removed: [] });
         expect(destroyed.map((call) => call.volumes)).toEqual(
           keepOnFailure || reapFails ? [] : [false, true],
         );
