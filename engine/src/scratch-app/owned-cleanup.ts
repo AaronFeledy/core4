@@ -26,7 +26,8 @@ export const cleanupScratchOwnedState = Effect.fn("ScratchApp.cleanupOwnedState"
           },
         ],
         ownerRoot,
-        { volumes: !keepVolumes },
+        // Shared caches outlive the scratch, so only its inventory member goes.
+        { volumes: !keepVolumes, releaseCaches: true },
       );
       yield* cleanup;
     }

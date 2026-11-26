@@ -733,6 +733,11 @@ export interface OwnedResourcesCleanupOptions {
   /** Restrict ownership-inventory cleanup to these app identities at a shared root. */
   readonly appIds?: ReadonlyArray<AppId>;
   readonly purgeCaches?: boolean;
+  /**
+   * Retire the selected apps' shared global-cache members without inspecting or deleting the
+   * volumes, which other apps keep using. Ignored when `purgeCaches` removes them instead.
+   */
+  readonly releaseCaches?: boolean;
 }
 
 export type RuntimeProviderShape = RuntimeProvider["Service"];
