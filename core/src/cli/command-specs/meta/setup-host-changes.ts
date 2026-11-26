@@ -20,6 +20,7 @@ import { type Context, Effect, Option } from "effect";
 
 import type { ResolvedSetupNetworkTrust } from "../../commands/setup-network-trust";
 import { approveHostChanges, askingInteraction } from "../../host-changes/approve";
+import { planCaHostChanges } from "./setup-ca-step";
 import {
   contributedSetupFlagNamesForProvider,
   contributedSetupFlagsForProvider,
@@ -114,6 +115,7 @@ export const planSetupHostChanges = Effect.fn("SetupCommand.planHostChanges")(fu
   const inspectOptions = inspectOptionsFor(plan.input, plan.selectedProviderId, plan.network);
   const proposed = [
     ...(yield* providerProposals({ ...plan, inspectOptions })),
+    ...(yield* planCaHostChanges(plan.input, plan.recorder)),
     ...(yield* routerProposals(plan.input, plan.recorder)),
   ];
   const declaredFlags = new Set(contributedSetupFlagNamesForProvider(plan.selectedProviderId));

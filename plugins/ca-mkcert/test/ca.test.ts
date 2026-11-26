@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { CaError, PrivilegeCredentialsRequiredError } from "@lando/sdk/errors";
+import { CaError } from "@lando/sdk/errors";
 import { CertificateName } from "@lando/sdk/schema";
 import { TEST_CERTIFICATES, runCaContract } from "@lando/sdk/test";
 import { ADVISORY_LOCK_SUFFIX } from "@lando/state-store/lock";
@@ -12,12 +12,13 @@ import {
   type CaHarness,
   FAKE_ROOT_PEM,
   MKCERT_BIN,
+  approveCaChanges,
+  debianHost,
   failure,
   makeCa,
   makeCaHarness,
   makeFakeMkcertRunner,
-  makeFakePrivilege,
-  okResult,
+  makeFakeSession,
   patchHostArtifact,
 } from "./_fixtures.ts";
 
@@ -61,7 +62,7 @@ const withCa = async (
   options: Omit<Parameters<typeof makeFakeMkcertRunner>[0], "caRoot"> & {
     readonly arch?: string;
     readonly platform?: string;
-    readonly hasControllingTerminal?: () => boolean;
+    readonly exists?: (path: string) => boolean;
   },
   body: (input: {
     readonly harness: CaHarness;
@@ -73,12 +74,12 @@ const withCa = async (
   const harness = await makeCaHarness();
   const restore = patchHostArtifact(MKCERT_BIN, options.platform === "win32" ? "win32-x64" : undefined);
   try {
-    const { arch, platform, hasControllingTerminal, ...runnerOptions } = options;
+    const { arch, platform, exists, ...runnerOptions } = options;
     const runner = makeFakeMkcertRunner({ caRoot: harness.caRoot, ...runnerOptions });
     const { ca, downloadCalls } = makeCa(harness, runner, {
       ...(arch === undefined ? {} : { arch }),
       ...(platform === undefined ? {} : { platform }),
-      ...(hasControllingTerminal === undefined ? {} : { hasControllingTerminal }),
+      ...(exists === undefined ? {} : { exists }),
     });
     await body({ harness, runner, ca, downloadCalls });
   } finally {
@@ -88,27 +89,20 @@ const withCa = async (
 };
 
 describe("mkcert CertificateAuthority setup", () => {
-  test("provisions the binary, creates the root, and installs the local CA once", async () => {
-    await withCa({}, async ({ harness, runner, ca }) => {
+  test("provisions the binary and creates the root, and changes no store it was not approved for", async () => {
+    await withCa({ exists: debianHost }, async ({ harness, runner, ca }) => {
       await Effect.runPromise(ca.setup({ force: false }));
 
       const installedBinary = await readFile(mkcertInstallPath(harness.binDir, "linux"));
       expect(Array.from(installedBinary)).toEqual(Array.from(MKCERT_BIN));
       expect(await readFile(rootPath(harness), "utf8")).toBe(FAKE_ROOT_PEM);
-      const installCalls = runner.calls().filter((call) => call.args[0] === "-install");
-      expect(installCalls).toHaveLength(1);
-      expect(installCalls[0]?.cmd).toBe(mkcertInstallPath(harness.binDir, "linux"));
-      // mkcert writes only the system store; Lando owns the browser databases.
-      expect(installCalls[0]?.env).toEqual({ CAROOT: harness.caRoot, TRUST_STORES: "system" });
+      expect(runner.calls().filter((call) => call.args[0] === "-install")).toEqual([]);
     });
   });
 
-  test.each([
-    { skipTrustInstall: false, installs: 1 },
-    { skipTrustInstall: true, installs: 0 },
-  ])(
-    "creates a missing root with one throwaway issuance (skipTrustInstall=$skipTrustInstall)",
-    async ({ skipTrustInstall, installs }) => {
+  test.each([false, true])(
+    "creates a missing root with one throwaway issuance (skipTrustInstall=%p)",
+    async (skipTrustInstall) => {
       await withCa({}, async ({ harness, runner, ca }) => {
         // When
         await Effect.runPromise(ca.setup({ force: false, skipTrustInstall }));
@@ -117,7 +111,7 @@ describe("mkcert CertificateAuthority setup", () => {
         expect(issuingCalls(runner)).toHaveLength(1);
         expect(issuingCalls(runner)[0]?.env?.CAROOT).toBe(harness.caRoot);
         expect(await exists(issuedDirectory(runner))).toBe(false);
-        expect(runner.calls().filter((call) => call.args[0] === "-install")).toHaveLength(installs);
+        expect(runner.calls().filter((call) => call.args[0] === "-install")).toEqual([]);
         expect((await readdir(harness.caRoot)).sort()).toEqual([
           ...(process.platform === "win32" ? [`lando-root${ADVISORY_LOCK_SUFFIX}`] : []),
           "rootCA.pem",
@@ -149,119 +143,16 @@ describe("mkcert CertificateAuthority setup", () => {
   );
 
   test("skipTrustInstall provisions the binary without touching any trust store", async () => {
-    await withCa({}, async ({ harness, runner, ca }) => {
-      const privilege = makeFakePrivilege();
-      await Effect.runPromise(
-        ca.setup({ force: false, skipTrustInstall: true, privilege: privilege.service }),
-      );
+    await withCa({ exists: debianHost }, async ({ harness, runner, ca }) => {
+      await mkdir(harness.caRoot, { recursive: true });
+      await writeFile(rootPath(harness), TEST_CERTIFICATES.rootA);
+      const { session, elevations } = makeFakeSession();
+      const hostChanges = await approveCaChanges(ca, session);
+      await Effect.runPromise(ca.setup({ force: false, skipTrustInstall: true, hostChanges }));
       await readFile(mkcertInstallPath(harness.binDir, "linux"));
       expect(runner.calls().filter((call) => call.args[0] === "-install")).toEqual([]);
-      expect(privilege.calls()).toEqual([]);
+      expect(elevations()).toEqual([]);
     });
-  });
-
-  test("checks sudo credentials first, then runs mkcert -install once as the user", async () => {
-    await withCa({}, async ({ runner, ca }) => {
-      const privilege = makeFakePrivilege();
-      await Effect.runPromise(ca.setup({ force: false, privilege: privilege.service }));
-      expect(privilege.purposes()).toEqual(["trust Lando's local certificate authority in the system store"]);
-      // The downloaded mkcert binary never runs as root.
-      expect(privilege.calls()).toEqual([]);
-      expect(runner.calls().filter((call) => call.args[0] === "-install")).toHaveLength(1);
-    });
-  });
-
-  test("mkcert -install runs with the terminal handed over, since its own sudo may prompt", async () => {
-    await withCa({}, async ({ runner, ca }) => {
-      // Given a session whose sudo keeps no ticket, so mkcert's own sudo asks on the terminal.
-      const lent: string[] = [];
-      const installs = () => runner.calls().filter((call) => call.args[0] === "-install").length;
-      const base = makeFakePrivilege().service;
-      const privilege: typeof base = {
-        ...base,
-        openSession: () =>
-          Effect.succeed({
-            transport: "uncached",
-            elevate: () => Effect.die("mkcert never runs as root"),
-            lendTerminal: (body) =>
-              Effect.sync(() => void lent.push(`lend after ${installs()} installs`)).pipe(
-                Effect.andThen(body),
-                Effect.ensuring(Effect.sync(() => void lent.push(`return after ${installs()} installs`))),
-              ),
-          }),
-      };
-
-      // When setup trusts the root.
-      await Effect.runPromise(ca.setup({ force: false, privilege }));
-
-      // Then mkcert ran inside the handoff, so no live progress draws over its prompt.
-      expect(lent).toEqual(["lend after 0 installs", "return after 1 installs"]);
-    });
-  });
-
-  test("a run that cannot get credentials fails before mkcert -install", async () => {
-    const denied = new PrivilegeCredentialsRequiredError({
-      purpose: "trust the local CA",
-      message: "needs a password",
-      remediation: "Run `sudo -v`, or set `SUDO_ASKPASS`.",
-    });
-    await withCa({}, async ({ runner, ca }) => {
-      const privilege = makeFakePrivilege(okResult(), Effect.fail(denied));
-      const error = failure(
-        await Effect.runPromiseExit(ca.setup({ force: false, privilege: privilege.service })),
-      );
-      expect(error).toBe(denied);
-      expect(runner.calls().filter((call) => call.args[0] === "-install")).toEqual([]);
-    });
-  });
-
-  test("Windows runs mkcert -install without any POSIX credential check", async () => {
-    await withCa({ platform: "win32" }, async ({ runner, ca }) => {
-      const privilege = makeFakePrivilege(okResult(), Effect.die("no POSIX credential check on Windows"));
-      await Effect.runPromise(ca.setup({ force: false, privilege: privilege.service }));
-      expect(privilege.purposes()).toEqual([]);
-      expect(runner.calls().filter((call) => call.args[0] === "-install")).toHaveLength(1);
-    });
-  });
-
-  test("a POSIX trust-install failure with a controlling terminal keeps mkcert's report", async () => {
-    await withCa(
-      {
-        installExitCode: 1,
-        installStderr: "permission denied writing to the system trust store",
-        hasControllingTerminal: () => true,
-      },
-      async ({ ca }) => {
-        const error = failure(await Effect.runPromiseExit(ca.setup({ force: false })));
-        expect(error).toBeInstanceOf(CaError);
-        if (!(error instanceof CaError)) throw new Error("expected CaError");
-        expect(error.caId).toBe("mkcert");
-        expect(error.message).toContain("permission denied writing to the system trust store");
-        expect(error.message).toContain("--skip-install-ca");
-        expect(error.remediation).not.toContain("install mkcert via lando setup");
-      },
-    );
-  });
-
-  test("a POSIX trust-install failure without a controlling terminal names passwordless sudo and skip-install-ca", async () => {
-    await withCa(
-      {
-        installExitCode: 1,
-        installStderr: "sudo: A terminal is required to authenticate",
-        hasControllingTerminal: () => false,
-      },
-      async ({ harness, ca }) => {
-        const error = failure(await Effect.runPromiseExit(ca.setup({ force: false })));
-        expect(error).toBeInstanceOf(CaError);
-        if (!(error instanceof CaError)) throw new Error("expected CaError");
-        expect(error.caId).toBe("mkcert");
-        expect(error.message).toContain("asks sudo for the password itself");
-        expect(error.message).not.toContain("A terminal is required to authenticate");
-        expect(error.remediation).toContain("passwordless sudo");
-        expect(error.remediation).toContain("--skip-install-ca");
-        expect(error.remediation).toContain(join(harness.caRoot, "rootCA.pem"));
-      },
-    );
   });
 
   test("fails with remediation on an unsupported host and never downloads", async () => {
@@ -396,18 +287,19 @@ describe("mkcert CertificateAuthority issuance", () => {
     });
   });
 
-  test("only mkcert -install inspects trust stores", async () => {
-    await withCa({}, async ({ runner, ca }) => {
-      // When: setup creates the root and installs it, then a leaf is issued
-      await Effect.runPromise(ca.setup({ force: false }));
+  test("no mkcert run on Linux inspects or writes a trust store", async () => {
+    await withCa({ exists: debianHost }, async ({ harness, runner, ca }) => {
+      // When: setup trusts the root, then a leaf is issued
+      await mkdir(harness.caRoot, { recursive: true });
+      await writeFile(rootPath(harness), TEST_CERTIFICATES.rootA);
+      const hostChanges = await approveCaChanges(ca, makeFakeSession().session);
+      await Effect.runPromise(ca.setup({ force: false, hostChanges }));
       await Effect.runPromise(ca.issueCert(SPEC));
-      // Then: the -CAROOT query and every issuance name no store; -install names only the system store
+      // Then: the -CAROOT query and every issuance name no store
       const trustStores = runner.calls().map(({ args, env }) => [args[0], env?.TRUST_STORES]);
-      expect(new Set(trustStores.map(([command]) => command))).toEqual(
-        new Set(["-CAROOT", "-cert-file", "-install"]),
-      );
+      expect(new Set(trustStores.map(([command]) => command))).toEqual(new Set(["-CAROOT", "-cert-file"]));
       for (const [command, stores] of trustStores)
-        expect({ command, stores }).toEqual({ command, stores: command === "-install" ? "system" : "none" });
+        expect({ command, stores }).toEqual({ command, stores: "none" });
     });
   });
 

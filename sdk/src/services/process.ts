@@ -178,12 +178,6 @@ export interface PrivilegeSession {
     command: ReadonlyArray<string>,
     options?: PrivilegeElevateOptions,
   ) => Effect.Effect<ProcessResult, PrivilegeError>;
-  /**
-   * Runs `body` with the terminal handed over the way the session's own sudo prompt gets it, for a
-   * child that may ask sudo for a password itself (`mkcert -install`). Absent when the session
-   * never hands the terminal over.
-   */
-  readonly lendTerminal?: <A, E, R>(body: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>;
 }
 
 /**

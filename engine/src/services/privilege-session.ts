@@ -181,7 +181,6 @@ export const commandPurpose = (command: ReadonlyArray<string>) =>
 
 const uncachedSession = (context: SudoSessionContext, sudo: string): PrivilegeSession => ({
   transport: "uncached",
-  lendTerminal: context.handoff.suspend,
   elevate: Effect.fnUntraced(function* (
     command: ReadonlyArray<string>,
     options?: PrivilegeElevateOptions,
@@ -245,7 +244,7 @@ const ticketSession = Effect.fnUntraced(function* (
       ...(options?.stdin === undefined ? {} : { stdin: options.stdin }),
     });
   });
-  return { transport, elevate, lendTerminal: context.handoff.suspend };
+  return { transport, elevate };
 });
 
 /** The `sudo` transport: reuse a ticket, ask once on the terminal, or fail before any command. */
@@ -293,7 +292,6 @@ export const openAskpassSession = Effect.fnUntraced(function* (
   }
   return {
     transport: "askpass",
-    lendTerminal: context.handoff.suspend,
     elevate: Effect.fnUntraced(function* (command, options) {
       const commandFor = commandPurpose(command);
       // Without a ticket, this command's askpass authorization leaves one that is Lando's.
