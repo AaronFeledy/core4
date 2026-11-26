@@ -38,6 +38,8 @@ The same split applies to `:host` tasks, `.bun.sh` scripts, `lando exec`, and `l
 
 A non-zero exit follows the same shape. Stderr still streams. The failing child closes with the exit code, and the parent records the failure in its counts. JSON and YAML results set `ok: false` while retaining the command's typed result and tagged failure; choosing a machine format does not turn a failed child into success.
 
+If a host or service tool's stream ends without a reported exit status, Lando fails the task without a tool exit code or a completed result. It does not retry the tool or run later steps in that task. See [Exit codes](../cli/exec.mdx#exit-codes) before rerunning it.
+
 ## Secrets on the wire
 
 Human formats mask only known secret values on the live byte stream, including values split across writes. Lando holds only a trailing prefix that could complete a known value, at most the length of the longest one, because a password authored as a literal in a committed YAML layer is masked only as a whole token and needs the next byte to decide. It leaves assignments, URLs, arbitrary binary bytes, and line endings alone otherwise. stdout and stderr follow the same rule on a terminal or in a file. See [What gets masked, and where](../config/secret-stores.mdx#what-gets-masked-and-where) for which values are masked everywhere and which only as whole tokens.

@@ -93,7 +93,7 @@ const executePreparedBunShellScript = Effect.fnUntraced(function* (
             new ToolingExecError({
               message: `Script-backed tooling task ${script.id} failed: ${shellError.message}`,
               tool: script.id,
-              remediation: `Inspect the tooling task ${script.id} output, fix the script, and rerun the command.`,
+              remediation: shellError.remediation,
               cause: shellError,
             }),
           ),

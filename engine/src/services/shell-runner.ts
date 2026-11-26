@@ -23,6 +23,7 @@ import {
 } from "@lando/sdk/services";
 import { type PrivateFileAccess, PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Context, Effect, Layer, Option } from "effect";
+import { UnobservedProcessExit } from "../operations/exec-stream-drain.ts";
 import { bunShellDialectIssues, bunShellScriptIssue, describeBunShellIssue } from "./bun-shell-dialect.ts";
 import {
   type CapturedHostExecutionContext,
@@ -51,7 +52,7 @@ const shellError = (
 ): ShellExecError =>
   new ShellExecError({
     message: cause instanceof Error ? cause.message : `Shell command failed: ${command}`,
-    command,
+    command: cause instanceof UnobservedProcessExit ? cause.cmd : command,
     ...(options?.cwd === undefined ? {} : { cwd: options.cwd }),
     ...(output?.exitCode === undefined ? {} : { exitCode: output.exitCode }),
     ...(output?.stdout === undefined ? {} : { stdout: output.stdout }),

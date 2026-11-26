@@ -1,4 +1,4 @@
-import { PlanReplanRequiredError } from "@lando/sdk/errors";
+import { PlanReplanRequiredError, ServiceExecError } from "@lando/sdk/errors";
 import { ServiceName, clonedServiceParent } from "@lando/sdk/schema";
 import {
   RuntimeProviderRegistry,
@@ -102,6 +102,17 @@ export const runScheduleJob = Effect.fn("Schedule.runJob")(function* (input: {
       { command: typeof job.run === "string" ? ["sh", "-c", job.run] : job.run },
     ),
     sink,
+    {
+      failure: () =>
+        new ServiceExecError({
+          providerId: provider.id,
+          operation: "exec",
+          service: sidecarName,
+          message: `Scheduled job ${job.service}.${job.name} ended without an observed exit status.`,
+          remediation:
+            "The job may have finished or may still be running. Check what it changed before rerunning it.",
+        }),
+    },
   );
   return { service: job.service, name: job.name, ...result };
 });
