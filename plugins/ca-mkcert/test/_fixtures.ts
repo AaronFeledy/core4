@@ -1,7 +1,7 @@
 import { access, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ProcessExecError } from "@lando/sdk/errors";
+import type { PrivilegeError, ProcessExecError } from "@lando/sdk/errors";
 import type { ToolArtifactEntry } from "@lando/sdk/schema";
 import type {
   CertificateAuthorityShape,
@@ -77,18 +77,18 @@ export const patchHostBinary = (
   return { url, restore };
 };
 
-export const patchHostArtifact = (bytes: Uint8Array): (() => void) => {
+export const patchHostArtifact = (bytes: Uint8Array, hostKey: string = HOST_KEY): (() => void) => {
   const artifacts = MKCERT_TOOL_MANIFEST.artifacts as Record<string, ToolArtifactEntry>;
-  const original = artifacts[HOST_KEY];
-  artifacts[HOST_KEY] = {
+  const original = artifacts[hostKey];
+  artifacts[hostKey] = {
     url: SOURCE_URL,
     sha256: sha256Hex(bytes),
     sizeBytes: bytes.byteLength,
-    installName: "mkcert",
+    installName: hostKey.startsWith("win32") ? "mkcert.exe" : "mkcert",
   };
   return () => {
-    if (original === undefined) delete artifacts[HOST_KEY];
-    else artifacts[HOST_KEY] = original;
+    if (original === undefined) delete artifacts[hostKey];
+    else artifacts[hostKey] = original;
   };
 };
 
@@ -194,14 +194,22 @@ export const makeFakeMkcertRunner = (options: {
 };
 
 export interface FakePrivilege {
+  readonly purposes: () => ReadonlyArray<string>;
   readonly service: Context.Service.Shape<typeof PrivilegeService>;
   readonly calls: () => ReadonlyArray<ReadonlyArray<string>>;
 }
 
-export const makeFakePrivilege = (result: ProcessResult = okResult()): FakePrivilege => {
+export const makeFakePrivilege = (
+  result: ProcessResult = okResult(),
+  credentials: Effect.Effect<void, PrivilegeError> = Effect.void,
+): FakePrivilege => {
   const calls: Array<ReadonlyArray<string>> = [];
+  const purposes: string[] = [];
   return {
+    purposes: () => [...purposes],
     service: {
+      ensureCredentials: (purpose) =>
+        Effect.sync(() => void purposes.push(purpose)).pipe(Effect.andThen(credentials)),
       elevate: (command) =>
         Effect.sync(() => {
           calls.push([...command]);
@@ -236,12 +244,14 @@ export const makeCa = (
   runner: FakeProcessRunner,
   overrides: {
     readonly arch?: string;
+    readonly platform?: string;
     readonly env?: Readonly<Record<string, string | undefined>>;
     readonly hostTrustsPem?: (pem: string) => boolean;
     /** System bundle candidates; none exist unless a test supplies them, whatever the host has. */
     readonly linuxSystemBundles?: ReadonlyArray<string>;
     /** WSL markers and certutil.exe fallback; absent unless a test supplies them, whatever the host is. */
     readonly windowsTrustPaths?: WindowsTrustPaths;
+    readonly hasControllingTerminal?: () => boolean;
   } = {},
 ): { readonly ca: CertificateAuthorityShape; readonly downloadCalls: () => number } => {
   const downloader = makeFakeDownloader();
@@ -254,7 +264,7 @@ export const makeCa = (
       downloader: downloaderService,
       processRunner: runner.service,
       privateFileAccess: { enforce: async () => undefined, verify: async () => undefined },
-      platform: "linux",
+      platform: overrides.platform ?? "linux",
       arch: overrides.arch ?? "x64",
       // No Homebrew unless a test supplies one, whatever the host has installed.
       env: overrides.env ?? { PATH: "" },
@@ -264,6 +274,9 @@ export const makeCa = (
         interop: [join(harness.root, "no-wsl-interop")],
         certutil: join(harness.root, "no-certutil.exe"),
       },
+      ...(overrides.hasControllingTerminal === undefined
+        ? {}
+        : { hasControllingTerminal: overrides.hasControllingTerminal }),
     }),
     downloadCalls: downloader.downloadCalls,
   };

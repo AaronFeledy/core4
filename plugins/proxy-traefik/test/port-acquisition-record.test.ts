@@ -158,6 +158,7 @@ test("round-trips an already active owned helper without installing or starting 
         },
       },
       privilege: {
+        ensureCredentials: () => Effect.void,
         elevate: () => {
           throw new Error("active helper must not elevate");
         },

@@ -73,6 +73,7 @@ describe("uidmap provider setup", () => {
     let installed = false;
     const commands: ReadonlyArray<string>[] = [];
     const privilege = {
+      ensureCredentials: () => Effect.void,
       elevate: (command: ReadonlyArray<string>) =>
         Effect.sync(() => {
           commands.push(command);

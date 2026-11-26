@@ -13,6 +13,7 @@ import {
   SSH_SIDECAR_READINESS_POLICY,
   awaitRuntimeSshAgent,
 } from "@lando/engine/subsystems/ssh-agent/session";
+import { mapFailures } from "@lando/sdk/command-result";
 import { SshAgentUnavailableError } from "@lando/sdk/errors";
 import { MessageWarnEvent } from "@lando/sdk/events";
 import { EventService, type PrivilegeService, RouterService, SshService } from "@lando/sdk/services";
@@ -57,7 +58,8 @@ export const runProxySetupStep = Effect.fn("SetupCommand.runProxySetupStep")(fun
   if (proxy._tag === "Some") {
     const defaultDomain = yield* resolveProxyDefaultDomain;
     const { router, routerPin } = yield* resolveRouterConfigForApp();
-    const autoApprove = inputBooleanFlag(input, "yes") || inputBooleanFlag(input, "no-interactive");
+    // `--no-interactive` declines privileged host changes; only `--yes` approves them.
+    const autoApprove = inputBooleanFlag(input, "yes");
     yield* Effect.scoped(
       proxy.value.setup(
         { defaultDomain, router, routerPin },
@@ -169,6 +171,15 @@ export const runShellProfileSetupStep = Effect.fn("SetupCommand.runShellProfileS
     },
   }).pipe(
     Effect.flatten,
+    mapFailures((cause) =>
+      cause instanceof ShellProfileIntegrationError
+        ? cause
+        : new ShellProfileIntegrationError({
+            message: "Shell profile integration failed.",
+            stderr: cause.message,
+            remediation: cause.remediation,
+          }),
+    ),
     Effect.tapError((cause) => recorder.recordFailure("shell", cause.stderr)),
   );
   if (shellProfile.exitCode !== 0) {

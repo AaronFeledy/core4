@@ -77,4 +77,30 @@ lando setup --provider=docker
 
 `--yes` consents to confirmation and privileged host changes. It does not switch providers. See [Pick a container provider](../setup/provider-selection.mdx).
 
+## When setup needs administrator access
+
+Run `lando setup` as yourself, never with `sudo`. A few steps change the system, and setup asks for administrator access itself just before the first one runs:
+
+- installing the `uidmap` package and adding subordinate user and group IDs for your account on Linux
+- letting your systemd user manager delegate cgroup controllers
+- trusting Lando's local certificate authority in the system trust store
+- installing the helper that serves ports 80 and 443 on Linux
+
+In a terminal, setup tells you what it needs, then `sudo` asks for your password with its own prompt. Lando never asks for or sees the password.
+
+Without a terminal (`--no-interactive`, a CI job, or an agent), setup cannot prompt. Before it changes anything, it stops with `PrivilegeCredentialsRequiredError` unless one of these is true:
+
+- you ran `sudo -v` in the same terminal shortly before, so sudo still has your credentials
+- `SUDO_ASKPASS` names a program that prints the password
+- sudo needs no password for your user, as on hosted CI runners
+
+Trusting the local CA runs mkcert, which asks sudo itself, so without a terminal that step needs passwordless sudo (or `--skip-install-ca` and trusting the CA yourself). `SUDO_ASKPASS` and a `sudo -v` from another shell do not reach it.
+
+```sh
+sudo -v
+lando setup --yes --no-interactive
+```
+
+`--no-interactive` on its own approves no privileged change; add `--yes` for that.
+
 `lando shellenv` prints a profile snippet for the current shell. Use `--shell=powershell` in PowerShell or `--shell=posix` in a POSIX shell. A manually installed compiled binary adds its own directory when there is no install record. An installer-managed copy uses the verified directory from its install record. The profile commands above keep your chosen directory first on PATH.

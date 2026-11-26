@@ -427,12 +427,39 @@ export const makeInteractionService = (deps: InteractionServiceDeps = {}): Inter
 
   return InteractionService.of({
     id,
-    isInteractive: Effect.sync(isInteractiveTerminal),
+    // The same decision a prompt batch without per-call overrides makes.
+    isInteractive: Effect.sync(
+      () => resolveGate(undefined, isInteractiveTerminal(), defaultMode).interactive,
+    ),
     prompt,
     promptAll,
     confirm,
     select,
     secret,
+  });
+};
+
+/**
+ * The same service, answering for a non-interactive invocation: `isInteractive` is false and
+ * prompts without their own interactivity choice resolve as non-interactive. Nested commands that
+ * reuse a host's service (event-dispatched commands) use it so they never take the terminal.
+ */
+export const nonInteractiveView = (service: InteractionServiceShape): InteractionServiceShape => {
+  const pinned = <O extends PromptBatchOptions>(options: O): O =>
+    options.mode === undefined && options.interactive === undefined
+      ? { ...options, mode: "non-interactive" }
+      : options;
+  return InteractionService.of({
+    id: service.id,
+    isInteractive: Effect.succeed(false),
+    prompt: (spec) =>
+      service
+        .promptAll([spec], { mode: "non-interactive" })
+        .pipe(Effect.map((answers) => answers[spec.name] as SdkPromptAnswer)),
+    promptAll: (specs, options) => service.promptAll(specs, pinned(options ?? {})),
+    confirm: (spec) => service.confirm(pinned(spec)),
+    select: (spec) => service.select(pinned(spec)),
+    secret: (spec) => service.secret(pinned(spec)),
   });
 };
 

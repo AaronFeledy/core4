@@ -228,6 +228,7 @@ export class ProviderSetupPrivilegeUnavailableError extends Schema.TaggedError<P
       "provision-subgid",
       "provision-cgroups-delegation",
     ]),
+    cause: Schema.optional(Schema.Unknown),
   },
 ) {}
 

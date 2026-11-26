@@ -1,6 +1,6 @@
 import { Context, type Effect, type Redacted } from "effect";
 
-import type { CaError } from "../errors/index.ts";
+import type { CaError, PrivilegeError } from "../errors/index.ts";
 import type { CertificateSpec, TrustStoreChange, TrustStoreStatus } from "../schema/index.ts";
 import type { PrivilegeService } from "./process.ts";
 
@@ -50,7 +50,7 @@ export class CertificateAuthority extends Context.Service<
   CertificateAuthority,
   {
     readonly id: string;
-    readonly setup: (options: CaSetupOptions) => Effect.Effect<CaSetupReport, CaError>;
+    readonly setup: (options: CaSetupOptions) => Effect.Effect<CaSetupReport, CaError | PrivilegeError>;
     /**
      * The current signing root. Fails with remediation when the authority is not
      * set up or has no root yet. Must not create a root, install host trust,

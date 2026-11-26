@@ -29,6 +29,7 @@ export * from "./managed-file.ts";
 export * from "./mcp.ts";
 export * from "./open.ts";
 export * from "./plugin.ts";
+export * from "./privilege.ts";
 export * from "./process.ts";
 export * from "./provider.ts";
 export * from "./recipe.ts";

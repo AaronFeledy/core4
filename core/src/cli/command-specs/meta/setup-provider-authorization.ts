@@ -9,6 +9,23 @@ interface ProviderSetupAuthorizationOptions {
   readonly interaction: InteractionServiceShape | undefined;
 }
 
+export const providerSetupChangePurpose = (change: ProviderSetupPlan["changes"][number]): string => {
+  switch (change._tag) {
+    case "install-uidmap":
+      return "install the uidmap package";
+    case "provision-subuid":
+      return "add subordinate user IDs for your account";
+    case "provision-subgid":
+      return "add subordinate group IDs for your account";
+    case "provision-cgroups-delegation":
+      return "let your systemd user manager delegate cgroup controllers";
+    default: {
+      const exhaustive: never = change;
+      return exhaustive;
+    }
+  }
+};
+
 const consentDenied = (plan: ProviderSetupPlan): ProviderSetupConsentDeniedError => {
   const changesList = plan.changes.map((c) => c._tag).join(", ");
   return new ProviderSetupConsentDeniedError({

@@ -23,6 +23,7 @@ const harness = (isInteractive: boolean) => {
       streamWithExit: () => Stream.empty,
     },
     privilege: {
+      ensureCredentials: () => Effect.void,
       elevate: (command) =>
         Effect.sync(() => {
           elevations.push(command);
@@ -93,7 +94,7 @@ test.each([undefined, false])("honors a TTY refusal when automatic consent is %j
   expect(elevations).toEqual([]);
 });
 
-test("keeps default installation without confirmation on non-TTY input", async () => {
+test("a non-interactive run without automatic consent installs nothing", async () => {
   // Given
   const { router, confirms, elevations } = harness(false);
 
@@ -102,7 +103,7 @@ test("keeps default installation without confirmation on non-TTY input", async (
 
   // Then
   expect(confirms).toEqual([]);
-  expect(elevations).toHaveLength(1);
+  expect(elevations).toEqual([]);
 });
 
 test("does not grant consent from decoded proxy configuration", async () => {

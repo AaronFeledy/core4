@@ -37,6 +37,7 @@ import {
   HttpTrustError,
   InteractionCancelledError,
   InteractionUnavailableError,
+  PrivilegeCredentialsRequiredError,
   ProviderUnavailableError,
   ProxySetupError,
   SshError,
@@ -357,6 +358,63 @@ describe("meta:setup command", () => {
     );
 
     expect(exit._tag).toBe("Failure");
+    expect(applyCalls).toBe(0);
+  });
+
+  test("rejects missing administrator credentials after consent and before any host change", async () => {
+    // Given: an approved privileged plan in a run that cannot ask for a password.
+    let applyCalls = 0;
+    const order: string[] = [];
+    const provider = {
+      ...TestRuntimeProvider,
+      id: "lando",
+      planSetup: () =>
+        Effect.succeed({
+          providerId: ProviderId.make("lando"),
+          changes: [
+            {
+              _tag: "install-uidmap" as const,
+              platform: "linux" as const,
+              distribution: "ubuntu",
+              version: "26.04",
+              reason: "Rootless Podman needs uidmap helpers.",
+            },
+          ],
+        }),
+      setup: () =>
+        Effect.sync(() => {
+          applyCalls += 1;
+        }),
+    };
+    const registry = makeTestRuntimeProviderRegistry({
+      list: Effect.succeed([ProviderId.make("lando")]),
+      capabilities: Effect.succeed(provider.capabilities),
+      select: () => Effect.succeed(provider),
+    });
+    const denied = new PrivilegeCredentialsRequiredError({
+      purpose: "install the uidmap package",
+      message: "this run cannot ask for a password",
+      remediation: "Run `sudo -v`, or set `SUDO_ASKPASS`.",
+    });
+    const privilege = {
+      ensureCredentials: (purpose: string) =>
+        Effect.sync(() => void order.push(`credentials: ${purpose}`)).pipe(
+          Effect.andThen(Effect.fail(denied)),
+        ),
+      elevate: () => Effect.die("no privileged command may run"),
+    };
+
+    // When
+    const exit = await Effect.runPromiseExit(
+      setupSpec
+        .run({ installDir: "/opt/lando", flags: { yes: true, "no-interactive": true } })
+        .pipe(Effect.provide(buildSetupLayersWithPrivilege(registry, privilege))),
+    );
+
+    // Then: the same tagged error is the failure, and the provider applied nothing.
+    const failure = Exit.isFailure(exit) ? Cause.findErrorOption(exit.cause) : undefined;
+    expect(failure?._tag === "Some" ? failure.value : undefined).toBe(denied);
+    expect(order).toEqual(["credentials: install the uidmap package"]);
     expect(applyCalls).toBe(0);
   });
 
@@ -740,6 +798,7 @@ describe("meta:setup command", () => {
             ),
             Effect.provideService(EventService, events),
             Effect.provideService(PrivilegeService, {
+              ensureCredentials: () => Effect.void,
               elevate: () =>
                 Effect.sync(() => {
                   calls.push("shell-profile");
@@ -1126,9 +1185,8 @@ describe("meta:setup command", () => {
       ]);
       expect(JSON.stringify(readiness)).toContain("[redacted]");
       expect(JSON.stringify(readiness)).not.toContain("super-secret");
-      expect(readiness.steps.find((step) => step.id === "proxy")?.remediation).toContain("lando setup");
-      expect(readiness.steps.find((step) => step.id === "proxy")?.remediation).toContain(
-        `On ${process.platform}`,
+      expect(readiness.steps.find((step) => step.id === "proxy")?.remediation).toStartWith(
+        "Rerun `lando setup` once the proxy is reachable.",
       );
     } finally {
       await rm(userDataRoot, { recursive: true, force: true });
@@ -1505,6 +1563,7 @@ describe("meta:setup command", () => {
   test("threads PrivilegeService into provider and CA setup and uses it for shell profile integration", async () => {
     const elevated: ReadonlyArray<string>[] = [];
     const privilege = {
+      ensureCredentials: () => Effect.void,
       elevate: (command: ReadonlyArray<string>) =>
         Effect.sync(() => {
           elevated.push([...command]);
@@ -1558,6 +1617,7 @@ describe("meta:setup command", () => {
   test("skip-shell-integration avoids shell profile writes while still allowing CA trust options", async () => {
     const elevated: ReadonlyArray<string>[] = [];
     const privilege = {
+      ensureCredentials: () => Effect.void,
       elevate: (command: ReadonlyArray<string>) =>
         Effect.sync(() => {
           elevated.push([...command]);
@@ -1591,6 +1651,7 @@ describe("meta:setup command", () => {
   test("unattended setup skips shell profile writes", async () => {
     const elevated: ReadonlyArray<string>[] = [];
     const privilege = {
+      ensureCredentials: () => Effect.void,
       elevate: (command: ReadonlyArray<string>) =>
         Effect.sync(() => {
           elevated.push(command);
@@ -1640,6 +1701,7 @@ describe("meta:setup command", () => {
         });
         let elevations = 0;
         const privilege = {
+          ensureCredentials: () => Effect.void,
           elevate: () =>
             Effect.sync(() => {
               elevations += 1;

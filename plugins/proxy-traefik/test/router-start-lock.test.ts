@@ -160,7 +160,10 @@ const makeHarness = () => {
         throw new Error("unused");
       },
     },
-    privilege: { elevate: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }) },
+    privilege: {
+      ensureCredentials: () => Effect.void,
+      elevate: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
+    },
     classifyOverride: highPortOverride,
   };
   const makeRouter = () =>

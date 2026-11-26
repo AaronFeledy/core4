@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { PrivilegeCredentialsRequiredError } from "@lando/sdk/errors";
 import type {
   PrivilegeService,
   ProcessResult,
@@ -89,6 +90,7 @@ const makePrivilege = (
   const calls: Array<ReadonlyArray<string>> = [];
   return {
     service: {
+      ensureCredentials: () => Effect.void,
       elevate: (command) =>
         Effect.sync(() => {
           calls.push([...command]);
@@ -387,6 +389,45 @@ describe("installSocketProxy", () => {
         }),
       ),
     ).toBe(true);
+  });
+
+  test("reports missing administrator access without touching the host", async () => {
+    // Given: sudo cannot be satisfied in this run.
+    const calls: Array<ReadonlyArray<string>> = [];
+    const denied = new PrivilegeCredentialsRequiredError({
+      purpose: "install the helper",
+      message: "needs a password",
+      remediation: "Run `sudo -v`, or set `SUDO_ASKPASS`.",
+    });
+
+    // When: install runs.
+    const outcome = await Effect.runPromise(
+      installSocketProxy({
+        user: "lando-dev",
+        userDataRoot: "/lando",
+        exists: hostFiles({ [packagedProxyd]: "binary" }).exists,
+        readText: hostFiles().readText,
+        processRunner: makeRunner(() => ok()).service,
+        privilege: {
+          ensureCredentials: () => Effect.fail(denied),
+          elevate: (command) =>
+            Effect.sync(() => {
+              calls.push(command);
+              return ok();
+            }),
+        },
+        httpTarget: 8080,
+        httpsTarget: 8443,
+      }),
+    );
+
+    // Then: the outcome carries the remediation and nothing ran elevated.
+    expect(outcome).toEqual({
+      kind: "privilege-unavailable",
+      message: denied.message,
+      remediation: denied.remediation,
+    });
+    expect(calls).toEqual([]);
   });
 
   test("elevates one script with units, polkit path, daemon-reload, and no enable", async () => {

@@ -4,6 +4,7 @@ import { uninstall } from "@lando/engine/operations/uninstall";
 import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
 import { makeHostMaintenanceRegistryLayer } from "@lando/engine/runtime/host-maintenance";
 import * as HostPrivilegeService from "@lando/engine/services/privilege";
+import * as BunProcessRunner from "@lando/engine/services/process-runner";
 import type { RedactionService } from "@lando/redaction/service";
 import type { ConfigError, LandoRuntimeBootstrapError } from "@lando/sdk/errors";
 import type { ConfigService } from "@lando/sdk/services";
@@ -31,6 +32,7 @@ import {
   setActiveCommandId,
 } from "../compiled-runtime";
 import type { CommandTokens } from "../invocation";
+import { hostHasPromptTerminal } from "../prompt-terminal";
 
 export const runMetaUninstall = async (
   tokens: CommandTokens,
@@ -47,7 +49,9 @@ export const runMetaUninstall = async (
     uninstall(uninstallOptionsFromInput(input, prepare)),
     Layer.mergeAll(
       PrivateFileAccessService.layer,
-      HostPrivilegeService.layer,
+      HostPrivilegeService.layer({ hasTerminal: hostHasPromptTerminal }).pipe(
+        Layer.provide(BunProcessRunner.layer),
+      ),
       makeHostMaintenanceRegistryLayer(modules),
     ),
     (value, renderContext) => renderUninstallResult(value, renderContext, context.setExitCode),

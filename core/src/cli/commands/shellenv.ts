@@ -3,6 +3,7 @@ import { lstatSync, readFileSync } from "node:fs";
 import { dirname, join, win32 } from "node:path";
 import { makeLandoPaths, resolveLandoRoots } from "@lando/paths";
 
+import type { PrivilegeError } from "@lando/sdk/errors";
 import type { PrivilegeService, ProcessResult } from "@lando/sdk/services";
 import type { Context, Effect } from "effect";
 
@@ -262,4 +263,5 @@ export const shellProfileInstallCommand = (
 export const installShellProfileIntegration = (
   userDataRoot: string,
   privilege: Context.Service.Shape<typeof PrivilegeService>,
-): Effect.Effect<ProcessResult, never> => privilege.elevate(shellProfileInstallCommand(userDataRoot));
+): Effect.Effect<ProcessResult, PrivilegeError> =>
+  privilege.elevate(shellProfileInstallCommand(userDataRoot));

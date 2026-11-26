@@ -9,36 +9,37 @@ import { runProxySetupStep } from "../../src/cli/command-specs/meta/setup-servic
 import { makeSetupReadinessRecorder } from "../../src/cli/command-specs/meta/setup-steps.ts";
 import { compiledCommandInputFromArgv } from "../../src/cli/compiled-input.ts";
 
-test.each([{ argv: ["--yes"] }, { argv: ["--no-interactive"] }, { argv: ["--yes", "--no-interactive"] }])(
-  "passes automatic consent to router setup for %j",
-  async ({ argv }) => {
-    // Given: a parsed setup invocation and an in-memory router.
-    const configs: ProxyConfig[] = [];
-    const approvals: Parameters<RouterServiceShape["setup"]>[1][] = [];
-    const router = RouterService.of({
-      ...makeTestRouterService(),
-      setup: (config: ProxyConfig, options: Parameters<RouterServiceShape["setup"]>[1]) =>
-        Effect.sync(() => {
-          configs.push(config);
-          approvals.push(options);
-        }),
-    });
-    const input = compiledCommandInputFromArgv("meta:setup", argv);
+test.each([
+  { argv: ["--yes"], autoApprove: true },
+  { argv: ["--no-interactive"], autoApprove: false },
+  { argv: ["--yes", "--no-interactive"], autoApprove: true },
+])("passes automatic consent to router setup only with --yes for %j", async ({ argv, autoApprove }) => {
+  // Given: a parsed setup invocation and an in-memory router.
+  const configs: ProxyConfig[] = [];
+  const approvals: Parameters<RouterServiceShape["setup"]>[1][] = [];
+  const router = RouterService.of({
+    ...makeTestRouterService(),
+    setup: (config: ProxyConfig, options: Parameters<RouterServiceShape["setup"]>[1]) =>
+      Effect.sync(() => {
+        configs.push(config);
+        approvals.push(options);
+      }),
+  });
+  const input = compiledCommandInputFromArgv("meta:setup", argv);
 
-    // When: setup runs its router step without touching the host.
-    await Effect.runPromise(
-      runProxySetupStep(input, makeSetupReadinessRecorder(undefined, "lando")).pipe(
-        Effect.provideService(RouterService, router),
-      ),
-    );
+  // When: setup runs its router step without touching the host.
+  await Effect.runPromise(
+    runProxySetupStep(input, makeSetupReadinessRecorder(undefined, "lando")).pipe(
+      Effect.provideService(RouterService, router),
+    ),
+  );
 
-    // Then: the invocation grants automatic consent to the router.
-    expect(approvals).toEqual([{ intent: "configure", autoApprove: true, reacquirePorts: true }]);
-    expect(configs).toHaveLength(1);
-    expect(configs[0]).not.toHaveProperty("autoApprove");
-    expect(configs[0]).not.toHaveProperty("reacquirePorts");
-  },
-);
+  // Then: only --yes grants automatic consent; --no-interactive declines privileged changes.
+  expect(approvals).toEqual([{ intent: "configure", autoApprove, reacquirePorts: true }]);
+  expect(configs).toHaveLength(1);
+  expect(configs[0]).not.toHaveProperty("autoApprove");
+  expect(configs[0]).not.toHaveProperty("reacquirePorts");
+});
 
 test("preserves interactive consent when setup has no approval flags", async () => {
   // Given

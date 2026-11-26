@@ -31,7 +31,7 @@ lando poweroff -y
 lando setup --provider=docker --yes --no-interactive
 ```
 
-`--no-interactive` makes setup fail instead of waiting for a TTY when required input is missing. `start` and `poweroff` do not prompt; `poweroff` accepts `-y` but does not require it. `poweroff` stops each app at its recorded root and keeps the global app and managed runtime running when any app fails, so the job reports the failing app instead of tearing down the runtime first. Provider rules live in [Pick a container provider](../setup/provider-selection.mdx).
+`--no-interactive` makes setup fail instead of waiting for a TTY when required input is missing. Setup runs privileged steps through `sudo` and cannot type a password in CI. Hosted Ubuntu runners have passwordless `sudo`, so it works there. On a self-hosted runner, give the job passwordless `sudo` or provision the prerequisites first; otherwise Lando's own elevated steps stop with `PrivilegeCredentialsRequiredError` before they change anything. `SUDO_ASKPASS` can satisfy those steps, but trusting the local CA runs mkcert, which asks sudo itself, so without a terminal that step still needs passwordless sudo (or `--skip-install-ca` and trusting the CA yourself). `start` and `poweroff` do not prompt; `poweroff` accepts `-y` but does not require it. `poweroff` stops each app at its recorded root and keeps the global app and managed runtime running when any app fails, so the job reports the failing app instead of tearing down the runtime first. Provider rules live in [Pick a container provider](../setup/provider-selection.mdx).
 
 Do not scrape human text. Assert on JSON (`ok: true`) from `--format=json`.
 
