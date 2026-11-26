@@ -63,13 +63,13 @@ const runtimeEvidence = (provider: AppliedStateProvider, filter: ListFilter, tea
   );
 };
 
-const misattributedOwnershipRefusal = new AppResolveError({
-  message: "Runtime resources remain without matching applied app state.",
-  reason: "mismatch",
-  detail: "provider-resources",
-  remediation:
-    "Restore the matching applied state or remove the orphaned provider resources before retrying teardown.",
-});
+const misattributedOwnershipRefusal = (providerId: string, root: AbsolutePath) =>
+  new AppResolveError({
+    message: `The ${providerId} ownership record for ${root} was written for a different app root or provider.`,
+    reason: "mismatch",
+    detail: "provider-resources",
+    remediation: `Remove resource-ownership/${appIdentityKey("owner", root)}.json from the ${providerId} provider's state directory in Lando's data root, then retry.`,
+  });
 
 /**
  * Groups every runtime resource recorded against `root` by the provider that holds it and the app
@@ -149,7 +149,7 @@ const gatherProviderInventory = (provider: AppliedStateProvider) =>
                 message: `Provider ${provider.id} supplied applied state attributed to ${plan.provider}.`,
                 reason: "mismatch",
                 detail: "applied-state-provider",
-                remediation: "Remove the mismatched applied state before retrying teardown.",
+                remediation: `Remove ${provider.id}'s applied state that names ${plan.provider}, then retry.`,
               }),
             ),
       ).pipe(Effect.map((plans) => ({ ...inventory, plans }))),
@@ -195,7 +195,7 @@ const collectEvidence = Effect.fn("RuntimeProviderRegistry.collectEvidence")(fun
         message: "No runtime provider can confirm applied app state.",
         reason: "not-found",
         detail: "provider-evidence",
-        remediation: "Install or enable a runtime provider before retrying teardown.",
+        remediation: "Run lando setup to install a runtime provider, then retry.",
       }),
     );
   }
@@ -288,7 +288,9 @@ const collectEvidence = Effect.fn("RuntimeProviderRegistry.collectEvidence")(fun
         hints.ownerKey !== appIdentityKey("owner", lookupRoot) ||
         hints.providerId !== provider.id
       )
-        return yield* Effect.fail(misattributedOwnershipRefusal);
+        return yield* Effect.fail(
+          misattributedOwnershipRefusal(provider?.id ?? hints.providerId, lookupRoot),
+        );
     }
     const inventories = rawInventories.map((hints): ResourceOwnership | undefined => {
       if (hints === undefined) return undefined;

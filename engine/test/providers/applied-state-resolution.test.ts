@@ -507,6 +507,20 @@ describe("resolveAppliedPlanEvidence without a matching plan", () => {
     expect(failure.message).toContain("lando-destroyed--web");
   });
 
+  test("an ownership record written for another root names the record to remove", async () => {
+    const docker = withOwnership(provider("docker"), {
+      ...ownershipOf("docker", [recorded("volume", "data")]),
+      appRoot: AbsolutePath.make("/apps/elsewhere"),
+    });
+
+    const failure = refusal(await Effect.runPromiseExit(resolveAppliedPlanEvidence(root, [docker])));
+
+    expect(failure.detail).toBe("provider-resources");
+    expect(failure.message).toContain(`docker ownership record for ${root}`);
+    expect(failure.remediation).toContain(`resource-ownership/${appIdentityKey("owner", root)}.json`);
+    expect(failure.remediation).not.toContain("teardown");
+  });
+
   test("an ownership hint without members still refuses", async () => {
     const docker = withOwnership(provider("docker"), ownershipOf("docker"));
 
