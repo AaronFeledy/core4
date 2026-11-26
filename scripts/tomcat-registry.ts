@@ -59,16 +59,19 @@ export const resolveTomcatImage = async (major: TomcatMajor, request: TomcatFetc
     });
     if (response.status === 307 && path.startsWith("blobs/")) {
       const location = response.headers.get("location");
-      const target = location === null ? undefined : new URL(location);
+      const target = location === null ? null : URL.parse(location);
+      // Docker moves blob storage between CDNs, so any host may serve the blob: it gets no credential,
+      // and the body must still match the digest the registry named.
       if (
-        target === undefined ||
+        target === null ||
         target.protocol !== "https:" ||
-        target.hostname !== "production.cloudfront.docker.com" ||
         target.port !== "" ||
         target.username !== "" ||
         target.password !== ""
       ) {
-        throw new TomcatUpdateError(`Tomcat ${major}: untrusted registry blob redirect`);
+        const destination =
+          target === null ? "a missing or invalid location" : `${target.protocol}//${target.host}`;
+        throw new TomcatUpdateError(`Tomcat ${major}: unsafe registry blob redirect to ${destination}`);
       }
       // Docker's signed storage URL authorizes itself; the registry pull token must never leave its origin.
       response = await request(target.href);

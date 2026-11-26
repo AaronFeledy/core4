@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { TOMCAT_MAJORS, sha256 } from "../../../scripts/tomcat-config.ts";
+import { TOMCAT_MAJORS, TomcatUpdateError, sha256 } from "../../../scripts/tomcat-config.ts";
 import type { TomcatFetch } from "../../../scripts/tomcat-registry.ts";
 import {
   type TomcatSnapshot,
@@ -24,23 +24,35 @@ const writeSnapshot = async (directory: string, snapshot: TomcatSnapshot) => {
 };
 
 describe("paired Tomcat updater", () => {
-  test("follows the fixed Docker blob storage host without forwarding registry credentials", async () => {
-    // Given
-    const fixture = await tomcatRegistryFixture();
+  const redirectBlobsTo = (
+    fixture: Awaited<ReturnType<typeof tomcatRegistryFixture>>,
+    host: string,
+    serve: (body: string) => string = (body) => body,
+  ) => {
     const storage = new Map<string, string>();
     const storageHeaders: RequestInit["headers"][] = [];
     const request: TomcatFetch = async (url, init) => {
       if (url.startsWith("https://registry-1.docker.io/v2/library/tomcat/blobs/")) {
-        const location = `https://production.cloudfront.docker.com/${sha256(url)}`;
-        storage.set(location, await (await fixture.request(url, init)).text());
+        const location = `https://${host}/${sha256(url)}`;
+        storage.set(location, serve(await (await fixture.request(url, init)).text()));
         return new Response(null, { status: 307, headers: { location } });
       }
-      if (url.startsWith("https://production.cloudfront.docker.com/")) {
+      if (url.startsWith(`https://${host}/`)) {
         storageHeaders.push(init?.headers);
         return new Response(storage.get(url));
       }
       return fixture.request(url, init);
     };
+    return { request, storageHeaders };
+  };
+
+  test.each([
+    "production.cloudfront.docker.com",
+    "docker-images-prod.6aa30f8b08e16409b46e0173d6de2f56.r2.cloudflarestorage.com",
+  ])("follows a Docker blob storage redirect to %s without forwarding registry credentials", async (host) => {
+    // Given
+    const fixture = await tomcatRegistryFixture();
+    const { request, storageHeaders } = redirectBlobsTo(fixture, host);
     // When
     const result = await prepareTomcatUpdate(fixture.snapshot, request);
     // Then
@@ -49,22 +61,39 @@ describe("paired Tomcat updater", () => {
     expect(storageHeaders.every((headers) => headers === undefined)).toBe(true);
   });
 
-  test("rejects a registry redirect to an untrusted host before requesting it", async () => {
+  test("rejects a redirected blob whose bytes do not match the registry digest", async () => {
+    // Given
+    const fixture = await tomcatRegistryFixture();
+    const { request } = redirectBlobsTo(fixture, "storage.example", (body) => `${body} `);
+    // When / Then
+    await expect(prepareTomcatUpdate(fixture.snapshot, request)).rejects.toThrow(
+      "registry digest/body mismatch",
+    );
+  });
+
+  test.each([
+    ["http://storage.example/blob", "http://storage.example"],
+    ["https://storage.example:8443/blob", "https://storage.example:8443"],
+    ["https://user:secret@storage.example/blob", "https://storage.example"],
+    ["not a url", "a missing or invalid location"],
+  ])("rejects the registry blob redirect %s before requesting it", async (location, destination) => {
     // Given
     const fixture = await tomcatRegistryFixture();
     const requested: string[] = [];
     const request: TomcatFetch = async (url, init) => {
       requested.push(url);
       return url.includes("/blobs/")
-        ? new Response(null, { status: 307, headers: { location: "https://attacker.example/blob" } })
+        ? new Response(null, { status: 307, headers: { location } })
         : fixture.request(url, init);
     };
-    // When / Then
-    await expect(prepareTomcatUpdate(fixture.snapshot, request)).rejects.toThrow(
-      "untrusted registry blob redirect",
-    );
-    expect(requested.some((url) => url.startsWith("https://attacker.example/"))).toBe(false);
+    // When
+    const failure = await prepareTomcatUpdate(fixture.snapshot, request).catch((error: unknown) => error);
+    // Then
+    expect(failure).toBeInstanceOf(TomcatUpdateError);
+    expect(String(failure)).toEndWith(`unsafe registry blob redirect to ${destination}`);
+    expect(requested.some((url) => url.includes("storage.example"))).toBe(false);
   });
+
   test("prepares a new patch version with the release-matched baseline", async () => {
     // Given
     const fixture = await tomcatRegistryFixture();
