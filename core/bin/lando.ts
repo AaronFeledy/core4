@@ -46,6 +46,15 @@ const main = async (): Promise<void> => {
     await writeLine("stderr", preservedSymlinks);
     process.exit(1);
   }
+  if (argv[0] === "__internal:repair-root-ownership") {
+    await installProcessLifecycle();
+    const { runRepairCli } = await import("@lando/engine/host/root-ownership-repair-cli");
+    const { guardedWrite } = await import("@lando/renderer/native-stdio");
+    process.exitCode = runRepairCli(argv.slice(1), (line) => {
+      guardedWrite("stdout", process.stdout, line);
+    });
+    return;
+  }
   const sudoInvocation = sudoInvocationMessage(
     systemSudoInvocationHost(() => {
       const roots = resolveLandoRoots();

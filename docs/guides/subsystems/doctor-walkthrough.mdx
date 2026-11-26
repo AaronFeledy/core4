@@ -162,7 +162,19 @@ Running `lando` with `sudo` can leave files under Lando's data, config, and cach
 lando doctor --section lando-roots
 ```
 
-Each root-owned path fails as its own `root-owned-entries` check with a command that gives it back to you, such as `sudo chown -R 1000:1000 '/home/you/.local/share/lando/setup'`. Run the commands it lists, then run `lando doctor` again. Lando never runs them for you, and it never suggests a recursive `chown` through the container runtime's storage, whose files belong to your container user IDs on purpose. `lando setup` runs the same check first and stops with `RootOwnedLandoFilesError` and the same commands.
+Each root-owned path fails as its own `root-owned-entries` check with a command that gives it back to you, such as `sudo chown -R 1000:1000 '/home/you/.local/share/lando/setup'`. Doctor suggests a recursive `chown` only for a directory it read to the end and found no hard link inside. Otherwise it lists the directory with a `chown` of the directory alone, then each root-owned entry inside it with its own command, in the order to run them. It never suggests a recursive `chown` through the container runtime's storage, whose files belong to your container user IDs on purpose.
+
+A root-owned file with more than one name is a hard link, and its other name may be a file outside Lando's files. Changing its owner would change that file too, so doctor never suggests `chown` for it. The check says: "This file is a hard link to a file outside Lando's files, so changing its owner would change that file too. Remove the link; Lando creates it again if it needs it", and its command removes the link, such as `rm -f '/home/you/.local/share/lando/bin/tool'`. `-f` keeps `rm` from asking whether to remove a file you cannot write. The command needs `sudo` only when the directory holding the link belongs to root too.
+
+On Linux and WSL, Lando can give these files back itself. The check says so: run `lando doctor --fix` or `lando setup`, and Lando asks before giving them back to you:
+
+```sh
+lando doctor --fix --section lando-roots
+```
+
+Doctor finishes its checks first, then asks in your terminal, `sudo` asks for your password once, and Lando's own repair runs as root. It changes only files that belong to root, never follows a symlink, skips hard-linked files, devices, and other filesystems, and does not descend into the container runtime's storage. Then doctor checks again and reports `fixOutcome: recovered`, or `failed` with the reason. Anything the repair skipped stays a failed check with its own command, such as `rm -f` for a hard link it found inside a directory. A directory it could not finish checking says so and asks you to rerun `lando setup`, with no `chown` command. Doctor has no `--yes`, so without a terminal (in a script or through MCP) it changes nothing, reports `fixOutcome: skipped-manual`, and points you at `lando setup --yes`. `lando setup` runs the same check first, plans the same repair as its first host change, and gives the files back before it writes anything.
+
+Lando leaves some paths to you: hard links, on macOS every root-owned path, and on Linux paths under a directory you do not own, such as a `~/.cache` that belongs to root. Doctor lists those with their commands only, and `--fix` offers to give back only the rest. `lando setup` stops before it asks anything with `RootOwnedLandoFilesError` listing just those. Run the commands it lists, then run `lando doctor` again.
 
 Doctor looks only at each root, its top-level entries, and the directories Lando writes first, and it stops after a fixed number of entries or a short time. When it could not finish, the check warns instead of passing.
 

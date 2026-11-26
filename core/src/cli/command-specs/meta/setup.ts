@@ -1,5 +1,3 @@
-import { scanRootOwnership } from "@lando/engine/host/root-ownership";
-import { previewApprovals } from "@lando/engine/host-changes/plan";
 import { config as writeConfig } from "@lando/engine/operations/config";
 import {
   preflightGlobalProviderSwitch,
@@ -22,7 +20,7 @@ import {
   type FileSystem,
   GlobalAppService,
   InteractionService,
-  PathsService,
+  type PathsService,
   PrivilegeService,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
@@ -34,12 +32,12 @@ import {
 import { Effect, Option } from "effect";
 import type * as HttpClient from "effect/http/HttpClient";
 import { CliInvocation } from "../../../runtime/invocation-context";
-import { resolveSetupNetworkTrust, validateSetupNetworkTrust } from "../../commands/setup-network-trust";
-
+import { validateSetupNetworkTrust } from "../../commands/setup-network-trust";
 import type { LandoCommandSpec } from "../../spec/command-base";
 import { runCaSetupStep } from "./setup-ca-step";
 import { SETUP_COMMAND_FLAGS } from "./setup-command-flags";
-import { approveSetupHostChanges, planSetupHostChanges, setupCanAsk } from "./setup-host-changes";
+import { planSetupDryRun } from "./setup-dry-run";
+import { approveSetupHostChanges, planSetupHostChanges } from "./setup-host-changes";
 import {
   type SetupResult,
   SetupResultSchema,
@@ -49,6 +47,7 @@ import {
   inputProviderFlag,
   sourceInstallDir,
 } from "./setup-inputs";
+import { applyLandoRootsRepair, planLandoRootsRepair } from "./setup-lando-roots";
 import { makeRunPrivilege } from "./setup-privilege";
 import {
   SYSTEM_RUNTIME_PROVIDERS,
@@ -58,38 +57,11 @@ import {
 import { runProviderSetupStep } from "./setup-provider-step";
 import { renderSetupResult } from "./setup-render";
 import { runProxySetupStep, runShellProfileSetupStep, runShellServiceSetupStep } from "./setup-service-steps";
-import {
-  RootOwnedLandoFilesError,
-  SetupStepFailedError,
-  makeSetupReadinessRecorder,
-  runFileSyncSetupStep,
-} from "./setup-steps";
+import { SetupStepFailedError, makeSetupReadinessRecorder, runFileSyncSetupStep } from "./setup-steps";
 
 export { SetupResultSchema } from "./setup-inputs";
 export { maybeSelectSetupProvider } from "./setup-provider-selection";
 export { RootOwnedLandoFilesError, SetupStepFailedError, ShellProfileIntegrationError } from "./setup-steps";
-
-/**
- * Root-owned files under Lando's roots (usually from running lando with sudo) break later writes
- * with generic IO errors. Setup checks first and names the fix; it never repairs them as root.
- */
-const refuseRootOwnedLandoFiles = Effect.fnUntraced(function* () {
-  const uid = process.getuid?.();
-  const gid = process.getgid?.();
-  if (uid === undefined || gid === undefined) return;
-  const paths = yield* PathsService;
-  const { rootOwned } = yield* scanRootOwnership({ paths, uid, gid });
-  if (rootOwned.length === 0) return;
-  return yield* Effect.fail(
-    new RootOwnedLandoFilesError({
-      message: `Lando's files include ${rootOwned.length} owned by root, usually left by running lando with sudo, so setup cannot write them.`,
-      paths: rootOwned.map((entry) => entry.path),
-      remediation: `Give them back to your user, then rerun \`lando setup\` without sudo (Lando asks for administrator access itself when a step needs it):\n${rootOwned.map((entry) => entry.remediation).join("\n")}`,
-    }),
-  );
-});
-
-const DRY_RUN_NOTICES = ["The network trust probe was skipped."];
 
 export const setupSpec: LandoCommandSpec<
   SetupResult,
@@ -142,18 +114,18 @@ export const setupSpec: LandoCommandSpec<
       typeof userDataRootRaw === "string" && userDataRootRaw.length > 0 ? userDataRootRaw : undefined;
     // A dry run writes nothing, not even the readiness record.
     const dryRun = inputBooleanFlag(input, "dry-run");
-    yield* refuseRootOwnedLandoFiles();
+    const rootRepair = yield* planLandoRootsRepair();
     const redaction = yield* Effect.serviceOption(RedactionService);
     const recorder = makeSetupReadinessRecorder(
       dryRun ? undefined : userDataRoot,
       resolution.providerId,
       redaction._tag === "Some" ? redaction.value : undefined,
       (yield* CliInvocation).env,
+      rootRepair !== undefined,
     );
-    if (!dryRun) {
-      yield* recorder.start;
-      yield* Effect.addFinalizer(recorder.finish);
-    }
+    // With root-owned roots, the readiness record waits until setup has given them back.
+    const startRecorder = Effect.andThen(recorder.start, Effect.addFinalizer(recorder.finish));
+    if (!dryRun && rootRepair === undefined) yield* startRecorder;
 
     const interactionOption = yield* Effect.serviceOption(InteractionService);
     const interaction = interactionOption._tag === "Some" ? interactionOption.value : undefined;
@@ -196,28 +168,17 @@ export const setupSpec: LandoCommandSpec<
     const selectedProviderId = String(selectedProvider);
 
     if (dryRun) {
-      // The live trust probe is the one network call setup makes before changing anything.
-      const network = yield* resolveSetupNetworkTrust(globalConfig);
-      const plan = yield* planSetupHostChanges({
+      return yield* planSetupDryRun({
         input,
+        globalConfig,
         provider,
-        selectedProviderId,
-        network,
+        selectedProvider,
+        selectionSource: selection.source,
         privilege: Option.getOrUndefined(hostPrivilege),
         recorder,
-      }).pipe(withHostProvider);
-      return {
-        dryRun: true,
-        providerId: provider.id,
-        selectionSource: selection.source,
-        elevation: plan.elevation,
-        changes: previewApprovals(plan.changes, {
-          yes: inputBooleanFlag(input, "yes"),
-          optInFlags: plan.optInFlags,
-          canAsk: yield* setupCanAsk(input, interaction),
-        }),
-        notices: DRY_RUN_NOTICES,
-      } satisfies SetupResult;
+        rootRepair: rootRepair?.proposal,
+        interaction,
+      });
     }
 
     const privilege =
@@ -242,8 +203,13 @@ export const setupSpec: LandoCommandSpec<
       network,
       privilege,
       recorder,
+      rootRepair: rootRepair?.proposal,
     }).pipe(withHostProvider);
     const hostChanges = yield* approveSetupHostChanges({ plan, input, interaction, privilege, recorder });
+    if (rootRepair !== undefined) {
+      yield* applyLandoRootsRepair(hostChanges.applier, rootRepair);
+      yield* startRecorder;
+    }
 
     yield* runProviderSetupStep({
       input,
