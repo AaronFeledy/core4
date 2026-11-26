@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Schema } from "effect";
-import { decodeInfoCliEnvelope } from "./convergence-cli.ts";
+import { decodeInfoCliEnvelope, decodeResultFrameEnvelope } from "./convergence-cli.ts";
 import { databaseJourneyTimeout, databaseTransferFixture } from "./database-transfer-fixture.ts";
 import { liveEnabled } from "./scanner-live-fixture.ts";
 
@@ -62,7 +62,7 @@ test.skipIf(!liveEnabled)(
         "--format=json",
       ]);
       expect(exported.exitCode, exported.artifact).toBe(0);
-      expect(decodeInfoCliEnvelope(exported.stdout).ok, exported.artifact).toBe(true);
+      expect(decodeResultFrameEnvelope(exported.stdout).ok, exported.artifact).toBe(true);
       const original = await readFile(join(root, "roundtrip.sql.gz"));
       expect([...original.subarray(0, 2)]).toEqual([0x1f, 0x8b]);
       expect(Buffer.from(Bun.gunzipSync(original)).includes(Buffer.from(marker))).toBe(true);
@@ -76,7 +76,7 @@ test.skipIf(!liveEnabled)(
         "--format=json",
       ]);
       expect(imported.exitCode, imported.artifact).toBe(0);
-      expect(decodeInfoCliEnvelope(imported.stdout).ok, imported.artifact).toBe(true);
+      expect(decodeResultFrameEnvelope(imported.stdout).ok, imported.artifact).toBe(true);
       const restored = await lando([...query, "SELECT value FROM transfer_probe"]);
       expect(restored.exitCode, restored.artifact).toBe(0);
       expect(restored.stdout.trim() === marker, restored.artifact).toBe(true);
@@ -87,7 +87,7 @@ test.skipIf(!liveEnabled)(
         fixture.wrongPassword,
       );
       expect(rejected.exitCode, rejected.artifact).toBe(1);
-      const envelope = decodeInfoCliEnvelope(rejected.stdout);
+      const envelope = decodeResultFrameEnvelope(rejected.stdout);
       expect(envelope.ok, rejected.artifact).toBe(false);
       const failure = Schema.decodeUnknownSync(transferFailure)(envelope.error);
       expect(failure.exitCode).toBe(1);
@@ -108,7 +108,7 @@ test.skipIf(!liveEnabled)(
         "--format=json",
       ]);
       expect(invalid.exitCode, invalid.artifact).toBe(1);
-      const invalidEnvelope = decodeInfoCliEnvelope(invalid.stdout);
+      const invalidEnvelope = decodeResultFrameEnvelope(invalid.stdout);
       expect(invalidEnvelope.ok, invalid.artifact).toBe(false);
       const invalidFailure = Schema.decodeUnknownSync(transferFailure)(invalidEnvelope.error);
       expect(invalidFailure.exitCode).toBe(3);

@@ -8,6 +8,7 @@ export const spec = {
   id: "db:import",
   namespace: "db",
   bootstrap: "app",
+  streamingMode: "live",
   flags: {
     service: { type: "string", description: "Target database service." },
     yes: { type: "boolean", default: false, description: "Skip confirmation prompts." },

@@ -322,6 +322,12 @@ an app that provides it is selected, as described in the next section. A malform
 id, or one that can never be an MCP tool, fails with `McpToolInputError` before the
 server starts.
 
+A plugin command that runs a process streams its output the same way built-ins
+do. With a progress token, `schedule:run` sends the job's output, and `db:import`,
+`db:export`, `db:reset`, and `db:seed` send the database client's stderr, as
+progress notifications while the call runs. The final response carries the same
+output in `structuredContent.output`.
+
 A default allowance covers the bundled plugin that ships the command. If an app
 plugin replaces `db:snapshots` with its own implementation, that app's version
 needs its own `--allow db:snapshots` entry.

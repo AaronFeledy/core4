@@ -1,6 +1,11 @@
 import { PlanReplanRequiredError } from "@lando/sdk/errors";
 import { ServiceName, clonedServiceParent } from "@lando/sdk/schema";
-import { RuntimeProviderRegistry, UserAppResolver } from "@lando/sdk/services";
+import {
+  RuntimeProviderRegistry,
+  StreamFrameSink,
+  UserAppResolver,
+  collectExecStream,
+} from "@lando/sdk/services";
 import { Effect } from "effect";
 
 import { ScheduleJobAmbiguousError, ScheduleJobNotFoundError } from "./errors.ts";
@@ -88,15 +93,15 @@ export const runScheduleJob = Effect.fn("Schedule.runJob")(function* (input: {
       }),
     );
   }
-  const result = yield* provider.exec(
-    { app: planned.id, service: sidecarName, plan: planned },
-    { command: typeof job.run === "string" ? ["sh", "-c", job.run] : job.run },
+  // With a live sink the job's output streams as it runs and stays out of the result;
+  // without one (YAML, a caller that does not stream) it is collected into the result.
+  const sink = yield* Effect.serviceOption(StreamFrameSink);
+  const result = yield* collectExecStream(
+    provider.execStream(
+      { app: planned.id, service: sidecarName, plan: planned },
+      { command: typeof job.run === "string" ? ["sh", "-c", job.run] : job.run },
+    ),
+    sink,
   );
-  return {
-    service: job.service,
-    name: job.name,
-    exitCode: result.exitCode,
-    stdout: result.stdout,
-    stderr: result.stderr,
-  };
+  return { service: job.service, name: job.name, ...result };
 });

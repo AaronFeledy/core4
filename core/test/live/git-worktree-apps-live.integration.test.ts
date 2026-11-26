@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { Effect, Schema } from "effect";
 
+import { decodeResultFrameEnvelope } from "./convergence-cli.ts";
 import { liveEnabled } from "./scanner-live-fixture.ts";
 
 const cliEntry = resolve(import.meta.dir, "../../bin/lando.ts");
@@ -47,6 +48,13 @@ const fails = async (cwd: string, args: readonly string[]) => {
   const result = await cli(cwd, [...args, "--format=json"]);
   expect(result.exitCode, JSON.stringify({ cwd, args, ...result })).not.toBe(0);
   return Schema.decodeUnknownSync(Schema.fromJsonString(failure))(result.stdout).error;
+};
+
+/** A live command's `--format=json` failure is its terminal `result` frame. */
+const failsStreaming = async (cwd: string, args: readonly string[]) => {
+  const result = await cli(cwd, [...args, "--format=json"]);
+  expect(result.exitCode, JSON.stringify({ cwd, args, ...result })).not.toBe(0);
+  return Schema.decodeUnknownSync(failure)(decodeResultFrameEnvelope(result.stdout)).error;
 };
 
 const exec = async (cwd: string, command: string) => {
@@ -165,7 +173,7 @@ describe.serial("live git-worktree apps", () => {
               )).trim(),
             ).toBe("3");
             expect(
-              yield* Effect.promise(() => fails(feature, ["db:seed", "--from-app", name])),
+              yield* Effect.promise(() => failsStreaming(feature, ["db:seed", "--from-app", name])),
             ).toMatchObject({ _tag: "SqlSeedStateError", status: "seeded" });
 
             yield* Effect.promise(() =>
@@ -196,7 +204,7 @@ describe.serial("live git-worktree apps", () => {
               )).trim(),
             ).toBe("3");
             expect(
-              yield* Effect.promise(() => fails(feature, ["db:seed", "--from-app", "nope"])),
+              yield* Effect.promise(() => failsStreaming(feature, ["db:seed", "--from-app", "nope"])),
             ).toMatchObject({ _tag: "SqlSeedSourceError" });
             expect(
               yield* Effect.promise(() => fails(feature, ["db:restore", "nope", "--yes"])),

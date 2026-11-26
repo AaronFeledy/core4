@@ -19,10 +19,10 @@ import {
   type ShellCommandOptions,
   type ShellReplIO,
   ShellRunner,
+  StreamFrameSink,
 } from "@lando/sdk/services";
 import { type PrivateFileAccess, PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Context, Effect, Layer, Option } from "effect";
-import { StreamFrameSink } from "../operations/stream-frame-sink.ts";
 import { bunShellDialectIssues, bunShellScriptIssue, describeBunShellIssue } from "./bun-shell-dialect.ts";
 import {
   type CapturedHostExecutionContext,

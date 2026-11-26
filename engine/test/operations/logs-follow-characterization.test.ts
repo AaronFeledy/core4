@@ -1,9 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import { AbsolutePath, AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
-import { RuntimeProviderRegistry, type RuntimeProviderShape } from "@lando/sdk/services";
+import {
+  RuntimeProviderRegistry,
+  type RuntimeProviderShape,
+  StreamFrameSink,
+  type StreamFrameSinkFrame,
+} from "@lando/sdk/services";
 import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { DateTime, Effect, Layer, Stream } from "effect";
-import { StreamFrameSink, type StreamFrameSinkFrame, followLogsForPlan } from "../../src/operations/logs.ts";
+import { followLogsForPlan } from "../../src/operations/logs.ts";
 
 const providerId = ProviderId.make("test");
 const metadata = {

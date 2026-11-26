@@ -100,11 +100,13 @@ test("every bundled descriptor matches its owning plugin manifest in both direct
   expect(BUNDLED_COMMAND_DESCRIPTORS.map((entry) => [entry.pluginName, entry.id]).toSorted()).toEqual(
     manifestCommands.map((entry) => [entry.pluginName, entry.descriptor.id]).toSorted(),
   );
+  // Flags, args, and streamingMode come from the command module, not the manifest.
   for (const {
     pluginName,
     source,
     flags: _flags,
     args: _args,
+    streamingMode: _streamingMode,
     ...descriptor
   } of BUNDLED_COMMAND_DESCRIPTORS) {
     expect(source).toBe("bundled");

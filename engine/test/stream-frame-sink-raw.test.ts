@@ -3,9 +3,8 @@ import { RedactionService, createStandaloneRedactor, makeRedactionService } from
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import * as RendererOutput from "@lando/renderer/output";
 import * as RendererRuntime from "@lando/renderer/runtime";
+import { StreamFrameSink } from "@lando/sdk/services";
 import { Effect, Layer } from "effect";
-
-import { StreamFrameSink } from "../src/operations/stream-frame-sink";
 
 const identityRedaction = Layer.succeed(
   RedactionService,

@@ -402,3 +402,47 @@ test.each(["take", "interrupt"] as const)(
     expect(exit.cause.reasons.filter((reason) => !Cause.isInterruptReason(reason))).toHaveLength(1);
   },
 );
+
+test("streams stderr to a live sink as it arrives while stdout stays the caller's", async () => {
+  // Given: a command that writes diagnostics, a payload, more diagnostics, then fails.
+  const order: string[] = [];
+  const frames: Array<{ readonly service?: string; readonly text: string }> = [];
+  const sink = {
+    emit: (frame: { readonly service?: string; readonly chunk: string | Uint8Array }) =>
+      Effect.sync(() => {
+        const text = typeof frame.chunk === "string" ? frame.chunk : new TextDecoder().decode(frame.chunk);
+        order.push(`frame:${text}`);
+        frames.push({ ...(frame.service === undefined ? {} : { service: frame.service }), text });
+      }),
+  };
+  const exit = Stream.fromEffect(
+    Effect.sync((): ExecChunk => {
+      order.push("exit");
+      return { exitCode: 3 };
+    }),
+  );
+  const source = Stream.concat(
+    Stream.make(stderr("dumping\n"), stdout("PAYLOAD"), stderr("table locked\n"), stderr("")),
+    exit,
+  );
+
+  // When: the output is observed with a live sink, and after the terminal status.
+  const payload: string[] = [];
+  const result = await Effect.runPromiseExit(
+    commandOutputStream(Stream.concat(source, Stream.make(stderr("late"))), {
+      failure,
+      live: { sink, service: "database" },
+    }).pipe(Stream.runForEach((chunk) => Effect.sync(() => payload.push(new TextDecoder().decode(chunk))))),
+  );
+
+  // Then: each diagnostic reached the sink before the exit, the payload never did,
+  // output after the terminal status is not the command's, and the failure tail is kept.
+  expect(order).toEqual(["frame:dumping\n", "frame:table locked\n", "exit"]);
+  expect(frames.every((frame) => frame.service === "database")).toBe(true);
+  expect(payload).toEqual(["PAYLOAD"]);
+  if (!Exit.isFailure(result)) throw new Error("Expected failed command");
+  expect(failureOutcomeFromCause(result.cause).error).toMatchObject({
+    reason: "protocol",
+    stderrTail: expect.stringContaining("table locked"),
+  });
+});

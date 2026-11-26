@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { decodeInfoCliEnvelope } from "./convergence-cli.ts";
+import { decodeResultFrameEnvelope } from "./convergence-cli.ts";
 import {
   databaseJourneyTimeout,
   databaseTransferFixture,
@@ -49,7 +49,7 @@ for (const version of ["2019", "2022"] as const) {
           "--format=json",
         ]);
         expect(exported.exitCode, exported.artifact).toBe(0);
-        expect(decodeInfoCliEnvelope(exported.stdout).ok, exported.artifact).toBe(true);
+        expect(decodeResultFrameEnvelope(exported.stdout).ok, exported.artifact).toBe(true);
         const backup = await readFile(join(root, "roundtrip.bak.gz"));
         expect([...backup.subarray(0, 2)]).toEqual([0x1f, 0x8b]);
         const modified = await lando(["consumer-query", "--", "UPDATE transfer_probe SET value = 'changed'"]);
@@ -73,7 +73,7 @@ for (const version of ["2019", "2022"] as const) {
           "--format=json",
         ]);
         expect(imported.exitCode, imported.artifact).toBe(0);
-        expect(decodeInfoCliEnvelope(imported.stdout).ok, imported.artifact).toBe(true);
+        expect(decodeResultFrameEnvelope(imported.stdout).ok, imported.artifact).toBe(true);
 
         // Then the separate consumer reads the original row, including immediately after a warm start.
         const restored = await lando([

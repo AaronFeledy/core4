@@ -4,6 +4,7 @@ import { McpRuntimeConfig, McpService } from "@lando/mcp/service";
 import { startStdioClient, testAppGenerations } from "@lando/mcp/testing";
 import { RedactionService } from "@lando/redaction/service";
 import type { ExecutableCommandSpec } from "@lando/sdk/plugins";
+import { StreamFrameSink } from "@lando/sdk/services";
 import { Deferred, Effect, Fiber, Layer, Schema } from "effect";
 import { mcpRegistryWithPlugins } from "../../src/cli/commands/meta/mcp-plugins";
 import { serviceLayer } from "../../src/mcp-command-executor";
@@ -121,6 +122,59 @@ test.each([false, true])("plugin confirmation without elicitation refuses unless
     },
   });
   expect(executions).toBe(yes ? 1 : 0);
+});
+
+test("a live plugin command delivers its output as progress before the final envelope", async () => {
+  const observed = await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        // Given: a live command that streams a line, then waits until the client has seen it.
+        const seen = yield* Deferred.make<void>();
+        const spec: ExecutableCommandSpec = {
+          ...base,
+          streamingMode: "live",
+          resultSchema: Schema.Struct({ done: Schema.Boolean }),
+          run: () =>
+            Effect.gen(function* () {
+              const sink = yield* StreamFrameSink;
+              yield* sink.emit({ _tag: "stdout", kind: "bytes", chunk: "first line\n" });
+              yield* Deferred.await(seen);
+              return { done: true };
+            }),
+        };
+        return yield* Effect.gen(function* () {
+          const service = yield* McpService;
+          const client = yield* startStdioClient(service.serve({ transport: "stdio", allow: [spec.id] }));
+
+          // When: the call runs with a progress token.
+          const call = yield* client.sendRequest("tools/call", {
+            name: spec.id,
+            _meta: { progressToken: "live" },
+          });
+          let message = yield* client.next;
+          while (message.method !== "notifications/progress") message = yield* client.next;
+          yield* Deferred.succeed(seen, undefined);
+          return { progress: message, response: yield* call.response };
+        }).pipe(Effect.provide(fixture(spec)));
+      }),
+    ).pipe(Effect.timeout("10 seconds")),
+  );
+
+  // Then: the line arrived as progress while the command ran, and the final envelope is the
+  // ordinary command result that also retains the streamed output.
+  expect(observed.progress).toMatchObject({
+    params: { progressToken: "live", message: JSON.stringify({ _tag: "stdout", chunk: "first line\n" }) },
+  });
+  expect(observed.response).toMatchObject({
+    result: {
+      isError: false,
+      structuredContent: {
+        ok: true,
+        result: { done: true },
+        output: { chunks: [{ _tag: "stdout", chunk: "first line\n" }], truncated: false },
+      },
+    },
+  });
 });
 
 test("plugin tools/call accepts elicitation confirmation", async () => {

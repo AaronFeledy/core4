@@ -3,7 +3,6 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runAppEvent } from "@lando/engine/operations/events";
-import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
 import { withProjectEvents } from "@lando/engine/planner/effective-events";
 import { attachEffectiveTooling } from "@lando/engine/planner/effective-tooling";
 import { PluginContributionGraph } from "@lando/engine/plugins/contribution-graph";
@@ -28,6 +27,7 @@ import {
   Renderer,
   RuntimeProviderRegistry,
   ShellRunner,
+  StreamFrameSink,
   ToolingEngine,
   type ToolingInvocation,
 } from "@lando/sdk/services";
@@ -885,6 +885,57 @@ describe("EventCommandExecutorLayer.layer", () => {
       "cli-meta:example:hello-init",
       "cli-meta:example:hello-run",
     ]);
+  });
+
+  test("streams a live plugin command's output during an event step", async () => {
+    // Given: a plugin command that declares live output and emits through the sink.
+    const harness = makeHarness();
+    let sawSink = false;
+    const spec: ExecutableCommandSpec = {
+      id: "meta:example:stream",
+      summary: "Stream from a plugin.",
+      namespace: "meta",
+      bootstrap: "plugins",
+      streamingMode: "live",
+      resultSchema: Schema.Unknown,
+      run: () =>
+        Effect.gen(function* () {
+          const sink = yield* Effect.serviceOption(StreamFrameSink);
+          sawSink = sink._tag === "Some";
+          if (sink._tag === "Some")
+            yield* sink.value.emit({ _tag: "stderr", kind: "bytes", chunk: "working\n" });
+        }),
+    };
+    const context = Context.add(harness.context, PluginContributionGraph, {
+      plugins: [],
+      globalPlugins: [],
+      certificateAuthorities: [],
+      commands: [
+        {
+          id: spec.id,
+          pluginName: "@example/streams",
+          descriptor: { id: spec.id, summary: "Stream from a plugin." },
+          source: "explicit",
+          load: async () => spec,
+        },
+      ],
+      hostContext: Context.empty(),
+    });
+
+    // When
+    await Effect.runPromise(
+      makeEventCommandExecutor(context).run({
+        command: spec.id,
+        flags: {},
+        args: {},
+        argv: [],
+        cwd: process.cwd(),
+      }),
+    );
+
+    // Then: the step got the live sink and its output reached the renderer.
+    expect(sawSink).toBe(true);
+    expect(harness.presentation).toContain("stderr:working\n");
   });
 
   test("executes an effective tooling canonical id and redacts host secrets in returned output", async () => {

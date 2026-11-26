@@ -8,7 +8,6 @@
  */
 
 import { resolveProxyDefaultDomain } from "@lando/engine/config/proxy-default-domain";
-import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
 import { GlobalConfigSnapshot } from "@lando/engine/services/config";
 import { EventPublicationObserver } from "@lando/engine/services/event-service";
 import type { RedactionService } from "@lando/redaction/service";
@@ -18,7 +17,7 @@ import { type CompletedCommandResult, resolveCommandCompletion } from "@lando/sd
 import { MessageWarnEvent } from "@lando/sdk/events";
 import type { RendererContribution } from "@lando/sdk/renderer";
 import type { Redactor } from "@lando/sdk/secrets";
-import { EventService, type LandoEvent, type Renderer } from "@lando/sdk/services";
+import { EventService, type LandoEvent, type Renderer, StreamFrameSink } from "@lando/sdk/services";
 import { Cause, DateTime, Effect, Exit, Layer, Option, Schema, Scope, Tracer } from "effect";
 import { ChildOutput, type ChildOutputPolicy } from "./child-output.ts";
 import { commandInterruptionExitCode } from "./command-interruption";
