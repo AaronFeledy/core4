@@ -35,6 +35,7 @@
  * migration path for volumes an earlier build created.
  */
 import {
+  AbsolutePath,
   type AppPlan,
   PHYSICAL_VOLUME_LOCK_TIER,
   type PhysicalVolumeLockTier,
@@ -60,7 +61,7 @@ export const VOLUME_OWNER_LABEL = "dev.lando.volume-owner";
 export const VOLUME_SELECTOR_LABEL = "dev.lando.volume-selector";
 
 // Reserved logical owner, not an app directory. Endpoint locality comes from the daemon.
-const GLOBAL_CACHE_OWNER = "/.lando/global-cache";
+export const GLOBAL_CACHE_OWNER = AbsolutePath.make("/.lando/global-cache");
 const GLOBAL_CACHE_APP = "@global-cache";
 
 export const isGlobalCacheStore = (store: Pick<AppPlan["stores"][number], "scope" | "kind">) =>

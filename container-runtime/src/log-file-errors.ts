@@ -26,11 +26,14 @@ export const unavailable = (providerId: string, message: string, details?: unkno
     remediation: "Install or start the selected runtime provider and confirm it can perform `logFileAccess`.",
   });
 
-export const ensure2xx = (response: DataPlaneHttpResponse, providerId: string, details: unknown) =>
+export const ensure2xx = (response: DataPlaneHttpResponse, providerId: string, request: string) =>
   response.status >= 200 && response.status < 300
     ? Effect.void
     : Effect.fail(
-        unavailable(providerId, `Docker-compatible API returned HTTP ${response.status}.`, details),
+        unavailable(providerId, `Docker-compatible API returned HTTP ${response.status}.`, {
+          request,
+          status: response.status,
+        }),
       );
 
 export const parseExecId = (body: string, providerId: string) =>

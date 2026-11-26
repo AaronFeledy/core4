@@ -6,6 +6,7 @@ import { Effect } from "effect";
 import type { EngineHttpRequest } from "../src/engine-api.ts";
 import { makeOwnedResourcesCleanup } from "../src/resource-cleanup.ts";
 import { type OwnedResource, makeResourceOwnershipStore } from "../src/resource-ownership.ts";
+import { PlanfulVolumeCoverage } from "../src/teardown-volumes.ts";
 import { volumeCreationLabels } from "../src/volume-creation.ts";
 
 test("a busy shared cache inventory entry does not prevent app resource removal", async () => {
@@ -87,6 +88,61 @@ test("a busy shared cache inventory entry does not prevent app resource removal"
   });
   expect([...volumes.keys()]).toEqual(["shared"]);
   expect(networkPresent).toBe(false);
+});
+
+test("planful volume coverage still retires an already-removed app volume", async () => {
+  const root = AbsolutePath.make("/apps/owned");
+  const appId = AppId.make("app");
+  const providerId = ProviderId.make("test");
+  const owner = {
+    appRoot: root,
+    ownerKey: appIdentityKey("owner", root),
+    appId,
+    providerId,
+    identityDigest: "digest",
+  };
+  const volume: OwnedResource = {
+    ...owner,
+    kind: "volume",
+    nativeName: "data",
+    volumeClass: "data",
+    volumeScope: "app",
+  };
+  const retired: OwnedResource[] = [];
+  const cleanup = makeOwnedResourcesCleanup({
+    ctx: { providerId: "test", remediation: "Retry cleanup.", env: {} },
+    endpointNamespace: "test-daemon",
+    store: {
+      ...makeResourceOwnershipStore("test"),
+      load: () =>
+        Effect.succeed({
+          appRoot: root,
+          ownerKey: owner.ownerKey,
+          providerId,
+          appIds: [appId],
+          resources: [volume],
+        }),
+      retire: (_root, resource) =>
+        Effect.sync(() => {
+          retired.push(resource);
+        }),
+    },
+    api: {
+      request: () => Effect.succeed({ status: 404, body: "" }),
+    },
+  });
+  const result = await Effect.runPromise(
+    cleanup(root, { volumes: true }).pipe(
+      Effect.provideService(PlanfulVolumeCoverage, { provider: "test", app: appId }),
+      Effect.provide(makeTestStateStore().layer),
+    ),
+  );
+  expect(retired).toEqual([volume]);
+  expect(result).toEqual({
+    servicesRemoved: [],
+    networksRemoved: 0,
+    volumesRemoved: { data: 0, cache: 0 },
+  });
 });
 
 test.each([204, 404])(
