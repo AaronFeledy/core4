@@ -71,7 +71,7 @@ describe("BunProcessRunner.layer", () => {
     expect(stdout).toBe(expected);
   });
 
-  for (const mode of ["interrupt", "timeout"] as const) {
+  for (const mode of ["interrupt", "signal", "timeout"] as const) {
     test(`kills and reaps a SIGTERM-resistant child on ${mode}`, async () => {
       const ready = Promise.withResolvers<number>();
       const controller = new AbortController();
@@ -91,20 +91,25 @@ describe("BunProcessRunner.layer", () => {
             `process.on("SIGTERM", () => {}); setTimeout(() => process.exit(0), 5000); await fetch(${JSON.stringify(server.url.href)}, {method:"POST",body:String(process.pid)});`,
           ],
           ...(mode === "timeout" ? { timeoutMs: 300 } : {}),
+          ...(mode === "signal" ? { signal: controller.signal } : {}),
         }),
       ).pipe(Effect.provide(BunProcessRunner.layer));
-      const completion = Effect.runPromiseExit(program, { signal: controller.signal });
+      const completion = Effect.runPromiseExit(
+        program,
+        mode === "signal" ? {} : { signal: controller.signal },
+      );
       let pid: number | undefined;
       try {
         const childPid = await Effect.runPromise(
           Effect.promise(() => ready.promise).pipe(Effect.timeout("2 seconds")),
         );
         pid = childPid;
-        if (mode === "interrupt") controller.abort();
+        if (mode === "interrupt" || mode === "signal") controller.abort();
         const exit = await Effect.runPromise(
           Effect.promise(() => completion).pipe(Effect.timeout("1 second")),
         );
         expect(Exit.isFailure(exit)).toBe(true);
+        if (mode === "signal") expect(Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause)).toBe(true);
         if (Exit.isFailure(exit) && mode === "timeout") {
           const error = Cause.findErrorOption(exit.cause);
           expect(error._tag === "Some" && error.value instanceof ProcessTimeoutError).toBe(true);

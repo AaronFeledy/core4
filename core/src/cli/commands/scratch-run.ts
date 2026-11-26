@@ -1,6 +1,7 @@
 import { withAgentContextEnv } from "@lando/engine/config/agent-env";
 import { resolveAgentEnvForwardAllowlist } from "@lando/engine/config/agent-env-policy";
 import { execServiceCommand } from "@lando/engine/operations/exec";
+import { UnobservedServiceExit } from "@lando/engine/operations/exec-stream-drain";
 import {
   acquireScratchAppWithPlan,
   detachScratchApp,
@@ -197,11 +198,13 @@ export const scratchRun = Effect.fn("ScratchRun.run")(function* (
         mapFailures(
           (cause) =>
             new ScratchAppError({
-              message: `Unable to run ${options.command.join(" ")} in scratch app ${handle.id}.`,
+              message: `Unable to complete the command in scratch app ${handle.id}.`,
               operation: "run",
               cause,
               remediation:
-                "Fix the command failure inside the scratch app, then rerun `lando run -- <command>`.",
+                cause instanceof UnobservedServiceExit
+                  ? cause.remediation
+                  : "Fix the command failure inside the scratch app, then rerun `lando run -- <command>`.",
             }),
         ),
       );

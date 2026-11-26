@@ -98,6 +98,7 @@
     "./operations/event-tooling-command": "./src/operations/event-tooling-command.ts",
     "./operations/events": "./src/operations/events.ts",
     "./operations/exec": "./src/operations/exec.ts",
+    "./operations/exec-stream-drain": "./src/operations/exec-stream-drain.ts",
     "./operations/global-common": "./src/operations/global-common.ts",
     "./operations/global-consumer-admission": "./src/operations/global-consumer-admission.ts",
     "./operations/global-consumers": "./src/operations/global-consumers.ts",

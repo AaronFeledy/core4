@@ -2314,9 +2314,11 @@
       "UserAppResolver",
       "collectExecStream",
       "createCollectingStreamFrameSink",
+      "drainExecStream",
       "makeDeprecationRecorder",
       "markDeprecated",
-      "physicalVolumeLockKey"
+      "physicalVolumeLockKey",
+      "requireObservedExit"
     ],
     "./task-progress": [
       "CurrentTaskDetail",

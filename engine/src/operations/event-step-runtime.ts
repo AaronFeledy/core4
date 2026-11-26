@@ -67,6 +67,7 @@ export interface EventRedactionSources {
 interface EventRuntimeOptions {
   readonly plan: AppPlan;
   readonly event: LandofileEventName;
+  readonly signal?: AbortSignal;
   readonly events: Context.Service.Shape<typeof EventService>;
   readonly privateFileAccess: PrivateFileAccess;
   readonly environmentResolver: Option.Option<Context.Service.Shape<typeof EnvironmentValueResolver>>;
@@ -196,6 +197,7 @@ const runInvocation = Effect.fnUntraced(function* (
       },
       ...(invocationOptions.user === undefined ? {} : { user: invocationOptions.user }),
       ...(invocationOptions.env === undefined ? {} : { env: invocationOptions.env }),
+      ...(options.signal === undefined ? {} : { signal: options.signal }),
     }));
   if (
     options.hostRunner === undefined &&
@@ -262,7 +264,11 @@ const runTask = Effect.fnUntraced(function* (
         }),
       );
     const script = yield* runBunShellTooling(
-      { name: leaf.task, cwd: String(options.plan.root) },
+      {
+        name: leaf.task,
+        cwd: String(options.plan.root),
+        ...(options.signal === undefined ? {} : { signal: options.signal }),
+      },
       String(options.plan.root),
     ).pipe(
       Effect.provideService(PrivateFileAccessService, options.privateFileAccess),
@@ -300,6 +306,7 @@ const runTask = Effect.fnUntraced(function* (
     lookupKey: leaf.task,
     task: client.task,
     source: { path: toolingSourcePathForPlan(options.plan, leaf.task), task: leaf.task },
+    ...(options.signal === undefined ? {} : { signal: options.signal }),
   };
   const runtime = yield* toolingRuntime(leaf.task);
   const resolution = prepareToolingInvocation({
@@ -358,21 +365,25 @@ export const makeEventStepRunners = (
     leaf: ResolvedToolingStepLeaf,
     effect: Effect.Effect<EventLeafResult, unknown, EnvironmentValueResolver>,
   ): Effect.Effect<EventLeafResult, EventLeafError> =>
-    withStreamedTail(
-      options.redactor,
-      Option.isSome(options.environmentResolver)
-        ? effect.pipe(Effect.provideService(EnvironmentValueResolver, options.environmentResolver.value))
-        : Effect.fail(
-            new ToolingCompileError({
-              message: "Environment value resolver is unavailable for event execution.",
-              tool: options.event,
-            }),
+    Effect.suspend(() =>
+      options.signal?.aborted
+        ? Effect.interrupt
+        : withStreamedTail(
+            options.redactor,
+            Option.isSome(options.environmentResolver)
+              ? effect.pipe(
+                  Effect.provideService(EnvironmentValueResolver, options.environmentResolver.value),
+                )
+              : Effect.fail(
+                  new ToolingCompileError({
+                    message: "Environment value resolver is unavailable for event execution.",
+                    tool: options.event,
+                  }),
+                ),
+          ).pipe(
+            mapFailures((error) => (isEventRuntimeError(error) ? error : stepFailure(options, leaf, error))),
+            Effect.flatMap((execution) => finish(options, execution)),
           ),
-    ).pipe(
-      Effect.catch((error) =>
-        isEventRuntimeError(error) ? Effect.fail(error) : Effect.fail(stepFailure(options, leaf, error)),
-      ),
-      Effect.flatMap((execution) => finish(options, execution)),
     );
   return {
     runCmd: (leaf) => checked(leaf, runCmd(options, leaf)),
