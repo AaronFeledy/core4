@@ -1,6 +1,7 @@
 import { realpath } from "node:fs/promises";
 import { isAbsolute, relative } from "node:path";
 import { inventoryProtectsApp, protectedSlotError } from "@lando/container-runtime/applied-state";
+import { PROVIDER_LABEL } from "@lando/container-runtime/labels";
 import { adoptionReceiptsFromSummary } from "@lando/container-runtime/native-ownership";
 import { AppResolveError, AppliedStateVersionError, ProviderUnavailableError } from "@lando/sdk/errors";
 import {
@@ -108,6 +109,9 @@ const groupOrphans = (
     }
     for (const volume of observed.volumes) {
       if (volume.identity?.ownerRoot !== root) continue;
+      // A runtime reachable through two providers reports its volumes to both; the labelled one owns them.
+      const labelled = volume.labels?.[PROVIDER_LABEL];
+      if (labelled !== undefined && labelled !== provider.id) continue;
       groupFor(provider.id, volume.ref.app).volumes.push(volume);
     }
   });

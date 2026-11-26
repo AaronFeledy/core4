@@ -421,6 +421,23 @@ describe("resolveAppliedPlanEvidence without a matching plan", () => {
     });
   });
 
+  test("teardown attributes a volume two providers report to the provider that labelled it", async () => {
+    // One runtime reachable through both providers, as when DOCKER_HOST points at the Podman socket.
+    const labelled = { ...retainedVolume, labels: { "dev.lando.provider": "podman" } };
+    const shared = { listVolumes: () => Effect.succeed([labelled]) };
+
+    const evidence = await Effect.runPromise(
+      resolveTeardownEvidence(root, [provider("docker", shared), provider("podman", shared)]),
+    );
+
+    expect(evidence).toEqual({
+      kind: "orphans",
+      groups: [
+        { providerId: ProviderId.make("podman"), appId: destroyedApp, services: [], volumes: [labelled] },
+      ],
+    });
+  });
+
   test("retained volumes resolve without observing a stopped runtime", async () => {
     const stopped = withOwnership(
       provider("docker", {
