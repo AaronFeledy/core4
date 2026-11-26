@@ -4,9 +4,11 @@
  * it calls for and words the failures and warnings.
  *
  * A run that cannot get a required approval fails before it asks anything. Answering no to a
- * required change fails at once; declining a recommended one skips it with a warning. Every
- * sentence names the command that asks (`lando setup` or `lando doctor --fix`) and only the
- * flags and previews that command has.
+ * required change fails at once; declining a recommended one skips it with a warning. A required
+ * `separate` change (lingering when the session has no runtime directory) names its own flag, its
+ * reason, and the commands that make it by hand, since `--yes` never approves it. Every sentence
+ * names the command that asks (`lando setup` or `lando doctor --fix`) and only the flags and
+ * previews that command has.
  */
 import { decideHostChange, hostChangeApprovedBy } from "@lando/engine/host-changes/plan";
 import { HostChangeConsentRequiredError, HostChangeDeclinedError } from "@lando/sdk/errors";
@@ -77,27 +79,37 @@ const approvingFlags = (changes: ReadonlyArray<HostChange>): ReadonlyArray<strin
   ...new Set(changes.flatMap(hostChangeApprovedBy)),
 ];
 
-const consentRequired = (copy: ConsentCopy, changes: ReadonlyArray<HostChange>) => {
-  const flags = approvingFlags(changes);
-  return new HostChangeConsentRequiredError({
-    changeIds: changes.map((change) => change.id),
-    flags: [...flags],
-    message: `${copy.subject} needs your approval for these changes, and this run cannot ask: ${changes.map((change) => change.summary).join("; ")}.`,
-    remediation: copy.withoutTerminal(flags),
-  });
-};
-
 /** What a person can run to make the change by hand; a step reading input never renders its input. */
 const manualCommands = (change: HostChange): string =>
   change.manual === undefined
     ? change.steps.map((step) => `\`${hostChangeManualLine(step)}\``).join(", then ")
     : `\`${change.manual}\``;
 
+/** A separate change has its own flag and alternatives; the shared `--yes` does not approve it. */
+const separateAlternatives = (changes: ReadonlyArray<HostChange>): string =>
+  changes
+    .filter((change) => change.consent === "separate")
+    .map(
+      (change) =>
+        ` ${change.summary}: ${change.reason} To make this change yourself, run ${manualCommands(change)}.`,
+    )
+    .join("");
+
+const consentRequired = (copy: ConsentCopy, changes: ReadonlyArray<HostChange>) => {
+  const flags = approvingFlags(changes);
+  return new HostChangeConsentRequiredError({
+    changeIds: changes.map((change) => change.id),
+    flags: [...flags],
+    message: `${copy.subject} needs your approval for these changes, and this run cannot ask: ${changes.map((change) => change.summary).join("; ")}.`,
+    remediation: `${copy.withoutTerminal(flags)}${separateAlternatives(changes)}`,
+  });
+};
+
 const declined = (copy: ConsentCopy, change: HostChange) =>
   new HostChangeDeclinedError({
     changeIds: [change.id],
     message: `${copy.subject} cannot finish without this change: ${change.summary}. ${change.reason}`,
-    remediation: `Rerun ${copy.rerun} and approve it, or make the change yourself (${manualCommands(change)}) and rerun ${copy.rerun}.`,
+    remediation: `Rerun ${copy.rerun} and approve it${change.optInFlag === undefined ? "" : ` (or pass \`--${change.optInFlag}\`)`}, or make the change yourself (${manualCommands(change)}) and rerun ${copy.rerun}.`,
   });
 
 const skippedWarning = (copy: ConsentCopy, change: HostChange): string => {
@@ -153,10 +165,11 @@ export const decideHostChangeConsent = Effect.fnUntraced(function* (
     const persistence = change.persistent
       ? `\nIt stays in effect after ${copy.subject.toLowerCase()} ends, across logout and reboot.`
       : "";
+    const necessity = change.requirement === "required" ? `\n${copy.subject} cannot finish without it.` : "";
     const approved = yield* Effect.scoped(
       interaction.confirm({
         name: `${options.command}-host-change-${change.id.replace(":", "-")}`,
-        message: `${change.reason}${persistence}\n${change.summary}?`,
+        message: `${change.reason}${persistence}${necessity}\n${change.summary}?`,
         default: false,
       }),
     );

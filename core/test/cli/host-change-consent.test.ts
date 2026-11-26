@@ -260,6 +260,94 @@ describe("decideHostChangeConsent", () => {
       "Rerun `lando doctor --fix` in a terminal to approve them, or run `lando setup` with `--yes`, which makes the same changes.",
     );
   });
+
+  describe("a required change only its own flag approves", () => {
+    const runtimeDir = hostChange("linger", {
+      summary: "Enable lingering for dev",
+      reason:
+        "The runtime cannot start without it; logging in through a session with pam_systemd also works.",
+      consent: "separate",
+      optInFlag: "enable-linger",
+      persistent: true,
+      requirement: "required",
+      steps: [
+        {
+          id: "enable",
+          summary: "enable",
+          argv: ["/usr/bin/loginctl", "enable-linger", "dev"],
+          privileged: true,
+          when: "always",
+        },
+      ],
+    });
+
+    test.each([
+      ["--yes without its flag", { yes: true }],
+      ["a run that cannot ask", { yes: false }],
+    ])(
+      "%s fails before anything changes, naming the flag, the manual command, and the reason",
+      async (_name, flags) => {
+        const exit = await Effect.runPromiseExit(
+          decideHostChangeConsent([runtimeDir], {
+            command: "setup",
+            ...flags,
+            optInFlags: none,
+            interaction: undefined,
+          }),
+        );
+
+        const error = failure(exit);
+        expect(error).toBeInstanceOf(HostChangeConsentRequiredError);
+        const remediation = error instanceof HostChangeConsentRequiredError ? error.remediation : "";
+        expect(remediation).toContain("`--enable-linger`");
+        expect(remediation).toContain("`sudo /usr/bin/loginctl enable-linger dev`");
+        expect(remediation).toContain("pam_systemd");
+      },
+    );
+
+    test("its own question says setup cannot finish without it, and No fails at once", async () => {
+      const prompts: string[] = [];
+      const { interaction } = answering({});
+      const recording: InteractionServiceShape = {
+        ...interaction,
+        confirm: (spec) =>
+          Effect.sync(() => {
+            prompts.push(spec.message);
+            return false;
+          }),
+      };
+
+      const exit = await Effect.runPromiseExit(
+        decideHostChangeConsent([runtimeDir], {
+          command: "setup",
+          yes: false,
+          optInFlags: none,
+          interaction: recording,
+        }),
+      );
+
+      expect(failure(exit)).toBeInstanceOf(HostChangeDeclinedError);
+      expect(prompts[0]).toContain("The runtime cannot start without it");
+      expect(prompts[0]).toContain("Setup cannot finish without it.");
+      const declined = failure(exit);
+      expect(declined instanceof HostChangeDeclinedError ? declined.remediation : "").toContain(
+        "--enable-linger",
+      );
+    });
+
+    test("its flag approves it without asking", async () => {
+      const result = await Effect.runPromise(
+        decideHostChangeConsent([runtimeDir], {
+          command: "setup",
+          yes: true,
+          optInFlags: new Set(["enable-linger"]),
+          interaction: undefined,
+        }),
+      );
+
+      expect([...result.approved]).toEqual([runtimeDir.id]);
+    });
+  });
 });
 
 describe("the dry-run preview and the real run decide alike", () => {

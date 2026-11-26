@@ -7,7 +7,7 @@
 import { createHash } from "node:crypto";
 
 import { type RetryPolicy, runProbe } from "@lando/sdk/probe";
-import type { HostChange } from "@lando/sdk/schema";
+import type { HostChange, HostChangeRequirement } from "@lando/sdk/schema";
 import type { HostChangeProposal } from "@lando/sdk/services";
 import { Duration, Effect } from "effect";
 
@@ -28,9 +28,14 @@ export const DELEGATE_CONF_CONTENT = "[Service]\nDelegate=cpu cpuset io memory p
 
 const reloadStep = privilegedStep("reload", "Reload systemd", ["/usr/bin/systemctl", "daemon-reload"]);
 
+/**
+ * `requirement` follows lingering when the drop-in is planned with it (the manager lingering
+ * starts needs it); under a running manager the drop-in is always required.
+ */
 export const delegationChange = (
   managerRunning: boolean,
   pathExists: (path: string) => boolean,
+  requirement: HostChangeRequirement = "required",
 ): HostChangeProposal => {
   const digest = createHash("sha256").update(DELEGATE_CONF_CONTENT).digest("hex");
   const change: HostChange = {
@@ -41,7 +46,7 @@ export const delegationChange = (
     reason: "Rootless Podman needs cgroups v2 controller delegation for your user session.",
     consent: "standard",
     persistent: false,
-    requirement: "required",
+    requirement,
     details: { path: DELEGATE_CONF_PATH, sha256: digest },
     // `tee` reads its own descriptor 0 into the fixed root-owned path; opening `/dev/stdin` by
     // path fails on the socket Lando hands a child. Root's umask decides tee's mode, so chmod.
@@ -132,25 +137,33 @@ const defaultManagerWaitPolicy: RetryPolicy = {
   timeout: Duration.seconds(20),
 };
 
+const lingerReason = (account: UserAccount, requirement: HostChangeRequirement): string =>
+  requirement === "required"
+    ? `No systemd user manager runs for ${account.user} and this session has no runtime directory (/run/user/${account.uid}), so Lando's container runtime cannot start. Enabling lingering starts a manager, which creates it; logging in through a session with pam_systemd, such as a desktop or SSH login, also does.`
+    : `No systemd user manager runs for ${account.user}, so Lando's container runtime cannot give containers their own cgroups or apply deploy.resources limits. Enabling lingering starts one without a login session.`;
+
 /**
  * `loginctl enable-linger` asks logind to start the user's manager. Lando waits for its private
  * socket, starts `user@<uid>.service` only when it is still not running, and never restarts one.
+ * Lingering is `required` when the session has no usable runtime directory, because the runtime
+ * cannot start without one, and `recommended` otherwise.
  */
 export const lingerChange = (
   account: UserAccount,
   userManager: UserManagerHost,
   managerWaitPolicy: RetryPolicy = defaultManagerWaitPolicy,
+  requirement: HostChangeRequirement = "recommended",
 ): HostChangeProposal => {
   const change: HostChange = {
     id: PREREQUISITE_CHANGES.linger,
     owner: HOST_CHANGE_OWNER,
     stage: "provider",
     summary: `Enable lingering for ${account.user}`,
-    reason: `No systemd user manager runs for ${account.user}, so Lando's container runtime cannot give containers their own cgroups or apply deploy.resources limits. Enabling lingering starts one without a login session.`,
+    reason: lingerReason(account, requirement),
     consent: "separate",
     optInFlag: "enable-linger",
     persistent: true,
-    requirement: "recommended",
+    requirement,
     details: { user: account.user, uid: String(account.uid) },
     steps: [
       privilegedStep("enable", "Enable lingering", ["/usr/bin/loginctl", "enable-linger", account.user]),
