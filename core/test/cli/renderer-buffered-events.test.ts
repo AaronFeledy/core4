@@ -1,5 +1,4 @@
 import { expect, test } from "bun:test";
-import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
 import * as LandoEventService from "@lando/engine/services/event-service";
 import { createBufferedRendererIO, createStdioRendererIO } from "@lando/renderer/io";
 import {
@@ -21,7 +20,7 @@ import {
   ReadyEvent,
 } from "@lando/sdk/events";
 import { StreamFrame } from "@lando/sdk/schema";
-import { EventService } from "@lando/sdk/services";
+import { EventService, StreamFrameSink } from "@lando/sdk/services";
 import { DateTime, Effect, Layer, Option, Schema } from "effect";
 import { finishCommandProgress } from "../../src/cli/command-progress";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary";

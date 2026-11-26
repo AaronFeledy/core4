@@ -19,6 +19,7 @@ import {
   type AppPlan,
   BootstrapLevel,
   type CommandContribution,
+  CommandStreamingMode,
   type ToolingTaskShape,
 } from "@lando/sdk/schema";
 import { Context, Effect, Option, Schema } from "effect";
@@ -45,7 +46,7 @@ const commandMetadata = Schema.Struct({
   args: Schema.optionalKey(Schema.Record(Schema.String, commandDeclaration)),
 });
 const executableSpecRemediation =
-  "Return a spec with a nonempty summary, a run function, valid flags/args, and id, namespace, bootstrap, and resultSchema matching the manifest declaration. Declare any `yes` flag as a plain boolean; the CLI owns --yes/-y.";
+  'Return a spec with a nonempty summary, a run function, valid flags/args, and id, namespace, bootstrap, and resultSchema matching the manifest declaration. Set streamingMode only to "live". Declare any `yes` flag as a plain boolean; the CLI owns --yes/-y.';
 
 const canonicalCommandIdPattern = /^[a-z][a-z0-9-]*(:[a-z][a-z0-9-]*)+$/u;
 export type ResolvedPluginCommandSpec = ExecutableCommandSpec & { readonly summary: string };
@@ -139,6 +140,9 @@ export const loadPluginSpec = (
       if (!Schema.is(BootstrapLevel)(spec.bootstrap))
         issues.push(`bootstrap ${String(spec.bootstrap)} is not valid`);
       if (!Schema.isSchema(spec.resultSchema)) issues.push("resultSchema is not a schema instance");
+      const streamingMode: unknown = spec.streamingMode;
+      if (streamingMode !== undefined && !Schema.is(CommandStreamingMode)(streamingMode))
+        issues.push(`streamingMode ${String(streamingMode)} is not "live"`);
       const yes = spec.flags?.yes;
       if (destructiveCommandVerbs.has(spec.id.slice(spec.id.lastIndexOf(":") + 1)) && yes === undefined)
         issues.push("destructive commands must declare a yes flag");
@@ -161,6 +165,7 @@ export const loadPluginSpec = (
             `namespace=${namespace}`,
             "bootstrap=valid",
             "resultSchema=schema",
+            "streamingMode=absent-or-live",
             "flags.yes=absent-or-optional-boolean-default-false",
           ],
           provided: [
@@ -168,6 +173,7 @@ export const loadPluginSpec = (
             `namespace=${String(spec.namespace)}`,
             `bootstrap=${String(spec.bootstrap)}`,
             `resultSchema=${Schema.isSchema(spec.resultSchema) ? "schema" : "non-schema"}`,
+            `streamingMode=${streamingMode === undefined ? "absent" : String(streamingMode)}`,
             `flags.yes=${yesDeclaration}`,
           ],
           message: `Plugin ${pluginName} command loader ${id} returned an invalid executable command spec: ${issues.join("; ")}.`,

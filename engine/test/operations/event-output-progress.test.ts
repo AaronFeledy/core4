@@ -1,13 +1,18 @@
 import { expect, test } from "bun:test";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
-import { EventService, RuntimeProviderRegistry, ToolingEngine } from "@lando/sdk/services";
+import {
+  EventService,
+  RuntimeProviderRegistry,
+  StreamFrameSink,
+  ToolingEngine,
+  createCollectingStreamFrameSink,
+} from "@lando/sdk/services";
 import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { DateTime, Effect, Layer } from "effect";
 import { withStreamedTail } from "../../src/operations/event-step-output.ts";
 import { runAppEvent } from "../../src/operations/events.ts";
-import { StreamFrameSink, createCollectingStreamFrameSink } from "../../src/operations/stream-frame-sink.ts";
 import { withProjectEvents } from "../../src/planner/effective-events.ts";
 import { attachEffectiveTooling } from "../../src/planner/effective-tooling.ts";
 import * as EventRuntime from "../../src/services/event-service.ts";

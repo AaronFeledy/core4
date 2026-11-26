@@ -68,8 +68,9 @@ native registry and dispatcher.
 
 `--format=ndjson` asks for the same frames by name. On every command that
 streams, such as `lando exec`, `lando logs`, `lando start`, and
-`lando rebuild`, it writes exactly what `--format=json` writes: one JSON
-document per line, ending in the result frame. Lando also treats it as machine
+`lando rebuild`, and plugin commands that run a process, such as
+`lando schedule:run` and `lando db:import`, it writes exactly what
+`--format=json` writes: one JSON document per line, ending in the result frame. Lando also treats it as machine
 output when it decides how to run the command, so `lando exec --format=ndjson`
 never opens a terminal session inside the service. A failure that stops the
 command before it runs, such as an unknown flag, is one `{"_tag":"result",

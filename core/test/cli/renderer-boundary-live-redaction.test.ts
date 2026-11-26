@@ -1,9 +1,8 @@
 import { expect, test } from "bun:test";
-import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
 import * as EnvironmentValueResolverLayer from "@lando/engine/services/environment-value-resolver";
 import { RedactionService } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
-import { EnvironmentValueResolver, SecretStore } from "@lando/sdk/services";
+import { EnvironmentValueResolver, SecretStore, StreamFrameSink } from "@lando/sdk/services";
 import { Effect, Layer, Option, Schema } from "effect";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 

@@ -6,8 +6,8 @@ import {
 import { RedactionService } from "@lando/redaction/service";
 import { SqlCommandFailedError } from "@lando/sdk/errors";
 import type { Environment } from "@lando/sdk/schema";
-import type { ExecChunk } from "@lando/sdk/services";
-import { Effect, type Stream } from "effect";
+import { type ExecChunk, StreamFrameSink } from "@lando/sdk/services";
+import { Effect, Option, type Stream } from "effect";
 import { type SqlCredentialSecrets, resolveSqlEnvironment } from "./environment.ts";
 
 export const sqlCommandFailure = (
@@ -39,6 +39,8 @@ export const checkedSqlExecution = Effect.fnUntraced(function* <E, R>(
     readonly env?: Environment;
     readonly secrets?: SqlCredentialSecrets | (() => SqlCredentialSecrets);
     readonly stdout?: "discard";
+    /** The database client's work is the user's to watch: stream its stderr to a live sink. */
+    readonly live?: true;
   },
 ) {
   // Resolution triggers credential registration before reading the secret tiers.
@@ -51,9 +53,11 @@ export const checkedSqlExecution = Effect.fnUntraced(function* <E, R>(
   if (redaction._tag === "Some" && secrets.wholeToken.length > 0) {
     yield* redaction.value.registerValues(secrets.wholeToken, { match: "whole-token" });
   }
+  const sink = context.live === true ? yield* Effect.serviceOption(StreamFrameSink) : Option.none();
   return yield* captureCommandOutput(execution, {
     stdoutLimit: CONTROL_STDOUT_LIMIT,
     stdout: context.stdout === "discard" ? "discard" : "forward",
+    ...(Option.isSome(sink) ? { live: { sink: sink.value, service: context.service } } : {}),
     // Failure-tail tokens are substring-only.
     authoritativeTokens: secrets.substring,
     failure: (evidence) => sqlCommandFailure(context.service, context.command, evidence),

@@ -9,8 +9,9 @@ import type {
   RuntimeProviderShape,
   StateStore,
 } from "@lando/sdk/services";
+import { requireObservedExit } from "@lando/sdk/services";
 import { Cause, type Context, Effect, Stream } from "effect";
-import { execExitUnobserved, requireObservedExit } from "../operations/exec-stream-drain.ts";
+import { execExitUnobserved } from "../operations/exec-stream-drain.ts";
 import type { HostProbeRunners } from "../subsystems/healthcheck/attempt.ts";
 import { type AppStep, providerCommand } from "./build-app-plan.ts";
 import type { BuildRedaction } from "./build-redaction.ts";

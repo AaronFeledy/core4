@@ -1,9 +1,14 @@
 import { expect, test } from "bun:test";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { createPayloadRedactor } from "@lando/sdk/secrets";
-import { EventService, type LandoEvent, ProcessRunner } from "@lando/sdk/services";
+import {
+  EventService,
+  type LandoEvent,
+  ProcessRunner,
+  StreamFrameSink,
+  type StreamFrameSinkFrame,
+} from "@lando/sdk/services";
 import { Effect, Queue, Stream } from "effect";
-import { StreamFrameSink, type StreamFrameSinkFrame } from "../../src/operations/stream-frame-sink.ts";
 import * as BunProcessRunner from "../../src/services/process-runner.ts";
 import { streamArgvCommand } from "../../src/services/shell-script-stream.ts";
 

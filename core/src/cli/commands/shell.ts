@@ -1,6 +1,6 @@
 import { withAgentContextEnv } from "@lando/engine/config/agent-env";
 import { resolveAgentEnvForwardAllowlist } from "@lando/engine/config/agent-env-policy";
-import { drainExecStream, execExitUnobserved } from "@lando/engine/operations/exec-stream-drain";
+import { execExitUnobserved } from "@lando/engine/operations/exec-stream-drain";
 import { availableServiceList, unknownPlanServiceError } from "@lando/engine/operations/unknown-service";
 import { appliedServicePlan, selectCommandIdentity } from "@lando/engine/services/execution-identity";
 import { RedactionService, createPayloadValues } from "@lando/redaction/service";
@@ -27,6 +27,7 @@ import {
   RuntimeProviderRegistry,
   SecretStore,
   ShellRunner,
+  drainExecStream,
 } from "@lando/sdk/services";
 /**
  * `lando shell` — host shell at the app root by default, or a service shell with `--service`.

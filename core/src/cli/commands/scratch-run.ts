@@ -2,7 +2,6 @@ import { withAgentContextEnv } from "@lando/engine/config/agent-env";
 import { resolveAgentEnvForwardAllowlist } from "@lando/engine/config/agent-env-policy";
 import { execServiceCommand } from "@lando/engine/operations/exec";
 import { UnobservedServiceExit } from "@lando/engine/operations/exec-stream-drain";
-import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
 import {
   acquireScratchAppWithPlan,
   detachScratchApp,
@@ -30,6 +29,7 @@ import {
   RuntimeProviderRegistry,
   type ScratchAppService,
   type StateStore,
+  StreamFrameSink,
 } from "@lando/sdk/services";
 import { Effect, Option, Schema } from "effect";
 import { CliInvocation } from "../../runtime/invocation-context";

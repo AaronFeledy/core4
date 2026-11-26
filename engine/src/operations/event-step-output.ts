@@ -7,8 +7,8 @@
  */
 import { type OutputRedactionScope, createOutputLineRedactor } from "@lando/redaction/line-stream";
 import { RedactionService, createPayloadValues } from "@lando/redaction/service";
+import { StreamFrameSink, type StreamFrameSinkShape } from "@lando/sdk/services";
 import { Effect, Option } from "effect";
-import { StreamFrameSink, type StreamFrameSinkShape } from "./stream-frame-sink.ts";
 
 const OUTPUT_TAIL_LENGTH = 4_000;
 const encoder = new TextEncoder();

@@ -32,7 +32,10 @@ const isAliasArray = (value: LandoTopLevelAlias): value is ReadonlyArray<LandoAl
   Array.isArray(value);
 
 export interface LandoCommandSpec<A = unknown, E = unknown, R = unknown>
-  extends Omit<ExecutableCommandSpec<A, E, R, unknown>, "namespace" | "render" | "completion"> {
+  extends Omit<
+    ExecutableCommandSpec<A, E, R, unknown>,
+    "namespace" | "render" | "completion" | "streamingMode"
+  > {
   readonly namespace: LandoCommandNamespace;
   readonly summary: string;
   readonly description?: string;

@@ -28,7 +28,6 @@ import {
 import * as BunDataMover from "@lando/data-mover/service";
 import * as AppCacheService from "@lando/engine/cache/service";
 import { AGENT_CONTEXT_ENV_ALLOWLIST } from "@lando/engine/config/agent-env";
-import { StreamFrameSink, type StreamFrameSinkFrame } from "@lando/engine/operations/stream-frame-sink";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as ScratchRegistryLayer from "@lando/engine/scratch-app/registry";
 import { makeScratchRegistry } from "@lando/engine/scratch-app/registry";
@@ -51,6 +50,7 @@ import { createBufferedRendererIO } from "@lando/renderer/io";
 import * as RendererOutput from "@lando/renderer/output";
 import * as RendererRuntime from "@lando/renderer/runtime";
 import { ScratchAppError, ServiceExecError } from "@lando/sdk/errors";
+import { StreamFrameSink, type StreamFrameSinkFrame } from "@lando/sdk/services";
 import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import * as StateStoreLayer from "@lando/state-store/service";

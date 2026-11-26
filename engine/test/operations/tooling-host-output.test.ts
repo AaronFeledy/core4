@@ -19,12 +19,13 @@ import {
   ProcessRunner,
   RuntimeProviderRegistry,
   ShellRunner,
+  StreamFrameSink,
+  type StreamFrameSinkFrame,
   ToolingEngine,
 } from "@lando/sdk/services";
 import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { DateTime, Effect, Layer, Schema } from "effect";
-import { StreamFrameSink, type StreamFrameSinkFrame } from "../../src/operations/stream-frame-sink.ts";
 import { runTooling } from "../../src/operations/tooling.ts";
 import { withProjectEvents } from "../../src/planner/effective-events.ts";
 import { attachEffectiveTooling } from "../../src/planner/effective-tooling.ts";

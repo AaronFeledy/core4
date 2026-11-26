@@ -2,7 +2,7 @@ import type { CliInvocationContext } from "../runtime/invocation-context";
 import { renderPluginTopicHelp } from "./cold-path-output";
 import { activeRendererMode, activeResultFormat, emitResultLine } from "./compiled-runtime";
 import { landoFlagsForPolicy, specOwnerPolicy } from "./flag-claims";
-import { isEnvelopeResultFormat } from "./format-flags";
+import { commandResultFormats, isEnvelopeResultFormat } from "./format-flags";
 import { commandHelpInput } from "./help-command-input";
 import { typeableName } from "./help-names";
 import { redactHelpText } from "./help-redaction";
@@ -51,6 +51,7 @@ export const tryPluginCommandHelp = async (
         extras: name.extras,
         summary: row.summary,
         source: "plugin",
+        advertisedFormats: [...commandResultFormats(spec)],
         plugin: row.pluginName,
         provenance: row.source,
         implementation: "validated",
