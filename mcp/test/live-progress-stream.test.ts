@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import type { StreamFrameSinkFrame } from "@lando/engine/operations/stream-frame-sink";
 import { McpTransportError } from "@lando/sdk/errors";
 import { createRedactor } from "@lando/sdk/secrets";
+import type { StreamFrameSinkFrame } from "@lando/sdk/services";
 import { Deferred, Effect, Exit, Fiber } from "effect";
 import { makeStreamFrameSink } from "../src/progress";
 import { flushProgress, progressFixture } from "./live-progress-fixture";

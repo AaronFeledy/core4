@@ -495,6 +495,55 @@ get no stream, so when `input.stdio` lacks the stream you asked for, fail with
 description, so leave it out of your own. Each stream can be claimed by one
 argument, which can't be `multiple`.
 
+### Stream a process's output while it runs
+
+A command that runs a long process, such as a scheduled job or a database
+client, should show that process's output as it arrives. Set
+`streamingMode: "live"` on the spec and send the output to `StreamFrameSink`
+from `@lando/sdk/services`. When `run` drains a provider exec stream,
+`collectExecStream` does the sending for you. This is the core of the bundled
+`schedule:run`:
+
+```ts
+import { StreamFrameSink, collectExecStream } from "@lando/sdk/services";
+
+export const spec = {
+  id: "schedule:run",
+  namespace: "schedule",
+  bootstrap: "app",
+  streamingMode: "live",
+  resultSchema: ScheduleRunResult,
+  run: Effect.fn("Schedule.run")(function* (input) {
+    // Resolve the job, its provider, and the exec target first.
+    const sink = yield* Effect.serviceOption(StreamFrameSink);
+    const output = yield* collectExecStream(provider.execStream(target, { command }), sink);
+    return { service: job.service, name: job.name, ...output };
+  }),
+} as const satisfies ExecutableCommandSpec<ScheduleRunResult>;
+```
+
+With the declaration, Lando gives `run` a sink whenever someone watches the
+output. A terminal shows each chunk as the process writes it. `--format=json`
+and `--format=ndjson` write one JSON frame per line, `stdout` and `stderr`
+frames for the output and a single `result` frame last, and `--help` lists
+`ndjson` among the `--format` values. An MCP call gets the same chunks as
+progress notifications before its result, and a Landofile event that runs the
+command streams it too.
+
+The sink is optional, so read it with `Effect.serviceOption`. `--format=yaml`
+has none, because it prints one document after the command ends, and code that
+calls your `run` directly may provide none either. `collectExecStream` follows
+the same rule as Lando's own `exec`: with a sink it sends every chunk and
+returns no `stdout` or `stderr`, and without one it collects both for your
+result. Declare those result fields optional. To send output yourself, emit raw
+chunks such as `sink.emit({ _tag: "stderr", kind: "bytes", chunk, service })`.
+The sink masks registered secrets and encodes the frames, so don't redact or
+JSON-encode the chunks first.
+
+A command without `streamingMode` gets no sink from the CLI and refuses
+`--format=ndjson` with `RendererSelectionError`, naming the formats it does
+support. Any other value fails to load with `PluginDescriptorMismatchError`.
+
 ## Verify
 
 Check your generated service and package before you start replacing the example.

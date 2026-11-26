@@ -8,7 +8,6 @@
  * Interrupts (cancellation) propagate; this seam must not swallow them.
  */
 
-import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
 import { RuntimeCwd } from "@lando/engine/runtime/cwd";
 import { OperationDiscovery, withAppDiscovery, withDiscoveryCwd } from "@lando/landofile/operation-discovery";
 import {
@@ -18,6 +17,7 @@ import {
   normalizeDefect,
   orDieWithRole,
 } from "@lando/sdk/command-result";
+import { StreamFrameSink } from "@lando/sdk/services";
 import { Cause, type Context, Effect, Exit } from "effect";
 import type { McpExecute } from "./dispatch";
 import type { McpCommandExecutorShape } from "./port";

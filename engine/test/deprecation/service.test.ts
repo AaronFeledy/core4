@@ -98,6 +98,58 @@ describe("DeprecationServiceLayer.layer", () => {
     expect(result.summary[0]?.count).toBe(1);
   });
 
+  test("publishes deprecation-used for the first use of a surface only, counting every use", async () => {
+    const result = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const deprecations = yield* DeprecationService;
+          const events = yield* EventService;
+          const queue = yield* events.subscribeQueue;
+          // Concurrent first uses race for the one publication.
+          yield* Effect.all(
+            Array.from({ length: 3 }, () =>
+              deprecations.use({ kind: "command", id: "app:start", notice: warningNotice, timestamp }),
+            ),
+            { concurrency: "unbounded" },
+          );
+          yield* deprecations.use({ kind: "command", id: "app:start", notice: warningNotice, timestamp });
+          return {
+            published: Array.from(yield* Queue.clear(queue)).filter(
+              (event) => event._tag === "deprecation-used",
+            ),
+            summary: yield* deprecations.summary(),
+          };
+        }),
+      ).pipe(Effect.provide(Layer.mergeAll(LandoEventService.layer, deprecationServiceWithEventsLayer))),
+    );
+
+    expect(result.published.map(eventUseId)).toEqual(["app:start"]);
+    expect(result.summary.map((entry) => [entry.id, entry.count])).toEqual([["app:start", 4]]);
+  });
+
+  test("fails every use of a severity:error surface but publishes once", async () => {
+    const result = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const deprecations = yield* DeprecationService;
+          const events = yield* EventService;
+          const queue = yield* events.subscribeQueue;
+          const use = deprecations.use({ kind: "command", id: "app:legacy", notice: errorNotice, timestamp });
+          const exits = [yield* Effect.exit(use), yield* Effect.exit(use)];
+          return {
+            exits,
+            published: Array.from(yield* Queue.clear(queue)).filter(
+              (event) => event._tag === "deprecation-used",
+            ),
+          };
+        }),
+      ).pipe(Effect.provide(Layer.mergeAll(LandoEventService.layer, deprecationServiceWithEventsLayer))),
+    );
+
+    expect(result.exits.map(Exit.isFailure)).toEqual([true, true]);
+    expect(result.published).toHaveLength(1);
+  });
+
   test("publishes deprecation-used before failing severity:error usage", async () => {
     const result = await Effect.runPromise(
       Effect.scoped(

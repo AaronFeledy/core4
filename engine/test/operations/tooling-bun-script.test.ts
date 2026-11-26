@@ -8,11 +8,12 @@ import {
   ConfigService,
   LandofileService,
   RuntimeProviderRegistry,
+  StreamFrameSink,
+  type StreamFrameSinkFrame,
   ToolingEngine,
 } from "@lando/sdk/services";
 import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
-import { Effect, Layer } from "effect";
-import { StreamFrameSink, type StreamFrameSinkFrame } from "../../src/operations/stream-frame-sink.ts";
+import { Cause, Effect, Exit, Layer } from "effect";
 import { runTooling } from "../../src/operations/tooling.ts";
 import { runBunShellTooling } from "../../src/operations/tooling-bun-script.ts";
 import { scriptHostLayer } from "./tooling-bun-script-support.ts";
@@ -182,7 +183,7 @@ test.each(["direct", "fallback"] as const)(
   },
 );
 
-test("reports an interrupted script as exit 130 instead of a tooling failure", async () => {
+test("interrupts a running script without inventing a child exit", async () => {
   // Given
   const root = await mkdtemp(join(tmpdir(), "lando-script-interrupt-"));
   const controller = new AbortController();
@@ -190,19 +191,25 @@ test("reports an interrupted script as exit 130 instead of a tooling failure", a
     await mkdir(join(root, ".lando/scripts"), { recursive: true });
     await writeFile(
       join(root, ".lando/scripts/slow.bun.sh"),
-      ["# ---", "# desc: Sleep until interrupted", "# ---", "sleep 30", ""].join("\n"),
+      ["# ---", "# desc: Sleep until interrupted", "# ---", "echo ready && sleep 30", ""].join("\n"),
     );
-    setTimeout(() => controller.abort(), 200);
     // When
-    const result = await Effect.runPromise(
+    const exit = await Effect.runPromiseExit(
       runBunShellTooling({ name: "slow", signal: controller.signal }, root).pipe(
         Effect.provide(Layer.merge(scriptHostLayer, testEnvironmentResolverLayer)),
+        Effect.provideService(StreamFrameSink, {
+          emit: (frame) =>
+            Effect.sync(() => {
+              if (frame._tag === "stdout") controller.abort();
+            }),
+        }),
         Effect.timeout("5 seconds"),
       ),
     );
     // Then
-    expect(result).toMatchObject({ tool: "app:slow", exitCode: 130 });
+    expect(Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause)).toBe(true);
   } finally {
+    controller.abort();
     await rm(root, { recursive: true, force: true });
   }
 });

@@ -26,6 +26,7 @@ const requiredEntry = {
   step: "web:app:install",
   containerId: "web-1",
   outcome: "complete",
+  exitCode: 0,
   durationMs: 12,
   transcriptPath: AbsolutePath.make("/tmp/lando/builds/web.log"),
   completedAt,
@@ -50,7 +51,7 @@ describe("BuildResultEntry", () => {
   });
 
   test("rejects an app step identity on an artifact entry", () => {
-    const { step: _, containerId: __, ...common } = requiredEntry;
+    const { step: _, containerId: __, exitCode: ___, ...common } = requiredEntry;
     const artifact = {
       ...common,
       phase: "artifact",
@@ -79,7 +80,7 @@ describe("BuildResultEntry", () => {
   test("returns nothing when a newer matching attempt failed", () => {
     // Given
     const success = requiredEntry;
-    const failure = { ...requiredEntry, outcome: "fail" as const };
+    const failure = { ...requiredEntry, outcome: "fail" as const, exitCode: 7 };
 
     // When
     const found = findCompleteBuildResult([success, failure], {
@@ -96,7 +97,7 @@ describe("BuildResultEntry", () => {
 
   test("returns a newer success recorded after a failure", () => {
     // Given
-    const failure = { ...requiredEntry, outcome: "fail" as const };
+    const failure = { ...requiredEntry, outcome: "fail" as const, exitCode: 7 };
     const success = { ...requiredEntry, transcriptPath: AbsolutePath.make("/tmp/newer.log") };
 
     // When

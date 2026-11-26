@@ -1,6 +1,8 @@
 import { isErrnoCode } from "@lando/sdk/errors";
 
-const detachedChildren = new Set<number>();
+type DetachedChild = Pick<ReturnType<typeof Bun.spawn>, "pid" | "exited" | "exitCode" | "signalCode">;
+
+const detachedChildren = new Set<DetachedChild>();
 let exitListenerInstalled = false;
 
 export const killProcessTree = (pid: number, signal: "SIGTERM" | "SIGKILL", detached = true): void => {
@@ -19,16 +21,14 @@ export const killProcessTree = (pid: number, signal: "SIGTERM" | "SIGKILL", deta
   }
 };
 
-export const registerDetachedProcess = (child: {
-  readonly pid: number;
-  readonly exited: Promise<number>;
-}): void => {
+export const registerDetachedProcess = (child: DetachedChild): void => {
   if (!exitListenerInstalled) {
     process.on("exit", () => {
-      for (const pid of detachedChildren) killProcessTree(pid, "SIGKILL");
+      for (const child of detachedChildren)
+        if (child.exitCode === null && child.signalCode === null) killProcessTree(child.pid, "SIGKILL");
     });
     exitListenerInstalled = true;
   }
-  detachedChildren.add(child.pid);
-  void child.exited.then(() => detachedChildren.delete(child.pid));
+  detachedChildren.add(child);
+  void child.exited.then(() => detachedChildren.delete(child));
 };

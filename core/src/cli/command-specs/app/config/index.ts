@@ -12,7 +12,7 @@ import { runAppConfig } from "../../../config-command-runtime.ts";
 import type { LandoCommandSpec } from "../../../spec/command-base";
 import { specFlagsOf, stringFlag } from "../../../spec/input-coercion";
 import { Args, Flags } from "../../../spec/metadata";
-import { dryRunFlag, editorFlag, formatFlag, pathFlag, typeFlag } from "../../config-flags";
+import { dryRunFlag, editorFlag, pathFlag, typeFlag } from "../../config-flags";
 import { configWriteOptionsFromInput } from "../../config-write-input";
 
 export const appConfigOptionsFromInput = (input: unknown): AppConfigOptions => {
@@ -32,7 +32,7 @@ const sourceFlag = Flags.string({
 export const appConfigSpec: LandoCommandSpec<AppConfigResult> = {
   resultSchema: AppConfigResultSchema,
   id: "app:config",
-  resultFormats: ["table"],
+  rendersTable: true,
   summary: "Read or write the current app's Landofile.",
   namespace: "app",
   topLevelAlias: false,
@@ -48,7 +48,6 @@ export const appConfigSpec: LandoCommandSpec<AppConfigResult> = {
     value: Args.string({ description: "Value for set.", required: false }),
   },
   flags: {
-    format: formatFlag,
     type: typeFlag,
     path: pathFlag,
     source: sourceFlag,

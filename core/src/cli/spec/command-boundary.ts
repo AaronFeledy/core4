@@ -2,7 +2,7 @@ import type { RendererIO } from "@lando/renderer/io";
 import { Effect, Layer, Schema } from "effect";
 import type { CliInvocationContext } from "../../runtime/invocation-context";
 import { type RendererMode, formatBugReport } from "../bug-report";
-import { type ResultFormat, isEnvelopeResultFormat } from "../format-flags";
+import { type ResultFormat, isMachineResultFormat } from "../format-flags";
 import { scanLandoFlags } from "../lando-flags";
 import { runWithRendererHandling } from "../renderer-boundary";
 
@@ -81,7 +81,7 @@ export const preCommandOutputMode = (input: {
   scanLandoFlags(input.argv, {
     "--format": (match) => {
       const value = match.value;
-      if (value !== undefined && isEnvelopeResultFormat(value)) explicitFormat = value;
+      if (value !== undefined && isMachineResultFormat(value)) explicitFormat = value;
     },
     "--json": () => {
       machineRequested = true;

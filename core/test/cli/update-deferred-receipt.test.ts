@@ -261,12 +261,16 @@ test.each(["json", "yaml", "ndjson"])(
       const rejected = await invoke("ndjson");
       expect(rejected.exit).toBe(2);
       expect(rejected.stderr).toBe("");
+      // An ndjson pre-command refusal is a stream result frame, not a bare envelope.
       expect(JSON.parse(rejected.stdout)).toMatchObject({
-        ok: false,
-        command: "meta:version",
-        error: {
-          _tag: "RendererSelectionError",
-          message: 'meta:version does not support result format "ndjson". Allowed: text, json, yaml.',
+        _tag: "result",
+        envelope: {
+          ok: false,
+          command: "meta:version",
+          error: {
+            _tag: "RendererSelectionError",
+            message: 'meta:version does not support result format "ndjson". Allowed: text, json, yaml.',
+          },
         },
       });
       expect(await Bun.file(receiptPath).text()).toBe(before);

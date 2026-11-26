@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import type { StreamFrameSinkFrame } from "@lando/engine/operations/stream-frame-sink";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { makeStreamFrameSink as makeRendererSink } from "@lando/renderer/output";
 import { layerJsonService } from "@lando/renderer/runtime";
+import type { StreamFrameSinkFrame } from "@lando/sdk/services";
 import { Effect, Exit, Layer } from "effect";
 import { makeStreamFrameSink as makeMcpSink } from "../src/progress";
 import { projectMcpProgressFrame } from "../src/result-inspector";

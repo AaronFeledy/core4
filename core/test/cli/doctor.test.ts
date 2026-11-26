@@ -25,9 +25,9 @@ import { metaDoctorSpec } from "../../src/cli/command-specs/meta/doctor.ts";
 import type { DoctorSectionResult } from "../../src/cli/commands/doctor.ts";
 import { type DoctorOptions, doctor } from "../../src/cli/commands/doctor.ts";
 import { type DoctorCheck, DoctorNdjsonResultSchema } from "../../src/cli/commands/doctor-contract.ts";
-import { renderDoctorReportAsNdjson } from "../../src/cli/commands/doctor-render-ndjson.ts";
 import { renderDoctorReport } from "../../src/cli/commands/doctor-render-text.ts";
 import { makeDoctorReport } from "../../src/cli/commands/doctor-report.ts";
+import { renderDoctorReportAsNdjson } from "./doctor-report-fixture";
 
 const asReport = (result: DoctorSectionResult) =>
   makeDoctorReport({

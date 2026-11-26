@@ -2,17 +2,25 @@
  * Deprecation-warning resolution and end-of-command diagnostics rendering.
  *
  * `resolveCliDeprecationWarnings` strips the `--no-deprecation-warnings` flag and
- * decides whether warnings are enabled; `renderDeprecationDiagnostics` drains the
- * `DeprecationService` summary at command end and emits it through the renderer —
- * as byte-stable `deprecation-used` stream frames for the JSON renderer, or as
- * warn/info messages otherwise.
+ * decides whether warnings are enabled. `renderDeprecationDiagnostics` emits deprecation
+ * records through the renderer at command end: as byte-stable `deprecation-used`
+ * stream frames for the JSON renderer, or as warn/info messages otherwise.
+ *
+ * The fiber-scoped `DeprecationRecorder` captures invocation-local uses.
+ * The CLI boundary provides a fresh recorder around the command effect and reads
+ * the records once the command finishes.
  */
 
 import { RedactionService } from "@lando/redaction/service";
 import { encodeStreamEventFrame } from "@lando/sdk/command-result";
 
-import type { DeprecationUse } from "@lando/sdk/schema";
-import { DeprecationService, Renderer } from "@lando/sdk/services";
+import { type DeprecationUse, formatDeprecationNotice } from "@lando/sdk/schema";
+import {
+  DeprecationRecorder,
+  DeprecationService,
+  type DeprecationSummaryEntry,
+  Renderer,
+} from "@lando/sdk/services";
 import { Effect, Option } from "effect";
 import { CliInvocation } from "../runtime/invocation-context";
 
@@ -43,17 +51,14 @@ export const resolveCliDeprecationWarnings = (
   };
 };
 
-const useCountText = (count: number): string => (count === 1 ? "once" : `${count} times`);
-
 const surfaceLabel = (use: DeprecationUse): string => `${use.kind} ${use.id}`;
 
-const warningText = (entry: DeprecationUse & { readonly count: number }): string => {
-  const replacement =
-    entry.notice.replacement === undefined ? "" : ` Replacement: ${entry.notice.replacement}.`;
-  return `Deprecated ${surfaceLabel(entry)} (used ${useCountText(entry.count)}): ${entry.notice.note}${replacement}`;
-};
+const useCountText = (count: number): string => (count === 1 ? "once" : `${count} times`);
 
-const infoSummaryText = (entries: ReadonlyArray<DeprecationUse & { readonly count: number }>): string => {
+const warnTextForEntry = (entry: DeprecationSummaryEntry): string =>
+  `${surfaceLabel(entry)} (used ${useCountText(entry.count)}): ${formatDeprecationNotice(entry.notice)}`;
+
+const infoSummaryTextForEntries = (entries: ReadonlyArray<DeprecationSummaryEntry>): string => {
   const surfaces = entries.map(
     (entry) => `${surfaceLabel(entry)} (${entry.count} ${entry.count === 1 ? "use" : "uses"})`,
   );
@@ -61,9 +66,8 @@ const infoSummaryText = (entries: ReadonlyArray<DeprecationUse & { readonly coun
 };
 
 const jsonDeprecationEventLine = Effect.fnUntraced(function* (
-  entry: DeprecationUse & { readonly count: number },
+  use: DeprecationUse,
 ): Effect.fn.Return<string, never, RedactionService> {
-  const { count: _count, ...use } = entry;
   const redaction = yield* RedactionService;
   const redactor = yield* redaction.forProfile("secrets", { sourceEnv: (yield* CliInvocation).env });
   return yield* encodeStreamEventFrame({
@@ -73,41 +77,55 @@ const jsonDeprecationEventLine = Effect.fnUntraced(function* (
   });
 });
 
-type DeprecationServiceShape = typeof DeprecationService.Service;
-
-const optionalDeprecationService = Effect.serviceOption(DeprecationService) as Effect.Effect<
-  Option.Option<DeprecationServiceShape>,
-  never,
-  never
->;
-
+/**
+ * End-of-command deprecation diagnostics. The `json` renderer writes one
+ * structured record per surface whatever the suppression setting. Human
+ * renderers warn once per surface per service-instance lifetime and summarize
+ * `info` notices; suppression silences every human line and leaves the
+ * claim allowance unspent. `uses` comes from the invocation's recorder; the
+ * human warning takes its counts from the recorder's summary and claims each
+ * surface with `DeprecationService.claimWarning`.
+ */
 export const renderDeprecationDiagnostics = Effect.fnUntraced(function* (
+  uses: ReadonlyArray<DeprecationUse>,
   enabled: boolean,
 ): Effect.fn.Return<void, never, Renderer | RedactionService> {
-  const deprecations = yield* optionalDeprecationService;
-  if (Option.isNone(deprecations)) return;
+  if (uses.length === 0) return;
   const renderer = yield* Renderer;
-  const summary = yield* deprecations.value.summary();
-  if (summary.length === 0) return;
-
   if (renderer.id === "json") {
-    for (const entry of summary) {
-      const line = yield* jsonDeprecationEventLine(entry);
+    for (const use of uses) {
+      const line = yield* jsonDeprecationEventLine(use);
       yield* renderer.output.stderr(`${line}\n`);
     }
     return;
   }
-
-  if (enabled) {
-    for (const entry of summary) {
-      if (entry.notice.severity === "warn") {
-        yield* renderer.message.warn(warningText(entry)).pipe(Effect.catch(() => Effect.void));
-      }
+  if (!enabled) return;
+  const service = yield* Effect.serviceOption(DeprecationService);
+  if (Option.isNone(service)) return;
+  const deprecations = service.value;
+  const recorder = yield* DeprecationRecorder;
+  const invocationSummary = yield* recorder.summary();
+  const freshEntries: DeprecationSummaryEntry[] = [];
+  for (const entry of invocationSummary) {
+    const claimed = yield* deprecations.claimWarning(entry.kind, entry.id);
+    if (claimed) freshEntries.push(entry);
+  }
+  for (const entry of freshEntries) {
+    if (entry.notice.severity === "warn") {
+      yield* renderer.message.warn(warnTextForEntry(entry)).pipe(Effect.catch(() => Effect.void));
     }
   }
-
-  const infoEntries = summary.filter((entry) => entry.notice.severity === "info");
+  const infoEntries = freshEntries.filter((entry) => entry.notice.severity === "info");
   if (infoEntries.length > 0) {
-    yield* renderer.message.info(infoSummaryText(infoEntries)).pipe(Effect.catch(() => Effect.void));
+    yield* renderer.message
+      .info(infoSummaryTextForEntries(infoEntries))
+      .pipe(Effect.catch(() => Effect.void));
   }
 });
+
+/**
+ * Collect invocation-scoped deprecation uses from the fiber-scoped recorder.
+ * Call after the command effect completes; yields the first-use-per-surface list.
+ */
+export const collectInvocationDeprecations: Effect.Effect<ReadonlyArray<DeprecationUse>> =
+  DeprecationRecorder.pipe(Effect.flatMap((recorder) => recorder.records()));
