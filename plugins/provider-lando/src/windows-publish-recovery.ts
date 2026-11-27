@@ -4,6 +4,7 @@ import { mapFailures } from "@lando/sdk/command-result";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import type { PluginStateStore } from "@lando/sdk/plugins";
 import type { EndpointPlan, NetworkingPlan, ServiceNetworkAttachment } from "@lando/sdk/schema";
+import { storeErrorRemediation } from "@lando/state-store";
 import { Effect, Predicate } from "effect";
 
 import {
@@ -19,12 +20,6 @@ import {
 } from "./windows-nft-receipt.ts";
 import { validIpv4Address, windowsSharedDnatClaims } from "./windows-publish-claims.ts";
 
-export const withPublishedRecoveryAfterLifecycle = <A, E, R, E2, R2>(
-  action: "start" | "stop" | "restart",
-  lifecycle: Effect.Effect<A, E, R>,
-  reconcile: Effect.Effect<void, E2, R2>,
-): Effect.Effect<A, E | E2, R | R2> =>
-  action === "start" || action === "restart" ? lifecycle.pipe(Effect.tap(() => reconcile)) : lifecycle;
 export const compatNetworkIds = (value: unknown): ReadonlyArray<string> => {
   if (!Array.isArray(value)) throw new Error("Podman network list is not an array.");
   const ids = value.map((entry) => {
@@ -190,8 +185,10 @@ const failure = (operation: string, message: string, cause?: unknown) =>
     providerId: "lando",
     operation,
     message,
-    remediation:
+    remediation: storeErrorRemediation(
+      cause,
       "Check the Lando-owned Podman machine and its published-port rules. Lando will not change ambiguous shared WSL firewall rules.",
+    ),
     ...(cause === undefined ? {} : { cause }),
   });
 

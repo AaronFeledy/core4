@@ -12,14 +12,14 @@ import { makeTestRouterService } from "@lando/sdk/test";
 import { Effect, Layer, Schema } from "effect";
 import type { CertsDoctorStatus } from "../../src/cli/commands/doctor-certs-status.ts";
 import { certsSubsystemCheck } from "../../src/cli/commands/doctor-certs-status.ts";
-import type { DoctorSectionResult } from "../../src/cli/commands/doctor-contract.ts";
+import { DoctorFinding, type DoctorSectionResult } from "../../src/cli/commands/doctor-contract.ts";
 import { HostDnsResolver } from "../../src/cli/commands/doctor-host-dns.ts";
-import { renderDoctorReportAsNdjson } from "../../src/cli/commands/doctor-render-ndjson.ts";
 import { renderDoctorReport } from "../../src/cli/commands/doctor-render-text.ts";
 import { makeDoctorReport } from "../../src/cli/commands/doctor-report.ts";
 import { HOST_DNS_SPEC, PROXY_SPEC } from "../../src/cli/commands/doctor-subsystem-checks.ts";
 import { subsystemDoctor } from "../../src/cli/commands/doctor-subsystems.ts";
-import { DefaultSubsystemDoctorLayer } from "./doctor-subsystem-fixture.ts";
+import { renderDoctorReportAsNdjson } from "./doctor-report-fixture";
+import { DefaultSubsystemDoctorLayer, doctorPathsLayer } from "./doctor-subsystem-fixture.ts";
 
 const EXPECTED_SUBSYSTEMS = ["router", "ssh", "host-dns"] as const;
 
@@ -145,7 +145,12 @@ describe("meta:doctor subsystem checks", () => {
   });
 
   test("skips manual DNS recovery when fix is requested", async () => {
-    const result = await Effect.runPromise(subsystemDoctor({ fix: true }).pipe(Effect.provide(dnsLayer([]))));
+    const result = await Effect.runPromise(
+      subsystemDoctor({ fix: true }).pipe(
+        Effect.provide(dnsLayer([])),
+        Effect.provide(DefaultSubsystemDoctorLayer),
+      ),
+    );
     const hostProxy = result.checks.find((check) => check.name === "host-dns");
     expect(hostProxy?.status).toBe("warn");
     expect(hostProxy?.context.fixOutcome).toBe("skipped-manual");
@@ -406,7 +411,7 @@ describe("meta:doctor subsystem checks", () => {
     "skips uninspected subsystems with runtime services provided=%s",
     async (provided) => {
       // Given a runtime with or without the inspectable subsystem services.
-      const runtime = provided ? DefaultSubsystemDoctorLayer : dnsLayer([]);
+      const runtime = provided ? DefaultSubsystemDoctorLayer : Layer.merge(dnsLayer([]), doctorPathsLayer);
       // When doctor inspects that runtime.
       const result = await Effect.runPromise(subsystemDoctor().pipe(Effect.provide(runtime)));
       // Then missing services and unexecuted probes never become passing checks.
@@ -433,14 +438,114 @@ describe("certificate-authority check findings", () => {
     Effect.runPromise(certsSubsystemCheck(status, fix));
 
   test("passes the certs check when the local root is in the host trust store", async () => {
-    const certs = await certsFinding({ _tag: "selected", id: "mkcert", trusted: true });
+    const certs = await certsFinding({ _tag: "selected", id: "mkcert", trusted: true, trustStores: [] });
 
     expect(certs?.status).toBe("pass");
     expect(certs?.context.certsTrusted).toBe("true");
+    expect(certs?.details).toBeUndefined();
+  });
+
+  const SYSTEM = { id: "system", name: "System trust store", state: "trusted" } as const;
+  const BREW_PATH = "/opt/homebrew/etc/ca-certificates/cert.pem";
+  const STALE_BREW = {
+    id: "homebrew",
+    name: "Homebrew CA bundle",
+    location: BREW_PATH,
+    state: "untrusted",
+    reason: "missing",
+    detail: "The bundle does not include the local CA.",
+    remediation: "Run `lando setup` without `--skip-install-ca`.",
+  } as const;
+  const UNKNOWN_NSS = {
+    id: "nss",
+    name: "NSS database",
+    state: "unknown",
+    reason: "inspection-failed",
+    remediation: "Install certutil.",
+  } as const;
+
+  test("passes with the trust stores as typed details when every store trusts the root", async () => {
+    const trustStores = [SYSTEM, { ...STALE_BREW, state: "trusted" as const }];
+    const certs = await certsFinding({ _tag: "selected", id: "mkcert", trusted: true, trustStores });
+
+    expect(certs?.status).toBe("pass");
+    expect(certs?.details).toEqual({ trustStores });
+    expect(Schema.is(DoctorFinding)(certs)).toBe(true);
+  });
+
+  test.each([
+    { name: "an untrusted store", stores: [SYSTEM, STALE_BREW, UNKNOWN_NSS], reason: "store-untrusted" },
+    { name: "only an uninspectable store", stores: [SYSTEM, UNKNOWN_NSS], reason: "store-unknown" },
+  ])("warns about $name while the system trusts the root, and never fixes it", async ({ stores, reason }) => {
+    const certs = await certsFinding(
+      { _tag: "selected", id: "mkcert", trusted: true, trustStores: stores },
+      true,
+    );
+
+    expect(certs?.status).toBe("warn");
+    expect(certs?.recovery).toBe("manual");
+    expect(certs?.context).toEqual({
+      subsystem: "certs",
+      subsystemId: "mkcert",
+      ready: "true",
+      certsTrusted: "true",
+      certsReason: reason,
+      fixOutcome: "skipped-manual",
+    });
+    expect(certs?.details).toEqual({ trustStores: stores });
+    expect(Schema.is(DoctorFinding)(certs)).toBe(true);
+    expect(certs?.solutions).toEqual(
+      stores
+        .filter(({ state }) => state !== "trusted")
+        .map((store) =>
+          store.id === "homebrew"
+            ? {
+                kind: "manual",
+                description: `Homebrew CA bundle at ${BREW_PATH} does not trust the local CA: The bundle does not include the local CA. Run \`lando setup\` without \`--skip-install-ca\`.`,
+                command: "lando setup",
+              }
+            : { kind: "manual", description: "NSS database does not trust the local CA. Install certutil." },
+        ),
+    );
+  });
+
+  test("an untrusted root wins over untrusted stores and still lists their fixes", async () => {
+    const certs = await certsFinding({
+      _tag: "selected",
+      id: "mkcert",
+      trusted: false,
+      trustStores: [{ ...SYSTEM, state: "untrusted" }, STALE_BREW, UNKNOWN_NSS],
+    });
+
+    expect(certs?.context.certsReason).toBe("untrusted");
+    expect(certs?.context.certsTrusted).toBe("false");
+    expect(certs?.solutions.map(({ description }) => description.split(" does not trust")[0])).toEqual([
+      expect.stringContaining("Browsers will warn"),
+      `Homebrew CA bundle at ${BREW_PATH}`,
+      "NSS database",
+    ]);
+  });
+
+  test("offers `lando setup` as the command only for a remediation that is a plain rerun", async () => {
+    const certs = await certsFinding({
+      _tag: "selected",
+      id: "mkcert",
+      trusted: true,
+      trustStores: [
+        SYSTEM,
+        STALE_BREW,
+        { ...UNKNOWN_NSS, remediation: "Run `sudo apt install libnss3-tools`, then run `lando setup`." },
+      ],
+    });
+
+    expect(certs?.solutions.map(({ command }) => command)).toEqual(["lando setup", undefined]);
   });
 
   test("warns when the local root is not in the host trust store", async () => {
-    const certs = await certsFinding({ _tag: "selected", id: "mkcert", trusted: false }, true);
+    const certs = await certsFinding(
+      { _tag: "selected", id: "mkcert", trusted: false, trustStores: [] },
+      true,
+    );
 
     expect(certs?.status).toBe("warn");
     expect(certs?.context.certsTrusted).toBe("false");

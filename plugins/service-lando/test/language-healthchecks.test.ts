@@ -5,8 +5,9 @@ import { join } from "node:path";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
+import { makeLandoPaths } from "@lando/paths";
 import { GlobalConfig, LandofileShape } from "@lando/sdk/schema";
-import { AppPlanner, ConfigService } from "@lando/sdk/services";
+import { AppPlanner, ConfigService, PathsService } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect, Layer, Schema } from "effect";
 import { serviceFeatures } from "../src/features/index.ts";
@@ -164,7 +165,9 @@ test.each(["node:lts", "python:3.12", "ruby:3.3", "go:1.22", "dotnet"])(
       name: "inherited-listener",
       services: { web: { type, port: 9123, certs: false } },
     });
-    const config = Schema.decodeUnknownSync(GlobalConfig)({ appEnv: { [variable]: "9000" } });
+    const config = Schema.decodeUnknownSync(GlobalConfig)({
+      serviceDefaults: { environment: { [variable]: "9000" } },
+    });
     const dependencies = Layer.mergeAll(
       PluginRegistryLayer.layer,
       BunFileSystem.layer,
@@ -180,7 +183,14 @@ test.each(["node:lts", "python:3.12", "ruby:3.3", "go:1.22", "dotnet"])(
     const result = await Effect.runPromise(
       Effect.flatMap(AppPlanner, (planner) =>
         planner.plan(compileTestLandofile(landofile), TestRuntimeProvider.capabilities),
-      ).pipe(Effect.result, Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(dependencies)))),
+      ).pipe(
+        Effect.result,
+        Effect.provide(
+          AppPlannerLayer.layer.pipe(
+            Layer.provide(Layer.mergeAll(dependencies, Layer.succeed(PathsService, makeLandoPaths()))),
+          ),
+        ),
+      ),
     );
     // Then
     expect(result).toMatchObject({
@@ -198,7 +208,7 @@ test.each(["app", "service"])("rejects a mismatched Flask listener from a %s env
     await Bun.write(file, "FLASK_RUN_PORT=9000\n");
     const landofile = Schema.decodeUnknownSync(LandofileShape)({
       name: "file-listener",
-      ...(owner === "app" ? { env_file: [file] } : {}),
+      ...(owner === "app" ? { serviceDefaults: { env_file: [file] } } : {}),
       services: {
         web: {
           type: "python:3.12",
@@ -213,7 +223,14 @@ test.each(["app", "service"])("rejects a mismatched Flask listener from a %s env
     const result = await Effect.runPromise(
       Effect.flatMap(AppPlanner, (planner) =>
         planner.plan(compileTestLandofile(landofile), TestRuntimeProvider.capabilities),
-      ).pipe(Effect.result, Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(dependencies)))),
+      ).pipe(
+        Effect.result,
+        Effect.provide(
+          AppPlannerLayer.layer.pipe(
+            Layer.provide(Layer.mergeAll(dependencies, Layer.succeed(PathsService, makeLandoPaths()))),
+          ),
+        ),
+      ),
     );
     // Then
     expect(result).toMatchObject({

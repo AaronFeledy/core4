@@ -4,12 +4,12 @@ services:
     type: php:8.3
     via: cli
     composer: false
-    db_client: false
+    dbClient: false
   worker:
     type: php:8.3
     via: cli
     composer: false
-    db_client: false
+    dbClient: false
   inbox:
     type: mailpit
     mailFrom:

@@ -1,0 +1,6 @@
+# lando-lint: expect-invalid build.empty
+name: diagnostic-reason
+services:
+  web:
+    image: alpine
+    build: {}

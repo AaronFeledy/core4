@@ -2,12 +2,12 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { resolveContainerHelper } from "@lando/container-runtime/container-helper/assets";
 import type { EngineHttpResponse } from "@lando/container-runtime/engine-api";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
 import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import { makePodmanApiClient } from "@lando/provider-lando";
-import { ContainerHelperUnavailableError, causeMessage } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
@@ -187,21 +187,7 @@ const fileLogs = (
 const containerName = "lando-livefilelogsapp--node";
 
 const realContainerHelper = (target: { readonly os: "linux"; readonly arch: "x64" | "arm64" }) =>
-  Effect.tryPromise({
-    try: async () => {
-      const path = AbsolutePath.make(helperPath(target.arch));
-      const hash = new Bun.CryptoHasher("sha256");
-      hash.update(await Bun.file(path).bytes());
-      return { target, path, digest: hash.digest("hex") };
-    },
-    catch: (cause) =>
-      new ContainerHelperUnavailableError({
-        target,
-        message: causeMessage(cause),
-        remediation:
-          "Build the static container helper or set LANDO_CONTAINER_HELPER_DIR before running live log tests.",
-      }),
-  });
+  resolveContainerHelper(target, { standalone: false });
 
 const alpineServiceName = ServiceName.make("alpine");
 const alpineSource = source({ id: "applog", path: "/tmp/lando-live/app.log", stream: "stdout" });
@@ -408,7 +394,7 @@ describe("provider-lando live container-file logs", () => {
       } finally {
         await Effect.runPromise(
           provider
-            .destroy({ app: plan.id, plan }, { volumes: true, removeState: false })
+            .bringDown({ app: plan.id, plan }, { containers: "remove", volumes: true, removeState: false })
             .pipe(Effect.provide(makeTestStateStore().layer)),
         );
         await rm(appRoot, { recursive: true, force: true });
@@ -469,7 +455,7 @@ describe("provider-lando live container-file logs", () => {
       } finally {
         await Effect.runPromise(
           provider
-            .destroy({ app: plan.id, plan }, { volumes: true, removeState: false })
+            .bringDown({ app: plan.id, plan }, { containers: "remove", volumes: true, removeState: false })
             .pipe(Effect.provide(makeTestStateStore().layer)),
         );
         await rm(appRoot, { recursive: true, force: true });

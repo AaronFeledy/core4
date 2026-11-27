@@ -31,6 +31,8 @@ const withEnv = async <T>(vars: Record<string, string>, body: (dir: string) => P
     "LANDO_ROUTER_BIND_ADDRESS",
     "LANDO_ROUTER_HTTP_FALLBACKS",
     "LANDO_ROUTER_HTTPS_FALLBACKS",
+    "LANDO_SERVICE_DEFAULTS_ENVIRONMENT",
+    "LANDO_SERVICE_DEFAULTS_LABELS",
     "LANDO_APP_ENV",
     "LANDO_APP_LABELS",
     ...Object.keys(vars),
@@ -68,25 +70,45 @@ const loadConfig = () =>
   );
 
 describe("LANDO_CONFIG__ generic env overlay", () => {
+  test("removed appEnv and appLabels paths cannot re-enter via friendly or generic overlay", async () => {
+    await withEnv(
+      {
+        LANDO_APP_ENV: '{"FROM_OLD":"yes"}',
+        LANDO_APP_LABELS: '{"com.example.old":"yes"}',
+        LANDO_CONFIG__app_env: '{"FROM_GENERIC":"yes"}',
+        LANDO_CONFIG__app_labels: '{"com.example.generic":"yes"}',
+        LANDO_CONFIG__service_defaults__environment__ENTRY: "per-entry",
+      },
+      async (dir) => {
+        await writeConfig(dir, ["serviceDefaults:", "  environment:", "    FROM_FILE: yes"]);
+        const config = await loadConfig();
+        expect(config.serviceDefaults?.environment).toEqual({ FROM_FILE: "yes" });
+        expect(config).not.toHaveProperty("appEnv");
+        expect(config).not.toHaveProperty("appLabels");
+      },
+    );
+  });
+
   test("canonical app default overrides replace the complete file maps", async () => {
     await withEnv(
       {
-        LANDO_APP_ENV: '{"FROM_ENV":"yes"}',
-        LANDO_APP_LABELS: '{"com.example.source":"environment"}',
+        LANDO_SERVICE_DEFAULTS_ENVIRONMENT: '{"FROM_ENV":"yes"}',
+        LANDO_SERVICE_DEFAULTS_LABELS: '{"com.example.source":"environment"}',
       },
       async (dir) => {
         await writeConfig(dir, [
-          "appEnv:",
-          "  FROM_FILE: yes",
-          "appLabels:",
-          "  com.example.source: file",
-          "  com.example.file-only: yes",
+          "serviceDefaults:",
+          "  environment:",
+          "    FROM_FILE: yes",
+          "  labels:",
+          "    com.example.source: file",
+          "    com.example.file-only: yes",
         ]);
 
         const config = await loadConfig();
 
-        expect(config.appEnv).toEqual({ FROM_ENV: "yes" });
-        expect(config.appLabels).toEqual({ "com.example.source": "environment" });
+        expect(config.serviceDefaults?.environment).toEqual({ FROM_ENV: "yes" });
+        expect(config.serviceDefaults?.labels).toEqual({ "com.example.source": "environment" });
       },
     );
   });

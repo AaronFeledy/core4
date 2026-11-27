@@ -15,6 +15,7 @@ export const mongodbProbes = (
           "umask 077",
           "probe_home=$(mktemp -d /tmp/lando-mongo-probe.XXXXXXXX)",
           "trap 'rm -rf -- \"$probe_home\"' EXIT",
+          "unset MONGO_URI MONGO_INITDB_ROOT_USERNAME MONGO_INITDB_ROOT_PASSWORD",
           "host=$LANDO_PROBE_HOST",
           'case "$host" in *:*) host="[$host]" ;; esac',
           'HOME="$probe_home" mongosh --quiet --norc "mongodb://$host:$LANDO_PROBE_PORT/admin?directConnection=true&serverSelectionTimeoutMS=2000&connectTimeoutMS=2000&socketTimeoutMS=2000" --eval "quit(db.adminCommand({ping: 1}).ok === 1 ? 0 : 1)"',

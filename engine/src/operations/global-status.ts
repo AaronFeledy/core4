@@ -1,3 +1,4 @@
+import { causeRemediation } from "@lando/sdk/command-result";
 import { ToolingExecError } from "@lando/sdk/errors";
 import { AppId, ServiceConnection, ServiceState } from "@lando/sdk/schema";
 import { FileSystem, GlobalAppService, RuntimeProviderRegistry } from "@lando/sdk/services";
@@ -11,7 +12,6 @@ import {
 } from "../global-app/reconciliation.ts";
 import { GlobalContributionStateSchema, readGlobalResolution } from "../global-app/resolution.ts";
 import { hostProviderId } from "../providers/host-provider.ts";
-import { taggedErrorRemediation } from "../providers/managed.ts";
 import { observeRuntime } from "../providers/runtime-observation.ts";
 import { withReadOnlyLandofile } from "../services/landofile-live.ts";
 import { canonicalMissingAppRoot } from "./app-mutation-lock.ts";
@@ -21,7 +21,6 @@ import { readGlobalLandofile } from "./global-plan.ts";
 
 export interface GlobalStatusOptions {
   readonly services?: ReadonlyArray<string>;
-  readonly format?: "json" | "table";
 }
 
 export const GlobalStatusServiceSchema = Schema.Struct({
@@ -53,7 +52,7 @@ export type GlobalStatusResult = typeof GlobalStatusResultSchema.Type;
 
 const diagnostic = (summary: string, cause: unknown): string => {
   const message = cause instanceof Error ? cause.message : undefined;
-  const remediation = taggedErrorRemediation(cause);
+  const remediation = causeRemediation(cause);
   return [summary, message, remediation].filter(Boolean).join(" ");
 };
 

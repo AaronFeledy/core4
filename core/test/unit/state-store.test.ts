@@ -211,6 +211,13 @@ describe("StateStore — corruption handling", () => {
 });
 
 describe("StateStore — version mismatch", () => {
+  for (const version of [0, 1.5, 0x100000000]) {
+    test(`open rejects an unsupported envelope version declaration (${version})`, async () => {
+      const error = await failure(store.open(jsonSpec({ version, codec: "binary" })));
+      expect(error).toMatchObject({ reason: "version", operation: "open" });
+    });
+  }
+
   test('onVersionMismatch "discard" returns the default for an older on-disk version', async () => {
     await writeFile(join(dir, "doc.json"), JSON.stringify({ version: 1, data: { count: 1, label: "old" } }));
     const value = await run(
@@ -259,6 +266,8 @@ describe("StateStore — version mismatch", () => {
       }),
     );
     expect(error.reason).toBe("version");
+    expect(error.storedVersion).toBe(1);
+    expect(error.supportedVersion).toBe(2);
   });
 });
 

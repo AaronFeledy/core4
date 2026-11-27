@@ -53,12 +53,17 @@ const prose = (value: string): string =>
     .join("");
 
 export const renderConfigLintRuleReference = (rules: ConfigLintRuleRegistry = CONFIG_LINT_RULES): string => {
-  const rows = Object.entries(rules)
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(
-      ([id, descriptor]) =>
-        `| <span id="${configLintRuleAnchorId(id)}">${code(id)}</span> | ${descriptor.severities.map((severity) => text(severity)).join(" or ")} | ${prose(descriptor.summary)} | ${listCell(descriptor.examplePaths)} | ${listCell(descriptor.stages)} |`,
-    );
+  const sorted = Object.entries(rules).sort(([left], [right]) => left.localeCompare(right));
+  const rows = sorted.map(
+    ([id, descriptor]) =>
+      `| <span id="${configLintRuleAnchorId(id)}">${code(id)}</span> | ${descriptor.severities.map((severity) => text(severity)).join(" or ")} | ${prose(descriptor.summary)} | ${listCell(descriptor.examplePaths)} | ${listCell(descriptor.stages)} |`,
+  );
+  const reasons = sorted.flatMap(([rule, descriptor]) =>
+    (descriptor.reasons ?? []).map(
+      ({ id, summary }) =>
+        `| [${code(rule)}](#${configLintRuleAnchorId(rule)}) | ${code(id)} | ${prose(summary)} |`,
+    ),
+  );
 
   return [
     "---",
@@ -86,6 +91,18 @@ export const renderConfigLintRuleReference = (rules: ConfigLintRuleRegistry = CO
     "| Rule | Severity | What it checks | Example paths | Stages |",
     "| --- | --- | --- | --- | --- |",
     ...rows,
+    ...(reasons.length === 0
+      ? []
+      : [
+          "",
+          "## Reasons within a rule",
+          "",
+          "A finding can also carry a `reason` that names the cause within its rule. These are documented causes, not a closed list.",
+          "",
+          "| Rule | Reason | What triggers it |",
+          "| --- | --- | --- |",
+          ...reasons,
+        ]),
     "",
   ].join("\n");
 };

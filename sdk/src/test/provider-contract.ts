@@ -6,6 +6,8 @@ import { mapFailures } from "../command-result/failure.ts";
 
 import {
   AbsolutePath,
+  type AppPlan,
+  type BringDownOutcome,
   ComposePreservedPathKey,
   ComposeProjectFieldKey,
   ComposeServiceFieldKey,
@@ -42,9 +44,11 @@ export const CONTRACT_MATRIX_PLATFORMS: ReadonlyArray<HostPlatform> = ["darwin",
 
 /**
  * Run the `RuntimeProvider` contract assertions. Validates capability decode,
- * lifecycle method types, fixture apply/inspect/destroy round-trips, provider
+ * lifecycle method types, fixture apply/inspect/bring-down round-trips, provider
  * identity, status, version fields, capability completeness, ApplyResult
- * shape, re-apply idempotency, list shape, and volume-preserving destroy.
+ * shape, re-apply idempotency, list shape, both bring-down dispositions for the
+ * whole app and for one observed container, volume-preserving removal, and no
+ * logs for a planned service whose container was removed.
  * Supply a digest-qualified fixture reference to also verify artifact pull integrity.
  */
 export const runProviderContract = Effect.fnUntraced(function* (
@@ -140,14 +144,6 @@ export const runProviderContract = Effect.fnUntraced(function* (
     "apply is Effect-typed",
   );
   yield* requireContract(
-    Effect.isEffect(provider.start({ app: TEST_APP_ID, service: TEST_SERVICE_NAME })),
-    "start is Effect-typed",
-  );
-  yield* requireContract(
-    Effect.isEffect(provider.stop({ app: TEST_APP_ID, service: TEST_SERVICE_NAME })),
-    "stop is Effect-typed",
-  );
-  yield* requireContract(
     Effect.isEffect(provider.restart({ app: TEST_APP_ID, service: TEST_SERVICE_NAME })),
     "restart is Effect-typed",
   );
@@ -171,8 +167,8 @@ export const runProviderContract = Effect.fnUntraced(function* (
     "runStream is Stream-typed",
   );
   yield* requireContract(
-    Effect.isEffect(provider.destroy({ app: TEST_APP_ID }, { volumes: true })),
-    "destroy is Effect-typed",
+    Effect.isEffect(provider.bringDown({ app: TEST_APP_ID }, { containers: "remove", volumes: true })),
+    "bringDown is Effect-typed",
   );
   yield* requireContract(
     isStream(
@@ -447,6 +443,8 @@ export const runProviderContract = Effect.fnUntraced(function* (
     .pipe(mapFailures(mapProviderFailure("list resolves for the contract fixture")));
   yield* requireContract(Array.isArray(listed), "list returns an array of service runtime snapshots", listed);
 
+  yield* checkBringDownDispositions(provider, testAppPlan);
+
   const declaresConfigs =
     (provider.capabilities.composeProjectFields?.supported.includes("configs") ?? false) &&
     (provider.capabilities.composeServiceFields?.supported.includes("configs") ?? false);
@@ -479,8 +477,8 @@ export const runProviderContract = Effect.fnUntraced(function* (
       },
     };
     yield* provider
-      .destroy({ app: TEST_APP_ID }, { volumes: false })
-      .pipe(mapFailures(mapProviderFailure("destroy before configs realization")));
+      .bringDown({ app: TEST_APP_ID }, { containers: "remove", volumes: false })
+      .pipe(mapFailures(mapProviderFailure("bringDown remove before configs realization")));
     yield* Effect.scoped(provider.apply(configPlan, { reconcile: true })).pipe(
       mapFailures(mapProviderFailure("apply succeeds for the configs realization fixture")),
     );
@@ -498,8 +496,8 @@ export const runProviderContract = Effect.fnUntraced(function* (
       { expected: Array.from(payload), actual: Array.from(copied) },
     );
     yield* provider
-      .destroy({ app: TEST_APP_ID }, { volumes: false })
-      .pipe(mapFailures(mapProviderFailure("destroy after configs realization")));
+      .bringDown({ app: TEST_APP_ID }, { containers: "remove", volumes: false })
+      .pipe(mapFailures(mapProviderFailure("bringDown remove after configs realization")));
     yield* Effect.promise(() => rm(directory, { recursive: true, force: true }));
   }
 
@@ -514,8 +512,8 @@ export const runProviderContract = Effect.fnUntraced(function* (
     },
   };
   yield* provider
-    .destroy({ app: TEST_APP_ID }, { volumes: false })
-    .pipe(mapFailures(mapProviderFailure("destroy resets the running contract fixture")));
+    .bringDown({ app: TEST_APP_ID }, { containers: "remove", volumes: false })
+    .pipe(mapFailures(mapProviderFailure("bringDown remove resets the running contract fixture")));
   yield* Effect.scoped(provider.apply(completingAppPlan, { reconcile: true })).pipe(
     mapFailures(mapProviderFailure("apply succeeds for the completing service fixture")),
   );
@@ -529,12 +527,30 @@ export const runProviderContract = Effect.fnUntraced(function* (
   );
 
   yield* provider
-    .destroy({ app: TEST_APP_ID }, { volumes: false })
-    .pipe(mapFailures(mapProviderFailure("destroy accepts volumes:false")));
+    .bringDown({ app: TEST_APP_ID }, { containers: "remove", volumes: false })
+    .pipe(mapFailures(mapProviderFailure("bringDown remove accepts volumes:false")));
 
   yield* provider
-    .destroy({ app: TEST_APP_ID }, { volumes: true })
-    .pipe(mapFailures(mapProviderFailure("destroy succeeds for the contract fixture")));
+    .bringDown({ app: TEST_APP_ID }, { containers: "remove", volumes: true })
+    .pipe(mapFailures(mapProviderFailure("bringDown remove succeeds for the contract fixture")));
+
+  const removedLogs = yield* Effect.timeoutOrElse(
+    provider
+      .logs({ app: TEST_APP_ID, service: TEST_SERVICE_NAME, plan: testAppPlan }, { follow: true })
+      .pipe(
+        Stream.runCollect,
+        mapFailures(mapProviderFailure("logs resolve for a planned service without a container")),
+      ),
+    {
+      duration: Duration.seconds(5),
+      orElse: () => Effect.fail(contractFailure("logs end for a planned service without a container")),
+    },
+  );
+  yield* requireContract(
+    removedLogs.length === 0,
+    "logs stream no lines for a planned service without a container",
+    Array.from(removedLogs),
+  );
 
   yield* checkProviderStartupDns(provider, testAppPlan);
 
@@ -639,4 +655,135 @@ export const runProviderContractMatrix = Effect.fnUntraced(function* (
   }
 
   return { providerName: options.providerName, results };
+});
+
+const receiptFor = (outcome: BringDownOutcome) =>
+  outcome.kind === "no-op"
+    ? undefined
+    : outcome.containers.find((receipt) => receipt.service === TEST_SERVICE_NAME);
+
+/**
+ * `stop` keeps the container and is idempotent; `remove` deletes it. The observed variants act on
+ * one listed container and refuse an observation whose provider or ownership the container itself
+ * does not prove, so forged observation labels never authorize a mutation.
+ */
+const checkBringDownDispositions = Effect.fnUntraced(function* (
+  provider: RuntimeProviderShape,
+  plan: AppPlan,
+): Effect.fn.Return<void, ContractFailure> {
+  const target = { app: TEST_APP_ID, service: TEST_SERVICE_NAME };
+  const before = yield* provider
+    .inspect(target)
+    .pipe(mapFailures(mapProviderFailure("inspect resolves before bringDown stop")));
+  const stopped = yield* provider
+    .bringDown({ app: TEST_APP_ID }, { containers: "stop" })
+    .pipe(mapFailures(mapProviderFailure("bringDown stop stops the running contract fixture")));
+  yield* requireContract(
+    stopped.kind === "stopped" &&
+      receiptFor(stopped)?.action === "stopped" &&
+      receiptFor(stopped)?.containerId === before.containerId,
+    "bringDown stop reports the container it stopped",
+    stopped,
+  );
+  const after = yield* provider
+    .inspect(target)
+    .pipe(mapFailures(mapProviderFailure("inspect resolves after bringDown stop")));
+  yield* requireContract(
+    before.containerId !== undefined &&
+      after.containerId === before.containerId &&
+      after.status !== "running",
+    "bringDown stop keeps the stopped container",
+    { before, after },
+  );
+  const again = yield* provider
+    .bringDown({ app: TEST_APP_ID }, { containers: "stop" })
+    .pipe(mapFailures(mapProviderFailure("bringDown stop is idempotent")));
+  yield* requireContract(
+    again.kind === "stopped" && receiptFor(again)?.action === "already-stopped",
+    "a second bringDown stop reports the container already stopped",
+    again,
+  );
+
+  const row = (yield* provider
+    .list({ app: TEST_APP_ID })
+    .pipe(mapFailures(mapProviderFailure("list reports the stopped contract fixture")))).find(
+    (candidate) => candidate.service === TEST_SERVICE_NAME,
+  );
+  yield* requireContract(
+    row?.containerId === before.containerId,
+    "list reports the stopped container that bringDown kept",
+    row,
+  );
+  if (row === undefined) return;
+  const foreign = yield* Effect.result(
+    provider.bringDownObserved({ ...row, providerId: ProviderId.make("contract-foreign") }, "stop"),
+  );
+  yield* requireContract(
+    Result.isFailure(foreign),
+    "bringDownObserved refuses a container observed by another provider",
+    foreign,
+  );
+  const forgedRoot = Schema.decodeUnknownSync(AbsolutePath)(join(tmpdir(), "lando-contract-forged-root"));
+  const forged = yield* Effect.result(
+    provider.bringDownObserved(
+      {
+        ...row,
+        appRoot: forgedRoot,
+        labels: { ...row.labels, "dev.lando.app-root": forgedRoot },
+      },
+      "remove",
+    ),
+  );
+  yield* requireContract(
+    Result.isFailure(forged),
+    "bringDownObserved proves ownership from the container's live labels, not the observation's",
+    forged,
+  );
+  const observedStop = yield* provider
+    .bringDownObserved(row, "stop")
+    .pipe(mapFailures(mapProviderFailure("bringDownObserved stop resolves for a stopped container")));
+  yield* requireContract(
+    observedStop.action === "already-stopped" && observedStop.containerId === before.containerId,
+    "bringDownObserved stop keeps an already stopped container",
+    observedStop,
+  );
+  const observedRemove = yield* provider
+    .bringDownObserved(row, "remove")
+    .pipe(mapFailures(mapProviderFailure("bringDownObserved remove removes the observed container")));
+  yield* requireContract(
+    observedRemove.action === "removed" && observedRemove.containerId === before.containerId,
+    "bringDownObserved remove reports the container it removed",
+    observedRemove,
+  );
+  const observedAbsent = yield* provider
+    .bringDownObserved(row, "remove")
+    .pipe(mapFailures(mapProviderFailure("bringDownObserved resolves for a removed container")));
+  yield* requireContract(
+    observedAbsent.action === "absent",
+    "bringDownObserved reports a removed container as absent",
+    observedAbsent,
+  );
+
+  yield* Effect.scoped(provider.apply(plan, { reconcile: true })).pipe(
+    mapFailures(mapProviderFailure("apply recreates the contract fixture after observed removal")),
+  );
+  const removed = yield* provider
+    .bringDown({ app: TEST_APP_ID }, { containers: "remove", volumes: false })
+    .pipe(mapFailures(mapProviderFailure("bringDown remove removes the contract fixture")));
+  yield* requireContract(
+    removed.kind === "removed" && receiptFor(removed)?.action === "removed",
+    "bringDown remove reports the container it removed",
+    removed,
+  );
+  const remaining = yield* provider
+    .list({ app: TEST_APP_ID })
+    .pipe(mapFailures(mapProviderFailure("list resolves after bringDown remove")));
+  yield* requireContract(
+    !remaining.some((candidate) => candidate.service === TEST_SERVICE_NAME),
+    "bringDown remove leaves no container behind",
+    remaining,
+  );
+  yield* Effect.scoped(provider.apply(plan, { reconcile: true })).pipe(
+    mapFailures(mapProviderFailure("apply restores the contract fixture after bringDown remove")),
+  );
 });

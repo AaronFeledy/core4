@@ -23,19 +23,19 @@ test.each([
   ["fragment", LandofileAuthoringFragment],
   ["native fragment", LandofileAuthoringFragmentNative],
 ] as const)("enforces self-port admission in the %s decoder", (_name, schema) => {
-  const input = { services: { cache: { environment: { PORT: "{{ service.port }}" } } } };
-  expect(diagnostics(schema, input).map(({ path }) => path)).toEqual([
-    ["services", "cache", "environment", "PORT"],
-  ]);
-  const valid = { services: { cache: { command: ["redis-server", "--port", "{{ service.port }}"] } } };
-  expect(Schema.decodeUnknownResult(schema)(valid, options)._tag).toBe("Success");
+  const rejected = { services: { cache: { port: "{{ service.port }}" } } };
+  expect(diagnostics(schema, rejected).map(({ path }) => path)).toEqual([["services", "cache", "port"]]);
+  for (const valid of [
+    { services: { cache: { command: ["redis-server", "--port", "{{ service.port }}"] } } },
+    { services: { cache: { environment: { PORT: "{{ service.port }}" } } } },
+  ]) {
+    expect(Schema.decodeUnknownResult(schema)(valid, options)._tag).toBe("Success");
+  }
 });
 
-test("enforces self-port placement inside a native override payload", () => {
+test("admits self-port inside a native override environment payload", () => {
   const input = { services: { cache: { environment: override({ PORT: "{{ service.port }}" }) } } };
-  expect(diagnostics(LandofileAuthoringFragmentNative, input).map(({ path }) => path)).toEqual([
-    ["services", "cache", "environment", "PORT"],
-  ]);
+  expect(Schema.decodeUnknownResult(LandofileAuthoringFragmentNative)(input, options)._tag).toBe("Success");
 });
 
 test.each([

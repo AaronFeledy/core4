@@ -13,7 +13,7 @@ import {
   SqlServiceNotFoundError,
 } from "@lando/sdk/errors";
 import type { DataTransferResult, PrunePolicy, SnapshotId, SnapshotInfo } from "@lando/sdk/schema";
-import { snapshotHandle } from "@lando/sdk/schema";
+import { snapshotHandle, snapshotInPruneBucket } from "@lando/sdk/schema";
 import type { SqlExec } from "./actions.ts";
 import { requireVolume, runExport, runImport, runReset } from "./actions.ts";
 import { requireAppliedSqliteTargets } from "./applied-sqlite.ts";
@@ -217,7 +217,7 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
     if (action === "restore" || (action === "seed" && input.snapshotId !== undefined)) {
       const scope = yield* resolveSnapshotSource({
         plan: deps.plan,
-        appliedPlans: deps.appliedPlans,
+        findAppliedSource: deps.findAppliedSource,
         ...(store === undefined ? {} : { store: store.store }),
         ownerKey: owner.ownerKey,
         ...(deps.plan.identity?.repoGroupKey === undefined
@@ -237,7 +237,7 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
     if (action === "prune") {
       const filter = yield* resolveSnapshotSource({
         plan: deps.plan,
-        appliedPlans: deps.appliedPlans,
+        findAppliedSource: deps.findAppliedSource,
         ...(store === undefined ? {} : { store: store.store }),
         ownerKey: owner.ownerKey,
         ...(deps.plan.identity?.repoGroupKey === undefined
@@ -251,9 +251,10 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
       });
       const keepLatest = input.keepLatest ?? DEFAULT_SNAPSHOT_KEEP_LATEST;
       const snapshots = yield* deps.listSnapshots(filter);
-      prunePolicy = { filter, keepLatest };
+      const recovery = input.recovery === true;
+      prunePolicy = { filter, keepLatest, ...(recovery ? { recovery } : {}) };
       pruneCandidates = [...snapshots]
-        .filter((snapshot) => snapshot.metadata?.recoveryReason === "manual")
+        .filter((snapshot) => snapshotInPruneBucket(snapshot, recovery))
         .sort(
           (left, right) => DateTime.toEpochMillis(right.createdAt) - DateTime.toEpochMillis(left.createdAt),
         )
@@ -264,7 +265,7 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
           deps.confirm,
           target.name,
           steps,
-          `Retention will delete ${pruneCandidates.length} snapshot(s) for ${target.name}.`,
+          `Retention will delete ${pruneCandidates.length} ${recovery ? "recovery" : "manual"} snapshot(s) for ${target.name}, keeping ${keepLatest}.`,
         );
       }
     }
@@ -372,7 +373,7 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
       case "snapshots": {
         const filter = yield* resolveSnapshotSource({
           plan: deps.plan,
-          appliedPlans: deps.appliedPlans,
+          findAppliedSource: deps.findAppliedSource,
           ...(store === undefined ? {} : { store: store.store }),
           ownerKey: owner.ownerKey,
           ...(deps.plan.identity?.repoGroupKey === undefined
@@ -474,6 +475,9 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
         ? { file }
         : {}),
       ...(snapshotId === undefined ? {} : { snapshotId }),
+      ...(completionReceipt === undefined || completionReceipt.operation === "snapshot"
+        ? {}
+        : { recoverySnapshotId: completionReceipt.recoverySnapshotId }),
       ...(listedSnapshots === undefined ? {} : { snapshots: listedSnapshots }),
       ...(pruneCandidates === undefined
         ? {}

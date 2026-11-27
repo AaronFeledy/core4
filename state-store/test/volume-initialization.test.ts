@@ -153,3 +153,23 @@ test.each([
   );
   expect(write).toEqual({ _tag: "Keep", result: false });
 });
+
+test("retire removes the matching generation and is settled when already absent", () =>
+  isolated(async (store) => {
+    const state = await Effect.runPromise(volumeInitialization(store, identity));
+    await Effect.runPromise(state.recordCreation);
+    expect(await Effect.runPromise(state.retire)).toBe(true);
+    expect(await Effect.runPromise(state.read)).toBeNull();
+    expect(await Effect.runPromise(state.retire)).toBe(true);
+  }));
+
+test("retire refuses a replacement generation at the same coordination key", () =>
+  isolated(async (store) => {
+    const original = await Effect.runPromise(volumeInitialization(store, identity));
+    await Effect.runPromise(original.recordCreation);
+    const replacement = { ...identity, generation: "two" };
+    const next = await Effect.runPromise(volumeInitialization(store, replacement));
+    expect(await Effect.runPromise(next.recordCreation)).toBe(true);
+    expect(await Effect.runPromise(original.retire)).toBe(false);
+    expect((await Effect.runPromise(next.read))?.identity.generation).toBe("two");
+  }));

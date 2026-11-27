@@ -1,4 +1,4 @@
-import { DateTime, Effect, Schema, Stream } from "effect";
+import { DateTime, Effect, Predicate, Schema, Stream } from "effect";
 
 import {
   AbsolutePath,
@@ -130,7 +130,7 @@ export const testCapabilities: ProviderCapabilities = {
   serviceInit: true,
   serviceLogs: true,
   serviceLogSources: true,
-  serviceHealth: "lando",
+  serviceHealth: "native",
   hostReachability: "emulated",
   sharedCrossAppNetwork: true,
   persistentStorage: true,
@@ -170,8 +170,9 @@ export const planMetadata: PlanMetadata = {
 export const CONTRACT_SPLIT_LINE = "lando-contract-split-line";
 /** Longer than Docker's 16 KiB partial-message split, shorter than the 64 KiB line bound. */
 export const CONTRACT_LONG_LINE = "L".repeat(20_000);
+// Node as PID 1 ignores SIGTERM, so without the handler every stop waits out the engine's grace period.
 const CONTRACT_SERVICE_SCRIPT =
-  "process.stdout.write('lando-contract-split-'); setTimeout(() => { process.stdout.write('line\\n'); process.stdout.write('L'.repeat(20000) + '\\n'); console.log('lando-contract-ready'); setInterval(() => console.log('lando-contract-ready'), 1000); }, 300)";
+  "process.on('SIGTERM', () => process.exit(0)); process.stdout.write('lando-contract-split-'); setTimeout(() => { process.stdout.write('line\\n'); process.stdout.write('L'.repeat(20000) + '\\n'); console.log('lando-contract-ready'); setInterval(() => console.log('lando-contract-ready'), 1000); }, 300)";
 
 /** Whether a planned service runs the contract program, whose console output fakes simulate. */
 export const runsContractServiceScript = (service: ServicePlan | undefined): boolean =>
@@ -234,6 +235,16 @@ export const mapProviderOrContractFailure =
     details instanceof ContractFailure ? details : contractFailure(assertion, details);
 
 export const isStream = (value: unknown): boolean => Stream.TypeId in Object(value);
+
+/**
+ * Recognizes an SDK tagged error by its `_tag` (every SDK error's identifier is its tag). Plugin
+ * authors run these kits in their own process, where a second `@lando/sdk` copy is legitimate,
+ * so the kit accepts the contract's failure from any copy instead of checking class identity.
+ */
+export const isSdkError = <E extends { readonly _tag: string }>(
+  value: unknown,
+  errorClass: { readonly identifier: string; new (...args: never): E },
+): value is E => Predicate.isTagged(value, errorClass.identifier);
 
 export const CAPABILITY_KEYS = Object.keys(ProviderCapabilities.fields) as ReadonlyArray<
   keyof typeof ProviderCapabilities.fields

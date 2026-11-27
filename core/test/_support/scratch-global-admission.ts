@@ -15,7 +15,11 @@ import {
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
 } from "@lando/sdk/services";
-import { TestRouterService, makeMintingCertificateAuthority } from "@lando/sdk/test";
+import {
+  TestRouterService,
+  makeMintingCertificateAuthority,
+  makeTestRuntimeProviderRegistry,
+} from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Effect, Layer, Schema } from "effect";
 import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
@@ -102,7 +106,7 @@ export const scratchGlobalAdmissionFixture = (scratchProvider: RuntimeProviderSh
   };
   const registryLayer = Layer.succeed(
     RuntimeProviderRegistry,
-    RuntimeProviderRegistry.of({
+    makeTestRuntimeProviderRegistry({
       resolveAppliedPlan: (root) => Effect.sync(() => (applied?.root === root ? applied : undefined)),
       resolveTeardownEvidence: (root) =>
         Effect.sync(() =>

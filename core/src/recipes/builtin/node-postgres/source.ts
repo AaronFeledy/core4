@@ -17,7 +17,7 @@ export const source = {
         environment: { NODE_ENV: "development" },
         volumes: ["./:/app"],
         command: ["node", "/app/server.js"],
-        dependsOn: ["database"],
+        depends_on: ["database"],
         routes: defaultRoutes,
       },
       database: { type: "postgres" },

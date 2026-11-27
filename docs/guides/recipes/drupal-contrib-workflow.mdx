@@ -73,8 +73,11 @@ lando phpcs
 lando phpstan analyse
 ```
 
-Without a PHP_CodeSniffer config, name the standard and path:
-`lando phpcs --standard=Drupal,DrupalPractice .`.
+Without a PHP_CodeSniffer ruleset, `lando phpcs` and `lando phpcbf` check the
+extension root against Drupal and DrupalPractice, including Drupal's file types
+such as `.module` and `.info.yml`, and skip `node_modules` and `vendor`. Without
+a PHPStan config, a bare `lando phpstan` analyses the extension root at PHPStan's
+default level 0.
 
 ## Add a dependency to your extension
 
@@ -133,11 +136,10 @@ database schema of an installed site.
 Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pass
 `--answer=php=8.5`, `--answer=webserver=nginx`, `--answer=database=mysql:8.0`,
 `--answer=database=postgres:16`, or `--answer='drupal=^10'` when you want those
-instead. `--answer=php=8.6` uses the PHP 8.6 release-candidate image; Xdebug
-isn't available there yet.
+instead.
 
 Nginx answers add an `edge` service in front of `appserver` (`via: fpm`) and
-set `SIMPLETEST_BASE_URL` to `http://edge`. `edge` mounts the same `site`
+set `SIMPLETEST_BASE_URL` to `http://edge:{{ services.edge.port }}`. `edge` mounts the same `site`
 volume read-only, so it serves the files the sync installs. Both webserver
 choices set `uploadDirs: [sites/*/files]` on the service serving PHP.
 
@@ -209,7 +211,7 @@ service, site sync, and tooling. They do not download Drupal:
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "SIMPLETEST_DB" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"lando-drupal-contrib-sync\",\\s*\"module\",\\s*\"example\",\\s*\"\\^11\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"post-start\":\\s*\\[\\s*\\{\\s*\"task\":\\s*\"drupal-contrib-sync\"" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "/app/vendor/bin/phpstan" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"phpstan\":\\s*\\{[^}]*\"cmd\":\\s*\\[\\s*\":drupal-local\",\\s*\"phpstan\"" } }} />
     </Step>
     <Step name="cleanup">
       <Cleanup />
@@ -226,7 +228,7 @@ service, site sync, and tooling. They do not download Drupal:
       <Run command="lando app:config --format=json" />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "/app/web/themes/custom/hello" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"via\":\\s*\"fpm\"" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"SIMPLETEST_BASE_URL\":\\s*\"http://edge\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"SIMPLETEST_BASE_URL\":\\s*\"http://edge:\{\{ services\.edge\.port \}\}\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "pgsql://" } }} />
     </Step>
   </Scenario>
@@ -261,6 +263,13 @@ service, site sync, and tooling. They do not download Drupal:
       <Verify command="lando phpcs" />
       <Verify command="lando phpstan analyse --no-progress" />
     </Step>
+    <Hidden reason="Without a ruleset, phpcs checks the extension root against Drupal and DrupalPractice">
+      <Step name="lint-without-ruleset">
+        <Run command="lando exec appserver -- mv phpcs.xml.dist phpcs.xml.off" />
+        <Verify command="lando phpcs" />
+        <Run command="lando exec appserver -- mv phpcs.xml.off phpcs.xml.dist" />
+      </Step>
+    </Hidden>
     <Step name="install-site">
       <Run command="lando drush site:install standard --db-url=mysql://lando:lando@database/contrib-journey --site-name=Example --account-name=admin --account-mail=admin@example.com -y" />
       <Verify command="lando drush status --field=bootstrap" expect={{ stdout: { regex: "Successful" } }} />

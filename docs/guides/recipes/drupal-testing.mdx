@@ -9,11 +9,26 @@ tags: [docs, recipes, drupal, php, phpunit, selenium, compose]
 
 Run Drupal's PHPUnit tests inside `appserver`, using the recipe's database and web server. Unit tests need neither; Kernel tests use the database, Functional tests also use the web server, and FunctionalJavascript tests add a browser.
 
-Start with a running, scaffolded Drupal 11 app from [Run the Drupal recipe](./drupal-workflow.mdx). This example uses `drupal-demo` with Apache, MariaDB, and webroot `web`. You can skip the site-install step: browser tests install their own temporary sites. Keep this test setup local, and don't publish Selenium's ports or expose the test site to untrusted networks.
+For a new site, opt in at init. Run these commands from your host:
+
+```sh
+lando init --recipe drupal --name=drupal-demo --yes --answer=testing=true
+cd drupal-demo
+lando start
+lando phpunit --version
+```
+
+Check that `lando phpunit --version` prints a PHPUnit version. With testing enabled, the recipe adds Chrome with 2 GB of shared memory and the `lando phpunit` task. The first start installs `drupal/core-dev` and prepares writable test directories. Drupal 10, Drupal 11, and Drupal CMS 2 templates don't declare `drupal/core-dev` by default.
+
+For Drupal CMS, select `--recipe drupal-cms` and run `lando start` the same way. If you chose `--answer=webroot=docroot`, use `docroot` in place of `web` in the test paths below. You can skip site install: browser tests create their own temporary sites. Keep Chrome on the app network and don't publish its ports.
 
 If the git repository is the module, theme, or profile, use [Run the Drupal contrib recipe](./drupal-contrib-workflow.mdx) instead. That recipe bakes this Chrome service, SIMPLETEST environment, and `lando phpunit` task in.
 
-## Install Drupal's test dependencies
+Editing `recipe.options.testing` after init doesn't change the generated Chrome service, PHPUnit task, or scaffold command.
+
+## Add testing to an existing checkout
+
+Don't expect a later start to add test dependencies on a project that already has a `composer.json` and site files. If you initialized with `testing=true`, skip to [Run a Kernel test](#run-a-kernel-test).
 
 From the app directory on your host, install the development dependencies. `-W` allows Composer to update related locked packages, so review the changes to `composer.json` and `composer.lock` before committing:
 
@@ -38,8 +53,8 @@ In `.lando.yml`, merge the `environment` entries into `services.appserver`, then
 services:
   appserver:
     environment:
-      SIMPLETEST_BASE_URL: http://appserver
-      SIMPLETEST_DB: mysql://lando:lando@database/drupal-demo
+      SIMPLETEST_BASE_URL: "http://appserver:{{ service.port }}"
+      SIMPLETEST_DB: "mysql://lando:lando@database:{{ services.database.port }}/drupal-demo"
       BROWSERTEST_OUTPUT_DIRECTORY: /app/web/sites/simpletest/browser_output
       MINK_DRIVER_ARGS_WEBDRIVER: '["chrome", {"browserName":"chrome","goog:chromeOptions":{"w3c":true,"args":["--headless=new","--disable-gpu","--no-sandbox"]}}, "http://chrome:4444"]'
   chrome:
@@ -58,9 +73,10 @@ tooling:
     user: www-data
     description: Run Drupal's PHPUnit suites as the web server user.
     cmd:
-      - vendor/bin/phpunit
+      - /app/vendor/bin/phpunit
       - -c
-      - web/core
+      - /app/web/core
+    wrapper: true
 ```
 
 Apply the changes:
@@ -193,7 +209,7 @@ lando phpunit --filter testLoginPageInChrome web/modules/custom/hello
 
 ## Adjust the test settings
 
-- `SIMPLETEST_BASE_URL` is the HTTP address both the test runner and Chromium use. `http://appserver` reaches Apache directly on the app network. If you use nginx, point it at the service that serves HTTP instead of PHP-FPM.
+- `SIMPLETEST_BASE_URL` is the HTTP address both the test runner and Chromium use. `http://appserver:{{ service.port }}` reaches Apache on its planned listen port. If you use nginx, point it at the edge service with `http://edge:{{ services.edge.port }}` instead of PHP-FPM.
 - `SIMPLETEST_DB` selects the local test database. Drupal's Kernel and browser tests use separate table prefixes. The recipe's MariaDB defaults are user `lando`, password `lando`, and a database named after the app.
 - `BROWSERTEST_OUTPUT_DIRECTORY` selects where browser tests save HTML snapshots. Keep its absolute path in step with your webroot and the writable directory you created.
 - `MINK_DRIVER_ARGS_WEBDRIVER` sets the browser, Chrome options, and Selenium URL. Keep `"w3c":true` for Drupal 11; its test base class otherwise selects the old protocol. See [Drupal's W3C testing guidance](https://www.drupal.org/node/3460567).
@@ -202,7 +218,7 @@ The `chrome` service uses Selenium's [standalone Chromium image](https://github.
 
 The healthcheck uses the image's `check-grid.sh` script, which checks Selenium's readiness value rather than just a successful HTTP response. Lando waits for that check during start and restart.
 
-The `phpunit` task selects `web/core/phpunit.xml.dist` with `-c web/core` and appends your arguments. PHPUnit preserves environment variables that are already set, so this setup doesn't need a copied `phpunit.xml`.
+The `phpunit` task runs the site's `vendor/bin/phpunit`, selects core's `phpunit.xml.dist` from your webroot, and forwards your arguments. Test paths are relative to the directory you run it from. PHPUnit preserves environment variables that are already set, so this setup doesn't need a copied `phpunit.xml`.
 
 ## Fix a failed test run
 
@@ -232,6 +248,25 @@ Volumes stay unless you pass `--volumes` or `--purge`.
 These checks validate the example Landofile and inspect its resolved Chrome service, environment variables, and `phpunit` task. They do not run Drupal tests:
 
 <Guide>
+  <Scenario id="scaffold-browser-tests" layer="e2e" timeout={1200000} render={false} reason="Run Drupal PHPUnit and verify a real login form in Chromium">
+    <Step name="start">
+      <UseFixture name="browser-module" />
+      <Run command="lando init . --recipe drupal --name=drupal-browser-tests --yes --answer=testing=true" />
+      <Run command="lando app:config:set services.appserver.port 8080 --format=json" />
+      <Run command="lando app:config:set services.database.port 3307 --format=json" />
+      <Run command="lando start" />
+    </Step>
+    <Step name="test">
+      <Verify command="lando phpunit --version" expect={{ stdout: { regex: "PHPUnit" } }} />
+      <Run command="lando exec appserver -- mkdir -p web/modules/custom" />
+      <Run command="lando exec appserver -- mv hello web/modules/custom/hello" />
+      <Verify command="lando phpunit web/modules/custom/hello/tests/src/FunctionalJavascript/LoginPageJsTest.php" expect={{ stdout: { regex: "(?:OK \\(1 test|Tests:\\s*1, Assertions:)" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes" />
+    </Step>
+  </Scenario>
   <Scenario id="drupal-testing-config" render>
     <Step name="scaffold">
       <UseFixture name="drupal-demo" />

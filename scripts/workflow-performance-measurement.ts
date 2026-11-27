@@ -2,9 +2,10 @@ import { resolve } from "node:path";
 
 import { buildDrupalJourneyPlan, classifyDrupalJourney } from "./drupal-journey.ts";
 import { buildRailsJourneyPlan, classifyRailsJourney } from "./rails-journey.ts";
-import type {
-  WorkflowPerformanceCommand,
-  WorkflowPerformanceCommandResult,
+import {
+  DRUPAL_JOURNEY_START_TIMEOUT_MS,
+  type WorkflowPerformanceCommand,
+  type WorkflowPerformanceCommandResult,
 } from "./workflow-performance-command.ts";
 import type { WorkflowPerformanceStepId } from "./workflow-performance-identifiers.ts";
 import type { WorkflowPerformanceLanePlan } from "./workflow-performance-plan.ts";
@@ -83,9 +84,19 @@ export const buildMeasuredCommands = (input: {
       ? buildDrupalJourneyPlan({ binary, name })
       : buildRailsJourneyPlan({ binary, name });
   const parent = resolve(appRoot, "..");
-  return plan.map((step) =>
-    performanceCommand(step.id, step.argv, step.id === "init" ? parent : appRoot, diagnosticEnv),
-  );
+  return plan.map((step) => {
+    const command = performanceCommand(
+      step.id,
+      step.argv,
+      step.id === "init" ? parent : appRoot,
+      diagnosticEnv,
+    );
+    // Drupal start runs the recipe scaffold build.app step; raise only that command's budget.
+    if (lane.id === "drupal-journey" && step.id === "start") {
+      return { ...command, timeoutMs: DRUPAL_JOURNEY_START_TIMEOUT_MS };
+    }
+    return command;
+  });
 };
 
 export const validateJourneyResults = (input: {

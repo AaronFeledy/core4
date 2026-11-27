@@ -1,6 +1,5 @@
 import { resolve } from "node:path";
 
-import type { CompatibilityException } from "../../../scripts/schema-compatibility/classifier.ts";
 import {
   type JsonSchema,
   type JsonValue,
@@ -239,49 +238,3 @@ export const admitsDeclaredName = (schema: JsonSchema, value: JsonValue): boolea
   const name = isJsonObject(properties) ? properties.name : undefined;
   return isJsonObject(name) && name.type === "string" && typeof value === "string";
 };
-
-const keywordException = (surface: string, path: string): CompatibilityException => ({
-  surface,
-  changeKind: "unsupported-keyword",
-  path,
-  justification: CLOSED_EXTENSION_JUSTIFICATION,
-});
-
-export const expectedClosedExtensionExceptions = (): ReadonlyArray<CompatibilityException> => {
-  const entries: CompatibilityException[] = [];
-  for (const command of CONFIG_COMMANDS) {
-    const surface = `command:${command}`;
-    entries.push(
-      keywordException(surface, "$.landofile.additionalProperties"),
-      keywordException(surface, "$.landofile.patternProperties"),
-      keywordException(surface, "$.landofile.propertyNames"),
-      keywordException(surface, "$.landofile.services.additionalProperties"),
-    );
-  }
-  for (const path of [
-    "$.landofile.additionalProperties",
-    "$.landofile.patternProperties",
-    "$.landofile.propertyNames",
-    "$.landofile.services.additionalProperties",
-  ]) {
-    entries.push(keywordException("schema:TemplateRenderContext", path));
-  }
-  entries.push(
-    keywordException("schema:ConfigTranslateEncodeInput", "$.context.additionalProperties"),
-    keywordException("schema:ConfigTranslateEncodeInput", "$.context.patternProperties"),
-    keywordException("schema:ConfigTranslateEncodeInput", "$.context.propertyNames"),
-    keywordException("schema:LandofileShape", "$.services.additionalProperties"),
-  );
-  for (const schemaId of NETWORK_SERVICE_CONFIGS) {
-    entries.push({
-      surface: `schema:${schemaId}`,
-      changeKind: "unsupported-construct",
-      path: "$.networks.anyOf",
-      justification: CLOSED_EXTENSION_JUSTIFICATION,
-    });
-  }
-  return entries;
-};
-
-export const exceptionKey = (surface: string, changeKind: string, path: string): string =>
-  `${surface}\0${changeKind}\0${path}`;

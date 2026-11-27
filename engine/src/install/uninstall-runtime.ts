@@ -16,7 +16,10 @@ import {
 import { makeLandoPaths, normalizeHostPlatform, runtimeLayoutPaths } from "@lando/paths";
 import { Effect, Result } from "effect";
 
-import { classifyManagedProviderMachine } from "../runtime/managed-provider-machine.ts";
+import {
+  classifyManagedProviderMachine,
+  verifyManagedProviderMachine,
+} from "../runtime/managed-provider-machine.ts";
 import { uninstallCleanupFailure } from "./uninstall-cleanup-error.ts";
 
 export type RuntimeExec = (
@@ -33,7 +36,6 @@ type ManagedUninstallSpawn = "linux" | "connection";
 export type UninstallRuntime = {
   readonly cmd: string;
   readonly providerId: string;
-  readonly managed: boolean;
   readonly argsPrefix: readonly string[];
   /**
    * Managed overlay only (persisted launch identity shape). Never a process.env
@@ -42,7 +44,7 @@ export type UninstallRuntime = {
    */
   readonly env?: Readonly<Record<string, string>>;
   readonly runtimeDir?: string;
-  readonly managedSpawn?: ManagedUninstallSpawn;
+  readonly managedSpawn: ManagedUninstallSpawn;
 };
 
 export type UninstallRuntimeSeams = {
@@ -72,7 +74,6 @@ const spawnEnvForRuntime = (
   runtime: UninstallRuntime,
   seams: UninstallRuntimeSeams,
 ): NodeJS.ProcessEnv | undefined => {
-  if (!runtime.managed) return undefined;
   const hostEnv = seams.hostEnv ?? process.env;
   // Machine connections must not receive the Linux XDG/config overlay.
   if (runtime.managedSpawn === "connection") {
@@ -121,10 +122,10 @@ const prepareManagedLinuxRuntime = async (
 };
 
 /**
- * Unmanaged/connection paths call exec synchronously so callers that gate on the
+ * Connection paths call exec synchronously so callers that gate on the
  * first probe still observe the call before the next microtask.
  */
-export const runUninstallRuntime = (
+export const runUninstallRuntime = async (
   exec: RuntimeExec,
   runtime: UninstallRuntime,
   request: { readonly args: readonly string[]; readonly timeout?: number },
@@ -137,8 +138,9 @@ export const runUninstallRuntime = (
       ...(env === undefined ? {} : { env }),
     });
   };
-  if (runtime.managed && runtime.managedSpawn === "linux" && runtime.runtimeDir !== undefined) {
-    return prepareManagedLinuxRuntime(runtime, seams).then(run);
+  if (runtime.managedSpawn === "linux" && runtime.runtimeDir !== undefined) {
+    await access(runtime.runtimeDir);
+    return run(await prepareManagedLinuxRuntime(runtime, seams));
   }
   return run(runtime);
 };
@@ -153,12 +155,9 @@ export const uninstallRuntimes = (
   const managedBase = {
     cmd: join(paths.runtimeBinDir, platform === "win32" ? "podman.exe" : "podman"),
     providerId: "lando" as const,
-    managed: true as const,
     managedSpawn,
   };
   return [
-    { cmd: "docker", providerId: "docker", managed: false, argsPrefix: [] },
-    { cmd: "podman", providerId: "podman", managed: false, argsPrefix: [] },
     managedSpawn === "linux"
       ? {
           ...managedBase,
@@ -191,19 +190,40 @@ export const availableUninstallRuntimes = async (input: {
   for (const base of uninstallRuntimes(input.userDataRoot, input.platform, hostEnv)) {
     let runtime = base;
     try {
-      // Missing managed tree: probe without prepare so absence does not require XDG.
+      if (runtime.managedSpawn === "connection") {
+        const machine = classifyManagedProviderMachine(
+          input.userDataRoot,
+          undefined,
+          normalizeHostPlatform({ platform: input.platform }),
+        );
+        const verified = await verifyManagedProviderMachine(machine, async (args) => {
+          try {
+            const { stdout } = await input.exec(runtime.cmd, args, {
+              timeout: 5_000,
+              env: { ...withoutPodmanRedirectsDefined(hostEnv) },
+            });
+            return { exitCode: 0, stdout, stderr: "" };
+          } catch (cause) {
+            if (cause instanceof Error && "code" in cause && typeof cause.code === "number") {
+              const stderr =
+                "stderr" in cause && typeof cause.stderr === "string" ? cause.stderr : cause.message;
+              return { exitCode: cause.code, stderr };
+            }
+            throw cause;
+          }
+        });
+        if (!verified) continue;
+      }
+      // A missing runtime/ tree is not a native runtime: do not spawn or prepare.
       if (
-        runtime.managed &&
         runtime.managedSpawn === "linux" &&
         runtime.runtimeDir !== undefined &&
         !(await pathExists(runtime.runtimeDir))
       ) {
-        await input.exec(runtime.cmd, [...runtime.argsPrefix, "--version"], { timeout: 2_000 });
-        available.push(runtime);
         continue;
       }
       await runUninstallRuntime(input.exec, runtime, { args: ["--version"], timeout: 2_000 }, seams);
-      if (runtime.managed && runtime.managedSpawn === "linux" && runtime.runtimeDir !== undefined) {
+      if (runtime.managedSpawn === "linux" && runtime.runtimeDir !== undefined) {
         runtime = await prepareManagedLinuxRuntime(runtime, seams);
       }
       available.push(runtime);
@@ -214,7 +234,6 @@ export const availableUninstallRuntimes = async (input: {
           cause,
         );
       }
-      if (!runtime.managed) continue;
       const paths = makeLandoPaths({ userDataRoot: input.userDataRoot });
       try {
         await access(paths.runtimeDir);

@@ -41,7 +41,7 @@ services:
       XHGUI_PDO_PASS: xhgui
     endpoints:
       - ui=http:80
-    dependsOn:
+    depends_on:
       profiles:
         condition: service_healthy
   profiles:
@@ -59,7 +59,7 @@ tooling:
 
 - `app` runs PHP 8.3 under Apache. The two `build.artifact` steps compile and enable XHProf when Lando builds the image, and the mount drops a PHP ini file into the image's `conf.d` directory.
 - `xhgui` runs the upstream XHGui image, which serves its UI on port 80. `appMount: false` keeps your source out of it, and Lando plans no home store for a Landofile-supplied image. Keep `endpoints: [ui=http:80]` so Lando can proxy port 80 and give the UI its own `*.lndo.site` URL.
-- `profiles` is the Postgres store. XHGui creates its `results` and `watches` tables on first use. `dependsOn` holds XHGui until the Postgres healthcheck passes.
+- `profiles` is the Postgres store. XHGui creates its `results` and `watches` tables on first use. `depends_on` holds XHGui until the Postgres healthcheck passes.
 - `composer` runs Composer inside `app`. The PHP service ships Composer, so there is nothing else to install.
 
 Save this as `xhprof.ini` next to the Landofile:
@@ -111,7 +111,7 @@ lando exec app -- php -m
 lando composer require perftools/php-profiler:1.4.2
 ```
 
-Check that `xhprof` and `curl` appear in the module list. The profiler uses PHP's cURL extension to upload runs. Composer writes `composer.json` and `composer.lock` to your app directory; commit both so the next `lando composer install` gets the same profiler release. The `vendor` directory stays inside the `app` service, not on your host.
+Check that `xhprof` and `curl` appear in the module list. The profiler uses PHP's cURL extension to upload runs. Composer writes `composer.json` and `composer.lock` to your app directory; commit both so the next `lando composer install` gets the same profiler release. `vendor` lands in your app directory too. Keep it out of git.
 
 ## Profile a request
 
@@ -280,7 +280,7 @@ These checks exercise the declared services and tooling, with the large-profile 
 
 ## Keep or remove the profiles
 
-`lando destroy -y` removes the app's containers and networks but keeps its named volumes: the `profiles` data store and the `vendor` shadow, so saved runs and the installed profiler are still there after the next start:
+`lando destroy -y` removes the app's containers and networks but keeps its named volumes, including the `profiles` data store. Saved runs and the installed profiler are still there after the next start:
 
 ```sh
 lando destroy -y

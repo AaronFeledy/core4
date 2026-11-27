@@ -19,6 +19,7 @@ import { type Context, Effect, Layer } from "effect";
 import { validateHostShellSteps } from "./host-shell-validation.ts";
 import { ShellRedactionTokens } from "./shell-runner.ts";
 import { streamArgvCommand } from "./shell-script-stream.ts";
+import { recoverToolingShellResult } from "./tooling-shell-result.ts";
 
 const HOST_SERVICE = ":host";
 const LANDO_TOOLING_MARKER = "lando-tooling";
@@ -102,6 +103,7 @@ const hostRun = Effect.fn("ToolingEngine.run")(function* (
   let stdout = "";
   let stderr = "";
   for (const step of steps) {
+    if (invocation.signal?.aborted) return yield* Effect.interrupt;
     const command = hostStepCommand(step);
     const options: ShellCommandOptions = {
       ...(invocation.cwd === undefined ? {} : { cwd: invocation.cwd }),
@@ -115,17 +117,13 @@ const hostRun = Effect.fn("ToolingEngine.run")(function* (
           tool: invocation.tool,
           redaction: yield* ShellRedactionTokens,
         })
-      : shell.exec(command.source, options).pipe(
-          Effect.catch((cause) =>
-            cause.exitCode !== undefined
-              ? Effect.succeed({
-                  exitCode: cause.exitCode,
-                  stdout: cause.stdout ?? "",
-                  stderr: cause.stderr ?? "",
-                })
-              : Effect.fail(wrapShellAsToolingError(invocation.tool, cause)),
-          ),
-        );
+      : shell
+          .exec(command.source, options)
+          .pipe(
+            recoverToolingShellResult<ShellExecError, ToolingExecError>((cause) =>
+              wrapShellAsToolingError(invocation.tool, cause),
+            ),
+          );
     stdout += result.stdout;
     stderr += result.stderr;
     exitCode = result.exitCode;
@@ -191,8 +189,7 @@ const outsideRootError = (
     path: scriptPath,
     ...(realpathValue === undefined ? {} : { realpath: realpathValue }),
     permittedRoots,
-    remediation:
-      "Move the script inside the app root (or recipe cache for recipe-bundled scripts) and ensure no symlinks escape it.",
+    remediation: "Move the script inside the app root and ensure no symlinks escape it.",
     ...(cause === undefined ? {} : { cause }),
   });
 
@@ -216,7 +213,7 @@ export const resolveScriptPath = (
         try {
           normalizedRoots.push(await normalizeRoot(root));
         } catch {
-          // Skip roots that cannot be resolved (e.g. missing recipe cache dir).
+          // Skip a root that cannot be resolved; a script cannot be contained by a missing root.
         }
       }
       const contained = normalizedRoots.some((root) => isWithinRoot(resolvedScript, root));
@@ -237,5 +234,6 @@ export const runHostScript = Effect.fn("ShellRunner.runHostScript")(function* (
   options?: ShellScriptOptions,
 ) {
   const resolved = yield* resolveScriptPath(scriptPath, permittedRoots);
+  if (options?.signal?.aborted) return yield* Effect.interrupt;
   return yield* (yield* ShellRunner).runScript(resolved, options);
 });

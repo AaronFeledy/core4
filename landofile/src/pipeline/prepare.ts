@@ -9,7 +9,6 @@ import {
   isPlainRecord,
   override,
 } from "@lando/sdk/landofile";
-import { SERVICE_CONFIG_ALIASES } from "@lando/sdk/schema";
 import { Effect } from "effect";
 import type { AuthoredOrigin } from "../provenance.ts";
 
@@ -80,16 +79,10 @@ export const prepareOverlay = Effect.fnUntraced(function* (
         }
         if (isPlainRecord(input)) {
           const children = new Map<string | number, ValueOrigins<AuthoredOrigin>>();
-          const entries = Object.entries(input).flatMap(([key, entry]) => {
-            const alias =
-              path.length === 2 && path[0] === "services"
-                ? SERVICE_CONFIG_ALIASES.find(([name]) => name === key)
-                : undefined;
-            if (alias !== undefined && Object.hasOwn(input, alias[1])) return [];
+          const entries = Object.entries(input).map(([key, entry]) => {
             const child = visit(entry, [...path, key], childCursor(cursor, key));
-            const canonical = alias?.[1] ?? key;
-            children.set(canonical, child.origins);
-            return [[canonical, child.value]];
+            children.set(key, child.origins);
+            return [key, child.value];
           });
           return { value: Object.fromEntries(entries), origins: { ...origins, children } };
         }

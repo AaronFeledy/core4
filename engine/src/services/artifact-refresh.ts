@@ -30,6 +30,7 @@ export const pullCheckBucketSpec = {
   lock: "advisory" as const,
   onCorrupt: "discard" as const,
   onVersionMismatch: "discard" as const,
+  onNewerVersion: "discard" as const,
   default: {} as PullChecks,
 };
 

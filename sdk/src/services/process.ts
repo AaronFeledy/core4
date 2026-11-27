@@ -1,11 +1,12 @@
-import { Context, type Effect, type Stream } from "effect";
-
+import { Context, type Effect, type Scope, type Stream } from "effect";
 import type {
+  PrivilegeError,
   ProcessExecError,
   ProcessTimeoutError,
   SecretStoreError,
   ShellExecError,
 } from "../errors/index.ts";
+import type { PrivilegeCredentialStatus } from "../schema/privilege.ts";
 
 export interface ShellCommandOptions {
   /**
@@ -160,9 +161,48 @@ export class ShellRunner extends Context.Service<
   }
 >()("@lando/core/ShellRunner") {}
 
+/** Input piped to an elevated command, never written to disk or shown. */
+export interface PrivilegeElevateOptions {
+  readonly stdin?: Uint8Array;
+}
+
+/**
+ * Administrator access obtained once for a scope. `transport` says how: `direct` runs as root,
+ * `askpass` uses `SUDO_ASKPASS`, `cached` reuses a ticket the user already had, `prompted` holds
+ * the ticket sudo granted when it asked in this run, and `uncached` means sudoers keeps no ticket,
+ * so every command asks again on the terminal.
+ */
+export interface PrivilegeSession {
+  readonly transport: "direct" | "askpass" | "cached" | "prompted" | "uncached";
+  readonly elevate: (
+    command: ReadonlyArray<string>,
+    options?: PrivilegeElevateOptions,
+  ) => Effect.Effect<ProcessResult, PrivilegeError>;
+  /**
+   * Runs `body` with the terminal handed over the way the session's own sudo prompt gets it, for a
+   * child that may ask sudo for a password itself (`mkcert -install`). Absent when the session
+   * never hands the terminal over.
+   */
+  readonly lendTerminal?: <A, E, R>(body: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>;
+}
+
+/**
+ * Platform elevation boundary. `credentialStatus` reports how a session would get credentials and
+ * never prompts. `openSession` obtains them once for the caller's scope: an interactive run may
+ * hand the terminal to the platform's own prompt, a run that cannot ask fails with a
+ * `PrivilegeError` before any command runs, and closing the scope forgets a ticket the session
+ * created. `elevate` is a one-off session around a single command. A nonzero exit is the
+ * command's `ProcessResult`; failing to obtain privilege is a `PrivilegeError`. `purpose` is
+ * human text for messages only.
+ */
 export class PrivilegeService extends Context.Service<
   PrivilegeService,
   {
-    readonly elevate: (command: ReadonlyArray<string>) => Effect.Effect<ProcessResult, never>;
+    readonly credentialStatus: Effect.Effect<PrivilegeCredentialStatus>;
+    readonly openSession: (purpose: string) => Effect.Effect<PrivilegeSession, PrivilegeError, Scope.Scope>;
+    readonly elevate: (
+      command: ReadonlyArray<string>,
+      options?: PrivilegeElevateOptions,
+    ) => Effect.Effect<ProcessResult, PrivilegeError>;
   }
 >()("@lando/core/PrivilegeService") {}

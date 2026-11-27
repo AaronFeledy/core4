@@ -1,8 +1,9 @@
 import { expect, test } from "bun:test";
-import { mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
+import { retireTempRoots } from "@lando/engine/testing/temp-root-retirement";
 import { makePodmanApiClient } from "@lando/provider-podman";
 import { DestroyAppResult } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
@@ -66,22 +67,22 @@ test.skipIf(socket === undefined && !required)(
       LANDO_SYSTEM_PLUGIN_ROOT: join(directory, "system-plugins"),
       LANDO_PROVIDER: "podman",
       DOCKER_HOST: `unix://${socket.socketPath}`,
+      LANDO_TEST_DOCKER_SOCKET: undefined,
+      LANDO_TEST_WINDOWS_DOCKER_SOCKET: undefined,
       LANDO_CONFIG__default_provider_id: "podman",
       LANDO_TELEMETRY_ENABLED: "false",
     };
+    const command = binary === undefined ? ([process.execPath, cliEntry] as const) : ([binary] as const);
     const lando = async (args: readonly string[]) => {
-      const proc = Bun.spawn(
-        [...(binary === undefined ? [process.execPath, cliEntry] : [binary]), ...args, "--format=json"],
-        {
-          cwd: root,
-          env,
-          stdin: "ignore",
-          stdout: "pipe",
-          stderr: "pipe",
-          timeout: childTimeout,
-          killSignal: "SIGKILL",
-        },
-      );
+      const proc = Bun.spawn([...command, ...args, "--format=json"], {
+        cwd: root,
+        env,
+        stdin: "ignore",
+        stdout: "pipe",
+        stderr: "pipe",
+        timeout: childTimeout,
+        killSignal: "SIGKILL",
+      });
       const [exitCode, stdout, stderr] = await Promise.all([
         proc.exited,
         new Response(proc.stdout).text(),
@@ -189,20 +190,12 @@ services:
       expect(after.untagged).toEqual([]);
       expect(after.all, "removal also reclaims the image's parent layers").toEqual([]);
     } finally {
-      try {
-        const cleanup = await lando(["destroy", "--yes", "--volumes", "--purge-caches"]);
-        expect(cleanup.exitCode, JSON.stringify(cleanup)).toBe(0);
-      } finally {
-        // A failed assertion must not leave this data root's images behind on a shared engine.
-        if (store !== undefined)
-          for (const image of await listImages({ label: [`${STORE_LABEL}=${store}`] }))
-            for (const reference of (image.RepoTags ?? []).length > 0 ? (image.RepoTags ?? []) : [image.Id])
-              await Effect.runPromise(
-                request({ method: "DELETE", path: `/images/${encodeURIComponent(reference)}` }),
-              );
-        await rm(directory, { recursive: true, force: true });
-      }
+      const retirement = await retireTempRoots({ directory, env, endpoint: socket.socketPath, command });
+      expect(
+        [...retirement.retained, ...retirement.failed],
+        JSON.stringify({ directory, endpoint: socket.socketPath, ...retirement }),
+      ).toEqual([]);
     }
   },
-  8 * childTimeout + 60_000,
+  8 * childTimeout + 120_000,
 );

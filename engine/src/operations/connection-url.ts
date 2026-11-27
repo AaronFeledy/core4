@@ -7,16 +7,28 @@ import {
   selectHttpEndpoint,
 } from "@lando/sdk/schema";
 
+/**
+ * The route a public service URL names: the first concrete HTTPS or `both` route, otherwise the
+ * first concrete HTTP route, in route-table order. Wildcard hostnames never name a URL.
+ */
+export const primaryConcreteRoute = (
+  routes: readonly RoutePlan[],
+  service: string,
+): RoutePlan | undefined => {
+  const own = routes.filter((route) => route.service === service && !route.hostname.includes("*"));
+  return own.find((route) => route.scheme !== "http") ?? own[0];
+};
+
+/** The scheme a route's public URL uses: a `both` route is named by its HTTPS address. */
+export const routeUrlScheme = (route: RoutePlan): "http" | "https" =>
+  route.scheme === "http" ? "http" : "https";
+
 export const primaryRouteCandidates = (
   routes: readonly RoutePlan[],
   service: Pick<ServicePlan, "name" | "endpoints" | "certs">,
-  options?: { readonly concreteOnly: true },
 ): readonly RoutePlan[] => {
-  const own = routes.filter(
-    (route) => route.service === service.name && (!options?.concreteOnly || !route.hostname.includes("*")),
-  );
+  const own = routes.filter((route) => route.service === service.name);
   const https = own.filter((route) => route.scheme !== "http");
-  if (options?.concreteOnly) return https.length > 0 ? https : own;
   const endpoint = selectHttpEndpoint(
     service.endpoints,
     undefined,
@@ -40,6 +52,27 @@ export const routeUrl = (route: RoutePlan, protocol: "http" | "https", port: num
     port,
     ...(route.pathPrefix === undefined ? {} : { pathPrefix: route.pathPrefix }),
   });
+
+/** A service's public route facts, each a pure function of its route, scheme, and port. */
+export interface RouteFacts {
+  /** `scheme://hostname[:port][pathPrefix]`. */
+  readonly url: string;
+  /** The route hostname, lowercase, without a port. */
+  readonly hostname: string;
+  /** `scheme://hostname[:port]`, with no path and no trailing slash. */
+  readonly origin: string;
+}
+
+/**
+ * Project a route's public facts by hand rather than through `new URL()`, which rewrites or rejects
+ * hostnames routes admit, such as `127.1` and `web.123`. The port is omitted only for http on 80
+ * and https on 443.
+ */
+export const routeFacts = (route: RoutePlan, protocol: "http" | "https", port: number): RouteFacts => ({
+  url: routeUrl(route, protocol, port),
+  hostname: route.hostname.toLowerCase(),
+  origin: connectionUrl({ host: route.hostname, protocol, port }),
+});
 
 export const connectionHost = (address: string): string => {
   const host = address.replace(/^\[|\]$/gu, "").toLowerCase();

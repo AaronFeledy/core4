@@ -12,11 +12,10 @@ import {
   type CurrentExecutableAppPlan,
   LANDO_HOST_EVENT_ENV,
   type LoadScopedLandofile,
-  type NetworkingPlan,
   type ProviderCapabilities,
   type ServicePlan,
   defaultRouteHostname,
-  landoNetworkingPlan,
+  landoNativeAppSlug,
   normalizeAppSlug,
   validationIssue,
 } from "@lando/sdk/schema";
@@ -65,7 +64,7 @@ import * as AppDefaults from "./app-defaults.ts";
 import { appFeatureError } from "./app-feature-error.ts";
 import { planServiceDrafts } from "./authored.ts";
 import { withCommittedLiteralDigests } from "./authored-literals.ts";
-import { materializeClonedServiceDrafts, networkServicesWithClones } from "./cloned-services.ts";
+import { materializeClonedServiceDrafts } from "./cloned-services.ts";
 import {
   appFeatureCapabilityError,
   assertAuthoredNetworksSupported,
@@ -86,7 +85,7 @@ import { attributePlanningFailure } from "./failure-attribution.ts";
 import { fileSyncCacheInput } from "./file-sync-cache-input.ts";
 import { checkHostEventsShell } from "./host-shell-issues.ts";
 import { attachCompiledInvocationPlan, compilePlanInvocationSites } from "./invocation-authority.ts";
-import { normalizeNetworks } from "./networks.ts";
+import { planNetworking } from "./networks.ts";
 import { assertRoutesCertificateCoverable, decodeAppPlan } from "./plan-decode.ts";
 import { attachProjectFileSnapshot } from "./project-file-snapshot.ts";
 import {
@@ -117,7 +116,7 @@ export interface PlanAppInput {
 function* assemblePlan(
   input: PlanAppInput,
 ): Effect.fn.Return<CurrentExecutableAppPlan, AppPlannerError, PluginRegistry | FileSyncPolicy> {
-  const { landofile: authoredLandofile, providerCapabilities, appRoot: knownAppRoot, kind } = input;
+  const { landofile: authoredLandofile, providerCapabilities, appRoot: knownAppRoot, kind, mode } = input;
   const pluginRegistry = yield* PluginRegistry;
   const contributionGraph = Option.getOrUndefined(yield* Effect.serviceOption(PluginContributionGraph));
   const plugins = loadedPluginImplementations(contributionGraph);
@@ -152,6 +151,7 @@ function* assemblePlan(
       configService,
       fileSystem,
       pathsService,
+      identity: input.identity,
       landofile: authoredLandofile,
       ...(input.dataName === undefined ? {} : { dataName: input.dataName }),
       capabilities: providerCapabilities,
@@ -159,6 +159,12 @@ function* assemblePlan(
     },
     input.resolution,
   );
+  const nativeIdentity = { slug: appSlug, identity: input.identity };
+  const nativeSlug = landoNativeAppSlug(nativeIdentity);
+  const nativeDataSlug = landoNativeAppSlug({
+    ...nativeIdentity,
+    dataSlug: normalizeAppSlug(input.dataName ?? appName, appRoot),
+  });
   const capabilityContext = {
     provider,
     capabilities: providerCapabilities,
@@ -217,7 +223,7 @@ function* assemblePlan(
     yield* selectFileSyncEngine;
   const cacheRoot = pathsService?.roots.userCacheRoot ?? resolveUserCacheRoot();
   const sourceFingerprint =
-    input.mode === "validate"
+    mode === "validate"
       ? undefined
       : yield* readAppPlanSourceFingerprint(appRoot, landofileProvenance).pipe(
           Effect.catch(() => Effect.succeed(undefined)),
@@ -267,7 +273,6 @@ function* assemblePlan(
     const authoredStores = new Map(authored.byStore);
     for (const [store, info] of resolvedAuthored.byStore) authoredStores.set(store, info);
     const storageAuthored = { ...authored, byStore: authoredStores };
-    const logSources = seed.logSources;
     const seededFeatureIds = plannerSeededFeatureIds(resolution.base);
     const securityFeature =
       resolution.base === "lando"
@@ -326,7 +331,8 @@ function* assemblePlan(
       authored: storageAuthored,
       serviceType,
       resolution,
-      logSources,
+      logSources: seed.logSources,
+      plannedPort: seed.plannedPort,
       prepared,
       applicationConfigs,
       endpointContributions,
@@ -358,6 +364,7 @@ function* assemblePlan(
   const { sshAgent: _sshAgent, gpgAgent: _gpgAgent, ...cacheLandofile } = landofile;
   const host = resolveHostFacts();
   const cacheKey = deriveAppPlanCacheKey({
+    dataRoot: input.identity?.dataRoot,
     dataName: input.dataName ?? appName,
     kind: input.kind ?? "user",
     hostProvider,
@@ -401,8 +408,8 @@ function* assemblePlan(
       },
     },
   });
-  // Validation never touches the persisted plan; neither does a plan built from unknown plugin code.
-  const planCache = input.mode !== "validate" && plugins.cacheable ? cacheService : undefined;
+  // Validation, unknown plugin code, and scratches (their plan.bin is the cache) skip the app plan cache.
+  const planCache = mode !== "validate" && plugins.cacheable && kind !== "scratch" ? cacheService : undefined;
   const routeUrlContext = { filePath: landofilePath, enabled: routerEnabled, global: kind === "global" };
   if (planCache !== undefined) {
     const cached = yield* readCachedAppPlan({
@@ -441,7 +448,7 @@ function* assemblePlan(
     resolvedServices,
     mountContext: {
       appRoot,
-      appSlug: normalizeAppSlug(input.dataName ?? appName, appRoot),
+      appSlug: nativeDataSlug,
       ...(landofile.configs === undefined ? {} : { configs: landofile.configs }),
     },
   });
@@ -479,7 +486,8 @@ function* assemblePlan(
     appKind: input.kind ?? "user",
     appSlug,
     appName,
-    dataSlug: normalizeAppSlug(input.dataName ?? appName, appRoot),
+    dataSlug: nativeDataSlug,
+    nativeSlug,
     defaultDomain,
     host,
     provider,
@@ -498,26 +506,18 @@ function* assemblePlan(
     providerCapabilities,
     routerEnabled && finalized.routes.length > 0,
   );
-  const serviceNames = Object.keys(finalized.services);
-  const hasServices = serviceNames.length > 0;
-  const perAppBridge = appId !== "global";
-  const authoredNetworking = yield* normalizeNetworks({
+  const networking = yield* planNetworking({
     landofile,
     provenance: landofileProvenance,
-    services: networkServicesWithClones(resolvedServices, cloned, serviceNames),
     appRoot,
-    perAppBridge,
+    slug: appSlug,
+    identity: input.identity,
+    sharedCrossAppNetwork: providerCapabilities.sharedCrossAppNetwork,
+    serviceNames: Object.keys(finalized.services),
+    serviceHostnames: finalized.serviceHostnames,
+    resolvedServices,
+    clones: cloned,
   });
-  const networking: NetworkingPlan | undefined = hasServices
-    ? landoNetworkingPlan({
-        slug: appSlug,
-        perAppBridge,
-        serviceNames,
-        sharedCrossAppNetwork: providerCapabilities.sharedCrossAppNetwork,
-        serviceHostnames: finalized.serviceHostnames,
-        ...authoredNetworking,
-      })
-    : undefined;
   const hostProxyExtension = hostProxyExtensionForCapabilities(providerCapabilities);
   const authoredProjectExtensions = Object.entries(landofile).filter(([key]) => key.startsWith("x-"));
   const composeProjectExtension = {
@@ -537,7 +537,7 @@ function* assemblePlan(
         valueModel: 1,
         name: appName,
         slug: appSlug,
-        root: AbsolutePath.make(appRoot),
+        root: input.identity?.appRoot ?? AbsolutePath.make(appRoot),
         ...(input.identity === undefined ? {} : { identity: input.identity }),
         provider,
         router: router.field(finalized.routes.length),

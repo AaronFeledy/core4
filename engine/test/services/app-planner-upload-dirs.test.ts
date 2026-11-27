@@ -6,11 +6,12 @@ import { LandofileValidationError } from "@lando/sdk/errors";
 import { LandofileShape, type ServiceConfig, ServiceName } from "@lando/sdk/schema";
 import { AppPlanner } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { Effect, Result, Schema } from "effect";
+import { Effect, Layer, Result, Schema } from "effect";
 import { appConfigLint } from "../../src/operations/app-config-lint.ts";
 import * as Plugins from "../../src/plugins/registry.ts";
 import * as Planner from "../../src/services/planner.ts";
 import { literalTestLandofile } from "../compiled-landofile.ts";
+import { pathsServiceLayer } from "../paths-service.ts";
 
 const unsupported = [
   { type: "nginx" },
@@ -40,7 +41,10 @@ const plan = (service: typeof ServiceConfig.Encoded) => {
       ...TestRuntimeProvider.capabilities,
       artifactBuild: true,
     }),
-  ).pipe(Effect.provide(Planner.layer), Effect.provide(Plugins.layer));
+  ).pipe(
+    Effect.provide(Planner.layer.pipe(Layer.provide(pathsServiceLayer()))),
+    Effect.provide(Plugins.layer),
+  );
 };
 
 test.each(unsupported)("rejects non-empty uploadDirs without a supporting feature: %j", async (service) => {

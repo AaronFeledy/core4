@@ -1,0 +1,25 @@
+name: expressions-url-tooling-live
+services:
+  web:
+    type: nginx
+    primary: true
+    routes:
+      - hostname: expressions-url-tooling.lndo.site
+        scheme: both
+tooling:
+  site-url:
+    service: web
+    description: Print the address the router publishes for web.
+    cmd: [echo, "{{ services.web.url }}"]
+  site-host:
+    service: web
+    description: Print the hostname the router publishes for web.
+    cmd: [echo, "{{ services.web.hostname }}"]
+  site-origin:
+    service: web
+    description: Print the scheme, hostname, and port without a path.
+    cmd: [echo, "{{ services.web.origin }}"]
+events:
+  post-start:
+    - service: web
+      cmd: "echo {{ services.web.url }} > /tmp/published-url"

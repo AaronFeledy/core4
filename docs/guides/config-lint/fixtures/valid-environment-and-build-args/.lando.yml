@@ -1,0 +1,9 @@
+name: diagnostic-controls
+services:
+  web:
+    type: compose
+    environment: [KEY=, KEY=a=b]
+    build:
+      dockerfile_inline: FROM alpine
+      args:
+        VERSION: '{{ "v1" }}'

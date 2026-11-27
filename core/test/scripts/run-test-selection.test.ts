@@ -1,11 +1,24 @@
 import { expect, test } from "bun:test";
-import { join } from "node:path";
+import { existsSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 import { TestSelectionError, runTestSelection } from "../../../scripts/run-test-selection.ts";
 import { collectTestFiles, resolveTestSelection } from "../../../scripts/test-selection-files.ts";
 import { type TestSelection, selectionMatches } from "../../../scripts/test-selections.ts";
 import { createTestSelectionFixture } from "./support/test-selection-fixture.ts";
 
-const runCapturedSelection = async (root: string, selection: TestSelection) => {
+const ROOT_KEYS = [
+  "LANDO_USER_DATA_ROOT",
+  "LANDO_USER_CACHE_ROOT",
+  "LANDO_USER_CONF_ROOT",
+  "LANDO_SYSTEM_PLUGIN_ROOT",
+] as const;
+
+const runCapturedSelection = async (
+  root: string,
+  selection: TestSelection,
+  env: Readonly<Record<string, string | undefined>> = process.env,
+) => {
   const runner = new URL("../../../scripts/run-test-selection.ts", import.meta.url).href;
   await using child = Bun.spawn(
     [
@@ -15,7 +28,7 @@ const runCapturedSelection = async (root: string, selection: TestSelection) => {
       `import { runTestSelection } from ${JSON.stringify(runner)};
        process.exitCode = await runTestSelection(${JSON.stringify(selection.id)}, ${JSON.stringify({ root, selections: [selection] })});`,
     ],
-    { cwd: root, stdout: "pipe", stderr: "pipe" },
+    { cwd: root, env, stdout: "pipe", stderr: "pipe" },
   );
   const [code, stdout, stderr] = await Promise.all([
     child.exited,
@@ -124,6 +137,34 @@ test("executes filtered selections while forwarding their name filter to Bun", a
   expect(output).toMatch(/^\s*1 pass\s*$/mu);
   expect(output).toMatch(/^\s*1 filtered out\s*$/mu);
   expect(await Bun.file(receipt).text()).toBe("kept");
+});
+
+test.each([
+  { kind: "an ordinary selection", live: false },
+  { kind: "a live selection", live: true },
+])("fills unset roots with a runner-owned tree only for $kind", async ({ live }) => {
+  await using fixture = await createTestSelectionFixture();
+  await fixture.put(
+    "pkg/test/roots.test.ts",
+    `import { test } from "bun:test";
+    test("roots", () => { console.log("ROOT=" + (process.env.LANDO_USER_DATA_ROOT ?? "")); });`,
+  );
+  const selection: TestSelection = {
+    id: "roots",
+    paths: ["pkg/test/roots.test.ts"],
+    jobs: [],
+    ...(live ? { usesInheritedLivePodmanRoots: true } : {}),
+  };
+  const env = { ...process.env };
+  for (const key of [...ROOT_KEYS, "LANDO_TEST_USE_REAL_ROOTS", "LANDO_TEST_PODMAN_SOCKET"]) delete env[key];
+  const { code, output } = await runCapturedSelection(fixture.root, selection, env);
+  expect(code, output).toBe(0);
+  const root = /ROOT=(.*)/.exec(output)?.[1]?.trim() ?? "";
+  // A live selection leaves every key unset so runWithLiveTestRoots can allocate Podman roots.
+  expect({
+    owned: root.startsWith(join(tmpdir(), "lando-test-roots-")),
+    left: root !== "" && existsSync(dirname(root)),
+  }).toEqual({ owned: !live, left: false });
 });
 
 test("matches file, tree, and glob selectors without substring expansion", () => {

@@ -1,4 +1,9 @@
-import { GlobalAppError, causeMessage } from "@lando/sdk/errors";
+import {
+  AppliedStateVersionError,
+  GlobalAppError,
+  appliedStateVersionError,
+  causeMessage,
+} from "@lando/sdk/errors";
 import { type AppPlan, type ProviderId, isActiveRunStatus, isIdleRunStatus } from "@lando/sdk/schema";
 import { RuntimeProviderRegistry, type ServiceRuntimeInfo } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
@@ -6,6 +11,7 @@ import { Effect, Schema } from "effect";
 import { routerEnabled } from "../config/router-config.ts";
 import { observeRuntime, workloadsProvablyStopped } from "../providers/runtime-observation.ts";
 import { SCRATCH_EXTENSION_KEY } from "../scratch-app/identity.ts";
+import { CORE_VERSION } from "../version.ts";
 
 export const GlobalConsumerSchema = Schema.Struct({
   id: Schema.String,
@@ -22,6 +28,7 @@ export type GlobalConsumer = typeof GlobalConsumerSchema.Type;
 export const GlobalConsumerImpactSchema = Schema.Struct({
   consumers: Schema.Array(GlobalConsumerSchema),
   uncertainties: Schema.Array(Schema.String),
+  appliedStateIssues: Schema.Array(AppliedStateVersionError),
 });
 export type GlobalConsumerImpact = typeof GlobalConsumerImpactSchema.Type;
 
@@ -33,6 +40,7 @@ export class GlobalConsumerProtectionError extends Schema.TaggedError<GlobalCons
     policySaved: Schema.Literal(false),
     consumers: Schema.Array(GlobalConsumerSchema),
     uncertainties: Schema.Array(Schema.String),
+    appliedStateIssues: Schema.optionalKey(Schema.Array(AppliedStateVersionError)),
     remediation: Schema.String,
   },
 ) {}
@@ -45,7 +53,7 @@ export const resolveGlobalConsumerImpact = (input: {
   readonly routerId: string | undefined;
   readonly plans: ReadonlyArray<AppPlan>;
   readonly services: ReadonlyArray<ServiceRuntimeInfo>;
-}): GlobalConsumerImpact => {
+}): Omit<GlobalConsumerImpact, "appliedStateIssues"> => {
   const selected = new Set(input.selectedIds);
   const uncertainties = new Set<string>();
   const consumers: GlobalConsumer[] = [];
@@ -143,7 +151,7 @@ export const readGlobalConsumerImpact = Effect.fn("GlobalPolicy.consumerImpact")
   readonly routerId: string | undefined;
 }) {
   if (input.selectedIds.length === 0)
-    return { consumers: [], uncertainties: [] } satisfies GlobalConsumerImpact;
+    return { consumers: [], uncertainties: [], appliedStateIssues: [] } satisfies GlobalConsumerImpact;
   const registry = yield* RuntimeProviderRegistry;
   const providers = yield* Effect.result(registry.list);
   const uncertainties: string[] =
@@ -158,21 +166,44 @@ export const readGlobalConsumerImpact = Effect.fn("GlobalPolicy.consumerImpact")
   ]);
   const consumers: GlobalConsumer[] = [];
   const selectedIds = new Set(input.selectedIds);
+  const appliedStateIssues: AppliedStateVersionError[] = [];
   for (const providerId of ids) {
-    const inventory =
-      registry.appliedStateInventory === undefined
-        ? undefined
-        : yield* Effect.result(registry.appliedStateInventory(providerId));
-    const plans = inventory?._tag === "Success" ? inventory.success.plans : [];
-    if (inventory?._tag !== "Success")
+    const inventory = yield* Effect.result(registry.appliedStateInventory(providerId));
+    const plans = inventory._tag === "Success" ? inventory.success.plans : [];
+    if (inventory._tag === "Failure") {
+      if (inventory.failure instanceof AppliedStateVersionError) appliedStateIssues.push(inventory.failure);
       uncertainties.push(
-        `Applied app inventory on ${providerId} is unavailable.${inventory?._tag === "Failure" ? ` ${causeMessage(inventory.failure)}` : " The provider registry exposes no strict inventory."}`,
+        `Applied app inventory on ${providerId} is unavailable. ${causeMessage(inventory.failure)}`,
       );
-    else
-      for (const unreadable of inventory.success.unreadable)
-        uncertainties.push(
-          `Applied app state is unreadable at ${unreadable.path}; dependency impact is unknown.`,
-        );
+    } else {
+      for (const issue of inventory.success.unreadable) {
+        switch (issue.reason) {
+          case "unreadable":
+            uncertainties.push(
+              `Applied app state is unreadable at ${issue.path}; dependency impact is unknown.`,
+            );
+            break;
+          case "newer-version": {
+            const error = appliedStateVersionError({
+              path: issue.path,
+              storedVersion: issue.storedVersion,
+              supportedVersion: issue.supportedVersion,
+              reader: CORE_VERSION,
+              ...(issue.writtenBy === undefined ? {} : { writtenBy: issue.writtenBy }),
+              ...(issue.appId === undefined ? {} : { appId: issue.appId }),
+              providerId,
+              operation: "applied-state.list",
+              scope: issue.appId === undefined ? "provider" : "app",
+            });
+            appliedStateIssues.push(error);
+            uncertainties.push(`${error.message} Dependency impact is unknown. ${error.remediation}`);
+            break;
+          }
+          default:
+            issue satisfies never;
+        }
+      }
+    }
     const potential = plans.some(
       (plan) =>
         String(plan.id) !== "global" &&
@@ -184,7 +215,7 @@ export const readGlobalConsumerImpact = Effect.fn("GlobalPolicy.consumerImpact")
     );
     if (
       providerId !== input.providerId &&
-      inventory?._tag === "Success" &&
+      inventory._tag === "Success" &&
       inventory.success.unreadable.length === 0 &&
       !potential
     )
@@ -232,5 +263,9 @@ export const readGlobalConsumerImpact = Effect.fn("GlobalPolicy.consumerImpact")
     consumers.push(...resolved.consumers);
     uncertainties.push(...resolved.uncertainties);
   }
-  return { consumers, uncertainties: [...new Set(uncertainties)] } satisfies GlobalConsumerImpact;
+  return {
+    consumers,
+    uncertainties: [...new Set(uncertainties)],
+    appliedStateIssues,
+  } satisfies GlobalConsumerImpact;
 });

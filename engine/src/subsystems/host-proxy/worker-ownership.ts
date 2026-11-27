@@ -7,6 +7,7 @@ import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
 import { Effect } from "effect";
 import { type WorkerClaim, changeWorkerClaim, withDetachedWorkerLock } from "../detached-worker/claim.ts";
 import { isOwnerOnlyRecordFile } from "../detached-worker/state-file.ts";
+import { resetHostProxyRunDirectory } from "./run-directory.ts";
 import { terminateControlRecord } from "./worker-control.ts";
 import {
   readLegacyWorkerRecordAt,
@@ -24,20 +25,37 @@ export interface TerminateHostProxyWorkerOptions {
 
 export type TerminateOwnershipResult = "terminated" | "absent";
 
-const removeRunDir = (app: Pick<AppRef, "id" | "root">, paths?: RootOverrides): Effect.Effect<void> =>
-  Effect.promise(() => rm(dirname(workerStatePath(app, paths)), { recursive: true, force: true }));
+/**
+ * Retiring the app's host-proxy removes the whole run directory. Stopping the app or replacing its
+ * worker resets it instead and keeps the container-facing directory with its generation: stopped
+ * containers start again in place and running ones reach the successor's session, both without
+ * being recreated.
+ */
+type RunDirRemoval = "retire" | "reset";
+
+const removeRunDir = (
+  app: Pick<AppRef, "id" | "root">,
+  paths: RootOverrides | undefined,
+  removal: RunDirRemoval,
+): Effect.Effect<void> => {
+  const runDir = dirname(workerStatePath(app, paths));
+  return Effect.promise(() =>
+    removal === "retire" ? rm(runDir, { recursive: true, force: true }) : resetHostProxyRunDirectory(runDir),
+  );
+};
 
 const removeHostProxyClaim = (
   claim: WorkerClaim,
   app: Pick<AppRef, "id" | "root">,
   options: TerminateHostProxyWorkerOptions,
+  removal: RunDirRemoval,
 ) =>
   isOwnerOnlyRecordFile(claim.path, options.privateFileAccess).pipe(
     Effect.flatMap((trusted) =>
       trusted ? readWorkerRecordStateAt(claim.path) : Effect.succeed({ _tag: "malformed" as const }),
     ),
     Effect.flatMap((state) => {
-      const reap = changeWorkerClaim(claim, "reap-stale", removeRunDir(app, options.paths)).pipe(
+      const reap = changeWorkerClaim(claim, "reap-stale", removeRunDir(app, options.paths, removal)).pipe(
         Effect.as("absent" as const),
       );
       switch (state._tag) {
@@ -51,7 +69,7 @@ const removeHostProxyClaim = (
           return terminateControlRecord(
             state.record,
             { ...options, claim },
-            removeRunDir(app, options.paths),
+            removeRunDir(app, options.paths, removal),
           ).pipe(Effect.as("terminated" as const));
         }
         default: {
@@ -67,7 +85,7 @@ export const replaceExistingHostProxyWorker = (
   claim: WorkerClaim,
   app: Pick<AppRef, "id" | "root">,
   options: TerminateHostProxyWorkerOptions,
-) => removeHostProxyClaim(claim, app, options).pipe(Effect.asVoid);
+) => removeHostProxyClaim(claim, app, options, "reset").pipe(Effect.asVoid);
 
 export const terminateOwnedHostProxyWorker = (
   app: Pick<AppRef, "id" | "root">,
@@ -76,7 +94,19 @@ export const terminateOwnedHostProxyWorker = (
   withWorkerRecordLock(
     app,
     options.paths,
-    (claim) => removeHostProxyClaim(claim, app, options),
+    (claim) => removeHostProxyClaim(claim, app, options, "retire"),
+    options.privateFileAccess,
+  ).pipe(Effect.catch(() => Effect.succeed("absent" as const)));
+
+/** Stops the app's worker and resets its run directory, keeping the container-facing directory. */
+export const stopOwnedHostProxyWorker = (
+  app: Pick<AppRef, "id" | "root">,
+  options: TerminateHostProxyWorkerOptions,
+): Effect.Effect<TerminateOwnershipResult> =>
+  withWorkerRecordLock(
+    app,
+    options.paths,
+    (claim) => removeHostProxyClaim(claim, app, options, "reset"),
     options.privateFileAccess,
   ).pipe(Effect.catch(() => Effect.succeed("absent" as const)));
 

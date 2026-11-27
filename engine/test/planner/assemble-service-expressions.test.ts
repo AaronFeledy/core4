@@ -13,11 +13,13 @@ import {
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect, Layer, Result, Schema } from "effect";
+import { lowerRouteUrls, prepareRouteUrlBindings } from "../../src/lifecycle/route-url-bindings.ts";
 import { effectiveToolingForPlan } from "../../src/planner/effective-tooling.ts";
 import { serviceCredsScopeForPlan } from "../../src/planner/landofile-scopes.ts";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
 import { compileTestLandofile } from "../compiled-landofile.ts";
+import { publicUrlRouter } from "../lifecycle/route-url-fixture.ts";
 import { planApp } from "../plan-app.ts";
 import { appRootOf, withAppRoot as withAppRootProvenance } from "../provenance-support.ts";
 
@@ -156,6 +158,77 @@ test("plans mutually referencing and self-referencing service URLs without crede
     });
   }));
 
+test("plans and lowers self and peer hostname and origin reads beside the URL", () =>
+  withAppRoot(async (root) => {
+    // Given web reads its own facts (mixed with service.port and an encoded hostname) and peer's
+    // origin, while peer reads web's hostname: a reciprocal read that must not form a cycle
+    const landofile = withAppRootProvenance(
+      {
+        name: "Route facts",
+        services: {
+          [ServiceName.make("web")]: {
+            type: "compose",
+            image: "nginx:alpine",
+            home: false as const,
+            port: 80,
+            environment: {
+              SELF_HOST: "{{ service.hostname }}",
+              SELF_ORIGIN: "{{ service.origin }}",
+              ALLOWED: "{{ services.web.hostname }},{{ url.encodeComponent(service.hostname) }}",
+              LISTEN: "{{ service.origin }} on {{ service.port }}",
+              PEER_ORIGIN: "{{ services.peer.origin }}/api",
+              PEER_URL: "{{ services.peer.url }}",
+            },
+          },
+          [ServiceName.make("peer")]: {
+            type: "compose",
+            image: "nginx:alpine",
+            home: false as const,
+            environment: { CORS: "{{ services.web.origin }} {{ services.web.url }}" },
+          },
+        },
+        proxy: {
+          [ServiceName.make("web")]: ["Web.Test:80"],
+          [ServiceName.make("peer")]: ["peer.test:80/base"],
+        },
+      },
+      root,
+    );
+    // When
+    const app = await Effect.runPromise(plan(landofile));
+    const proof = await Effect.runPromise(
+      prepareRouteUrlBindings({ plan: app, routes: app.routes, router: publicUrlRouter() }),
+    );
+    const lowered = Result.getOrThrow(lowerRouteUrls(app, proof));
+    // Then the planned descriptors name each member, and lowering projects it from one authority
+    const part = (service: string, member?: "hostname" | "origin", encoding = "raw") => ({
+      service,
+      ...(member === undefined ? {} : { member }),
+      encoding,
+    });
+    expect(app.services[ServiceName.make("web")]?.environment).toMatchObject({
+      SELF_HOST: { _tag: "RouteText", parts: [part("web", "hostname")] },
+      SELF_ORIGIN: { _tag: "RouteText", parts: [part("web", "origin")] },
+      ALLOWED: {
+        _tag: "RouteText",
+        parts: [part("web", "hostname"), ",", part("web", "hostname", "uri-component")],
+      },
+      LISTEN: { _tag: "RouteText", parts: [part("web", "origin"), " on 80"] },
+      PEER_ORIGIN: { _tag: "RouteText", parts: [part("peer", "origin"), "/api"] },
+    });
+    expect(lowered.services[ServiceName.make("web")]?.environment).toMatchObject({
+      SELF_HOST: "web.test",
+      SELF_ORIGIN: "https://web.test:8443",
+      ALLOWED: "web.test,web.test",
+      LISTEN: "https://web.test:8443 on 80",
+      PEER_ORIGIN: "https://peer.test:8443/api",
+      PEER_URL: "https://peer.test:8443/base",
+    });
+    expect(lowered.services[ServiceName.make("peer")]?.environment).toMatchObject({
+      CORS: "https://web.test:8443 https://web.test:8443",
+    });
+  }));
+
 test.each([
   { kind: "user", enabled: true, reason: /no route/ },
   { kind: "user", hostname: "*.test", enabled: true, reason: /wildcard/ },
@@ -197,6 +270,77 @@ const failure = async (landofile: LandofileShape): Promise<ConfigExpressionError
   if (!(result.failure instanceof ConfigExpressionError)) throw result.failure;
   return result.failure;
 };
+
+test("materializes service.port in map-form environment from the planned listen port", () =>
+  withAppRoot(async (root) => {
+    const app = await Effect.runPromise(
+      plan(
+        withAppRootProvenance(
+          {
+            name: "Self Port Env",
+            services: {
+              [ServiceName.make("cache")]: {
+                type: "redis",
+                port: 6380,
+                home: false as const,
+                environment: { LISTEN: "redis://cache:{{ service.port }}" },
+              },
+            },
+          },
+          root,
+        ),
+      ),
+    );
+    expect(app.services[ServiceName.make("cache")]?.environment.LISTEN).toBe("redis://cache:6380");
+  }));
+
+test.each([
+  { name: "nginx", target: { type: "nginx", port: 8088 }, expected: 8088 },
+  { name: "PHP on Apache", target: { type: "php:8.4", port: 8080 }, expected: 8080 },
+  { name: "PHP-FPM", target: { type: "php:8.4", via: "fpm" }, expected: 9000 },
+  {
+    name: "nginx with authored endpoints",
+    target: {
+      type: "nginx",
+      endpoints: [
+        { kind: "internal", protocol: "tcp", port: PortNumber.make(9100), name: "metrics" },
+        { kind: "internal", protocol: "http", port: PortNumber.make(8090), primary: true },
+      ],
+    },
+    expected: 80,
+  },
+] as const)(
+  "uses the same peer planned listen port before and after plan assembly ($name)",
+  ({ target, expected }) =>
+    withAppRoot(async (root) => {
+      const app = await Effect.runPromise(
+        plan(
+          withAppRootProvenance(
+            {
+              name: "Peer Port Env",
+              services: {
+                [ServiceName.make("web")]: {
+                  type: "compose",
+                  image: "alpine:3.22",
+                  home: false as const,
+                  environment: { TARGET_PORT: "{{ services.target.port }}" },
+                },
+                [ServiceName.make("target")]: {
+                  ...target,
+                  home: false as const,
+                },
+              },
+            },
+            root,
+          ),
+        ),
+      );
+      const targetPort = app.services[ServiceName.make("web")]?.environment.TARGET_PORT;
+      const rehydratedPort = serviceCredsScopeForPlan(app).target?.port;
+      expect(targetPort).toBe(String(expected));
+      expect(targetPort).toBe(String(rehydratedPort));
+    }),
+);
 
 test("rejects a boolean result in the deferred service-credential pass", () =>
   withAppRoot(async (root) => {
@@ -272,9 +416,18 @@ test("resolves services.<name>.creds.* before the reading service's type runs, w
     // The interpolated password stays redactable through the plan's secret-shaped env values.
     expect(planRedactionValues(app).substring).toContain("s3cret-pw");
     expect(serviceCredsScopeForPlan(app)).toEqual({
-      web: { url: { _tag: "RouteText", parts: [{ service: "web", encoding: "raw" }] } },
+      web: {
+        url: { _tag: "RouteText", parts: [{ service: "web", encoding: "raw" }] },
+        hostname: { _tag: "RouteText", parts: [{ service: "web", member: "hostname", encoding: "raw" }] },
+        origin: { _tag: "RouteText", parts: [{ service: "web", member: "origin", encoding: "raw" }] },
+      },
       database: {
         url: { _tag: "RouteText", parts: [{ service: "database", encoding: "raw" }] },
+        hostname: {
+          _tag: "RouteText",
+          parts: [{ service: "database", member: "hostname", encoding: "raw" }],
+        },
+        origin: { _tag: "RouteText", parts: [{ service: "database", member: "origin", encoding: "raw" }] },
         port: PortNumber.make(5432),
         creds: { user: "lando", password: "s3cret-pw", database: "appdb" },
       },
@@ -434,7 +587,7 @@ test("never interpolates values that arrive through env files, even when they eq
             type: appType.id,
             image: "alpine:3.22",
             home: false as const,
-            envFile: ["web.env"],
+            env_file: ["web.env"],
             environment: { DATABASE_URL },
           },
           [ServiceName.make("database")]: {

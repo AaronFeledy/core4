@@ -1,9 +1,10 @@
-import { Effect, Result, Schema } from "effect";
-
+import { Result, Schema } from "effect";
 import { NotImplementedError } from "../../errors/index.ts";
+import { withDefaultKey } from "../../schema/default-key.ts";
 import { KEBAB_CASE_ID_PATTERN, patternString } from "../../schema/string-forms.ts";
 import { GuideSkip, GuideTimeout } from "../guide-execution-fields.ts";
 import { GuideFrontmatter, GuideId } from "../guide-frontmatter.ts";
+import { runCapture } from "./run-capture.ts";
 
 /** Scenario/step id token — same kebab alphabet as GuideId, distinct schema identity. */
 export const ComponentId = GuideId.annotate({ identifier: "ComponentId" });
@@ -118,10 +119,15 @@ export type GuideProps = typeof GuideProps.Type;
 
 export const ScenarioProps = Schema.Struct({
   id: ComponentId,
-  render: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.sync(() => true))),
+  render: Schema.Boolean.pipe(
+    withDefaultKey(true, { description: "Include the scenario in the rendered guide." }),
+  ),
   reason: Schema.optionalKey(Schema.String),
   tags: Schema.optionalKey(Schema.Array(Schema.String)),
   layer: Schema.optionalKey(Schema.Literals(["scenario", "e2e"])),
+  faults: Schema.optionalKey(Schema.Array(Schema.Literal("router.apply-routes"))).annotate({
+    description: "Injected failures for hidden scenarios using the in-memory runner.",
+  }),
   timeout: Schema.optionalKey(
     GuideTimeout.annotate({
       description: "Scenario test timeout in milliseconds. Overrides the guide timeout.",
@@ -145,6 +151,10 @@ export const ScenarioProps = Schema.Struct({
           toJsonSchema: () => [{}, true],
         },
       ),
+      Schema.makeFilter((input) => input.faults === undefined || input.render === false, {
+        message: "<Scenario faults> requires render={false}.",
+        toJsonSchema: () => [{}, true],
+      }),
     ),
   )
   .annotate({
@@ -168,6 +178,7 @@ export const RunProps = Schema.Union([
     command: Schema.String,
     answers: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
     expectExit: Schema.optionalKey(Schema.Number.pipe(Schema.check(Schema.isInt()))),
+    capture: Schema.optionalKey(runCapture),
   }),
   Schema.Struct({
     shell: Schema.String,
@@ -357,7 +368,7 @@ export type TabProps = typeof TabProps.Type;
 
 export const InlineProps = Schema.Struct({
   code: Schema.String,
-  lang: Schema.String.pipe(Schema.withDecodingDefaultKey(Effect.sync(() => "ts"))),
+  lang: Schema.String.pipe(withDefaultKey("ts", { description: "Language used to highlight inline code." })),
   justification: explanationText,
 }).annotate({
   identifier: "InlineProps",

@@ -117,9 +117,9 @@ describe("meilisearch ServiceType", () => {
           type: id,
           command: ["meilisearch", "--http-addr", "0.0.0.0:7700"],
           entrypoint: ["/bin/sh", "-c"],
-          workingDirectory: "/meili_data",
+          working_dir: "/meili_data",
           user: "1000:1000",
-          dependsOn: ["api"],
+          depends_on: ["api"],
         });
 
         expect(plan.command).toEqual(["meilisearch", "--http-addr", "0.0.0.0:7700"]);

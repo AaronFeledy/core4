@@ -24,7 +24,7 @@ lando exec web -- open https://example.com/x
 
 Both commands take exactly one URL or path. Flags, including macOS `open -a`, `--help`, and `--`, are unsupported and fail without launching anything. Use `./-filename` for a filename beginning with a dash.
 
-Lando mounts the same static client read-only as `/usr/local/bin/lando`, `/usr/local/bin/xdg-open`, and `/usr/local/bin/open`. The two opener names intentionally shadow image-provided openers when `/usr/local/bin` precedes `/usr/bin` on `PATH`. They do not install a browser inside the container. A client without host-proxy connection settings fails with an error rather than trying a container opener.
+Lando mounts the same static client read-only as `/usr/local/bin/lando`, `/usr/local/bin/xdg-open`, and `/usr/local/bin/open`. The two opener names intentionally shadow image-provided openers when `/usr/local/bin` precedes `/usr/bin` on `PATH`. They do not install a browser inside the container. If your service binds its own directory or volume at `/usr/local/bin` or above it, Lando leaves these commands out of that service and `lando start` warns with `LANDO_HELPER_COMMANDS_UNAVAILABLE`. A mount at exactly one of these three paths is a validation error instead: `lando app:config:lint` reports it, and `lando start` fails with `LandofileValidationError` before it builds anything. Move that mount to another path; see [the overlap rules](../services/home-and-host.mdx#already-mounting-something-there) for every case. A client without host-proxy connection settings fails with an error rather than trying a container opener.
 
 Any user in a host-proxy-enabled service can use `lando`, `xdg-open`, and `open`: the socket and credentials are reachable on the host only through an owner-only run directory. If the proxy is unreachable, the client reports the connection problem and tells you to run `lando start` for the app on the host, then retry.
 
@@ -69,7 +69,9 @@ The first command prints the app URL without opening a browser. Container `lando
 
 Each call runs a fresh Lando process that reads current global config and installed plugins. The worker keeps the host environment from the start that launched it; in-memory config or plugins supplied by an embedding host are not reproduced in children. An invalid global config fails the call with remediation rather than keeping an older config active.
 
-Running `lando start` on a running app keeps its host-proxy session, socket, and credentials, even after you edit the Landofile or global config. Lando replaces the session only when the worker is unhealthy or its Lando roots, provider, or Lando install changed; it then recreates the affected containers so they get the new session.
+Running `lando start` on a running app keeps its host-proxy session, socket, and credentials, even after you edit the Landofile or global config. Lando replaces the session only when the worker is unhealthy or its Lando roots, provider, or Lando install changed. Each service reaches the proxy through a directory Lando mounts at `/run/lando/host-proxy`, and a replacement session publishes its socket and credentials into that same directory. Running containers pick it up in place, so `lando start` keeps them and any files you changed inside them.
+
+Lando recreates a host-proxy service's container only when what the container sees of the proxy changes, such as a new in-container client after a Lando upgrade, or when you turn the proxy on or off for that service. On Windows each session gets its own endpoint, so replacing the session there still recreates the host-proxy service containers.
 
 ## Troubleshoot the host-proxy session
 

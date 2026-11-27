@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { failureOutcomeFromCause, mergeFailure } from "@lando/sdk/command-result";
 import { GlobalAppError, ProviderUnavailableError, ServiceStartError } from "@lando/sdk/errors";
 import { GlobalAppService, RuntimeProviderRegistry } from "@lando/sdk/services";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Cause, Effect, Exit } from "effect";
 import { withGlobalConsumerAdmission } from "../../src/operations/global-consumer-admission.ts";
 import { verifyGlobalConsumerAdmission } from "../../src/operations/global-consumer-lease.ts";
@@ -115,7 +116,7 @@ test("post-admission verification preserves mapped provider error roles", async 
     remediation: "Repair peer.",
   });
   let reject = false;
-  const guarded = RuntimeProviderRegistry.of({
+  const guarded = makeTestRuntimeProviderRegistry({
     ...registry,
     select: (target) =>
       reject

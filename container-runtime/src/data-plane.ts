@@ -124,7 +124,7 @@ export interface DataPlaneHttpRequest {
   readonly method: "GET" | "POST" | "PUT" | "DELETE";
   readonly path: `/${string}`;
   readonly body?: unknown;
-  readonly minimumApiVersion?: NonNullable<EngineHttpRequest["minimumApiVersion"]>;
+  readonly minimumApiVersions?: NonNullable<EngineHttpRequest["minimumApiVersions"]>;
   readonly headers?: Readonly<Record<string, string>>;
   readonly signal?: AbortSignal;
   readonly stdin?: AsyncIterable<Uint8Array>;

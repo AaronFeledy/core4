@@ -1,12 +1,18 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { sha256Hex } from "@lando/sdk/digest";
-import { ContainerHelperUnavailableError } from "@lando/sdk/errors";
 import { AbsolutePath, type ContainerHelperTarget, PortablePath } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
 import { engineInfoArchitecture, hostProxyContainerTargets } from "../../src/capabilities.ts";
-import { CONTAINER_HELPER_COMMANDS, containerHelperDelivery } from "../../src/container-helper.ts";
+import { resolveContainerHelper } from "../../src/container-helper/assets.ts";
+import {
+  CONTAINER_HELPER_COMMANDS,
+  CONTAINER_HELPER_PROFILE_TARGET,
+  containerHelperDelivery,
+  containerHelperProfileStubPath,
+} from "../../src/container-helper.ts";
+import { prepareContainerHelperMounts } from "../../src/container-helper-mount.ts";
 import type { EngineHttpApi, EngineHttpRequest } from "../../src/engine-api.ts";
 import type { ResolveContainerHelper } from "../../src/log-source-binding.ts";
 import { commonContainerLabels } from "../../src/plan.ts";
@@ -39,16 +45,18 @@ export const fixtureHelperCommandMounts = CONTAINER_HELPER_COMMANDS.map((name) =
   readOnly: true,
   realization: "passthrough" as const,
 }));
+export const fixtureHelperProfileStubBind = `${containerHelperProfileStubPath(artifact)}:${CONTAINER_HELPER_PROFILE_TARGET}:ro`;
 
-export const fixtureContainerLabels: typeof commonContainerLabels = (plan, service) =>
-  commonContainerLabels(plan, {
-    ...service,
-    mounts: [
-      ...service.mounts,
-      { ...fixtureHelperMount, target: PortablePath.make(fixtureHelperMount.target) },
-      ...fixtureHelperCommandMounts,
-    ],
-  });
+/** Labels of a container created with the fixture helper, lowered by the provider's own mount preparation. */
+export const fixtureContainerLabels: typeof commonContainerLabels = (plan, service) => {
+  const prepared = Effect.runSync(
+    prepareContainerHelperMounts(
+      { ...plan, services: { [service.name]: service } },
+      { ...fixtureHelperOptions, ctx: { providerId: "podman", remediation: "Retry.", env: {} } },
+    ),
+  );
+  return commonContainerLabels(plan, prepared.services[service.name] ?? service);
+};
 
 export const fixtureHelperOptionsFor = (api: EngineHttpApi | undefined) => {
   if (api !== undefined && "info" in api && Effect.isEffect(api.info))
@@ -64,23 +72,9 @@ export const fixtureHelperOptionsFor = (api: EngineHttpApi | undefined) => {
 };
 const installed = new WeakSet<EngineHttpApi>();
 
+/** The real resolver, so live services bind the published command shims and profile hook. */
 export const resolveBuiltContainerHelperForTest: ResolveContainerHelper = (target) =>
-  Effect.try({
-    try: () => {
-      const root =
-        process.env.LANDO_CONTAINER_HELPER_DIR ??
-        resolve(import.meta.dirname, "../../../core/container-helper/dist");
-      const path = join(root, `linux-${target.arch}`, "lando-container-helper");
-      return { target, path: AbsolutePath.make(path), digest: sha256Hex(readFileSync(path)) };
-    },
-    catch: (cause) =>
-      new ContainerHelperUnavailableError({
-        target,
-        cause,
-        message: "Built container helper is unavailable for live tests.",
-        remediation: "Build container helpers before running live provider tests.",
-      }),
-  });
+  resolveContainerHelper(target, { standalone: false });
 
 export const containerHelperTestOptions = (
   api: EngineHttpApi & { readonly info: Effect.Effect<unknown, unknown> },

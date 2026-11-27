@@ -1,4 +1,4 @@
-import { ProviderUnavailableError } from "@lando/sdk/errors";
+import { type AppliedStateVersionError, ProviderUnavailableError } from "@lando/sdk/errors";
 import type { AppId, AppPlan, ServiceName } from "@lando/sdk/schema";
 import { planDataId } from "@lando/sdk/schema";
 import type {
@@ -24,8 +24,12 @@ export { readAppEnvironment } from "./app-environment.ts";
 
 export interface ResolvedProviderOpsInput {
   readonly ctx: ProviderErrorContext;
-  readonly resolvePlan: (app: AppId) => Effect.Effect<AppPlan | undefined>;
-  readonly beforeMutation?: (app: AppId) => Effect.Effect<void, ProviderUnavailableError>;
+  readonly resolvePlan: (
+    app: AppId,
+  ) => Effect.Effect<AppPlan | undefined, ProviderUnavailableError | AppliedStateVersionError>;
+  readonly beforeMutation?: (
+    app: AppId,
+  ) => Effect.Effect<void, ProviderUnavailableError | AppliedStateVersionError>;
   readonly noPlanError: (app: AppId, operation: string) => ProviderError;
   readonly before?: (
     operation: ResolvedProviderOperation,
@@ -34,11 +38,7 @@ export interface ResolvedProviderOpsInput {
   ) => Effect.Effect<void, ProviderError>;
   readonly readAppEnvironment: RuntimeProviderShape["readAppEnvironment"];
   readonly service: {
-    readonly lifecycle: (
-      plan: AppPlan,
-      target: ServiceSelector,
-      action: "start" | "stop" | "restart",
-    ) => Effect.Effect<void, ProviderError>;
+    readonly restart: (plan: AppPlan, target: ServiceSelector) => Effect.Effect<void, ProviderError>;
     readonly resume?: NonNullable<RuntimeProviderShape["resume"]>;
     readonly suspend?: NonNullable<RuntimeProviderShape["suspend"]>;
     readonly waitForExit: (
@@ -66,8 +66,6 @@ export interface ResolvedProviderOpsInput {
 
 export type ResolvedProviderOps = Pick<
   RuntimeProviderShape,
-  | "start"
-  | "stop"
   | "restart"
   | "resume"
   | "suspend"
@@ -112,25 +110,29 @@ export const makeResolvedProviderOps = (input: ResolvedProviderOpsInput): Resolv
     operation: ResolvedProviderOperation,
     delegate: (plan: AppPlan) => Effect.Effect<A, E, R>,
   ): Effect.Effect<A, ProviderError | E, R> => {
-    const resolved = (
-      target.plan === undefined ? input.resolvePlan(target.app) : Effect.succeed(target.plan)
-    ).pipe(
+    const observational =
+      operation === "inspect" || operation === "waitForExit" || operation === "observeVolume";
+    const supplied = target.plan;
+    const read =
+      supplied === undefined || observational || input.beforeMutation === undefined
+        ? input.resolvePlan(target.app).pipe(Effect.map((recorded) => supplied ?? recorded))
+        : beforeMutation(target.app).pipe(Effect.as(supplied));
+    return read.pipe(
       Effect.flatMap((plan) =>
         plan === undefined
           ? Effect.fail(input.noPlanError(target.app, operation))
           : before(operation, plan, target.service).pipe(Effect.flatMap(() => delegate(plan))),
       ),
     );
-    return operation === "inspect" || operation === "waitForExit" || operation === "observeVolume"
-      ? resolved
-      : beforeMutation(target.app).pipe(Effect.andThen(resolved));
   };
-  const withOptionalPlan = (target: ExecTarget): Effect.Effect<ExecTarget> =>
-    target.plan === undefined
-      ? input
-          .resolvePlan(target.app)
-          .pipe(Effect.map((plan) => (plan === undefined ? target : { ...target, plan })))
-      : Effect.succeed(target);
+  const withOptionalPlan = (target: ExecTarget) =>
+    input
+      .resolvePlan(target.app)
+      .pipe(
+        Effect.map((plan) =>
+          target.plan !== undefined || plan === undefined ? target : { ...target, plan },
+        ),
+      );
   const resolveTargetStream = <A, E extends ProviderError, R>(
     target: AppSelector,
     operation: ResolvedProviderOperation,
@@ -151,16 +153,8 @@ export const makeResolvedProviderOps = (input: ResolvedProviderOpsInput): Resolv
 
   return {
     readAppEnvironment: input.readAppEnvironment,
-    start: Effect.fn("RuntimeProvider.start")(function* (target) {
-      return yield* resolveTarget(target, "start", (plan) => input.service.lifecycle(plan, target, "start"));
-    }),
-    stop: Effect.fn("RuntimeProvider.stop")(function* (target) {
-      return yield* resolveTarget(target, "stop", (plan) => input.service.lifecycle(plan, target, "stop"));
-    }),
     restart: Effect.fn("RuntimeProvider.restart")(function* (target) {
-      return yield* resolveTarget(target, "restart", (plan) =>
-        input.service.lifecycle(plan, target, "restart"),
-      );
+      return yield* resolveTarget(target, "restart", (plan) => input.service.restart(plan, target));
     }),
     resume: Effect.fn("RuntimeProvider.resume")(function* (target, identity) {
       return yield* resolveTarget(target, "resume", () => {

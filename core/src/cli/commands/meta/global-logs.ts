@@ -11,10 +11,9 @@ import {
   logsForPlan,
   validateSince,
 } from "@lando/engine/operations/logs";
-import type { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
 import type { LogsAppError } from "@lando/sdk/app";
 import type { ComposeKeyRejectedError, LandofileLoadExpressionError } from "@lando/sdk/errors";
-import type { RuntimeProviderRegistry } from "@lando/sdk/services";
+import type { RuntimeProviderRegistry, StreamFrameSink } from "@lando/sdk/services";
 import { Effect } from "effect";
 
 export { renderLogsAppResult as renderGlobalLogsResult } from "../logs";

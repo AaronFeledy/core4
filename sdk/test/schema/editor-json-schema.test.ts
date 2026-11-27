@@ -27,10 +27,21 @@ test("preserves Landofile extension slots and descriptions in the editor project
   expect(artifact).toHaveProperty(["patternProperties", "^x-"]);
   expect(artifact).not.toHaveProperty("propertyNames");
   expect(artifact).toHaveProperty("properties.name.anyOf.0.description", expect.any(String));
-  expect(artifact).toHaveProperty(
-    "properties.services.anyOf.0.additionalProperties.anyOf.0.$ref",
-    expect.stringMatching(/^#\/definitions\//),
-  );
+  // Service config may be a local $ref or an inlined closed object after Compose-key canonicalization.
+  const serviceValue =
+    (
+      artifact as {
+        properties?: { services?: { anyOf?: Array<{ additionalProperties?: { anyOf?: unknown[] } }> } };
+      }
+    ).properties?.services?.anyOf?.[0]?.additionalProperties?.anyOf?.[0] ??
+    (artifact as { properties?: { services?: { anyOf?: Array<{ additionalProperties?: unknown }> } } })
+      .properties?.services?.anyOf?.[0]?.additionalProperties;
+  expect(serviceValue).toBeDefined();
+  if (serviceValue && typeof serviceValue === "object" && "$ref" in serviceValue) {
+    expect(String((serviceValue as { $ref: string }).$ref)).toMatch(/^#\/definitions\//);
+  } else {
+    expect(serviceValue).toEqual(expect.objectContaining({ type: "object" }));
+  }
 });
 
 test("publishes native merge directive tags without widening Landofile fields", () => {
@@ -185,4 +196,105 @@ test.each([
   const authoring = Schema.decodeUnknownResult(LandofileAuthoringShape)(input, options);
   expect(Result.isSuccess(authoring)).toBe(accepted);
   expect(Result.isSuccess(editor)).toBe(accepted);
+});
+
+test("drops decoded-only descriptor object branches from the editor input document", () => {
+  // Given the Landofile editor projection used by YAML editors and Standard JSON Schema input.
+  const artifact = getEditorJsonSchema("LandofileShape");
+  const definitions = artifact.definitions;
+  expect(definitions).toBeDefined();
+  // Then no SecretRef / BoundText / RouteText / ImportRef authoring object definitions remain.
+  const descriptorKeys = Object.keys(definitions ?? {}).filter((key) =>
+    /^(?:SecretRef|BoundText(?:Reference)?|RouteText|RouteUrlPart|StringImportRef)Authoring(?:_\d+)?$/u.test(
+      key,
+    ),
+  );
+  expect(descriptorKeys).toEqual([]);
+  const text = JSON.stringify(artifact);
+  expect(text).not.toContain("#/definitions/SecretRefAuthoring");
+  expect(text).not.toContain("#/definitions/BoundTextAuthoring");
+  expect(text).not.toContain("#/definitions/RouteTextAuthoring");
+  expect(text).not.toContain("#/definitions/StringImportRefAuthoring");
+  expect(text).not.toMatch(/"enum"\s*:\s*\[\s*"ImportRef"\s*\]/u);
+  expect(text).not.toMatch(/"enum"\s*:\s*\[\s*"SecretRef"\s*\]/u);
+  expect(text).not.toMatch(/"enum"\s*:\s*\[\s*"BoundText"\s*\]/u);
+  expect(text).not.toMatch(/"enum"\s*:\s*\[\s*"RouteText"\s*\]/u);
+});
+
+test.each([
+  ["SecretRef object", { web: { environment: { TOKEN: { _tag: "SecretRef", reference: "TOKEN" } } } }],
+  [
+    "BoundText object",
+    {
+      web: {
+        environment: {
+          URL: { _tag: "BoundText", parts: ["x", { reference: "TOKEN", encoding: "raw" as const }] },
+        },
+      },
+    },
+  ],
+  [
+    "RouteText object",
+    {
+      web: {
+        environment: {
+          HOME: { _tag: "RouteText", parts: [{ service: "web", encoding: "raw" as const }] },
+        },
+      },
+    },
+  ],
+  [
+    "ImportRef object",
+    {
+      web: {
+        security: {
+          ca: [
+            {
+              _tag: "ImportRef" as const,
+              path: "ca.pem",
+              basename: "ca.pem",
+              checksum: "abc",
+              layer: "canonical" as const,
+              value: "pem",
+            },
+          ],
+        },
+      },
+    },
+  ],
+] as const)("editor input rejects decoded-only %s", (_label, services) => {
+  // Given a Landofile that uses a decoded runtime descriptor object instead of authored syntax.
+  const input = { name: "demo", services };
+  const options = { onExcessProperty: "error", errors: "all" } as const;
+  // When the editor document is applied as a decoder.
+  const editor = Schema.decodeUnknownResult(editorAuthoring)(input, options);
+  // Then the decoded-only object branch is refused; authored strings remain accepted elsewhere.
+  expect(Result.isSuccess(editor)).toBe(false);
+});
+
+test.each([
+  ["secret string", { web: { environment: { TOKEN: "${secret:TOKEN}" } } }],
+  ["ca path string", { web: { security: { ca: ["certs/ca.pem"] } } }],
+] as const)("editor input still accepts authored %s", (_label, services) => {
+  const input = { name: "demo", services };
+  const options = { onExcessProperty: "error", errors: "all" } as const;
+  const editor = Schema.decodeUnknownResult(editorAuthoring)(input, options);
+  expect(Result.isSuccess(editor)).toBe(true);
+});
+
+test("publishes condition descriptions that say when if and when are checked", () => {
+  // Given the editor projection for Landofile conditions.
+  const artifact = getEditorJsonSchema("LandofileShape");
+  const text = JSON.stringify(artifact);
+  // Then event-step `if` describes invocation-time checking (lifecycle and tooling steps).
+  expect(text).toContain("invocation time");
+  expect(artifact).toHaveProperty(
+    ["definitions", "EventCmdStepAuthoring", "properties", "if"],
+    expect.objectContaining({
+      description: expect.stringMatching(/invocation time/u),
+    }),
+  );
+  // And include `when` describes load-time checking over recipe and env.
+  expect(text).toContain("Landofile load time");
+  expect(text).toContain("recipe and env");
 });

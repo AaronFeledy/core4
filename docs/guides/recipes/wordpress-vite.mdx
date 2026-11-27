@@ -26,7 +26,7 @@ services:
     primary: false
     environment:
       VITE_DEV_SERVER_URL: "{{ services.node.url }}"
-      WORDPRESS_URL: "{{ services.appserver.url }}"
+      WORDPRESS_ORIGIN: "{{ services.appserver.origin }}"
     routes:
       - hostname: "vite.{{ app.name }}.{{ proxy.defaultDomain }}"
         scheme: both
@@ -47,10 +47,10 @@ lando info
 
 `lando info` lists routes for both `appserver` (`https://wp-vite.lndo.site`) and `node` (`https://vite.wp-vite.lndo.site`). The Node service stays idle until you run Vite; its route cannot serve assets yet. `port: 5173` declares the internal HTTP endpoint, not a host port binding.
 
-`{{ services.<name>.url }}` is the URL the router publishes for that service, the same one `lando info` prints. Lando fills it in when it creates the container, so Vite and the theme read both origins from the environment instead of from values you type:
+`{{ services.<name>.url }}` is the URL the router publishes for that service, the same one `lando info` prints. `{{ services.<name>.origin }}` is that URL without a path, which is the form a CORS rule compares. Lando fills both in when it creates the container, so Vite and the theme read them from the environment instead of from values you type. See [Read a service's public URL](../landofile/expressions.mdx#read-a-services-public-url).
 
 ```sh
-lando exec node -- printenv VITE_DEV_SERVER_URL WORDPRESS_URL
+lando exec node -- printenv VITE_DEV_SERVER_URL WORDPRESS_ORIGIN
 lando exec appserver -- printenv VITE_DEV_SERVER_URL
 ```
 
@@ -113,7 +113,6 @@ Save that JSON as `package.json`.
 import { defineConfig } from 'vite';
 
 const devServer = new URL(process.env.VITE_DEV_SERVER_URL ?? 'http://localhost:5173');
-const wordpress = new URL(process.env.WORDPRESS_URL ?? 'http://localhost');
 const secure = devServer.protocol === 'https:';
 
 export default defineConfig({
@@ -135,7 +134,7 @@ export default defineConfig({
     strictPort: true,
     allowedHosts: [devServer.hostname],
     origin: devServer.origin,
-    cors: { origin: wordpress.origin },
+    cors: { origin: process.env.WORDPRESS_ORIGIN ?? 'http://localhost' },
     hmr: {
       host: devServer.hostname,
       protocol: secure ? 'wss' : 'ws',
@@ -280,7 +279,7 @@ lando app:config --format=json
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"node\":\\s*\\{[^}]*\"port\":\\s*5173" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"hostname\":\\s*\"vite\\.\\{\\{ app\\.name \\}\\}\\.\\{\\{ proxy\\.defaultDomain \\}\\}\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"VITE_DEV_SERVER_URL\":\\s*\"\\{\\{ services\\.node\\.url \\}\\}\"" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"WORDPRESS_URL\":\\s*\"\\{\\{ services\\.appserver\\.url \\}\\}\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"WORDPRESS_ORIGIN\":\\s*\"\\{\\{ services\\.appserver\\.origin \\}\\}\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"npm\":\\s*\\{[^}]*\"service\":\\s*\"node\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appserver\":\\s*\\{[^}]*\"framework\":\\s*\"wordpress\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appserver\":\\s*\\{[^}]*\"type\":\\s*\"php:8\\.4\"" } }} />
@@ -290,13 +289,13 @@ lando app:config --format=json
       <Cleanup />
     </Step>
   </Scenario>
-  <Scenario id="runtime-urls" layer="e2e" timeout={300000} render={false} reason="Check that PHP and Node receive the Vite URL and Node receives the WordPress URL">
+  <Scenario id="runtime-urls" layer="e2e" timeout={300000} render={false} reason="Check that PHP and Node receive the Vite URL and Node receives the WordPress origin">
     <Step name="start">
       <UseFixture name="wordpress-vite" />
       <Run command="lando start --format=json" />
     </Step>
     <Step name="check-urls">
-      <Verify command="lando exec node -- printenv VITE_DEV_SERVER_URL WORDPRESS_URL" expect={{ stdout: { regex: "^https://vite\\.wordpress-vite\\.lndo\\.site(?::[0-9]+)?/?\\r?\\nhttps://wordpress-vite\\.lndo\\.site(?::[0-9]+)?/?\\s*$" } }} />
+      <Verify command="lando exec node -- printenv VITE_DEV_SERVER_URL WORDPRESS_ORIGIN" expect={{ stdout: { regex: "^https://vite\\.wordpress-vite\\.lndo\\.site(?::[0-9]+)?/?\\r?\\nhttps://wordpress-vite\\.lndo\\.site(?::[0-9]+)?/?\\s*$" } }} />
       <Verify command="lando exec appserver -- printenv VITE_DEV_SERVER_URL" expect={{ stdout: { regex: "^https://vite\\.wordpress-vite\\.lndo\\.site(?::[0-9]+)?/?\\s*$" } }} />
     </Step>
     <Step name="cleanup">

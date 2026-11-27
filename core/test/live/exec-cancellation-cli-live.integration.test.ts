@@ -1,23 +1,26 @@
 import { expect, test } from "bun:test";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { deserialize } from "node:v8";
+import { containerHelperDelivery } from "@lando/container-runtime/container-helper";
+import { resolveContainerHelper } from "@lando/container-runtime/container-helper/assets";
 import { serviceContainerName } from "@lando/container-runtime/plan";
 import { APP_PLAN_CACHE_HEADER_BYTES } from "@lando/engine/cache/app-plan";
+import { retireTempRoots } from "@lando/engine/testing/temp-root-retirement";
 import { makeLandoPaths } from "@lando/paths";
 import { CurrentExecutableAppPlan, StreamFrame } from "@lando/sdk/schema";
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
 
 // Explicit local-daemon opt-in only; never inherit a managed runtime or user app.
 const socket = process.env.LANDO_TEST_DOCKER_SOCKET;
 const enabled = socket === "/var/run/docker.sock";
-const source = [process.execPath, resolve(import.meta.dir, "../../bin/lando.ts")];
+const source = [process.execPath, resolve(import.meta.dir, "../../bin/lando.ts")] as const;
 const compiled = process.env.LANDO_SCENARIO_E2E_BINARY;
 const variants = [
   { name: "source", command: source },
-  { name: "compiled", command: compiled === undefined ? undefined : [compiled] },
-];
+  { name: "compiled", command: compiled === undefined ? undefined : ([compiled] as const) },
+] as const;
 
 const docker = async (args: readonly string[]) => {
   const proc = Bun.spawn(["docker", "--host", "unix:///var/run/docker.sock", ...args], {
@@ -138,6 +141,17 @@ for (const variant of variants.flatMap((entry) =>
           const payload = deserialize(cache.subarray(APP_PLAN_CACHE_HEADER_BYTES)) as { plan: unknown };
           const plan = Schema.decodeUnknownSync(CurrentExecutableAppPlan)(payload.plan);
           expect(Object.values(plan.services).flatMap((service) => service.mounts)).toEqual([]);
+          // The CLI delivers the helper from its own cache root; bind the directory it will verify.
+          const helper = await Effect.runPromise(
+            resolveContainerHelper(
+              { os: "linux", arch: process.arch === "arm64" ? "arm64" : "x64" },
+              {
+                env,
+                standalone: false,
+                cacheRoot: makeLandoPaths({ env }).toolDownloadsDir("container-helper"),
+              },
+            ),
+          );
           id = await docker([
             "create",
             "--network",
@@ -145,7 +159,7 @@ for (const variant of variants.flatMap((entry) =>
             "--name",
             serviceContainerName(plan, "web"),
             "--mount",
-            `type=bind,src=${env.LANDO_CONTAINER_HELPER_DIR}/linux-${process.arch},dst=/run/lando/helper,readonly`,
+            `type=bind,src=${containerHelperDelivery(helper).source},dst=/run/lando/helper,readonly`,
             "alpine:3.20",
             "sleep",
             "300",
@@ -312,9 +326,18 @@ for (const variant of variants.flatMap((entry) =>
             await active.exited;
           }
           if (id !== undefined) await docker(["rm", "--force", id]);
-          await rm(root, { recursive: true, force: true });
+          const retirement = await retireTempRoots({
+            directory: root,
+            env,
+            endpoint: "/var/run/docker.sock",
+            command,
+          });
+          expect(
+            [...retirement.retained, ...retirement.failed],
+            JSON.stringify({ root, ...retirement }),
+          ).toEqual([]);
         }
       },
-      120_000,
+      360_000,
     );
   }

@@ -7,6 +7,9 @@
  * `/usr/local/bin/lando-drupal-scaffold`, `/usr/local/bin/lando-drupal-cms-scaffold`,
  * and `/usr/local/bin/lando-drupal-contrib-sync`.
  *
+ * It also carries the login-profile hook that keeps a service's PATH in login
+ * shells; see `CONTAINER_HELPER_PROFILE_STUB` and `CONTAINER_HELPER_PROFILE_HOOK`.
+ *
  * The directory mount is stable above content-addressed helper versions. Every
  * service also gets the four command mounts, which bind immutable per-architecture
  * shims that execute the current helper through that mounted directory: the binary
@@ -16,7 +19,7 @@
  */
 
 import { basename, dirname, join, relative } from "node:path";
-import type { ContainerHelperArtifact } from "@lando/sdk/schema";
+import { type ContainerHelperArtifact, type MountPlan, mountTargetCovers } from "@lando/sdk/schema";
 
 export const CONTAINER_HELPER_FILE = "lando-container-helper";
 const CONTAINER_HELPER_TARGET = "/run/lando/helper";
@@ -103,3 +106,122 @@ export const containerHelperCommandMounts = (helper: ContainerHelperArtifact) =>
     source: containerHelperCommandMount(helper, name),
     target: `/usr/local/bin/${name}`,
   }));
+
+/**
+ * The mount strictly above a Lando file bind such as `/usr/local/bin/<name>` or the
+ * login-profile stub that owns that directory. Binding beneath a bind or volume
+ * would create an empty mountpoint file in that mount's source, so the Lando bind
+ * is skipped instead. A tmpfs persists nothing, so a bind beneath it still mounts.
+ * An exact target is a collision, not a cover.
+ */
+export const helperBindCoveredBy = (
+  mounts: ReadonlyArray<MountPlan>,
+  target: string,
+): MountPlan | undefined =>
+  mounts.find(
+    (mount) =>
+      mount.type !== "tmpfs" &&
+      mountTargetCovers(mount.target, target) &&
+      !mountTargetCovers(target, mount.target),
+  );
+
+/**
+ * Why `mount` cannot coexist with the helper binds every service receives, or
+ * undefined: a mount at or beneath the helper directory, a bind or volume above it
+ * (which would gain Lando's mountpoints in its source), or a mount at a helper
+ * command target. A tmpfs above the directory persists nothing and is allowed.
+ */
+export const reservedHelperTargetConflict = (
+  serviceName: string,
+  mount: Pick<MountPlan, "type" | "target">,
+): { readonly message: string; readonly remediation: string } | undefined => {
+  if (
+    mountTargetCovers(CONTAINER_HELPER_TARGET, mount.target) ||
+    (mount.type !== "tmpfs" && mountTargetCovers(mount.target, CONTAINER_HELPER_TARGET))
+  )
+    return {
+      message: `Service ${serviceName} mounts ${mount.target}, which overlaps Lando's reserved helper directory ${CONTAINER_HELPER_TARGET}.`,
+      remediation: `Move the mount at ${mount.target} to a path that is neither above nor inside ${CONTAINER_HELPER_TARGET}.`,
+    };
+  for (const target of CONTAINER_HELPER_COMMAND_TARGETS)
+    if (mountTargetCovers(target, mount.target) && mountTargetCovers(mount.target, target))
+      return {
+        message: `Service ${serviceName} mounts ${mount.target}, which is reserved for Lando's ${basename(target)} command.`,
+        remediation: `Move the mount at ${mount.target} to another path.`,
+      };
+  return undefined;
+};
+
+/**
+ * Distro login profiles (`/etc/profile` on Debian, Alpine, and RHEL) reset PATH,
+ * so a login shell loses what `lando exec` sees: an authored PATH and the image's
+ * own entries such as `/usr/local/go/bin`. Sourced through the profile stub,
+ * after the other `/etc/profile.d` scripts, this hook reads the PATH the shell was started with from its initial
+ * environment, keeps it verbatim, and appends each entry the profiles added that
+ * it lacks. User dotfiles run later and can still prepend. It changes no shell
+ * option or IFS, needs only `tr`, and does nothing when that PATH is unreadable,
+ * empty, or holds a newline, or when PATH is readonly.
+ */
+export const CONTAINER_HELPER_PROFILE_HOOK = `# Lando: login profiles reset PATH. Restore the PATH this shell started with,
+# then append the entries the profiles added.
+__lando_soh=$(printf '\\001')
+__lando_path=$(tr '\\n\\000' '\\001\\n' 2>/dev/null <"/proc/$$/environ" | while IFS= read -r __lando_record; do
+  case $__lando_record in
+    PATH=*)
+      printf '%s' "\${__lando_record#PATH=}"
+      break
+      ;;
+  esac
+done) || :
+case $__lando_path in
+  "" | *"$__lando_soh"*) ;;
+  *)
+    if (PATH=$__lando_path) 2>/dev/null; then
+      __lando_merged=$__lando_path
+      __lando_rest=\${PATH-}:
+      while [ -n "$__lando_rest" ]; do
+        __lando_entry=\${__lando_rest%%:*}
+        __lando_rest=\${__lando_rest#*:}
+        if [ -n "$__lando_entry" ]; then
+          case :$__lando_merged: in
+            *":$__lando_entry:"*) ;;
+            *) __lando_merged=$__lando_merged:$__lando_entry ;;
+          esac
+        fi
+      done
+      PATH=$__lando_merged
+      export PATH
+    fi
+    ;;
+esac
+unset __lando_soh __lando_path __lando_record __lando_merged __lando_rest __lando_entry
+`;
+
+/** Where every service sources the stub; the `zz-` prefix orders it after other profile scripts. */
+export const CONTAINER_HELPER_PROFILE_TARGET = "/etc/profile.d/zz-lando-service-path.sh";
+
+const CONTAINER_HELPER_PROFILE = "profile";
+const CONTAINER_HELPER_PROFILE_HOOK_FILE = "service-path.sh";
+
+/** The container path of the hook body inside the mounted helper directory. */
+export const CONTAINER_HELPER_PROFILE_HOOK_TARGET = `${CONTAINER_HELPER_TARGET}/${CONTAINER_HELPER_PROFILE}/${CONTAINER_HELPER_PROFILE_HOOK_FILE}`;
+
+/**
+ * The immutable file bound at `CONTAINER_HELPER_PROFILE_TARGET`. Like the command
+ * shims, its source never changes, so a hook update never changes a create
+ * fingerprint; it sources the current body through the helper directory mount, so
+ * running containers pick up a new body at their next login.
+ */
+export const CONTAINER_HELPER_PROFILE_STUB = `# Lando: keep the service PATH in login shells; the body ships with the helper.
+if [ -r ${CONTAINER_HELPER_PROFILE_HOOK_TARGET} ]; then
+  . ${CONTAINER_HELPER_PROFILE_HOOK_TARGET}
+fi
+`;
+
+/** The host path of the stub, bound read-only at `CONTAINER_HELPER_PROFILE_TARGET`. */
+export const containerHelperProfileStubPath = (helper: ContainerHelperArtifact): string =>
+  join(containerHelperDirectory(helper), CONTAINER_HELPER_PROFILE, basename(CONTAINER_HELPER_PROFILE_TARGET));
+
+/** The host path of the hook body, replaced atomically when its bytes change. */
+export const containerHelperProfileHookPath = (helper: ContainerHelperArtifact): string =>
+  join(containerHelperDirectory(helper), CONTAINER_HELPER_PROFILE, CONTAINER_HELPER_PROFILE_HOOK_FILE);

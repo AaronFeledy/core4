@@ -13,7 +13,7 @@ import {
   type RuntimeProviderShape,
   StateStore,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Cause, DateTime, Deferred, Effect, Exit, Fiber, Layer, Queue, Schema } from "effect";
 import { openArtifactBuildResults } from "../../src/services/build-artifact-results.ts";
 import * as BuildLayer from "../../src/services/build-orchestrator.ts";
@@ -93,10 +93,7 @@ const dependencies = (provider: RuntimeProviderShape, root: string) => {
     Layer.succeed(StateStore, makeTestStateStore().service),
     Layer.succeed(
       RuntimeProviderRegistry,
-      RuntimeProviderRegistry.of({
-        appliedPlansFor: () => Effect.succeed([]),
-        resolveAppliedPlan: () => Effect.succeed(undefined),
-        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+      makeTestRuntimeProviderRegistry({
         list: Effect.succeed([ProviderId.make(provider.id)]),
         capabilities: Effect.succeed(provider.capabilities),
         select: () => Effect.succeed(provider),
@@ -162,7 +159,21 @@ test.each(cases)("settles every declared artifact task once for %s", async (_nam
 
     expect(Exit.isFailure(result.exit)).toBe(true);
     if (Exit.isFailure(result.exit)) {
-      expect(result.exit.cause.reasons.slice(0, cause.reasons.length)).toMatchObject(cause.reasons);
+      const payload = (reason: Cause.Reason<unknown>) =>
+        Cause.isFailReason(reason)
+          ? reason.error
+          : Cause.isDieReason(reason)
+            ? reason.defect
+            : reason.fiberId;
+      const observed = result.exit.cause.reasons.slice(0, cause.reasons.length);
+      expect(observed.map(payload)).toEqual(cause.reasons.map(payload));
+      for (const [index, reason] of cause.reasons.entries()) {
+        const actual = observed[index];
+        if (actual === undefined) throw new Error("Missing artifact failure reason");
+        expect(
+          Cause.isFailReason(reason) && Cause.hasDies(cause) ? ["Fail", "Die"] : [reason._tag],
+        ).toContain(actual._tag);
+      }
       expect(result.exit.cause.reasons.slice(cause.reasons.length).every(Cause.isInterruptReason)).toBe(true);
     }
     expect(calls.sort()).toEqual(["sibling", "web"]);

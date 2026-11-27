@@ -1,4 +1,5 @@
 import { ServiceName } from "@lando/sdk/schema";
+import { DEFAULT_RESULT_FORMAT, type ResultFormat, isResultFormat } from "../format-flags";
 
 export const specFlagsOf = (input: unknown): Record<string, unknown> => {
   if (
@@ -46,13 +47,27 @@ export const stringArrayFlag = (
       : [];
 };
 
+/** Empty names pass through so the operation rejects them instead of widening the selection. */
 export const serviceNamesFlag = (flags: Readonly<Record<string, unknown>>): ReadonlyArray<ServiceName> =>
-  stringArrayFlag(flags, "service")
-    .filter((value) => value.length > 0)
-    .map((value) => ServiceName.make(value));
+  stringArrayFlag(flags, "service").map((value) => ServiceName.make(value));
 
-export const formatFlag = <T extends string>(
-  flags: Readonly<Record<string, unknown>>,
+/**
+ * The result format the dispatcher selected for this invocation. `--format`, `--json`, and `-j`
+ * are always the dispatcher's, so no built-in declares a `format` flag of its own: the CLI
+ * reinjects its selection as `flags.format`. A host that selects none (event steps, MCP) reads
+ * the default, `text`.
+ */
+export const commandResultFormat = (input: unknown): ResultFormat => {
+  const format = specFlagsOf(input).format;
+  return typeof format === "string" && isResultFormat(format) ? format : DEFAULT_RESULT_FORMAT;
+};
+
+/** {@link commandResultFormat} narrowed to the formats a command's own output distinguishes. */
+export const commandResultFormatAmong = <T extends ResultFormat>(
+  input: unknown,
   allowed: ReadonlyArray<T>,
   fallback: T,
-): T => allowed.find((value) => value === flags.format) ?? fallback;
+): T => {
+  const format = commandResultFormat(input);
+  return allowed.find((value) => value === format) ?? fallback;
+};

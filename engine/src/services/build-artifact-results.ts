@@ -43,7 +43,7 @@ export const ArtifactBuildIndex = Schema.Struct({
 });
 export type ArtifactBuildIndex = typeof ArtifactBuildIndex.Type;
 export type ArtifactResultsBucket = StateBucket<ArtifactBuildIndex>;
-export const openArtifactBuildResults = (store: StateStoreShape) =>
+export const openArtifactBuildResults = (store: StateStoreShape, mode: "manage" | "observe" = "manage") =>
   store.open({
     root: "userCache",
     key: "artifact-build-results.bin",
@@ -51,8 +51,8 @@ export const openArtifactBuildResults = (store: StateStoreShape) =>
     version: 2,
     codec: "binary",
     lock: "advisory",
-    onCorrupt: "quarantine",
-    onVersionMismatch: "discard",
+    onCorrupt: mode === "observe" ? "discard" : "quarantine",
+    ...(mode === "observe" ? {} : { onVersionMismatch: "discard" as const }),
     default: { results: [], claims: [] },
   });
 

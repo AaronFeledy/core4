@@ -66,12 +66,11 @@ lando init
 
 Choose **Drupal**, use `drupal-demo` as the app name, and keep the remaining
 defaults for this example. Lando writes `.lando.yml` into the current directory.
-Start the services, download Drupal and its project-local Drush, then find the
-app URL:
+Run `lando start` to download Drupal and project-local Drush on first start.
+Run `lando info` to find the app URL:
 
 ```sh
 lando start
-lando drupal-scaffold
 lando info
 ```
 
@@ -81,7 +80,7 @@ Drupal site is not installed yet. Continue with the
 [Drupal guide](./docs/guides/recipes/drupal-workflow.mdx) to install the site or
 bring in an existing project's data.
 
-When you finish, stop the environment without deleting its data:
+When you finish, stop the environment. Its containers and data stay, and the next `lando start` picks up where you left off:
 
 ```sh
 lando stop

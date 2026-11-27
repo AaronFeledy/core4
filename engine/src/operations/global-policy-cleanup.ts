@@ -224,11 +224,11 @@ export const cleanupDisabledGlobalResources = Effect.fn("GlobalPolicy.cleanupDis
           );
         yield* persist();
         for (const row of selection.success.services) {
-          const removal = yield* Effect.result(resolved.provider.removeObservedService(row));
+          const removal = yield* Effect.result(resolved.provider.bringDownObserved(row, "remove"));
           if (removal._tag === "Failure") causes.push(removal.failure);
           else {
             remaining.delete(row.containerId);
-            if (removal.success.kind === "removed")
+            if (removal.success.action === "removed")
               receipt = { ...receipt, servicesRemoved: [...receipt.servicesRemoved, String(row.service)] };
           }
           receipt = {

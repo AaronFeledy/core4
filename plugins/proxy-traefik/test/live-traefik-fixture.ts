@@ -139,6 +139,7 @@ export const liveTraefikFixture = Effect.fnUntraced(function* (socket: string) {
         counts.roots++;
         return { certificate: authority.root, trusted: false };
       }),
+      trustStores: Effect.succeed([]),
       issueCert: () =>
         Effect.sync(() => {
           counts.issues++;

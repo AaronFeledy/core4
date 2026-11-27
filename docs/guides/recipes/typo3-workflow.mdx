@@ -48,7 +48,7 @@ lando exec appserver -- printenv TYPO3_SETUP_CREATE_SITE
 lando create-project typo3/cms-base-distribution "^14"
 ```
 
-`lando create-project` installs the project in the app root without overwriting `.lando.yml`. It puts `composer.json`, `config/`, and `public/` there and installs `vendor/` into the service's volume.
+`lando create-project` installs the project in the app root without overwriting `.lando.yml`. It puts `composer.json`, `config/`, and `public/` there and installs `vendor/` next to them.
 
 Run the rest of this section from a POSIX shell on your host (WSL on Windows). The password step also needs `openssl`.
 

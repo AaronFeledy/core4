@@ -1,0 +1,8 @@
+name: home-and-host-bin-tmpfs
+services:
+  tools:
+    type: compose
+    image: alpine:3.20
+    command: sleep infinity
+    tmpfs:
+      - /usr/local/bin

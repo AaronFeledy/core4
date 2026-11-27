@@ -9,7 +9,7 @@ export const withTestVolumeLocks = (provider: RuntimeProviderShape): RuntimeProv
   const cleanup = provider.cleanupOwnedResources;
   return {
     ...provider,
-    destroy: (target, options) => provider.destroy(target, options).pipe(Effect.provide(layer)),
+    bringDown: (target, options) => provider.bringDown(target, options).pipe(Effect.provide(layer)),
     ...(cleanup === undefined
       ? {}
       : {

@@ -18,6 +18,8 @@ import {
   AbsolutePath,
   AppId,
   type AppPlan,
+  type BringDownOptions,
+  type BringDownOutcome,
   type LandofileShape,
   PortablePath,
   ProviderId,
@@ -36,7 +38,7 @@ import {
   StateStore,
   ToolingEngine,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Cause, DateTime, Effect, Exit, Layer, Schema, Stream } from "effect";
 import {
@@ -270,10 +272,7 @@ const makeLayer = (input: {
             : Effect.fail(input.listFailure),
         ),
       ),
-    destroy: (
-      target: { readonly app: string; readonly plan?: AppPlan },
-      options: { readonly removeState?: boolean; readonly volumes?: boolean },
-    ) =>
+    bringDown: (target: { readonly app: string; readonly plan?: AppPlan }, options: BringDownOptions) =>
       Effect.sync(() => {
         mutationOrder.push("destroy");
         if (target.plan !== undefined) destroyCalls.push(target.plan);
@@ -281,44 +280,47 @@ const makeLayer = (input: {
           app: String(target.app),
           hasPlan: target.plan !== undefined,
           planRoot: target.plan === undefined ? undefined : String(target.plan.root),
-          volumes: options.volumes === true,
+          volumes: options.containers === "remove" && options.volumes,
         });
       }).pipe(
         Effect.andThen(input.destroy?.() ?? Effect.void),
-        Effect.tap(() =>
-          options.removeState === false
-            ? Effect.void
-            : Effect.sync(() => {
-                appliedPlan = undefined;
-              }),
+        Effect.andThen(
+          Effect.sync((): BringDownOutcome => {
+            const containers = Object.keys(target.plan?.services ?? {}).map((service) => ({
+              service: ServiceName.make(service),
+              containerId: `${service}-container`,
+              action: options.containers === "stop" ? ("stopped" as const) : ("removed" as const),
+            }));
+            if (options.containers === "stop") return { kind: "stopped", containers };
+            if (options.removeState !== false) appliedPlan = undefined;
+            return { kind: "removed", containers, volumesRemoved: { data: 0, cache: 0 } };
+          }),
         ),
-        Effect.as({ kind: "destroyed", volumesRemoved: { data: 0, cache: 0 } } as const),
       ),
     removeVolume: (ref: { readonly store: string }, expectedGeneration: string) =>
       Effect.sync(() => {
         removedVolumes.push({ store: ref.store, generation: expectedGeneration });
       }),
-    removeObservedService: (observed: { readonly service: string; readonly containerId?: string }) =>
+    bringDownObserved: (observed: ServiceRuntimeInfo) =>
       Effect.sync(() => {
         mutationOrder.push(`remove:${observed.service}`);
         removalAttempts.push({ service: String(observed.service), containerId: observed.containerId });
         const survives =
           observed.containerId === undefined ||
           (input.survivingServices ?? []).includes(String(observed.service));
-        return survives ? ({ kind: "absent" } as const) : ({ kind: "removed" } as const);
+        return { service: observed.service, action: survives ? ("absent" as const) : ("removed" as const) };
       }).pipe(
         Effect.tap(() =>
           input.removalFailure === undefined ? Effect.void : Effect.fail(input.removalFailure),
         ),
       ),
   };
-  const registry = {
+  const registry = makeTestRuntimeProviderRegistry({
     appliedPlansFor: (root: AbsolutePath) =>
       Effect.succeed(
         appliedPlan !== undefined && appliedPlan.identity?.appRoot === root ? [appliedPlan] : [],
       ),
     list: Effect.succeed([providerId]),
-    capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
     select: () => Effect.succeed(provider),
     resolveAppliedPlan: (_cwd: AbsolutePath) => Effect.succeed(appliedPlan),
     // Providers answer only for the root they are asked about. Either root field may match, so a
@@ -354,7 +356,7 @@ const makeLayer = (input: {
       }
       return Effect.succeed({ kind: "absent" } as const);
     },
-  };
+  });
   const layer = Layer.mergeAll(
     layerTransactionGuard,
     emptySnapshotsLayer,
@@ -505,33 +507,45 @@ describe("applied-state teardown", () => {
       expect(harness.destroyTargets[0]?.volumes).toBe(false);
     });
   });
-  test.each(["stop", "destroy"] as const)(
-    "explicit-target %s preflights other-provider inventory before mutation",
-    async (operation) => {
-      await withTempRoot(async (root) => {
-        // Given
-        const appliedPlan = planAt(root);
-        const failure = new ProviderUnavailableError({
-          providerId: "docker",
-          operation: "resource-ownership",
-          message: "Other provider inventory is corrupt.",
-          remediation:
-            "Install or start the `docker` provider and confirm it can perform `resource-ownership`.",
-        });
-        const harness = makeLayer({ appliedPlan, ownershipFailure: failure });
-        // When
-        const result = await Effect.runPromise(
-          (operation === "stop"
-            ? stopAppForTarget(undefined, targetFor(appliedPlan)).pipe(Effect.asVoid)
-            : destroyAppForTarget(undefined, targetFor(appliedPlan)).pipe(Effect.asVoid)
-          ).pipe(Effect.provide(harness.layer), Effect.result),
-        );
-        // Then
-        expect(result).toMatchObject({ _tag: "Failure", failure });
-        expect(harness.mutationOrder).toEqual([]);
-      });
-    },
-  );
+  const corruptInventory = new ProviderUnavailableError({
+    providerId: "docker",
+    operation: "resource-ownership",
+    message: "Other provider inventory is corrupt.",
+    remediation: "Install or start the `docker` provider and confirm it can perform `resource-ownership`.",
+  });
+
+  test("explicit-target destroy preflights other-provider inventory before mutation", async () => {
+    await withTempRoot(async (root) => {
+      // Given
+      const appliedPlan = planAt(root);
+      const harness = makeLayer({ appliedPlan, ownershipFailure: corruptInventory });
+      // When
+      const result = await Effect.runPromise(
+        destroyAppForTarget(undefined, targetFor(appliedPlan)).pipe(
+          Effect.provide(harness.layer),
+          Effect.result,
+        ),
+      );
+      // Then
+      expect(result).toMatchObject({ _tag: "Failure", failure: corruptInventory });
+      expect(harness.mutationOrder).toEqual([]);
+    });
+  });
+
+  test("explicit-target stop stops the app without reading other-provider inventory", async () => {
+    await withTempRoot(async (root) => {
+      // Given stop removes nothing, so another provider's ownership records cannot matter
+      const appliedPlan: AppPlan = { ...planAt(root), services: { [web.name]: web } };
+      const harness = makeLayer({ appliedPlan, ownershipFailure: corruptInventory });
+      // When
+      const result = await Effect.runPromise(
+        stopAppForTarget(undefined, targetFor(appliedPlan)).pipe(Effect.provide(harness.layer)),
+      );
+      // Then
+      expect(result).toMatchObject({ outcome: "stopped", servicesStopped: ["web"] });
+      expect(harness.mutationOrder).toEqual(["destroy"]);
+    });
+  });
   test.each(["cwd", "root"] as const)(
     "%s destroy removes only same-app, same-root stray containers before the plan",
     async (mode) => {
@@ -863,9 +877,10 @@ describe("applied-state teardown", () => {
 
       expect(result).toEqual({
         app: appliedPlan.name,
-        outcome: "stopped",
+        outcome: "unchanged",
         runtimeState: "running",
         servicesStopped: [],
+        containers: [],
         // This layer has no redactor, so the loader detail stays out of the reason.
         landofileEvents: { status: "skipped", reason: `the Landofile in ${root} could not be loaded` },
       });

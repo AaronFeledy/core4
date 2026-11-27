@@ -23,7 +23,7 @@ import {
   ScratchAppIdInvalidError,
   ScratchSourceUnresolvedError,
 } from "@lando/sdk/errors";
-import { AbsolutePath, type IsolateMode } from "@lando/sdk/schema";
+import { AbsolutePath, type IsolateMode, StartAppResult } from "@lando/sdk/schema";
 import type {
   ProviderError,
   ScratchGcOptions,
@@ -33,12 +33,12 @@ import type {
   ScratchSource,
   ScratchSummary,
 } from "@lando/sdk/services";
-import { RuntimeProviderRegistry, ScratchAppService } from "@lando/sdk/services";
+import { RuntimeProviderRegistry, ScratchAppService, ScratchPublishedRoute } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
 import { mergeAnswerSources, parseAnswerFlags, readAnswersFile } from "../prompts/answer-flags";
 import { type RenderContext, isDecoratedContext, summaryPaintOptions } from "../renderer-boundary";
 import { extractSpecAbortSignal } from "../spec/command-base";
-import { formatFlag, specArgsOf, specFlagsOf, stringFlag } from "../spec/input-coercion";
+import { commandResultFormatAmong, specArgsOf, specFlagsOf, stringFlag } from "../spec/input-coercion";
 import { renderLogsAppResult } from "./logs";
 import { SCRATCH_STATUS_TONES, summaryToneFromTable } from "./service-summary";
 
@@ -96,6 +96,7 @@ export const ScratchAppRefResultSchema = Schema.Struct({
 export const ScratchHandleResultSchema = Schema.Struct({
   id: Schema.String,
   app: ScratchAppRefResultSchema,
+  credentialChanges: StartAppResult.fields.credentialChanges,
 });
 
 export const ScratchSummaryResultSchema = Schema.Struct({
@@ -143,6 +144,10 @@ export const ScratchInfoResultSchema = Schema.Struct({
   mounts: Schema.Array(ScratchMountPointResultSchema),
   network: ScratchNetworkMembershipResultSchema,
   endpoints: Schema.Array(ScratchServiceEndpointsResultSchema),
+  routes: Schema.optionalKey(Schema.Array(ScratchPublishedRoute)).annotate({
+    description:
+      "Route URLs the router confirms for this scratch. Present only when the scratch declares enabled routes; empty when none are confirmed.",
+  }),
 });
 
 export const ScratchStartResultSchema = Schema.Struct({
@@ -226,7 +231,7 @@ export const scratchStartOptionsFromInput = (input: unknown): ScratchStartOption
 export const scratchIdFromInput = (input: unknown): string => stringFlag(specArgsOf(input), "id") ?? "";
 
 export const scratchListFormatFromInput = (input: unknown): ScratchListFormat =>
-  formatFlag(specFlagsOf(input), ["json", "table"], "table");
+  commandResultFormatAmong(input, ["json", "table"], "table");
 
 const unresolvedSource = (message: string, source: string): ScratchSourceUnresolvedError =>
   new ScratchSourceUnresolvedError({
@@ -240,9 +245,10 @@ const validateScratchId = (id: string): Effect.Effect<string, ScratchAppIdInvali
   if (id.trim().length > 0) return Effect.succeed(id);
   return Effect.fail(
     new ScratchAppIdInvalidError({
-      message: "A scratch app id is required.",
+      message: "A scratch app id or name is required.",
       id,
-      remediation: "Pass a scratch id, e.g. `lando apps:scratch:info scratch-my-app-abc123`.",
+      remediation:
+        "Pass a scratch id or the --name it was started with, e.g. `lando apps:scratch:info scratch-my-app-abc123`.",
     }),
   );
 };
@@ -439,6 +445,11 @@ export const renderScratchInfoResult = (
     renderInfoNetwork(result),
     ...renderInfoMounts(result),
     ...renderInfoEndpoints(result),
+    ...(result.routes === undefined
+      ? []
+      : result.routes.length === 0
+        ? ["routes: (none confirmed by the router)"]
+        : ["routes:", ...result.routes.map(({ service, url }) => `  ${service} ${url}`)]),
   ].join("\n");
 };
 
@@ -449,7 +460,8 @@ export const scratchStop = (
     Effect.flatMap(ScratchAppService, (service) => service.stop(validId)),
   );
 
-export const renderScratchStopResult = (result: ScratchHandle): string => `stopped: ${result.id}`;
+export const renderScratchStopResult = (result: ScratchHandle): string =>
+  `stopped and destroyed: ${result.id}`;
 
 export const scratchDestroy = (
   id: string,
@@ -477,12 +489,21 @@ type ScratchLogsServices = ScratchAppService | RuntimeProviderRegistry;
 const scratchAppliedPlan = Effect.fnUntraced(function* (id: string) {
   const handle = yield* scratchResolve(id);
   const registry = yield* RuntimeProviderRegistry;
-  const plan = yield* registry.resolveAppliedPlan(
+  const discovered = yield* registry.resolveAppliedPlan(
     handle.app.root,
     { kind: "scratch", id: handle.id },
     "exact",
   );
-  return { handle, plan };
+  const plan = discovered === undefined ? undefined : yield* registry.readAppliedPlanStrict(discovered);
+  return {
+    handle,
+    plan:
+      plan?.id === handle.id &&
+      discovered !== undefined &&
+      (plan.identity?.appRoot ?? plan.root) === (discovered.identity?.appRoot ?? discovered.root)
+        ? plan
+        : undefined,
+  };
 });
 
 export const scratchLogs = Effect.fn("Scratch.logs")(function* (

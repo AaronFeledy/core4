@@ -4,15 +4,16 @@ import { mkdir, mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
+import { retireTempRoots } from "@lando/engine/testing/temp-root-retirement";
 
 const socket = resolveLiveProviderSocket();
 const required = process.env.LANDO_GUIDE_E2E === "1";
 const useManaged = process.env.LANDO_TEST_USE_REAL_ROOTS === "1";
 const binary = process.env.LANDO_SCENARIO_E2E_BINARY ?? resolve(import.meta.dir, "../../../core/dist/lando");
 const url = "http://127.0.0.1:8080/";
-const token = (page: string) => {
-  const value = /name=['"]token['"] value=['"]([\d:]+)['"]/u.exec(page)?.[1];
-  if (value === undefined) throw new TypeError("Adminer did not render a CSRF token");
+const token = (page: string, form: string) => {
+  const value = /<input\b[^>]*\sname=['"]token['"]\s+value=['"]([^'"]+)['"]/u.exec(page)?.[1];
+  if (value === undefined) throw new TypeError(`Adminer did not render a CSRF token in ${form}`);
   return value;
 };
 
@@ -24,23 +25,28 @@ test.skipIf(socket === undefined && !required)(
     const app = join(root, "app");
     const name = `adminer-live-${crypto.randomUUID().slice(0, 8)}`;
     const password = `live-${crypto.randomUUID()}`;
+    const env = {
+      ...process.env,
+      BUN_BE_BUN: undefined,
+      ...(useManaged
+        ? { LANDO_PROVIDER: "lando" }
+        : {
+            LANDO_USER_CONF_ROOT: join(root, "config"),
+            LANDO_USER_DATA_ROOT: join(root, "state"),
+            LANDO_USER_CACHE_ROOT: join(root, "cache"),
+            LANDO_SYSTEM_PLUGIN_ROOT: join(root, "system-plugins"),
+            LANDO_PROVIDER: "podman",
+            LANDO_CONFIG__default_provider_id: "podman",
+            DOCKER_HOST: `unix://${socket.socketPath}`,
+            LANDO_TEST_DOCKER_SOCKET: undefined,
+            LANDO_TEST_WINDOWS_DOCKER_SOCKET: undefined,
+          }),
+      LANDO_SECRET_ADMINER_LIVE_DB: password,
+    };
     const cli = async (...args: string[]) => {
       const proc = Bun.spawn([binary, ...args], {
         cwd: app,
-        env: {
-          ...process.env,
-          BUN_BE_BUN: undefined,
-          ...(useManaged
-            ? { LANDO_PROVIDER: "lando" }
-            : {
-                LANDO_USER_CONF_ROOT: join(root, "config"),
-                LANDO_USER_DATA_ROOT: join(root, "state"),
-                LANDO_USER_CACHE_ROOT: join(root, "cache"),
-                LANDO_PROVIDER: "podman",
-                DOCKER_HOST: `unix://${socket.socketPath}`,
-              }),
-          LANDO_SECRET_ADMINER_LIVE_DB: password,
-        },
+        env,
         stdout: "pipe",
         stderr: "pipe",
         timeout: 180_000,
@@ -119,7 +125,10 @@ services:
         await curl(
           ...cookies,
           "--data",
-          new URLSearchParams({ lando_target: service, token: token(form) }).toString(),
+          new URLSearchParams({
+            lando_target: service,
+            token: token(form, `the ${service} login form`),
+          }).toString(),
           url,
         );
         const query = new URLSearchParams({ [driver]: service, username, db });
@@ -131,7 +140,7 @@ services:
             ...cookies,
             "--data",
             new URLSearchParams({
-              token: token(sql),
+              token: token(sql, "the SQLite SQL form"),
               query: "INSERT INTO notes VALUES ('saved-in-adminer')",
             }).toString(),
             sqlUrl,
@@ -147,12 +156,30 @@ services:
         }
       }
     } finally {
+      let fixtureCleanupFailure: string | undefined;
       try {
         await cli("destroy", "-y", "--volumes");
+      } catch (error) {
+        fixtureCleanupFailure = String(error);
       } finally {
-        await rm(root, { recursive: true, force: true });
+        if (useManaged) {
+          await rm(root, { recursive: true, force: true });
+          expect(fixtureCleanupFailure).toBeUndefined();
+        } else {
+          const retirement = await retireTempRoots({
+            directory: root,
+            endpoint: socket.socketPath,
+            env,
+            command: [binary],
+          });
+          expect(
+            [...retirement.retained, ...retirement.failed],
+            JSON.stringify({ root, endpoint: socket.socketPath, ...retirement }),
+          ).toEqual([]);
+          expect(fixtureCleanupFailure).toBeUndefined();
+        }
       }
     }
   },
-  300_000,
+  420_000,
 );

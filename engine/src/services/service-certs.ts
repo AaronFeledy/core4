@@ -65,8 +65,8 @@ interface ResolveCertsFeatureInput {
 
 /**
  * Where an app's generated leaves live. The owner is the one the route and teardown paths derive
- * from the finished plan; scratch is keyed by id because the scratch marker is attached after
- * planning and cwd forks share the user app's root.
+ * from the finished plan. A scratch plan uses its managed-root identity; historical cwd plans
+ * without that identity fall back to the scratch-id owner.
  */
 export const certificateLeafLocation = (app: {
   readonly certsDir: string;
@@ -78,7 +78,7 @@ export const certificateLeafLocation = (app: {
   certsDir: app.certsDir,
   ownerKey:
     app.kind === "scratch"
-      ? routeOwnerFromScratch(app.id).ownerKey
+      ? (app.identity?.ownerKey ?? routeOwnerFromScratch(app.id).ownerKey)
       : (app.identity?.ownerKey ?? appIdentityKey("owner", app.root)),
 });
 

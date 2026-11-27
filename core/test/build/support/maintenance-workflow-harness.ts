@@ -23,6 +23,20 @@ export const workflowScripts = (yaml: string) => {
   return { proposal, failure, failureEnv: jobs["report-failure"].env };
 };
 
+/** What the fake GitHub API gives the failure reporter: the run's jobs, each job's log by id, and issue posting. */
+export type ReporterScenario = {
+  readonly jobs?: readonly {
+    readonly id: number;
+    readonly name: string;
+    readonly conclusion: string | null;
+    readonly steps?: readonly { readonly name: string; readonly conclusion: string | null }[];
+  }[];
+  readonly logs?: Readonly<Record<number, string>>;
+  readonly jobsUnavailable?: boolean;
+  /** Reject any issue body that contains this text, as GitHub does for a body it cannot accept. */
+  readonly rejectBodyContaining?: string;
+};
+
 export type MaintenanceScenario = {
   readonly domain: "tomcat" | "compose";
   readonly mode?: "current" | "changed" | "checks-fail" | "update-fail" | "report-fail" | "dispatch-fail";
@@ -47,6 +61,8 @@ export const createMaintenanceFixture = async (scenario: MaintenanceScenario) =>
   const runnerTemp = join(root, "runner-temp");
   const log = join(root, "commands");
   const prBody = join(root, "pr-body");
+  const issueBody = join(root, "issue-body");
+  const jobLogs = join(root, "job-logs");
   const branch = `automation/${scenario.domain === "tomcat" ? "tomcat" : "compose-go"}-bump`;
   const owned =
     scenario.domain === "tomcat" ? "plugins/service-lando/tomcat/pins.json" : "vendor/compose/pin.json";
@@ -72,6 +88,11 @@ export const createMaintenanceFixture = async (scenario: MaintenanceScenario) =>
     EXISTING_PR: scenario.existingPr ? "71" : "",
     EXISTING_PR_BODY: scenario.existingPrBody ?? "",
     PR_BODY: prBody,
+    ISSUE_BODY: issueBody,
+    JOB_LOGS: jobLogs,
+    RUN_JOBS: JSON.stringify({ jobs: [] }),
+    RUN_JOBS_FAIL: "",
+    ISSUE_REJECT_TEXT: "",
     GH_FAILURE_OPERATION: scenario.ghFailure?.operation ?? "",
     GH_FAILURE_EXIT_CODE: String(scenario.ghFailure?.exitCode ?? 0),
     GH_FAILURE_STDERR: scenario.ghFailure?.stderr ?? "",
@@ -96,7 +117,7 @@ export const createMaintenanceFixture = async (scenario: MaintenanceScenario) =>
     return result.stdout.trim();
   };
   try {
-    for (const directory of [work, bin, runnerTemp]) await mkdir(directory);
+    for (const directory of [work, bin, runnerTemp, jobLogs]) await mkdir(directory);
     await run(["git", "init", "--bare", remote], root).then((result) => {
       if (result.exitCode !== 0) throw new TypeError(result.stderr);
     });
@@ -158,7 +179,21 @@ case "$1 $2" in
     done ;;
   'workflow run') if [ "$MODE" = dispatch-fail ]; then exit 37; fi ;;
   'issue list') test -n "$GH_REPO"; printf '%s' "$ISSUES" | jq -r "\${@: -1}" ;;
+  'issue comment'|'issue create')
+    previous=''
+    for argument in "$@"; do
+      if [ "$previous" = --body-file ]; then cp "$argument" "$ISSUE_BODY"; fi
+      previous="$argument"
+    done
+    if [ -n "$ISSUE_REJECT_TEXT" ] && grep -qF -- "$ISSUE_REJECT_TEXT" "$ISSUE_BODY"; then exit 1; fi ;;
+  'api repos/'*'/jobs')
+    if [ -n "$RUN_JOBS_FAIL" ]; then exit 1; fi
+    printf '%s' "$RUN_JOBS" | jq -r "\${@: -1}" ;;
+  'api repos/'*'/logs') cat "$JOB_LOGS/$(basename "$(dirname "$2")").log" ;;
 esac`,
+      // The reporter bounds requests with coreutils timeout, which macOS lacks; the fake gh never stalls.
+      timeout: `shift
+exec "$@"`,
       bun: `if [ "$1" = -e ]; then exec "$REAL_BUN" "$@"; fi
 printf '%s\\n' "bun $*" >> "$LOG"
 case "$1 $2" in
@@ -200,10 +235,11 @@ esac`,
         if (proposal === undefined) throw new TypeError("Missing proposal script");
         return run(["bash", "-c", proposal]);
       },
-      failure: (
+      failure: async (
         yaml: string,
         issues: readonly { readonly number: number; readonly title: string }[] = [],
         needs: Readonly<Record<string, { readonly result: string }>> = { bump: { result: "failure" } },
+        reporter: ReporterScenario = {},
       ) => {
         const scripts = workflowScripts(yaml);
         const failureEnv = Object.fromEntries(
@@ -213,17 +249,24 @@ esac`,
               .replaceAll("${{ github.repository }}", scenario.repository ?? "fixture/repository")
               .replaceAll("${{ github.server_url }}", "https://example.invalid")
               .replaceAll("${{ github.run_id }}", "42")
+              .replaceAll("${{ github.run_attempt }}", "1")
               .replaceAll("${{ github.token }}", "fixture-token")
               .replaceAll("${{ toJSON(needs) }}", () => JSON.stringify(needs)),
           ]),
         );
+        for (const [id, text] of Object.entries(reporter.logs ?? {}))
+          await Bun.write(join(jobLogs, `${id}.log`), text);
         return run(["bash", "-c", scripts.failure], runnerTemp, {
           ...failureEnv,
           ISSUES: JSON.stringify(issues),
+          RUN_JOBS: JSON.stringify({ jobs: reporter.jobs ?? [] }),
+          RUN_JOBS_FAIL: reporter.jobsUnavailable ? "1" : "",
+          ISSUE_REJECT_TEXT: reporter.rejectBodyContaining ?? "",
         });
       },
       commands: () => Bun.file(log).text(),
       prBody: () => Bun.file(prBody).text(),
+      issueBody: () => Bun.file(issueBody).text(),
       [Symbol.asyncDispose]: () => rm(root, { recursive: true, force: true }),
     };
   } catch (error) {

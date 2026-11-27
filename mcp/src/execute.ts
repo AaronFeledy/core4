@@ -8,7 +8,6 @@
  * Interrupts (cancellation) propagate; this seam must not swallow them.
  */
 
-import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
 import { RuntimeCwd } from "@lando/engine/runtime/cwd";
 import { OperationDiscovery, withAppDiscovery, withDiscoveryCwd } from "@lando/landofile/operation-discovery";
 import {
@@ -16,7 +15,9 @@ import {
   type CompletedCommandResult,
   failureOutcomeFromCause,
   normalizeDefect,
+  orDieWithRole,
 } from "@lando/sdk/command-result";
+import { StreamFrameSink } from "@lando/sdk/services";
 import { Cause, type Context, Effect, Exit } from "effect";
 import type { McpExecute } from "./dispatch";
 import type { McpCommandExecutorShape } from "./port";
@@ -70,7 +71,10 @@ export const makeNestedExecute = (
       const exit = yield* discover(
         cwd,
         executor.execute(
-          rootAwareCommand.pipe(Effect.scoped, Effect.ensuring(Effect.suspend(output.finish))),
+          rootAwareCommand.pipe(
+            Effect.scoped,
+            Effect.ensuring(Effect.suspend(output.finish).pipe(orDieWithRole("cleanup"))),
+          ),
           {
             commandId: entry.spec.id,
             ...snapshot,

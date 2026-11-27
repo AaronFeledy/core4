@@ -1,5 +1,10 @@
 import { expect, test } from "bun:test";
-import { FailureRoleAnnotation, failureOutcomeFromCause } from "@lando/sdk/command-result";
+import {
+  FailureRoleAnnotation,
+  failureOutcomeFromCause,
+  orDieWithRole,
+  primaryFailureReason,
+} from "@lando/sdk/command-result";
 import { ProviderInternalError, SecretStoreUnavailableError, StateStoreError } from "@lando/sdk/errors";
 import type { ProviderError } from "@lando/sdk/services";
 import { Cause, Context, Effect, Exit, Stream } from "effect";
@@ -52,27 +57,20 @@ for (const receipt of [
         _tag: "BuildPhaseFailedError",
         failures: [{ step: { id: "web:app:install" }, exitCode: 7 }],
       };
-      expect(failureOutcomeFromCause(result.exit.cause).error).toMatchObject(primary);
-      expect(
-        result.exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error),
-      ).toMatchObject([
-        primary,
+      const expectedCleanup = [
         ...(receipt.typed
           ? [{ _tag: "ProviderInternalError", operation: "buildResults", cause: storageFailure }]
           : []),
-      ]);
-      expect(result.exit.cause.reasons.filter(Cause.isDieReason).map((reason) => reason.defect)).toEqual([
         ...receipt.defects,
-      ]);
+      ];
+      expect(failureOutcomeFromCause(result.exit.cause)).toMatchObject({
+        kind: "typed",
+        error: primary,
+        additionalErrors: expectedCleanup.map((error) => ({ role: "cleanup", error })),
+      });
       expect(
         result.exit.cause.reasons.filter(Cause.isInterruptReason).map((reason) => reason.fiberId),
       ).toEqual([...receipt.interrupts]);
-      const cleanup = result.exit.cause.reasons.filter((reason) => !Cause.isInterruptReason(reason)).slice(1);
-      expect(
-        cleanup.map((reason) =>
-          Context.getOrUndefined(Cause.reasonAnnotations(reason), FailureRoleAnnotation),
-        ),
-      ).toEqual(cleanup.map(() => "cleanup"));
       expect(result.warnings).toEqual([]);
       expect(result.entries).toEqual([]);
       taskDispositions(result.events, { "web:app:install": "task.fail" });
@@ -109,7 +107,9 @@ for (const body of [
   },
   {
     name: "mixed provider failure",
-    effect: Effect.fail(providerFailure).pipe(Effect.ensuring(Effect.die(bodyDefect))),
+    effect: Effect.fail(providerFailure).pipe(
+      Effect.ensuring(Effect.die(bodyDefect).pipe(orDieWithRole("cleanup"))),
+    ),
     failures: [providerFailure],
     defects: [bodyDefect],
     interrupts: [],
@@ -121,7 +121,7 @@ for (const body of [
     failures: [],
     defects: [],
     interrupts: [517],
-    summary: "web:app:install interrupted",
+    summary: "web interrupted",
   },
 ] as const) {
   test(`receipt defect preserves the already failing ${body.name} exactly once`, async () => {
@@ -136,26 +136,25 @@ for (const body of [
         ),
       );
       if (Exit.isSuccess(result.exit)) throw new TypeError("body failure recovered");
-      expect(result.exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error)).toEqual([
-        ...body.failures,
-      ]);
-      expect(result.exit.cause.reasons.filter(Cause.isDieReason).map((reason) => reason.defect)).toEqual([
-        ...body.defects,
-        persistenceDefect,
-      ]);
+      const outcome = failureOutcomeFromCause(result.exit.cause);
+      const [primary] = body.failures;
+      if (primary === undefined) {
+        expect(outcome).toMatchObject({ kind: "defect", error: persistenceDefect, additionalErrors: [] });
+        const reason = primaryFailureReason(result.exit.cause);
+        if (reason === undefined) throw new Error("Expected a primary receipt defect");
+        expect(Context.getOrUndefined(Cause.reasonAnnotations(reason), FailureRoleAnnotation)).toBe(
+          "cleanup",
+        );
+      } else {
+        expect(outcome.kind).toBe("typed");
+        expect(outcome.error).toEqual(primary);
+        expect(outcome.additionalErrors).toEqual(
+          [...body.defects, persistenceDefect].map((error) => ({ role: "cleanup", error })),
+        );
+      }
       expect(
         result.exit.cause.reasons.filter(Cause.isInterruptReason).map((reason) => reason.fiberId),
       ).toEqual([...body.interrupts]);
-      if (body.failures.length > 0)
-        expect(failureOutcomeFromCause(result.exit.cause).error).toEqual(body.failures[0]);
-      const receiptReason = result.exit.cause.reasons.find(
-        (reason) => Cause.isDieReason(reason) && reason.defect === persistenceDefect,
-      );
-      expect(
-        receiptReason === undefined
-          ? undefined
-          : Context.getOrUndefined(Cause.reasonAnnotations(receiptReason), FailureRoleAnnotation),
-      ).toBe("cleanup");
       expect(result.warnings).toEqual([]);
       taskDispositions(result.events, { "web:app:install": "task.fail" });
       expect(result.events.find((event) => event._tag === "task.fail")).toMatchObject({

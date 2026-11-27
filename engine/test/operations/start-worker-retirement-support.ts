@@ -34,7 +34,7 @@ export const writeHostProxyWorker = async (harness: Harness, app: AppRef) => {
     appId: app.id,
     transport: "unix-socket",
     socketPath: join(runDir, "absent.sock"),
-    protocolVersion: 3,
+    protocolVersion: 4,
     pid: await deadPid(),
     controlToken: "control-token",
     shimPath: join(runDir, "shim"),

@@ -55,7 +55,7 @@ lando shellenv
 lando shellenv --shell=powershell
 ```
 
-Append the output to `~/.bashrc`, `~/.zshrc`, or your PowerShell profile, then open a new shell.
+Append the output to `~/.bashrc`, `~/.zshrc`, or your PowerShell profile, then open a new shell. In a terminal on Linux or macOS, `lando setup` adds the same block for you, writing the profile as your user (never as root). It uses `LANDO_SHELL_PROFILE` when set, otherwise the profile for your `$SHELL`, and stops with the path when it cannot write that file.
 
 ## Update lando
 

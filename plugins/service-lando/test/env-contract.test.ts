@@ -137,7 +137,7 @@ describe("effective app mount paths", () => {
   test("an authored working directory wins over the moved mount", async () => {
     // Given: a mount and working directory with different paths.
     const config = Schema.decodeUnknownSync(LandofileShape)({
-      services: { web: { type: "apache", appMount: { target: "/site" }, workingDirectory: "/work" } },
+      services: { web: { type: "apache", appMount: { target: "/site" }, working_dir: "/work" } },
     });
     const service = config.services?.[ServiceName.make("web")];
     if (service === undefined) throw new Error("web service missing");

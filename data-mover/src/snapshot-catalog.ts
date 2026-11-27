@@ -1,7 +1,7 @@
 import { readdir, rmdir, unlink } from "node:fs/promises";
 import type { LandoPaths } from "@lando/paths";
 import { mapFailures } from "@lando/sdk/command-result";
-import { SnapshotAmbiguousError, SnapshotNotFoundError, StateStoreError, errnoCode } from "@lando/sdk/errors";
+import { SnapshotNotFoundError, StateStoreError, errnoCode } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   SNAPSHOT_INFO_VERSION,
@@ -41,12 +41,15 @@ export const openSnapshot = Effect.fn("DataMover.openSnapshot")(function* (
       version: SNAPSHOT_INFO_VERSION,
       codec: "json",
       onCorrupt: "fail",
+      // Migrator receives only older envelopes; the store refuses newer before this runs.
       onVersionMismatch: (raw, version) => {
         if (version === 1) return Schema.decodeUnknownSync(SnapshotInfo)(raw);
         throw new StateStoreError({
           reason: "version",
           operation: "read-snapshot",
-          remediation: `Unsupported snapshot sidecar version ${version}; use a compatible Lando build.`,
+          storedVersion: version,
+          supportedVersion: SNAPSHOT_INFO_VERSION,
+          remediation: `Snapshot sidecar envelope version ${version} could not be migrated to ${SNAPSHOT_INFO_VERSION}.`,
         });
       },
     })
@@ -168,22 +171,11 @@ export const resolveSnapshotInfo = Effect.fn("DataMover.resolveSnapshotInfo")(fu
   reference: string,
   scope: SnapshotFilter,
 ) {
+  // Listings are oldest first, so the last match is the newest. An exact id wins over a label.
   const infos = yield* listSnapshotInfos(persistence, scope);
-  const ids = infos.filter((info) => info.id === reference);
-  const matches = (ids.length > 0 ? ids : infos.filter((info) => info.label === reference)).toSorted(
-    (left, right) => DateTime.toEpochMillis(right.createdAt) - DateTime.toEpochMillis(left.createdAt),
-  );
-  if (matches.length > 1)
-    return yield* Effect.fail(
-      new SnapshotAmbiguousError({
-        message: `Snapshot ${reference} matches ${matches.length} snapshots in the selected scope.`,
-        snapshotId: reference,
-        matchCount: matches.length,
-        candidateIds: matches.map((info) => info.id),
-        remediation: "List snapshots in this scope and retry with an unambiguous id.",
-      }),
-    );
-  const info = matches[0];
+  const info =
+    infos.find((candidate) => candidate.id === reference) ??
+    infos.findLast((candidate) => candidate.label === reference);
   if (info !== undefined) return info;
   return yield* Effect.fail(
     new SnapshotNotFoundError({

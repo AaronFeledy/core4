@@ -474,6 +474,7 @@ describe("@lando/core/testing", () => {
           isolate: "full" as const,
           detached: false,
           rootPath: "/scratch/root",
+          layout: "managed" as const,
           createdAt: "2026-01-01T00:00:00.000Z",
           updatedAt: "2026-01-01T00:00:00.000Z",
         };

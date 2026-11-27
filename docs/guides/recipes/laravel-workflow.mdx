@@ -76,7 +76,7 @@ The appserver sets `uploadDirs: [storage]` beneath webroot `public` to keep PHP 
 | `cache` | `type: redis` |
 | `node` | `node:22`, `primary: false`, no `command`, idle until `lando npm` runs |
 | `worker` (optional) | `php:8.4`, `via: cli`, `command: php artisan queue:work` with `--answer=worker=true` |
-| Tooling | `lando artisan` and `lando composer` on `appserver`. The `node` service adds `lando npm` and `lando npx` |
+| Tooling | `lando artisan` (`php artisan` from the app root, wherever you run it) and `lando composer` on `appserver`. The `node` service adds `lando npm` and `lando npx` |
 
 Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pass `--answer=database=postgres:16` when you want Postgres instead.
 
@@ -111,13 +111,15 @@ Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pass `-
       <Run command="lando destroy -y" />
     </Step>
   </Scenario>
-  <Scenario id="worker-vendor-sharing" render={false} reason="Verify automatic dependency sharing for the queue worker">
+  <Scenario id="worker-vendor-sharing" render={false} reason="The worker recipe authors no vendor mount entries and plans no vendor volume, so both services share the app mount">
     <Step name="scaffold-worker">
       <Run command="lando init --recipe laravel --name=laravel-worker --yes --answer=worker=true" />
     </Step>
     <Step name="confirm-shared-vendor">
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appserver\":\\s*\\{(?:(?!\"worker\":)[\\s\\S])*?\"appMount\":\\s*\\{[^}]*\"target\":\\s*\"/app\"[^}]*\"includes\":\\s*\\[\\s*\"vendor\"\\s*\\]" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"worker\":\\s*\\{[\\s\\S]*?\"appMount\":\\s*\\{[^}]*\"target\":\\s*\"/app\"[^}]*\"includes\":\\s*\\[\\s*\"vendor\"\\s*\\]" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"worker\":\\s*\\{[\\s\\S]*?\"command\":\\s*\"php artisan queue:work\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { not: { regex: "\"(includes|excludes)\":\\s*\\[\\s*\"vendor\"" } } }} />
+      <Run command="lando app:cache:refresh" />
+      <Verify command="lando info --format=json" expect={{ stdout: { not: { regex: "\"target\":\\s*\"/app/vendor\"" } } }} />
     </Step>
   </Scenario>
 </Guide>
@@ -130,9 +132,8 @@ Add a queue worker at init with `--answer=worker=true`:
 lando init --recipe laravel --name=laravel-worker --yes --answer=worker=true
 ```
 
-The recipe automatically shares host `vendor` between appserver and worker.
-You don't need manual `appMount.includes` overrides. The worker runs
-`php artisan queue:work` with `restart: unless-stopped`. Before Laravel and its dependencies exist, start warns about the worker and reports it as `restarting`. The worker retries automatically and starts on its own once installation finishes:
+The `appserver` and `worker` services mount the same project directory, so
+they share `vendor`. The worker runs `php artisan queue:work` with `restart: unless-stopped`. Before Laravel and its dependencies exist, start warns about the worker and reports it as `restarting`. The worker retries automatically and starts on its own once installation finishes:
 
 ```sh
 lando logs --service=worker

@@ -22,7 +22,11 @@ export const ScheduleRunResult = Schema.Struct({
   service: Schema.String,
   name: Schema.String,
   exitCode: Schema.Number,
-  stdout: Schema.String,
-  stderr: Schema.String,
+  stdout: Schema.optionalKey(Schema.String).annotate({
+    description: "The job's captured standard output; omitted when it streamed live.",
+  }),
+  stderr: Schema.optionalKey(Schema.String).annotate({
+    description: "The job's captured standard error; omitted when it streamed live.",
+  }),
 });
 export type ScheduleRunResult = typeof ScheduleRunResult.Type;

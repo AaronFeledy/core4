@@ -5,8 +5,9 @@ import { join } from "node:path";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
+import { makeLandoPaths } from "@lando/paths";
 import { GlobalConfig, LandofileShape, ServiceConfig } from "@lando/sdk/schema";
-import { AppPlanner, ConfigService } from "@lando/sdk/services";
+import { AppPlanner, ConfigService, PathsService } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect, Layer, Schema } from "effect";
 import { meilisearchServiceFeature, meilisearchServiceType } from "../src/services/meilisearch.ts";
@@ -69,7 +70,7 @@ test.each(["appEnv", "app-file", "service-file"])("rejects Meilisearch mismatch 
     await Bun.write(file, "MEILI_HTTP_ADDR=0.0.0.0:7702\n");
     const landofile = Schema.decodeUnknownSync(LandofileShape)({
       name: "inherited-meili",
-      ...(source === "app-file" ? { env_file: [file] } : {}),
+      ...(source === "app-file" ? { serviceDefaults: { env_file: [file] } } : {}),
       services: {
         search: {
           type: "meilisearch",
@@ -80,7 +81,9 @@ test.each(["appEnv", "app-file", "service-file"])("rejects Meilisearch mismatch 
       },
     });
     const config = Schema.decodeUnknownSync(GlobalConfig)({
-      appEnv: source === "appEnv" ? { MEILI_HTTP_ADDR: "0.0.0.0:7702" } : {},
+      ...(source === "appEnv"
+        ? { serviceDefaults: { environment: { MEILI_HTTP_ADDR: "0.0.0.0:7702" } } }
+        : {}),
     });
     const dependencies = Layer.mergeAll(
       PluginRegistryLayer.layer,
@@ -97,7 +100,14 @@ test.each(["appEnv", "app-file", "service-file"])("rejects Meilisearch mismatch 
     const result = await Effect.runPromise(
       Effect.flatMap(AppPlanner, (planner) =>
         planner.plan(compileTestLandofile(landofile), TestRuntimeProvider.capabilities),
-      ).pipe(Effect.result, Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(dependencies)))),
+      ).pipe(
+        Effect.result,
+        Effect.provide(
+          AppPlannerLayer.layer.pipe(
+            Layer.provide(Layer.mergeAll(dependencies, Layer.succeed(PathsService, makeLandoPaths()))),
+          ),
+        ),
+      ),
     );
     // Then
     expect(result).toMatchObject({

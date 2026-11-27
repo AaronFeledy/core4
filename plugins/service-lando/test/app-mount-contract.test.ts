@@ -11,7 +11,7 @@ describe("lando.app-mount service-feature contract", () => {
   test.each([
     {},
     { config: { target: "/app" } },
-    { config: { target: "/app", readOnly: true, excludes: ["vendor"], workingDirectory: "/app/web" } },
+    { config: { target: "/app", readOnly: true, excludes: ["vendor"], working_dir: "/app/web" } },
     {
       config: { target: "/app" },
       normalizedConfig: {

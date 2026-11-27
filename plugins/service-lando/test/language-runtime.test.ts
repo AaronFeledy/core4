@@ -97,7 +97,7 @@ const fixtures = [
     serviceType: ruby33ServiceType,
     serviceFeature: rubyServiceFeature,
     baseEnv: { BUNDLE_PATH: "vendor/bundle" },
-    excludes: [".bundle"],
+    excludes: [".bundle", "vendor/bundle"],
     includeWebroot: true,
     resolution: {
       base: "lando",
@@ -108,7 +108,7 @@ const fixtures = [
           config: { framework: "none", version: "3.3", port: 3000, webroot: "/app" },
         },
         { id: "lando.env", config: { webroot: "/app" } },
-        { id: "lando.app-mount", config: { target: "/app", excludes: [".bundle"] } },
+        { id: "lando.app-mount", config: { target: "/app", excludes: [".bundle", "vendor/bundle"] } },
       ],
       launchers: rubyServiceLaunchers,
     },
@@ -119,7 +119,7 @@ const fixtures = [
           source: "/srv/apps/myapp",
           target: "/app",
           readOnly: false,
-          excludes: [".bundle"],
+          excludes: [".bundle", "vendor/bundle"],
           includes: [],
         },
       ],
@@ -254,7 +254,7 @@ for (const fixture of fixtures) {
       // When
       const plan = await composeServicePlan({
         serviceType,
-        service: { ...input.service, command, entrypoint, workingDirectory: PortablePath.make("/workspace") },
+        service: { ...input.service, command, entrypoint, working_dir: PortablePath.make("/workspace") },
         appRoot: input.appRoot,
         metadata: input.metadata,
       });

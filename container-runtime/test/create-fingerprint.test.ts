@@ -16,7 +16,7 @@ import { DateTime, Effect } from "effect";
 import { CREATE_CONFIG_LABEL } from "../src/create-fingerprint.ts";
 import {
   AGENT_SESSION_LABEL,
-  HOST_PROXY_SESSION_LABEL,
+  HOST_PROXY_CONTRACT_LABEL,
   HOST_PROXY_TRANSPORT_EXTENSION_KEY,
 } from "../src/labels.ts";
 import { commonContainerLabels, containerCreateBodyFragment } from "../src/plan.ts";
@@ -514,14 +514,14 @@ describe("desired immutable create config", () => {
     );
   });
 
-  const hostProxySessionDigestOf = (session: string): string => sha256Hex(session).slice(0, 16);
+  const hostProxyContractDigestOf = (session: string): string => sha256Hex(session).slice(0, 16);
   const trustedHostProxyExtension = (session: string): ServicePlan["extensions"] => ({
-    [HOST_PROXY_TRANSPORT_EXTENSION_KEY]: { sessionDigest: hostProxySessionDigestOf(session) },
+    [HOST_PROXY_TRANSPORT_EXTENSION_KEY]: { contractDigest: hostProxyContractDigestOf(session) },
   });
   const hostProxySessionMounts = (source: string): ServicePlan["mounts"] =>
     [
+      "/run/lando/host-proxy",
       "/run/lando/host-proxy.sock",
-      "/run/lando/host-proxy/credentials",
       "/usr/local/bin/lando",
       "/usr/local/bin/xdg-open",
       "/usr/local/bin/open",
@@ -534,13 +534,13 @@ describe("desired immutable create config", () => {
     }));
 
   test("normalizes trusted host-proxy overlays without token/session/app env", () => {
-    // Given a credentials-file overlay: trusted extension digest, socket/credentials/shim binds, no credential env.
+    // Given an overlay: trusted contract digest, container-facing directory and shim binds, no credential env.
     const overlay: ServicePlan = {
       ...service,
       environment: {
         ...service.environment,
         LANDO_HOST_IP: "192.0.2.9",
-        LANDO_HOST_PROXY_SOCKET: "/run/lando/host-proxy.sock",
+        LANDO_HOST_PROXY_SOCKET: "/run/lando/host-proxy/sock",
         LANDO_HOST_PROXY_URL: "http://gateway:32001",
         LANDO_HOST_PROXY_TRANSPORT: "tcp-host-gateway",
         LANDO_HOST_PROXY_DEPTH: "0",
@@ -577,8 +577,8 @@ describe("desired immutable create config", () => {
         extensions: trustedHostProxyExtension("session-2"),
       }),
     );
-    expect(commonContainerLabels(plan, overlay)[HOST_PROXY_SESSION_LABEL]).toBe(
-      hostProxySessionDigestOf("session-1"),
+    expect(commonContainerLabels(plan, overlay)[HOST_PROXY_CONTRACT_LABEL]).toBe(
+      hostProxyContractDigestOf("session-1"),
     );
     expect(actual).not.toBe(
       fingerprint({
@@ -618,7 +618,7 @@ describe("desired immutable create config", () => {
         LANDO_HOST_PROXY_TRANSPORT: "unix-socket",
       },
       mounts: hostProxySessionMounts("/session/legacy").filter(
-        (mount) => mount.target !== "/run/lando/host-proxy/credentials",
+        (mount) => mount.target !== "/run/lando/host-proxy.sock",
       ),
     };
     // When fingerprints are compared against the bare service and a source rotation.
@@ -629,7 +629,7 @@ describe("desired immutable create config", () => {
       mounts: legacy.mounts.map((mount) => ({ ...mount, source: "/session/legacy-2" })),
     });
     // Then env alone never stamps a session label or excludes host-proxy binds from the digest.
-    expect(commonContainerLabels(plan, legacy)[HOST_PROXY_SESSION_LABEL]).toBeUndefined();
+    expect(commonContainerLabels(plan, legacy)[HOST_PROXY_CONTRACT_LABEL]).toBeUndefined();
     expect(withBinds).not.toBe(bare);
     expect(rotated).not.toBe(withBinds);
     // And a forged session label still cannot unlock bind exclusion without the trusted extension.
@@ -637,21 +637,21 @@ describe("desired immutable create config", () => {
       fingerprint({
         ...legacy,
         extensions: {
-          compose: { labels: { [HOST_PROXY_SESSION_LABEL]: hostProxySessionDigestOf("session-1") } },
+          compose: { labels: { [HOST_PROXY_CONTRACT_LABEL]: hostProxyContractDigestOf("session-1") } },
         },
       }),
     ).toBe(withBinds);
   });
 
-  test("trusted extension excludes the credentials bind the same way as the socket bind", () => {
-    // Given only the credentials bind under a trusted extension.
+  test("trusted extension excludes the container-facing directory bind from create-config", () => {
+    // Given only the container-facing directory bind under a trusted extension.
     const withCredentials: ServicePlan = {
       ...service,
       mounts: [
         {
           type: "bind",
-          source: "/run/session/credentials",
-          target: PortablePath.make("/run/lando/host-proxy/credentials"),
+          source: "/run/session/container",
+          target: PortablePath.make("/run/lando/host-proxy"),
           readOnly: true,
           realization: "passthrough",
         },
@@ -661,7 +661,7 @@ describe("desired immutable create config", () => {
     // When sources rotate under the same trusted digest.
     const rotated = {
       ...withCredentials,
-      mounts: withCredentials.mounts.map((mount) => ({ ...mount, source: "/run/session/credentials-2" })),
+      mounts: withCredentials.mounts.map((mount) => ({ ...mount, source: "/run/session/container-2" })),
     };
     // Then credentials remain outside create-config identity.
     expect(fingerprint(withCredentials)).toBe(fingerprint(service));

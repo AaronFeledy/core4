@@ -4,6 +4,7 @@ import { LandofileValidationError, ProviderUnavailableError, ScratchAppError } f
 import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
 import type {
   AppliedOrphanGroup,
+  BringDownOptions,
   ProviderRuntimeSnapshot,
   ScratchSummary,
   ServiceRuntimeInfo,
@@ -17,7 +18,7 @@ import {
   RuntimeProviderRegistry,
   ScratchAppService,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect, Layer, Stream } from "effect";
 
 const providerId = ProviderId.make("lando");
@@ -60,9 +61,11 @@ export const makePoweroffFixture = async (input: PoweroffFixtureInput) => {
     appliedPlans: Effect.succeed([]),
     list: () => Effect.succeed([]),
     listVolumes: () => Effect.succeed([]),
-    destroy: (target: { readonly app: string; readonly plan?: AppPlan }) =>
+    bringDown: (target: { readonly app: string; readonly plan?: AppPlan }, options: BringDownOptions) =>
       Effect.gen(function* () {
-        calls.push(`destroy:${String(target.plan?.root ?? target.app)}`);
+        calls.push(
+          `${options.containers === "stop" ? "stop" : "destroy"}:${String(target.plan?.root ?? target.app)}`,
+        );
         if (input.destroyFailureRoot !== undefined && String(target.plan?.root) === input.destroyFailureRoot)
           return yield* Effect.fail(
             new ProviderUnavailableError({
@@ -72,12 +75,24 @@ export const makePoweroffFixture = async (input: PoweroffFixtureInput) => {
               remediation: "Restore provider access and retry `lando poweroff`.",
             }),
           );
-        return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
+        if (options.containers === "remove")
+          return { kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } };
+        // Stop answers for the app's observed containers, as a real provider does.
+        return {
+          kind: "stopped" as const,
+          containers: (input.services ?? [])
+            .filter((service) => service.appRoot === target.plan?.root)
+            .map((service) => ({
+              service: service.service,
+              ...(service.containerId === undefined ? {} : { containerId: service.containerId }),
+              action: "stopped" as const,
+            })),
+        };
       }),
-    removeObservedService: (service: ServiceRuntimeInfo) =>
+    bringDownObserved: (service: ServiceRuntimeInfo) =>
       Effect.sync(() => {
         calls.push(`remove:${service.service}`);
-        return { kind: "removed" as const };
+        return { service: service.service, action: "removed" as const };
       }),
     removeVolume: (ref: { readonly store: string }) =>
       Effect.sync(() => {
@@ -87,22 +102,19 @@ export const makePoweroffFixture = async (input: PoweroffFixtureInput) => {
   const snapshot: ProviderRuntimeSnapshot = {
     providerId,
     runtimeObserved: true,
-    appliedPlans: [],
+    appliedPlans: plans,
     services: input.services ?? [],
     volumes: [],
   };
-  const registry = {
+  const registry = makeTestRuntimeProviderRegistry({
     list: Effect.succeed([providerId]),
-    capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-    appliedStateInventory: () => Effect.succeed({ plans: [], unreadable: [] }),
     observeRuntime: Effect.succeed([snapshot]),
-    appliedPlansFor: (root: string, scope?: ProviderId) =>
+    appliedPlansFor: (root, { providerId: scope } = {}) =>
       Effect.succeed(
         scope === undefined || scope === providerId
           ? plans.filter((plan) => plan.identity?.appRoot === root)
           : [],
       ),
-    resolveAppliedPlan: () => Effect.succeed(undefined),
     resolveTeardownEvidence: (root: string) => {
       const plan = plans.find((candidate) => candidate.identity?.appRoot === root);
       if (plan !== undefined) return Effect.succeed({ kind: "applied" as const, plan });
@@ -114,7 +126,7 @@ export const makePoweroffFixture = async (input: PoweroffFixtureInput) => {
     },
     resourceOwnership: () => Effect.succeed(undefined),
     select: () => Effect.succeed(provider),
-  };
+  });
   const scratch = Layer.succeed(
     ScratchAppService,
     ScratchAppService.of({

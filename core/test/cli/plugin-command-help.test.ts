@@ -16,7 +16,6 @@ const fixture = async () => {
     LANDO_TEST_API_TOKEN: "",
     LANDO_USER_DATA_ROOT: join(root, "data"),
     LANDO_USER_CACHE_ROOT: join(root, "cache"),
-    LANDO_USER_CONFIG_ROOT: join(root, "config"),
     LANDO_USER_CONF_ROOT: join(root, "config"),
   };
   const invoke = async (args: readonly string[], cwd = root) => {
@@ -87,7 +86,19 @@ test("bundled commands appear in text, JSON/YAML catalogs and namespace help", a
       const result = await f.invoke(args);
       expect(result.exit, result.stderr).toBe(0);
       expect(result.stdout).toContain("DB");
-      expect(result.stdout.match(/^ {2}db:/gmu)).toHaveLength(8);
+      expect(
+        Array.from(result.stdout.matchAll(/^ {2}(db:[\w:-]+)\s/gmu), (match) => match[1]).sort(),
+      ).toEqual([
+        "db:creds:apply",
+        "db:export",
+        "db:import",
+        "db:reset",
+        "db:restore",
+        "db:seed",
+        "db:snapshot",
+        "db:snapshots",
+        "db:snapshots:prune",
+      ]);
     }
     const topic = await f.invoke(["help", "db", "--format", "json"]);
     expect(JSON.parse(topic.stdout).result.all).toContainEqual(

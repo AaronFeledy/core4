@@ -4,6 +4,7 @@ import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as LandoEventService from "@lando/engine/services/event-service";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
 import * as ProviderExecToolingEngine from "@lando/engine/services/tooling-engine";
+import { makeLandoPaths } from "@lando/paths";
 import { type LandofileValidationError, ProviderUnavailableError } from "@lando/sdk/errors";
 import {
   type CurrentExecutableAppPlan,
@@ -16,10 +17,11 @@ import {
 import {
   AppPlanner,
   LandofileService,
+  PathsService,
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect, Layer, Result, Schema, Stream } from "effect";
 import { services } from "../src/index.ts";
 import { emptyConfigServiceLayer } from "./support/agent-env-test-config.ts";
@@ -111,8 +113,6 @@ const makeProvider = (
     removeArtifact: () => Effect.succeed({ kind: "absent" as const }),
     listArtifacts: () => Effect.succeed([]),
     apply: () => Effect.succeed({ changed: false }),
-    start: () => Effect.void,
-    stop: () => Effect.void,
     restart: () => Effect.void,
     waitForExit: () => Effect.succeed({ exitCode: 0 }),
     exec: (target, spec) => {
@@ -150,7 +150,12 @@ const makeProvider = (
 const planLandofile = (landofile: LandofileShape): Promise<CurrentExecutableAppPlan> =>
   Effect.runPromise(
     Effect.flatMap(AppPlanner, (planner) => planner.plan(compileTestLandofile(landofile), capabilities)).pipe(
-      Effect.provide(Layer.merge(services, AppPlannerLayer.layer)),
+      Effect.provide(
+        Layer.merge(
+          services,
+          AppPlannerLayer.layer.pipe(Layer.provide(Layer.succeed(PathsService, makeLandoPaths()))),
+        ),
+      ),
       Effect.provide(PluginRegistryLayer.layer),
     ),
   );
@@ -174,10 +179,7 @@ const makeToolingLayer = (options: {
   );
   const registryLayer = Layer.succeed(
     RuntimeProviderRegistry,
-    RuntimeProviderRegistry.of({
-      resolveAppliedPlan: () => Effect.succeed(undefined),
-      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-      appliedPlansFor: () => Effect.succeed([]),
+    makeTestRuntimeProviderRegistry({
       list: Effect.succeed([providerId]),
       capabilities: Effect.succeed(capabilities),
       select: () => Effect.succeed(options.provider),
@@ -261,7 +263,12 @@ describe("solr service type — scenario: Solr + lando solr-admin tooling", () =
           Effect.flatMap(AppPlanner, (planner) =>
             planner.plan(compileTestLandofile(landofile), capabilities),
           ).pipe(
-            Effect.provide(Layer.merge(services, AppPlannerLayer.layer)),
+            Effect.provide(
+              Layer.merge(
+                services,
+                AppPlannerLayer.layer.pipe(Layer.provide(Layer.succeed(PathsService, makeLandoPaths()))),
+              ),
+            ),
             Effect.provide(PluginRegistryLayer.layer),
           ),
         ),

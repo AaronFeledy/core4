@@ -8,7 +8,7 @@ import { outputRegisteredTestProvider } from "@lando/engine/testing/output-provi
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService } from "@lando/redaction/service";
 import { mapFailures } from "@lando/sdk/command-result";
-import { CacheError, PluginLoadError, ScratchAppNotFoundError, SecretNotFoundError } from "@lando/sdk/errors";
+import { CacheError, PluginLoadError, SecretNotFoundError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
@@ -70,7 +70,9 @@ export { TestRuntimeProvider } from "@lando/sdk/test";
  */
 export { TestClock } from "effect/testing";
 
+import { resolveScratchReference } from "@lando/engine/scratch-app/reference";
 import {
+  SCRATCH_REGISTRY_VERSION,
   ScratchRegistry,
   type ScratchRegistryEntry,
   type ScratchRegistryEnvelope,
@@ -78,7 +80,7 @@ import {
   planScratchRegistryWrite,
 } from "@lando/engine/scratch-app/registry";
 import { ScratchResourceScanner } from "@lando/engine/scratch-app/scanner";
-import { makeTestRuntimeProvider } from "@lando/sdk/test";
+import { makeTestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 type TestBootstrapLevel = "minimal" | "provider" | "global" | "scratch" | "app";
@@ -108,6 +110,7 @@ export interface FileSystemCall {
     | "read"
     | "readText"
     | "write"
+    | "append"
     | "writeAtomic"
     | "exists"
     | "stat"
@@ -256,14 +259,6 @@ const serviceNotRegistered = (id: string): PluginLoadError =>
     message: `Plugin service ${id} is not registered in TestRuntime.`,
     pluginName: id,
     remediation: `Register service ${id} in the TestRuntime plugin registry before loading it.`,
-  });
-
-const scratchNotFound = (id: string): ScratchAppNotFoundError =>
-  new ScratchAppNotFoundError({
-    message: `Scratch app ${id} is not present in TestRuntime.`,
-    id,
-    suggestions: [],
-    remediation: "Acquire the scratch app before resolving it.",
   });
 
 const makeServicePlan = (providerId: ProviderId): ServicePlan =>
@@ -456,6 +451,7 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
     lookup: () => Effect.succeed(Option.none()),
     register: () => Effect.void,
     registerAlias: () => Effect.void,
+    claimWarning: () => Effect.succeed(true),
   });
 
   const pluginTrustStoreService = PluginTrustStore.of({
@@ -537,6 +533,12 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
         directories.delete(path);
         files.set(path, text);
       }),
+    append: (path: string, content: string | Uint8Array) =>
+      Effect.sync(() => {
+        const text = textFromContent(content);
+        calls.fileSystem.push({ operation: "append", path, content: text });
+        files.set(path, `${files.get(path) ?? ""}${text}`);
+      }),
     writeAtomic: (path: string, content: string | Uint8Array) =>
       Effect.sync(() => {
         const text = textFromContent(content);
@@ -612,8 +614,11 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
       }),
   });
 
+  const elevated = Effect.succeed({ exitCode: 0, stdout: "", stderr: "" });
   const privilegeService = PrivilegeService.of({
-    elevate: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
+    credentialStatus: Effect.succeed({ state: "root" }),
+    openSession: () => Effect.succeed({ transport: "direct", elevate: () => elevated }),
+    elevate: () => elevated,
   });
 
   const secretStoreService = SecretStore.of({
@@ -674,16 +679,13 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
     list: Effect.succeed([]),
   });
 
-  const runtimeProviderRegistryService = RuntimeProviderRegistry.of({
-    appliedPlansFor: () => Effect.succeed([]),
+  const runtimeProviderRegistryService = makeTestRuntimeProviderRegistry({
     list: Effect.succeed([providerId]),
     capabilities: Effect.succeed(runtimeProvider.capabilities),
     select: (target) =>
       Effect.succeed(
         outputRegisteredTestProvider(runtimeProvider, typeof target === "object" ? target : undefined),
       ),
-    resolveAppliedPlan: () => Effect.succeed(undefined),
-    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
   });
 
   const globalPaths = {
@@ -747,6 +749,7 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
     isolate: summary.mode,
     detached: summary.status === "detached",
     rootPath: String(paths.root),
+    layout: "managed",
     status: "running",
     createdAt: summary.created,
     updatedAt: summary.created,
@@ -758,6 +761,10 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
     network: {},
     endpoints: [],
   });
+  const resolveScratchSummary = (reference: string) =>
+    Effect.suspend(() =>
+      Effect.fromResult(resolveScratchReference([...scratchSummaries.values()], reference)),
+    );
   const scratchService: Context.Service.Shape<typeof ScratchAppService> = ScratchAppService.of({
     kind: "scratch",
     root: Effect.succeed(AbsolutePath.make("/test-runtime/scratch")),
@@ -780,29 +787,19 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
         scratchRegistryEntries.set(id, scratchRegistryEntryFromSummary(summary, paths));
         return scratchHandle(summary);
       }),
-    resolveById: (id) =>
-      Effect.flatMap(
-        Effect.sync(() => scratchSummaries.get(id)),
-        (summary) =>
-          summary === undefined ? Effect.fail(scratchNotFound(id)) : Effect.succeed(scratchHandle(summary)),
-      ),
-    info: (id) =>
-      Effect.flatMap(
-        Effect.sync(() => scratchSummaries.get(id)),
-        (summary) =>
-          summary === undefined ? Effect.fail(scratchNotFound(id)) : Effect.succeed(scratchInfo(summary)),
-      ),
+    resolveById: (reference) => Effect.map(resolveScratchSummary(reference), scratchHandle),
+    info: (reference) => Effect.map(resolveScratchSummary(reference), scratchInfo),
     list: () =>
       Effect.sync(() =>
         Array.from(scratchSummaries.values()).sort((left, right) => left.id.localeCompare(right.id)),
       ),
     start: (id) => scratchService.resolveById(id),
     stop: (id) => scratchService.resolveById(id),
-    destroy: (id) =>
-      Effect.flatMap(scratchService.resolveById(id), (handle) =>
+    destroy: (reference) =>
+      Effect.flatMap(scratchService.resolveById(reference), (handle) =>
         Effect.sync(() => {
-          scratchSummaries.delete(id);
-          scratchRegistryEntries.delete(id);
+          scratchSummaries.delete(handle.id);
+          scratchRegistryEntries.delete(handle.id);
           return handle;
         }),
       ),
@@ -813,7 +810,7 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
   const scratchRegistryService = ScratchRegistry.of({
     read: () =>
       Effect.succeed({
-        version: 2,
+        version: SCRATCH_REGISTRY_VERSION,
         entries: registryEntriesFrom(scratchRegistryEntries),
       } satisfies ScratchRegistryEnvelope),
     upsert: Effect.fn("TestScratchRegistry.upsert")(function* (

@@ -11,7 +11,7 @@ const session: HostProxyRunLandoSession = {
   sessionId: "session",
   token: "token",
   controlToken: "control",
-  socketPath: "/host/proxy.sock",
+  socketPath: "/host/container/sock",
   shimPath: "/host/shim",
   transport: "unix-socket",
   close: () => Promise.resolve(),
@@ -43,8 +43,7 @@ test("host-proxy mounts are sorted with existing mounts", async () => {
   const result = await Effect.runPromise(withHostProxyRunLando(input, session));
   // Then helper mounts precede the deeper user mount.
   expect(result.services[web.name]?.mounts.map((mount) => mount.target)).toEqual([
-    PortablePath.make("/run/lando/host-proxy.sock"),
-    PortablePath.make("/run/lando/host-proxy/credentials"),
+    PortablePath.make("/run/lando/host-proxy"),
     PortablePath.make("/usr/local/bin/lando"),
     PortablePath.make("/usr/local/bin/open"),
     PortablePath.make("/usr/local/bin/xdg-open"),
@@ -53,12 +52,12 @@ test("host-proxy mounts are sorted with existing mounts", async () => {
   expect(result.services[web.name]?.environment).toEqual({
     KEEP: "yes",
     LANDO_HOST_PROXY_TRANSPORT: "unix-socket",
-    LANDO_HOST_PROXY_SOCKET: "/run/lando/host-proxy.sock",
+    LANDO_HOST_PROXY_SOCKET: "/run/lando/host-proxy/sock",
     LANDO_HOST_PROXY_DEPTH: "0",
   });
 });
 
-test.each(["/usr/local/bin/lando", "/run/lando/host-proxy/credentials"])(
+test.each(["/usr/local/bin/lando", "/run/lando/host-proxy"])(
   "host-proxy rejects a collision with a user mount at %s",
   async (target) => {
     // Given a user mount at a helper destination.
@@ -89,3 +88,51 @@ test.each(["/usr/local/bin/lando", "/run/lando/host-proxy/credentials"])(
     if (result._tag === "Failure") expect(result.failure._tag).toBe("HostProxyTransportUnavailableError");
   },
 );
+
+test("host-proxy skips its command binds beneath an authored mount and keeps its directory bind", async () => {
+  // Given a user bind that owns /usr/local/bin.
+  const input: AppPlan = {
+    ...plan,
+    services: {
+      [web.name]: {
+        ...eligible,
+        mounts: [
+          {
+            type: "bind",
+            origin: "authored",
+            source: "/host/bin",
+            realization: "passthrough",
+            target: PortablePath.make("/usr/local/bin"),
+            readOnly: false,
+          },
+        ],
+      },
+    },
+  };
+  // When the host-proxy overlay is applied.
+  const result = await Effect.runPromise(withHostProxyRunLando(input, session));
+  // Then no command mountpoint lands inside the user's host directory.
+  expect(result.services[web.name]?.mounts.map((mount) => mount.target)).toEqual([
+    PortablePath.make("/run/lando/host-proxy"),
+    PortablePath.make("/usr/local/bin"),
+  ]);
+});
+
+test("host-proxy keeps its command binds beneath an authored tmpfs", async () => {
+  // Given a user tmpfs at /usr/local/bin, which persists nothing.
+  const input: AppPlan = {
+    ...plan,
+    services: {
+      [web.name]: {
+        ...eligible,
+        mounts: [{ type: "tmpfs", target: PortablePath.make("/usr/local/bin"), readOnly: false }],
+      },
+    },
+  };
+  // When the host-proxy overlay is applied.
+  const result = await Effect.runPromise(withHostProxyRunLando(input, session));
+  // Then the commands still mount beneath it.
+  expect(result.services[web.name]?.mounts.map((mount) => mount.target)).toContain(
+    PortablePath.make("/usr/local/bin/lando"),
+  );
+});

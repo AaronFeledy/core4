@@ -20,6 +20,7 @@ import * as Plugins from "../../src/plugins/registry.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
 import * as Planner from "../../src/services/planner.ts";
 import { literalTestLandofile } from "../compiled-landofile.ts";
+import { pathsServiceLayer } from "../paths-service.ts";
 
 const withApp = async <A>(
   service: Record<string, unknown>,
@@ -50,7 +51,9 @@ const withApp = async <A>(
             planner.plan(literalTestLandofile(document, root), capabilities),
           ).pipe(
             Effect.provide(
-              Planner.layer.pipe(Layer.provide(Layer.mergeAll(Plugins.layer, BunFileSystem.layer))),
+              Planner.layer.pipe(
+                Layer.provide(Layer.mergeAll(Plugins.layer, BunFileSystem.layer, pathsServiceLayer())),
+              ),
             ),
           ),
         ),

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { makeTestCertificateAuthority } from "@lando/sdk/test";
+import { makeTestCertificateAuthority, makeTestPrivilegeService } from "@lando/sdk/test";
 import { Cause, Effect, type Exit } from "effect";
 
 import {
@@ -65,9 +65,9 @@ const unusedRunner = {
   },
 };
 
-const unusedPrivilege = {
+const unusedPrivilege = makeTestPrivilegeService({
   elevate: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
-};
+});
 
 const memoryFiles = () => {
   const files = new Map<string, string>();

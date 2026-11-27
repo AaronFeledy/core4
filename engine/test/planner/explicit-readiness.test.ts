@@ -47,6 +47,37 @@ test("timing-only readiness inherits its own stronger command", () => {
   expect(result.healthcheck).toEqual(native);
 });
 
+test("authored readiness overrides the contributed start interval", () => {
+  const contributed = { ...web, readiness: { ...strong, startIntervalSeconds: 2 } };
+  const config = Schema.decodeUnknownSync(ServiceConfig)({
+    readiness: { startPeriodSeconds: 30, startIntervalSeconds: 1, intervalSeconds: 10 },
+  });
+
+  const result = applyAuthoredHealthcheck(contributed, config);
+
+  expect(result.readiness).toMatchObject({
+    startPeriodSeconds: 30,
+    startIntervalSeconds: 1,
+    intervalSeconds: 10,
+  });
+});
+
+test("readiness inherits the start interval from an authored healthcheck when no readiness plan exists", () => {
+  const { readiness: _readiness, ...bare } = web;
+  const config = Schema.decodeUnknownSync(ServiceConfig)({
+    healthcheck: { startPeriodSeconds: 30, startIntervalSeconds: 2 },
+    readiness: { intervalSeconds: 10 },
+  });
+
+  const result = applyAuthoredHealthcheck(bare, config);
+
+  expect(result.readiness).toMatchObject({
+    startPeriodSeconds: 30,
+    startIntervalSeconds: 2,
+    intervalSeconds: 10,
+  });
+});
+
 test("authored host readiness drops a contributed container identity", async () => {
   // Given
   const contributed = { ...web, readiness: { ...strong, user: ContainerUser.make("root") } };

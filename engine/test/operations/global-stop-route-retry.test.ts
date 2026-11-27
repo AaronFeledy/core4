@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { ProxyApplyError, ProxyError } from "@lando/sdk/errors";
 import { AbsolutePath, type AppPlan, ServiceName } from "@lando/sdk/schema";
 import { RouterService, RuntimeProviderRegistry, type ServiceRuntimeInfo } from "@lando/sdk/services";
-import { TestRuntimeProvider, makeTestRouterService } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRouterService, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect } from "effect";
 import { globalStop } from "../../src/operations/global-stop.ts";
 import { makeUnavailableRouter } from "../../src/subsystems/proxy/api.ts";
@@ -53,18 +53,16 @@ test("selected global stop retries failed route cleanup after its container was 
       id: "lando",
       appliedPlans: Effect.succeed([plan]),
       list: () => Effect.sync(() => Array.from(containers.values())),
-      removeObservedService: (observation: ServiceRuntimeInfo) =>
+      bringDownObserved: (observation: ServiceRuntimeInfo) =>
         Effect.sync(() => {
           removed.push(String(observation.containerId));
           containers.delete(String(observation.service));
-          return { kind: "removed" as const };
+          return { service: observation.service, action: "removed" as const };
         }),
       ensureReady: Effect.die("route retry must not start the runtime"),
       apply: () => Effect.die("route retry must not recreate containers"),
-      start: () => Effect.die("route retry must not start containers"),
       restart: () => Effect.die("route retry must not restart containers"),
-      stop: () => Effect.die("route retry must not recreate or restart a container"),
-      destroy: () => Effect.die("selected stop must not destroy the whole app"),
+      bringDown: () => Effect.die("selected stop must not destroy the whole app"),
     };
     let routeAttempts = 0;
     let persistedRoutes = plan.routes;
@@ -91,10 +89,9 @@ test("selected global stop retries failed route cleanup after its container was 
     const stop = globalStop({ services: ["ssh-agent"] }).pipe(
       Effect.provideService(
         RuntimeProviderRegistry,
-        RuntimeProviderRegistry.of({
-          resolveAppliedPlan: () => Effect.succeed(undefined),
-          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+        makeTestRuntimeProviderRegistry({
           appliedPlansFor: () => Effect.succeed([plan]),
+          readAppliedPlanStrict: () => Effect.succeed(plan),
           list: Effect.succeed([plan.provider]),
           capabilities: Effect.succeed(provider.capabilities),
           select: () => Effect.succeed(provider),
@@ -121,7 +118,7 @@ test("selected global stop retries failed route cleanup after its container was 
   }
 });
 
-test("selected global stop without a selectable router removes the service and warns instead of republishing", async () => {
+test("selected global stop without a selectable router stops the service and warns instead of republishing", async () => {
   // Given: a routed global app and a router that cannot be selected.
   const dataRoot = await mkdtemp(join(tmpdir(), "lando-global-stop-unavailable-router-"));
   try {
@@ -169,9 +166,10 @@ test("selected global stop without a selectable router removes the service and w
       ),
     );
 
-    // Then: the selected container is removed and the skipped route update is reported.
+    // Then: the selected container is stopped and kept, and the skipped route update is reported.
     expect(result).toMatchObject({ outcome: "stopped", servicesStopped: ["ssh-agent"] });
-    expect(harness.removed.map((removed) => removed.containerId)).toEqual(["ssh-agent-container"]);
+    expect(harness.stopped.map((stopped) => stopped.containerId)).toEqual(["ssh-agent-container"]);
+    expect(harness.removed).toEqual([]);
     const warnings = harness.events.flatMap((event) => (event._tag === "message.warn" ? [event.body] : []));
     expect(warnings).toHaveLength(1);
     expect(warnings[0]).toContain("not updated");

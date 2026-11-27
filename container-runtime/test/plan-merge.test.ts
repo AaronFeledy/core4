@@ -1,8 +1,18 @@
-import { expect, test } from "bun:test";
+import { expect, expectTypeOf, test } from "bun:test";
 import { mergeAppliedPlan } from "@lando/container-runtime/plan";
-import { PortablePath, RoutePlan, ServiceName } from "@lando/sdk/schema";
+import { type AppPlan, type AppliedAppPlan, PortablePath, RoutePlan, ServiceName } from "@lando/sdk/schema";
 import { Schema } from "effect";
 import { plan, service } from "./fixtures/environment-values.ts";
+
+test("projects hooks out of both complete and partial applied merges", () => {
+  expectTypeOf<AppPlan>().not.toExtend<AppliedAppPlan>();
+  const desired: AppPlan = {
+    ...plan,
+    events: { "pre-start": [{ step: "echo hook", source: "project", sourceIndex: 0, status: "active" }] },
+  };
+  expect(mergeAppliedPlan(plan, desired)).not.toHaveProperty("events");
+  expect(mergeAppliedPlan(plan, desired, { complete: true })).not.toHaveProperty("events");
+});
 
 const route = Schema.decodeUnknownSync(RoutePlan)({
   hostname: "web.lndo.site",
@@ -76,7 +86,7 @@ test("carries only mounted previous stores while incoming store definitions win"
     { name: "shared", scope: "global", kind: "cache" },
     { name: "data", scope: "app", kind: "data" },
   ]);
-  expect(mergeAppliedPlan(previous, incoming, { complete: true })).toBe(incoming);
+  expect<AppPlan>(mergeAppliedPlan(previous, incoming, { complete: true })).toBe(incoming);
   expect(mergeAppliedPlan(previous, incoming, { complete: false })).toEqual(merged);
 });
 

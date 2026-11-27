@@ -19,7 +19,7 @@ const scratchService = (dataRoot: string): ServiceRuntimeInfo => ({
   status: "running",
   containerId: "container-web",
   publications: { status: "unknown" },
-  labels: { "dev.lando.scratch": "TRUE" },
+  labels: { "dev.lando.scratch": "TRUE", "dev.lando.data-root": dataRoot },
 });
 
 const summary = (dataRoot: string): ScratchSummary => ({

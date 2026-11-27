@@ -18,7 +18,7 @@ Lint checks each retained root and include fragment against its authoring schema
 
 When every load failure is a local problem with a known destination (a failed `load()` or other load-time expression, an unset env expression, a bad env list entry, or an invalid `lando:` range), lint still runs those effective and resolve checks on what loaded. Services and fields blocked by the load failure stay unavailable, so you see the load finding next to independent problems in other services. A missing include, a failed root layer, a failed tooling include, a lockfile problem, or a blocked app name stops effective and resolve checks until load is clean, because the missing content could change any of their answers. `lando start` stays strict either way.
 
-When that earlier work finds no errors on a successfully loaded Landofile, lint runs the same final planning path `lando start` uses. That pass uses the selected provider's offline capability declaration. It applies features, builds default routes, checks route conflicts and `dependsOn`, and computes certificate plans. It does not construct a provider, contact a container runtime, issue certificates through a CA, or read or write the plan cache. When the provider has no offline declaration, lint skips final planning and adds one `landofile.capability` warning that those checks run at `lando start`. Final planning never runs while load still failed.
+When that earlier work finds no errors on a successfully loaded Landofile, lint runs the same final planning path `lando start` uses. That pass uses the selected provider's offline capability declaration. It applies features, builds default routes, checks route conflicts and `depends_on`, and computes certificate plans. It does not construct a provider, contact a container runtime, issue certificates through a CA, or read or write the plan cache. When the provider has no offline declaration, lint skips final planning and adds one `landofile.capability` warning that those checks run at `lando start`. Final planning never runs while load still failed.
 
 It does not run doctor checks, probe a live provider, or start a container runtime. Every output format exits `1` when lint finds errors and `0` when it does not. JSON and YAML still return a successful report with `ok: true`: inspect `result.valid` and the violations list. Successful report generation is not itself a clean-lint verdict.
 
@@ -56,7 +56,7 @@ A Landofile that still has load findings never reaches final planning, even when
 
 - feature application
 - automatic route selection and route conflicts (`RouteInputError`)
-- `dependsOn` checks
+- `depends_on` checks
 - capability checks that need a live provider or an offline declaration the provider does not publish
 
 Even after a clean lint with offline capabilities, start can still fail on work lint never does:
@@ -137,7 +137,7 @@ Each finding extends `ValidationIssue` with a stable `rule` and a `severity` of 
 
 Text output prints `suggestion` under `fix:` and lists omissions under **Not checked** after the findings.
 
-`scopes` lists `fragment`, `effective`, or both: `fragment` means the file is wrong on its own, `effective` means the composed app is. `source.path` is the original authored path, so `working_dir` can be the source of an effective `workingDirectory` finding. Coordinates come only from retained source content; transformed templates and TypeScript don't get guessed YAML coordinates.
+`scopes` lists `fragment`, `effective`, or both: `fragment` means the file is wrong on its own, `effective` means the composed app is. `source.path` is the original authored path, so an authored path stays the finding path after canonical re-encode. Coordinates come only from retained source content; transformed templates and TypeScript don't get guessed YAML coordinates.
 
 This shape is frozen by the schema artifact-set gate. `--format` defaults to `text`. Pass `--format=json` for machine output.
 
@@ -167,6 +167,10 @@ with a message that names the accepted `protocol:port` or `name=protocol:port`
 form (and `kind` objects). The `source.path` keeps the authored index.
 
 An unknown key gets a `suggestion` naming the closest allowed key, as long as the typo is within two edits. `imgae` suggests `image`. A key nowhere near anything valid gets a plain unknown-key message instead. Unknown keys are schema-only violations, never a `NotImplementedError`.
+
+A removed spelling such as `workingDirectory` or `dockerfileInline` is one `landofile.validation` finding with `reason: "key.renamed"`. The `suggestion` names the canonical key (`working_dir`, `dockerfile_inline`). Match on `reason` rather than the message.
+
+If your service has `environment: [FOO]`, lint reports `environment.bare-entry` at `services.web.environment[0]` (for a service named `web`). To pass `FOO` from your host, use the suggested entry `"FOO={{ env.FOO }}"` and set `FOO` before running Lando. For a literal value, write `FOO=value`; `FOO=` passes an empty string. When scripting against lint JSON, match `rule` and `reason` rather than the message. The [rule reference](../../reference/config-lint-rules.mdx#reasons-within-a-rule) lists the documented reasons.
 
 ## Read rejected Compose keys
 
@@ -279,6 +283,78 @@ A passing app-config check doesn't mean every check ran. Look for `app-config` e
 Your editor can catch the structural problems (unknown keys, wrong literal types, an expression where none belongs) before you run anything; lint still owns resolving expressions. See [Validate a Landofile in your editor](./editor-validation.mdx) for the one-line modeline.
 
 <Guide>
+  <Scenario id="environment-bare-entry" render={false} reason="Check host environment repair in lint JSON">
+    <Step name="lint">
+      <UseFixture name="environment-bare-entry" />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"rule\":\"landofile[.]validation\",\"reason\":\"environment[.]bare-entry\".*\"path\":\\[\"services\",\"web\",\"environment\",0\\].*\"suggestion\":.*FOO=[{][{] env[.]FOO [}][}]", not: { regex: "\"rule\":.*\"rule\":" } } }} />
+    </Step>
+  </Scenario>
+  <Scenario id="environment-empty-name" render={false} reason="Check the repair at the empty assignment name">
+    <Step name="lint">
+      <UseFixture name="environment-empty-name" />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"rule\":\"landofile[.]validation\",\"reason\":\"environment[.]empty-name\".*\"path\":\\[\"services\",\"web\",\"environment\",0\\].*\"suggestion\":.*KEY=value", not: { regex: "\"rule\":.*\"rule\":" } } }} />
+    </Step>
+  </Scenario>
+  <Scenario id="environment-reserved-name" render={false} reason="Check the repair at a reserved map key">
+    <Step name="lint">
+      <UseFixture name="environment-reserved-name" />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"rule\":\"landofile[.]validation\",\"reason\":\"environment[.]reserved-name\".*\"path\":\\[\"services\",\"web\",\"environment\",\"__proto__\"\\].*\"suggestion\":.*KEY: value", not: { regex: "\"rule\":.*\"rule\":" } } }} />
+    </Step>
+  </Scenario>
+  <Scenario id="environment-null-value" render={false} reason="Check the literal empty and explicit host repairs">
+    <Step name="lint">
+      <UseFixture name="environment-null-value" />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"rule\":\"landofile[.]validation\",\"reason\":\"environment[.]null-value\".*\"path\":\\[\"services\",\"web\",\"environment\",\"FOO\"\\].*\"suggestion\":.*FOO: \\\\\"\\\\\".*[{][{] env[.]FOO [}][}]", not: { regex: "\"rule\":.*\"rule\":" } } }} />
+    </Step>
+  </Scenario>
+  <Scenario id="key-renamed-working-directory" render={false} reason="Check removed Compose twin spelling in lint JSON">
+    <Step name="lint">
+      <UseFixture name="key-renamed-working-directory" />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"rule\":\"landofile[.]validation\",\"reason\":\"key[.]renamed\".*\"path\":\\[\"services\",\"web\",\"workingDirectory\"\\].*\"suggestion\":.*working_dir", not: { regex: "\"rule\":.*\"rule\":" } } }} />
+    </Step>
+  </Scenario>
+  <Scenario id="canonical-working-dir" render={false} reason="Canonical working_dir spelling lints clean">
+    <Step name="lint">
+      <UseFixture name="canonical-working-dir" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":true.*\"violations\":\\[\\]" } }} />
+    </Step>
+  </Scenario>
+  <Scenario id="key-renamed-dockerfile-inline" render={false} reason="Check removed inline Dockerfile spelling in lint JSON">
+    <Step name="lint">
+      <UseFixture name="key-renamed-dockerfile-inline" />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"rule\":\"landofile[.]validation\",\"reason\":\"key[.]renamed\".*\"path\":\\[\"services\",\"web\",\"build\",\"dockerfileInline\"\\].*\"suggestion\":.*dockerfile_inline", not: { regex: "\"rule\":.*\"rule\":" } } }} />
+    </Step>
+  </Scenario>
+  <Scenario id="build-unsupported-key" render={false} reason="Check an unsupported build key that is not a rename">
+    <Step name="lint">
+      <UseFixture name="build-unsupported-key" />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"rule\":\"landofile[.]validation\",\"reason\":\"build[.]unsupported-key\".*\"path\":\\[\"services\",\"web\",\"build\",\"typoBuildKey\"\\]", not: { regex: "\"rule\":.*\"rule\":" } } }} />
+    </Step>
+  </Scenario>
+  <Scenario id="build-mixed-families" render={false} reason="Check the repair when both build families occur">
+    <Step name="lint">
+      <UseFixture name="build-mixed-families" />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"rule\":\"landofile[.]validation\",\"reason\":\"build[.]mixed-families\".*\"path\":\\[\"services\",\"web\",\"build\"\\].*\"suggestion\":.*Compose.*Lando", not: { regex: "\"rule\":.*\"rule\":" } } }} />
+    </Step>
+  </Scenario>
+  <Scenario id="build-dockerfile-conflict" render={false} reason="Check mutually exclusive Dockerfile keys">
+    <Step name="lint">
+      <UseFixture name="build-dockerfile-conflict" />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"rule\":\"landofile[.]validation\",\"reason\":\"build[.]dockerfile-conflict\".*\"path\":\\[\"services\",\"web\",\"build\"\\].*\"suggestion\":.*dockerfile .*dockerfile_inline", not: { regex: "\"rule\":.*\"rule\":" } } }} />
+    </Step>
+  </Scenario>
+  <Scenario id="build-empty" render={false} reason="Check the repair for an empty build object">
+    <Step name="lint">
+      <UseFixture name="build-empty" />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"rule\":\"landofile[.]validation\",\"reason\":\"build[.]empty\".*\"path\":\\[\"services\",\"web\",\"build\"\\].*\"suggestion\":.*build", not: { regex: "\"rule\":.*\"rule\":" } } }} />
+    </Step>
+  </Scenario>
+  <Scenario id="valid-environment-and-build-args" render={false} reason="Keep empty values, embedded equals, and typed build arguments valid">
+    <Step name="lint">
+      <UseFixture name="valid-environment-and-build-args" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":true.*\"violations\":\\[\\]" } }} />
+    </Step>
+  </Scenario>
   <Scenario id="independent-service-expression-failures" render={false} reason="Exercise two service expression failures in one lint run">
     <Step name="lint-both-service-expressions">
       <UseFixture name="broken-service-ports" />

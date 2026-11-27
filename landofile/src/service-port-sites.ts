@@ -6,9 +6,9 @@ import type { ParsedPendingSite, ValidationIssueSource } from "@lando/sdk/schema
 const servicePortMessages = {
   "host-readiness": "service.port is not supported in host readiness probes; it is a container port.",
   "unsupported-site":
-    "service.port is available only in a service's command, entrypoint, extraArgs, or container healthcheck or readiness command.",
+    "service.port is available only in a service's command, entrypoint, extraArgs, map-form environment, or container healthcheck or readiness command.",
   "unsupported-member":
-    "Unsupported `service` scope read. Use service.port at a service process site or service.url in a service environment map.",
+    "Unsupported `service` scope read. Use service.port at a service process or environment site, or service.url in a service environment map.",
 } as const;
 
 export const servicePortSiteError = (
@@ -17,7 +17,7 @@ export const servicePortSiteError = (
 ) => {
   const message = servicePortMessages[reason];
   const suggestion =
-    "Use {{ service.port }} in a service command, entrypoint, extraArgs, or container healthcheck or readiness command.";
+    "Use {{ service.port }} in a service command, entrypoint, extraArgs, map-form environment, or container healthcheck or readiness command.";
   return new LandofileValidationError({
     file: "file" in source ? source.file : "<landofile>",
     message,

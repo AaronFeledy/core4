@@ -10,6 +10,7 @@ import { Effect, Layer } from "effect";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";
+import { pathsServiceLayer } from "../paths-service.ts";
 
 for (const type of ["node:22", "compose"]) {
   for (const timestamps of [undefined, true]) {
@@ -32,7 +33,7 @@ for (const type of ["node:22", "compose"]) {
               const planner = yield* AppPlanner;
               return yield* planner.plan(landofile, TestRuntimeProvider.capabilities);
             }).pipe(
-              Effect.provide(AppPlannerLayer.layer),
+              Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
               Effect.provide(Layer.mergeAll(PluginRegistryLayer.layer, BunFileSystem.layer)),
             ),
           );

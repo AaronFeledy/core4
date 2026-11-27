@@ -1,8 +1,9 @@
 import { mapFailures } from "@lando/sdk/command-result";
 import { ProviderInternalError } from "@lando/sdk/errors";
-import type { AppPlan, VolumeCreationFact } from "@lando/sdk/schema";
+import type { AppPlan, VolumeCreationFact, VolumeIdentity } from "@lando/sdk/schema";
 import { planDataId } from "@lando/sdk/schema";
 import { type ApplyOptions, type RuntimeProvider, StateStore } from "@lando/sdk/services";
+import { storeErrorRemediation } from "@lando/state-store";
 import { volumeInitialization } from "@lando/state-store/volume-initialization";
 import { withPhysicalVolumeLock } from "@lando/state-store/volume-lock";
 import { type Context, Effect, Option } from "effect";
@@ -91,13 +92,24 @@ export const recordCreatedVolume = Effect.fn("Lifecycle.recordCreatedVolume")(
               providerId: provider.id,
               operation: "record-volume-creation",
               message: "Could not persist verified volume creation evidence.",
-              remediation:
+              remediation: storeErrorRemediation(
+                cause,
                 "The volume remains ineligible for seeding; inspect durable state before retrying.",
+              ),
               cause,
             }),
       ),
     ),
 );
+
+export const retireCreatedVolume = Effect.fn("Lifecycle.retireCreatedVolume")(function* (
+  identity: VolumeIdentity,
+) {
+  const store = yield* Effect.serviceOption(StateStore);
+  if (Option.isNone(store)) return false;
+  const initialization = yield* volumeInitialization(store.value, identity);
+  return yield* initialization.retire;
+});
 
 export const volumeCreationRecorder = Effect.fn("Lifecycle.volumeCreationRecorder")(function* (
   provider: Pick<Context.Service.Shape<typeof RuntimeProvider>, "id" | "locateVolume">,

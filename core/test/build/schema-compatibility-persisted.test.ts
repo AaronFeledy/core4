@@ -7,10 +7,12 @@ import {
   classifySchemaChange,
 } from "../../../scripts/schema-compatibility/classifier.ts";
 import { parseCompatibilityExceptions } from "../../../scripts/schema-compatibility/exceptions.ts";
+import { finding } from "../../../scripts/schema-compatibility/fingerprint.ts";
 import {
   type CompatibilityException,
   type JsonSchema,
   type JsonValue,
+  type PersistedStoreId,
   isJsonObject,
 } from "../../../scripts/schema-compatibility/model.ts";
 import {
@@ -18,18 +20,24 @@ import {
   readPersistedStoreVersions,
 } from "../../../scripts/schema-compatibility/persisted.ts";
 import { loadBasePersistedStoreVersions } from "../../../scripts/schema-compatibility/store-versions.ts";
+import { suggestCompatibilityExceptions } from "../../../scripts/schema-compatibility/suggest-exceptions.ts";
 import { loadWorkingSchemaArtifacts } from "../../../scripts/schema-compatibility-artifacts.ts";
 
 const storeVersions = { "applied-state": 4, "tunnel-registry": 2 } as const;
 const persistedStoresBySurface = new Map([["schema:HostAliasPlan", new Set(["applied-state"] as const)]]);
+const narrowedHostname = (verdict: "breaking" | "unknown") =>
+  finding(verdict, "keyword-changed", "$", "Narrowed hostname.", {
+    before: { type: "string" },
+    after: { type: "string", pattern: "^[a-z]+$" },
+  });
 const exception = {
-  surface: "schema:HostAliasPlan",
+  fingerprint: narrowedHostname("unknown").fingerprint,
   changeKind: "keyword-changed",
-  path: "$",
+  locations: [{ surface: "schema:HostAliasPlan", path: "$" }],
   justification: "Applied-state v4 migrates historical names.",
-} as const;
+} satisfies CompatibilityException;
 
-test("covers every published ref in the real AppPlan and tunnel schema documents", async () => {
+test("covers every published ref in the real AppliedAppPlan and tunnel schema documents", async () => {
   const artifacts = await loadWorkingSchemaArtifacts(resolve(import.meta.dir, "../../.."));
   const schemas = new Map(
     [...artifacts]
@@ -38,7 +46,7 @@ test("covers every published ref in the real AppPlan and tunnel schema documents
   );
   const stores = buildPersistedSurfaceStores(schemas, new Set(schemas.keys()));
   for (const [root, store] of [
-    ["AppPlan", "applied-state"],
+    ["AppliedAppPlan", "applied-state"],
     ["TunnelSession", "tunnel-registry"],
   ] as const) {
     const schema = schemas.get(root);
@@ -68,8 +76,8 @@ test("covers every published ref in the real AppPlan and tunnel schema documents
 
 test("keeps removed baseline ref targets classified as persisted", () => {
   const stores = buildPersistedSurfaceStores(
-    new Map([["AppPlan", {}]]),
-    new Set(["AppPlan", "HistoricalOnly"]),
+    new Map([["AppliedAppPlan", {}]]),
+    new Set(["AppliedAppPlan", "HistoricalOnly"]),
     new Map([["AppPlan", { $ref: "#/$defs/HistoricalOnly", $defs: { HistoricalOnly: { type: "string" } } }]]),
   );
   expect(stores.get("schema:HistoricalOnly")).toEqual(new Set(["applied-state"]));
@@ -77,8 +85,8 @@ test("keeps removed baseline ref targets classified as persisted", () => {
 
 test("discovers published definitions with numeric suffixes and excludes unrelated surfaces", () => {
   const stores = buildPersistedSurfaceStores(
-    new Map([["AppPlan", { $ref: "#/$defs/Custom_1", $defs: { Custom_1: { type: "string" } } }]]),
-    new Set(["AppPlan", "Custom", "Unrelated"]),
+    new Map([["AppliedAppPlan", { $ref: "#/$defs/Custom_1", $defs: { Custom_1: { type: "string" } } }]]),
+    new Set(["AppliedAppPlan", "Custom", "Unrelated"]),
   );
   expect(stores.get("schema:Custom")).toEqual(new Set(["applied-state"]));
   expect(stores.has("schema:Unrelated")).toBe(false);
@@ -92,14 +100,64 @@ test("discovers inline published schemas without requiring a reference or an inv
   };
   const stores = buildPersistedSurfaceStores(
     new Map<string, JsonSchema>([
-      ["AppPlan", { type: "object", properties: { nested: inline } }],
+      ["AppliedAppPlan", { type: "object", properties: { nested: inline } }],
       ["NewInlineContract", inline],
       ["UnrelatedStringBrand", { type: "string" }],
     ]),
-    new Set(["AppPlan", "NewInlineContract", "UnrelatedStringBrand"]),
+    new Set(["AppliedAppPlan", "NewInlineContract", "UnrelatedStringBrand"]),
   );
   expect(stores.get("schema:NewInlineContract")).toEqual(new Set(["applied-state"]));
   expect(stores.has("schema:UnrelatedStringBrand")).toBe(false);
+});
+
+test.each([
+  { name: "event-only change needs no new applied-state migration", id: "EventStepPlan", accepted: true },
+  {
+    name: "narrowing a field still stored in applied state requires a migration",
+    id: "RealizedField",
+    accepted: false,
+  },
+])("$name", ({ id, accepted }) => {
+  const oldField = { type: "string" };
+  const narrowField = { type: "string", const: "kept" };
+  const realized = { $ref: "#/$defs/RealizedField" };
+  const before = new Map<string, JsonSchema>([
+    [
+      "AppPlan",
+      {
+        properties: { events: { $ref: "#/$defs/EventStepPlan" }, realized },
+        $defs: { EventStepPlan: oldField, RealizedField: oldField },
+      },
+    ],
+  ]);
+  const after = new Map<string, JsonSchema>([
+    [
+      "AppliedAppPlan",
+      {
+        properties: { realized },
+        $defs: { RealizedField: narrowField },
+      },
+    ],
+  ]);
+  const findings = classifySchemaChange(oldField, narrowField, "input");
+  const surface = `schema:${id}`;
+  const stores = buildPersistedSurfaceStores(
+    after,
+    new Set(["AppliedAppPlan", "EventStepPlan", "RealizedField"]),
+    before,
+  );
+  const result = acceptCompatibilityExceptions(
+    surface,
+    findings,
+    findings.map(({ fingerprint, changeKind, path }) => ({
+      fingerprint,
+      changeKind,
+      locations: [{ surface, path }],
+      justification: "Fixture narrowing.",
+    })),
+    { persistedStoresBySurface: stores, storeVersions, baseStoreVersions: { "applied-state": 4 } },
+  );
+  expect(result.map((finding) => finding.accepted)).toEqual([accepted]);
 });
 
 test("parses persisted migration metadata without dropping it", () => {
@@ -129,11 +187,9 @@ for (const verdict of ["breaking", "unknown"] as const) {
     readonly label: string;
     readonly metadata: CompatibilityException["persistedState"];
   }>)(`rejects ${verdict} persisted findings with $label metadata`, ({ metadata }) => {
-    const findings = [
-      { verdict, changeKind: "keyword-changed", path: "$", message: "Narrowed hostname.", accepted: false },
-    ];
+    const findings = [narrowedHostname(verdict)];
     const entries = [{ ...exception, ...(metadata === undefined ? {} : { persistedState: metadata }) }];
-    const result = acceptCompatibilityExceptions(exception.surface, findings, entries, {
+    const result = acceptCompatibilityExceptions("schema:HostAliasPlan", findings, entries, {
       persistedStoresBySurface,
       storeVersions,
     });
@@ -145,14 +201,12 @@ for (const verdict of ["breaking", "unknown"] as const) {
   test.each([3, 4])(
     `requires an advanced current version for a persisted ${verdict} finding (base %s)`,
     (baseVersion) => {
-      const findings = [
-        { verdict, changeKind: "keyword-changed", path: "$", message: "Narrowed hostname.", accepted: false },
-      ];
+      const findings = [narrowedHostname(verdict)];
       const entry: CompatibilityException = {
         ...exception,
         persistedState: { store: "applied-state", version: 4 },
       };
-      const result = acceptCompatibilityExceptions(exception.surface, findings, [entry], {
+      const result = acceptCompatibilityExceptions("schema:HostAliasPlan", findings, [entry], {
         persistedStoresBySurface,
         storeVersions,
         baseStoreVersions: { "applied-state": baseVersion },
@@ -165,12 +219,12 @@ for (const verdict of ["breaking", "unknown"] as const) {
 test("still accepts non-persisted surfaces without migration metadata", () => {
   const findings = classifySchemaChange({ type: "string" }, { type: "number" }, "output");
   const entry = {
-    surface: "command:app:info",
+    fingerprint: findings[0]?.fingerprint ?? "",
     changeKind: "type-changed",
-    path: "$",
+    locations: [{ surface: "command:app:info", path: "$" }],
     justification: "Command output only.",
   };
-  const result = acceptCompatibilityExceptions(entry.surface, findings, [entry], {
+  const result = acceptCompatibilityExceptions("command:app:info", findings, [entry], {
     persistedStoresBySurface,
     storeVersions,
   });
@@ -182,25 +236,43 @@ test.each([false, true])("requires migrations for every store sharing a surface:
     { store: "applied-state", version: 4 },
     ...(complete ? [{ store: "tunnel-registry", version: 2 } as const] : []),
   ] as const;
+  const surface = "schema:RouteHostname";
   const entry: CompatibilityException = {
     ...exception,
-    surface: "schema:RouteHostname",
+    locations: [{ surface, path: "$" }],
     persistedState: metadata,
   };
-  const result = acceptCompatibilityExceptions(
-    entry.surface,
-    [{ verdict: "unknown", changeKind: entry.changeKind, path: "$", message: "Narrowed.", accepted: false }],
-    [entry],
-    {
-      storeVersions,
-      baseStoreVersions: { "applied-state": 3, "tunnel-registry": 1 },
-      persistedStoresBySurface: new Map([
-        [entry.surface, new Set(["applied-state", "tunnel-registry"] as const)],
-      ]),
-    },
-  );
+  const result = acceptCompatibilityExceptions(surface, [narrowedHostname("unknown")], [entry], {
+    storeVersions,
+    baseStoreVersions: { "applied-state": 3, "tunnel-registry": 1 },
+    persistedStoresBySurface: new Map([[surface, new Set(["applied-state", "tunnel-registry"] as const)]]),
+  });
   expect(result[0]?.accepted).toBe(complete);
   expect(parseCompatibilityExceptions(JSON.stringify([entry]), "fixture")).toEqual([entry]);
+});
+
+test("suggests persisted metadata for every store a merged entry reaches", () => {
+  // Given a reviewed applied-state entry and the same change on a tunnel-registry surface.
+  const existing: CompatibilityException = {
+    ...exception,
+    persistedState: { store: "applied-state", version: 4 },
+  };
+  const located = { ...narrowedHostname("unknown"), surface: "schema:TunnelTarget" };
+
+  // When the gate suggests the merged entry.
+  const [suggestion] = suggestCompatibilityExceptions([located], [existing], {
+    storeVersions,
+    persistedStoresBySurface: new Map<string, ReadonlySet<PersistedStoreId>>([
+      ["schema:HostAliasPlan", new Set(["applied-state"])],
+      ["schema:TunnelTarget", new Set(["tunnel-registry"])],
+    ]),
+  });
+
+  // Then its persistedState covers both stores at their current versions.
+  expect(suggestion?.persistedState).toEqual([
+    { store: "applied-state", version: 4 },
+    { store: "tunnel-registry", version: 2 },
+  ]);
 });
 
 const git = async (cwd: string, ...args: string[]) => {

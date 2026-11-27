@@ -5,11 +5,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AbsolutePath, type AppPlan, PortablePath } from "@lando/sdk/schema";
 import { type ApplyOptions, RuntimeProviderRegistry, SshService } from "@lando/sdk/services";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect, Exit, Scope } from "effect";
 import { rebuildApp } from "../../src/operations/rebuild.ts";
 import * as gpgAgentModule from "../../src/operations/start-gpg-agent.ts";
 import { GPG_AGENT_PLAN_EXTENSION_KEY } from "../../src/subsystems/gpg-agent/intent.ts";
 import { SSH_AGENT_PLAN_EXTENSION_KEY } from "../../src/subsystems/ssh/intent.ts";
+import * as worker from "../../src/subsystems/ssh-agent/detached-worker.ts";
 import type { AgentRelaySession } from "../../src/subsystems/ssh-agent/session.ts";
 import { makeHarness, plan, web } from "./start-progress-topology-support.ts";
 
@@ -78,6 +80,18 @@ for (const prepareExit of [0, 1]) {
           ),
         ),
     );
+    const startWorker = spyOn(worker, "startDetachedAgentRelayWorker").mockImplementation((options) => {
+      const session: AgentRelaySession = {
+        appId: selected.id,
+        sessionId: "rebuild-ssh-session",
+        kind: "ssh",
+        socketName: "agent.sock",
+        mount: { _tag: "bind-directory", directory: AbsolutePath.make(join(root, "relay")) },
+        closed: Promise.resolve(),
+        close: async () => undefined,
+      };
+      return (options.publish?.(session) ?? Effect.void).pipe(Effect.as(session));
+    });
     try {
       // When
       const result = await Effect.runPromise(
@@ -105,20 +119,30 @@ for (const prepareExit of [0, 1]) {
             }),
           ),
         ).pipe(
-          Effect.provideService(RuntimeProviderRegistry, {
-            ...harness.runtimeProviderRegistry,
-            select: () =>
-              Effect.succeed({
-                ...provider,
-                capabilities: { ...provider.capabilities, agentSocket: { delivery: "bind-directory" } },
-                stop: (target) => Effect.sync(() => calls.push(`stop:${target.service}`)),
-                exec: () =>
-                  Effect.sync(() => {
-                    calls.push("gpg-prepare");
-                    return { exitCode: prepareExit, stdout: "", stderr: "" };
-                  }),
-              }),
-          }),
+          Effect.provideService(
+            RuntimeProviderRegistry,
+            makeTestRuntimeProviderRegistry({
+              ...harness.runtimeProviderRegistry,
+              select: () =>
+                Effect.succeed({
+                  ...provider,
+                  capabilities: { ...provider.capabilities, agentSocket: { delivery: "bind-directory" } },
+                  bringDownObserved: (observed, containers) =>
+                    Effect.sync(() => {
+                      calls.push(`stop:${observed.service}`);
+                      return {
+                        service: observed.service,
+                        action: containers === "stop" ? "stopped" : "removed",
+                      };
+                    }),
+                  exec: () =>
+                    Effect.sync(() => {
+                      calls.push("gpg-prepare");
+                      return { exitCode: prepareExit, stdout: "", stderr: "" };
+                    }),
+                }),
+            }),
+          ),
           Effect.provideService(SshService, {
             id: "sidecar",
             setup: () => Effect.void,
@@ -159,6 +183,7 @@ for (const prepareExit of [0, 1]) {
         expect(calls).toEqual(["stop:web", "apply", "gpg-prepare"]);
       }
     } finally {
+      startWorker.mockRestore();
       gpgSession.mockRestore();
       await new Promise<void>((resolve) => server.close(() => resolve()));
       await rm(root, { recursive: true, force: true });

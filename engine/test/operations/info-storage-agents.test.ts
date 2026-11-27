@@ -42,7 +42,7 @@ const evidenceCases = [
     labels: { "dev.lando.ssh-agent-overlay": "false", "dev.lando.gpg-agent-overlay": "arbitrary" },
   },
   { name: "relay-only marker", selected: service, labels: { "dev.lando.agent-session": "session" } },
-  { name: "host-proxy only", selected: service, labels: { "dev.lando.host-proxy-session": "session" } },
+  { name: "host-proxy only", selected: service, labels: { "dev.lando.host-proxy-contract": "session" } },
 ] as const;
 
 for (const target of targets) {

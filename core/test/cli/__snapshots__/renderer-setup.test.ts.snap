@@ -15,7 +15,7 @@ exports[`renderer.setup fixture plain renderer snapshot is stable 1`] = `
 `;
 
 exports[`renderer.setup fixture json renderer snapshot is stable on stderr 1`] = `
-"{"_tag":"event","event":"task.tree.start","payload":{"_tag":"task.tree.start","parentId":"provider-setup","label":"Setting up Lando runtime","children":["bundle","podman","socket","state"],"mode":"list","timestamp":"2026-05-20T12:00:00.000Z"}}
+"{"_tag":"event","event":"task.tree.start","payload":{"_tag":"task.tree.start","parentId":"provider-setup","label":"Setting up Lando runtime","children":[{"id":"bundle","label":"Verify runtime bundle"},{"id":"podman","label":"Detect Podman"},{"id":"socket","label":"Probe Podman API"},{"id":"state","label":"Persist setup state"}],"mode":"list","timestamp":"2026-05-20T12:00:00.000Z"}}
 {"_tag":"event","event":"task.start","payload":{"_tag":"task.start","parentId":"provider-setup","taskId":"bundle","label":"Verify runtime bundle","timestamp":"2026-05-20T12:00:00.005Z"}}
 {"_tag":"event","event":"task.complete","payload":{"_tag":"task.complete","taskId":"bundle","summary":"Verify runtime bundle","durationMs":42,"timestamp":"2026-05-20T12:00:00.047Z"}}
 {"_tag":"event","event":"task.start","payload":{"_tag":"task.start","parentId":"provider-setup","taskId":"podman","label":"Detect Podman","timestamp":"2026-05-20T12:00:00.050Z"}}

@@ -18,7 +18,7 @@ lando init --recipe laravel --name=horizon-demo --yes --answer=worker=true
 cd horizon-demo
 ```
 
-`--answer=worker=true` shares `vendor` between `appserver` and `worker`. Before the first start, merge these changes into their existing blocks in `.lando.yml`:
+`--answer=worker=true` adds a `worker` service that mounts the same project directory as `appserver`, `vendor` included. Before the first start, merge these changes into their existing blocks in `.lando.yml`:
 
 ```yaml
 services:
@@ -27,7 +27,7 @@ services:
     restart: unless-stopped
     environment:
       APP_URL: "{{ services.appserver.url }}"
-    dependsOn:
+    depends_on:
       database:
         condition: service_healthy
       cache:
@@ -101,10 +101,9 @@ Horizon starts asynchronously. If `horizon:status` reports inactive, check `land
 
 ```sh
 lando info
-curl https://horizon-demo.lndo.site/horizon/api/stats
 ```
 
-Open `/horizon` on the appserver URL from `lando info`. Use that URL's port in the curl command too if Lando falls back to `:8443`. The stats endpoint returns JSON; check that `status` is `running`, rather than relying on a fixed worker count.
+Open `/horizon` on the `appserver` URL that `lando info` prints, for example `https://horizon-demo.lndo.site/horizon`. That URL already includes the port when Lando falls back to one such as `:8443`. The dashboard reports the same supervisor status as `lando artisan horizon:status`, so check that instead of a fixed worker count.
 
 `APP_ENV=local` permits dashboard access without a login. Keep this app local; configure Horizon's authorization gate before exposing it to others. Both PHP services read the shared `.env`; service-level environment overrides take precedence.
 
@@ -220,9 +219,7 @@ lando destroy -y
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"APP_URL\":\\s*\"\\{\\{ services\\.appserver\\.url \\}\\}\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"run\":\\s*\"a2enmod rewrite\",\\s*\"user\":\\s*\"root\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"cache\":\\s*\\{[^}]*\"type\":\\s*\"redis\"" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appserver\":\\s*\\{(?:(?!\"worker\":)[\\s\\S])*?\"appMount\":\\s*\\{[^}]*\"target\":\\s*\"/app\"[^}]*\"includes\":\\s*\\[\\s*\"vendor\"\\s*\\]" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"worker\":\\s*\\{[\\s\\S]*?\"appMount\":\\s*\\{[^}]*\"target\":\\s*\"/app\"[^}]*\"includes\":\\s*\\[\\s*\"vendor\"\\s*\\]" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"worker\":\\s*\\{[\\s\\S]*?\"dependsOn\":\\s*\\{\\s*\"database\":\\s*\\{\\s*\"condition\":\\s*\"service_healthy\"\\s*\\},\\s*\"cache\":\\s*\\{\\s*\"condition\":\\s*\"service_healthy\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"worker\":\\s*\\{[\\s\\S]*?\"depends_on\":\\s*\\{\\s*\"database\":\\s*\\{\\s*\"condition\":\\s*\"service_healthy\"\\s*\\},\\s*\"cache\":\\s*\\{\\s*\"condition\":\\s*\"service_healthy\"" } }} />
     </Step>
     <Step name="start">
       <Run command="lando start" />

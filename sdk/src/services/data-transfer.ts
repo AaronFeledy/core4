@@ -6,7 +6,6 @@ import type {
   DataSourceOutsideRootError,
   DataTargetExistsError,
   DataTransferError,
-  SnapshotAmbiguousError,
   SnapshotNotFoundError,
   SnapshotOwnershipError,
   StateStoreError,
@@ -36,7 +35,6 @@ export type DataMoverError =
   | DataChecksumMismatchError
   | DataSourceOutsideRootError
   | DataTargetExistsError
-  | SnapshotAmbiguousError
   | SnapshotNotFoundError
   | SnapshotOwnershipError
   | VolumeNotFoundError
@@ -72,7 +70,10 @@ export class DataMover extends Context.Service<
     readonly listSnapshots: (
       filter: SnapshotFilter,
     ) => Effect.Effect<ReadonlyArray<SnapshotInfo>, DataMoverError>;
-    /** Resolve ids and labels only within the supplied scope. */
+    /**
+     * Resolve ids and labels only within the supplied scope. An exact id wins; otherwise the
+     * newest snapshot carrying the label is returned.
+     */
     readonly resolveSnapshot: (
       reference: string,
       scope: SnapshotFilter,

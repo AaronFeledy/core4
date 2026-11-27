@@ -1,4 +1,5 @@
 import { layer as plannerLayer } from "@lando/engine/services/planner";
+import { makeLandoPaths } from "@lando/paths";
 import { PluginLoadError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -7,7 +8,7 @@ import {
   ProviderId,
   ServiceName,
 } from "@lando/sdk/schema";
-import { AppPlanner, PluginRegistry, type ServiceType } from "@lando/sdk/services";
+import { AppPlanner, PathsService, PluginRegistry, type ServiceType } from "@lando/sdk/services";
 import { Effect, Layer, Schema } from "effect";
 
 export const hostProbeService = ServiceName.make("probe");
@@ -77,4 +78,7 @@ export const planHostProbe = (name: string, capabilities: ProviderCapabilities) 
       }),
       capabilities,
     ),
-  ).pipe(Effect.provide(plannerLayer), Effect.provide(registry));
+  ).pipe(
+    Effect.provide(plannerLayer.pipe(Layer.provide(Layer.succeed(PathsService, makeLandoPaths())))),
+    Effect.provide(registry),
+  );

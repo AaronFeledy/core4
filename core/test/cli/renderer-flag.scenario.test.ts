@@ -2,10 +2,10 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { ensureCompiledCli } from "../_support/compiled-cli.ts";
 
 const coreRoot = resolve(import.meta.dirname, "../..");
 const sourceCliPath = resolve(coreRoot, "bin/lando.ts");
-const compiledBinaryPath = resolve(coreRoot, "dist/lando");
 const bunBinDir = dirname(process.execPath);
 const spawnPath = `${bunBinDir}:${process.env.PATH ?? ""}`;
 
@@ -188,10 +188,12 @@ describe("--renderer flag (source CLI)", () => {
 describe.skipIf(process.platform !== "linux" || process.arch !== "x64")(
   "--renderer flag (compiled $bunfs binary smoke)",
   () => {
-    test("compiled binary rejects --renderer=tui with RendererSelectionError", async () => {
-      const build = await runCommand([process.execPath, "run", "build"]);
-      expect(build.exitCode).toBe(0);
+    let compiledBinaryPath = "";
+    beforeAll(async () => {
+      compiledBinaryPath = await ensureCompiledCli();
+    }, 180_000);
 
+    test("compiled binary rejects --renderer=tui with RendererSelectionError", async () => {
       const env = isolationEnv();
       const source = await runCommand([process.execPath, sourceCliPath, "apps:list", "--renderer=tui"], env);
       const compiled = await runCommand([compiledBinaryPath, "apps:list", "--renderer=tui"], env);
@@ -201,7 +203,7 @@ describe.skipIf(process.platform !== "linux" || process.arch !== "x64")(
       expect(compiled.exitCode).toBe(source.exitCode);
       expect(compiledError).toBe(sourceError);
       expect(compiledError.length).toBeGreaterThan(0);
-    }, 180_000);
+    }, 60_000);
 
     test("compiled CLI accepts --renderer=json and emits a result envelope", async () => {
       const env = isolationEnv();

@@ -71,18 +71,18 @@ const overlays: Readonly<Record<string, ServicePlan>> = {
   hostProxy: {
     ...service,
     environment: {
-      LANDO_HOST_PROXY_SOCKET: "/run/lando/host-proxy.sock",
+      LANDO_HOST_PROXY_SOCKET: "/run/lando/host-proxy/sock",
       LANDO_HOST_PROXY_TRANSPORT: "unix-socket",
       LANDO_HOST_PROXY_DEPTH: "0",
     },
     mounts: [
+      "/run/lando/host-proxy",
       "/run/lando/host-proxy.sock",
-      "/run/lando/host-proxy/credentials",
       "/usr/local/bin/lando",
       "/usr/local/bin/xdg-open",
       "/usr/local/bin/open",
     ].map(bind),
-    extensions: { [HOST_PROXY_TRANSPORT_EXTENSION_KEY]: { sessionDigest: "0123456789abcdef" } },
+    extensions: { [HOST_PROXY_TRANSPORT_EXTENSION_KEY]: { contractDigest: "0123456789abcdef" } },
   },
   knownHosts: {
     ...service,

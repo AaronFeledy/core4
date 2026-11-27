@@ -60,7 +60,7 @@ services:
   app:
     type: "php:8.3"
     primary: true
-    db_client: auto
+    dbClient: auto
   database:
     type: mysql
     creds:
@@ -77,7 +77,7 @@ That `-h database` is intra-app DNS on the per-app bridge `lando-service-dns-dem
 
 ## Reach another app with `.internal`
 
-Cross-app names live on `lando_bridge_network`. The alias is `<service>.<app>.internal`. Traefik dials `http://app.service-dns-demo.internal:80` for this app, not a `*.lndo.site` hostname.
+Cross-app names resolve on the bridge shared by apps in the same Lando data root. The alias is `<service>.<app>.internal`. Traefik dials `http://app.service-dns-demo.internal:80` for this app, not a `*.lndo.site` hostname. Apps from another data root don't join this bridge, even when they use the same container engine.
 
 Global Mailpit is `mailpit.global.internal`. Non-global `type: lando` services get `LANDO_MAIL_HOST=mailpit.global.internal` and `LANDO_MAIL_PORT=1025`. Point SMTP at those env values.
 

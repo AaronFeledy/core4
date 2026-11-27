@@ -29,6 +29,7 @@ export * from "./managed-file.ts";
 export * from "./mcp.ts";
 export * from "./open.ts";
 export * from "./plugin.ts";
+export * from "./privilege.ts";
 export * from "./process.ts";
 export * from "./provider.ts";
 export * from "./recipe.ts";
@@ -42,6 +43,7 @@ export * from "./shell.ts";
 export * from "./sql.ts";
 export * from "./ssh.ts";
 export * from "./state-store.ts";
+export * from "./state-version-remediation.ts";
 export * from "./tool.ts";
 export {
   ToolingCommandLookupError,

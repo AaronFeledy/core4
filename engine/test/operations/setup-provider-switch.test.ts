@@ -11,12 +11,12 @@ import {
   appIdentityKey,
 } from "@lando/sdk/schema";
 import {
-  type DestroyOptions,
+  type BringDownOptions,
   GlobalAppService,
   RuntimeProviderRegistry,
   type ServiceRuntimeInfo,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { DateTime, Effect, Layer, type Result } from "effect";
 import { switchGlobalProviderForSetup } from "../../src/operations/setup-provider-switch.ts";
 
@@ -48,7 +48,7 @@ const withSwitch = async (
         Effect.Error<ReturnType<typeof switchGlobalProviderForSetup>>
       >
     >;
-    readonly destroys: DestroyOptions[];
+    readonly destroys: BringDownOptions[];
     readonly globalApplied: () => boolean;
     readonly routeFile: string;
     readonly user: AppPlan;
@@ -80,7 +80,7 @@ const withSwitch = async (
       ...(input.dependent === "service" ? { requires: { globalServices: ["mailpit"] } } : {}),
     };
     let globalApplied = true;
-    const destroys: DestroyOptions[] = [];
+    const destroys: BringDownOptions[] = [];
     const services: ServiceRuntimeInfo[] = input.running
       ? [
           {
@@ -100,11 +100,11 @@ const withSwitch = async (
       isAvailable: Effect.succeed(true),
       appliedPlans: Effect.sync(() => (globalApplied ? [global, user] : [user])),
       list: () => Effect.succeed(services),
-      destroy: (_target: unknown, options: DestroyOptions) =>
+      bringDown: (_target: unknown, options: BringDownOptions) =>
         Effect.sync(() => {
           destroys.push(options);
           globalApplied = false;
-          return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
+          return { kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } };
         }),
     };
     const layer = Layer.mergeAll(
@@ -127,10 +127,19 @@ const withSwitch = async (
       ),
       Layer.succeed(
         RuntimeProviderRegistry,
-        RuntimeProviderRegistry.of({
+        makeTestRuntimeProviderRegistry({
           list: Effect.succeed([ProviderId.make("lando"), ProviderId.make("docker")]),
           capabilities: Effect.succeed(provider.capabilities),
           appliedPlansFor: (target) => Effect.succeed(globalApplied && target === root ? [global] : []),
+          appliedStateInventory: (id) =>
+            Effect.map(provider.appliedPlans, (plans) => ({
+              plans: plans.filter((plan) => plan.provider === id),
+              unreadable: [],
+            })),
+          readAppliedPlanStrict: ({ id, provider }) =>
+            Effect.succeed(
+              globalApplied && id === global.id && provider === global.provider ? global : undefined,
+            ),
           resolveAppliedPlan: () => Effect.succeed(globalApplied ? global : undefined),
           resolveTeardownEvidence: () =>
             Effect.succeed(
@@ -201,7 +210,7 @@ test("setup retires stopped global dependents, keeps volumes and router files, a
         remainingApps: [{ kind: "user", id: "user-app", root: fixture.user.root }],
       },
     });
-    expect(fixture.destroys).toEqual([{ volumes: false, removeState: true }]);
+    expect(fixture.destroys).toEqual([{ containers: "remove", volumes: false, removeState: true }]);
     expect(fixture.globalApplied()).toBe(false);
     expect(await readFile(fixture.routeFile, "utf8")).toBe("retained dynamic configuration");
   });

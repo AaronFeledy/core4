@@ -70,6 +70,22 @@ describe("astro decomposition", () => {
           cmd: [":node-local", "astro"],
           wrapper: true,
         },
+        dev: {
+          service: "web",
+          description: "Run the Astro dev server on the address Lando publishes.",
+          cmd: [
+            ":node-local",
+            "astro",
+            "dev",
+            "--host",
+            "0.0.0.0",
+            "--port",
+            "4321",
+            "--allowed-hosts",
+            "{{ services.web.hostname }}",
+          ],
+          wrapper: true,
+        },
       },
     });
     expect<unknown>(result.fragment).toEqual({
@@ -85,10 +101,10 @@ describe("astro decomposition", () => {
     )(authoringOf(withDatabase));
     expect(Object.keys(authoring.services)).toEqual(["web", "database"]);
     expect<unknown>(authoring.services.database).toEqual({ type: "{{ recipe.database }}" });
-    const web = Schema.decodeUnknownSync(Schema.Struct({ dependsOn: Schema.optionalKey(Schema.Unknown) }))(
+    const web = Schema.decodeUnknownSync(Schema.Struct({ depends_on: Schema.optionalKey(Schema.Unknown) }))(
       authoring.services.web,
     );
-    expect<unknown>(web.dependsOn).toEqual(["database"]);
+    expect<unknown>(web.depends_on).toEqual(["database"]);
   });
 
   test("preserves authoring data when only the Node token varies", () => {

@@ -7,7 +7,7 @@ services:
     port: 80
     environment:
       VITE_DEV_SERVER_URL: "{{ services.node.url }}"
-    dependsOn:
+    depends_on:
       - database
     routes:
       - hostname: "{{ app.name }}.{{ proxy.defaultDomain }}"
@@ -20,7 +20,7 @@ services:
     primary: false
     environment:
       VITE_DEV_SERVER_URL: "{{ services.node.url }}"
-      WORDPRESS_URL: "{{ services.appserver.url }}"
+      WORDPRESS_ORIGIN: "{{ services.appserver.origin }}"
     routes:
       - hostname: "vite.{{ app.name }}.{{ proxy.defaultDomain }}"
         scheme: both

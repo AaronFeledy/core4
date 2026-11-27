@@ -12,7 +12,6 @@ import {
   publishedFactsFromCompatResponses,
   publishedFactsFromPodman,
   supportsWindowsPublishedRecovery,
-  withPublishedRecoveryAfterLifecycle,
 } from "../src/windows-publish-recovery.ts";
 import { ownerOnlyFileAccess } from "./private-file-access.ts";
 
@@ -52,19 +51,6 @@ const oldRules = [
   { handle: 2, chain, hostPort: 28443, containerAddress: "10.89.3.8", containerPort: 443 },
 ];
 
-test("refreshes published ownership after start and restart but not stop", async () => {
-  for (const action of ["start", "restart", "stop"] as const) {
-    const events: string[] = [];
-    await Effect.runPromise(
-      withPublishedRecoveryAfterLifecycle(
-        action,
-        Effect.sync(() => events.push(action)),
-        Effect.sync(() => events.push("reconcile")),
-      ),
-    );
-    expect(events).toEqual(action === "stop" ? ["stop"] : [action, "reconcile"]);
-  }
-});
 test("limits optional recovery to shared-only loopback TCP publications", () => {
   const networking = landoNetworkingPlan({
     slug: "any-app-id",

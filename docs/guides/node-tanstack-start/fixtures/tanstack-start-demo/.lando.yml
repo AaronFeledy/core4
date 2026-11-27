@@ -6,7 +6,7 @@ services:
     port: 3000
     environment:
       DATABASE_URL: "postgresql://{{ services.database.creds.user }}:{{ services.database.creds.password }}@database:5432/{{ services.database.creds.database }}"
-    dependsOn:
+    depends_on:
       database:
         condition: service_healthy
   database:
@@ -23,3 +23,10 @@ tooling:
     description: Run npx inside the web service.
     service: web
     dir: /app
+  dev:
+    cmd: [npm, run, dev]
+    description: Run the dev script with the published hostname allowed in Vite.
+    service: web
+    dir: /app
+    env:
+      __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS: "{{ services.web.hostname }}"

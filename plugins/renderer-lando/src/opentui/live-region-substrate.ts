@@ -4,6 +4,7 @@ import type {
   LiveRegionControllerDeps,
   LiveRegionControllerOptions,
   LiveRegionRendererLike,
+  LiveRegionStdin,
   OpenTuiLiveRegionModuleLike,
 } from "./live-region-types.ts";
 import { installMonochromePromptAdapters, monochromePromptTerminal } from "./prompt-monochrome.ts";
@@ -12,6 +13,8 @@ import { recordOpenTuiSubstrateFailure } from "./substrate-availability.ts";
 export interface LiveRegionSubstrate<TRenderer extends LiveRegionRendererLike> {
   readonly module: OpenTuiLiveRegionModuleLike<TRenderer>;
   readonly renderer: TRenderer;
+  /** Destroys the renderer and hands stdin back; resolves once OpenTUI has restored the terminal. */
+  readonly close: () => Promise<void>;
 }
 
 type LiveRegionModuleLoader = () => Promise<OpenTuiLiveRegionModuleLike>;
@@ -52,11 +55,39 @@ export const prefetchLiveRegionModule = (loadModule: LiveRegionModuleLoader = lo
 };
 
 /** Destroys the renderer and waits until OpenTUI restores the terminal and flushes its output. */
-export const closeRenderer = async (
-  renderer: Pick<LiveRegionRendererLike, "destroy" | "closed">,
-): Promise<void> => {
+const closeRenderer = async (renderer: Pick<LiveRegionRendererLike, "destroy" | "closed">): Promise<void> => {
   renderer.destroy();
   await renderer.closed;
+};
+
+interface StdinMode {
+  readonly raw: boolean;
+  readonly flowing: boolean;
+}
+
+const stdinMode = (stdin: LiveRegionStdin): StdinMode => ({
+  raw: stdin.isRaw === true,
+  flowing: stdin.readableFlowing === true,
+});
+
+/**
+ * OpenTUI's teardown leaves raw mode and pauses stdin, which silences a key listener that stays attached
+ * across full-tail. Closing gives stdin back the mode it had when OpenTUI took it, unless another owner
+ * changed that mode while OpenTUI held it, as releasing the key listener does at shutdown.
+ */
+const closeHandingBackStdin = async (
+  renderer: Pick<LiveRegionRendererLike, "destroy" | "closed">,
+  stdin: LiveRegionStdin,
+  held: StdinMode,
+): Promise<void> => {
+  const current = stdinMode(stdin);
+  const untouched = current.raw === held.raw && current.flowing === held.flowing;
+  try {
+    await closeRenderer(renderer);
+  } finally {
+    if (untouched && stdin.isTTY === true && stdin.isRaw !== held.raw) stdin.setRawMode?.(held.raw);
+    if (untouched && held.flowing && stdin.readableFlowing !== true) stdin.resume();
+  }
 };
 
 export const resetLiveRegionModuleCacheForTests = (): void => {
@@ -82,10 +113,13 @@ export async function acquireLiveRegionSubstrate(
     throw new OpenTuiLiveRegionUnavailableError("load", cause);
   }
 
+  const stdin = deps.stdin ?? process.stdin;
+  const held = stdinMode(stdin);
   let renderer: LiveRegionRendererLike | undefined;
   try {
     renderer = await (deps.createRenderer?.(module) ??
       module.createCliRenderer({
+        stdin,
         screenMode: "alternate-screen",
         clearOnShutdown: false,
         exitOnCtrlC: false,
@@ -101,11 +135,16 @@ export async function acquireLiveRegionSubstrate(
         height: options.height,
       }));
     if (options.noColor === true) installMonochromePromptAdapters(module, renderer);
-    return { module, renderer };
+    const created = renderer;
+    return {
+      module,
+      renderer: created,
+      close: () => closeHandingBackStdin(created, stdin, held),
+    };
   } catch (cause) {
     recordOpenTuiSubstrateFailure(cause);
     try {
-      if (renderer !== undefined) await closeRenderer(renderer);
+      if (renderer !== undefined) await closeHandingBackStdin(renderer, stdin, held);
     } catch (cleanupCause) {
       recordOpenTuiSubstrateFailure(
         cleanupCause instanceof Error

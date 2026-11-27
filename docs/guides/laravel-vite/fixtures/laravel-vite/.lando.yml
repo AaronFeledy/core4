@@ -10,7 +10,7 @@ services:
     port: 80
     environment:
       APP_URL: "{{ services.appserver.url }}"
-    dependsOn:
+    depends_on:
       - database
       - cache
     routes:
@@ -32,8 +32,9 @@ services:
         scheme: both
 tooling:
   artisan:
-    cmds:
-      - "php artisan"
+    cmd:
+      - :php-local
+      - artisan
     description: "Run a Laravel Artisan command inside the appserver service."
     wrapper: true
     service: appserver

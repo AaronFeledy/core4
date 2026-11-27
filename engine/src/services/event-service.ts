@@ -28,7 +28,11 @@ import {
 } from "./event-delivery.ts";
 import { HostExecutionDefaults } from "./host-execution-context.ts";
 
-export { EventDeliveryMetrics, type EventDeliveryMetricsSnapshot } from "./event-delivery.ts";
+export {
+  EventCommitObserver,
+  EventDeliveryMetrics,
+  type EventDeliveryMetricsSnapshot,
+} from "./event-delivery.ts";
 
 import {
   eventError,
@@ -39,7 +43,8 @@ import {
 } from "./event-validation.ts";
 
 const DEFAULT_HISTORY_CAP = 64;
-const DEFAULT_DELIVERY_QUEUE_CAPACITY = 64;
+/** Room each live subscription has for events its consumer has not taken yet. */
+export const DEFAULT_DELIVERY_QUEUE_CAPACITY = 64;
 const EMPTY_HISTORY: ReadonlyArray<LandoEvent> = Object.freeze([]);
 
 type EventServiceConfig = EventDeliveryState & {

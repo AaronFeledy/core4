@@ -22,7 +22,7 @@ import {
   RouterService,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider, makeTestRouterService } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRouterService, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Cause, DateTime, Effect, Exit, Layer, Result, Stream } from "effect";
 
 import {
@@ -210,7 +210,7 @@ describe("openForPlan", () => {
         ),
         Layer.succeed(
           RuntimeProviderRegistry,
-          RuntimeProviderRegistry.of({
+          makeTestRuntimeProviderRegistry({
             resolveAppliedPlan: () => Effect.succeed(plan),
             appliedPlansFor: () => Effect.succeed([plan]),
             resolveTeardownEvidence: () => Effect.succeed({ kind: "applied" as const, plan }),

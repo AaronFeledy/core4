@@ -22,7 +22,11 @@ import { evolveHistoricalConsolePort } from "./x-extension-console-port-proof.ts
 import { evolveHistoricalContainerUser } from "./x-extension-container-user-proof.ts";
 import { evolveHistoricalEndpointKind } from "./x-extension-endpoint-kind-proof.ts";
 import { evolveHistoricalEndpointMetadata } from "./x-extension-endpoint-metadata-proof.ts";
-import { evolveHistoricalEnvironment, evolveHistoricalRouteText } from "./x-extension-environment-proof.ts";
+import {
+  evolveHistoricalEnvironment,
+  evolveHistoricalRouteMember,
+  evolveHistoricalRouteText,
+} from "./x-extension-environment-proof.ts";
 import { evolveHistoricalExtraArgs } from "./x-extension-extra-args-proof.ts";
 import { evolveHistoricalNativeInit } from "./x-extension-native-init-proof.ts";
 import { evolveHistoricalNetworks } from "./x-extension-networks-proof.ts";
@@ -30,6 +34,7 @@ import { evolveHistoricalProbePort, evolveHistoricalServicePort } from "./x-exte
 import { evolveHistoricalProjectUser } from "./x-extension-project-user-proof.ts";
 import { evolveHistoricalReadiness } from "./x-extension-readiness-proof.ts";
 import { evolveHistoricalSchedule } from "./x-extension-schedule-proof.ts";
+import { evolveSchemaParity } from "./x-extension-schema-parity-proof.ts";
 import { evolveHistoricalServiceCreds } from "./x-extension-service-creds-proof.ts";
 import { SERVICE_KEY_PATTERN, evolveHistoricalServiceKeys } from "./x-extension-service-keys-proof.ts";
 import { evolveHistoricalShorthand } from "./x-extension-shorthand-proof.ts";
@@ -208,8 +213,15 @@ test.each([
       ),
     ),
   );
-  const expected = evolveHistoricalExtraArgs(
-    evolveHistoricalRouteText(evolveHistoricalServiceKeys(evolveHistoricalEndpointKind(historical, "bare"))),
+  const expected = evolveHistoricalRouteMember(
+    evolveSchemaParity(
+      evolveHistoricalExtraArgs(
+        evolveHistoricalRouteText(
+          evolveHistoricalServiceKeys(evolveHistoricalEndpointKind(historical, "bare")),
+        ),
+      ),
+      "bare",
+    ),
   );
   const current = schemaAt(await loadNormalizedArtifact("schema:TemplateRenderContext"), "$.landofile");
   expect(jsonEquals(expected, current)).toBe(true);

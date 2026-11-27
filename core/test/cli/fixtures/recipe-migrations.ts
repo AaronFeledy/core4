@@ -37,7 +37,7 @@ const template = (stage: 0 | 1 | 2): RecipeSnapshot["template"] => {
           type: literal("php:{{ recipe.php }}"),
           webroot: literal(stage === 2 ? "{{ recipe.webroot }}/public" : "{{ recipe.webroot }}"),
           port: literal(stage === 2 ? 8080 : 80),
-          dependsOn: { kind: "ArrayLiteral", elements: [literal(database)] },
+          depends_on: { kind: "ArrayLiteral", elements: [literal(database)] },
           ...(stage === 0
             ? { environment: object({ LEGACY: literal("yes") }) }
             : { environment: object({ FEATURE: literal("enabled") }) }),
@@ -173,7 +173,7 @@ ${appserver === "appserver" ? "" : `  services:\n    appserver: ${appserver}\n`}
     type: "php:{{ recipe.php }}"
     webroot: "${input.webroot ?? "{{ recipe.webroot }}"}"
     port: 80
-    dependsOn:
+    depends_on:
       - database
     environment:
       LEGACY: "yes"

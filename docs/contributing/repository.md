@@ -14,11 +14,29 @@ Read the root [repository instructions](../../AGENTS.md) and any package-specifi
 
 You need Git and Bun. Use the version pinned in [`.bun-version`](../../.bun-version); the current minimum is Bun 1.4.3. Node is not a supported host runtime. Use Bun for dependency installation, scripts, and tests.
 
+Don't export `NODE_PRESERVE_SYMLINKS` in your shell profile. With it set, Bun loads each workspace package twice, so error checks fail in confusing ways. Repo commands, tests, the source CLI, and compiled builds refuse to run until you remove it. To clear it for a single command, put `env -u NODE_PRESERVE_SYMLINKS` in front.
+
 `bun install` provides TypeScript 7 as `tsc` and the TypeScript 6 compiler API as `@typescript/typescript6`. The [TypeScript 7 toolchain decision](./decisions.md#typescript-7-toolchain-decision) explains the layout.
 
 Follow the [source-build steps](../alpha-install-and-bug-reports.md#option-2-build-from-source)
-to clone the repository, install dependencies, and generate sources. Before
-building the container helper, configure a working provider using the
+to clone the repository, install dependencies, and generate sources.
+
+In a fresh checkout or a new `git worktree`, run one command from its root:
+
+```bash
+bun run bootstrap
+```
+
+It installs dependencies, runs `bun run codegen`, builds the SDK, and restores the
+container helper from a per-user cache when any checkout on this machine already
+built it for the same sources. It ends with a short report, or a JSON one with
+`--json`. A `Ready` line means `bun run typecheck`, `bun test`, and
+`cd core && bun run build` will work. When no cached helper matches, it exits
+nonzero and names the next command, `bun run bootstrap --build-helper`, which
+builds the helper with Lando and caches it for other worktrees. Running bootstrap
+again is safe; most of its time goes to codegen.
+
+Before building the container helper, configure a working provider using the
 [platform-specific setup instructions](../alpha-install-and-bug-reports.md#choose-setup-for-your-platform).
 For source-mode setup, substitute `bun core/bin/lando.ts` for `lando`; keep the
 provider flag required by your platform.
@@ -130,6 +148,7 @@ sources, and building the helper when the selected tests need it.
 
 | Command | Purpose |
 | --- | --- |
+| `bun run bootstrap` | Install dependencies, run codegen, build the SDK, and restore a cached container helper |
 | `bun run gate:pr` | Typecheck, lint, generated-output drift, test ownership, boundaries, and guide drift against `origin/main` |
 | `bun test` | Full test suite; live tests may have additional prerequisites |
 | `bun run test:unit` | Unsharded run of the CI unit file set: every `*.test.ts` outside the dedicated library, recipe, docs and nightly suites |

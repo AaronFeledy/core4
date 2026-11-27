@@ -84,6 +84,71 @@ describe("runObservationFromInspectState", () => {
   test("drops a non-integer exit code instead of publishing it", () => {
     expect(runObservationFromInspectState({ Status: "exited", ExitCode: 1.5 })).toEqual({ status: "exited" });
   });
+
+  describe("healthCheckedAt", () => {
+    // Docker writes UTC with nanoseconds; Podman's compat inspect writes a local offset.
+    const dockerRestart = {
+      Status: "running",
+      StartedAt: "2026-11-23T21:00:10.5Z",
+      Health: {
+        Status: "healthy",
+        Log: [
+          { Start: "2026-11-23T20:59:50.1Z", End: "2026-11-23T20:59:50.3Z" },
+          { Start: "2026-11-23T21:00:11.000000001Z", End: "2026-11-23T21:00:11.200000002Z" },
+          { Start: "2026-11-23T21:00:21.000000001Z", End: "2026-11-23T21:00:21.300000003Z" },
+        ],
+      },
+    };
+
+    test("is the end of the newest check in the current run, in UTC", () => {
+      expect(runObservationFromInspectState(dockerRestart)).toEqual({
+        status: "running",
+        health: "healthy",
+        healthCheckedAt: "2026-11-23T21:00:21.300Z",
+      });
+      expect(
+        runObservationFromInspectState({
+          Status: "running",
+          StartedAt: "2026-11-23T15:00:10.5-06:00",
+          Health: {
+            Status: "unhealthy",
+            Log: [{ Start: "2026-11-23T15:00:11.1-06:00", End: "2026-11-23T15:00:11.4-06:00" }],
+          },
+        }),
+      ).toMatchObject({ health: "unhealthy", healthCheckedAt: "2026-11-23T21:00:11.400Z" });
+    });
+
+    test("is absent right after a restart, while only the previous run's checks are logged", () => {
+      const restarted = {
+        ...dockerRestart,
+        StartedAt: "2026-11-23T21:05:00Z",
+        Health: { Status: "starting", Log: dockerRestart.Health.Log },
+      };
+      expect(runObservationFromInspectState(restarted)).toEqual({ status: "running", health: "starting" });
+    });
+
+    test("is absent without a parseable log, start time, or running verdict", () => {
+      const without = (state: Parameters<typeof runObservationFromInspectState>[0]) =>
+        runObservationFromInspectState(state);
+      expect(without({ ...dockerRestart, Health: { Status: "healthy", Log: [] } })).not.toHaveProperty(
+        "healthCheckedAt",
+      );
+      expect(without({ ...dockerRestart, Health: { Status: "healthy", Log: null } })).not.toHaveProperty(
+        "healthCheckedAt",
+      );
+      expect(without({ ...dockerRestart, StartedAt: undefined })).not.toHaveProperty("healthCheckedAt");
+      expect(
+        without({
+          ...dockerRestart,
+          Health: { Status: "healthy", Log: [{ Start: "2026-11-23T21:00:11Z", End: "" }] },
+        }),
+      ).not.toHaveProperty("healthCheckedAt");
+      expect(without({ ...dockerRestart, Status: "paused" })).toEqual({ status: "paused" });
+      expect(without({ ...dockerRestart, Health: { ...dockerRestart.Health, Status: "none" } })).toEqual({
+        status: "running",
+      });
+    });
+  });
 });
 
 describe("runObservationFromListState", () => {

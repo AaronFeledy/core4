@@ -7,7 +7,7 @@ import { Cause, Context, Effect, Layer, Schema } from "effect";
 import { formatBugReport } from "../../src/cli/bug-report";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary";
 import { activeLogLevel, setActiveLogLevel } from "../../src/cli/renderer-mode-state";
-import { renderTerminalFailure } from "../../src/cli/terminal-failure";
+import { commitTerminalFailure } from "./terminal-failure-fixture";
 
 test("terminal failure sets the process exit code when no setter is supplied", async () => {
   // Given an isolated renderer and no injected exit-code setter.
@@ -15,8 +15,8 @@ test("terminal failure sets the process exit code when no setter is supplied", a
   const previous = process.exitCode ?? 0;
   process.exitCode = 0;
   try {
-    // When the terminal fallback renders a defect.
-    await renderTerminalFailure(
+    // When the terminal fallback commits a defect.
+    await commitTerminalFailure(
       Cause.die(new Error("terminal failure")),
       { runtime: Layer.empty, rendererMode: "plain", resultFormat: "json", io, formatError: () => "unused" },
       createStandaloneRedactor("secrets"),

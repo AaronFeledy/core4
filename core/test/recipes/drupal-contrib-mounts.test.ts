@@ -12,7 +12,6 @@ import {
   PortablePath,
   ServiceName,
   type ServicePlan,
-  effectiveExcludes,
   landoAppStoreName,
   serviceAppMount,
 } from "@lando/sdk/schema";
@@ -21,10 +20,9 @@ import { TestFileSyncEngine, TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect, Layer } from "effect";
 import { previewBuiltinRecipe } from "../_support/recipe-output.ts";
 
-const SHADOW_INCLUDES = ["vendor", "node_modules", "tmp"] as const;
 const MOUNT_TARGET = "/app/web/modules/custom/example";
 
-const planContribApp = async (name: string, answers: Readonly<Record<string, string>> = {}) => {
+const planContribApp = async (name: string, answers: Readonly<Record<string, string>> = {}, slow = false) => {
   const root = await realpath(await mkdtemp(join(tmpdir(), `lando-drupal-contrib-${name}-`)));
   try {
     const preview = await previewBuiltinRecipe("drupal-contrib", name, { project: "example", ...answers });
@@ -45,9 +43,13 @@ const planContribApp = async (name: string, answers: Readonly<Record<string, str
       ),
     );
     return await Effect.runPromise(
-      Effect.flatMap(AppPlanner, (service) => service.plan(compiled, TestRuntimeProvider.capabilities)).pipe(
-        Effect.provide(planner),
-      ),
+      Effect.flatMap(AppPlanner, (service) =>
+        service.plan(compiled, {
+          ...TestRuntimeProvider.capabilities,
+          bindMountPerformance: slow ? "slow" : "native",
+          fileSyncTargets: "prepared-volume",
+        }),
+      ).pipe(Effect.provide(planner)),
     );
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -69,30 +71,38 @@ const expectSiteLayout = (planned: ServicePlan, store: string, readOnly: boolean
   expect(site).toMatchObject({ type: "volume", store, readOnly });
   const appMount = serviceAppMount(planned);
   expect(appMount?.target).toBe(PortablePath.make(MOUNT_TARGET));
-  expect(appMount?.includes).toEqual([...SHADOW_INCLUDES]);
-  for (const shadow of SHADOW_INCLUDES) {
-    if (appMount !== undefined) expect(effectiveExcludes(appMount)).not.toContain(shadow);
+  expect(appMount?.includes ?? []).toEqual([]);
+  expect(appMount?.excludes ?? []).not.toContain("vendor");
+  for (const shadow of ["vendor", "node_modules", "tmp"] as const) {
     expect(
       planned.mounts.some((mount) => mount.type === "volume" && mount.target === `${MOUNT_TARGET}/${shadow}`),
     ).toBe(false);
   }
 };
 
-test("plans one app-scoped site volume per app around the nested checkout", async () => {
-  const stores: string[] = [];
-  for (const name of ["contrib-alpha", "contrib-beta"]) {
-    const plan = await planContribApp(name);
-    const store = landoAppStoreName(name, "site");
-    expectSiteLayout(service(plan, "appserver"), store, false);
-    expect(plan.stores.find((entry) => entry.name === store)?.scope).toBe("app");
-    stores.push(store);
-  }
-  expect(stores[0]).not.toBe(stores[1]);
-});
+test.each([{ slow: false }, { slow: true }])(
+  "plans one app-scoped site volume per app around the nested checkout when %j",
+  async ({ slow }) => {
+    const stores: string[] = [];
+    for (const name of ["contrib-alpha", "contrib-beta"]) {
+      const label = `${name}-${slow ? "slow" : "native"}`;
+      const plan = await planContribApp(label, {}, slow);
+      const store = landoAppStoreName(label, "site");
+      expectSiteLayout(service(plan, "appserver"), store, false);
+      expect(plan.stores.find((entry) => entry.name === store)?.scope).toBe("app");
+      stores.push(store);
+    }
+    expect(stores[0]).not.toBe(stores[1]);
+  },
+);
 
-test("serves the scaffolded site from the nginx edge through the same volume, read-only", async () => {
-  const plan = await planContribApp("contrib-nginx", { webserver: "nginx" });
-  const store = landoAppStoreName("contrib-nginx", "site");
-  expectSiteLayout(service(plan, "appserver"), store, false);
-  expectSiteLayout(service(plan, "edge"), store, true);
-});
+test.each([{ slow: false }, { slow: true }])(
+  "serves the scaffolded site from the nginx edge through the same volume, read-only when %j",
+  async ({ slow }) => {
+    const label = `contrib-nginx-${slow ? "slow" : "native"}`;
+    const plan = await planContribApp(label, { webserver: "nginx" }, slow);
+    const store = landoAppStoreName(label, "site");
+    expectSiteLayout(service(plan, "appserver"), store, false);
+    expectSiteLayout(service(plan, "edge"), store, true);
+  },
+);

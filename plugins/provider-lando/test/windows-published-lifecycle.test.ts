@@ -102,7 +102,7 @@ describe("managed Windows published lifecycle", () => {
     );
     const global = makePlan("global");
     const blocked = await Effect.runPromise(
-      Effect.result(windows.stop({ app: global.id, service: serviceName, plan: global })),
+      Effect.result(windows.restart({ app: global.id, service: serviceName, plan: global })),
     );
     expect(blocked._tag).toBe("Failure");
     if (blocked._tag === "Failure") {
@@ -112,14 +112,17 @@ describe("managed Windows published lifecycle", () => {
 
     const observedRemoval = await Effect.runPromise(
       Effect.result(
-        windows.removeObservedService({
-          app: global.id,
-          service: serviceName,
-          providerId,
-          status: "running",
-          containerId: "exact-global-id",
-          publications: { status: "unknown" },
-        }),
+        windows.bringDownObserved(
+          {
+            app: global.id,
+            service: serviceName,
+            providerId,
+            status: "running",
+            containerId: "exact-global-id",
+            publications: { status: "unknown" },
+          },
+          "remove",
+        ),
       ),
     );
     expect(observedRemoval._tag).toBe("Failure");
@@ -129,20 +132,23 @@ describe("managed Windows published lifecycle", () => {
     );
     expect(matching._tag).toBe("Failure");
     const destroyed = await Effect.runPromise(
-      Effect.result(windows.destroy({ app: global.id, plan: global }, { volumes: false })),
+      Effect.result(
+        windows.bringDown({ app: global.id, plan: global }, { containers: "remove", volumes: false }),
+      ),
     );
     expect(destroyed._tag).toBe("Failure");
     expect(calls).toEqual([]);
 
     const other = makePlan("other");
-    await Effect.runPromise(windows.stop({ app: other.id, service: serviceName, plan: other }));
-    expect(calls).toEqual(["POST /containers/lando-other--traefik/stop"]);
+    await Effect.runPromise(windows.restart({ app: other.id, service: serviceName, plan: other }));
+    expect(calls[0]).toBe("POST /containers/lando-other--traefik/restart");
 
     const linux = await Effect.runPromise(
       makeRuntimeProvider({ ...options, platform: "linux", providerSocketPath: "/tmp/podman.sock" }),
     );
-    await Effect.runPromise(linux.stop({ app: global.id, service: serviceName, plan: global }));
-    expect(calls.at(-1)).toBe("POST /containers/lando-global--traefik/stop");
+    const linuxCalls = calls.length;
+    await Effect.runPromise(linux.restart({ app: global.id, service: serviceName, plan: global }));
+    expect(calls[linuxCalls]).toBe("POST /containers/lando-global--traefik/restart");
   });
 
   for (const action of ["quiesce", "destroy"] as const) {
@@ -268,7 +274,9 @@ describe("managed Windows published lifecycle", () => {
         const teardown =
           action === "quiesce"
             ? Effect.runPromise(quiesce({ app: stale.id, plan: stale }))
-            : Effect.runPromise(provider.destroy({ app: stale.id, plan: stale }, { volumes: false }));
+            : Effect.runPromise(
+                provider.bringDown({ app: stale.id, plan: stale }, { containers: "remove", volumes: false }),
+              );
         await teardownWaiting.promise;
         expect(calls).toEqual([]);
         await Effect.runPromise(persistAppliedPlan(stateStore, newer));

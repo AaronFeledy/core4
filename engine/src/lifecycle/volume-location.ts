@@ -1,9 +1,26 @@
+import { sep } from "node:path";
+import { VOLUME_INSTANCE_LABEL } from "@lando/container-runtime/labels";
+import {
+  type AdoptionReceipt,
+  adoptionReceiptsFromSummary,
+  dataRootRefusal,
+  decideDataRootOwnership,
+} from "@lando/container-runtime/native-ownership";
+import { ownedVolumeLockTier } from "@lando/container-runtime/volume-ownership";
+import { makeLandoPaths } from "@lando/paths";
+import { mapFailures } from "@lando/sdk/command-result";
 import { VolumeOperationError } from "@lando/sdk/errors";
 import type { AppPlan, DataStorePlan, VolumeIdentity, VolumeLocator, VolumeRef } from "@lando/sdk/schema";
-import { PHYSICAL_VOLUME_LOCK_TIER, type PhysicalVolumeLockTier, planDataId } from "@lando/sdk/schema";
-import type { ProviderError, RuntimeProviderShape } from "@lando/sdk/services";
-import { Effect } from "effect";
+import {
+  LANDO_DATA_ROOT_LABEL,
+  type PhysicalVolumeLockTier,
+  planAppIdentity,
+  planDataId,
+} from "@lando/sdk/schema";
+import { type ProviderError, RuntimeProviderRegistry, type RuntimeProviderShape } from "@lando/sdk/services";
+import { Effect, Option } from "effect";
 
+import { scratchIdForInstanceRoot } from "../scratch-app/identity.ts";
 import { shellArg } from "../services/shell-quote.ts";
 
 // Locating a plan's volumes and proving they did not change while their locks were held.
@@ -19,16 +36,15 @@ export const isGlobalCache = (store: Pick<DataStorePlan, "scope" | "kind">): boo
   store.scope === "global" && store.kind === "cache";
 
 /**
- * The global app's stores rank above every user app's volumes. Plugins name them freely (for
- * example `lando-ssh-agent`), so their owner, not their name, decides the tier. A user start
+ * The global app's stores rank above every user app's volumes. Plugins can name them explicitly,
+ * so their owner, not their name, decides the tier. A user start
  * already holds its own keys when it starts global services, and nothing takes a global-app key
  * and then a user key, so this order cannot invert.
  */
 export const volumeLockTierFor = (
   plan: Pick<AppPlan, "id">,
   store: Pick<DataStorePlan, "scope" | "kind">,
-): PhysicalVolumeLockTier | undefined =>
-  String(plan.id) === "global" && !isGlobalCache(store) ? PHYSICAL_VOLUME_LOCK_TIER.globalApp : undefined;
+): PhysicalVolumeLockTier | undefined => ownedVolumeLockTier(plan.id, isGlobalCache(store));
 
 export const coordinationFailure = (providerId: string, message: string) =>
   new VolumeOperationError({
@@ -77,23 +93,65 @@ const ownerRootMismatch = (
   plan: AppPlan,
   providerId: string,
   store: DataStorePlan,
-  locator: VolumeLocator,
+  evidence: { readonly locator: VolumeLocator; readonly receipts: readonly AdoptionReceipt[] },
 ): VolumeOperationError | undefined => {
+  const { locator, receipts } = evidence;
+  const expected = plan.identity?.dataRoot;
+  const labels = locator.presence === "absent" ? undefined : locator.labels;
+  const resource = {
+    kind: "volume",
+    nativeName: locator.nativeName,
+    labels,
+    volumeInstance: labels?.[VOLUME_INSTANCE_LABEL],
+  } as const;
   if (
-    locator.identity === undefined ||
-    store.scope === "global" ||
-    locator.identity.ownerRoot === (plan.identity?.appRoot ?? plan.root)
+    !isGlobalCache(store) &&
+    locator.presence === "present" &&
+    (expected === undefined
+      ? locator.labels?.[LANDO_DATA_ROOT_LABEL] !== undefined
+      : decideDataRootOwnership(resource, { dataRoot: expected, receipts }) !== "owned")
   ) {
+    return new VolumeOperationError({
+      providerId,
+      operation: "coordinateVolume",
+      store: store.name,
+      ...dataRootRefusal(resource),
+    });
+  }
+  const self = planAppIdentity(plan).appRoot;
+  if (locator.identity === undefined || isGlobalCache(store) || locator.identity.ownerRoot === self) {
     return undefined;
   }
+  const volume = `Volume ${locator.nativeName}${locator.nativeName === store.name ? "" : ` (store ${store.name})`}`;
+  const owner = locator.identity.ownerRoot;
+  const scratchDir = expected === undefined ? undefined : dataRootScratchDir(expected);
+  const ownerScratch = scratchDir === undefined ? undefined : scratchIdForInstanceRoot(scratchDir, owner);
+  const selfScratch = scratchDir === undefined ? undefined : scratchIdForInstanceRoot(scratchDir, self);
+  const selfLabel = selfScratch === undefined ? self : `scratch app ${selfScratch}`;
+  if (ownerScratch !== undefined)
+    return new VolumeOperationError({
+      providerId,
+      operation: "coordinateVolume",
+      store: store.name,
+      message: `${volume} belongs to scratch app ${ownerScratch}, not ${selfLabel}.`,
+      remediation: `Run lando scratch:destroy ${shellArg(ownerScratch)} to remove that scratch app and its volumes (lando scratch:gc --prune if lando scratch:list no longer shows it), or give this app a different name: or this service a different explicit store:.`,
+    });
   return new VolumeOperationError({
     providerId,
     operation: "coordinateVolume",
     store: store.name,
-    message: `Volume ${locator.nativeName}${locator.nativeName === store.name ? "" : ` (store ${store.name})`} belongs to the app at ${locator.identity.ownerRoot}, not ${plan.identity?.appRoot ?? plan.root}.`,
-    remediation: `If that folder still exists, give this app a different name: or this service a different explicit store:. An app keeps the data name it first started with after a rename, so renaming the other app does not free its volumes. If it is gone, run lando destroy --root ${shellArg(locator.identity.ownerRoot)} --volumes to delete its leftovers (this deletes that data), or move the app back there. lando doctor lists app folders that no longer exist.`,
+    message: `${volume} belongs to the app at ${owner}, not ${selfLabel}.`,
+    remediation: `If that folder still exists, give this app a different name: or this service a different explicit store:. An app keeps the data name it first started with after a rename, so renaming the other app does not free its volumes. If it is gone, run lando destroy --root ${shellArg(owner)} --volumes to delete its leftovers (this deletes that data), or move the app back there. lando doctor lists app folders that no longer exist.`,
   });
 };
+
+/** The scratch directory of a canonical data root, as a plan's identity records it. */
+const dataRootScratchDir = (dataRoot: string): string =>
+  makeLandoPaths({
+    userDataRoot: dataRoot,
+    platform: sep === "\\" ? "win32" : "linux",
+    sources: { user: false, env: false },
+  }).scratchDir;
 
 const locatePlanVolumes = (
   plan: AppPlan,
@@ -105,12 +163,29 @@ const locatePlanVolumes = (
     (store) => {
       const ref: VolumeRef = { app: planDataId(plan), store: store.name, scope: store.scope };
       return provider.locateVolume(ref).pipe(
-        Effect.flatMap((locator) => {
-          const mismatch = ownerRootMismatch(plan, provider.id, store, locator);
-          if (mismatch !== undefined) return Effect.fail(mismatch);
-          const tier = volumeLockTierFor(plan, store);
-          return Effect.succeed({ ref, store, locator, ...(tier === undefined ? {} : { tier }) });
-        }),
+        Effect.flatMap(
+          Effect.fnUntraced(function* (locator) {
+            let receipts: readonly AdoptionReceipt[] = [];
+            if (
+              locator.presence === "present" &&
+              locator.labels?.[LANDO_DATA_ROOT_LABEL] === undefined &&
+              plan.identity?.dataRoot !== undefined &&
+              !isGlobalCache(store)
+            ) {
+              const registry = yield* Effect.serviceOption(RuntimeProviderRegistry);
+              if (Option.isSome(registry) && registry.value.resourceOwnership !== undefined) {
+                const ownership = yield* registry.value
+                  .resourceOwnership(plan.provider, plan.root)
+                  .pipe(mapFailures((cause) => coordinationFailure(provider.id, cause.message)));
+                receipts = adoptionReceiptsFromSummary(ownership);
+              }
+            }
+            const mismatch = ownerRootMismatch(plan, provider.id, store, { locator, receipts });
+            if (mismatch !== undefined) return yield* mismatch;
+            const tier = volumeLockTierFor(plan, store);
+            return { ref, store, locator, ...(tier === undefined ? {} : { tier }) };
+          }),
+        ),
       );
     },
   );

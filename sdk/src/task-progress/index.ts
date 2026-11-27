@@ -1,7 +1,7 @@
 /**
  * `@lando/sdk/task-progress` — shared task-tree publisher and controller.
  *
- * Long-running commands publish `task.tree.start` with child ids, then
+ * Long-running commands publish `task.tree.start` with child ids and labels, then
  * `task.start` / `task.complete` / `task.fail` per child, then
  * `task.tree.complete`. This subpath is the same additive utility tier as
  * `@lando/sdk/probe`: it constructs no `LandoRuntime`, pulls no service
@@ -15,7 +15,6 @@
 export type {
   MakeTaskTreeArgs,
   TaskFailOptions,
-  TaskSpec,
   TaskStartOptions,
   TaskTreeController,
   TaskTreeSummaries,

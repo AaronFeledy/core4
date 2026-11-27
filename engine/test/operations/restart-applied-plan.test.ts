@@ -5,11 +5,13 @@ import {
   AbsolutePath,
   AppId,
   type AppPlan,
+  type AppliedAppPlan,
   ProviderId,
   ServiceName,
   appIdentityKey,
 } from "@lando/sdk/schema";
 import { RuntimeProviderRegistry } from "@lando/sdk/services";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect } from "effect";
 import { restartApp } from "../../src/operations/restart.ts";
 import { makeHarness, plan, web } from "./start-progress-topology-support.ts";
@@ -23,15 +25,16 @@ const cache = {
 
 test("records selected runtime metadata, carries unselected services, and keeps removed ones", async () => {
   // Given an applied three-service app and newer, unrealized intent for the selected and unselected ones.
-  const applied: AppPlan = {
-    ...plan,
+  const { events: _events, ...realized } = plan;
+  const applied: AppliedAppPlan = {
+    ...realized,
     services: {
       [web.name]: { ...web, artifact: { kind: "ref", ref: "web:v1" } },
       [db.name]: db,
       [cache.name]: cache,
     },
   };
-  let persisted: AppPlan | undefined = applied;
+  let persisted: AppliedAppPlan | undefined = applied;
   const cacheStore = makeAppliedPlanCache({
     providerId: plan.provider,
     providerName: "test",
@@ -76,15 +79,18 @@ test("records selected runtime metadata, carries unselected services, and keeps 
       app: { kind: "user", id: desired.id, root: desired.root },
     },
   ).pipe(
-    Effect.provideService(RuntimeProviderRegistry, {
-      ...harness.runtimeProviderRegistry,
-      select: () =>
-        Effect.succeed({
-          ...provider,
-          apply: (selected, options) =>
-            rememberAppliedPlan(cacheStore, selected, options).pipe(Effect.as({ changed: false })),
-        }),
-    }),
+    Effect.provideService(
+      RuntimeProviderRegistry,
+      makeTestRuntimeProviderRegistry({
+        ...harness.runtimeProviderRegistry,
+        select: () =>
+          Effect.succeed({
+            ...provider,
+            apply: (selected, options) =>
+              rememberAppliedPlan(cacheStore, selected, options).pipe(Effect.as({ changed: false })),
+          }),
+      }),
+    ),
     Effect.provide(harness.layer),
   );
 

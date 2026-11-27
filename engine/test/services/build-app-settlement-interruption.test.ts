@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { failureOutcomeFromCause, orDieWithRole } from "@lando/sdk/command-result";
 import { ProviderInternalError } from "@lando/sdk/errors";
 import { BuildOrchestrator, EventService, StateStore } from "@lando/sdk/services";
 import { Cause, Deferred, Effect, Exit, Fiber, Queue, Stream } from "effect";
@@ -178,7 +179,7 @@ const providerFailure = new ProviderInternalError({
   remediation: "Repair the provider.",
 });
 for (const cleanup of [
-  { name: "defect", effect: Effect.die("stream-cleanup"), tag: "Die" },
+  { name: "defect", effect: Effect.die("stream-cleanup").pipe(orDieWithRole("cleanup")), tag: "Die" },
   { name: "interrupt", effect: Effect.failCause(Cause.interrupt(2297)), tag: "Interrupt" },
 ] as const) {
   test(`provider stream failure survives scoped cleanup ${cleanup.name}`, async () => {
@@ -192,10 +193,14 @@ for (const cleanup of [
       };
       const result = await Effect.runPromise(captureBuild(provider));
       if (Exit.isSuccess(result.exit)) throw new TypeError("scoped failure recovered");
-      expect(result.exit.cause.reasons.filter(Cause.isFailReason).map((r) => r.error)).toMatchObject([
-        { _tag: "ProviderInternalError", operation: "execStream" },
-      ]);
-      expect(result.exit.cause.reasons.some((reason) => reason._tag === cleanup.tag)).toBe(true);
+      expect(failureOutcomeFromCause(result.exit.cause)).toMatchObject({
+        kind: "typed",
+        error: { _tag: "ProviderInternalError", operation: "execStream" },
+        additionalErrors: cleanup.tag === "Die" ? [{ role: "cleanup", error: "stream-cleanup" }] : [],
+      });
+      expect(result.exit.cause.reasons.filter(Cause.isInterruptReason).map((r) => r.fiberId)).toEqual(
+        cleanup.tag === "Interrupt" ? [2297] : [],
+      );
       taskDispositions(result.events, { "web:app:install": "task.fail" });
     });
   });
@@ -212,15 +217,11 @@ for (const cleanup of [
       const interruptors = result.exit.cause.reasons.filter(Cause.isInterruptReason).map((r) => r.fiberId);
       if (cleanup.tag === "Interrupt") expect(interruptors).toContain(2297);
       else expect(interruptors).toEqual([]);
-      expect(
-        result.exit.cause.reasons.filter((reason) => !Cause.isInterruptReason(reason)).map((r) => r._tag),
-      ).toEqual(cleanup.tag === "Die" ? ["Fail", "Die"] : ["Fail"]);
-      expect(result.exit.cause.reasons.filter(Cause.isFailReason).map((r) => r.error)).toMatchObject([
-        { _tag: "ProviderInternalError", operation: "execStream" },
-      ]);
-      expect(result.exit.cause.reasons.filter(Cause.isDieReason).map((r) => r.defect)).toEqual(
-        cleanup.tag === "Die" ? ["stream-cleanup"] : [],
-      );
+      expect(failureOutcomeFromCause(result.exit.cause)).toMatchObject({
+        kind: "typed",
+        error: { _tag: "ProviderInternalError", operation: "execStream" },
+        additionalErrors: cleanup.tag === "Die" ? [{ role: "cleanup", error: "stream-cleanup" }] : [],
+      });
       taskDispositions(result.events, { "web:app:install": "task.fail" });
       expect(result.entries).toMatchObject([{ outcome: "fail" }]);
     });

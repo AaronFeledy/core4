@@ -384,6 +384,115 @@ describe("LiveRegionController", () => {
     expect(probe.wasRemoved()).toBe(true);
   });
 
+  test("commits rows deferred during a spooled drain after the drained rows", async () => {
+    const fixture = makeFixture();
+    const spooled: string[] = [];
+    const { promise: readStarted, resolve: startRead } = Promise.withResolvers<void>();
+    const { promise: readFinished, resolve: finishRead } = Promise.withResolvers<void>();
+    const writes: string[] = [];
+    const controller = await createLiveRegionController(
+      { stdout: createCapturingStdout(writes), width: 80, height: 24 },
+      {
+        loadModule: async () => fixture.module,
+        createRenderer: async () => fixture.renderer,
+        spool: () => ({
+          append: (line: string) => spooled.push(line),
+          readLines: async () => {
+            const snapshot = [...spooled];
+            startRead();
+            await readFinished;
+            return snapshot;
+          },
+          remove: async () => {},
+        }),
+      },
+    );
+    await controller.enterFullTail();
+    for (let index = 0; index < 300; index += 1) {
+      controller.commitScrollback(`L${index}-${"x".repeat(1024)}`);
+    }
+
+    let exited = false;
+    const exiting = controller.exitFullTail().then(() => {
+      exited = true;
+    });
+    await readStarted;
+    controller.commitScrollback("during-1");
+    controller.commitScrollback("during-2");
+    finishRead();
+    // One row per microtask across the whole handoff, so a row lands in every gap between steps.
+    const handoff: string[] = [];
+    while (!exited) {
+      await Promise.resolve();
+      const row = `[handoff-${handoff.length}]`;
+      handoff.push(row);
+      controller.commitScrollback(row);
+    }
+    await exiting;
+    controller.commitScrollback("after");
+
+    const text = writes.join("");
+    const rows = ["L0-", "L299-", "during-1", "during-2", ...handoff, "after"];
+    expectOrder(text, rows);
+    for (const row of rows) expect(text.split(row)).toHaveLength(2);
+  });
+
+  const openTuiOnTerminalStdin = async () => {
+    const fixture = makeFixture();
+    const stdin = {
+      isTTY: true,
+      isRaw: true,
+      readableFlowing: true as boolean | null,
+      setRawMode: (mode: boolean) => {
+        stdin.isRaw = mode;
+      },
+      pause: () => {
+        stdin.readableFlowing = false;
+      },
+      resume: () => {
+        stdin.readableFlowing = true;
+      },
+    };
+    const destroy = fixture.renderer.destroy;
+    // OpenTUI's teardown leaves raw mode and pauses the stream it read keys from.
+    fixture.renderer.destroy = () => {
+      stdin.setRawMode(false);
+      stdin.pause();
+      destroy();
+    };
+    const controller = await createLiveRegionController(
+      { stdout: createCapturingStdout([]), width: 80, height: 24 },
+      { loadModule: async () => fixture.module, createRenderer: async () => fixture.renderer, stdin },
+    );
+    return { controller, stdin };
+  };
+
+  test("hands stdin back in raw flowing mode after full tail closes", async () => {
+    const { controller, stdin } = await openTuiOnTerminalStdin();
+
+    await controller.enterFullTail();
+    await controller.exitFullTail();
+
+    expect({ isRaw: stdin.isRaw, readableFlowing: stdin.readableFlowing }).toEqual({
+      isRaw: true,
+      readableFlowing: true,
+    });
+  });
+
+  test("keeps stdin released when its key listener let go during full tail", async () => {
+    const { controller, stdin } = await openTuiOnTerminalStdin();
+    await controller.enterFullTail();
+
+    stdin.setRawMode(false);
+    stdin.pause();
+    await controller.dispose();
+
+    expect({ isRaw: stdin.isRaw, readableFlowing: stdin.readableFlowing }).toEqual({
+      isRaw: false,
+      readableFlowing: false,
+    });
+  });
+
   test("removes the deferred spool when disposed during full tail", async () => {
     const fixture = makeFixture();
     const probe = makeSpoolProbe();

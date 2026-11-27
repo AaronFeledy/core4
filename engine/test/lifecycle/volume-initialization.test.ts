@@ -7,18 +7,30 @@ import {
   AbsolutePath,
   AppId,
   type AppPlan,
+  LANDO_DATA_ROOT_LABEL,
+  PHYSICAL_VOLUME_LOCK_TIER,
   PortablePath,
   ProviderId,
   ServiceName,
   type VolumeIdentity,
   type VolumeRef,
+  appIdentityKey,
+  landoDependencyEnvironmentStoreName,
 } from "@lando/sdk/schema";
-import { StateStore, type StateStoreShape } from "@lando/sdk/services";
+import { EnvironmentValueResolver, StateStore, type StateStoreShape } from "@lando/sdk/services";
+import { TestRuntimeProvider } from "@lando/sdk/test";
 import * as StateStoreLayer from "@lando/state-store/service";
 import { volumeInitialization } from "@lando/state-store/volume-initialization";
+import { heldVolumeLocks } from "@lando/state-store/volume-lock";
 import { DateTime, Deferred, Effect, Exit, Fiber } from "effect";
+import { applyActivation } from "../../src/lifecycle/activation-apply.ts";
+import { HostMountPoints } from "../../src/lifecycle/host-mount-points.ts";
+import { prepareServiceCertificates } from "../../src/lifecycle/service-certificates.ts";
 import { withPlanVolumeCoordination } from "../../src/lifecycle/volume-coordination.ts";
-import { recordCreatedVolume } from "../../src/lifecycle/volume-initialization.ts";
+import { recordCreatedVolume, retireCreatedVolume } from "../../src/lifecycle/volume-initialization.ts";
+import { prepareProvider } from "../../src/providers/prepared.ts";
+import { makeTestStateStore } from "../../src/testing/state-store.ts";
+import { session, unusedResolver } from "./activation-apply-support.ts";
 
 const identity: VolumeIdentity = {
   coordinationKey: "daemon/data",
@@ -278,4 +290,113 @@ test("cooperative cancellation waits for the creation receipt persist step", asy
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test.each([
+  {
+    label: "plugin explicit global",
+    appId: "global",
+    root: AbsolutePath.make("/data/global"),
+    storeName: "lando-ssh-agent",
+    expectedTier: PHYSICAL_VOLUME_LOCK_TIER.globalApp,
+  },
+  {
+    label: "dependency environment",
+    appId: "app",
+    root: AbsolutePath.make("/apps/app"),
+    storeName: landoDependencyEnvironmentStoreName("app", "composer", "a".repeat(40)),
+    expectedTier: PHYSICAL_VOLUME_LOCK_TIER.default,
+  },
+] as const)(
+  "activation and creation receipt lock $label at the activation tier",
+  async ({ appId, root, storeName, expectedTier }) => {
+    const receiptPlan: AppPlan = {
+      id: AppId.make(appId),
+      name: appId,
+      slug: appId,
+      root,
+      provider: ProviderId.make("test"),
+      identity: {
+        appRoot: root,
+        ownerKey: appIdentityKey("owner", root),
+        dataRoot: AbsolutePath.make("/data/local"),
+      },
+      services: {},
+      routes: [],
+      stores: [{ name: storeName, scope: "service", kind: "data" }],
+      fileSync: [],
+      metadata,
+      extensions: {},
+    };
+    const fact: VolumeIdentity = {
+      coordinationKey: JSON.stringify(["endpoint:test", storeName]),
+      nativeName: storeName,
+      generation: "first",
+      ownerRoot: root,
+      origin: "created",
+    };
+    const stateStore = makeTestStateStore();
+    const { certificates } = await Effect.runPromise(prepareServiceCertificates(receiptPlan));
+    let heldDuringReceipt: number[] = [];
+    const provider = await Effect.runPromise(
+      prepareProvider({
+        ...TestRuntimeProvider,
+        locateVolume: () =>
+          Effect.succeed({
+            coordinationKey: fact.coordinationKey,
+            nativeName: fact.nativeName,
+            identity: fact,
+            labels: { [LANDO_DATA_ROOT_LABEL]: "/data/local" },
+            presence: "present" as const,
+          }),
+        apply: (_applied, options) =>
+          Effect.gen(function* () {
+            if (options.onVolumeCreated === undefined) return yield* Effect.die("Missing creation recorder");
+            const held = yield* heldVolumeLocks;
+            heldDuringReceipt = [...held.values()].map((entry) => entry.tier);
+            yield* options.onVolumeCreated(fact);
+            return { changed: true };
+          }),
+      }),
+    );
+
+    await Effect.runPromise(
+      applyActivation({
+        provider,
+        plan: receiptPlan,
+        certificates,
+        reconcile: false,
+        environment: session,
+      }).pipe(
+        Effect.provideService(StateStore, stateStore.service),
+        Effect.provideService(EnvironmentValueResolver, unusedResolver),
+        Effect.provide(HostMountPoints.layer),
+      ),
+    );
+
+    expect(heldDuringReceipt).toContain(expectedTier);
+    const initialization = await Effect.runPromise(volumeInitialization(stateStore.service, fact));
+    expect((await Effect.runPromise(initialization.read))?.state._tag).toBe("fresh");
+  },
+);
+
+test("retiring a verified scratch deletion removes that generation and ignores keep-volumes replacements", async () => {
+  const stateStore = makeTestStateStore();
+  const initialization = await Effect.runPromise(volumeInitialization(stateStore.service, identity));
+  await Effect.runPromise(initialization.recordCreation);
+  expect(
+    await Effect.runPromise(
+      retireCreatedVolume(identity).pipe(Effect.provideService(StateStore, stateStore.service)),
+    ),
+  ).toBe(true);
+  expect(await Effect.runPromise(initialization.read)).toBeNull();
+  const replacement = { ...identity, generation: "two" };
+  const next = await Effect.runPromise(volumeInitialization(stateStore.service, replacement));
+  await Effect.runPromise(next.recordCreation);
+  expect(
+    await Effect.runPromise(
+      retireCreatedVolume(identity).pipe(Effect.provideService(StateStore, stateStore.service)),
+    ),
+  ).toBe(false);
+  expect((await Effect.runPromise(next.read))?.identity.generation).toBe("two");
 });

@@ -30,10 +30,10 @@ export const lintEnvFiles = Effect.fnUntraced(function* (
 ) {
   const landofile = compiled.document;
   const refs = [
-    { path: ["env_file"], files: landofile.env_file ?? [] },
+    { path: ["serviceDefaults", "env_file"], files: landofile.serviceDefaults?.env_file ?? [] },
     ...Object.entries(landofile.services ?? {}).map(([name, service]) => ({
-      path: ["services", name, "envFile"],
-      files: service.envFile ?? [],
+      path: ["services", name, "env_file"],
+      files: service.env_file ?? [],
     })),
   ];
   const findings: ConfigLintViolation[] = [];

@@ -95,9 +95,9 @@ The official image runs a temporary, loopback-only `mongod` while it creates the
 - A plain TCP dial of the planned port. Until that succeeds, Lando does not launch `mongosh` at all.
 - A credential-free MongoDB protocol `ping` with a bounded connection timeout. Only this step marks the service `ready`.
 
-After start, the service's ongoing healthcheck is the TCP dial alone, repeated on the usual interval. It starts no MongoDB shell and leaves no shell-state files behind. The protocol ping runs at startup, restart, and rebuild, not every few seconds for the life of the container.
+After start, the service's ongoing healthcheck is the TCP dial alone, repeated on the healthcheck interval wherever the provider [runs native checks](./wait-for-your-app.mdx#inspect-configuration-without-claiming-readiness). It starts no MongoDB shell and leaves no shell-state files behind. The protocol ping runs at startup, restart, and rebuild, not every few seconds for the life of the container.
 
-`ready` means the final server is accepting connections. It does not prove that the credentials in your Landofile match the users stored on the volume; the probe never authenticates. After readiness, `lando start` runs one authenticated query when it started or recreated the container, or when the planned connection changed since the last apply. `lando restart` and `lando rebuild` run it for the services they restart, and `lando doctor --app` runs it for every running database service. Each warns when MongoDB rejects the configured login. See [Recover when credentials don't match](#recover-when-credentials-dont-match).
+`ready` means the final server is accepting connections. It does not prove that the credentials in your Landofile match the users stored on the volume. The probe never authenticates. See [Recover when credentials don't match](#recover-when-credentials-dont-match).
 
 ## Check database access
 
@@ -249,39 +249,11 @@ That prints `27018`, through a client that found the server on the planned port 
 
 ## Recover when credentials don't match
 
-`creds:` and `MONGO_INITDB_ROOT_*` seed a fresh volume. The image ignores them once `/data/db` holds data, so changing `creds:` on an existing app rewrites what Lando's clients send, not the users MongoDB already stores. Start still reports `ready`, because readiness checks the listener, not your login. The post-readiness check runs after a start that created or started the container or saw a connection change, and on `lando doctor --app`, `lando restart`, and `lando rebuild`. It warns when the server rejects the configured login; without that warning, the first authenticated call is where you find out:
+After editing `creds`, run `lando start`. Lando applies the settings to the catalog server without dropping or renaming existing users or databases. For these updates, Lando uses its own root user, `lando_admin` in the `admin` database, restricted to connections with both client and server at `127.0.0.1`. Its password is derived from a private key and the volume identity. Changing only `creds.database` doesn't create a database. MongoDB creates it on the first write.
 
-```sh
-lando mongosh --eval "db.runCommand('ping')"
-```
+If start warns that it couldn't update the credentials, follow [Keep database credentials in sync](../tooling/db-creds-apply.mdx) to preview and apply a repair with `lando db:creds:apply`. Use `--admin-user` if you need to supply a different existing administrator login.
 
-An `Authentication failed` response from this client comes with Mongo-specific recovery text. Other failing scripts exit non-zero without it; a bad query is not an auth problem.
-
-Fix it without losing data, in this order:
-
-1. Put `creds:` back to the values the volume was created with, then run `lando start` so the clients pick them up.
-2. If you want the new credentials to stick, log in with the old ones and change the password inside MongoDB. `-p` with no value prompts, so the password stays out of your shell history and the container's argv:
-
-   ```sh
-   lando exec db -- mongosh -u <old-user> -p --authenticationDatabase admin
-   ```
-
-   Then, in that shell:
-
-   ```js
-   db.getSiblingDB('admin').changeUserPassword('<old-user>', '<new-password>')
-   ```
-
-   Set `creds:` to the new values and run `lando start` again.
-
-3. Only when the data is disposable, start over. This deletes the database:
-
-   ```sh
-   lando destroy -y --volumes
-   lando start
-   ```
-
-Lando never picks option 3 for you.
+`LANDO_DATABASE_ADMIN_SEED_UNAVAILABLE` means Lando skipped adopting `lando_admin` and tried the previous or desired root credentials instead. See [how to restore access to the seed](../tooling/db-creds-apply.mdx).
 
 ## Pin a version
 

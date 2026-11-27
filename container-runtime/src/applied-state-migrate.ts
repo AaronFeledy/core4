@@ -2,8 +2,7 @@ import { isAbsolute, resolve, win32 } from "node:path";
 import { isPlainRecord } from "@lando/sdk/landofile";
 import {
   AppId,
-  AppPlan,
-  type AppPlan as AppPlanShape,
+  AppliedAppPlan,
   type MountPlan,
   PortablePath,
   duplicateMountTarget,
@@ -14,8 +13,11 @@ import { migrateAppliedInit } from "./applied-init-migrate.ts";
 import { migrateAppliedNames } from "./applied-names-migrate.ts";
 import { visitAppliedNetworkVocabulary } from "./applied-network-vocabulary.ts";
 
-/** Durable applied-plan frame version: v9 added keepAlive intent; v10 adds RouteText descriptors. */
-export const APPLIED_STATE_VERSION = 10;
+/**
+ * Durable applied-plan frame version: v9 added keepAlive intent; v10 RouteText descriptors; v12
+ * planned listen ports; v13 route fact members on RouteText parts.
+ */
+export const APPLIED_STATE_VERSION = 13;
 
 const APP_MOUNT_KEY = "app-mount";
 
@@ -256,7 +258,7 @@ const migrateV1PlanRaw = (raw: unknown): unknown | null => {
 const isMigratableVersion = (version: number): boolean =>
   Number.isInteger(version) && version >= 1 && version < APPLIED_STATE_VERSION;
 const isAppId = Schema.is(Schema.toEncoded(AppId));
-const decodePlan = Schema.decodeUnknownOption(AppPlan);
+const decodePlan = Schema.decodeUnknownOption(AppliedAppPlan);
 
 /**
  * State-store `onVersionMismatch` migrator for a single applied `AppPlan`.
@@ -266,21 +268,25 @@ const decodePlan = Schema.decodeUnknownOption(AppPlan);
 export const migrateAppliedPlanWithCoordinate = (
   raw: unknown,
   fromVersion: number,
-): AppPlanShape | string => {
+): AppliedAppPlan | string => {
   if (!isMigratableVersion(fromVersion)) return "version";
   // v4 records predate the exclusive SQLite branch, v5 records predate the optional service
   // pullPolicy, and v6 records predate the optional project-user plan fields. v8 predates keepAlive
-  // intent, and v8 and v9 predate RouteText environment values. These additions need no rewrite.
+  // intent, v8 and v9 predate RouteText environment values, v11 predates the optional
+  // plannedPort, and v12 predates the optional RouteText part member. These additions need no
+  // rewrite.
   // No v5 record holds a Compose pull_policy knob, because no provider ever declared it.
   const initialized =
     fromVersion >= 3 ? raw : migrateAppliedInit(fromVersion === 1 ? migrateV1PlanRaw(raw) : raw);
   const transformed = fromVersion >= 4 ? initialized : migrateAppliedNames(initialized);
   const migrated = visitAppliedNetworkVocabulary(transformed, fromVersion < 8);
   if (typeof migrated === "string") return migrated;
-  return Option.getOrElse(decodePlan(migrated), () => "plan");
+  // Historical events are invocation intent, not part of the realized plan.
+  const { events: _events, ...applied } = migrated;
+  return Option.getOrElse(decodePlan(applied), () => "plan");
 };
 
-export const migrateAppliedPlan = (raw: unknown, fromVersion: number): AppPlanShape | null => {
+export const migrateAppliedPlan = (raw: unknown, fromVersion: number): AppliedAppPlan | null => {
   const result = migrateAppliedPlanWithCoordinate(raw, fromVersion);
   return typeof result === "string" ? null : result;
 };
@@ -291,10 +297,10 @@ export const migrateAppliedPlan = (raw: unknown, fromVersion: number): AppPlanSh
 export const migrateAppliedPlansRecordWithCoordinate = (
   raw: unknown,
   fromVersion: number,
-): Readonly<Record<string, AppPlanShape>> | string => {
+): Readonly<Record<string, AppliedAppPlan>> | string => {
   if (!isMigratableVersion(fromVersion)) return "version";
   if (!isPlainRecord(raw)) return "apps";
-  const next: [string, AppPlanShape][] = [];
+  const next: [string, AppliedAppPlan][] = [];
   for (const [index, [id, plan]] of Object.entries(raw).entries()) {
     if (!isAppId(id)) return `apps[${index}].id`;
     const migrated = migrateAppliedPlanWithCoordinate(plan, fromVersion);

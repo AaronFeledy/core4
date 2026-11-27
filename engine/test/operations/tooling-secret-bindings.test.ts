@@ -17,7 +17,7 @@ import {
   ToolingEngine,
   type ToolingInvocation,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { DateTime, Effect, Layer } from "effect";
 import {
   compileToolingInvocations,
@@ -82,13 +82,8 @@ const resolveTask = async (loaded: Awaited<ReturnType<typeof load>>, name = "dep
 
 const runner = Effect.runSync(ProcessRunner.pipe(Effect.provide(BunProcessRunner.layer)));
 
-const registry = RuntimeProviderRegistry.of({
-  appliedPlansFor: () => Effect.succeed([]),
-  resolveAppliedPlan: () => Effect.succeed(undefined),
-  resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+const registry = makeTestRuntimeProviderRegistry({
   list: Effect.succeed([plan.provider]),
-  capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-  select: () => Effect.succeed(TestRuntimeProvider),
 });
 
 const layers = (engine: ToolingEngine["Service"], redaction = makeRedactionService()) =>

@@ -13,7 +13,8 @@ import type {
   LandofileShape,
   ServiceScopedLandofile,
 } from "@lando/sdk/schema";
-import { Effect, Schema } from "effect";
+import { PathsService } from "@lando/sdk/services";
+import { Effect, Option, Schema } from "effect";
 import {
   connectionClientsForPlan,
   effectiveToolingForPlan,
@@ -22,6 +23,7 @@ import {
   toolingSourceResolverForResolution,
 } from "./effective-tooling.ts";
 import { serviceCredsScopeForPlan, serviceScopeContext } from "./landofile-scopes.ts";
+import { primaryServiceName } from "./primary-service.ts";
 
 const KEY = "@lando/core/invocation-authority";
 const Authority = Schema.Struct({
@@ -44,15 +46,26 @@ export const compilePlanInvocationSites = Effect.fnUntraced(function* (input: {
   readonly hostEvents: HostEvents | undefined;
   readonly env: Readonly<Record<string, string>>;
 }) {
+  // Host step sites name the real `config.yml hostEvents.<event>[i]` they were authored at.
+  const configFile =
+    Option.getOrUndefined(yield* Effect.serviceOption(PathsService))?.configFile ?? "config.yml";
   const authored =
     input.hostEvents === undefined
       ? []
       : yield* Effect.try({
-          try: () => authoredInvocationSites(input.hostEvents, "<host-events>"),
-          catch: (cause) => compiledValueError(cause, { filePath: "<host-events>", pendingSites: [] }),
+          try: () =>
+            authoredInvocationSites(input.hostEvents, configFile, {
+              layer: "config-file",
+              pathPrefix: ["hostEvents"],
+            }),
+          catch: (cause) => compiledValueError(cause, { filePath: configFile, pendingSites: [] }),
         });
-  const hostSites = yield* compileInvocationSites(authored, { env: input.env }, input.hostEvents);
-  return [...input.sites, ...hostSites.map((site) => ({ ...site, path: ["hostEvents", ...site.path] }))];
+  const hostSites = yield* compileInvocationSites(
+    authored,
+    { env: input.env },
+    { hostEvents: input.hostEvents },
+  );
+  return [...input.sites, ...hostSites];
 });
 
 export const attachCompiledInvocationPlan = <Plan extends AppPlan>(
@@ -105,6 +118,7 @@ export const invocationToolingForPlan = Effect.fnUntraced(function* (
   const resolution = resolveEffectiveTooling({
     landofile,
     provenance: provenanceOf(compiled),
+    primary: primaryServiceName(plan.services),
     services: Object.values(plan.services).map((service) => ({ name: service.name })),
   });
   const authored = resolution.tasks;

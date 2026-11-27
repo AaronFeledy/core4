@@ -1,0 +1,1276 @@
+diff --git a/cmd/podman/system/service_abi.go b/cmd/podman/system/service_abi.go
+index 7ad4096..fedc8cd 100644
+--- a/cmd/podman/system/service_abi.go
++++ b/cmd/podman/system/service_abi.go
+@@ -130,6 +130,7 @@ func restService(flags *pflag.FlagSet, cfg *entities.PodmanConfig, opts entities
+ 	if err != nil {
+ 		return err
+ 	}
++	defer libpodRuntime.ServeHealthChecks()()
+ 	defer func() {
+ 		if err := server.Shutdown(true); err != nil {
+ 			logrus.Warnf("Error when stopping API service: %s", err)
+diff --git a/libpod/healthcheck.go b/libpod/healthcheck.go
+index ab72c44..e7324d8 100644
+--- a/libpod/healthcheck.go
++++ b/libpod/healthcheck.go
+@@ -31,6 +31,7 @@ func (r *Runtime) HealthCheck(ctx context.Context, name string) (define.HealthCh
+ 	if !container.HasHealthCheck() {
+ 		return define.HealthCheckNotDefined, fmt.Errorf("container %s has no defined healthcheck", container.ID())
+ 	}
++	defer serviceHealthCheckGuard(ctx, container.ID())()
+ 
+ 	isStartupHC := false
+ 	if container.config.StartupHealthCheckConfig != nil {
+@@ -42,7 +43,7 @@ func (r *Runtime) HealthCheck(ctx context.Context, name string) (define.HealthCh
+ 	}
+ 
+ 	hcStatus, logStatus, err := container.runHealthCheck(ctx, isStartupHC)
+-	if !isStartupHC {
++	if !isStartupHC && container.healthCheckRunCurrent(ctx) {
+ 		if err := container.processHealthCheckStatus(logStatus); err != nil {
+ 			return hcStatus, err
+ 		}
+@@ -151,6 +152,9 @@ func (c *Container) runHealthCheck(ctx context.Context, isStartup bool) (define.
+ 			return define.HealthCheckInternalError, "", err
+ 		}
+ 	}
++	if !c.healthCheckRunCurrentLocked(ctx) {
++		return define.HealthCheckContainerStopped, "", errHealthCheckStaleRun
++	}
+ 
+ 	// Handle startup HC
+ 	if isStartup {
+@@ -275,8 +279,11 @@ func (c *Container) incrementStartupHCSuccessCounter(ctx context.Context) error
+ 	// is called. Fundamentally this is expected so switch it to exit 0.
+ 	// NOTE: This is only safe while being called from "podman healthcheck run" which we know
+ 	// is the case here as we should not alter the exit code of another process that just
+-	// happened to call this.
+-	shutdown.SetExitCode(0)
++	// happened to call this. An API service that schedules healthchecks runs this too but
++	// is not a "podman healthcheck run" process, so it keeps its own exit code.
++	if !schedulesHealthChecks() {
++		shutdown.SetExitCode(0)
++	}
+ 	return c.recreateHealthCheckTimer(ctx, false, true)
+ }
+ 
+diff --git a/libpod/healthcheck_linux.go b/libpod/healthcheck_linux.go
+index 5f1835a..fe51568 100644
+--- a/libpod/healthcheck_linux.go
++++ b/libpod/healthcheck_linux.go
+@@ -161,6 +161,12 @@ func (c *Container) removeTransientFiles(ctx context.Context, isStartup bool, un
+ 	return errorhandling.JoinErrors(stopErrors)
+ }
+ 
++// systemdHealthCheckTimersDisabled reports whether this process never creates
++// systemd healthcheck timers.
++func systemdHealthCheckTimersDisabled() bool {
++	return !systemdCommon.RunsOnSystemd() || os.Getenv("DISABLE_HC_SYSTEMD") == "true"
++}
++
+ func (c *Container) disableHealthCheckSystemd(isStartup bool) bool {
+ 	if !systemdCommon.RunsOnSystemd() || os.Getenv("DISABLE_HC_SYSTEMD") == "true" {
+ 		return true
+diff --git a/libpod/healthcheck_nosystemd_linux.go b/libpod/healthcheck_nosystemd_linux.go
+index 4e087ac..0d2dd3a 100644
+--- a/libpod/healthcheck_nosystemd_linux.go
++++ b/libpod/healthcheck_nosystemd_linux.go
+@@ -6,6 +6,12 @@ import (
+ 	"context"
+ )
+ 
++// systemdHealthCheckTimersDisabled reports whether this process never creates
++// systemd healthcheck timers.
++func systemdHealthCheckTimersDisabled() bool {
++	return true
++}
++
+ // createTimer systemd timers for healthchecks of a container
+ func (c *Container) createTimer(_ string, _ bool) error {
+ 	return nil
+diff --git a/libpod/healthcheck_service.go b/libpod/healthcheck_service.go
+new file mode 100644
+index 0000000..a202a02
+--- /dev/null
++++ b/libpod/healthcheck_service.go
+@@ -0,0 +1,286 @@
++//go:build !remote && (linux || freebsd)
++
++package libpod
++
++import (
++	"context"
++	"errors"
++	"fmt"
++	"os"
++	"path/filepath"
++	"strconv"
++	"strings"
++	"sync"
++	"sync/atomic"
++	"time"
++
++	"github.com/sirupsen/logrus"
++	"go.podman.io/podman/v6/libpod/define"
++	"go.podman.io/podman/v6/libpod/events"
++	"go.podman.io/podman/v6/libpod/shutdown"
++	"go.podman.io/podman/v6/pkg/hcschedule"
++	"go.podman.io/storage/pkg/ioutils"
++)
++
++const (
++	// ServiceHealthChecksEnv opts `podman system service` into scheduling
++	// container healthchecks itself. Only the value "1" enables it, and only
++	// the API service reads it.
++	ServiceHealthChecksEnv = "PODMAN_SERVICE_HEALTHCHECKS"
++
++	// HealthCheckSchedulerAckFile is created in the run root once the
++	// service schedules healthchecks. It holds the service's decimal PID and
++	// a newline, and is removed when scheduling stops.
++	HealthCheckSchedulerAckFile = "healthcheck-scheduler.pid"
++
++	healthCheckShutdownHandler   = "healthcheck-scheduler"
++	healthCheckReconcileInterval = 30 * time.Second
++	healthCheckResubscribeDelay  = time.Second
++	healthCheckShutdownBound     = 5 * time.Second
++)
++
++// errHealthCheckStaleRun reports a check whose container restarted while it ran.
++var errHealthCheckStaleRun = errors.New("container restarted during the healthcheck; result discarded")
++
++// serviceHealthChecks is the scheduler of this process, if it runs one.
++var serviceHealthChecks atomic.Pointer[hcschedule.Scheduler]
++
++type healthCheckRunKey struct{}
++
++// healthCheckLifecycleEvents are the container events that can change
++// whether or how a container is checked. health_status is excluded: the
++// scheduler's own checks write it.
++var healthCheckLifecycleEvents = []events.Status{
++	events.Init, events.Start, events.Restart, events.Exited, events.Stop,
++	events.Pause, events.Unpause, events.Remove, events.Update, events.Cleanup,
++	events.Restore,
++}
++
++// ServeHealthChecks schedules the healthchecks of every running container
++// from this API service until the returned function is called, when the
++// service's environment opts in with ServiceHealthChecksEnv=1. Otherwise, or
++// when scheduling cannot start, it logs why and returns a no-op. Only one
++// opted-in service per storage is supported: a second one would check every
++// container again.
++func (r *Runtime) ServeHealthChecks() (stop func()) {
++	if os.Getenv(ServiceHealthChecksEnv) != "1" {
++		return func() {}
++	}
++	stop, err := r.startHealthCheckScheduler()
++	if err != nil {
++		logrus.Warnf("Not scheduling healthchecks: %v", err)
++		return func() {}
++	}
++	logrus.Infof("Scheduling container healthchecks in the API service")
++	return stop
++}
++
++func (r *Runtime) startHealthCheckScheduler() (func(), error) {
++	if !systemdHealthCheckTimersDisabled() {
++		return nil, errors.New("systemd healthcheck timers are enabled for this process; set DISABLE_HC_SYSTEMD=true")
++	}
++	s := hcschedule.New(healthCheckSource{r: r}, logrus.Debugf)
++	if !serviceHealthChecks.CompareAndSwap(nil, s) {
++		return nil, errors.New("healthcheck scheduler already running")
++	}
++	ctx, cancel := context.WithCancel(context.Background())
++	// Events from the moment before the first sweep are replayed, so no
++	// lifecycle change falls between the sweep and the subscription.
++	since := time.Now()
++	dispatched := make(chan struct{})
++	go func() {
++		defer close(dispatched)
++		s.Run(ctx, healthCheckReconcileInterval)
++	}()
++	go r.followHealthCheckLifecycle(ctx, s, since)
++	<-s.Ready()
++
++	ack := filepath.Join(r.storageConfig.RunRoot, HealthCheckSchedulerAckFile)
++	pid := strconv.Itoa(os.Getpid())
++	var once sync.Once
++	stop := func() {
++		once.Do(func() {
++			if b, err := os.ReadFile(ack); err == nil && strings.TrimSpace(string(b)) == pid {
++				if err := os.Remove(ack); err != nil {
++					logrus.Warnf("Removing healthcheck scheduler acknowledgement: %v", err)
++				}
++			}
++			cancel()
++			<-dispatched
++			// healthCheckExec takes no context: a check still running after
++			// the bound is ended by its own healthcheck timeout.
++			if !s.Wait(healthCheckShutdownBound) {
++				logrus.Warnf("Healthchecks still running after %v at shutdown", healthCheckShutdownBound)
++			}
++			serviceHealthChecks.Store(nil)
++		})
++	}
++	// A signal exits from its shutdown handlers without running defers, so
++	// the handler must exist before the acknowledgement does.
++	if err := shutdown.Register(healthCheckShutdownHandler, func(_ os.Signal) error {
++		stop()
++		return nil
++	}); err != nil {
++		stop()
++		return nil, fmt.Errorf("registering healthcheck scheduler shutdown: %w", err)
++	}
++	if err := ioutils.AtomicWriteFile(ack, []byte(pid+"\n"), 0o644); err != nil {
++		if err := shutdown.Unregister(healthCheckShutdownHandler); err != nil {
++			logrus.Debugf("Unregistering healthcheck scheduler shutdown: %v", err)
++		}
++		stop()
++		return nil, fmt.Errorf("writing healthcheck scheduler acknowledgement: %w", err)
++	}
++	return stop, nil
++}
++
++// followHealthCheckLifecycle turns lifecycle events into scheduler hints.
++// Events are only hints; when the stream ends, every container is reconciled
++// and the stream resubscribed from the moment before.
++func (r *Runtime) followHealthCheckLifecycle(ctx context.Context, s *hcschedule.Scheduler, since time.Time) {
++	filters := []string{"type=" + events.Container.String()}
++	for _, status := range healthCheckLifecycleEvents {
++		filters = append(filters, "event="+status.String())
++	}
++	for {
++		results := make(chan events.ReadResult)
++		err := r.Events(ctx, events.ReadOptions{
++			EventChannel: results,
++			Filters:      filters,
++			FromStart:    true,
++			Since:        since.Format(time.RFC3339Nano),
++			Stream:       true,
++		})
++		delay, ended := healthCheckResubscribeDelay, true
++		if err != nil {
++			// Nothing was read: keep since and leave catching up to the
++			// scheduler's own periodic reconcile.
++			logrus.Debugf("Healthcheck scheduler cannot read events, relying on reconciliation: %v", err)
++			delay, ended = healthCheckReconcileInterval, false
++		} else {
++			for res := range results {
++				if res.Error != nil {
++					logrus.Debugf("Healthcheck scheduler event: %v", res.Error)
++					continue
++				}
++				s.Hint(res.Event.ID)
++			}
++		}
++		select {
++		case <-ctx.Done():
++			return
++		case <-time.After(delay):
++		}
++		if ended {
++			since = time.Now()
++			s.ReconcileAll()
++		}
++	}
++}
++
++type healthCheckSource struct {
++	r *Runtime
++}
++
++func (h healthCheckSource) Observe(id string) (hcschedule.Observation, error) {
++	c, err := h.r.LookupContainer(id)
++	if errors.Is(err, define.ErrNoSuchCtr) {
++		return hcschedule.Observation{}, nil
++	}
++	if err != nil {
++		return hcschedule.Observation{}, err
++	}
++	return c.healthCheckObservation()
++}
++
++func (h healthCheckSource) ActiveIDs() ([]string, error) {
++	ctrs, err := h.r.GetRunningContainers()
++	if err != nil {
++		return nil, err
++	}
++	ids := make([]string, 0, len(ctrs))
++	for _, c := range ctrs {
++		if c.HasHealthCheck() {
++			ids = append(ids, c.ID())
++		}
++	}
++	return ids, nil
++}
++
++func (h healthCheckSource) Check(ctx context.Context, id string, run hcschedule.Run) error {
++	_, err := h.r.HealthCheck(context.WithValue(ctx, healthCheckRunKey{}, run.StartedAt), id)
++	return err
++}
++
++func (c *Container) healthCheckObservation() (hcschedule.Observation, error) {
++	if !c.HasHealthCheck() {
++		return hcschedule.Observation{}, nil
++	}
++	c.lock.Lock()
++	defer c.lock.Unlock()
++	if err := c.syncContainer(); err != nil {
++		if errors.Is(err, define.ErrNoSuchCtr) || errors.Is(err, define.ErrCtrRemoved) {
++			return hcschedule.Observation{}, nil
++		}
++		return hcschedule.Observation{}, err
++	}
++	if c.state.State != define.ContainerStateRunning {
++		return hcschedule.Observation{}, nil
++	}
++	results, err := c.readHealthCheckLog()
++	if err != nil {
++		return hcschedule.Observation{}, err
++	}
++	hc := c.HealthCheckConfig()
++	cadence := hcschedule.Cadence{Interval: hc.Interval, StartPeriod: hc.StartPeriod, StartInterval: hc.StartInterval}
++	if c.config.StartupHealthCheckConfig != nil {
++		cadence.StartupInterval = c.config.StartupHealthCheckConfig.Interval
++	}
++	return hcschedule.Observation{
++		Run:            hcschedule.Run{StartedAt: c.state.StartedTime, Cadence: cadence},
++		Active:         true,
++		StartupPending: c.config.StartupHealthCheckConfig != nil && !c.state.StartupHCPassed,
++		Starting:       results.Status == define.HealthCheckStarting,
++	}, nil
++}
++
++// scheduledHealthCheckRun returns the run a scheduled check is fenced to.
++func scheduledHealthCheckRun(ctx context.Context) (time.Time, bool) {
++	started, ok := ctx.Value(healthCheckRunKey{}).(time.Time)
++	return started, ok
++}
++
++// healthCheckRunCurrentLocked reports whether a scheduled check still belongs
++// to the container's current run. Unscheduled checks always do.
++// The caller must lock and sync the container.
++func (c *Container) healthCheckRunCurrentLocked(ctx context.Context) bool {
++	started, scheduled := scheduledHealthCheckRun(ctx)
++	return !scheduled || c.state.StartedTime.Equal(started)
++}
++
++// healthCheckRunCurrent is healthCheckRunCurrentLocked for callers that do not
++// hold the container lock.
++func (c *Container) healthCheckRunCurrent(ctx context.Context) bool {
++	started, scheduled := scheduledHealthCheckRun(ctx)
++	if !scheduled {
++		return true
++	}
++	current, err := c.StartedTime()
++	return err == nil && current.Equal(started)
++}
++
++// serviceHealthCheckGuard makes a healthcheck that the scheduler did not start
++// wait for a scheduled check of the same container in this process.
++func serviceHealthCheckGuard(ctx context.Context, id string) func() {
++	s := serviceHealthChecks.Load()
++	if _, scheduled := scheduledHealthCheckRun(ctx); s == nil || scheduled {
++		return func() {}
++	}
++	return s.Guard(id)
++}
++
++// schedulesHealthChecks reports whether this process is an API service that
++// schedules healthchecks.
++func schedulesHealthChecks() bool {
++	return serviceHealthChecks.Load() != nil
++}
+diff --git a/libpod/healthcheck_service_test.go b/libpod/healthcheck_service_test.go
+new file mode 100644
+index 0000000..901ef05
+--- /dev/null
++++ b/libpod/healthcheck_service_test.go
+@@ -0,0 +1,56 @@
++//go:build !remote && (linux || freebsd)
++
++package libpod
++
++import (
++	"context"
++	"testing"
++	"testing/synctest"
++	"time"
++
++	"github.com/stretchr/testify/assert"
++	"go.podman.io/podman/v6/pkg/hcschedule"
++)
++
++func TestScheduledHealthCheckIsFencedToItsRun(t *testing.T) {
++	started := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
++	ctr := &Container{state: &ContainerState{StartedTime: started}}
++
++	assert.True(t, ctr.healthCheckRunCurrentLocked(context.Background()), "a manual check is never fenced")
++	sameRun := context.WithValue(context.Background(), healthCheckRunKey{}, started)
++	assert.True(t, ctr.healthCheckRunCurrentLocked(sameRun))
++	olderRun := context.WithValue(context.Background(), healthCheckRunKey{}, started.Add(-time.Minute))
++	assert.False(t, ctr.healthCheckRunCurrentLocked(olderRun), "a check of an older run must not write results")
++}
++
++func TestManualHealthCheckWaitsForTheScheduledCheck(t *testing.T) {
++	synctest.Test(t, func(t *testing.T) {
++		s := hcschedule.New(nil, t.Logf)
++		serviceHealthChecks.Store(s)
++		t.Cleanup(func() { serviceHealthChecks.Store(nil) })
++		scheduled := context.WithValue(context.Background(), healthCheckRunKey{}, time.Time{})
++
++		releaseScheduled := s.Guard("ctr")
++		serviceHealthCheckGuard(scheduled, "ctr")() // the scheduler already holds the guard
++		acquired := make(chan struct{})
++		go func() {
++			release := serviceHealthCheckGuard(context.Background(), "ctr")
++			close(acquired)
++			release()
++		}()
++
++		synctest.Wait()
++		select {
++		case <-acquired:
++			t.Fatal("a manual check ran while a scheduled check held the guard")
++		default:
++		}
++		releaseScheduled()
++		synctest.Wait()
++		select {
++		case <-acquired:
++		default:
++			t.Fatal("a manual check never acquired the released guard")
++		}
++	})
++}
+diff --git a/libpod/healthcheck_unsupported.go b/libpod/healthcheck_unsupported.go
+index b9bcb76..ca2effc 100644
+--- a/libpod/healthcheck_unsupported.go
++++ b/libpod/healthcheck_unsupported.go
+@@ -6,6 +6,12 @@ import (
+ 	"context"
+ )
+ 
++// systemdHealthCheckTimersDisabled reports whether this process never creates
++// systemd healthcheck timers.
++func systemdHealthCheckTimersDisabled() bool {
++	return true
++}
++
+ // createTimer systemd timers for healthchecks of a container
+ func (c *Container) createTimer(_ string, _ bool) error {
+ 	return nil
+diff --git a/pkg/hcschedule/cadence.go b/pkg/hcschedule/cadence.go
+new file mode 100644
+index 0000000..0ff1184
+--- /dev/null
++++ b/pkg/hcschedule/cadence.go
+@@ -0,0 +1,79 @@
++// Package hcschedule schedules container healthchecks inside a long-running
++// Podman API service (`podman system service`) when systemd timers are not
++// available. It holds no libpod types, so its timing and reconciliation rules
++// are testable without a runtime.
++package hcschedule
++
++import "time"
++
++// Cadence is the timing configuration of one container's healthchecks.
++type Cadence struct {
++	// Interval between regular checks. Zero disables scheduling, the same
++	// rule Podman applies to its systemd timers.
++	Interval time.Duration
++	// StartPeriod after the container started during which failures do not
++	// count.
++	StartPeriod time.Duration
++	// StartInterval between checks while the container is still starting
++	// inside StartPeriod (Docker semantics). Zero means Interval.
++	StartInterval time.Duration
++	// StartupInterval between checks of a startup healthcheck that has not
++	// passed yet. Zero disables the startup healthcheck timer.
++	StartupInterval time.Duration
++}
++
++// Run identifies one armed run of a container. A restart changes StartedAt
++// and an update of the healthcheck configuration changes the Cadence; either
++// starts a new run.
++type Run struct {
++	StartedAt time.Time
++	Cadence   Cadence
++}
++
++// Same reports whether two runs are the same run.
++func (r Run) Same(other Run) bool {
++	return r.StartedAt.Equal(other.StartedAt) && r.Cadence == other.Cadence
++}
++
++// Observation is the state of one container, read in one consistent snapshot.
++type Observation struct {
++	Run Run
++	// Active is true while the container is running (not paused) and has a
++	// healthcheck defined.
++	Active bool
++	// StartupPending is true while a startup healthcheck has not passed yet.
++	StartupPending bool
++	// Starting is true while the health status is still "starting": no
++	// healthcheck has passed yet in the current run.
++	Starting bool
++}
++
++// Armed reports whether the observed container gets scheduled checks at all.
++func (o Observation) Armed() bool {
++	c := o.Run.Cadence
++	return o.Active && c.Interval > 0 && (!o.StartupPending || c.StartupInterval > 0)
++}
++
++// NextDelay returns how long to wait, measured from the end of the previous
++// check, before the next check. The bool is false when nothing is scheduled.
++//
++// Rules, in order:
++//  1. A zero Interval disables scheduling (Podman's systemd-timer rule).
++//  2. A pending startup healthcheck runs every StartupInterval; a zero
++//     StartupInterval disables it (Podman's startup timer rule).
++//  3. With StartInterval set, a container that is still starting inside
++//     StartPeriod is checked every StartInterval (Docker's rule).
++//  4. Otherwise every Interval.
++func NextDelay(o Observation, now time.Time) (time.Duration, bool) {
++	c := o.Run.Cadence
++	switch {
++	case !o.Armed():
++		return 0, false
++	case o.StartupPending:
++		return c.StartupInterval, true
++	case c.StartInterval > 0 && o.Starting && now.Before(o.Run.StartedAt.Add(c.StartPeriod)):
++		return c.StartInterval, true
++	default:
++		return c.Interval, true
++	}
++}
+diff --git a/pkg/hcschedule/cadence_test.go b/pkg/hcschedule/cadence_test.go
+new file mode 100644
+index 0000000..2b2de22
+--- /dev/null
++++ b/pkg/hcschedule/cadence_test.go
+@@ -0,0 +1,63 @@
++package hcschedule
++
++import (
++	"testing"
++	"time"
++)
++
++func TestNextDelay(t *testing.T) {
++	started := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
++	regular := Cadence{Interval: 30 * time.Second}
++	withStart := Cadence{Interval: 30 * time.Second, StartPeriod: time.Minute, StartInterval: time.Second}
++	startup := Cadence{Interval: 30 * time.Second, StartupInterval: 2 * time.Second}
++
++	tests := []struct {
++		name    string
++		cadence Cadence
++		pending bool
++		start   bool
++		at      time.Duration
++		want    time.Duration
++		armed   bool
++	}{
++		{name: "regular interval", cadence: regular, at: time.Second, want: 30 * time.Second, armed: true},
++		{name: "zero interval disarms", cadence: Cadence{StartInterval: time.Second, StartPeriod: time.Minute}, start: true, at: time.Second},
++		{name: "start interval while starting inside the period", cadence: withStart, start: true, at: 10 * time.Second, want: time.Second, armed: true},
++		{name: "a healthy or unhealthy status leaves the start interval", cadence: withStart, at: 10 * time.Second, want: 30 * time.Second, armed: true},
++		{name: "period end leaves the start interval", cadence: withStart, start: true, at: time.Minute, want: 30 * time.Second, armed: true},
++		{name: "no start interval keeps the interval while starting", cadence: Cadence{Interval: 30 * time.Second, StartPeriod: time.Minute}, start: true, at: time.Second, want: 30 * time.Second, armed: true},
++		{name: "pending startup check uses the startup interval", cadence: startup, pending: true, start: true, at: time.Second, want: 2 * time.Second, armed: true},
++		{name: "pending startup check without interval disarms", cadence: regular, pending: true, start: true, at: time.Second},
++		{name: "passed startup check uses the interval", cadence: startup, at: time.Second, want: 30 * time.Second, armed: true},
++	}
++	for _, tt := range tests {
++		t.Run(tt.name, func(t *testing.T) {
++			o := Observation{Run: Run{StartedAt: started, Cadence: tt.cadence}, Active: true, StartupPending: tt.pending, Starting: tt.start}
++			got, armed := NextDelay(o, started.Add(tt.at))
++			if got != tt.want || armed != tt.armed {
++				t.Fatalf("NextDelay() = %v, %t; want %v, %t", got, armed, tt.want, tt.armed)
++			}
++		})
++	}
++}
++
++func TestInactiveIsNeverArmed(t *testing.T) {
++	o := Observation{Run: Run{Cadence: Cadence{Interval: time.Second}}}
++	if _, armed := NextDelay(o, time.Now()); armed || o.Armed() {
++		t.Fatal("an inactive container must not be armed")
++	}
++}
++
++func TestRunSameComparesInstantAndCadence(t *testing.T) {
++	at := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
++	run := Run{StartedAt: at, Cadence: Cadence{Interval: time.Second}}
++	if !run.Same(Run{StartedAt: at.In(time.FixedZone("x", 3600)), Cadence: run.Cadence}) {
++		t.Fatal("the same instant in another zone is the same run")
++	}
++	if run.Same(Run{StartedAt: at.Add(time.Nanosecond), Cadence: run.Cadence}) {
++		t.Fatal("a new start time is a new run")
++	}
++	if run.Same(Run{StartedAt: at, Cadence: Cadence{Interval: 2 * time.Second}}) {
++		t.Fatal("a new cadence is a new run")
++	}
++}
+diff --git a/pkg/hcschedule/guards.go b/pkg/hcschedule/guards.go
+new file mode 100644
+index 0000000..cfb8497
+--- /dev/null
++++ b/pkg/hcschedule/guards.go
+@@ -0,0 +1,43 @@
++package hcschedule
++
++import "sync"
++
++// guards is a keyed lock that forgets keys nobody holds or waits for.
++type guards struct {
++	mu sync.Mutex
++	m  map[string]*guard
++}
++
++type guard struct {
++	// held has one slot: sending takes the lock, receiving releases it. A
++	// goroutine waiting on a channel, unlike one waiting on a mutex, counts as
++	// durably blocked inside a testing/synctest bubble.
++	held chan struct{}
++	refs int
++}
++
++// lock locks key and returns its unlock function.
++func (g *guards) lock(key string) func() {
++	g.mu.Lock()
++	if g.m == nil {
++		g.m = map[string]*guard{}
++	}
++	e := g.m[key]
++	if e == nil {
++		e = &guard{held: make(chan struct{}, 1)}
++		g.m[key] = e
++	}
++	e.refs++
++	g.mu.Unlock()
++
++	e.held <- struct{}{}
++	return func() {
++		<-e.held
++		g.mu.Lock()
++		e.refs--
++		if e.refs == 0 {
++			delete(g.m, key)
++		}
++		g.mu.Unlock()
++	}
++}
+diff --git a/pkg/hcschedule/guards_test.go b/pkg/hcschedule/guards_test.go
+new file mode 100644
+index 0000000..e3151f7
+--- /dev/null
++++ b/pkg/hcschedule/guards_test.go
+@@ -0,0 +1,40 @@
++package hcschedule
++
++import (
++	"testing"
++	"testing/synctest"
++)
++
++func TestGuardsSerializeOneKeyAndForgetIt(t *testing.T) {
++	synctest.Test(t, func(t *testing.T) {
++		var g guards
++		unlock := g.lock("a")
++		g.lock("b")() // another key is independent
++		acquired := make(chan struct{})
++		go func() {
++			release := g.lock("a")
++			close(acquired)
++			release()
++		}()
++
++		synctest.Wait()
++		select {
++		case <-acquired:
++			t.Fatal("a second holder acquired a held key")
++		default:
++		}
++		unlock()
++		synctest.Wait()
++		select {
++		case <-acquired:
++		default:
++			t.Fatal("the waiter never acquired the released key")
++		}
++
++		g.mu.Lock()
++		defer g.mu.Unlock()
++		if len(g.m) != 0 {
++			t.Fatalf("guards kept %d released keys", len(g.m))
++		}
++	})
++}
+diff --git a/pkg/hcschedule/scheduler.go b/pkg/hcschedule/scheduler.go
+new file mode 100644
+index 0000000..1b08293
+--- /dev/null
++++ b/pkg/hcschedule/scheduler.go
+@@ -0,0 +1,270 @@
++package hcschedule
++
++import (
++	"context"
++	"sync"
++	"time"
++)
++
++// Source is the container runtime the scheduler drives.
++type Source interface {
++	// Observe reads one container. A container that no longer exists is
++	// reported as inactive with a nil error.
++	Observe(id string) (Observation, error)
++	// ActiveIDs lists running containers that have a healthcheck.
++	ActiveIDs() ([]string, error)
++	// Check runs one healthcheck and must discard its result when the
++	// container is no longer in run.
++	Check(ctx context.Context, id string, run Run) error
++}
++
++// Scheduler keeps one check loop per active container. Lifecycle hints (from
++// events) and periodic reconciles both re-read the container through Source;
++// hints are never applied as commands, so a missed, duplicated, or reordered
++// hint cannot leave a stale or duplicate loop behind for longer than one
++// reconcile.
++type Scheduler struct {
++	src    Source
++	logf   func(format string, args ...any)
++	guards guards
++
++	mu      sync.Mutex
++	loops   map[string]*loop
++	pending map[string]struct{}
++	all     bool
++	wake    chan struct{}
++	ready   chan struct{}
++	wg      sync.WaitGroup
++}
++
++type loop struct {
++	run    Run
++	cancel context.CancelFunc
++}
++
++// New returns a scheduler. Nothing runs until Run is called.
++func New(src Source, logf func(format string, args ...any)) *Scheduler {
++	return &Scheduler{
++		src:     src,
++		logf:    logf,
++		loops:   map[string]*loop{},
++		pending: map[string]struct{}{},
++		wake:    make(chan struct{}, 1),
++		ready:   make(chan struct{}),
++	}
++}
++
++// Hint asks for one container to be reconciled. It never blocks.
++func (s *Scheduler) Hint(id string) {
++	s.mu.Lock()
++	s.pending[id] = struct{}{}
++	s.mu.Unlock()
++	s.signal()
++}
++
++// ReconcileAll asks for every container to be reconciled. It never blocks.
++func (s *Scheduler) ReconcileAll() {
++	s.mu.Lock()
++	s.all = true
++	s.mu.Unlock()
++	s.signal()
++}
++
++func (s *Scheduler) signal() {
++	select {
++	case s.wake <- struct{}{}:
++	default:
++	}
++}
++
++// Guard serializes a check that does not come from the scheduler (a manual
++// healthcheck served by the same process) with scheduled checks of the same
++// container. Call the returned function to release it.
++func (s *Scheduler) Guard(id string) func() {
++	return s.guards.lock(id)
++}
++
++// Run reconciles all containers, closes Ready, then serves hints and
++// reconciles every `every` until ctx ends. Every loop runs under ctx, so
++// they all end with it; use Wait to join them.
++func (s *Scheduler) Run(ctx context.Context, every time.Duration) {
++	s.reconcile(ctx, true, nil)
++	close(s.ready)
++	tick := time.After(every)
++	for {
++		select {
++		case <-ctx.Done():
++			return
++		case <-s.wake:
++		case <-tick:
++			tick = time.After(every)
++			s.mu.Lock()
++			s.all = true
++			s.mu.Unlock()
++		}
++		s.mu.Lock()
++		all, ids := s.all, s.pending
++		s.all, s.pending = false, map[string]struct{}{}
++		s.mu.Unlock()
++		s.reconcile(ctx, all, ids)
++	}
++}
++
++// Ready is closed once Run has armed every container that was active when
++// it started.
++func (s *Scheduler) Ready() <-chan struct{} {
++	return s.ready
++}
++
++// Wait joins all loops for at most timeout and reports whether they ended.
++// A check that is still running is bounded by its own healthcheck timeout.
++func (s *Scheduler) Wait(timeout time.Duration) bool {
++	done := make(chan struct{})
++	go func() {
++		s.wg.Wait()
++		close(done)
++	}()
++	select {
++	case <-done:
++		return true
++	case <-time.After(timeout):
++		return false
++	}
++}
++
++func (s *Scheduler) reconcile(ctx context.Context, all bool, ids map[string]struct{}) {
++	if all {
++		active, err := s.src.ActiveIDs()
++		if err != nil {
++			s.logf("healthcheck scheduler: listing containers: %v", err)
++		}
++		if ids == nil {
++			ids = map[string]struct{}{}
++		}
++		for _, id := range active {
++			ids[id] = struct{}{}
++		}
++		s.mu.Lock()
++		for id := range s.loops {
++			ids[id] = struct{}{}
++		}
++		s.mu.Unlock()
++	}
++	for id := range ids {
++		s.sync(ctx, id)
++	}
++}
++
++// sync arms, re-arms, or disarms one container from a fresh observation.
++// An unchanged run keeps its loop, so duplicate hints never reset cadence.
++func (s *Scheduler) sync(ctx context.Context, id string) {
++	o, err := s.src.Observe(id)
++	if err != nil {
++		s.logf("healthcheck scheduler: observing %s: %v", id, err)
++		return
++	}
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	if ctx.Err() != nil {
++		return
++	}
++	cur := s.loops[id]
++	if !o.Armed() {
++		if cur != nil {
++			cur.cancel()
++			delete(s.loops, id)
++		}
++		return
++	}
++	if cur != nil && cur.run.Same(o.Run) {
++		return
++	}
++	if cur != nil {
++		// The old loop may still be inside a check; the per-container guard
++		// makes the new loop's first check wait for it.
++		cur.cancel()
++	}
++	loopCtx, cancel := context.WithCancel(ctx)
++	l := &loop{run: o.Run, cancel: cancel}
++	s.loops[id] = l
++	s.wg.Add(1)
++	go s.runLoop(loopCtx, id, l)
++}
++
++// release forgets l if it is still the loop of id.
++func (s *Scheduler) release(id string, l *loop) {
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	if s.loops[id] == l {
++		l.cancel()
++		delete(s.loops, id)
++	}
++}
++
++// runLoop runs the first check immediately (Podman starts its timer unit on
++// container start) and measures every later delay from the end of the
++// previous check (systemd OnUnitInactiveSec, Docker's timer reset).
++func (s *Scheduler) runLoop(ctx context.Context, id string, l *loop) {
++	defer s.wg.Done()
++	defer s.release(id, l)
++	var delay time.Duration
++	for {
++		if delay > 0 {
++			select {
++			case <-ctx.Done():
++				return
++			case <-time.After(delay):
++			}
++		}
++		before, current := s.observeRun(id, l.run)
++		if !current {
++			return
++		}
++		if !s.check(ctx, id, l.run) {
++			return
++		}
++		after, current := s.observeRun(id, l.run)
++		if !current {
++			return
++		}
++		next, armed := NextDelay(after, time.Now())
++		if !armed {
++			return
++		}
++		if before.StartupPending && !after.StartupPending {
++			// Podman starts the regular timer at once when the startup
++			// healthcheck passes.
++			next = 0
++		}
++		delay = next
++	}
++}
++
++// observeRun re-reads the container and reports whether run is still its
++// armed run. When it is not, the scheduler is hinted so a new run is armed.
++func (s *Scheduler) observeRun(id string, run Run) (Observation, bool) {
++	o, err := s.src.Observe(id)
++	if err != nil {
++		s.logf("healthcheck scheduler: observing %s: %v", id, err)
++		return o, false
++	}
++	if !o.Armed() || !o.Run.Same(run) {
++		s.Hint(id)
++		return o, false
++	}
++	return o, true
++}
++
++// check runs one check under the container's guard. It reports false when
++// the loop was cancelled before the check could start.
++func (s *Scheduler) check(ctx context.Context, id string, run Run) bool {
++	unlock := s.guards.lock(id)
++	defer unlock()
++	if ctx.Err() != nil {
++		return false
++	}
++	if err := s.src.Check(ctx, id, run); err != nil {
++		s.logf("healthcheck scheduler: checking %s: %v", id, err)
++	}
++	return true
++}
+diff --git a/pkg/hcschedule/scheduler_test.go b/pkg/hcschedule/scheduler_test.go
+new file mode 100644
+index 0000000..682b7ff
+--- /dev/null
++++ b/pkg/hcschedule/scheduler_test.go
+@@ -0,0 +1,283 @@
++package hcschedule
++
++import (
++	"context"
++	"sync"
++	"testing"
++	"testing/synctest"
++	"time"
++)
++
++// Every test runs in a testing/synctest bubble: time is virtual, time.Sleep
++// in the test advances it, and synctest.Wait returns once every scheduler
++// goroutine is blocked, so no assertion depends on wall-clock timing.
++
++const (
++	waitBound = 5 * time.Second
++	every     = time.Hour
++	id        = "ctr"
++)
++
++type checkCall struct {
++	id  string
++	run Run
++	at  time.Time
++}
++
++type fakeSource struct {
++	mu          sync.Mutex
++	obs         map[string]Observation
++	took        time.Duration
++	gate        chan struct{}
++	onCheck     func(o *Observation)
++	calls       chan checkCall
++	inFlight    int
++	maxInFlight int
++}
++
++func (f *fakeSource) set(update func(o *Observation)) {
++	f.mu.Lock()
++	defer f.mu.Unlock()
++	o := f.obs[id]
++	update(&o)
++	f.obs[id] = o
++}
++
++func (f *fakeSource) Observe(ctrID string) (Observation, error) {
++	f.mu.Lock()
++	defer f.mu.Unlock()
++	return f.obs[ctrID], nil
++}
++
++func (f *fakeSource) ActiveIDs() ([]string, error) {
++	f.mu.Lock()
++	defer f.mu.Unlock()
++	var ids []string
++	for ctrID, o := range f.obs {
++		if o.Active {
++			ids = append(ids, ctrID)
++		}
++	}
++	return ids, nil
++}
++
++func (f *fakeSource) Check(_ context.Context, ctrID string, run Run) error {
++	f.mu.Lock()
++	f.inFlight++
++	f.maxInFlight = max(f.maxInFlight, f.inFlight)
++	gate := f.gate
++	f.mu.Unlock()
++	f.calls <- checkCall{id: ctrID, run: run, at: time.Now()}
++	if gate != nil {
++		<-gate
++	}
++	time.Sleep(f.took)
++	f.mu.Lock()
++	defer f.mu.Unlock()
++	f.inFlight--
++	if f.onCheck != nil {
++		o := f.obs[ctrID]
++		f.onCheck(&o)
++		f.obs[ctrID] = o
++	}
++	return nil
++}
++
++// waitCheck returns the next check once the scheduler is idle.
++func (f *fakeSource) waitCheck(t *testing.T) checkCall {
++	t.Helper()
++	synctest.Wait()
++	select {
++	case call := <-f.calls:
++		return call
++	default:
++		t.Fatal("no healthcheck ran")
++		return checkCall{}
++	}
++}
++
++func (f *fakeSource) assertNoCheckQueued(t *testing.T) {
++	t.Helper()
++	synctest.Wait()
++	select {
++	case call := <-f.calls:
++		t.Fatalf("unexpected healthcheck %+v", call)
++	default:
++	}
++}
++
++func active(c Cadence) Observation {
++	return Observation{Run: Run{StartedAt: time.Now(), Cadence: c}, Active: true, Starting: true}
++}
++
++func newScheduler(t *testing.T, o Observation) (*Scheduler, *fakeSource) {
++	src := &fakeSource{obs: map[string]Observation{id: o}, calls: make(chan checkCall, 256)}
++	return New(src, t.Logf), src
++}
++
++// start runs s until the test ends, then requires every loop to end with it.
++func start(t *testing.T, s *Scheduler) {
++	t.Helper()
++	ctx, cancel := context.WithCancel(context.Background())
++	done := make(chan struct{})
++	go func() {
++		s.Run(ctx, every)
++		close(done)
++	}()
++	t.Cleanup(func() {
++		cancel()
++		<-done
++		if !s.Wait(waitBound) {
++			t.Error("loops did not end at shutdown")
++		}
++	})
++	<-s.Ready()
++}
++
++func TestFirstCheckRunsAtOnceAndNextDelayCountsFromCheckEnd(t *testing.T) {
++	synctest.Test(t, func(t *testing.T) {
++		t0 := time.Now()
++		s, src := newScheduler(t, active(Cadence{Interval: 10 * time.Second}))
++		src.took = 3 * time.Second
++		start(t, s)
++
++		if call := src.waitCheck(t); call.id != id || !call.run.StartedAt.Equal(t0) || !call.at.Equal(t0) {
++			t.Fatalf("first check = %+v, want an immediate check of the run started at %v", call, t0)
++		}
++		time.Sleep(13 * time.Second)
++		if call := src.waitCheck(t); !call.at.Equal(t0.Add(13 * time.Second)) {
++			t.Fatalf("second check at %v, want 10s after the first check ended", call.at.Sub(t0))
++		}
++	})
++}
++
++func TestDuplicateHintsKeepTheLoopAndCadence(t *testing.T) {
++	synctest.Test(t, func(t *testing.T) {
++		t0 := time.Now()
++		s, src := newScheduler(t, active(Cadence{Interval: 10 * time.Second}))
++		start(t, s)
++		src.waitCheck(t)
++
++		time.Sleep(5 * time.Second)
++		s.Hint(id)
++		s.ReconcileAll()
++		src.assertNoCheckQueued(t)
++		time.Sleep(5 * time.Second)
++		if call := src.waitCheck(t); !call.at.Equal(t0.Add(10 * time.Second)) {
++			t.Fatalf("next check at %v, want the unchanged 10s cadence", call.at.Sub(t0))
++		}
++	})
++}
++
++func TestRestartRearmsAndSerializesWithTheOldCheck(t *testing.T) {
++	synctest.Test(t, func(t *testing.T) {
++		s, src := newScheduler(t, active(Cadence{Interval: 10 * time.Second}))
++		gate := make(chan struct{})
++		src.gate = gate
++		start(t, s)
++		src.waitCheck(t)
++
++		restarted := time.Now().Add(time.Minute)
++		src.set(func(o *Observation) { o.Run.StartedAt = restarted })
++		src.mu.Lock()
++		src.gate = nil
++		src.mu.Unlock()
++		s.Hint(id)
++		// The new run's loop is armed but waits for the old run's check.
++		src.assertNoCheckQueued(t)
++		close(gate)
++
++		if call := src.waitCheck(t); !call.run.StartedAt.Equal(restarted) {
++			t.Fatalf("re-armed check ran for %v, want the new run %v", call.run.StartedAt, restarted)
++		}
++		src.mu.Lock()
++		defer src.mu.Unlock()
++		if src.maxInFlight != 1 {
++			t.Fatalf("%d checks of one container overlapped", src.maxInFlight)
++		}
++	})
++}
++
++func TestStaleRunFoundByTheLoopIsRearmedWithoutAHint(t *testing.T) {
++	synctest.Test(t, func(t *testing.T) {
++		s, src := newScheduler(t, active(Cadence{Interval: 10 * time.Second}))
++		start(t, s)
++		src.waitCheck(t)
++
++		restarted := time.Now().Add(time.Minute)
++		src.set(func(o *Observation) { o.Run.StartedAt = restarted })
++		time.Sleep(10 * time.Second)
++
++		if call := src.waitCheck(t); !call.run.StartedAt.Equal(restarted) {
++			t.Fatalf("check ran for %v, want the new run", call.run.StartedAt)
++		}
++	})
++}
++
++func TestStoppedContainerIsDisarmedByReconcile(t *testing.T) {
++	synctest.Test(t, func(t *testing.T) {
++		s, src := newScheduler(t, active(Cadence{Interval: 10 * time.Second}))
++		start(t, s)
++		src.waitCheck(t)
++
++		src.set(func(o *Observation) { o.Active = false })
++		s.ReconcileAll()
++		synctest.Wait()
++		if !s.Wait(time.Second) {
++			t.Fatal("a stopped container kept its loop until its next check")
++		}
++	})
++}
++
++func TestZeroIntervalNeverChecks(t *testing.T) {
++	synctest.Test(t, func(t *testing.T) {
++		s, src := newScheduler(t, active(Cadence{}))
++		start(t, s)
++		s.ReconcileAll()
++		src.assertNoCheckQueued(t)
++	})
++}
++
++func TestStartIntervalUntilHealthyThenInterval(t *testing.T) {
++	synctest.Test(t, func(t *testing.T) {
++		t0 := time.Now()
++		c := Cadence{Interval: 30 * time.Second, StartPeriod: time.Minute, StartInterval: time.Second}
++		s, src := newScheduler(t, active(c))
++		checks := 0
++		src.onCheck = func(o *Observation) {
++			checks++
++			if checks == 2 {
++				o.Starting = false
++			}
++		}
++		start(t, s)
++
++		src.waitCheck(t)
++		time.Sleep(time.Second)
++		if call := src.waitCheck(t); !call.at.Equal(t0.Add(time.Second)) {
++			t.Fatalf("second check at %v, want the 1s start interval", call.at.Sub(t0))
++		}
++		time.Sleep(30 * time.Second)
++		if call := src.waitCheck(t); !call.at.Equal(t0.Add(31 * time.Second)) {
++			t.Fatalf("third check at %v, want the 30s interval once healthy", call.at.Sub(t0))
++		}
++	})
++}
++
++func TestStartupPassStartsTheRegularCheckAtOnce(t *testing.T) {
++	synctest.Test(t, func(t *testing.T) {
++		t0 := time.Now()
++		o := active(Cadence{Interval: 30 * time.Second, StartupInterval: 2 * time.Second})
++		o.StartupPending = true
++		s, src := newScheduler(t, o)
++		src.onCheck = func(o *Observation) { o.StartupPending = false }
++		start(t, s)
++
++		src.waitCheck(t)
++		if call := src.waitCheck(t); !call.at.Equal(t0) {
++			t.Fatalf("regular check at %v, want at once after the startup check passed", call.at.Sub(t0))
++		}
++		time.Sleep(30 * time.Second)
++		src.waitCheck(t)
++	})
++}

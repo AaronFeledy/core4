@@ -4,6 +4,7 @@ import { dirname, resolve } from "node:path";
 
 import { NotImplementedError } from "../sdk/src/errors/index.ts";
 import { type GuideScenarioAst, buildGuideScenarioAst } from "./build-guide-scenarios.ts";
+import { withRunnerOwnedTestRoots } from "./test-preload-roots.ts";
 import { rewriteScenarioSourceMappedOutput } from "./test-reporters/scenario-source-mapper.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
@@ -185,9 +186,11 @@ const main = async (): Promise<void> => {
 
     if (options.debug) process.stdout.write(`${(await debugLines(guide, options.scenarioId)).join("\n")}\n`);
 
-    const test = await run(
-      [process.execPath, "test", scenarioPath(options.guideId, options.scenarioId)],
-      options.keep ? { KEEP_SCENARIO_DIRS: "1", LANDO_DOCS_SCENARIO_KEEP: "1" } : {},
+    const test = await withRunnerOwnedTestRoots({ env: process.env, live: false }, (env) =>
+      run(
+        [process.execPath, "test", scenarioPath(options.guideId, options.scenarioId)],
+        options.keep ? { ...env, KEEP_SCENARIO_DIRS: "1", LANDO_DOCS_SCENARIO_KEEP: "1" } : env,
+      ),
     );
     process.stdout.write(rewriteScenarioSourceMappedOutput(test.stdout, { repoRoot: REPO_ROOT }));
     process.stderr.write(rewriteScenarioSourceMappedOutput(test.stderr, { repoRoot: REPO_ROOT }));

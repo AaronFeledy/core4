@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { GlobalDestroyResultSchema, globalDestroy } from "@lando/engine/operations/global-destroy";
 import { GlobalStopResultSchema, globalStop } from "@lando/engine/operations/global-stop";
-import { AbsolutePath, AppId, type VolumeInfo } from "@lando/sdk/schema";
+import { AbsolutePath, AppId, ServiceName, type VolumeInfo } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
 import { renderGlobalDestroyResult } from "../../src/cli/commands/meta/global-destroy.ts";
 import { renderGlobalStopResult } from "../../src/cli/commands/meta/global-stop.ts";
@@ -24,7 +24,10 @@ for (const evidence of ["absent", "applied", "destroyed", "volume", "preserved-v
           }
           const volume: VolumeInfo = {
             ref: { app: AppId.make("global"), store: "data" },
-            labels: { "dev.lando.scope": evidence === "preserved-volume" ? "global" : "app" },
+            labels: {
+              "dev.lando.scope": evidence === "preserved-volume" ? "global" : "app",
+              "dev.lando.data-root": dataRoot,
+            },
             identity: {
               ownerRoot: root,
               nativeName: "data",
@@ -38,8 +41,23 @@ for (const evidence of ["absent", "applied", "destroyed", "volume", "preserved-v
             volumes: evidence === "volume" || evidence === "preserved-volume" ? [volume] : [],
             destroyOutcome:
               evidence === "destroyed"
-                ? { kind: "destroyed", volumesRemoved: { data: 0, cache: 0 } }
+                ? { kind: "removed", containers: [], volumesRemoved: { data: 0, cache: 0 } }
                 : { kind: "no-op", reason: "no-applied-plan" },
+            // An applied app whose containers already stopped; the default stops each planned service.
+            ...(evidence === "applied"
+              ? {
+                  stopOutcome: {
+                    kind: "stopped" as const,
+                    containers: [
+                      {
+                        service: ServiceName.make("ssh-agent"),
+                        containerId: "ssh-agent-container",
+                        action: "already-stopped" as const,
+                      },
+                    ],
+                  },
+                }
+              : {}),
           });
           // When stop preserves volumes or destroy requests purge.
           const result =

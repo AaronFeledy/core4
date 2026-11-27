@@ -5,6 +5,7 @@ import { PrivateFileAccessService } from "@lando/state-store/private-file-access
 import { Effect, Layer, Schema } from "effect";
 
 import { CA_ID, makeMkcertCertificateAuthority } from "./ca.ts";
+import { makeLocalCaHostMaintainer } from "./uninstall-trust.ts";
 
 export const PLUGIN_NAME = "@lando/ca-mkcert" as const;
 
@@ -52,6 +53,7 @@ export const plugin = definePlugin({
   name: manifest.name,
   manifest,
   certificateAuthorities: new Map([[CA_ID, layer]]),
+  hostMaintainers: [makeLocalCaHostMaintainer()],
 });
 
 export type { MkcertCertificateAuthorityOptions } from "./ca.ts";

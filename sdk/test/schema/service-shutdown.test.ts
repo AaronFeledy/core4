@@ -1,9 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import {
+  BringDownOptions,
+  BringDownOutcome,
   DestroyAppResult,
-  DestroyOutcome,
   FileSyncQuiesceResult,
-  ObservedServiceRemoval,
+  ObservedBringDown,
   ServiceShutdownObservation,
   StopAppResult,
 } from "@lando/sdk/schema";
@@ -118,10 +119,26 @@ describe("shutdown receipts", () => {
 
   test.each([
     ["file sync quiescence", FileSyncQuiesceResult, {}],
-    ["destroyed", DestroyOutcome, { kind: "destroyed", volumesRemoved: { data: 1, cache: 0 } }],
-    ["no-op", DestroyOutcome, { kind: "no-op", reason: "no-applied-plan" }],
-    ["removed", ObservedServiceRemoval, { kind: "removed" }],
-    ["absent", ObservedServiceRemoval, { kind: "absent" }],
+    [
+      "removed",
+      BringDownOutcome,
+      {
+        kind: "removed",
+        containers: [{ service: "web", containerId: "exact-id", action: "removed" }],
+        volumesRemoved: { data: 1, cache: 0 },
+      },
+    ],
+    [
+      "stopped",
+      BringDownOutcome,
+      {
+        kind: "stopped",
+        containers: [{ service: "web", containerId: "exact-id", action: "already-stopped" }],
+      },
+    ],
+    ["no-op", BringDownOutcome, { kind: "no-op", reason: "no-applied-plan" }],
+    ["observed removed", ObservedBringDown, { service: "web", containerId: "exact-id", action: "removed" }],
+    ["observed absent", ObservedBringDown, { service: "web", action: "absent" }],
     ["app stop", StopAppResult, { app: "demo", servicesStopped: ["web"] }],
     [
       "app destroy",
@@ -142,29 +159,47 @@ describe("shutdown receipts", () => {
   });
 
   test.each([{ kind: "no-op" }, { kind: "no-op", reason: "other" }, { kind: "unknown" }])(
-    "rejects invalid provider destroy outcome %j",
+    "rejects invalid provider bring-down outcome %j",
     (value) => {
-      const result = Schema.decodeUnknownResult(DestroyOutcome)(value);
+      const result = Schema.decodeUnknownResult(BringDownOutcome)(value);
       expect(Result.isFailure(result)).toBe(true);
     },
   );
 
-  test("destroyed requires actual per-class removal counts", () => {
-    expect(Result.isFailure(Schema.decodeUnknownResult(DestroyOutcome)({ kind: "destroyed" }))).toBe(true);
+  test("removed requires actual per-class removal counts", () => {
+    expect(
+      Result.isFailure(Schema.decodeUnknownResult(BringDownOutcome)({ kind: "removed", containers: [] })),
+    ).toBe(true);
     for (const counts of [
       { data: 0, cache: 0 },
       { data: 2, cache: 1 },
     ]) {
-      const value = { kind: "destroyed" as const, volumesRemoved: counts };
-      expect(roundTrip(DestroyOutcome, value)).toEqual(value);
+      const value = { kind: "removed" as const, containers: [], volumesRemoved: counts };
+      expect(roundTrip(BringDownOutcome, value)).toEqual(value);
     }
     expect(
       Result.isFailure(
-        Schema.decodeUnknownResult(DestroyOutcome)({
-          kind: "destroyed",
+        Schema.decodeUnknownResult(BringDownOutcome)({
+          kind: "removed",
+          containers: [],
           volumesRemoved: { data: -1, cache: 0 },
         }),
       ),
     ).toBe(true);
+  });
+});
+
+describe("bring-down options", () => {
+  test("stop carries no removal flags", () => {
+    expect(Schema.is(BringDownOptions)({ containers: "stop" })).toBe(true);
+    expect(Schema.is(BringDownOptions)({ containers: "stop", volumes: true })).toBe(false);
+    expect(Schema.is(BringDownOptions)({ containers: "stop", removeState: false })).toBe(false);
+  });
+
+  test("remove requires an explicit volume choice", () => {
+    expect(Schema.is(BringDownOptions)({ containers: "remove", volumes: false, removeState: false })).toBe(
+      true,
+    );
+    expect(Schema.is(BringDownOptions)({ containers: "remove" })).toBe(false);
   });
 });

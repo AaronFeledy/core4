@@ -991,6 +991,12 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# A new push to a pull request supersedes its running checks. Other events get
+# a group of their own, so every main commit keeps its run.
+concurrency:
+  group: ci-\${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: \${{ github.event_name == 'pull_request' }}
+
 defaults:
   run:
     shell: bash
@@ -1035,7 +1041,7 @@ ${codegenStep}
 
       - name: Check schema compatibility
         env:
-          LANDO_SCHEMA_COMPATIBILITY_BASE_REF: origin/\${{ github.event_name == 'pull_request' && github.base_ref || 'main' }}
+          LANDO_SCHEMA_COMPATIBILITY_BASE_REF: \${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || 'origin/main' }}
         run: bun run check:schema-compatibility
 
       - name: Regenerate command reference

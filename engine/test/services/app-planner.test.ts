@@ -36,7 +36,7 @@ import {
   PluginRegistry,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
-import { TestFileSyncEngine, TestRuntimeProvider } from "@lando/sdk/test";
+import { TestFileSyncEngine, TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Cause, Effect, Exit, Layer, Option, References, Schema, Tracer } from "effect";
 import { APP_PLAN_CACHE_HEADER_BYTES, writeCachedAppPlan } from "../../src/cache/app-plan.ts";
 import { appPlanCachePath } from "../../src/cache/paths.ts";
@@ -49,7 +49,6 @@ import { LANDO_BASE_DEFAULT_FEATURE_IDS } from "../../src/services/base/lando.ts
 import { GlobalConfigSources } from "../../src/services/config.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";
-import { DEFAULT_APP_MOUNT_EXCLUDES } from "../../src/services/planner.ts";
 import { HOST_INTERNAL_ALIAS, HOST_IP_ENV_KEY } from "../../src/subsystems/networking.ts";
 import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
 import {
@@ -57,6 +56,7 @@ import {
   planLiteralTestLandofile as planTestLandofile,
 } from "../compiled-landofile.ts";
 import { fileSyncEngineLayer } from "../file-sync-engine.ts";
+import { pathsServiceLayer } from "../paths-service.ts";
 import * as TestLandofileServiceLayer from "./landofile-layer.ts";
 
 const providerLandoCapabilities: ProviderCapabilities = {
@@ -117,7 +117,7 @@ const landofileFixture: LandofileShape = {
       image: "node:lts",
       ports: [{ target: 3000, published: 3000, protocol: "tcp" }],
       environment: { NODE_ENV: "development" },
-      dependsOn: [{ service: "db" }],
+      depends_on: [{ service: "db" }],
     },
     [ServiceName.make("db")]: {
       home: false,
@@ -145,7 +145,7 @@ const plan = (landofile: LandofileShape, providerCapabilities = providerLandoCap
     Effect.flatMap(AppPlanner, (appPlanner) =>
       planTestLandofile(appPlanner, landofile, providerCapabilities),
     ).pipe(
-      Effect.provide(AppPlannerLayer.layer),
+      Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
       Effect.provide(
         Layer.mergeAll(
           PluginRegistryLayer.layer,
@@ -165,7 +165,7 @@ const planExit = (landofile: LandofileShape, providerCapabilities = providerLand
     Effect.flatMap(AppPlanner, (appPlanner) =>
       planTestLandofile(appPlanner, landofile, providerCapabilities),
     ).pipe(
-      Effect.provide(AppPlannerLayer.layer),
+      Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
       Effect.provide(Layer.mergeAll(PluginRegistryLayer.layer, BunFileSystem.layer)),
     ),
   );
@@ -176,7 +176,7 @@ const compiledPlanExit = (landofile: LandofileShape) =>
     Effect.flatMap(AppPlanner, (appPlanner) =>
       planCompiledTestLandofile(appPlanner, landofile, providerLandoCapabilities),
     ).pipe(
-      Effect.provide(AppPlannerLayer.layer),
+      Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
       Effect.provide(Layer.mergeAll(PluginRegistryLayer.layer, BunFileSystem.layer)),
     ),
   );
@@ -185,7 +185,10 @@ const planWithoutFileSystem = (landofile: LandofileShape) =>
   Effect.runPromiseExit(
     Effect.flatMap(AppPlanner, (appPlanner) =>
       planTestLandofile(appPlanner, landofile, providerLandoCapabilities),
-    ).pipe(Effect.provide(AppPlannerLayer.layer), Effect.provide(PluginRegistryLayer.layer)),
+    ).pipe(
+      Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
+      Effect.provide(PluginRegistryLayer.layer),
+    ),
   );
 
 test("planning emits phase spans beneath AppPlanner.plan", async () => {
@@ -203,7 +206,7 @@ test("planning emits phase spans beneath AppPlanner.plan", async () => {
     Effect.flatMap(AppPlanner, (planner) =>
       planTestLandofile(planner, landofileFixture, providerLandoCapabilities),
     ).pipe(
-      Effect.provide(AppPlannerLayer.layer),
+      Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
       Effect.provide(PluginRegistryLayer.layer),
       Effect.withTracer(tracer),
       Effect.provideService(References.TracerEnabled, true),
@@ -239,7 +242,7 @@ test("planning emits phase spans beneath AppPlanner.plan", async () => {
     "AppPlanner.planServices",
     "AppPlanner.applyPreparedFeatures",
     "AppPlanner.finalizeServices",
-    "AppPlanner.normalizeNetworks",
+    "AppPlanner.planNetworking",
     "AppPlanner.validateServiceProbes",
     "AppPlanner.validateRouteUrls",
   ]);
@@ -330,7 +333,7 @@ const planWithFileSystem = (landofile: LandofileShape) =>
     Effect.flatMap(AppPlanner, (appPlanner) =>
       planTestLandofile(appPlanner, landofile, providerLandoCapabilities),
     ).pipe(
-      Effect.provide(AppPlannerLayer.layer),
+      Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
       Effect.provide(PluginRegistryLayer.layer),
       Effect.provide(BunFileSystem.layer),
     ),
@@ -358,7 +361,7 @@ const planWithConfig = (
     Effect.flatMap(AppPlanner, (appPlanner) =>
       planTestLandofile(appPlanner, landofile, providerCapabilities),
     ).pipe(
-      Effect.provide(AppPlannerLayer.layer),
+      Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
       Effect.provide(PluginRegistryLayer.layer),
       Effect.provide(configLayer(defaultProviderId)),
     ),
@@ -536,7 +539,7 @@ const planWithCustomRegistry = (
     Effect.flatMap(AppPlanner, (appPlanner) =>
       planTestLandofile(appPlanner, landofile, providerCapabilities),
     ).pipe(
-      Effect.provide(AppPlannerLayer.layer),
+      Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
       Effect.provide(Layer.succeed(PluginRegistry, customPluginRegistry)),
     ),
   );
@@ -549,7 +552,7 @@ const planExitWithCustomRegistry = (
     Effect.flatMap(AppPlanner, (appPlanner) =>
       planTestLandofile(appPlanner, landofile, providerCapabilities),
     ).pipe(
-      Effect.provide(AppPlannerLayer.layer),
+      Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
       Effect.provide(Layer.succeed(PluginRegistry, customPluginRegistry)),
     ),
   );
@@ -605,6 +608,7 @@ describe("AppPlannerLayer.layer", () => {
                     Effect.map(load, (value): GlobalConfig[K] => value[key]),
                 }),
               ),
+              pathsServiceLayer(),
             ),
           ),
         );
@@ -695,7 +699,7 @@ describe("AppPlannerLayer.layer", () => {
     });
   }
 
-  for (const scanner of [{ path: "/ready", okCodes: [204], retries: 0, timeout: 7000 }, false] as const) {
+  for (const scanner of [{ path: "/ready", okCodes: [204], retries: 0, timeoutMs: 7000 }, false] as const) {
     test(`records resolved scanner when authored as ${scanner === false ? "false" : "an object"}`, async () => {
       // Given
       const landofile = Schema.decodeUnknownSync(LandofileShape)({
@@ -738,7 +742,7 @@ describe("AppPlannerLayer.layer", () => {
       Effect.flatMap(AppPlanner, (planner) =>
         planTestLandofile(planner, landofile, providerLandoCapabilities),
       ).pipe(
-        Effect.provide(AppPlannerLayer.layer),
+        Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
         Effect.provide(Layer.succeed(PluginRegistry, registryWithServiceType(serviceType))),
       ),
     );
@@ -1090,7 +1094,7 @@ describe("AppPlannerLayer.layer", () => {
         Effect.flatMap(AppPlanner, (planner) =>
           planTestLandofile(planner, landofile, providerLandoCapabilities),
         ).pipe(
-          Effect.provide(AppPlannerLayer.layer),
+          Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
           Effect.provide(Layer.succeed(PluginRegistry, registry)),
         ),
       );
@@ -1401,7 +1405,7 @@ describe("AppPlannerLayer.layer", () => {
             { ...providerLandoCapabilities, serviceLogSources: false },
           ),
         ).pipe(
-          Effect.provide(AppPlannerLayer.layer),
+          Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
           Effect.provide(Layer.succeed(PluginRegistry, registryWithServiceType(serviceType))),
         ),
       );
@@ -1435,7 +1439,7 @@ describe("AppPlannerLayer.layer", () => {
             { ...providerLandoCapabilities, serviceLogSources: false },
           ),
         ).pipe(
-          Effect.provide(AppPlannerLayer.layer),
+          Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
           Effect.provide(Layer.succeed(PluginRegistry, registryWithServiceType(serviceType))),
         ),
       );
@@ -1493,10 +1497,7 @@ describe("AppPlannerLayer.layer", () => {
             return TestRuntimeProvider.inspect(target);
           },
         };
-        const registry = RuntimeProviderRegistry.of({
-          appliedPlansFor: () => Effect.succeed([]),
-          resolveAppliedPlan: () => Effect.succeed(undefined),
-          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+        const registry = makeTestRuntimeProviderRegistry({
           list: Effect.succeed([appPlan.provider]),
           capabilities: Effect.succeed(capabilities),
           select: () => Effect.succeed(provider),
@@ -1665,7 +1666,7 @@ describe("AppPlannerLayer.layer", () => {
         Effect.flatMap(AppPlanner, (planner) =>
           planTestLandofile(planner, landofile, providerLandoCapabilities),
         ).pipe(
-          Effect.provide(AppPlannerLayer.layer),
+          Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
           Effect.provide(PluginRegistryLayer.layer),
           Effect.provide(BunFileSystem.layer),
         ),
@@ -1713,7 +1714,7 @@ describe("AppPlannerLayer.layer", () => {
       // When
       const appPlan = await Effect.runPromise(
         Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, providerLandoCapabilities)).pipe(
-          Effect.provide(AppPlannerLayer.layer),
+          Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
           Effect.provide(PluginRegistryLayer.layer),
           Effect.provide(BunFileSystem.layer),
         ),
@@ -1740,7 +1741,7 @@ describe("AppPlannerLayer.layer", () => {
         Effect.flatMap(AppPlanner, (planner) =>
           planTestLandofile(planner, landofile, providerLandoCapabilities),
         ).pipe(
-          Effect.provide(AppPlannerLayer.layer),
+          Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
           Effect.provide(PluginRegistryLayer.layer),
           Effect.provide(BunFileSystem.layer),
         ),
@@ -1809,7 +1810,7 @@ describe("AppPlannerLayer.layer", () => {
         Effect.flatMap(AppPlanner, (planner) =>
           planTestLandofile(planner, landofile, providerLandoCapabilities),
         ).pipe(
-          Effect.provide(AppPlannerLayer.layer),
+          Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
           Effect.provide(PluginRegistryLayer.layer),
           Effect.provide(BunFileSystem.layer),
         ),
@@ -1832,7 +1833,7 @@ describe("AppPlannerLayer.layer", () => {
       const landofile = Schema.decodeUnknownSync(LandofileShape)({
         name: "top-level-env-file",
         runtime: 4,
-        env_file: ["shared.env", "shared.local.env"],
+        serviceDefaults: { env_file: ["shared.env", "shared.local.env"] },
         services: {
           inherited: { image: "node:lts", home: false },
           serviceFile: { image: "node:lts", home: false, env_file: "service.env" },
@@ -1850,7 +1851,7 @@ describe("AppPlannerLayer.layer", () => {
         Effect.flatMap(AppPlanner, (planner) =>
           planTestLandofile(planner, landofile, providerLandoCapabilities),
         ).pipe(
-          Effect.provide(AppPlannerLayer.layer),
+          Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
           Effect.provide(PluginRegistryLayer.layer),
           Effect.provide(BunFileSystem.layer),
         ),
@@ -1881,7 +1882,7 @@ describe("AppPlannerLayer.layer", () => {
       const landofile = Schema.decodeUnknownSync(LandofileShape)({
         name: "missing-top-level-env-file",
         runtime: 4,
-        env_file: "missing.env",
+        serviceDefaults: { env_file: "missing.env" },
       });
 
       // When
@@ -1889,7 +1890,7 @@ describe("AppPlannerLayer.layer", () => {
         Effect.flatMap(AppPlanner, (planner) =>
           planTestLandofile(planner, landofile, providerLandoCapabilities),
         ).pipe(
-          Effect.provide(AppPlannerLayer.layer),
+          Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
           Effect.provide(PluginRegistryLayer.layer),
           Effect.provide(BunFileSystem.layer),
         ),
@@ -2016,12 +2017,15 @@ describe("AppPlannerLayer.layer", () => {
                 loadAppFeature: () => Effect.die("not used"),
               }),
             ),
+            pathsServiceLayer(),
           ),
         ),
       );
       const cachedLandofile: LandofileShape = {
         name: "cached-app",
-        services: { [ServiceName.make("web")]: { type: "cached-type", home: false, envFile: ["cache.env"] } },
+        services: {
+          [ServiceName.make("web")]: { type: "cached-type", home: false, env_file: ["cache.env"] },
+        },
       };
 
       try {
@@ -2153,12 +2157,13 @@ describe("AppPlannerLayer.layer", () => {
                 loadAppFeature: () => Effect.die("not used"),
               }),
             ),
+            pathsServiceLayer(),
           ),
         ),
       );
       const landofile: LandofileShape = {
         name: "env-file-cache-app",
-        env_file: ["cache.env"],
+        serviceDefaults: { env_file: ["cache.env"] },
         services: { [ServiceName.make("web")]: { type: "env-file-cache-type", home: false } },
       };
 
@@ -2398,7 +2403,7 @@ describe("AppPlannerLayer.layer", () => {
             providerLandoCapabilities,
           ),
         ).pipe(
-          Effect.provide(AppPlannerLayer.layer),
+          Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
           Effect.provide(Layer.succeed(PluginRegistry, registry)),
         ),
       );
@@ -2457,7 +2462,7 @@ describe("AppPlannerLayer.layer", () => {
             { ...providerLandoCapabilities, sharedCrossAppNetwork: false },
           ),
         ).pipe(
-          Effect.provide(AppPlannerLayer.layer),
+          Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
           Effect.provide(Layer.succeed(PluginRegistry, registry)),
         ),
       );
@@ -2558,7 +2563,7 @@ describe("AppPlannerLayer.layer", () => {
             providerLandoCapabilities,
           ),
         ).pipe(
-          Effect.provide(AppPlannerLayer.layer),
+          Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
           Effect.provide(Layer.succeed(PluginRegistry, registry)),
         ),
       );
@@ -2664,7 +2669,7 @@ describe("AppPlannerLayer.layer", () => {
             providerLandoCapabilities,
           ),
         ).pipe(
-          Effect.provide(AppPlannerLayer.layer),
+          Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
           Effect.provide(Layer.succeed(PluginRegistry, registry)),
         ),
       );
@@ -2739,7 +2744,7 @@ describe("AppPlannerLayer.layer", () => {
             providerLandoCapabilities,
           ),
         ).pipe(
-          Effect.provide(AppPlannerLayer.layer),
+          Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
           Effect.provide(Layer.succeed(PluginRegistry, registry)),
         ),
       );
@@ -2796,7 +2801,7 @@ describe("AppPlannerLayer.layer", () => {
             providerLandoCapabilities,
           ),
         ).pipe(
-          Effect.provide(AppPlannerLayer.layer),
+          Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
           Effect.provide(Layer.succeed(PluginRegistry, registry)),
         ),
       );
@@ -2812,7 +2817,7 @@ describe("AppPlannerLayer.layer", () => {
       name: "authored-dependencies",
       runtime: 4,
       services: {
-        web: { type: "appmount-only", home: false, dependsOn: ["db"] },
+        web: { type: "appmount-only", home: false, depends_on: ["db"] },
         db: { type: "appmount-only", home: false },
       },
     });
@@ -2832,7 +2837,11 @@ describe("AppPlannerLayer.layer", () => {
       name: "authored-dependency-restart",
       runtime: 4,
       services: {
-        web: { type: "appmount-only", home: false, dependsOn: [{ service: "db", restart: false }] },
+        web: {
+          type: "appmount-only",
+          home: false,
+          depends_on: { db: { condition: "service_started", restart: false } },
+        },
         db: { type: "appmount-only", home: false },
       },
     });
@@ -3101,7 +3110,14 @@ describe("AppPlannerLayer.layer", () => {
         services: { [ServiceName.make("web")]: { type: "node", packageRoot: "apps/web" } },
       };
       const layer = AppPlannerLayer.layer.pipe(
-        Layer.provide(Layer.mergeAll(AppCacheService.layer, BunFileSystem.layer, PluginRegistryLayer.layer)),
+        Layer.provide(
+          Layer.mergeAll(
+            AppCacheService.layer,
+            BunFileSystem.layer,
+            PluginRegistryLayer.layer,
+            pathsServiceLayer(),
+          ),
+        ),
       );
       const runPlan = () =>
         Effect.runPromise(
@@ -3210,7 +3226,13 @@ describe("AppPlannerLayer.layer", () => {
 
   test("marks slow provider app mounts as accelerated without a mirror bind", async () => {
     await withTempCwd(async () => {
-      const appPlan = await plan(landofileFixture, slowBindMountCapabilities);
+      const appPlan = await plan(
+        {
+          ...landofileFixture,
+          services: { [ServiceName.make("web")]: { type: "compose", image: "alpine", home: false } },
+        },
+        slowBindMountCapabilities,
+      );
       const web = appPlan.services[ServiceName.make("web")];
 
       expect(serviceAppMount(web ?? { mounts: [] })?.realization).toBe("accelerated");
@@ -3225,11 +3247,7 @@ describe("AppPlannerLayer.layer", () => {
           (mount) => mount.type !== "volume" && (mount.type !== "bind" || mount.role !== "app"),
         ),
       ).toEqual([]);
-      expect(web?.mounts.filter((mount) => mount.type === "volume").map((mount) => mount.target)).toEqual([
-        PortablePath.make("/app/node_modules"),
-        PortablePath.make("/app/tmp"),
-        PortablePath.make("/app/vendor"),
-      ]);
+      expect(web?.mounts.filter((mount) => mount.type === "volume")).toEqual([]);
     });
   });
 
@@ -3286,6 +3304,7 @@ describe("AppPlannerLayer.layer", () => {
       expect(appPlan.fileSync).toEqual([]);
       expect(serviceAppMount(appPlan.services[ServiceName.make("web")] ?? { mounts: [] })).toMatchObject({
         realization: "passthrough",
+        excludes: ["node_modules"],
       });
       expect(
         serviceAppMount(appPlan.services[ServiceName.make("web")] ?? { mounts: [] })?.mountKey,
@@ -3383,7 +3402,11 @@ describe("AppPlannerLayer.layer", () => {
             slowBindMountCapabilities,
           ),
         ).pipe(
-          Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(Layer.succeed(PluginRegistry, registry)))),
+          Effect.provide(
+            AppPlannerLayer.layer.pipe(
+              Layer.provide(Layer.mergeAll(Layer.succeed(PluginRegistry, registry), pathsServiceLayer())),
+            ),
+          ),
         ),
       );
 
@@ -3853,7 +3876,7 @@ describe("AppPlannerLayer.layer", () => {
     });
   });
 
-  test("default overlay and sync-only excludes are merged separately", async () => {
+  test("an app mount without a type preset or authored excludes has none", async () => {
     await withTempCwd(async () => {
       const appPlan = await planWithCustomRegistry({
         name: "defapp",
@@ -3863,28 +3886,29 @@ describe("AppPlannerLayer.layer", () => {
         },
       });
       const web = appPlan.services[ServiceName.make("web")];
-      expect(serviceAppMount(web ?? { mounts: [] })?.excludes).toEqual(DEFAULT_APP_MOUNT_EXCLUDES);
+      expect(serviceAppMount(web ?? { mounts: [] })?.excludes).toEqual([]);
+      expect(
+        web?.mounts.some((mount) => mount.type === "volume" && String(mount.target).startsWith("/app/")),
+      ).toBe(false);
     });
   });
 
-  test("user-authored excludes extend defaults rather than replace them", async () => {
+  test("user-authored excludes are the only app-mount excludes without a type preset", async () => {
     await withTempCwd(async () => {
       const appPlan = await plan({
         name: "extapp",
         runtime: 4,
         services: {
           [ServiceName.make("web")]: {
-            type: "node:lts",
+            type: "compose",
+            image: "alpine",
             home: false,
             appMount: { target: "/app", excludes: ["dist"] },
           },
         },
       });
       const web = appPlan.services[ServiceName.make("web")];
-      expect(serviceAppMount(web ?? { mounts: [] })?.excludes).toEqual([
-        ...DEFAULT_APP_MOUNT_EXCLUDES,
-        "dist",
-      ]);
+      expect(serviceAppMount(web ?? { mounts: [] })?.excludes).toEqual(["dist"]);
     });
   });
 
@@ -3905,10 +3929,7 @@ describe("AppPlannerLayer.layer", () => {
         providerLandoCapabilities,
       );
       const web = appPlan.services[ServiceName.make("web")];
-      expect(serviceAppMount(web ?? { mounts: [] })?.excludes).toEqual(
-        expect.arrayContaining([...DEFAULT_APP_MOUNT_EXCLUDES, "__pycache__", ".venv", "dist"]),
-      );
-      expect(serviceAppMount(web ?? { mounts: [] })?.excludes).toContain("__pycache__");
+      expect(serviceAppMount(web ?? { mounts: [] })?.excludes).toEqual(["__pycache__", ".venv", "dist"]);
     });
   });
 
@@ -3932,11 +3953,7 @@ describe("AppPlannerLayer.layer", () => {
         providerLandoCapabilities,
       );
       const web = appPlan.services[ServiceName.make("web")];
-      expect(serviceAppMount(web ?? { mounts: [] })?.excludes).toEqual([
-        ...DEFAULT_APP_MOUNT_EXCLUDES,
-        "__pycache__",
-        ".venv",
-      ]);
+      expect(serviceAppMount(web ?? { mounts: [] })?.excludes).toEqual(["__pycache__", ".venv"]);
       const venvStores = ["web", "worker"].map((name) => {
         const mount = appPlan.services[ServiceName.make(name)]?.mounts.find(
           (entry) => entry.type === "volume" && entry.target === "/app/.venv",
@@ -4021,32 +4038,33 @@ describe("AppPlannerLayer.layer", () => {
     });
   });
 
-  test("FileSyncPlan session.excludes inherits defaults on slow providers", async () => {
+  test("FileSyncPlan session.excludes carries only fixed sync ignores without type presets", async () => {
     await withTempCwd(async () => {
       const appPlan = await plan(
         {
           name: "myapp",
           runtime: 4,
-          services: { [ServiceName.make("web")]: { image: "node:lts", home: false } },
+          services: {
+            [ServiceName.make("web")]: { type: "compose", image: "alpine", home: false },
+          },
         },
         slowBindMountCapabilities,
       );
       const webEntry = appPlan.fileSync.find((e) => String(e.session.service) === "web");
       expect(webEntry).toBeDefined();
-      expect(webEntry?.session.excludes).toEqual(
-        expect.arrayContaining(["node_modules", "vendor", ".git", "tmp"]),
-      );
+      expect(webEntry?.session.excludes).toEqual([".git"]);
     });
   });
 
   test("expands appMount.excludes into volume-shadow stores in AppPlan.stores", async () => {
     await withTempCwd(async () => {
-      const appPlan = await planWithCustomRegistry({
+      const appPlan = await plan({
         name: "shadowapp",
         runtime: 4,
         services: {
           [ServiceName.make("web")]: {
-            type: "appmount-only",
+            type: "compose",
+            image: "alpine",
             home: false,
             appMount: {
               target: "/app",
@@ -4059,7 +4077,6 @@ describe("AppPlannerLayer.layer", () => {
       const storeNames = appPlan.stores.map((s) => s.name).sort();
       expect(storeNames).toEqual([
         "lando-shadowapp--web--shadow--app-node-modules-ad806e3f",
-        "lando-shadowapp--web--shadow--app-tmp-43bdc5ce",
         "lando-shadowapp--web--shadow--app-vendor-64784057",
       ]);
       expect(appPlan.stores.every((s) => s.scope === "service")).toBe(true);
@@ -4072,10 +4089,9 @@ describe("AppPlannerLayer.layer", () => {
           .sort() ?? [];
       expect(shadowTargets).toEqual([
         PortablePath.make("/app/node_modules"),
-        PortablePath.make("/app/tmp"),
         PortablePath.make("/app/vendor"),
       ]);
-      expect(serviceAppMount(web ?? { mounts: [] })?.excludes).toEqual(["node_modules", "vendor", "tmp"]);
+      expect(serviceAppMount(web ?? { mounts: [] })?.excludes).toEqual(["node_modules", "vendor"]);
     });
   });
 
@@ -4087,7 +4103,8 @@ describe("AppPlannerLayer.layer", () => {
           runtime: 4,
           services: {
             [ServiceName.make("web")]: {
-              type: "node:lts",
+              type: "compose",
+              image: "alpine",
               home: false,
               appMount: { target: "/app", excludes: [exclude] },
             },
@@ -4434,6 +4451,66 @@ describe("AppPlannerLayer.layer", () => {
     expect(servicePlan?.healthcheck).not.toHaveProperty("startIntervalSeconds");
   });
 
+  test("retains Lando startIntervalSeconds in the plan and emits native start_interval", async () => {
+    // Given
+    const landofile = Schema.decodeUnknownSync(LandofileShape)({
+      name: "lando-start-interval-seconds",
+      runtime: 4,
+      services: {
+        web: {
+          image: "node:lts",
+          home: false,
+          healthcheck: {
+            command: ["true"],
+            startIntervalSeconds: 2,
+          },
+        },
+      },
+    });
+
+    // When
+    const appPlan = await plan(landofile, composePreservedPathCapabilities);
+
+    // Then the Lando timing and native lowering remain separate.
+    const servicePlan = appPlan.services[ServiceName.make("web")];
+    expect(servicePlan?.extensions).toMatchObject({
+      compose: { healthcheck: { start_interval: "2s" } },
+    });
+    expect(servicePlan?.healthcheck).not.toHaveProperty("startInterval");
+    expect(servicePlan?.healthcheck?.startIntervalSeconds).toBe(2);
+    expect(servicePlan?.healthcheck).not.toHaveProperty("start_interval");
+  });
+
+  test("does not emit readiness startIntervalSeconds as native start_interval", async () => {
+    // Given readiness is Lando-run, not a container healthcheck.
+    const landofile = Schema.decodeUnknownSync(LandofileShape)({
+      name: "readiness-start-interval-seconds",
+      runtime: 4,
+      services: {
+        web: {
+          image: "node:lts",
+          home: false,
+          readiness: {
+            command: ["true"],
+            startIntervalSeconds: 2,
+          },
+        },
+      },
+    });
+
+    // When
+    const appPlan = await plan(landofile, composePreservedPathCapabilities);
+
+    // Then readiness never feeds the native healthcheck extension.
+    const servicePlan = appPlan.services[ServiceName.make("web")];
+    expect(servicePlan?.extensions.compose).toBeUndefined();
+    expect(servicePlan?.readiness).toMatchObject({
+      kind: "command",
+      command: ["true"],
+      startIntervalSeconds: 2,
+    });
+  });
+
   test("preserves Compose labels and healthcheck start_interval together", async () => {
     // Given
     const landofile = Schema.decodeUnknownSync(LandofileShape)({
@@ -4602,7 +4679,7 @@ describe("AppPlannerLayer.layer", () => {
             providerLandoCapabilities,
           ),
         ).pipe(
-          Effect.provide(AppPlannerLayer.layer),
+          Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
           Effect.provide(Layer.succeed(PluginRegistry, registry)),
         ),
       );
@@ -4699,7 +4776,7 @@ describe("AppPlannerLayer.layer", () => {
             providerLandoCapabilities,
           ),
         ).pipe(
-          Effect.provide(AppPlannerLayer.layer),
+          Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
           Effect.provide(Layer.succeed(PluginRegistry, registry)),
         ),
       );
@@ -4818,7 +4895,7 @@ describe("AppPlannerLayer.layer", () => {
             providerLandoCapabilities,
           ),
         ).pipe(
-          Effect.provide(AppPlannerLayer.layer),
+          Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
           Effect.provide(Layer.succeed(PluginRegistry, registry)),
         ),
       );
@@ -4902,7 +4979,9 @@ describe("AppPlannerLayer.layer", () => {
         },
       };
       const layer = AppPlannerLayer.layer.pipe(
-        Layer.provide(Layer.mergeAll(AppCacheService.layer, Layer.succeed(PluginRegistry, registry))),
+        Layer.provide(
+          Layer.mergeAll(AppCacheService.layer, Layer.succeed(PluginRegistry, registry), pathsServiceLayer()),
+        ),
       );
       const landofile: LandofileShape = {
         name: "feature-flip-app",
@@ -5057,7 +5136,7 @@ describe("AppPlannerLayer.layer", () => {
                   providerLandoCapabilities,
                 ),
               ).pipe(
-                Effect.provide(AppPlannerLayer.layer),
+                Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
                 Effect.provide(PluginRegistryLayer.layer),
                 Effect.provide(AppCacheService.layer),
               ),
@@ -5102,7 +5181,7 @@ describe("AppPlannerLayer.layer", () => {
                 providerLandoCapabilities,
               ),
             ).pipe(
-              Effect.provide(AppPlannerLayer.layer),
+              Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
               Effect.provide(Layer.mergeAll(PluginRegistryLayer.layer, BunFileSystem.layer)),
               Effect.provide(AppCacheService.layer),
             ),
@@ -5183,7 +5262,7 @@ describe("AppPlannerLayer.layer", () => {
               providerLandoCapabilities,
             ),
           ).pipe(
-            Effect.provide(AppPlannerLayer.layer),
+            Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
             Effect.provide(Layer.succeed(PluginRegistry, registry)),
           ),
         );
@@ -5210,7 +5289,7 @@ describe("AppPlannerLayer.layer", () => {
               providerLandoCapabilities,
             ),
           ).pipe(
-            Effect.provide(AppPlannerLayer.layer),
+            Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
             Effect.provide(Layer.succeed(PluginRegistry, registry)),
           ),
         );
@@ -5231,7 +5310,7 @@ describe("AppPlannerLayer.layer", () => {
               providerLandoCapabilities,
             ),
           ).pipe(
-            Effect.provide(AppPlannerLayer.layer),
+            Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
             Effect.provide(Layer.succeed(PluginRegistry, registry)),
           ),
         );
@@ -5253,7 +5332,7 @@ describe("AppPlannerLayer.layer", () => {
               providerLandoCapabilities,
             ),
           ).pipe(
-            Effect.provide(AppPlannerLayer.layer),
+            Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
             Effect.provide(Layer.succeed(PluginRegistry, registry)),
           ),
         );
@@ -5273,7 +5352,7 @@ describe("AppPlannerLayer.layer", () => {
         web: {
           type: "appmount-only",
           home: false,
-          dependsOn: [{ service: "db", condition: "service_started", required: true }],
+          depends_on: { db: { condition: "service_started", required: true } },
         },
       },
     });
@@ -5287,7 +5366,7 @@ describe("AppPlannerLayer.layer", () => {
     if (failure instanceof LandofileValidationError) {
       expect(failure._tag).toBe("LandofileValidationError");
       expect(failure.issues.map((issue) => formatValidationIssuePath(issue.path))).toEqual([
-        "services.web.dependsOn",
+        "services.web.depends_on",
       ]);
       expect(failure.message).toContain(
         "Service web depends on missing service db with condition service_started.",
@@ -5305,13 +5384,7 @@ describe("AppPlannerLayer.layer", () => {
         web: {
           type: "appmount-only",
           home: false,
-          dependsOn: [
-            {
-              service: "db",
-              condition: "service_completed_successfully",
-              required: false,
-            },
-          ],
+          depends_on: { db: { condition: "service_completed_successfully", required: false } },
         },
       },
     });
@@ -5338,7 +5411,7 @@ describe("AppPlannerLayer.layer", () => {
         web: {
           type: "appmount-only",
           home: false,
-          dependsOn: [{ service: "db", condition: "service_healthy", required: true }],
+          depends_on: { db: { condition: "service_healthy", required: true } },
         },
         db: { type: "appmount-only", home: false },
       },
@@ -5353,7 +5426,7 @@ describe("AppPlannerLayer.layer", () => {
     if (failure instanceof LandofileValidationError) {
       expect(failure._tag).toBe("LandofileValidationError");
       expect(failure.issues.map((issue) => formatValidationIssuePath(issue.path))).toEqual([
-        "services.web.dependsOn",
+        "services.web.depends_on",
       ]);
       expect(failure.message).toContain(
         "Service web depends on service db with condition service_healthy, but service db has no enabled readiness probe.",
@@ -5370,7 +5443,7 @@ describe("AppPlannerLayer.layer", () => {
         web: {
           type: "appmount-only",
           home: false,
-          dependsOn: [{ service: "db", condition: "service_healthy", required: false }],
+          depends_on: { db: { condition: "service_healthy", required: false } },
         },
         db: { type: "appmount-only", home: false, healthcheck: { disable: true } },
       },
@@ -5385,7 +5458,7 @@ describe("AppPlannerLayer.layer", () => {
     if (failure instanceof LandofileValidationError) {
       expect(failure._tag).toBe("LandofileValidationError");
       expect(failure.issues.map((issue) => formatValidationIssuePath(issue.path))).toEqual([
-        "services.web.dependsOn",
+        "services.web.depends_on",
       ]);
       expect(failure.message).toContain(
         "Service web depends on service db with condition service_healthy, but service db has no enabled readiness probe.",
@@ -5405,18 +5478,12 @@ describe("AppPlannerLayer.layer", () => {
         web: {
           type: "appmount-only",
           home: false,
-          dependsOn: [{ service: "db", condition: "service_started", required: true }],
+          depends_on: { db: { condition: "service_started", required: true } },
         },
         db: {
           type: "appmount-only",
           home: false,
-          dependsOn: [
-            {
-              service: "web",
-              condition: "service_completed_successfully",
-              required: false,
-            },
-          ],
+          depends_on: { web: { condition: "service_completed_successfully", required: false } },
         },
       },
     });
@@ -5430,7 +5497,7 @@ describe("AppPlannerLayer.layer", () => {
     if (failure instanceof LandofileValidationError) {
       expect(failure._tag).toBe("LandofileValidationError");
       expect(failure.issues.map((issue) => formatValidationIssuePath(issue.path))).toEqual([
-        "services.db.dependsOn",
+        "services.db.depends_on",
       ]);
       expect(failure.message).toContain(
         "web --[service_started]--> db --[service_completed_successfully]--> web",
@@ -5450,7 +5517,7 @@ describe("AppPlannerLayer.layer", () => {
         web: {
           type: "appmount-only",
           home: false,
-          dependsOn: [{ service: "web", condition: "service_started", required: true }],
+          depends_on: { web: { condition: "service_started", required: true } },
         },
       },
     });
@@ -5464,7 +5531,7 @@ describe("AppPlannerLayer.layer", () => {
     if (failure instanceof LandofileValidationError) {
       expect(failure._tag).toBe("LandofileValidationError");
       expect(failure.issues.map((issue) => formatValidationIssuePath(issue.path))).toEqual([
-        "services.web.dependsOn",
+        "services.web.depends_on",
       ]);
       expect(failure.message).toContain("web --[service_started]--> web");
       expect(failure.message).toContain(
@@ -5487,7 +5554,11 @@ describe("AppPlannerLayer.layer", () => {
       });
       const plannerLayer = AppPlannerLayer.layer.pipe(
         Layer.provide(
-          Layer.mergeAll(AppCacheService.layer, Layer.succeed(PluginRegistry, customPluginRegistry)),
+          Layer.mergeAll(
+            AppCacheService.layer,
+            Layer.succeed(PluginRegistry, customPluginRegistry),
+            pathsServiceLayer(),
+          ),
         ),
       );
 
@@ -5509,13 +5580,7 @@ describe("AppPlannerLayer.layer", () => {
             ...validPlan.services,
             [ServiceName.make("web")]: {
               ...web,
-              dependsOn: [
-                {
-                  service: ServiceName.make("db"),
-                  condition: "service_started",
-                  required: true,
-                },
-              ],
+              dependsOn: [{ service: ServiceName.make("db"), condition: "service_started", required: true }],
             },
           },
         };
@@ -5542,7 +5607,7 @@ describe("AppPlannerLayer.layer", () => {
         if (failure instanceof LandofileValidationError) {
           expect(failure._tag).toBe("LandofileValidationError");
           expect(failure.issues.map((issue) => formatValidationIssuePath(issue.path))).toEqual([
-            "services.web.dependsOn",
+            "services.web.depends_on",
           ]);
           expect(failure.message).toContain(
             "Service web depends on missing service db with condition service_started.",
@@ -5788,7 +5853,7 @@ describe("Compose runtime knobs", () => {
       Effect.flatMap(AppPlanner, (appPlanner) =>
         planTestLandofile(appPlanner, injectedLandofile, providerCapabilities),
       ).pipe(
-        Effect.provide(AppPlannerLayer.layer),
+        Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
         Effect.provide(Layer.succeed(PluginRegistry, knobInjectingRegistry)),
       ),
     );
@@ -5825,7 +5890,14 @@ describe("Compose runtime knobs", () => {
       const cacheRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-knob-cache-root-")));
       process.env.LANDO_USER_CACHE_ROOT = cacheRoot;
       const cachedLayer = AppPlannerLayer.layer.pipe(
-        Layer.provide(Layer.mergeAll(AppCacheService.layer, BunFileSystem.layer, PluginRegistryLayer.layer)),
+        Layer.provide(
+          Layer.mergeAll(
+            AppCacheService.layer,
+            BunFileSystem.layer,
+            PluginRegistryLayer.layer,
+            pathsServiceLayer(),
+          ),
+        ),
       );
       const runPlan = (providerCapabilities: ProviderCapabilities) =>
         Effect.runPromiseExit(

@@ -3,6 +3,7 @@ import * as LandoEventService from "@lando/engine/services/event-service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import {
   CliCommandInitEvent,
+  MessageInfoEvent,
   TaskCompleteEvent,
   TaskStartEvent,
   TaskTreeCompleteEvent,
@@ -10,13 +11,17 @@ import {
 } from "@lando/sdk/events";
 import { EventService, Renderer } from "@lando/sdk/services";
 import { Effect, Exit, Fiber, Layer, Schema, Scope } from "effect";
-import type { LiveRegionControllerOptions } from "../src/opentui/live-region-controller.ts";
+import {
+  type LiveRegionControllerOptions,
+  createLiveRegionController,
+} from "../src/opentui/live-region-controller.ts";
 import {
   getOpenTuiSubstrateAvailability,
   resetOpenTuiSubstrateAvailabilityForTests,
 } from "../src/opentui/substrate-availability.ts";
 import { makeLandoEventConsumer, makeLandoService } from "../src/renderer-runtime.ts";
 import type { LiveRegionHandle } from "../src/task-tree-substrate-handler.ts";
+import { createCapturingStdout } from "./live-region-test-kit.ts";
 
 afterEach(resetOpenTuiSubstrateAvailabilityForTests);
 
@@ -85,7 +90,7 @@ test.each(["in-flight acquisition", "active input", "disposal failure"] as const
         _tag: "task.tree.start",
         parentId: "acquire",
         label: "Acquiring scratch",
-        children: ["ready"],
+        children: [{ id: "ready", label: "ready" }],
         timestamp,
       }),
       Schema.decodeUnknownSync(TaskStartEvent)({
@@ -170,3 +175,121 @@ test.each(["in-flight acquisition", "active input", "disposal failure"] as const
     );
   },
 );
+
+const ESC = String.fromCharCode(27);
+
+const replayInline = (output: string): string => {
+  const rewind = new RegExp(`\\r?${ESC}\\[(\\d+)A${ESC}\\[J`, "g");
+  const text = output.replace(/\r\n/g, "\n");
+  let result = "";
+  let last = 0;
+  for (const match of text.matchAll(rewind)) {
+    result += text.slice(last, match.index);
+    const count = Number(match[1]);
+    const ended = result.endsWith("\n");
+    const parts = result.split("\n");
+    if (ended) parts.pop();
+    parts.splice(Math.max(0, parts.length - count), count);
+    result = `${parts.join("\n")}${parts.length > 0 || ended ? "\n" : ""}`;
+    last = (match.index ?? 0) + match[0].length;
+  }
+  return `${result}${text.slice(last)}`.replace(/\r/g, "").replace(new RegExp(`${ESC}\\[[0-9;]*m`, "g"), "");
+};
+
+test("retiring after a message leaves the finished tree in scrollback once", async () => {
+  const writes: string[] = [];
+  const stdout = createCapturingStdout(writes);
+  stdout.columns = 80;
+  stdout.rows = 24;
+  const io = createBufferedRendererIO({ isTTY: true, terminalColumns: 80, terminalRows: 24 });
+  const ttyIo = { ...io, externalOutputStream: process.stdout };
+  const timestamp = "2026-10-13T00:00:00Z";
+  const infoBody = "Lando needs administrator access to install the CA.";
+  const painted = Promise.withResolvers<void>();
+  const treeEvents = [
+    Schema.decodeUnknownSync(CliCommandInitEvent)({
+      _tag: "cli-meta:setup-init",
+      commandId: "meta:setup",
+      argv: [],
+      args: {},
+      flags: {},
+      cwd: "/app",
+      invocationId: "setup-retire",
+      timestamp,
+    }),
+    Schema.decodeUnknownSync(TaskTreeStartEvent)({
+      _tag: "task.tree.start",
+      parentId: "provider",
+      label: "meta:setup",
+      children: [{ id: "bundle", label: "Verify runtime bundle" }],
+      timestamp,
+    }),
+    Schema.decodeUnknownSync(TaskStartEvent)({
+      _tag: "task.start",
+      taskId: "bundle",
+      parentId: "provider",
+      label: "Verify runtime bundle",
+      timestamp,
+    }),
+    Schema.decodeUnknownSync(TaskCompleteEvent)({
+      _tag: "task.complete",
+      taskId: "bundle",
+      summary: "Verify runtime bundle",
+      durationMs: 107,
+      timestamp,
+    }),
+    Schema.decodeUnknownSync(TaskTreeCompleteEvent)({
+      _tag: "task.tree.complete",
+      parentId: "provider",
+      succeeded: 1,
+      failed: 0,
+      durationMs: 155,
+      timestamp,
+    }),
+  ] as const;
+  const info = Schema.decodeUnknownSync(MessageInfoEvent)({
+    _tag: "message.info",
+    body: infoBody,
+    timestamp,
+  });
+  await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const service = yield* EventService;
+        const consumerScope = yield* Scope.fork(yield* Effect.scope);
+        yield* Layer.buildWithScope(
+          makeLandoEventConsumer(ttyIo, {
+            createLiveRegion: async (options: LiveRegionControllerOptions) => {
+              const controller = await createLiveRegionController({ ...options, stdout, noColor: true });
+              return {
+                setFooter: (lines: ReadonlyArray<string>) => {
+                  controller.setFooter(lines);
+                  if (lines.some((line) => line.includes("155ms"))) painted.resolve();
+                },
+                clearFooter: () => controller.clearFooter(),
+                commitScrollback: (text: string) => controller.commitScrollback(text),
+                rememberScrollback: (text: string) => controller.rememberScrollback(text),
+                requestLive: () => controller.requestLive(),
+                dropLive: () => controller.dropLive(),
+                enterFullTail: () => controller.enterFullTail(),
+                exitFullTail: () => controller.exitFullTail(),
+                dispose: () => controller.dispose(),
+              };
+            },
+          }),
+          consumerScope,
+        );
+        for (const event of treeEvents) yield* service.publish(event);
+        yield* Effect.promise(() => painted.promise);
+        yield* service.publish(info);
+        yield* Scope.close(consumerScope, Exit.void);
+      }),
+    ).pipe(Effect.provide(Layer.mergeAll(LandoEventService.layer, makeLandoService(ttyIo)))),
+  );
+  const raw = writes.join("");
+  expect([...raw.matchAll(/done {2}155ms/g)]).toHaveLength(1);
+  const scrollback = replayInline(raw);
+  expect(scrollback.match(/Verify runtime bundle/g)).toEqual(["Verify runtime bundle"]);
+  expect(scrollback.match(/Lando needs administrator access to install the CA\./g)).toEqual([infoBody]);
+  expect(scrollback.indexOf("Verify runtime bundle")).toBeLessThan(scrollback.indexOf(infoBody));
+});

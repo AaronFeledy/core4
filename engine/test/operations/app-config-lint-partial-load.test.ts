@@ -44,13 +44,10 @@ test.each([
   cache:
     type: redis
     port: "{{ service.port }}"
-    environment:
-      SELF_PORT: "{{ service.port }}"
     command: [redis-server, --port, "{{ service.name }}"]
 `,
     expected: [
       ["landofile.load", ["services", "cache", "port"]],
-      ["landofile.load", ["services", "cache", "environment", "SELF_PORT"]],
       ["landofile.load", ["services", "cache", "command", 2]],
     ],
   },
@@ -68,7 +65,7 @@ test.each([
     environment:
       - NOT_A_PAIR
 ${badType}`,
-    expected: [["landofile.validation", ["services", "other", "environment"]], unsupportedType],
+    expected: [["landofile.validation", ["services", "other", "environment", 0]], unsupportedType],
   },
   {
     title: "does not evaluate credentials of a service blocked during loading",

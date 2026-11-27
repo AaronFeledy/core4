@@ -80,7 +80,7 @@ test.each([{ reference: "secret" }, { _tag: "{{ env.DESCRIPTOR_TYPE }}", referen
 test("generated Landofile defects have plain messages and unchanged-scope parity", () => {
   // Given one-site mutations in valid witnesses, not a Cartesian product.
   expect(corpus.cases.length).toBeGreaterThan(3000);
-  expect(corpus.uncovered.size).toBe(0);
+  expect([...corpus.uncovered]).toEqual([]);
   expect(Object.fromEntries(corpus.inventory)).toMatchObject({
     Objects: expect.any(Number),
     Union: expect.any(Number),
@@ -125,18 +125,11 @@ test("generated Landofile defects have plain messages and unchanged-scope parity
       continue;
     }
     const differs = JSON.stringify(effective) !== JSON.stringify(fragment);
-    const recordAlternative =
-      sample.path[0] === "services" &&
-      sample.path[2] === "dependsOn" &&
-      effective.some((issue) => issue.path.length === 3 && issue.kind === "type") &&
-      JSON.stringify(effective.filter((issue) => issue.path.length !== 3)) === JSON.stringify(fragment);
     const exception = !differs
       ? undefined
       : effectiveResult.missing || sample.partial
         ? "partial missing keys"
-        : recordAlternative
-          ? "dependsOn unattempted record alternative"
-          : undefined;
+        : undefined;
     if (exception !== undefined) exceptions.set(exception, (exceptions.get(exception) ?? 0) + 1);
     else {
       compared++;
@@ -158,9 +151,6 @@ test("generated Landofile defects have plain messages and unchanged-scope parity
   expect(compared).toBeGreaterThan(2500);
   expect(tagged).toBeGreaterThan(100);
   expect(suggested).toBeGreaterThan(0);
-  expect([...exceptions.keys()].sort()).toEqual([
-    "dependsOn unattempted record alternative",
-    "partial missing keys",
-  ]);
+  expect([...exceptions.keys()].sort()).toEqual(["partial missing keys"]);
   expect(failures.slice(0, 12)).toEqual([]);
 });

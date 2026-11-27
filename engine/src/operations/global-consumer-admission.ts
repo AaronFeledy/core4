@@ -1,3 +1,4 @@
+import { causeRemediation } from "@lando/sdk/command-result";
 import {
   AppPlacementError,
   GlobalAutoStartError,
@@ -28,7 +29,6 @@ import { withGlobalMutation } from "../global-app/mutation.ts";
 import { globalCreateProviderId } from "../global-app/placement.ts";
 import { withGlobalResolutionCapabilities } from "../global-app/resolution.ts";
 import { mapFailureErrors } from "../lifecycle/failure-compensation.ts";
-import { taggedErrorRemediation } from "../providers/managed.ts";
 import { interruptOnAbort } from "../subsystems/healthcheck/attempt.ts";
 import { unavailableRouterReason } from "../subsystems/proxy/api.ts";
 import type { EnsureGlobalServicesServices } from "./ensure-global-services.ts";
@@ -147,7 +147,7 @@ export const withGlobalConsumerAdmission = Effect.fnUntraced(function* <A, E, R>
           services: [...required],
           message: `Global services required by ${plan.name} could not be admitted before activation.`,
           remediation:
-            taggedErrorRemediation(cause) ??
+            causeRemediation(cause) ??
             "Run `lando global:list`, repair or enable the required services, then retry application startup.",
           cause,
         });

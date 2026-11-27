@@ -15,7 +15,7 @@ const structuralChecks = (checks: AST.Checks | undefined): AST.Checks | undefine
   return first === undefined ? undefined : [first, ...rest];
 };
 
-const droppedWireAnnotations = ["jsonSchemaProjection", "acceptsImportRef"] as const;
+const droppedWireAnnotations = ["acceptsImportRef"] as const;
 
 const withoutJsonSchemaProjection = (annotations: AST.AST["annotations"]): AST.AST["annotations"] => {
   if (annotations === undefined || !droppedWireAnnotations.some((key) => annotations[key] !== undefined)) {
@@ -156,6 +156,9 @@ const propertyNameChecks = (check: AST.Check<unknown>): ReadonlyArray<AST.Check<
     case "FilterGroup":
       return check.checks.flatMap(propertyNameChecks);
     case "Filter": {
+      if (check.annotations?.["lando/authoring-key-presence"] === true) {
+        return [check.annotate({ "~structural": true })];
+      }
       const output = check.annotations?.toJsonSchema?.({ type: "object", schemas: [] });
       const projection = Array.isArray(output) ? output[0] : output;
       return projection !== null &&
@@ -171,10 +174,20 @@ const propertyNameChecks = (check: AST.Check<unknown>): ReadonlyArray<AST.Check<
 };
 
 export const authoringJsonContainer = (source: AST.AST, runtime: AST.AST): AST.AST | undefined => {
-  const [first, ...rest] = (source.checks ?? []).flatMap(propertyNameChecks);
-  if (first?._tag === "Filter" && first.annotations?.["lando/indexed-property-names"] === true) {
-    return propertyNameCheckedRecord(Schema.make<Schema.Codec<unknown>>(runtime), first).ast;
+  const checks = (source.checks ?? []).flatMap(propertyNameChecks);
+  const isIndexed = (check: AST.Check<unknown>): check is AST.Filter<unknown> =>
+    check._tag === "Filter" && check.annotations?.["lando/indexed-property-names"] === true;
+  const [indexed, ...otherIndexed] = checks.filter(isIndexed);
+  if (indexed !== undefined) {
+    const schema = Schema.make<Schema.Codec<unknown>>(runtime);
+    const [check, ...others] = checks.filter((entry) => !isIndexed(entry));
+    return propertyNameCheckedRecord(
+      check === undefined ? schema : schema.check(check, ...others),
+      indexed,
+      ...otherIndexed,
+    ).ast;
   }
+  const [first, ...rest] = checks;
   const keyChecks: AST.Checks | undefined = first === undefined ? undefined : [first, ...rest];
   const container =
     keyChecks === undefined ? runtime : Schema.make<Schema.Codec<unknown>>(runtime).check(...keyChecks).ast;

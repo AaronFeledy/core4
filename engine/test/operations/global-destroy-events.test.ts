@@ -7,6 +7,7 @@ import { Effect } from "effect";
 import { globalDestroy } from "../../src/operations/global-destroy.ts";
 import { globalStop } from "../../src/operations/global-stop.ts";
 import { globalPlanAt, globalTeardownHarness } from "../../src/testing/global-teardown.ts";
+import { ownedGlobalOrphan } from "./owned-global-orphan.ts";
 
 const withRoot = async (use: (root: string) => Promise<void>) => {
   const root = await realpath(await mkdtemp(join(tmpdir(), "global-destroy-events-")));
@@ -31,17 +32,19 @@ test.each([
     // Then the bracket covers all destructive work, and requested purge stays distinct from effective volumes.
     expect(harness.calls.filter((call) => !call.startsWith("task."))).toEqual([
       "pre-global-destroy",
-      "destroy",
+      "bringDown",
       "removeRoutes",
       "post-global-destroy",
     ]);
     expect(harness.calls.indexOf("pre-global-destroy")).toBeLessThan(
       harness.calls.indexOf("task.tree.start"),
     );
-    expect(harness.calls.indexOf("task.tree.start")).toBeLessThan(harness.calls.indexOf("destroy"));
+    expect(harness.calls.indexOf("task.tree.start")).toBeLessThan(harness.calls.indexOf("bringDown"));
     expect(harness.calls.indexOf("removeRoutes")).toBeLessThan(harness.calls.indexOf("task.tree.complete"));
     expect(harness.calls.at(-1)).toBe("post-global-destroy");
-    expect(harness.destroyOptions).toEqual([{ volumes: options.effective, removeState: true }]);
+    expect(harness.destroyOptions).toEqual([
+      { containers: "remove", volumes: options.effective, removeState: true },
+    ]);
     expect(harness.events[0]).toMatchObject({
       _tag: "pre-global-destroy",
       scope: "global",
@@ -68,7 +71,13 @@ test("global stop emits no destroy bracket or destroy progress", async () => {
     // When stop uses the shared teardown implementation.
     await Effect.runPromise(globalStop().pipe(Effect.provide(harness.layer)));
     // Then only the stop bracket surrounds provider and route cleanup.
-    expect(harness.calls).toEqual(["pre-global-stop", "destroy", "removeRoutes", "post-global-stop"]);
+    expect(harness.calls).toEqual([
+      "pre-global-stop",
+      "bringDown",
+      "list",
+      "removeRoutes",
+      "post-global-stop",
+    ]);
   });
 });
 
@@ -82,7 +91,7 @@ test("absent global destroy emits no lifecycle or task events", async () => {
     expect(result.outcome).toBe("unchanged");
     expect(harness.events).toEqual([]);
     expect(harness.calls).toContain("removeRoutes");
-    expect(harness.calls).not.toContain("destroy");
+    expect(harness.calls).not.toContain("bringDown");
     expect(harness.calls).not.toContain("ensureReady");
   });
 });
@@ -94,7 +103,7 @@ test.each(["provider", "routes"] as const)("global %s failure suppresses post-de
     const harness = await globalTeardownHarness(
       root,
       failure === "provider"
-        ? { orphanRoot: appRoot, stopFailure: true }
+        ? { services: [ownedGlobalOrphan(appRoot, root)], stopFailure: true }
         : { plan: globalPlanAt(appRoot), routeFailure: true },
     );
     // When teardown fails.

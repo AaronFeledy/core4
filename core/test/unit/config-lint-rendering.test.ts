@@ -252,12 +252,12 @@ describe("config lint text findings", () => {
     const violation: ConfigLintViolation = {
       rule: "landofile.validation",
       severity: "error",
-      path: ["services", "web", "workingDirectory"],
+      path: ["services", "web", "environment", "REGION"],
       message: "Expected string",
       line: 7,
       column: 5,
       scopes: ["effective"],
-      source: { file: "/app/.lando.yml", layer: "canonical", path: ["services", "web", "working_dir"] },
+      source: { file: "/app/.lando.yml", layer: "canonical", path: ["services", "web", "environment", 0] },
     };
 
     // When
@@ -266,8 +266,8 @@ describe("config lint text findings", () => {
     // Then
     expect(finding).toBe(
       [
-        "  services.web.workingDirectory: error [landofile.validation] Expected string",
-        "    at /app/.lando.yml:7:5, authored as services.web.working_dir (canonical layer; effective)",
+        "  services.web.environment.REGION: error [landofile.validation] Expected string",
+        "    at /app/.lando.yml:7:5, authored as services.web.environment[0] (canonical layer; effective)",
       ].join("\n"),
     );
   });

@@ -14,13 +14,11 @@ import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import { composeService } from "../../src/services/feature.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";
 import { compileTestLandofile } from "../compiled-landofile.ts";
+import { pathsServiceLayer } from "../paths-service.ts";
 
 const name = ServiceName.make("web");
 const capabilities = TestRuntimeProvider.capabilities;
 const withoutNativeInit = { ...capabilities, serviceInit: false };
-const layer = AppPlannerLayer.layer.pipe(
-  Layer.provide(Layer.mergeAll(PluginRegistryLayer.layer, AppCacheService.layer)),
-);
 const document = (type: string, init?: boolean) => ({
   name: "service-init",
   runtime: 4,
@@ -37,7 +35,11 @@ const document = (type: string, init?: boolean) => ({
 const plan = (input: unknown, caps: ProviderCapabilities = capabilities, root = process.cwd()) =>
   compileTestLandofile(input, root).pipe(
     Effect.flatMap((compiled) => Effect.flatMap(AppPlanner, (planner) => planner.plan(compiled, caps))),
-    Effect.provide(layer),
+    Effect.provide(
+      AppPlannerLayer.layer.pipe(
+        Layer.provide(Layer.mergeAll(PluginRegistryLayer.layer, AppCacheService.layer, pathsServiceLayer())),
+      ),
+    ),
   );
 
 test.each([
@@ -99,7 +101,9 @@ test.each([true, false])("retains service-feature init %s through the full plann
       Effect.flatMap((compiled) =>
         Effect.flatMap(AppPlanner, (planner) => planner.plan(compiled, capabilities)),
       ),
-      Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(registry))),
+      Effect.provide(
+        AppPlannerLayer.layer.pipe(Layer.provide(Layer.mergeAll(registry, pathsServiceLayer()))),
+      ),
     ),
   );
   // Then

@@ -144,7 +144,12 @@ export const WORKSPACE_EDGE_TABLE: Readonly<Record<string, WorkspaceEdgePolicy>>
       "@lando/template-mustache",
     ],
   },
-  "@lando/ca-mkcert": { dependencies: PLUGIN_RUNTIME_TARGETS, devDependencies: [] },
+  "@lando/ca-mkcert": {
+    dependencies: PLUGIN_RUNTIME_TARGETS,
+    devDependencies: [],
+    // The live Homebrew trust suite gates on the engine's answering-socket resolver, never core.
+    testTargets: [...PLUGIN_RUNTIME_TARGETS, ...PLUGIN_TEST_TARGETS],
+  },
   "@lando/file-sync-mutagen": {
     // Mutagen failures carry a bounded stderr tail built by the canonical diagnostic redactor.
     dependencies: [...PLUGIN_RUNTIME_TARGETS, "@lando/redaction"],

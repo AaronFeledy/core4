@@ -127,7 +127,9 @@ describe("ci runbook", () => {
     expect(runbook).toContain("automatically after the runtime-bundle publisher");
     expect(runbook).toContain("provider-contracts-docker-latest");
     expect(runbook).toContain("regenerates derived sources before acceptance");
-    expect(runbook).toContain("asserts that `exec-umask-mode` passed");
+    expect(runbook).toContain(
+      "asserts that its feature checks `exec-umask-mode` and `health-start-interval` passed",
+    );
     expect(runbook).toContain("release-blocking cells fail the workflow when they fail or skip");
     expect(runbook).toContain("Docker Desktop, Docker Engine, Podman Desktop, Podman, Lima, and OrbStack");
     expect(runbook).toContain("provider-matrix-diagnostics-<cell>");
@@ -256,7 +258,6 @@ describe("ci runbook", () => {
     expect(runbook).toContain("scripts/build-drupal-journey-workflow.ts");
     expect(runbook).toContain("scripts/drupal-journey.ts");
     expect(runbook).toContain("lando info");
-    expect(runbook).toContain("drupal-scaffold");
     expect(runbook).toContain("destroy -y");
     expect(runbook).toContain("lando-virt");
     expect(runbook).toContain("--provider=docker");

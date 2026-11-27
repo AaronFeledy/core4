@@ -1,12 +1,17 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { logFileHelperExecArgv } from "@lando/container-runtime/container-helper";
+import { CONTAINER_HELPER_FILE, logFileHelperExecArgv } from "@lando/container-runtime/container-helper";
 import { resolveContainerHelper } from "@lando/container-runtime/container-helper/assets";
+import { containerHelperDistPath } from "@lando/container-runtime/container-helper/source";
 import { AGENT_CONTEXT_ENV_ALLOWLIST } from "@lando/engine/config/agent-env";
 import type { HostProxyRunLandoExecutorInput } from "@lando/engine/subsystems/host-proxy/dispatch";
+import {
+  HOST_PROXY_CREDENTIALS_NAME,
+  hostProxyContainerDirectory,
+} from "@lando/engine/subsystems/host-proxy/run-directory";
 import { createHostProxyRunLandoSession } from "@lando/engine/subsystems/host-proxy/transport";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { AbsolutePath } from "@lando/sdk/schema";
@@ -28,6 +33,20 @@ const tempRoot = async (): Promise<string> => {
   tempDirs.push(dir);
   return dir;
 };
+
+test("a source-built helper is delivered from the cache and leaves dist untouched", async () => {
+  // Given the helper built from this checkout's sources.
+  const cacheRoot = await tempRoot();
+  // When Lando resolves it, which also publishes the scaffold command shims.
+  const resolved = await Effect.runPromise(
+    resolveContainerHelper(hostTarget, { standalone: false, env: process.env, cacheRoot }),
+  );
+  // Then the delivered copy is digest-addressed in the cache, and dist keeps only the binary.
+  expect(resolved.path).toBe(
+    AbsolutePath.make(join(cacheRoot, `linux-${hostTarget.arch}`, resolved.digest, CONTAINER_HELPER_FILE)),
+  );
+  expect(await readdir(dirname(containerHelperDistPath(hostTarget.arch)))).toEqual([CONTAINER_HELPER_FILE]);
+});
 
 /** The client role is selected by the invoked name, as in a container's /usr/local/bin/lando. */
 const landoClient = async (role = "lando"): Promise<string> => {
@@ -270,7 +289,10 @@ describe.skipIf(process.platform !== "linux")("host-proxy client against a real 
         cwd: "/tmp",
         env: {
           LANDO_HOST_PROXY_SOCKET: session.socketPath ?? "",
-          LANDO_HOST_PROXY_CREDENTIALS_FILE: join(dirname(session.shimPath), "credentials"),
+          LANDO_HOST_PROXY_CREDENTIALS_FILE: join(
+            hostProxyContainerDirectory(dirname(session.shimPath)),
+            HOST_PROXY_CREDENTIALS_NAME,
+          ),
           LANDO_HOST_PROXY_CALLER: "web",
           LANG: "C.UTF-8",
           OPENCODE: "1",

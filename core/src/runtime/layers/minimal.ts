@@ -18,6 +18,7 @@ import * as HostPrivilegeService from "@lando/engine/services/privilege";
 import * as BunProcessRunner from "@lando/engine/services/process-runner";
 import * as RoutedSecretStore from "@lando/engine/services/secret-store-registry";
 import * as BunShellRunner from "@lando/engine/services/shell-runner";
+import { CORE_VERSION } from "@lando/engine/version";
 import * as LandoHttpClient from "@lando/http-client";
 import * as VerifiedDownloader from "@lando/http-client/downloader";
 import * as ManagedFileLayer from "@lando/managed-file/service";
@@ -28,7 +29,9 @@ import { PrivateFileAccessService } from "@lando/state-store/private-file-access
 import * as StateStoreLayer from "@lando/state-store/service";
 import * as TelemetryLayer from "@lando/telemetry/service";
 import { Context, Layer } from "effect";
+import { suspendCommandProgress } from "../../cli/command-progress.ts";
 import { makeProcessShellReplIO } from "../../cli/host-shell-terminal.ts";
+import { hostHasPromptTerminal } from "../../cli/prompt-terminal.ts";
 import * as InteractionServiceLayer from "../../interaction/service.ts";
 import { makeNoneBootstrapLayer } from "./none.ts";
 
@@ -83,9 +86,12 @@ export const makeMinimalBootstrapLayer = (inputs: BootstrapLayerInputs) => {
     BunShellRunner.layerWithPrivateFileAccess(makeProcessShellReplIO).pipe(
       Layer.provide(Layer.mergeAll(privateFileAccessLayer, BunProcessRunner.layer)),
     ),
-    HostPrivilegeService.layer,
+    HostPrivilegeService.layer({
+      handoff: { suspend: suspendCommandProgress },
+      hasTerminal: hostHasPromptTerminal,
+    }).pipe(Layer.provide(BunProcessRunner.layer)),
     secretStoreLayer,
-    StateStoreLayer.layerWithPrivateFileAccess.pipe(
+    StateStoreLayer.layerWithPrivateFileAccessOptions({ writer: CORE_VERSION }).pipe(
       Layer.provide(Layer.mergeAll(privateFileAccessLayer, configLayer)),
     ),
     ManagedFileTransactionGuardLayer.layerWithPrivateFileAccess.pipe(

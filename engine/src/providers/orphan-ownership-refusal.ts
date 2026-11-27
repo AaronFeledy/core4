@@ -1,7 +1,7 @@
 import { APP_ROOT_LABEL } from "@lando/container-runtime/labels";
 import { serviceContainerOwnershipProblem } from "@lando/container-runtime/native-ownership";
 import { AppResolveError } from "@lando/sdk/errors";
-import type { AbsolutePath } from "@lando/sdk/schema";
+import { type AbsolutePath, LANDO_DATA_ROOT_LABEL } from "@lando/sdk/schema";
 import type { ServiceRuntimeInfo } from "@lando/sdk/services";
 import { Effect } from "effect";
 
@@ -19,7 +19,7 @@ const orphanOwnershipRefusal = (input: {
     message: `Container ${container} claims app root ${input.root} but its ${input.label} label does not prove ownership by app ${input.service.app} service ${input.service.service} on provider ${input.providerId}.`,
     reason: "mismatch",
     detail: "provider-resources",
-    remediation: `Inspect container ${container} with your container runtime and restore its Lando ownership labels or remove it there before retrying teardown.`,
+    remediation: `Inspect container ${container} with your container runtime and restore its Lando ownership labels or remove it there, then retry.`,
   });
 };
 
@@ -49,6 +49,7 @@ export const refuseContradictoryOrphans = (input: {
                 ? (service.labels?.[APP_ROOT_LABEL] ?? "")
                 : String(service.appRoot),
             service: String(service.service),
+            dataRoot: service.labels?.[LANDO_DATA_ROOT_LABEL],
             providerId: provider.id,
           });
           return label === undefined

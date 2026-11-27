@@ -19,13 +19,17 @@ export interface ToolingServiceContribution {
 export interface ToolingComposition {
   readonly landofile: Pick<LandofileShape, "tooling" | "toolingDefaults" | "services">;
   readonly provenance?: LandofileProvenance | undefined;
+  readonly primary?: string | undefined;
   readonly services: readonly ToolingServiceContribution[];
 }
 
 export const compareOrdinal = (left: string, right: string): number =>
   left < right ? -1 : left > right ? 1 : 0;
 
-export const toolingContributors = (services: readonly ToolingServiceContribution[]) => {
+export const toolingContributors = ({
+  services,
+  primary,
+}: Pick<ToolingComposition, "services" | "primary">) => {
   const winners = new Map<string, ToolingServiceContribution>();
   const nodeClaims = new Map<string, number>();
   const isNode = (service: ToolingServiceContribution) =>
@@ -36,7 +40,11 @@ export const toolingContributors = (services: readonly ToolingServiceContributio
         nodeClaims.set(name, (nodeClaims.get(name) ?? 0) + 1);
     }
   }
-  for (const service of [...services].sort((left, right) => compareOrdinal(left.name, right.name))) {
+  const ordered = [...services].sort(
+    (left, right) =>
+      Number(right.name === primary) - Number(left.name === primary) || compareOrdinal(left.name, right.name),
+  );
+  for (const service of ordered) {
     for (const name of Object.keys(service.tooling ?? {}).sort(compareOrdinal)) {
       if (isNode(service) && nodeClaims.get(name) !== 1) continue;
       if (!winners.has(name)) winners.set(name, service);
@@ -47,7 +55,7 @@ export const toolingContributors = (services: readonly ToolingServiceContributio
 
 export const toolingBeforeDefaults = (input: ToolingComposition): EffectiveTooling => {
   const contributed: Record<string, ToolingTaskShape> = {};
-  for (const [name, service] of toolingContributors(input.services)) {
+  for (const [name, service] of toolingContributors(input)) {
     const task = service.tooling?.[name];
     if (task !== undefined) contributed[name] = { service: service.name, ...task };
   }
@@ -63,7 +71,7 @@ export const compileEffectiveTooling = (input: ToolingComposition): EffectiveToo
 
 export const connectionClientOwners = (input: ToolingComposition): Readonly<Record<string, ServiceName>> =>
   Object.fromEntries(
-    [...toolingContributors(input.services)].flatMap(([name, service]) =>
+    [...toolingContributors(input)].flatMap(([name, service]) =>
       !Object.hasOwn(input.landofile.tooling ?? {}, name) && service.connectionClientNames?.includes(name)
         ? [[name, ServiceName.make(service.name)]]
         : [],

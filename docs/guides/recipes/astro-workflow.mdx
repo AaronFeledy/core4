@@ -46,11 +46,14 @@ lando astro --help
 lando npm --version
 ```
 
-Serve through the proxy with an all-interfaces bind on the recipe's port, `4321`. Pass your app hostname to `--allowed-hosts` (swap `astro-demo` for your app name) so Vite accepts the Traefik `Host` header:
+Serve through the proxy with the recipe's `dev` task:
 
+{/* lando-lint: not-e2e the dev server runs in the foreground until interrupted */}
 ```sh
-lando astro dev --host 0.0.0.0 --port 4321 --allowed-hosts astro-demo.lndo.site
+lando dev
 ```
+
+It runs `astro dev --host 0.0.0.0 --port 4321 --allowed-hosts <hostname>`. The all-interfaces bind and the recipe's port let the proxy reach Astro, and `--allowed-hosts` makes Vite accept the proxy's `Host` header. The hostname comes from `{{ services.web.hostname }}`, the address Lando applied for `web` at the last `lando start`, so you don't copy it from `lando info`. See [Use the URL in tooling and events](../landofile/expressions.mdx#use-the-url-in-tooling-and-events).
 
 Open the URL `lando info` prints. Prefer Node 22 with Postgres at init?
 
@@ -94,6 +97,7 @@ Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pick a 
       <Verify command="lando app:config --format=json" expect={{ stdout: { not: { regex: "\"port\":\\s*3000" } } }} />
       <Verify command="lando help npm --format=json" expect={{ stdout: { regex: "\"name\":\\s*\"web\"[\\s\\S]*\"program\":\\s*\"npm\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"astro\":\\s*\\{[^}]*\"service\":\\s*\"web\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"dev\":\\s*\\{[^}]*\"--allowed-hosts\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "ASTRO_TELEMETRY_DISABLED" } }} />
     </Step>
     <Step name="start">
@@ -118,7 +122,7 @@ Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pick a 
       <Run command="lando app:config --format=json" />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"node:22\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"postgres\"" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "dependsOn" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "depends_on" } }} />
     </Step>
   </Scenario>
 </Guide>

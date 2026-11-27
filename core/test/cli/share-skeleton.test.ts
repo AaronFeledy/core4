@@ -7,6 +7,7 @@ import { RuntimeProvider, RuntimeProviderRegistry, TunnelService } from "@lando/
 import { TestRuntimeProvider, TestTunnelService } from "@lando/core/testing";
 import { makeLandoPaths } from "@lando/paths";
 import { AppId, ProviderId, ServiceName, type TunnelSession, type TunnelTarget } from "@lando/sdk/schema";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect, Layer, type Scope } from "effect";
 import { withEnvVar } from "../_support/temp-cwd.ts";
 
@@ -59,13 +60,8 @@ const providerLayers = [
   Layer.succeed(RuntimeProvider, RuntimeProvider.of(TestRuntimeProvider)),
   Layer.succeed(
     RuntimeProviderRegistry,
-    RuntimeProviderRegistry.of({
-      resolveAppliedPlan: () => Effect.succeed(undefined),
-      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-      appliedPlansFor: () => Effect.succeed([]),
+    makeTestRuntimeProviderRegistry({
       list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
-      capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-      select: () => Effect.succeed(TestRuntimeProvider),
     }),
   ),
 ];
@@ -111,7 +107,7 @@ describe("share command skeleton", () => {
     for (const spec of specs) {
       expect(spec?.bootstrap).toBe("app");
       expect(spec?.resultSchema, `${spec?.id} must carry a resultSchema`).toBeDefined();
-      expect(spec?.flags, `${spec?.id} must define share skeleton flags`).toHaveProperty("format");
+      expect(spec?.flags, `${spec?.id} must leave --format to the dispatcher`).not.toHaveProperty("format");
       expect(spec?.flags, `${spec?.id} must define provider selection`).toHaveProperty("provider");
     }
   });

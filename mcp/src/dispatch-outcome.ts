@@ -3,8 +3,10 @@ import {
   type CommandResultOutcome,
   buildCommandResultEnvelope,
   commandResultEnvelopePolicy,
+  mapFailures,
 } from "@lando/sdk/command-result";
 import { McpToolNotAllowedError, McpTransportError } from "@lando/sdk/errors";
+import { CommandResultEnvelope, type DeprecationUse } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
 import { Effect, Predicate, Schema } from "effect";
 
@@ -32,18 +34,41 @@ export const envelopeTag = (envelope: unknown): string | undefined => {
   return typeof tag === "string" ? tag : undefined;
 };
 
+/**
+ * The wire form of a built envelope. Building decodes it, so each deprecation record carries its
+ * timestamp as an instant until this encodes it back to the ISO string the client reads.
+ */
+export const envelopeWire = (envelope: CommandResultEnvelope): Effect.Effect<unknown, McpTransportError> =>
+  Schema.encodeEffect(CommandResultEnvelope)(envelope).pipe(
+    mapFailures(
+      () =>
+        new McpTransportError({
+          message: "MCP command envelope could not be encoded.",
+          remediation: "Return a schema-valid command result.",
+        }),
+    ),
+  );
+
 /** Encode a failed outcome as the redacted, bounded command envelope an MCP client receives. */
 export const encodeFailureEnvelope = Effect.fnUntraced(function* (
   command: string,
   outcome: CommandResultOutcome,
-  output: { readonly redactor: Redactor; readonly capture: OutputCapture },
+  output: {
+    readonly redactor: Redactor;
+    readonly capture: OutputCapture;
+    /** The deprecated surfaces the call used before it failed. */
+    readonly deprecations: ReadonlyArray<DeprecationUse>;
+  },
 ): Effect.fn.Return<Schema.Json, McpTransportError> {
-  const encoded = yield* buildCommandResultEnvelope({
-    command,
-    resultSchema: Schema.Unknown,
-    outcome,
-    redactor: output.redactor,
-  });
+  const encoded = yield* envelopeWire(
+    yield* buildCommandResultEnvelope({
+      command,
+      resultSchema: Schema.Unknown,
+      outcome,
+      redactor: output.redactor,
+      deprecations: output.deprecations,
+    }),
+  );
   const safeEnvelope = yield* redactBoundedJsonValue(
     encoded,
     output.redactor,

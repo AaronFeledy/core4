@@ -1,24 +1,25 @@
 import { RedactionService } from "@lando/redaction/service";
 import { tryPromiseSettled } from "@lando/sdk/abortable-promise";
-import { identityRedactor } from "@lando/sdk/command-result";
+import { identityRedactor, mapFailureCause, orDieWithRole } from "@lando/sdk/command-result";
 import { FileIoError, ProcessExecError, ProcessTimeoutError } from "@lando/sdk/errors";
-import { REDACTED, isSecretFieldName } from "@lando/sdk/secrets";
+import { REDACTED, type Redactor, isSecretFieldName } from "@lando/sdk/secrets";
 import {
   EventService,
   type ProcessResult,
   ProcessRunner,
   type ProcessSpawnOptions,
   type ProcessStreamChunk,
-  type ProcessStreamEvent,
 } from "@lando/sdk/services";
-import { Context, Effect, Layer, Stream } from "effect";
+import { Cause, Context, Effect, Layer, Stream } from "effect";
 import {
   type CapturedHostExecutionContext,
   HostExecutionDefaults,
   captureScopedHostExecutionContext,
 } from "./host-execution-context.ts";
 import { PreparedProcessBinding } from "./prepared-process.ts";
-import { runProcess, streamProcess } from "./process-execution.ts";
+import { ProcessCancellation, processRejection } from "./process-cancellation.ts";
+import { openProcessStream, runProcess } from "./process-execution.ts";
+import { prepareProcessSpawn } from "./process-spawn-context.ts";
 import { type RunnerRedactionCarrier, runnerEnvRedaction } from "./runner-redaction.ts";
 import { environmentForRedaction } from "./tooling-input-environment.ts";
 
@@ -114,12 +115,11 @@ const processEventShape = (input: ProcessSpawnOptions) => ({
   ...(input.env === undefined ? {} : { env: { ...input.env } }),
 });
 
-const redactProcessError = Effect.fnUntraced(function* (
-  context: CapturedHostExecutionContext,
+const redactProcessError = (
+  redactor: Redactor,
   error: ProcessExecError | ProcessTimeoutError,
   capture: boolean,
-) {
-  const redactor = yield* redactorForInput(context);
+) => {
   const fields = {
     message: redactor.redactString(error.message),
     cmd: redactor.redactString(error.cmd),
@@ -133,7 +133,14 @@ const redactProcessError = Effect.fnUntraced(function* (
     ...(error.errno === undefined ? {} : { errno: error.errno }),
     ...(capture ? {} : { cause: redactor.redactValue(error.cause) }),
   });
-});
+};
+
+const nativeProcessError = (input: ProcessSpawnOptions, cause: unknown) =>
+  cause instanceof ProcessCancellation ||
+  cause instanceof ProcessTimeoutError ||
+  cause instanceof ProcessExecError
+    ? cause
+    : execError(input, cause);
 
 const scopedProcessStream = (
   input: ProcessSpawnOptions,
@@ -154,35 +161,58 @@ const scopedProcessStream = (
       const binding = yield* PreparedProcessBinding;
       const prepared = binding?.request === input ? binding : undefined;
       const captured = prepared?.context ?? (yield* captureScopedHostExecutionContext(snapshot));
-      const controller = yield* Effect.acquireRelease(
-        Effect.sync(() => new AbortController()),
-        (controller) => Effect.sync(() => controller.abort()),
-      );
-      const signal =
-        input.signal === undefined ? controller.signal : AbortSignal.any([input.signal, controller.signal]);
-      const iterator = streamProcess({ ...snapshot, signal }, captured, {
-        includeExitCode,
-        bunCommandEnv: execution.bunCommandEnv,
-        ...(prepared === undefined ? {} : { prepared: prepared.spawn }),
-      });
-      const iterable: AsyncIterable<ProcessStreamEvent> = {
-        [Symbol.asyncIterator]: () => ({
-          next: () => iterator.next(),
-          return: () => {
-            controller.abort();
-            return iterator.return(undefined);
-          },
+      const onError = (cause: unknown) => nativeProcessError(snapshot, cause);
+      return Stream.unwrap(
+        Effect.gen(function* () {
+          const context =
+            prepared?.spawn ??
+            (yield* Effect.acquireRelease(
+              Effect.tryPromise({
+                try: () =>
+                  prepareProcessSpawn(captured, {
+                    bunCommandEnv: execution.bunCommandEnv,
+                    ...(snapshot.signal === undefined ? {} : { signal: snapshot.signal }),
+                  }),
+                catch: onError,
+              }).pipe(Effect.catch(processRejection)),
+              (context) => Effect.promise(() => context[Symbol.asyncDispose]()),
+            ));
+          const child = yield* Effect.acquireRelease(
+            Effect.try({
+              try: () =>
+                openProcessStream(
+                  { ...snapshot, cwd: context.cwd, env: context.env },
+                  captured.platform,
+                  includeExitCode,
+                ),
+              catch: onError,
+            }).pipe(Effect.catch(processRejection)),
+            (child) =>
+              Effect.promise(child.close).pipe(
+                Effect.interruptible,
+                Effect.timeout(1500),
+                orDieWithRole("cleanup"),
+              ),
+          );
+          return Stream.fromAsyncIterable(child.iterable, onError).pipe(
+            Stream.catch((error) => Stream.fromEffect(processRejection(error))),
+          );
         }),
-      };
-      return Stream.fromAsyncIterable(iterable, (cause) =>
-        cause instanceof ProcessTimeoutError || cause instanceof ProcessExecError
-          ? cause
-          : execError(snapshot, cause),
       ).pipe(
-        Stream.catch((error) =>
-          Stream.fromEffect(
-            redactProcessError(captured, error, snapshot.capture === true).pipe(Effect.flatMap(Effect.fail)),
-          ),
+        Stream.catchCause((cause) =>
+          Cause.hasInterruptsOnly(cause)
+            ? Stream.failCause(cause)
+            : Stream.fromEffect(
+                redactorForInput(captured).pipe(
+                  Effect.flatMap((redactor) =>
+                    Effect.failCause(
+                      mapFailureCause(cause, (error) =>
+                        redactProcessError(redactor, error, snapshot.capture === true),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
         ),
       );
     }),
@@ -215,13 +245,15 @@ const makeService = (bunCommandEnv: boolean): Context.Service.Shape<typeof Proce
             bunCommandEnv,
             ...(prepared === undefined ? {} : { prepared: prepared.spawn }),
           }),
-        catch: (cause) =>
-          cause instanceof ProcessTimeoutError || cause instanceof ProcessExecError
-            ? cause
-            : execError(snapshot, cause),
+        catch: (cause) => nativeProcessError(snapshot, cause),
       }).pipe(
+        Effect.catch(processRejection),
         Effect.catch((error) =>
-          Effect.flatMap(redactProcessError(captured, error, snapshot.capture === true), Effect.fail),
+          redactorForInput(captured).pipe(
+            Effect.flatMap((redactor) =>
+              Effect.fail(redactProcessError(redactor, error, snapshot.capture === true)),
+            ),
+          ),
         ),
       );
       if (prepared === undefined && snapshot.capture !== true)

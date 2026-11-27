@@ -1,6 +1,7 @@
 import { mapFailures } from "@lando/sdk/command-result";
 import { GlobalAppError, type StateStoreError } from "@lando/sdk/errors";
 import { StateStore } from "@lando/sdk/services";
+import { storeErrorRemediation } from "@lando/state-store";
 import { Effect, Schema } from "effect";
 
 import type { PendingGlobalServiceContribution } from "../services/global-services.ts";
@@ -36,7 +37,10 @@ const policyError = (cause: StateStoreError): GlobalAppError =>
   new GlobalAppError({
     operation: "policy",
     message: "Unable to read or update global service policy.",
-    remediation: `Repair the policy document or permissions at ${cause.path ?? "global.config.yml"}, then retry.`,
+    remediation: storeErrorRemediation(
+      cause,
+      `Repair the policy document or permissions at ${cause.path ?? "global.config.yml"}, then retry.`,
+    ),
     cause,
   });
 

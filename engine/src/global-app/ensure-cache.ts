@@ -7,7 +7,13 @@ import { readGlobalConfigSources } from "@lando/paths/config-sources";
 import { canonicalJson, sha256Hex } from "@lando/sdk/digest";
 import { GlobalAppError } from "@lando/sdk/errors";
 import { isPlainRecord } from "@lando/sdk/landofile";
-import type { AppPlan, LoadScopedLandofile, ServiceName } from "@lando/sdk/schema";
+import {
+  type AppPlan,
+  LANDO_DATA_ROOT_LABEL,
+  type LoadScopedLandofile,
+  type ServiceName,
+  planAppIdentity,
+} from "@lando/sdk/schema";
 import {
   ConfigService,
   PathsService,
@@ -83,7 +89,7 @@ export const captureGlobalEnsureInputs = Effect.fnUntraced(
         (source) =>
           source.form !== "yaml" ||
           !isAbsolute(source.file) ||
-          /\b(?:env|env_file|envFile)\b|\b(?:load|import)\s*\(/u.test(source.content),
+          /\b(?:env|env_file)\b|\b(?:load|import)\s*\(/u.test(source.content),
       )
     )
       return undefined;
@@ -235,6 +241,7 @@ export const observeWarmGlobalServices = Effect.fnUntraced(
     services: ReadonlyArray<ServiceName>,
   ) {
     const inventory = yield* provider.list({ app: record.plan.id, includeUnplanned: true });
+    const ownerRoot = planAppIdentity(record.plan).appRoot;
     const observed = new Map<string, ServiceRuntimeInfo>();
     for (const service of services) {
       const expected = record.identities.get(service);
@@ -242,7 +249,8 @@ export const observeWarmGlobalServices = Effect.fnUntraced(
       const owner = inventory.find(
         (row) =>
           row.app === record.plan.id &&
-          row.appRoot === record.plan.root &&
+          row.appRoot === ownerRoot &&
+          row.labels?.[LANDO_DATA_ROOT_LABEL] === record.plan.identity?.dataRoot &&
           row.providerId === record.plan.provider &&
           row.service === service &&
           row.containerId === expected.slice(0, expected.lastIndexOf(":")),
@@ -252,8 +260,9 @@ export const observeWarmGlobalServices = Effect.fnUntraced(
       if (
         runtimeIdentity(runtime) !== expected ||
         runtime.status !== "running" ||
-        runtime.health === "unhealthy" ||
-        runtime.health === "starting"
+        // Native health nothing schedules is stale whatever it says, so it is not a reason to re-ensure.
+        (provider.capabilities.serviceHealth !== "none" &&
+          (runtime.health === "unhealthy" || runtime.health === "starting"))
       )
         return undefined;
       observed.set(service, runtime);

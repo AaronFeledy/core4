@@ -74,26 +74,31 @@ test.each(["destroy", "observed"] as const)(
     // When
     const receipt =
       operation === "destroy"
-        ? await Effect.runPromise(provider.destroy({ app: plan.id, plan }, { volumes: false }))
+        ? await Effect.runPromise(
+            provider.bringDown({ app: plan.id, plan }, { containers: "remove", volumes: false }),
+          )
         : await Effect.runPromise(
-            provider.removeObservedService({
-              app: AppId.make("shutdown-app"),
-              appRoot: AbsolutePath.make(plan.root),
-              providerId: ProviderId.make("podman"),
-              service: ServiceName.make("web"),
-              status: "running",
-              publications: { status: "unknown" },
-              labels: {
-                "dev.lando.app": plan.id,
-                "dev.lando.app-root": plan.root,
-                "dev.lando.service": "web",
+            provider.bringDownObserved(
+              {
+                app: AppId.make("shutdown-app"),
+                appRoot: AbsolutePath.make(plan.root),
+                providerId: ProviderId.make("podman"),
+                service: ServiceName.make("web"),
+                status: "running",
+                publications: { status: "unknown" },
+                labels: {
+                  "dev.lando.app": plan.id,
+                  "dev.lando.app-root": plan.root,
+                  "dev.lando.service": "web",
+                },
+                containerId: "owned-id",
               },
-              containerId: "owned-id",
-            }),
+              "remove",
+            ),
           );
     // Then
     expect(receipt).toMatchObject({
-      kind: operation === "destroy" ? "destroyed" : "removed",
+      ...(operation === "destroy" ? { kind: "removed" } : { action: "removed" }),
       shutdownObservations: [
         {
           appId: plan.id,

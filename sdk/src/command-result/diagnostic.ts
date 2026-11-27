@@ -17,6 +17,11 @@ const ownValue = (value: object | undefined, key: string): unknown => {
 const text = (value: unknown): string | undefined =>
   typeof value === "string" && value.trim().length > 0 ? value : undefined;
 
+export const causeRemediation = (cause: unknown): string | undefined => {
+  if (cause === null || typeof cause !== "object" || !("remediation" in cause)) return undefined;
+  return text(cause.remediation);
+};
+
 const decodeIssue = Schema.decodeUnknownResult(ValidationIssue);
 
 /**
@@ -131,7 +136,7 @@ const projectTaggedError = (error: unknown, ancestors: readonly unknown[]): type
 export const taggedErrorJson = (error: unknown): typeof TaggedErrorJson.Type => projectTaggedError(error, []);
 
 /** A tagged error that surfaced as a defect still has its own message and remediation. */
-const isDiagnosticError = (error: unknown): boolean => {
+export const isDiagnosticError = (error: unknown): boolean => {
   const record = error !== null && typeof error === "object" ? error : undefined;
   return (["_tag", "message", "remediation"] as const).every(
     (key) => text(ownValue(record, key)) !== undefined,

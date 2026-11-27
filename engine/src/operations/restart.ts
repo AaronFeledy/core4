@@ -30,6 +30,7 @@ import { haltAndRelaunchApp } from "./app-relaunch.ts";
 import { publishAndRunAppEvent } from "./events.ts";
 import { relaunchSelectedServices } from "./selected-relaunch.ts";
 import type { StartManagedScope } from "./start-file-sync.ts";
+import { publishStartWarnings } from "./start-warnings.ts";
 import { publishPlacementVolumeTransitionNotices } from "./volume-transition-notice.ts";
 
 export type RestartAppError = SdkRestartAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
@@ -86,17 +87,19 @@ export const restartApp = Effect.fn("AppOperation.restart")(
           timestamp: DateTime.nowUnsafe(),
           ...(selected === undefined ? {} : { services: [...selected] }),
         });
+        // A whole relaunch announces its launch again; the publisher skips the repeats.
+        yield* publishStartWarnings(selectedPlan);
         yield* publishAndRunAppEvent(plan, "pre-restart", preRestart);
         yield* publishPlacementVolumeTransitionNotices(placement, selectedPlan);
         const result: RestartAppResult =
           admitted.scope === "services"
             ? {
                 app: plan.name,
-                servicesStarted: yield* relaunchSelectedServices(admitted, {
+                ...(yield* relaunchSelectedServices(admitted, {
                   operation: "restart",
                   ...(options.signal === undefined ? {} : { signal: options.signal }),
                   ...(managed === undefined ? {} : { managed }),
-                }),
+                })),
                 ...(removedByResume.length === 0 ? {} : { servicesRemoved: removedByResume }),
               }
             : yield* haltAndRelaunchApp(
@@ -106,6 +109,7 @@ export const restartApp = Effect.fn("AppOperation.restart")(
                   ...(options.signal === undefined ? {} : { signal: options.signal }),
                 },
                 managed,
+                { announceApplyOutcome: true },
               );
         const postRestart = PostRestartEvent.make({
           _tag: "post-restart",

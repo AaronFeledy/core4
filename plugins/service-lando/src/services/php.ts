@@ -6,9 +6,11 @@ import { UNSUPPORTED_LAUNCHER_EXTRA_ARGS_REMEDIATION } from "./_extra-args.ts";
 import { ServiceConfigIssue, rootIdentity, serviceTypeResolve } from "./_feature-helpers.ts";
 import { resolveWebroot } from "./_webroot.ts";
 import { apacheGeneratedCertificateEndpoint } from "./apache-native-tls.ts";
+import { drupalLocalLauncher } from "./drupal-local-launcher.ts";
 import { resolvePhpComposerPackages } from "./php-composer-packages.ts";
 import { resolvePhpDbClient } from "./php-db-client.ts";
 import { PHP_COMPOSER_CACHE, PHP_FEATURE_ID } from "./php-feature.ts";
+import { phpLocalLauncher } from "./php-local-launcher.ts";
 import { assertPhpComposerCompatible, resolvePhpComposer } from "./php-prerequisites.ts";
 import { PHP_RUNTIME_POLICY_KEY, resolvePhpRuntimePolicy } from "./php-runtime-policy.ts";
 import {
@@ -21,7 +23,7 @@ import {
   phpPlannedPort,
   resolvePhpVia,
 } from "./php-via.ts";
-import { assertPhpXdebugSupported, phpXdebugTooling, resolvePhpXdebug } from "./php-xdebug.ts";
+import { phpXdebugTooling, resolvePhpXdebug } from "./php-xdebug.ts";
 
 export {
   PHP_BASELINE_INI_PATH,
@@ -103,8 +105,7 @@ const makePhpServiceType = (version: SupportedPhpVersion): ServiceType => ({
       const via = resolvePhpVia(input.service.via);
       assertPhpViaKeys(via, input.service);
       const xdebug = resolvePhpXdebug(input.service.xdebug);
-      assertPhpXdebugSupported(resolvedVersion, xdebug);
-      resolvePhpDbClient(input.service.db_client);
+      resolvePhpDbClient(input.service.dbClient);
       const webroot = resolveWebroot("PHP", input.service.webroot, input.service.appMount);
       const allowOverride = input.service.allowOverride ?? false;
       const policy = resolvePhpRuntimePolicy(input.service, resolvedVersion, via);
@@ -115,6 +116,7 @@ const makePhpServiceType = (version: SupportedPhpVersion): ServiceType => ({
       });
       return {
         base: "lando" as const,
+        launchers: { ":php-local": phpLocalLauncher, ":drupal-local": drupalLocalLauncher },
         normalizedConfig: {
           ...input.service,
           type: `php:${resolvedVersion}`,

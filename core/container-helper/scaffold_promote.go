@@ -6,10 +6,11 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"syscall"
 )
 
-func (s *scaffold) classify(manifest *scaffoldManifest) error {
+func (s *scaffold) classify(manifest *scaffoldManifest, requiredOutputs []string) error {
 	entries, err := os.ReadDir(s.stageDir)
 	if err != nil {
 		return err
@@ -40,6 +41,9 @@ func (s *scaffold) classify(manifest *scaffoldManifest) error {
 				}
 				classified = append(classified, scaffoldEntry{Name: name, State: "nested-pending"})
 			} else {
+				if slices.Contains(requiredOutputs, name) {
+					return fmt.Errorf("%s cannot publish its required output %q: the project path already exists", s.label, name)
+				}
 				classified = append(classified, scaffoldEntry{Name: name, State: "preexisting"})
 			}
 		case errors.Is(err, fs.ErrNotExist):
@@ -50,6 +54,11 @@ func (s *scaffold) classify(manifest *scaffoldManifest) error {
 			})
 		default:
 			return err
+		}
+	}
+	for _, name := range requiredOutputs {
+		if !slices.ContainsFunc(classified, func(entry scaffoldEntry) bool { return entry.Name == name }) {
+			return fmt.Errorf("%s did not stage its required output %q", s.label, name)
 		}
 	}
 	manifest.Entries = classified

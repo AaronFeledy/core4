@@ -12,6 +12,7 @@ import {
   AbsolutePath,
   AppId,
   AppPlan,
+  AppliedAppPlan,
   MountPlan,
   ProviderId,
   ServiceName,
@@ -20,6 +21,7 @@ import {
 import type { StateBucket } from "@lando/sdk/services";
 import { AppPlanSanitizer } from "@lando/sdk/services";
 import { DateTime, Effect, Schema } from "effect";
+import { AppliedPlan, AppliedPlans } from "../src/applied-state-codec.ts";
 import {
   migrateAppliedPlanWithCoordinate,
   migrateAppliedPlansRecordWithCoordinate,
@@ -113,6 +115,41 @@ const v1PlanBase = {
 };
 
 describe("applied plan state layouts", () => {
+  test("reads a v11 service plan without inventing a planned port", () => {
+    const encoded = Schema.encodeSync(AppPlan)(legacyPlan());
+    const service = Object.values(encoded.services)[0];
+    if (service === undefined) throw new Error("The historical plan fixture must contain a service.");
+    const migrated = migrateAppliedPlan(encoded, 11)?.services[ServiceName.make(service.name)];
+    expect(migrated).toBeDefined();
+    expect(migrated?.plannedPort).toBeUndefined();
+  });
+  test("reads a v12 route-text environment value as the URL it always named", () => {
+    // Given a v12 record whose environment holds a RouteText part without a member
+    const encoded = Schema.encodeSync(AppPlan)(legacyPlan());
+    const [name, service] = Object.entries(encoded.services)[0] ?? [];
+    if (name === undefined || service === undefined)
+      throw new Error("The historical plan fixture must contain a service.");
+    const route = { _tag: "RouteText", parts: [{ service: name, encoding: "raw" }, "/api"] } as const;
+    const raw = { ...encoded, services: { [name]: { ...service, environment: { APP_URL: route } } } };
+    // When
+    const migrated = migrateAppliedPlan(raw, 12)?.services[ServiceName.make(name)];
+    // Then
+    expect(migrated?.environment.APP_URL).toEqual(route);
+  });
+  test("v10 historical events cannot block recovery of the realized plan", () => {
+    const plan = legacyPlan();
+    const raw = {
+      ...Schema.encodeSync(AppPlan)(plan),
+      events: {
+        "pre-stop": [
+          { step: { cmd: "true", env: { "": "old" } }, source: "project", sourceIndex: 0, status: "active" },
+        ],
+      },
+    };
+    const migrated = migrateAppliedPlan(raw, 10);
+    expect(migrated).toMatchObject({ id: plan.id, services: plan.services });
+    expect(migrated).not.toHaveProperty("events");
+  });
   test("reads v8 application listener authority without inventing keep-alive intent", () => {
     const encoded = Schema.encodeSync(AppPlan)(legacyPlan());
     const service = Object.values(encoded.services)[0];
@@ -244,7 +281,7 @@ describe("applied plan state layouts", () => {
           ? makeAppliedPlanStore({ providerId: "docker", layout })
           : makeAppliedPlanStore({ providerId: "podman", layout });
       // When
-      const observed = await Effect.runPromise(store.loadAppliedPlan(state, current.id));
+      const observed = await Effect.runPromise(store.loadAppliedPlanStrict(state, current.id));
       // Then
       expect(observed?.id).toBe(current.id);
       expect(observed?.root).toBe(current.root);
@@ -260,7 +297,7 @@ describe("applied plan state layouts", () => {
     const store = makeAppliedPlanStore({ providerId: "docker", layout: "per-app" });
     const appId = AppId.make("example");
 
-    await Effect.runPromiseExit(store.loadAppliedPlan(recordingStateStore(calls), appId));
+    await Effect.runPromiseExit(store.loadAppliedPlanStrict(recordingStateStore(calls), appId));
 
     expect(calls).toHaveLength(1);
     expect(calls[0]).toMatchObject({
@@ -575,6 +612,21 @@ describe("applied plan records", () => {
     extensions: {},
   };
   const { events: _events, ...record } = plan;
+
+  test.each(["per-app", "record"] as const)("reads legitimate v11 %s writer bytes", (layout) => {
+    const historicalWriterValue = Schema.encodeSync(AppPlan)(record);
+    const bytes = JSON.stringify(
+      layout === "per-app" ? historicalWriterValue : { [plan.id]: historicalWriterValue },
+    );
+    const raw: unknown = JSON.parse(bytes);
+    const decoded =
+      layout === "per-app"
+        ? Schema.decodeUnknownSync(AppliedPlan)(raw)
+        : Schema.decodeUnknownSync(AppliedPlans)(raw)[plan.id];
+    expect(APPLIED_STATE_VERSION).toBe(13);
+    expect(decoded).toEqual(Schema.decodeUnknownSync(AppliedAppPlan)(historicalWriterValue));
+    expect(decoded).toEqual(record);
+  });
   const writingStateStore = (written: unknown[]): PluginStateStore => ({
     open: <A, I>(_spec: PluginStateBucketSpec<A, I>): Effect.Effect<StateBucket<A>, StateStoreError> =>
       Effect.succeed({

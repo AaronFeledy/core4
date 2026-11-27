@@ -25,6 +25,7 @@ export const fixture = (root = current.root) => {
     identity: { appRoot: root, ownerKey: appIdentityKey("owner", root) },
   }));
   const containers = new Set(applied.map((plan) => plan.id));
+  const running = new Set(applied.map((plan) => plan.id));
   const volumes = new Set(applied.map((plan) => plan.id));
   const caches = new Set(applied.map((plan) => plan.id));
   const providers = [{ ...TestRuntimeProvider, id: "lando", appliedPlans: Effect.sync(() => [...applied]) }];
@@ -34,14 +35,16 @@ export const fixture = (root = current.root) => {
     resolveAppliedPlan: (root, app) => resolveAppliedPlanEvidence(root, providers, app),
     resolveTeardownEvidence: (root, app) => resolveTeardownEvidence(root, providers, app),
     onDestroy: (ref, options) => {
+      running.delete(ref.app);
+      if (options.containers === "stop") return;
       containers.delete(ref.app);
-      if (options?.volumes === true) volumes.delete(ref.app);
-      if (options?.purgeCaches === true) caches.delete(ref.app);
-      if (options?.removeState === true) {
+      if (options.volumes) volumes.delete(ref.app);
+      if (options.purgeCaches === true) caches.delete(ref.app);
+      if (options.removeState === true) {
         const index = applied.findIndex((plan) => plan.id === ref.app);
         if (index >= 0) applied.splice(index, 1);
       }
     },
   });
-  return { ...harness, applied, containers, volumes, caches };
+  return { ...harness, applied, containers, running, volumes, caches };
 };

@@ -1,6 +1,7 @@
-import { type AppPlan, planDataId } from "@lando/sdk/schema";
+import { type AppPlan, LANDO_DATA_ROOT_LABEL, planAppIdentity, planDataId } from "@lando/sdk/schema";
 import { Effect, Option, Schema } from "effect";
-import { STORE_LABEL } from "../labels.ts";
+import { type AdoptionReceipt, dataRootRefusal, decideDataRootOwnership } from "../data-root-ownership.ts";
+import { STORE_LABEL, VOLUME_INSTANCE_LABEL } from "../labels.ts";
 import { NativeVolumeSchema } from "../native-volume-identity.ts";
 import {
   type SkippedVolume,
@@ -20,7 +21,13 @@ import {
   volumeClassForStore,
   volumeClassFromLabels,
 } from "../volume-classes.ts";
-import { coherentVolumeOwnership, isGlobalCacheStore, planVolumeFilters } from "../volume-ownership.ts";
+import {
+  GLOBAL_CACHE_OWNER,
+  coherentVolumeOwnership,
+  isGlobalCacheStore,
+  ownedVolumeLockTier,
+  planVolumeFilters,
+} from "../volume-ownership.ts";
 import { volumeMatchesFilters } from "./volume-prune.ts";
 
 const NativeVolumes = Schema.Array(NativeVolumeSchema);
@@ -31,14 +38,21 @@ const VolumeList = Schema.fromJsonString(
 export const planVolumeDeletions = Effect.fnUntraced(function* (
   runtime: TeardownVolumeRuntime,
   plan: AppPlan,
-  selection: TeardownVolumeSelection,
+  selection: TeardownVolumeSelection & { readonly adoptionReceipts?: readonly AdoptionReceipt[] },
 ) {
   if (!selection.volumes && !selection.purgeCaches) return { candidates: [], skipped: [] };
   const classes = teardownVolumeClasses(selection);
   const appId = planDataId(plan);
   const filters = classes.map((volumeClass) => planVolumeFilters(plan, [volumeClass]));
-  const matchesApp = (labels: Readonly<Record<string, string>>) =>
+  const dataRoot = plan.identity?.dataRoot;
+  const matchesApp = (name: string, labels: Readonly<Record<string, string>>) =>
     !isGlobalScopedVolume(labels) &&
+    (dataRoot === undefined
+      ? labels[LANDO_DATA_ROOT_LABEL] === undefined
+      : decideDataRootOwnership(
+          { kind: "volume", nativeName: name, labels, volumeInstance: labels[VOLUME_INSTANCE_LABEL] },
+          { dataRoot, receipts: selection.adoptionReceipts ?? [] },
+        ) === "owned") &&
     coherentVolumeOwnership(labels, plan.provider) &&
     filters.some((filter) => volumeMatchesFilters(labels, filter));
   const names = new Map<string, VolumeDeletion>();
@@ -52,10 +66,12 @@ export const planVolumeDeletions = Effect.fnUntraced(function* (
       name: store.name,
       volumeClass,
       shared,
+      ownerRoot: shared ? GLOBAL_CACHE_OWNER : planAppIdentity(plan).appRoot,
+      tier: ownedVolumeLockTier(plan.id, shared),
       matches: (labels) =>
         shared
           ? matchesSharedCache(plan.provider, store.name, labels)
-          : matchesApp(labels) &&
+          : matchesApp(store.name, labels) &&
             labels[STORE_LABEL] === store.name &&
             labels[STORAGE_SCOPE_LABEL] === store.scope &&
             volumeClassFromLabels(labels) === volumeClass,
@@ -70,15 +86,17 @@ export const planVolumeDeletions = Effect.fnUntraced(function* (
   for (const { Name: name, Labels } of "Volumes" in list.value ? (list.value.Volumes ?? []) : list.value) {
     const labels = Labels ?? {};
     const named = names.get(name);
-    if (named === undefined && !matchesApp(labels)) continue;
+    if (named === undefined && !matchesApp(name, labels)) continue;
     const volumeClass = volumeClassFromLabels(labels);
     const volume = named ?? {
       appId,
       name,
       volumeClass,
       shared: false,
+      ownerRoot: planAppIdentity(plan).appRoot,
+      tier: ownedVolumeLockTier(plan.id, false),
       matches: (fresh: Readonly<Record<string, string>>) =>
-        matchesApp(fresh) &&
+        matchesApp(name, fresh) &&
         fresh[STORE_LABEL] === labels[STORE_LABEL] &&
         fresh[STORAGE_SCOPE_LABEL] === labels[STORAGE_SCOPE_LABEL] &&
         volumeClassFromLabels(fresh) === volumeClass,
@@ -86,7 +104,7 @@ export const planVolumeDeletions = Effect.fnUntraced(function* (
     const observed = yield* snapshotVolumeDeletion(runtime, volume, labels).pipe(
       Effect.catchIf(
         () => volume.shared,
-        () => Effect.succeed({ kind: "unverified" } as const),
+        () => Effect.succeed({ kind: "unverified", labels } as const),
       ),
     );
     switch (observed.kind) {
@@ -96,6 +114,17 @@ export const planVolumeDeletions = Effect.fnUntraced(function* (
       case "unverified":
         if (volume.shared)
           skipped.push(skippedVolume(volume, "shared cache ownership could not be verified"));
+        else if (
+          observed.labels[LANDO_DATA_ROOT_LABEL] !== undefined &&
+          observed.labels[LANDO_DATA_ROOT_LABEL] !== dataRoot
+        ) {
+          const { message, remediation } = dataRootRefusal({
+            kind: "volume",
+            nativeName: name,
+            labels: observed.labels,
+          });
+          skipped.push(skippedVolume(volume, `${message} ${remediation}`));
+        }
         break;
       case "absent":
         break;

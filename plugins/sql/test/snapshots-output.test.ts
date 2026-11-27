@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { AbsolutePath, AppId, ServiceName, SnapshotInfo } from "@lando/sdk/schema";
 import { DateTime } from "effect";
 
+import { renderRecoveryHint } from "../src/commands/recovery-hint.ts";
 import { renderDbSnapshots } from "../src/commands/snapshots.ts";
 
 describe("db:snapshots output", () => {
@@ -45,5 +46,24 @@ describe("db:snapshots output", () => {
     expect(output).toContain("owner:sql-app");
     expect(output).toContain("repository:sql-app");
     expect(output).toContain("/workspace/sql-app");
+  });
+});
+
+describe("recovery hint", () => {
+  test("names the restored snapshot and a runnable undo command for the saved recovery snapshot", () => {
+    const text = renderRecoveryHint({
+      service: "database",
+      snapshotId: "snap-restored",
+      recoverySnapshotId: "snap-undo",
+      steps: [],
+    });
+    expect(text.split("\n")[0]).toContain("snap-restored");
+    expect(text).toContain("lando db:restore snap-undo --service database --yes");
+  });
+
+  test("prints nothing when no recovery snapshot was taken", () => {
+    expect(renderRecoveryHint({ service: "database", recoverySkipped: "database-missing", steps: [] })).toBe(
+      "",
+    );
   });
 });

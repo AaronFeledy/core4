@@ -232,9 +232,9 @@ describe("provider-free injected-event pipeline", () => {
     );
     expect(applied).toEqual({ changed: false });
     const destroyed = await Effect.runPromise(
-      TestRuntimeProvider.destroy({ app: plan.id }, { volumes: false }),
+      TestRuntimeProvider.bringDown({ app: plan.id }, { containers: "remove", volumes: false }),
     );
-    expect(destroyed).toEqual({ kind: "destroyed", volumesRemoved: { data: 0, cache: 0 } });
+    expect(destroyed).toEqual({ kind: "removed", containers: [], volumesRemoved: { data: 0, cache: 0 } });
 
     const io = {
       ...createBufferedRendererIO({ isTTY: true, terminalColumns: 100 }),

@@ -52,7 +52,7 @@ const processAlive = (pid: number): boolean => {
   }
 };
 
-const probe = "echo HP=$LANDO_HOST_PROXY_SOCKET; ls /run/lando/host-proxy.sock";
+const probe = "echo HP=$LANDO_HOST_PROXY_SOCKET; test -S /run/lando/host-proxy/sock";
 
 const shimOpen = (root: string) =>
   lando(root, ["exec", "web", "--", "lando", "open", "--print", "--format=json"]);
@@ -100,7 +100,7 @@ test.skipIf(!liveEnabled)(
       expect(started.exitCode, started.stdout + started.stderr).toBe(0);
       const before = await lando(root, ["exec", "web", "--", "sh", "-c", probe]);
       expect(before.exitCode, before.stdout + before.stderr).toBe(0);
-      expect(before.stdout).toContain("HP=/run/lando/host-proxy.sock");
+      expect(before.stdout).toContain("HP=/run/lando/host-proxy/sock");
       expectHostProxied(await shimOpen(root));
       ({ pid: workerPid, dir: workerDir } = await workerRecordFor(root));
 
@@ -108,7 +108,7 @@ test.skipIf(!liveEnabled)(
       expect(rebuilt.exitCode, rebuilt.stdout + rebuilt.stderr).toBe(0);
       const after = await lando(root, ["exec", "web", "--", "sh", "-c", probe]);
       expect(after.exitCode, after.stdout + after.stderr).toBe(0);
-      expect(after.stdout).toContain("HP=/run/lando/host-proxy.sock");
+      expect(after.stdout).toContain("HP=/run/lando/host-proxy/sock");
       // The in-container shim round-trips through the host proxy with the current credentials.
       expectHostProxied(await shimOpen(root));
       expect((await workerRecordFor(root)).pid).toBe(workerPid);
@@ -129,6 +129,18 @@ test.skipIf(!liveEnabled)(
       expect((await workerRecordFor(root)).pid).toBe(workerPid);
       const editedEnv = await lando(root, ["exec", "web", "--", "sh", "-c", "echo PROBE=$HP_REUSE_PROBE"]);
       expect(editedEnv.stdout).toContain("PROBE=edited");
+      expectHostProxied(await shimOpen(root));
+
+      // A replaced worker reaches the running container through the same bound directory, so the
+      // next start keeps the container and its writable layer.
+      const marked = await lando(root, ["exec", "web", "--", "touch", "/tmp/hp-writable-marker"]);
+      expect(marked.exitCode, marked.stdout + marked.stderr).toBe(0);
+      process.kill(workerPid, "SIGKILL");
+      const replaced = await lando(root, ["start", "--format=json"]);
+      expect(replaced.exitCode, replaced.stdout + replaced.stderr).toBe(0);
+      expect((await workerRecordFor(root)).pid).not.toBe(workerPid);
+      const kept = await lando(root, ["exec", "web", "--", "test", "-f", "/tmp/hp-writable-marker"]);
+      expect(kept.exitCode, kept.stdout + kept.stderr).toBe(0);
       expectHostProxied(await shimOpen(root));
     } finally {
       const destroyed = await lando(root, ["destroy", "--yes", "--volumes", "--format=json"]);

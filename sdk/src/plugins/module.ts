@@ -1,6 +1,8 @@
 import type { Effect, Layer } from "effect";
 import type {
+  AppliedStateVersionError,
   ProviderCapabilityError,
+  ProviderInternalError,
   ProviderUnavailableError,
   ProxyError,
   SshError,
@@ -10,6 +12,7 @@ import type { RendererContribution } from "../renderer/index.ts";
 import type { HostUninstallOutcome, HostUninstallStep } from "../schema/host-maintenance.ts";
 import type {
   AbsolutePath,
+  AppId,
   AppPlan,
   AppliedStateInventory,
   HostPlatform,
@@ -38,6 +41,7 @@ import type {
   PathsService,
   ProcessRunner,
   RouterService,
+  RuntimeProviderRegistry,
   RuntimeProviderShape,
   SecretStore,
   ServiceFeatureDefinition,
@@ -56,20 +60,52 @@ export type RuntimeProviderFactoryRequirements =
   | ContainerHelperAssets
   | AppPlanSanitizer;
 
+export type ProviderPurgeResult = {
+  readonly endpoint: string;
+  readonly removed: readonly string[];
+  readonly retained: readonly string[];
+  readonly failed: readonly string[];
+  readonly outsideScope: number;
+};
+
+export type ProviderPurgePreflight =
+  | { readonly kind: "skipped"; readonly endpoint: string; readonly reason: string }
+  | {
+      readonly kind: "reachable";
+      readonly endpoint: string;
+      readonly counts: Readonly<Record<"container" | "network" | "volume" | "image", number>>;
+      readonly apps: readonly { readonly appId: string; readonly appRoot: string }[];
+      readonly syncPresent: boolean;
+      readonly sweep: () => Effect.Effect<ProviderPurgeResult>;
+    };
+
+export type ProviderPurgeHook = (input: {
+  readonly platform: HostPlatform;
+  readonly env: Readonly<Record<string, string | undefined>>;
+  readonly dataRoot: string;
+  readonly buildStore: string;
+}) => Effect.Effect<ProviderPurgePreflight | undefined, ProviderUnavailableError | ProviderInternalError>;
+
 export interface RuntimeProviderContribution {
-  readonly appliedStateInventory?: (
+  readonly purge?: ProviderPurgeHook;
+  readonly appliedStateInventory: (
     ctx: LandoPluginContext,
-  ) => Effect.Effect<AppliedStateInventory, ProviderUnavailableError, PathsService>;
+  ) => Effect.Effect<
+    AppliedStateInventory,
+    ProviderUnavailableError | AppliedStateVersionError,
+    PathsService
+  >;
+  /** Filesystem-only targeted read. Returns undefined only when the app has no record. */
+  readonly readAppliedPlanStrict: (
+    ctx: LandoPluginContext,
+    appId: AppId,
+  ) => Effect.Effect<AppPlan | undefined, ProviderUnavailableError | AppliedStateVersionError, PathsService>;
   readonly id: ProviderId;
   readonly declaredCapabilities?: (platform: HostPlatform, arch?: string) => ProviderCapabilities;
   readonly resourceOwnership?: (
     ctx: LandoPluginContext,
     root: AbsolutePath,
   ) => Effect.Effect<ResourceOwnership | undefined, ProviderUnavailableError>;
-  /** Read durable ownership claims without connecting to or initializing the runtime. */
-  readonly appliedPlans: (
-    ctx: LandoPluginContext,
-  ) => Effect.Effect<ReadonlyArray<AppPlan>, ProviderUnavailableError, PathsService>;
   readonly make: (
     ctx: LandoPluginContext,
   ) => Effect.Effect<
@@ -186,7 +222,7 @@ export interface RouterServiceContribution {
 export type SshServiceContributionLayer = Layer.Layer<
   SshService,
   SshError,
-  FileSystem | GlobalAppService | PathsService
+  FileSystem | GlobalAppService | PathsService | RuntimeProviderRegistry
 >;
 export type SecretStoreContributionLayer = Layer.Layer<
   SecretStore,

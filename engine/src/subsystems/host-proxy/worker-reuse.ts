@@ -1,4 +1,4 @@
-import { lstat, rm } from "node:fs/promises";
+import { lstat } from "node:fs/promises";
 import { dirname } from "node:path";
 import { RedactionService } from "@lando/redaction/service";
 import { Effect, Option } from "effect";
@@ -6,7 +6,7 @@ import { changeWorkerClaim } from "../detached-worker/claim.ts";
 import { workerSessionLifetime } from "../detached-worker/lifecycle.ts";
 import { isOwnerOnlyRecordFile } from "../detached-worker/state-file.ts";
 import type { DetachedHostProxyWorkerOptions } from "./detached-worker.ts";
-import { verifyHostProxyRunDirectory } from "./run-directory.ts";
+import { resetHostProxyRunDirectory, verifyHostProxyContainerDirectory } from "./run-directory.ts";
 import type { HostProxyRunLandoSession } from "./transport-session.ts";
 import { configureWorker, probeWorker, terminateControlRecord } from "./worker-control.ts";
 import { HOST_PROXY_WORKER_PROTOCOL_VERSION } from "./worker-records.ts";
@@ -49,7 +49,7 @@ export const reuseHostProxyWorker = Effect.fnUntraced(function* (
   if (record.transport === "unix-socket" && record.url === undefined) {
     const privateSocket = yield* Effect.tryPromise(async () => {
       if (record.socketPath === undefined) return false;
-      await verifyHostProxyRunDirectory(dirname(record.socketPath));
+      await verifyHostProxyContainerDirectory(dirname(record.socketPath));
       const metadata = await lstat(record.socketPath);
       return metadata.isSocket() && metadata.uid === process.getuid?.();
     }).pipe(Effect.catch(() => Effect.succeed(false)));
@@ -65,9 +65,8 @@ export const reuseHostProxyWorker = Effect.fnUntraced(function* (
         Effect.fnUntraced(function* (claim) {
           const current = yield* readWorkerRecord(options.app, options.paths);
           if (current?.sessionId !== record.sessionId) return;
-          const removeRunDir = Effect.promise(() =>
-            rm(dirname(claim.path), { recursive: true, force: true }),
-          );
+          // Closing a session leaves its containers running; they keep the container-facing directory.
+          const removeRunDir = Effect.promise(() => resetHostProxyRunDirectory(dirname(claim.path)));
           if (!(yield* isOwnerOnlyRecordFile(claim.path, options.privateFileAccess))) {
             yield* changeWorkerClaim(claim, "reap-stale", removeRunDir);
             return;

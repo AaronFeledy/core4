@@ -14,7 +14,8 @@ export const RouteFilterKind = Schema.Literals([
 ]);
 export type RouteFilterKind = typeof RouteFilterKind.Type;
 
-const name = Schema.optionalKey(Schema.String).annotate({
+// annotateKey keeps field descriptions on authoring expression unions; plain annotate stays on the leaf only.
+const name = Schema.optionalKey(Schema.String).annotateKey({
   description: "Layer-merge identity of this filter, not an HTTP header name.",
 });
 const prefix = Schema.NonEmptyString.pipe(
@@ -24,8 +25,9 @@ const prefix = Schema.NonEmptyString.pipe(
       toJsonSchema: () => ({ pattern: PREFIX_PATTERN.source }),
     }),
   ),
-).annotate({
-  description: "Non-empty path prefix beginning with a slash.",
+).annotateKey({
+  description:
+    "Non-empty path prefix beginning with a slash. stripPrefix removes it from the request path; addPrefix prepends it.",
 });
 const header = Schema.String.pipe(
   Schema.check(
@@ -34,39 +36,39 @@ const header = Schema.String.pipe(
       toJsonSchema: () => ({ pattern: HEADER_PATTERN.source }),
     }),
   ),
-).annotate({
+).annotateKey({
   description: "HTTP header name containing only letters, digits, and hyphens.",
 });
-const value = Schema.String.annotate({ description: "HTTP header value to set." });
+const value = Schema.String.annotateKey({ description: "HTTP header value to set." });
 
 const filterArms = [
   Schema.Struct({
-    kind: Schema.Literal("stripPrefix").annotate({ description: "Remove a request path prefix." }),
+    kind: Schema.Literal("stripPrefix").annotateKey({ description: "Remove a request path prefix." }),
     name,
     prefix,
   }),
   Schema.Struct({
-    kind: Schema.Literal("addPrefix").annotate({ description: "Prepend a request path prefix." }),
+    kind: Schema.Literal("addPrefix").annotateKey({ description: "Prepend a request path prefix." }),
     name,
     prefix,
   }),
   Schema.Struct({
-    kind: Schema.Literal("requestHeader").annotate({ description: "Set a request header." }),
+    kind: Schema.Literal("requestHeader").annotateKey({ description: "Set a request header." }),
     name,
     header,
     value,
   }),
   Schema.Struct({
-    kind: Schema.Literal("responseHeader").annotate({ description: "Set a response header." }),
+    kind: Schema.Literal("responseHeader").annotateKey({ description: "Set a response header." }),
     name,
     header,
     value,
   }),
   Schema.Struct({
-    kind: Schema.Literal("redirect").annotate({ description: "Redirect the request." }),
+    kind: Schema.Literal("redirect").annotateKey({ description: "Redirect the request." }),
     name,
-    to: Schema.NonEmptyString.annotate({ description: "Non-empty redirect destination." }),
-    permanent: Schema.optionalKey(Schema.Boolean).annotate({ description: "Use a permanent redirect." }),
+    to: Schema.NonEmptyString.annotateKey({ description: "Non-empty redirect destination." }),
+    permanent: Schema.optionalKey(Schema.Boolean).annotateKey({ description: "Use a permanent redirect." }),
   }),
 ] as const;
 

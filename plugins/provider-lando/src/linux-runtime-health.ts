@@ -17,6 +17,8 @@ export interface LinuxRuntimeHealthDeps {
   readonly socketPath: string;
   readonly pidPath: string;
   readonly runtimeBundleVersion?: string;
+  /** The installed runtime schedules healthchecks in the service, so its launch opts in. */
+  readonly serviceHealthchecks?: boolean;
   readonly generationStore?: RuntimeGenerationStore;
   readonly bootIdReader?: () => Effect.Effect<string, unknown>;
   readonly pidNamespaceReader?: () => Effect.Effect<string, unknown>;

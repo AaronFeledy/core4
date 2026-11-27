@@ -21,7 +21,7 @@ This part is the master contract index for replaceable abstractions, selection, 
 
 | Abstraction | Service tag | Default | Swap mechanism |
 |---|---|---|---|
-| Containerization | `RuntimeProvider` | `@lando/provider-lando` | `providers:`; select by app `provider:` or global `defaultProviderId`. One provider is selected per app. |
+| Containerization | `RuntimeProvider` | `@lando/provider-lando` | `providers:`; select by app `provider:` or global `defaultProviderId`. One provider is selected per app. A contribution MUST supply `id`, `make`, `appliedPlans`, `appliedStateInventory`, and `readAppliedPlanStrict`; `resourceOwnership` and `declaredCapabilities` are optional (§5.3.1). |
 | File sync | `FileSyncEngine` | No engine on native providers; bundled `@lando/file-sync-mutagen` eligible for Windows prepared-volume targets | `fileSyncEngines:`; required support metadata gates eligibility independently of preference: global `defaultFileSyncEngine` → matching eligible `defaultFor` → sole eligible implementation (§4.3). No eligible automatic candidate means ordinary binds; explicit unsupported choices and ambiguity fail with `FileSyncSelectionError`. `passthrough` is a reserved no-session policy, not an engine; `appMount.accelerate: false` opts one service out. Neither ordinary path acquires an engine. Landofiles MUST NOT name an engine id. Engines MUST use provider ports and preserve lifecycle/scope semantics (§3.5, §5.4). |
 | Tooling execution | `ToolingEngine` | Core `providerExec` and `host` | `toolingEngines:`; per-step/task/default/Landofile/global selection (§8.6). Core ids MUST NOT be replaced; implementations MUST pass the tooling-engine contract suite (§13.1). |
 | Template rendering | `TemplateEngine` | Core `lando`; bundled `handlebars` and `mustache` whole-file engines | `templateEngines:`; explicit `engine`, extension, Landofile `defaultTemplateEngine`, then global config (§7.3.2). Only `lando` interpolates Landofile string values. |
@@ -35,7 +35,7 @@ This part is the master contract index for replaceable abstractions, selection, 
 | Shell execution | `ShellRunner` | Embedded Bun Shell through an embedded `bun exec` self-spawn | `shellRunners:`; replace for audited, dry-run, or sandboxed shell behavior. It MUST NOT imitate `ProcessRunner` (§3.4). |
 | Outbound HTTP | Effect `effect/http` `HttpClient` (§3.4) | `@lando/http-client` `layer`, the single Lando-owned host-side egress boundary | `httpClients:` (`HttpClientContribution`: `id`, `module`, `enabledByDefault`, `summary`, `deprecated`; no capability discovery, the standard client surface is fixed); replacements provide the same Effect `HttpClient` tag and MUST preserve proxy/CA trust, scheme policy, redaction, cancellation, and route all Lando-owned host-side egress (§10.3.1–§10.3.2). |
 | Verified downloads | `Downloader` | `@lando/http-client` downloader `layer` over `HttpClient`, `CacheService`, and `FileSystem` | `downloaders:`; bytes MUST flow through resolved `HttpClient`; checksum, containment, redaction, and atomic-write guarantees MUST remain (§10.3.3). |
-| Privilege escalation | `PrivilegeService` | Platform `sudo`, `pkexec`, or UAC | Replace for `polkit`, `doas`, or custom credential flows. |
+| Privilege escalation | `PrivilegeService` (`credentialStatus`, scoped `openSession`, one-off `elevate`, typed `PrivilegeError`) | POSIX `sudo` on Linux, WSL, and macOS; Windows reports `PrivilegeUnavailableError` | Replace for `pkexec`, `polkit`, `doas`, UAC, or custom credential flows. Replacements MUST NOT prompt in a non-interactive invocation. |
 | CA / certificates | `CertificateAuthority` | `@lando/ca-mkcert` | `certificateAuthorities:`. |
 | Router / routing | `RouterService` | `@lando/proxy-traefik` with id `traefik` | `routerServices:`. Optional `routeAuthorities` reads the current authorities for a full publication table without mutation and agrees with `applyRoutes` for the same acquisition. |
 | Public tunnels / sharing | `TunnelService` | No always-on default; bundled quick-share implementation when installed | `tunnelServices:`; explicit `--provider`, Landofile/global default, then sole implementation. MUST use `HttpClient`, `Downloader`, `ProcessRunner`, and `StateStore` as specified, MUST NOT move app data, and MUST pass its contract suite (§10.2.2, §13.1). |
@@ -97,7 +97,7 @@ Descriptors name an `id` and MAY declare `module`, `defaultFor`, `capabilities`,
 
 Every plugin-facing abstraction MUST be:
 
-- **Effect-typed:** methods return `Effect.Effect<A, E, R>` or `Stream<A, E, R>`; synchronous plugin methods are forbidden.
+- **Effect-typed:** methods return `Effect.Effect<A, E, R>` or `Stream<A, E, R>`; synchronous plugin methods are forbidden. The one exception is a pure declaration that performs no IO, such as the provider contribution's optional `declaredCapabilities` (§5.3.1).
 - **Schema-defined:** trust-boundary inputs and outputs use `Schema.Schema<A>`.
 - **Tagged-error based:** failures are adjacent `Schema.TaggedError` contracts.
 - **Capability-declared:** consumers validate typed capabilities before optional methods.

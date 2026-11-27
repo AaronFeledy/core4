@@ -1,0 +1,9 @@
+name: no-presets-demo
+services:
+  appserver:
+    type: "php:8.4"
+    primary: true
+  worker:
+    type: compose
+    image: "php:8.4-cli"
+    command: sleep infinity

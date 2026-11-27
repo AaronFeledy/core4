@@ -41,6 +41,9 @@ const helperDecision = (mode: "needs-helper" | "socket-helper"): AcquisitionDeci
   fingerprint: defaultAcquisitionFingerprint(),
 });
 
+const privilegeNotice = (outcome: { readonly message: string; readonly remediation: string }): string =>
+  `${outcome.message} Lando kept its fallback ports. ${outcome.remediation}`;
+
 const foreignNotice = (
   ownership: SocketProxyArtifactClassification,
   intent: SocketProxySetupIntent,
@@ -51,17 +54,17 @@ const consentToInstall = Effect.fnUntraced(function* (
   alreadyInstalled: boolean,
 ): Effect.fn.Return<boolean> {
   if (alreadyInstalled || socketProxy.autoApprove === true) return true;
+  // Only `--yes` or a real interactive answer consents to a privileged host change.
   const interaction = socketProxy.interaction;
-  if (interaction === undefined) return true;
-  const tty = yield* interaction.isInteractive;
-  if (!tty) return true;
+  if (interaction === undefined) return false;
+  if (!(yield* interaction.isInteractive)) return false;
   return yield* Effect.scoped(
     interaction.confirm({
       name: "install-socket-proxy",
       message: "Install a systemd socket proxy so Lando can serve local HTTP/HTTPS on ports 80 and 443?",
       default: true,
     }),
-  ).pipe(Effect.catch(() => Effect.succeed(true)));
+  ).pipe(Effect.catch(() => Effect.succeed(false)));
 });
 
 /** Real interactive confirm only. Missing interaction, errors, and cancel decline. */
@@ -223,6 +226,12 @@ export const resolveNeedsHelper = Effect.fnUntraced(
         case "installed":
         case "already-installed":
           break;
+        case "privilege-unavailable":
+          return {
+            decision: { ...helperDecision("needs-helper"), notices: [privilegeNotice(installed)] },
+            helperInstalled: false,
+            socketsActive: false,
+          };
         case "elevation-refused":
         case "proxyd-missing":
         case "needs-helper":
@@ -281,6 +290,12 @@ export const resolveNeedsHelper = Effect.fnUntraced(
       case "installed":
       case "already-installed":
         break;
+      case "privilege-unavailable":
+        return {
+          decision: { ...helperDecision("needs-helper"), notices: [privilegeNotice(installed)] },
+          helperInstalled: alreadyInstalled,
+          socketsActive: false,
+        };
       case "elevation-refused":
       case "proxyd-missing":
       case "needs-helper":

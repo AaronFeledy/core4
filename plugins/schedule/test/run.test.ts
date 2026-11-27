@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { PlanReplanRequiredError } from "@lando/sdk/errors";
+import {
+  type AppliedStateVersionError,
+  PlanReplanRequiredError,
+  appliedStateVersionError,
+} from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
@@ -9,16 +13,20 @@ import {
   ProviderId,
   ServiceName,
   ServicePlan,
+  appIdentityKey,
 } from "@lando/sdk/schema";
 import {
+  type ExecChunk,
   type ExecTarget,
-  LandofileService,
   type CommandSpec as ProviderCommandSpec,
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
+  StreamFrameSink,
+  type StreamFrameSinkFrame,
+  UserAppResolver,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
-import { DateTime, Effect, Layer } from "effect";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
+import { DateTime, Effect, Layer, Stream } from "effect";
 
 import { spec } from "../src/commands/run.ts";
 import { ScheduleJobAmbiguousError, ScheduleJobNotFoundError } from "../src/errors.ts";
@@ -86,12 +94,16 @@ const makePlan = (
     { name: "web-schedule", clonedFrom: "web" },
     { name: "web-schedule-1002", clonedFrom: "web" },
   ],
+  recordedRoot?: AbsolutePath,
 ) =>
   AppPlan.make({
     id: AppId.make("demo"),
     name: "demo",
     slug: "demo",
     root: appRoot,
+    ...(recordedRoot === undefined
+      ? {}
+      : { identity: { appRoot: recordedRoot, ownerKey: appIdentityKey("owner", recordedRoot) } }),
     provider: ProviderId.make("lando"),
     services: Object.fromEntries(
       services.map(({ name, clonedFrom }) => [ServiceName.make(name), servicePlan(name, clonedFrom)]),
@@ -104,24 +116,40 @@ const makePlan = (
   });
 
 const makeRuntime = (
-  options: { readonly applied?: boolean; readonly planServices?: ReadonlyArray<PlannedService> } = {},
+  options: {
+    readonly applied?: boolean;
+    readonly planServices?: ReadonlyArray<PlannedService>;
+    readonly protection?: AppliedStateVersionError;
+    readonly recordedRoot?: AbsolutePath;
+    readonly omitExit?: boolean;
+  } = {},
 ) => {
   const execs: Array<{ readonly target: ExecTarget; readonly command: ProviderCommandSpec }> = [];
-  const plan = makePlan(options.planServices);
+  const plan = makePlan(options.planServices, options.recordedRoot);
+  const order: string[] = [];
+  const encoder = new TextEncoder();
   const provider: RuntimeProviderShape = {
     ...TestRuntimeProvider,
-    exec: (target, command) => {
-      execs.push({ target, command });
-      const failed = command.command.includes("exit 3");
-      return Effect.succeed({
-        exitCode: failed ? 3 : 0,
-        stdout: "job-stdout\n",
-        stderr: failed ? "job-stderr\n" : "",
-      });
-    },
+    execStream: (target, command) =>
+      Stream.suspend(() => {
+        execs.push({ target, command });
+        const failed = command.command.includes("exit 3");
+        const output: ReadonlyArray<ExecChunk> = [
+          { kind: "stdout", chunk: encoder.encode("job-stdout\n") },
+          ...(failed ? [{ kind: "stderr" as const, chunk: encoder.encode("job-stderr\n") }] : []),
+        ];
+        if (options.omitExit === true) return Stream.fromIterable(output);
+        // The job exits only after its output was consumed, as a running process would.
+        const exit = Stream.fromEffect(
+          Effect.sync((): ExecChunk => {
+            order.push("exit");
+            return { exitCode: failed ? 3 : 0 };
+          }),
+        );
+        return Stream.concat(Stream.fromIterable(output), exit);
+      }),
   };
-  const registry = RuntimeProviderRegistry.of({
-    list: Effect.succeed([]),
+  const registry = makeTestRuntimeProviderRegistry({
     capabilities: Effect.die("unused"),
     appliedPlansFor: () => Effect.die("unused"),
     select: () => Effect.succeed(provider),
@@ -130,21 +158,68 @@ const makeRuntime = (
         ? Effect.succeed(options.applied === false ? undefined : plan)
         : Effect.die("schedule run must ask for the exact app"),
     resolveTeardownEvidence: () => Effect.die("unused"),
+    readAppliedPlanStrict: () =>
+      options.protection === undefined ? Effect.succeed(plan) : Effect.fail(options.protection),
   });
   const layer = Layer.mergeAll(
-    Layer.succeed(LandofileService, LandofileService.of({ discover: Effect.succeed(landofile) })),
+    Layer.succeed(
+      UserAppResolver,
+      UserAppResolver.of({
+        current: Effect.succeed(landofile),
+        load: () => Effect.succeed(landofile),
+      }),
+    ),
     Layer.succeed(RuntimeProviderRegistry, registry),
   );
   return {
     execs,
+    order,
     run: (name: string, service?: string) =>
       Effect.runPromise(
         runScheduleJob({ name, ...(service === undefined ? {} : { service }) }).pipe(Effect.provide(layer)),
       ),
+    runLive: (name: string) => {
+      const frames: StreamFrameSinkFrame[] = [];
+      const sink = StreamFrameSink.of({
+        emit: (frame) =>
+          Effect.sync(() => {
+            frames.push(frame);
+            order.push(`frame:${frame._tag}`);
+          }),
+      });
+      return Effect.runPromise(
+        runScheduleJob({ name }).pipe(Effect.provide(layer), Effect.provideService(StreamFrameSink, sink)),
+      ).then((result) => ({ result, frames }));
+    },
   };
 };
 
 describe("schedule:run", () => {
+  test("refuses a newer receipt before executing a scheduled job", async () => {
+    const protection = appliedStateVersionError({
+      providerId: "test",
+      operation: "applied-state.read",
+      path: "/state/demo.json",
+      storedVersion: 12,
+      supportedVersion: 11,
+      scope: "app",
+      appId: "demo",
+    });
+    const runtime = makeRuntime({ protection });
+    await expect(runtime.run("fail")).rejects.toMatchObject({ _tag: "AppliedStateVersionError" });
+    expect(runtime.execs).toEqual([]);
+  });
+  test("runs a job when the applied record names the canonical form of the app root", async () => {
+    // Given: the Landofile reports the root as written while the record holds its canonical form,
+    // as on Windows, where the drive letter and separators can differ.
+    const runtime = makeRuntime({ recordedRoot: AbsolutePath.make("/canonical/schedule-run") });
+
+    // When / Then: the exact lookup and the strict reread agree, so the job runs.
+    const result = await runtime.run("ok");
+    expect(result.exitCode).toBe(0);
+    expect(runtime.execs).toHaveLength(1);
+  });
+
   test("returns the completed result and classifies a nonzero exit through completion", async () => {
     const runtime = makeRuntime();
     const result = await runtime.run("fail");
@@ -160,6 +235,35 @@ describe("schedule:run", () => {
     const success = await runtime.run("ok");
     expect(success.exitCode).toBe(0);
     expect(spec.completion?.(success)).toEqual({ ok: true, exitCode: 0 });
+  });
+
+  test("streams the job's output to a live sink as it runs and leaves it out of the result", async () => {
+    // Given: a caller that streams the command's output.
+    const runtime = makeRuntime();
+
+    // When: the job runs.
+    const { result, frames } = await runtime.runLive("fail");
+
+    // Then: each chunk reached the sink before the job exited, and the result carries only the status.
+    expect(runtime.order).toEqual(["frame:stdout", "frame:stderr", "exit"]);
+    const text = (chunk: string | Uint8Array) =>
+      typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk);
+    expect(frames.map((frame) => [frame._tag, text(frame.chunk)])).toEqual([
+      ["stdout", "job-stdout\n"],
+      ["stderr", "job-stderr\n"],
+    ]);
+    expect(result).toEqual({ service: "web", name: "fail", exitCode: 3 });
+    expect(spec.streamingMode, "the spec must declare live output so the CLI provides the sink").toBe("live");
+  });
+
+  test("preserves live output but fails without an observed job exit", async () => {
+    const runtime = makeRuntime({ omitExit: true });
+    await expect(runtime.runLive("ok")).rejects.toMatchObject({
+      _tag: "ServiceExecError",
+      service: "web-schedule",
+    });
+    expect(runtime.order).toEqual(["frame:stdout"]);
+    expect(runtime.execs).toHaveLength(1);
   });
 
   test("executes in the sidecar that runs the job, without a user or cwd override", async () => {

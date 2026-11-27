@@ -16,7 +16,6 @@ export const DRUPAL_JOURNEY_STEP_IDS = [
   "init",
   "start",
   "info",
-  "scaffold",
   "composer-json",
   "drush-bin",
   "drush-version",
@@ -51,7 +50,6 @@ export const buildDrupalJourneyPlan = (options: DrupalJourneyPlanOptions): reado
     { id: "init", argv: [binary, "init", "--recipe", "drupal", "--name", name, "--yes"] },
     { id: "start", argv: [binary, "start"] },
     { id: "info", argv: [binary, "info"] },
-    { id: "scaffold", argv: [binary, "drupal-scaffold"] },
     {
       id: "composer-json",
       argv: [binary, "exec", "appserver", "--", "test", "-f", "/app/composer.json"],

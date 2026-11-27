@@ -20,6 +20,8 @@ import { HelpCatalogResult } from "../core/src/cli/compiled-help.ts";
 import { HelpTargetResult } from "../core/src/cli/help-target.ts";
 import { BUNDLED_PLUGIN_MODULES } from "../core/src/plugins/generated/bundled.ts";
 import { assertLayerMergeCompleteness } from "../sdk/src/landofile/layer-merge-trie.ts";
+import { assertEditorSchemaNaming } from "../sdk/src/schema/editor-naming.ts";
+import { assertEmittedFieldDescriptions } from "../sdk/src/schema/emitted-field-description-gate.ts";
 import {
   IncludeEntry,
   JSON_SCHEMA_NAMES,
@@ -36,6 +38,12 @@ import {
   renderPublicSchemaReferencePages,
   schemaArtifactFilename,
 } from "../sdk/src/schema/index.ts";
+import {
+  authoringDraft07,
+  projectAuthoringInput,
+  projectAuthoringVariant,
+} from "../sdk/src/schema/json-schema-editor.ts";
+import { EMITTED_FIELD_DESCRIPTION_DEBT } from "../sdk/test/schema/emitted-field-description-debt.ts";
 import { assertPublicSchemaContractCoverage } from "../sdk/test/schema/public-schema-contracts.ts";
 import { formatGeneratedPaths } from "./_codegen-output.ts";
 import { mirrorSchemaArtifacts } from "./mirror-schema-artifacts.ts";
@@ -58,7 +66,7 @@ const stable = (value: unknown): unknown => {
   );
 };
 
-const generateJsonSchema = (schemaName: (typeof JSON_SCHEMA_NAMES)[number]): unknown => {
+const generateJsonSchema = (schemaName: (typeof JSON_SCHEMA_NAMES)[number]) => {
   try {
     return getJsonSchema(schemaName);
   } catch (cause) {
@@ -120,7 +128,10 @@ const generateCommandResultSchemas = (): ReadonlyArray<CommandResultSchemaArtifa
 
 const renderJson = (value: unknown): string => `${JSON.stringify(stable(value), null, 2)}\n`;
 
-const main = async (): Promise<void> => {
+export const buildSchemaSnapshot = async (): Promise<{
+  readonly sdkSchemas: number;
+  readonly commandSchemas: number;
+}> => {
   for (const root of [
     LandofileShape,
     ServiceConfig,
@@ -128,19 +139,39 @@ const main = async (): Promise<void> => {
     IncludeEntry,
   ])
     assertLayerMergeCompleteness(root);
-  assertPublicSchemaAnnotations();
   assertPublicSchemaContractCoverage(REPO_ROOT);
 
   const sdkSchemas = JSON_SCHEMA_NAMES.map((schemaName) => ({
     schemaName,
-    jsonSchema: stable(generateJsonSchema(schemaName)),
+    jsonSchema: generateJsonSchema(schemaName),
   }));
+  const sdkArtifacts = new Map(sdkSchemas.map(({ schemaName, jsonSchema }) => [schemaName, jsonSchema]));
+  assertPublicSchemaAnnotations(undefined, undefined, sdkArtifacts);
+  const editorSchemas = {
+    LandofileShape: getEditorJsonSchema("LandofileShape"),
+    GlobalConfig: getEditorJsonSchema("GlobalConfig"),
+  };
+  assertEditorSchemaNaming(editorSchemas);
   for (const { schemaName, jsonSchema } of sdkSchemas) {
     const invalidPaths = assertJsonSchemaDeprecationsValid(jsonSchema);
     if (invalidPaths.length > 0) {
       throw new Error(`${schemaName} emits invalid x-deprecation payloads at ${invalidPaths.join(", ")}`);
     }
   }
+  const landofileInput = projectAuthoringInput("LandofileShape", true);
+  const globalConfigInput = projectAuthoringInput("GlobalConfig", false);
+  assertEmittedFieldDescriptions(
+    new Map([
+      ["LandofileAuthoringShape", landofileInput],
+      ["LandofileAuthoringFragment", projectAuthoringVariant("LandofileAuthoringFragment", true)],
+      ["LandofileAuthoringFragmentWire", projectAuthoringVariant("LandofileAuthoringFragmentWire", true)],
+      ["LandofileAuthoringShapeWire", projectAuthoringVariant("LandofileAuthoringShapeWire", true)],
+      ["GlobalConfig", globalConfigInput],
+      ["landofile.schema.json", authoringDraft07(landofileInput)],
+      ["global-config.schema.json", authoringDraft07(globalConfigInput)],
+    ]),
+    EMITTED_FIELD_DESCRIPTION_DEBT,
+  );
   const commandResultSchemas = generateCommandResultSchemas();
   const bundledPluginManifests = BUNDLED_PLUGIN_MODULES.map((plugin) => ({
     name: plugin.name,
@@ -156,7 +187,8 @@ const main = async (): Promise<void> => {
     ["LandofileShape", "landofile.schema.json"],
     ["GlobalConfig", "global-config.schema.json"],
   ] as const) {
-    await Bun.write(resolve(EDITOR_SCHEMA_DIR, filename), renderJson(getEditorJsonSchema(name)));
+    const editorSchema = editorSchemas[name];
+    await Bun.write(resolve(EDITOR_SCHEMA_DIR, filename), renderJson(editorSchema));
   }
   const metadataIndexPath = resolve(SCHEMA_ARTIFACT_DIR, "index.json");
   await Bun.write(metadataIndexPath, renderJson(publicSchemaMetadataIndex));
@@ -190,7 +222,11 @@ const main = async (): Promise<void> => {
     if (!commandSchemaArtifactPaths.has(path)) await rm(path);
   }
 
-  const referencePages = renderPublicSchemaReferencePages();
+  const referencePages = renderPublicSchemaReferencePages((name) => {
+    const artifact = sdkArtifacts.get(name);
+    if (artifact === undefined) throw new Error(`Missing generated schema for ${name}.`);
+    return artifact;
+  });
   const referencePaths = new Set(referencePages.map((page) => resolve(REPO_ROOT, page.docsPath)));
   for (const entry of await readdir(SCHEMA_REFERENCE_DIR, { withFileTypes: true })) {
     if (!entry.isFile() || !entry.name.endsWith(".mdx")) continue;
@@ -214,9 +250,12 @@ const main = async (): Promise<void> => {
   ]);
   await mirrorSchemaArtifacts({ repoRoot: REPO_ROOT });
 
-  console.log(
-    `[build-schema-snapshot] wrote ${sdkSchemas.length} SDK schemas and ${commandResultSchemas.length} command schemas`,
-  );
+  return { sdkSchemas: sdkSchemas.length, commandSchemas: commandResultSchemas.length };
 };
 
-await main();
+if (import.meta.main) {
+  const written = await buildSchemaSnapshot();
+  console.log(
+    `[build-schema-snapshot] wrote ${written.sdkSchemas} SDK schemas and ${written.commandSchemas} command schemas`,
+  );
+}

@@ -49,11 +49,15 @@ test("orphan teardown preserves attributed observations when service names repea
   };
   const provider = {
     ...TestRuntimeProvider,
-    removeObservedService: (observed: ServiceRuntimeInfo) =>
+    bringDownObserved: (observed: ServiceRuntimeInfo) =>
       Effect.succeed(
         observed.service === "cache"
-          ? { kind: "absent" as const, shutdownObservations: [absent] }
-          : { kind: "removed" as const, shutdownObservations: [observed.app === appA ? obsA : obsB] },
+          ? { service: observed.service, action: "absent" as const, shutdownObservations: [absent] }
+          : {
+              service: observed.service,
+              action: "removed" as const,
+              shutdownObservations: [observed.app === appA ? obsA : obsB],
+            },
       ),
   };
   const harness = makeHarness({
@@ -100,7 +104,7 @@ test("orphan teardown preserves attributed observations when service names repea
   expect(result.shutdownObservations).toEqual([obsA, obsB, absent]);
 });
 
-test("global selected stop preserves absent removal observations", async () => {
+test("global selected stop preserves absent stop observations", async () => {
   // Given
   const absent: ServiceShutdownObservation = {
     appId: globalId,
@@ -115,8 +119,12 @@ test("global selected stop preserves absent removal observations", async () => {
     ...h.resolved,
     provider: {
       ...h.resolved.provider,
-      removeObservedService: () =>
-        Effect.succeed({ kind: "absent" as const, shutdownObservations: [absent] }),
+      bringDownObserved: (observed: ServiceRuntimeInfo) =>
+        Effect.succeed({
+          service: observed.service,
+          action: "absent" as const,
+          shutdownObservations: [absent],
+        }),
     },
   };
   // When
@@ -136,5 +144,10 @@ test("global selected stop preserves absent removal observations", async () => {
     ),
   );
   // Then
-  expect(receipt).toEqual({ changed: false, services: [], shutdownObservations: [absent] });
+  expect(receipt).toEqual({
+    changed: false,
+    services: [],
+    containers: [{ service: ServiceName.make("mail"), action: "absent" }],
+    shutdownObservations: [absent],
+  });
 });

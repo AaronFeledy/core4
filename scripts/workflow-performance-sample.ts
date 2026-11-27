@@ -7,7 +7,10 @@ import type {
   WorkflowPerformanceCommand,
   WorkflowPerformanceCommandResult,
 } from "./workflow-performance-command.ts";
-import { workflowPerformanceDeadlineRunner } from "./workflow-performance-command.ts";
+import {
+  DRUPAL_JOURNEY_SAMPLE_TIMEOUT_MS,
+  workflowPerformanceDeadlineRunner,
+} from "./workflow-performance-command.ts";
 import { setupFileSyncStatusFromStdout } from "./workflow-performance-diagnostic.ts";
 import { withPodmanServiceEvidence } from "./workflow-performance-failure-evidence.ts";
 import { recordPerformanceIsolation } from "./workflow-performance-isolation.ts";
@@ -209,7 +212,12 @@ export const runWorkflowPerformanceSample = async (
     runtimeRoot: stores.runtimeRoot,
   };
   await recordPerformanceIsolation("before-prepare", isolationRoots);
-  const runCommand = workflowPerformanceDeadlineRunner(input);
+  const runCommand = workflowPerformanceDeadlineRunner({
+    ...input,
+    ...(input.lane.id === "drupal-journey" && input.sampleTimeoutMs === undefined
+      ? { sampleTimeoutMs: DRUPAL_JOURNEY_SAMPLE_TIMEOUT_MS }
+      : {}),
+  });
   let acquired: PreparedSample | undefined;
   let prepared: PreparedSample;
   try {

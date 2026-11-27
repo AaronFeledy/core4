@@ -1,5 +1,6 @@
 import { type GlobalMutationServices, withGlobalMutation } from "@lando/engine/global-app/mutation";
 import { globalCreateProviderId } from "@lando/engine/global-app/placement";
+import { recordGlobalRoutePublication } from "@lando/engine/global-app/reconciliation";
 import {
   type GlobalRouterStartupPlan,
   revalidateAppliedGlobalRouterStartup,
@@ -13,6 +14,7 @@ import { prepareDebuggerOverlay } from "../subsystems/start-overlay-registry.ts"
 import { requireSelectableGlobalRouter } from "./global-consumer-admission";
 import { installAndLoadGlobalPlan } from "./global-install";
 import { loadGlobalPlan } from "./global-plan";
+import { GlobalRoutePublicationRecorder } from "./global-routes";
 
 import {
   type GlobalStartError,
@@ -21,7 +23,7 @@ import {
   type GlobalStartServices,
   globalStart,
 } from "./global-start";
-import { type GlobalStopError, type GlobalStopServices, globalStop } from "./global-stop";
+import { type GlobalStopError, type GlobalStopServices, haltGlobalRuntime } from "./global-stop";
 
 export interface GlobalRestartOptions {
   readonly signal?: AbortSignal;
@@ -61,15 +63,20 @@ export const globalRestart = Effect.fn("GlobalRestart.restart")(
       loaded.plan,
       new Set(Object.values(loaded.plan.services).map((service) => String(service.name))),
     );
-    yield* globalStop();
+    yield* haltGlobalRuntime();
     const appliedPlan = yield* Ref.make<GlobalRouterStartupPlan | undefined>(undefined);
     const revalidateRouter = Effect.flatMap(Ref.get(appliedPlan), revalidateAppliedGlobalRouterStartup);
+    const reconciliation =
+      yield* Effect.context<Effect.Services<ReturnType<typeof recordGlobalRoutePublication>>>();
     const result = yield* globalStart({
       loaded,
       ...(options.signal === undefined ? {} : { signal: options.signal }),
       ...(preparedOverlays === undefined ? {} : { preparedOverlays }),
     }).pipe(
       (effect) => withGlobalRouterStartupPlanObserver(effect, (plan) => Ref.set(appliedPlan, plan)),
+      Effect.provideService(GlobalRoutePublicationRecorder, (outcome) =>
+        recordGlobalRoutePublication(outcome).pipe(Effect.provide(reconciliation)),
+      ),
       Effect.catchTags({
         GlobalAppError: Effect.fnUntraced(function* (error) {
           if (error.operation === "start") {

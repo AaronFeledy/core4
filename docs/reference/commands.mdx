@@ -15,8 +15,10 @@ omitted. This page is generated from command metadata.
 
 Every command accepts `--format text`, `--format json`, and `--format yaml`.
 The equals forms, such as `--format=json`, work too. Text is the default.
-Commands offer `table` or `ndjson` only when they implement that format;
-check `lando <command> --help` for the formats that command supports.
+Commands that stream output, such as `lando exec` and `lando logs`, also accept
+`--format ndjson`: the same newline-delimited frames `--format json` emits.
+`lando doctor` accepts it for its per-check report. List commands accept
+`--format table`. Check `lando <command> --help` for the formats a command supports.
 
 These flags always work before the command name: `lando --format=json info`.
 Put them there for a command that hands the rest of the line to another
@@ -577,6 +579,12 @@ Stop the current Lando app.
 
 Aliases: `lando stop`
 
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--service, -s` | Service to stop, without stopping its dependents (repeatable) |
+
 ## `lando apps:gc`
 
 Report or clean up user apps whose folders no longer exist.
@@ -667,7 +675,7 @@ Arguments:
 
 | Argument | Description |
 | --- | --- |
-| `id` | Scratch app id. |
+| `id` | Scratch app id or the --name it was started with. |
 
 Flags:
 
@@ -699,7 +707,7 @@ Arguments:
 
 | Argument | Description |
 | --- | --- |
-| `id` | Scratch app id. |
+| `id` | Scratch app id or the --name it was started with. |
 
 ## `lando apps:scratch:list`
 
@@ -717,7 +725,7 @@ Arguments:
 
 | Argument | Description |
 | --- | --- |
-| `id` | Scratch app id. |
+| `id` | Scratch app id or the --name it was started with. |
 
 Flags:
 
@@ -782,7 +790,7 @@ Flags:
 
 ## `lando apps:scratch:stop`
 
-Stop a scratch Lando app.
+Stop and destroy a scratch Lando app.
 
 Aliases: `lando scratch:stop`
 
@@ -790,13 +798,33 @@ Arguments:
 
 | Argument | Description |
 | --- | --- |
-| `id` | Scratch app id. |
+| `id` | Scratch app id or the --name it was started with. |
 
 Flags:
 
 | Flag | Description |
 | --- | --- |
 | `--yes, -y` | Accepted so scripts can confirm every destructive command the same way. This command does not prompt. |
+
+## `lando db:creds:apply`
+
+Preview or repair credentials for a running database service.
+
+Provided by `@lando/sql`.
+
+Arguments:
+
+| Argument | Description |
+| --- | --- |
+| `adminPasswordSource` | Fallback database administrator password source. Use - to read from stdin. (one of `-`) |
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--admin-user` | Existing PostgreSQL or MongoDB administrator login. |
+| `--service` | Target database service. |
+| `--yes, -y` | Apply the previewed changes. |
 
 ## `lando db:export`
 
@@ -933,8 +961,9 @@ Flags:
 | --- | --- |
 | `--from-app` | Explicit sibling source app id. |
 | `--from-path` | Explicit canonical source app root. |
-| `--keep-latest` | Number of newest manual snapshots to retain. |
+| `--keep-latest` | Number of newest snapshots to retain in the selected bucket. |
 | `--preview` | Show deletions without removing snapshots. |
+| `--recovery` | Select automatic recovery snapshots instead of manual ones. |
 | `--service` | Database service to prune. |
 | `--yes, -y` | Confirm snapshot deletion. |
 
@@ -985,7 +1014,7 @@ Flags:
 | `--fix` | Re-run the setup step of each degraded subsystem whose recovery is safe to automate. |
 | `--limit` | Return at most this many checks (1 to 1000). |
 | `--provider` | Report what would be selected if `--provider=…` were used (e.g. lando, docker, podman). |
-| `--section` | Run only the selected diagnostic sections (repeatable); always report global config. (one of `global-config`, `provider`, `app-listeners`, `database-credentials`, `certificate-authority`, `network-trust`, `subsystems`, `global-app`, `mcp`, `accelerated-starts`, `missing-app-roots`, `orphaned-volume-snapshots`, `legacy-snapshot-catalogs`, `filesystem-watch`, `debugger-host`, `app-version-constraints`, `deprecations`, `app-config`) |
+| `--section` | Run only the selected diagnostic sections (repeatable); always report global config. (one of `global-config`, `provider`, `app-listeners`, `database-credentials`, `certificate-authority`, `network-trust`, `subsystems`, `global-app`, `mcp`, `accelerated-starts`, `lando-roots`, `state-compatibility`, `missing-app-roots`, `orphaned-volume-snapshots`, `legacy-snapshot-catalogs`, `filesystem-watch`, `debugger-host`, `app-version-constraints`, `deprecations`, `app-config`) |
 | `--status` | Include checks with this status (repeatable). (one of `pass`, `warn`, `fail`) |
 
 ## `lando meta:events:follow`
@@ -1425,6 +1454,7 @@ Flags:
 
 | Flag | Description |
 | --- | --- |
+| `--enable-linger` | Approve enabling systemd lingering when no systemd user manager runs for you. It stays enabled across logout and reboot; --yes does not approve it. |
 | `--no-interactive` | Do not prompt; fail or use documented non-interactive setup defaults. |
 | `--provider` | Choose a provider (e.g. lando, docker, podman). Overrides Landofile/env/config selection. |
 | `--runtime-bundle-sha256` | Pinned SHA-256 paired with --runtime-bundle-url for verifying a local bundle. |

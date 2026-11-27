@@ -1,12 +1,44 @@
 import { sha256Hex } from "../digest/index.ts";
 
+export const LANDO_DATA_ROOT_LABEL = "dev.lando.data-root" as const;
+export const LANDO_NETWORK_ROLE_LABEL = "dev.lando.network-role" as const;
+export const LANDO_SHARED_NETWORK_ROLE = "shared-cross-app" as const;
+
+export const landoDataRootToken = (canonicalUserDataRoot: string): string =>
+  sha256Hex(`data-root\0${canonicalUserDataRoot}`).slice(0, 16);
+
+const sharedCrossAppPrefix = "lando_bridge_";
+const dataRootTokenPattern = /^[a-f0-9]{16}$/u;
+
+export const landoSharedCrossAppNetworkName = (canonicalUserDataRoot: string): string =>
+  `${sharedCrossAppPrefix}${landoDataRootToken(canonicalUserDataRoot)}`;
+
+export const isLandoScopedSharedNetworkName = (name: string): boolean =>
+  name.startsWith(sharedCrossAppPrefix) && dataRootTokenPattern.test(name.slice(sharedCrossAppPrefix.length));
+
+export const isLandoGlobalNativeSlug = (slug: string): boolean => /^global-[a-f0-9]{16}$/.test(slug);
+
+/** Resolve a native naming coordinate without changing the logical slug or persisted data name. */
+export const landoNativeAppSlug = (input: {
+  readonly slug: string;
+  readonly identity?: { readonly dataRoot?: string } | undefined;
+  readonly dataSlug?: string;
+}): string =>
+  input.slug === "global"
+    ? input.identity?.dataRoot === undefined
+      ? "global"
+      : `global-${landoDataRootToken(input.identity.dataRoot)}`
+    : (input.dataSlug ?? input.slug);
+
 export const landoDependencyEnvironmentStoreName = (dataSlug: string, kind: string, digest: string): string =>
-  `lando-${segment(dataSlug, 57)}--env--${segment(kind, 32)}-${digest.slice(0, 16)}`;
+  `lando-${segment(dataSlug, APP_SLUG_MAX_LENGTH)}--env--${segment(kind, 32)}-${digest.slice(0, 16)}`;
 
 import { DOMAIN_NAME_PATTERN } from "./hostname.ts";
 
 const PREFIX = "lando-";
 const DNS_LABEL_MAX_LENGTH = 63;
+/** Longest app slug: `lando-<slug>` must stay one DNS label. */
+export const APP_SLUG_MAX_LENGTH = DNS_LABEL_MAX_LENGTH - PREFIX.length;
 const HASH_LENGTH = 8;
 /** Lowercase words joined by single hyphens: a DNS label that never contains `--`. */
 const CANONICAL = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
@@ -50,7 +82,7 @@ export const landoServiceStoreName = (slug: string, service: string, role: strin
 
 /** Shared app slug normalization, including a root-derived name when no words remain. */
 export const normalizeAppSlug = (name: string, appRoot: string): string =>
-  segment(name, 57) || sha256Hex(appRoot).slice(0, HASH_LENGTH);
+  segment(name, APP_SLUG_MAX_LENGTH) || sha256Hex(appRoot).slice(0, HASH_LENGTH);
 
 export const defaultRouteHostname = (service: string, appSlug: string, domain: string): string => {
   const lower = service.toLowerCase();
@@ -103,12 +135,20 @@ const isCanonicalOrHashed = (name: string): boolean => {
 
 const isGlobalAppVolumeName = (name: string): boolean => {
   if (!name.startsWith(GLOBAL_APP_VOLUME_PREFIX)) return false;
-  const suffix = name.slice(GLOBAL_APP_VOLUME_PREFIX.length);
+  const candidate = name.slice(GLOBAL_APP_VOLUME_PREFIX.length);
+  const scoped = /^-[a-f0-9]{16}(?=--|_)/.exec(candidate)?.[0] ?? "";
+  const suffix = candidate.slice(scoped.length);
   if (suffix.startsWith("_")) return isCanonicalOrHashed(suffix.slice(1));
   if (!suffix.startsWith("--")) return false;
   const [service = "", ...parts] = suffix.slice(2).split("--");
   if (!CANONICAL.test(service)) return false;
-  const containerLength = GLOBAL_APP_VOLUME_PREFIX.length + 2 + service.length;
+  if (
+    service === "env" &&
+    parts.length === 1 &&
+    /^[a-z0-9][a-z0-9-]{0,31}-[a-f0-9]{16}$/u.test(parts[0] ?? "")
+  )
+    return true;
+  const containerLength = GLOBAL_APP_VOLUME_PREFIX.length + scoped.length + 2 + service.length;
   const hasRole = (role: ReadonlyArray<string>) => {
     const [kind = "", value = ""] = role;
     if (role.length === 1) return kind.length <= DNS_LABEL_MAX_LENGTH && CANONICAL.test(kind);

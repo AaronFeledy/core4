@@ -1,7 +1,8 @@
 import { expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { makeLandoPaths } from "@lando/paths";
 import { LandofileShape, ServiceName } from "@lando/sdk/schema";
 import { AppPlanner } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
@@ -18,6 +19,7 @@ import * as BunFileSystem from "../../src/services/file-system.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 import { literalTestLandofile } from "../compiled-landofile.ts";
+import { pathsServiceLayer } from "../paths-service.ts";
 
 test("record keeps the first name and clear removes the file", async () => {
   const store = makeTestStateStore();
@@ -42,7 +44,9 @@ test("renaming retains every derived store and database credential while runtime
   const root = await mkdtemp(join(tmpdir(), "lando-data-plan-"));
   const store = makeTestStateStore();
   const layer = AppPlannerLayer.layer.pipe(
-    Layer.provide(Layer.mergeAll(PluginRegistryLayer.layer, store.layer, BunFileSystem.layer)),
+    Layer.provide(
+      Layer.mergeAll(PluginRegistryLayer.layer, store.layer, BunFileSystem.layer, pathsServiceLayer()),
+    ),
   );
   const services = {
     database: { type: "mariadb" },
@@ -88,7 +92,9 @@ test("corrupt user records fail closed while scratch and global planning ignore 
   const root = await mkdtemp(join(tmpdir(), "lando-data-isolation-"));
   const store = makeTestStateStore();
   const layer = AppPlannerLayer.layer.pipe(
-    Layer.provide(Layer.mergeAll(PluginRegistryLayer.layer, store.layer, BunFileSystem.layer)),
+    Layer.provide(
+      Layer.mergeAll(PluginRegistryLayer.layer, store.layer, BunFileSystem.layer, pathsServiceLayer()),
+    ),
   );
   try {
     const identity = await Effect.runPromise(resolveAppIdentity(root));
@@ -105,6 +111,7 @@ test("corrupt user records fail closed while scratch and global planning ignore 
         ).pipe(Effect.provide(layer)),
       );
 
+    await mkdir(join(makeLandoPaths().scratchDir, "current", "root"), { recursive: true });
     await expect(plan("user")).rejects.toMatchObject({ _tag: "AppDataIdentityError" });
     expect((await plan("scratch")).identity?.dataName).toBe("current");
     expect((await plan("global")).identity?.dataName).toBe("current");

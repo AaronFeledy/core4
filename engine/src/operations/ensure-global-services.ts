@@ -12,7 +12,7 @@ import type {
   ServiceNotReadyError,
   ToolingExecError,
 } from "@lando/sdk/errors";
-import { GlobalServiceMissingError } from "@lando/sdk/errors";
+import { GlobalAppError, GlobalServiceMissingError } from "@lando/sdk/errors";
 import { PostGlobalStartEvent, PreGlobalStartEvent } from "@lando/sdk/events";
 import type { AppPlan, AppRef, StartedService } from "@lando/sdk/schema";
 import type { EnvironmentValueResolver } from "@lando/sdk/services";
@@ -24,9 +24,11 @@ import {
   type FileSystem,
   GlobalAppService,
   type PluginRegistry,
+  RouterService,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
-import { DateTime, Effect, Exit } from "effect";
+import { DateTime, Effect, Exit, Option } from "effect";
+import { routerEnabled } from "../config/router-config.ts";
 import {
   captureGlobalEnsureInputs,
   forgetGlobalEnsure,
@@ -45,6 +47,7 @@ import { completeStartup } from "../lifecycle/startup-completion.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
 import { debuggerHostConfigured } from "../subsystems/debugger-host.ts";
 import { interruptOnAbort } from "../subsystems/healthcheck/attempt.ts";
+import { unavailableRouterReason } from "../subsystems/proxy/api.ts";
 import { prepareDebuggerOverlay, projectDebuggerOverlay } from "../subsystems/start-overlay-registry.ts";
 import { canonicalAppRoot } from "./app-mutation-lock.ts";
 import { collectPlanConnections, startedServices } from "./connection-collector.ts";
@@ -53,7 +56,12 @@ import { withOrdinaryMounts } from "./file-sync-plan.ts";
 import { withGlobalConsumerReservation } from "./global-consumer-lease.ts";
 import { type globalInstall, installAndLoadGlobalPlan } from "./global-install.ts";
 import type { LoadGlobalPlanError } from "./global-plan.ts";
-import { advanceGlobalRecordedPlan, reconcileGlobalSiblings } from "./global-retained-plan.ts";
+import {
+  advanceGlobalRecordedPlan,
+  reconcileGlobalSiblings,
+  retireGlobalReplacement,
+} from "./global-retained-plan.ts";
+import { publishStartWarnings } from "./start-warnings.ts";
 
 const now = () => DateTime.nowUnsafe();
 
@@ -69,6 +77,9 @@ export type EnsureGlobalStartedService = StartedService;
 export interface EnsureGlobalServicesResult {
   readonly app: string;
   readonly servicesStarted: ReadonlyArray<EnsureGlobalStartedService>;
+  readonly credentialChanges?: NonNullable<
+    Effect.Success<ReturnType<typeof applyActivation>>["credentialChanges"]
+  >;
 }
 
 export type EnsureGlobalServicesError =
@@ -158,8 +169,7 @@ export const ensureGlobalServicesRunning = Effect.fnUntraced(
     const root = yield* canonicalAppRoot((yield* globalApp.paths).root);
     const cached = globalEnsureRecord(registry, root);
     if (cached !== undefined) {
-      yield* registry.assertAppliedStateReadable?.({ id: cached.plan.id, provider: cached.plan.provider }) ??
-        Effect.void;
+      yield* registry.readAppliedPlanStrict(cached.plan);
       const provider = yield* registry.select(yield* globalCreateProviderId());
       const inputs = yield* captureGlobalEnsureInputs(cached.plan, cached.landofile, provider);
       const names = Object.values(cached.plan.services);
@@ -261,6 +271,21 @@ export const ensureGlobalServicesRunning = Effect.fnUntraced(
       close: (ids) => includeAvailableDependencies(ids, planServices),
     });
     const requestedSet = new Set(retained.selectedIds);
+    if (
+      retained.replacement !== undefined &&
+      routerEnabled(plan) &&
+      plan.routes.some(({ service }) => requestedSet.has(service))
+    ) {
+      const router = yield* Effect.serviceOption(RouterService);
+      const reason = Option.isSome(router) ? unavailableRouterReason(router.value) : undefined;
+      if (Option.isNone(router) || reason !== undefined)
+        return yield* new GlobalAppError({
+          operation: "ensureRunning",
+          message: reason?.message ?? "A router is required to replace the routed global services.",
+          remediation:
+            reason?.remediation ?? "Select an available router before retrying global service startup.",
+        });
+    }
     const selected = planServices.filter((service) => requestedSet.has(String(service.name)));
     const planToApply =
       selected.length === planServices.length
@@ -276,9 +301,9 @@ export const ensureGlobalServicesRunning = Effect.fnUntraced(
     const beforeStartup = yield* captureGlobalEnsureInputs(plan, loaded.landofile, provider);
     const builds = yield* BuildOrchestrator;
     // Managed global service configuration is generated locally and has no sync session lifecycle.
-    const { plan: realizedPlan, certificates } = yield* prepareServiceCertificates(
-      withOrdinaryMounts(planToApply),
-    );
+    const ordinaryPlan = withOrdinaryMounts(planToApply);
+    yield* publishStartWarnings(ordinaryPlan);
+    const { plan: realizedPlan, certificates } = yield* prepareServiceCertificates(ordinaryPlan);
     const preparedOverlays = yield* prepareDebuggerOverlay(realizedPlan);
     const builtPlan = yield* withBuildProvider(builds.build(realizedPlan), provider);
     const runtimePlan = projectDebuggerOverlay(builtPlan, preparedOverlays);
@@ -299,13 +324,17 @@ export const ensureGlobalServicesRunning = Effect.fnUntraced(
       applyActivation({
         provider,
         plan: runtimePlan,
+        previousPlan: retained.recordedPlan,
         certificates,
         reconcile: false,
         recordedPlan: finalPlan,
         ...(options.signal === undefined ? {} : { signal: options.signal }),
         beforeApply: Effect.gen(function* () {
           yield* verifyAdmission;
-          for (const removal of retained.removals) yield* provider.removeObservedService(removal.observation);
+          if (retained.replacement !== undefined)
+            yield* retireGlobalReplacement(provider, retained.replacement, builtPlan);
+          for (const removal of retained.removals)
+            yield* provider.bringDownObserved(removal.observation, "remove");
         }),
       }),
       [...retained.joinedIds, ...removalIds],
@@ -337,7 +366,11 @@ export const ensureGlobalServicesRunning = Effect.fnUntraced(
     const afterStartup = yield* captureGlobalEnsureInputs(desiredFinalPlan, loaded.landofile, provider);
     if (beforeStartup !== undefined && afterStartup?.digest === beforeStartup.digest)
       rememberGlobalEnsure(registry, desiredFinalPlan, loaded.landofile, afterStartup, ready);
-    return { app: plan.name, servicesStarted };
+    return {
+      app: plan.name,
+      servicesStarted,
+      ...(applied.credentialChanges === undefined ? {} : { credentialChanges: applied.credentialChanges }),
+    };
   },
   (effect, options: EnsureGlobalServicesOptions) =>
     interruptOnAbort(withGlobalMutation(effect), options.signal),

@@ -1,7 +1,7 @@
 import { splitComposeCommand } from "@lando/sdk/landofile";
 import type { ConfigTranslateDiagnostic } from "@lando/sdk/schema";
 import { serviceCursor } from "./claims.ts";
-import { CAPABILITY_FRAGILE_KEYS, COMPOSE_KEY_RENAMES, dispositionOf } from "./compose-disposition-of.ts";
+import { CAPABILITY_FRAGILE_KEYS, dispositionOf } from "./compose-disposition-of.ts";
 import { invalidKnobValue } from "./compose-knob-values.ts";
 import type { Lando3Path } from "./contract.ts";
 import { type AssignmentPolicy, lowerAssignments } from "./environment.ts";
@@ -90,11 +90,8 @@ export const lowerComposeFields = (
           }),
         );
         break;
-      case "normalized": {
-        const target = Object.hasOwn(COMPOSE_KEY_RENAMES, key) ? COMPOSE_KEY_RENAMES[key] : undefined;
-        if (target !== undefined) rewrite(relative, target);
+      case "normalized":
         break;
-      }
       default:
         return disposition satisfies never;
     }
@@ -156,7 +153,7 @@ export const lowerComposeFields = (
             case "normalized":
               if (buildKey !== "args") cursor.mapTo(path);
               build.set(
-                buildKey === "dockerfile_inline" ? "dockerfileInline" : buildKey,
+                buildKey,
                 buildKey === "args"
                   ? Object.fromEntries(
                       assignments(entry, path, "build-args").map(({ name, value }) => [name, value]),
@@ -166,10 +163,7 @@ export const lowerComposeFields = (
               break;
             case "preserved":
             case "unknown":
-              if (buildKey === "dockerfileInline") {
-                cursor.mapTo(path);
-                build.set(buildKey, entry);
-              } else drop(path);
+              drop(path);
               break;
             default:
               return buildDisposition satisfies never;
@@ -219,10 +213,9 @@ export const lowerComposeFields = (
       blocked = true;
       continue;
     }
-    const target = Object.hasOwn(COMPOSE_KEY_RENAMES, key) ? COMPOSE_KEY_RENAMES[key] : undefined;
     if (!["build", "environment", "labels"].includes(key)) cursor.mapTo(relative);
     cursor.take(relative);
-    fields.set(target ?? key, output);
+    fields.set(key, output);
   }
   return {
     patch: Object.fromEntries(fields),

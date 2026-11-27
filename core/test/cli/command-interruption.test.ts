@@ -6,7 +6,7 @@ import { Cause, Effect, Layer, Schema } from "effect";
 import { formatBugReport } from "../../src/cli/bug-report";
 import { commandFailureOutcome, commandInterruptionExitCode } from "../../src/cli/command-interruption";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary";
-import { renderTerminalFailure } from "../../src/cli/terminal-failure";
+import { commitTerminalFailure } from "./terminal-failure-fixture";
 
 for (const reason of ["SIGINT", "SIGTERM", "SIGHUP", { secret: "private-abort-reason" }] as const)
   for (const format of ["json", "text"] as const)
@@ -67,7 +67,7 @@ test("mixed typed failure, interruption and cleanup defect retain primary and ro
   ]);
   const io = createBufferedRendererIO();
   const codes: number[] = [];
-  await renderTerminalFailure(
+  await commitTerminalFailure(
     cause,
     {
       runtime: Layer.empty,
@@ -92,7 +92,7 @@ test("terminal fallback shares typed interruption and safe signal projection", a
   controller.abort("SIGTERM");
   const io = createBufferedRendererIO();
   const codes: number[] = [];
-  await renderTerminalFailure(
+  await commitTerminalFailure(
     Cause.interrupt(),
     {
       runtime: Layer.empty,
@@ -174,7 +174,7 @@ for (const order of ["boundary-first", "provider-first"] as const)
       resultFormat: "json",
       signal: controller.signal,
       io,
-      failureExitCode: () => 23,
+      failureExitCode: (error) => (error === primary ? 23 : undefined),
       setExitCode: (code) => codes.push(code),
       formatError: () => "unused",
     });

@@ -40,7 +40,7 @@ import * as BunProcessRunner from "@lando/engine/services/process-runner";
 import * as ProviderExecToolingEngine from "@lando/engine/services/tooling-engine";
 import { discoveryCwd } from "@lando/landofile/operation-discovery";
 import { loadAuthoredDocuments } from "@lando/landofile/root-compile";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Cause, DateTime, Effect, Layer, Queue, Schema, Stream } from "effect";
 import * as BunShellRunner from "../_support/shell-runner.ts";
@@ -221,10 +221,7 @@ const makeLayer = (options: {
   );
   const registryLayer = Layer.succeed(
     RuntimeProviderRegistry,
-    RuntimeProviderRegistry.of({
-      resolveAppliedPlan: () => Effect.succeed(undefined),
-      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-      appliedPlansFor: () => Effect.succeed([]),
+    makeTestRuntimeProviderRegistry({
       list: Effect.succeed([providerId]),
       capabilities: Effect.succeed(capabilities),
       select: () => Effect.succeed(options.provider),
@@ -369,7 +366,7 @@ describe("runTooling — CLI rendering", () => {
     expect(events.find((event) => event._tag === "task.tree.start")).toMatchObject({
       parentId: "tooling:composer",
       label: "composer",
-      children: ["tooling:composer:exec"],
+      children: [{ id: "tooling:composer:exec", label: "executing" }],
     });
     expect(events.filter((event) => event._tag === "task.detail")).toEqual([]);
     expect(events.find((event) => event._tag === "task.complete")).toMatchObject({

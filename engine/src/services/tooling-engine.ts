@@ -4,15 +4,16 @@ import {
   type CommandSpec,
   EnvironmentValueResolver,
   type RuntimeProviderShape,
+  StreamFrameSink,
   ToolingEngine,
   type ToolingEngineResult,
   type ToolingInvocation,
+  collectExecStream,
 } from "@lando/sdk/services";
 import { Effect, Layer } from "effect";
 import { withAgentContextEnv } from "../config/agent-env.ts";
 import { withTerminalEnv } from "../config/terminal-env.ts";
-import { collectExecStream } from "../operations/exec-stream.ts";
-import { StreamFrameSink } from "../operations/stream-frame-sink.ts";
+import { execExitUnobserved } from "../operations/exec-stream-drain.ts";
 import { resolveContainerCwd } from "../subsystems/host-proxy/cwd-remap.ts";
 import { HostExecutionDefaults } from "./host-execution-context.ts";
 
@@ -166,6 +167,7 @@ const providerExecRun = Effect.fn("ToolingEngine.run")(function* (
   let stdout = "";
   let stderr = "";
   for (const command of invocation.commands) {
+    if (invocation.signal?.aborted) return yield* Effect.interrupt;
     const target = {
       app: plan.id,
       service: service.name,
@@ -189,10 +191,11 @@ const providerExecRun = Effect.fn("ToolingEngine.run")(function* (
         }),
       ),
       sink,
+      { signal: invocation.signal, failure: () => execExitUnobserved(provider.id, service.name) },
     );
     stdout += result.stdout ?? "";
     stderr += result.stderr ?? "";
-    exitCode = invocation.signal?.aborted === true ? 130 : result.exitCode;
+    exitCode = result.exitCode;
     if (exitCode !== 0) break;
   }
   const out: ToolingEngineResult = {

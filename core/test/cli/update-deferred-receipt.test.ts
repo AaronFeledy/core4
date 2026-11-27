@@ -1,6 +1,6 @@
 // allow: SIZE_OK — Required ownership-receipt scenario stays with existing deferred-receipt regressions in this owned test file.
 import { afterEach, expect, test } from "bun:test";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { resolveOwnedExecutable } from "@lando/engine/install/owned-executable";
@@ -19,6 +19,37 @@ afterEach(async () => {
 const isolatedStore = (live: StateStoreShape, dataRoot: AbsolutePath): StateStoreShape => ({
   ...live,
   open: (spec) => live.open({ ...spec, root: { path: dataRoot } }),
+});
+
+test("a protected deferred update receipt does not intercept the requested diagnostic", async () => {
+  const root = await mkdtemp(join(tmpdir(), "lando-future-receipt-"));
+  roots.push(root);
+  const data = AbsolutePath.make(join(root, "data"));
+  const dir = updateHandoffDir(data);
+  const file = join(dir, "00000000-0000-0000-0000-000000000001.json");
+  const bytes = JSON.stringify({ version: 99, writtenBy: "4.15.0", data: {} });
+  await mkdir(dir, { recursive: true });
+  await writeFile(file, bytes, { mode: 0o600 });
+
+  const child = Bun.spawn([process.execPath, resolve("core/bin/lando.ts"), "meta:version", "--format=json"], {
+    env: {
+      ...process.env,
+      LANDO_USER_DATA_ROOT: data,
+      LANDO_USER_CACHE_ROOT: join(root, "cache"),
+      LANDO_USER_CONF_ROOT: join(root, "config"),
+    },
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [exit, stdout, stderr] = await Promise.all([
+    child.exited,
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+  ]);
+
+  expect({ exit, stderr }).toEqual({ exit: 0, stderr: "" });
+  expect(JSON.parse(stdout)).toMatchObject({ command: "meta:version", ok: true });
+  expect(await Bun.file(file).text()).toBe(bytes);
 });
 
 test("detached helper persists an abort which the next real invocation surfaces once", async () => {
@@ -230,12 +261,16 @@ test.each(["json", "yaml", "ndjson"])(
       const rejected = await invoke("ndjson");
       expect(rejected.exit).toBe(2);
       expect(rejected.stderr).toBe("");
+      // An ndjson pre-command refusal is a stream result frame, not a bare envelope.
       expect(JSON.parse(rejected.stdout)).toMatchObject({
-        ok: false,
-        command: "meta:version",
-        error: {
-          _tag: "RendererSelectionError",
-          message: 'meta:version does not support result format "ndjson". Allowed: text, json, yaml.',
+        _tag: "result",
+        envelope: {
+          ok: false,
+          command: "meta:version",
+          error: {
+            _tag: "RendererSelectionError",
+            message: 'meta:version does not support result format "ndjson". Allowed: text, json, yaml.',
+          },
         },
       });
       expect(await Bun.file(receiptPath).text()).toBe(before);

@@ -8,7 +8,10 @@ type AppDefaultPaths = {
   readonly scratchDir: string;
 };
 
-export type UserAppDefaults = Pick<GlobalConfig, "appEnv" | "appLabels">;
+export type UserAppDefaults = {
+  readonly environment?: NonNullable<GlobalConfig["serviceDefaults"]>["environment"];
+  readonly labels?: NonNullable<GlobalConfig["serviceDefaults"]>["labels"];
+};
 
 export const cacheInput = (
   routerEnabled: boolean,
@@ -22,8 +25,8 @@ export const cacheInput = (
   routerEnabled,
   defaultDomain: defaults.defaultDomain,
   scanner: scanner ?? null,
-  appEnv: defaults.appEnv ?? null,
-  appLabels: defaults.appLabels ?? null,
+  environment: defaults.environment ?? null,
+  labels: defaults.labels ?? null,
   sshAgentMode: defaults.sshAgentMode,
   gpgAgentForward: defaults.gpgAgentForward ?? false,
 });
@@ -53,8 +56,10 @@ export const resolveUserAppDefaults = (
   return isExcludedFromUserAppDefaults(appName, appRoot, paths)
     ? {}
     : {
-        ...(config?.appEnv === undefined ? {} : { appEnv: config.appEnv }),
-        ...(config?.appLabels === undefined ? {} : { appLabels: config.appLabels }),
+        ...(config?.serviceDefaults?.environment === undefined
+          ? {}
+          : { environment: config.serviceDefaults.environment }),
+        ...(config?.serviceDefaults?.labels === undefined ? {} : { labels: config.serviceDefaults.labels }),
       };
 };
 
@@ -65,21 +70,21 @@ export const withUserAppDefaults = (input: {
   readonly serviceEnvironment: import("@lando/sdk/schema").Environment | undefined;
   readonly hasEnvFiles: boolean;
 }): ServiceConfig => {
-  const hasAppEnv = input.defaults.appEnv !== undefined;
-  const hasAppLabels = input.defaults.appLabels !== undefined;
-  if (!input.hasEnvFiles && !hasAppEnv && !hasAppLabels) return input.service;
+  const hasEnvironment = input.defaults.environment !== undefined;
+  const hasLabels = input.defaults.labels !== undefined;
+  if (!input.hasEnvFiles && !hasEnvironment && !hasLabels) return input.service;
 
   return {
     ...input.service,
-    ...(input.hasEnvFiles || hasAppEnv
+    ...(input.hasEnvFiles || hasEnvironment
       ? {
           environment: {
-            ...(input.defaults.appEnv ?? {}),
+            ...(input.defaults.environment ?? {}),
             ...input.topLevelEnvironment,
             ...(input.serviceEnvironment ?? input.service.environment ?? {}),
           },
         }
       : {}),
-    ...(hasAppLabels ? { labels: { ...input.defaults.appLabels, ...(input.service.labels ?? {}) } } : {}),
+    ...(hasLabels ? { labels: { ...input.defaults.labels, ...(input.service.labels ?? {}) } } : {}),
   };
 };

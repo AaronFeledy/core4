@@ -40,7 +40,7 @@
   "scripts": {
     "build": "tsc -b",
     "clean": "rm -rf dist .tsbuildinfo",
-    "test": "bun test ./test",
+    "test": "bun --cwd=.. test ./source-acquisition/test",
     "typecheck": "tsc -b"
   }
 }

@@ -1,8 +1,7 @@
 # Drupal
 
 Create a Drupal stack with PHP, a database, Composer, and Drush tooling.
-After starting the services, run the scaffold command below to download the
-Drupal project and project-local Drush.
+The first `lando start` downloads the Drupal project and project-local Drush.
 
 Before you begin, install Lando and complete provider setup. For a new app,
 run the initialization command from the directory that will contain it. If this
@@ -18,16 +17,17 @@ lando info
 
 `lando start` prints the app URL. `lando info` repeats it.
 
-After start, scaffold the Drupal project and project-local Drush. The scaffold is a retryable stage-then-commit, so a flaky Composer fetch does not leave you half-installed:
+Confirm project-local Drush after start:
 
 ```sh
-lando drupal-scaffold
 lando drush --version
 ```
 
+The first start also installs Drupal Coder and PHPStan and writes `phpcs.xml.dist` and `phpstan.neon.dist`, so `lando phpcs`, `lando phpcbf`, and `lando phpstan` check your custom modules and themes. See [Lint PHP](https://aaronfeledy.github.io/core4/guides/recipes/drupal-workflow/#lint-php).
+
 ## Choose stack options
 
-`--yes` uses Drupal 11, PHP 8.4, Apache, MariaDB 11.4, Composer 2, and webroot `web`. Pass `--answer` for nginx plus FPM, another PHP, or another database. PHP 8.6 is a valid `--answer=php=8.6`.
+`--yes` uses Drupal 11, PHP 8.4, Apache, MariaDB 11.4, Composer 2, and webroot `web`. Pass `--answer=webroot=docroot` to use `docroot/` instead. A new scaffold needs one directory name. Pass `--answer=testing=true` to set up PHPUnit and Chrome when scaffolding a new site. To use PHP 8.6, pass `--answer=php=8.6`.
 
 To choose a different stack, use this initialization command instead of the
 default one above. Run it from the parent directory, not inside the app:
@@ -45,7 +45,7 @@ lando init --recipe drupal --name=my-drupal-app --yes \
 
 For day-to-day tooling and database hosts, see [Run the Drupal recipe](https://aaronfeledy.github.io/core4/guides/recipes/drupal-workflow/).
 
-## 1. scaffold
+## 1. init
 
 ```bash
 lando init --recipe drupal --name=my-drupal-app --yes
@@ -57,25 +57,19 @@ lando init --recipe drupal --name=my-drupal-app --yes
 lando start
 ```
 
-## 3. scaffold-drupal
-
-```bash
-lando drupal-scaffold
-```
-
-## 4. check-drush
+## 3. check-drush
 
 ```bash
 lando drush --version
 ```
 
-## 5. init
+## 4. init
 
 ```bash
-lando init --recipe drupal --name=my-drupal-nginx --yes --answer=php=8.5 --answer=webserver=nginx --answer=database=postgres:16 --answer=composer=2 --answer=drupal=10 --answer=webroot=web
+lando init --recipe drupal --name=my-drupal-nginx --yes --answer=php=8.5 --answer=webserver=nginx --answer=database=postgres:16 --answer=composer=2 --answer=drupal=10 --answer=webroot=docroot
 ```
 
-## 6. inspect
+## 5. inspect
 
 ```bash
 lando app:config --format=json

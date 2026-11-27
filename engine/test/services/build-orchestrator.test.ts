@@ -33,7 +33,7 @@ import {
   type RuntimeProviderShape,
   StateStore,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { SourceAcquisitionError } from "@lando/source-acquisition";
 import { disposeTestSourceStore, makeTestSourceStore } from "@lando/source-acquisition/testing";
 import {
@@ -140,10 +140,7 @@ const buildLifecycleDetails = (event: unknown) => {
 const registryLayer = (provider = TestRuntimeProvider) =>
   Layer.succeed(
     RuntimeProviderRegistry,
-    RuntimeProviderRegistry.of({
-      appliedPlansFor: () => Effect.succeed([]),
-      resolveAppliedPlan: () => Effect.succeed(undefined),
-      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+    makeTestRuntimeProviderRegistry({
       list: Effect.succeed([providerId]),
       capabilities: Effect.succeed(provider.capabilities),
       select: () => Effect.succeed(provider),
@@ -521,7 +518,10 @@ describe("BuildOrchestratorLayer.layer", () => {
       const treeStart = events.find((event) => event._tag === "task.tree.start");
       expect(treeStart).toMatchObject({
         parentId: `build-artifact-${String(plan.id)}`,
-        children: [String(web.name), String(db.name)],
+        children: [web, db].map((service) => ({
+          id: String(service.name),
+          label: `Build ${String(service.name)}`,
+        })),
       });
       const starts = events.filter((event) => event._tag === "task.start");
       expect(starts).toHaveLength(2);
@@ -592,7 +592,10 @@ describe("BuildOrchestratorLayer.layer", () => {
       cause: cacheFailure,
     });
     expect(result.events.find((event) => event._tag === "task.tree.start")).toMatchObject({
-      children: ["web", "db"],
+      children: [
+        { id: "web", label: "Build web" },
+        { id: "db", label: "Build db" },
+      ],
     });
     expect(
       result.events

@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   chmodSync,
@@ -16,19 +15,21 @@ import { join } from "node:path";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Effect } from "effect";
 import {
-  CGROUPS_DELEGATE_CONF_CONTENT,
   LANDO_SHELLENV_BEGIN,
   LANDO_SHELLENV_END,
+  defaultPosixShellProfilePath,
+  stripLandoShellenvBlock,
+} from "../../src/host/shell-profile.ts";
+import {
+  CGROUPS_DELEGATE_CONF_CONTENT,
   type RemoveRuntimeDirDeps,
   UninstallRuntimeDirError,
   buildUninstallPlan,
   chmodTreeUserWritable,
-  defaultPosixShellProfilePath,
   defaultRemoveRuntimeDir,
   formatUninstallRuntimeDirStepError,
   leftoverUninstallRuntimeDirError,
   managedPodmanUnshareRmInvocation,
-  stripLandoShellenvBlock,
   uninstall as uninstallEffect,
   uninstallRuntimeDirRemediation,
 } from "../../src/operations/uninstall.ts";
@@ -789,25 +790,24 @@ describe("platform-specific uninstall helpers", () => {
   });
 });
 describe("uninstall cgroups delegation drop-in", () => {
-  test("matching delegate.conf is owned and removed", async () => {
-    const roots = makeUninstallRoots("lando-uninstall-delegate-match-");
+  test.each([
+    ["setup-written", CGROUPS_DELEGATE_CONF_CONTENT, { keepData: true }],
+    ["echo-written", `${CGROUPS_DELEGATE_CONF_CONTENT}\n`, { purge: true }],
+    ["different", "[Service]\nDelegate=cpu\n", { keepData: true }],
+  ] as const)("%s delegate.conf is manual and left untouched", async (_kind, content, mode) => {
+    const roots = makeUninstallRoots("lando-uninstall-delegate-");
     try {
-      writeFileSync(roots.cgroupsDelegatePath, CGROUPS_DELEGATE_CONF_CONTENT);
+      writeFileSync(roots.cgroupsDelegatePath, content);
 
       const result = await Effect.runPromise(
-        uninstall(
-          sandboxUninstallOptions(roots, {
-            yes: true,
-            keepData: true,
-          }),
-        ),
+        uninstall(sandboxUninstallOptions(roots, { yes: true, ...mode })),
       );
 
       expect(result.failed).toBe(false);
-      expect(existsSync(roots.cgroupsDelegatePath)).toBe(false);
+      expect(readFileSync(roots.cgroupsDelegatePath, "utf8")).toBe(content);
       expect(result.steps.find((step) => step.id === "cgroups-delegate")).toMatchObject({
-        status: "owned",
-        outcome: "completed",
+        status: "manual",
+        outcome: "manual",
         target: roots.cgroupsDelegatePath,
       });
     } finally {
@@ -815,46 +815,10 @@ describe("uninstall cgroups delegation drop-in", () => {
     }
   });
 
-  test("echo-written delegate.conf is owned and removed", async () => {
-    const roots = makeUninstallRoots("lando-uninstall-delegate-echo-");
-    try {
-      const echoed = spawnSync("/bin/sh", ["-c", `echo '${CGROUPS_DELEGATE_CONF_CONTENT}'`], {
-        encoding: "buffer",
-      });
-      expect(echoed.status).toBe(0);
-      const echoWritten = echoed.stdout;
-      expect(echoWritten.toString("utf8")).not.toBe(CGROUPS_DELEGATE_CONF_CONTENT);
-      writeFileSync(roots.cgroupsDelegatePath, echoWritten);
-
-      const result = await Effect.runPromise(
-        uninstall(
-          sandboxUninstallOptions(roots, {
-            yes: true,
-            keepData: true,
-          }),
-        ),
-      );
-
-      expect(result.failed).toBe(false);
-      expect(existsSync(roots.cgroupsDelegatePath)).toBe(false);
-      expect(result.steps.find((step) => step.id === "cgroups-delegate")).toMatchObject({
-        status: "owned",
-        outcome: "completed",
-        target: roots.cgroupsDelegatePath,
-      });
-    } finally {
-      rmSync(roots.root, { recursive: true, force: true });
-    }
-  });
-
-  test("owned drop-in unlink EACCES fails the step", async () => {
+  test("a read-only drop-in requires no unlink attempt", async () => {
     const roots = makeUninstallRoots("lando-uninstall-delegate-eacces-");
     try {
-      const echoed = spawnSync("/bin/sh", ["-c", `echo '${CGROUPS_DELEGATE_CONF_CONTENT}'`], {
-        encoding: "buffer",
-      });
-      expect(echoed.status).toBe(0);
-      writeFileSync(roots.cgroupsDelegatePath, echoed.stdout);
+      writeFileSync(roots.cgroupsDelegatePath, CGROUPS_DELEGATE_CONF_CONTENT);
 
       const result = await Effect.runPromise(
         uninstall(
@@ -875,38 +839,14 @@ describe("uninstall cgroups delegation drop-in", () => {
         ),
       );
 
-      expect(result.failed).toBe(true);
+      expect(result.failed).toBe(false);
       expect(existsSync(roots.cgroupsDelegatePath)).toBe(true);
       const step = result.steps.find((entry) => entry.id === "cgroups-delegate");
       expect(step).toMatchObject({
-        status: "owned",
-        outcome: "failed",
-      });
-      expect(step?.error).toMatch(/EACCES/u);
-    } finally {
-      rmSync(roots.root, { recursive: true, force: true });
-    }
-  });
-
-  test("different delegate.conf content is not deleted", async () => {
-    const roots = makeUninstallRoots("lando-uninstall-delegate-other-");
-    try {
-      writeFileSync(roots.cgroupsDelegatePath, "[Service]\nDelegate=cpu\n");
-
-      const result = await Effect.runPromise(
-        uninstall(
-          sandboxUninstallOptions(roots, {
-            yes: true,
-            keepData: true,
-          }),
-        ),
-      );
-
-      expect(existsSync(roots.cgroupsDelegatePath)).toBe(true);
-      expect(result.steps.find((step) => step.id === "cgroups-delegate")).toMatchObject({
-        status: "user-owned",
+        status: "manual",
         outcome: "manual",
       });
+      expect(step?.error).toBeUndefined();
     } finally {
       rmSync(roots.root, { recursive: true, force: true });
     }

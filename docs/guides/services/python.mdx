@@ -61,12 +61,12 @@ Lando derives the port variables from the internal HTTP endpoint, and an explici
 
 Gunicorn reads `PORT` and binds `0.0.0.0`; Uvicorn CLI reads `UVICORN_*`, and `flask run` reads `FLASK_RUN_*`.
 
-Port variables are not independent overrides. If an authored value is malformed or differs from the planned port, planning fails at `services.app.environment.<VAR>`. This includes inherited `appEnv` and env-file values. Set `port:` instead. Host variables are ordinary defaults: your authored host value wins, but a loopback address makes the server unreachable through the proxy.
+Port variables are not independent overrides. If an authored value is malformed or differs from the planned port, planning fails at `services.app.environment.<VAR>`. This includes inherited `serviceDefaults.environment` and env-file values. Set `port:` instead. Host variables are ordinary defaults: your authored host value wins, but a loopback address makes the server unreachable through the proxy.
 
 FastAPI CLI does not read `UVICORN_*`. `fastapi run main.py` binds all interfaces and reads `PORT`; `fastapi dev main.py --host 0.0.0.0` still needs its host argument. Django reads neither the port nor the host from these variables, and Python's built-in `http.server` also needs its port argument. In an authored launcher, use the [port expression](../landofile/expressions.mdx#your-services-own-port) for the value, as in the `http.server` example above.
 
 Python does not interpret `webroot:`. An explicit root fails planning unless
-a composed plugin feature declares and handles it. Set `workingDirectory:`
+a composed plugin feature declares and handles it. Set `working_dir:`
 to move the process, and configure static-file paths in your application or a
 separate webserver.
 
@@ -151,7 +151,7 @@ Services such as `web` and `worker` share one environment when their Python tool
 
 A custom image, replacement `build.context`, `appMount: false`, an app mount target containing `:`, or any authored mount at the venv path skips both preparation and activation. An authored named volume is yours to populate and activate. `appMount.includes: [.venv]` also opts out and exposes the host tree, which may not run in the container. Scratch apps skip dependency environment preparation.
 
-Login shells keep the service's `PATH`, including an authored `environment.PATH` that leaves the venv off it. The prepare job uses a shared uv download cache; `uv` commands you run yourself use uv's normal cache in the service home.
+Login shells keep the service's `PATH` (see [Keep the service `PATH`](../cli/ssh.mdx#keep-the-service-path)), so the venv stays first, and an authored `environment.PATH` that leaves the venv off stays that way. The prepare job uses a shared uv download cache; `uv` commands you run yourself use uv's normal cache in the service home.
 
 Without a project manifest, `:python-local` uses the app-root `.venv` if it has an executable interpreter, and otherwise runs the command directly. An unreadable manifest or a broken interpreter link fails rather than falling back. Lando has no command to reset just the dependency environment. `lando destroy --volumes` also deletes other app volumes, such as databases.
 

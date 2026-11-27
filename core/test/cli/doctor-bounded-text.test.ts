@@ -8,10 +8,10 @@ import type {
   DoctorSectionFinding,
 } from "../../src/cli/commands/doctor-contract";
 import { DoctorReportSchema } from "../../src/cli/commands/doctor-contract";
-import { renderDoctorReportAsNdjson } from "../../src/cli/commands/doctor-render-ndjson";
 import { buildDoctorReportSummary, renderDoctorReport } from "../../src/cli/commands/doctor-render-text";
 import { makeDoctorReport } from "../../src/cli/commands/doctor-report";
 import { type RenderContext, runWithRendererHandling } from "../../src/cli/renderer-boundary";
+import { renderDoctorReportAsNdjson } from "./doctor-report-fixture";
 
 const tty: RenderContext = { mode: "lando", format: "text", isTTY: true, columns: 80, noColor: true };
 const check = (overrides: Partial<DoctorSectionFinding> = {}): DoctorSectionFinding => ({

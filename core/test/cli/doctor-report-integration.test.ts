@@ -16,7 +16,12 @@ import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import { makeLandoPaths } from "@lando/paths";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { AbsolutePath, GlobalConfig, ProviderId, type ProxyConfig } from "@lando/sdk/schema";
-import { makeTestCertificateAuthority, makeTestRouterService, makeTestSshService } from "@lando/sdk/test";
+import {
+  makeTestCertificateAuthority,
+  makeTestRouterService,
+  makeTestRuntimeProviderRegistry,
+  makeTestSshService,
+} from "@lando/sdk/test";
 import { type Context, Effect, Layer, Schema } from "effect";
 import { resilientDoctorReport } from "../../src/cli/commands/doctor-bootstrap";
 import { certsSubsystemCheck } from "../../src/cli/commands/doctor-certs-status";
@@ -24,14 +29,13 @@ import {
   DoctorReportSchema,
   collectDoctorReport,
   renderDoctorReport,
-  renderDoctorReportAsNdjson,
 } from "../../src/cli/commands/doctor-report.ts";
 import { independentSection } from "../../src/cli/commands/doctor-sections";
 import { subsystemDoctor } from "../../src/cli/commands/doctor-subsystems.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 import { makeLandoRuntime } from "../../src/runtime/layer";
 import { CORE_VERSION } from "../../src/version.ts";
-import { collectRuntimeDoctor as doctorReport } from "./doctor-report-fixture";
+import { collectRuntimeDoctor as doctorReport, renderDoctorReportAsNdjson } from "./doctor-report-fixture";
 import { DefaultSubsystemDoctorLayer } from "./doctor-subsystem-fixture.ts";
 
 const makeConfig = (input: unknown = {}): GlobalConfig => Schema.decodeUnknownSync(GlobalConfig)(input);
@@ -45,14 +49,10 @@ const configService = (
     get: (key) => Effect.succeed(fallback[key]),
   });
 
-const registryService: Context.Service.Shape<typeof RuntimeProviderRegistry> = RuntimeProviderRegistry.of({
-  resolveAppliedPlan: () => Effect.succeed(undefined),
-  resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-  appliedPlansFor: () => Effect.succeed([]),
-  list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
-  capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-  select: () => Effect.succeed(TestRuntimeProvider),
-});
+const registryService: Context.Service.Shape<typeof RuntimeProviderRegistry> =
+  makeTestRuntimeProviderRegistry({
+    list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
+  });
 
 const runtimeLayer = (config: GlobalConfig) =>
   Layer.mergeAll(
@@ -112,9 +112,10 @@ describe("combined doctor certificate and network-trust wiring", () => {
         table: [
           independentSection({
             id: "certificate-authority",
-            run: certsSubsystemCheck({ _tag: "selected", id: "injected-ca", trusted: true }, false).pipe(
-              Effect.map((check) => ({ checks: check === undefined ? [] : [check] })),
-            ),
+            run: certsSubsystemCheck(
+              { _tag: "selected", id: "injected-ca", trusted: true, trustStores: [] },
+              false,
+            ).pipe(Effect.map((check) => ({ checks: check === undefined ? [] : [check] }))),
           }),
         ],
       }).pipe(Effect.provide(Layer.succeed(ConfigService, configService(Effect.succeed(config), config)))),
@@ -244,7 +245,7 @@ describe("runtime-wired subsystem doctor", () => {
         ),
         Layer.succeed(
           RuntimeProviderRegistry,
-          RuntimeProviderRegistry.of({
+          makeTestRuntimeProviderRegistry({
             ...registryService,
             capabilities: Effect.succeed({
               ...TestRuntimeProvider.capabilities,

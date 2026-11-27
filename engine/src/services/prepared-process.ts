@@ -40,15 +40,9 @@ export const withPreparedProcess = <A, E, R>(
       const runtime = context.runtime;
       const tempRoot = runtime.tempRoot;
       const runner = yield* ProcessRunner;
+      if (snapshot.signal?.aborted) return yield* Effect.interrupt;
       const prepared = yield* Effect.tryPromise({
-        try: async (signal) => {
-          signal.throwIfAborted();
-          snapshot.signal?.throwIfAborted();
-          const prepared = await prepareHostExecutionContext(context);
-          signal.throwIfAborted();
-          snapshot.signal?.throwIfAborted();
-          return prepared;
-        },
+        try: () => prepareHostExecutionContext(context),
         catch: (cause) =>
           cause instanceof FileIoError
             ? cause
@@ -59,17 +53,11 @@ export const withPreparedProcess = <A, E, R>(
                 remediation: "Check that the requested working directory exists and is accessible.",
               }),
       });
+      if (snapshot.signal?.aborted) return yield* Effect.interrupt;
       const launcher = yield* Effect.acquireRelease(
         Effect.tryPromise({
-          try: async (signal) => {
-            signal.throwIfAborted();
-            snapshot.signal?.throwIfAborted();
+          try: async () => {
             const launcher = await createBunCommandEnv({ command: "lando", ...prepared, tempRoot }, runtime);
-            if (signal.aborted || snapshot.signal?.aborted) {
-              await launcher[Symbol.asyncDispose]();
-              signal.throwIfAborted();
-              snapshot.signal?.throwIfAborted();
-            }
             return { ...launcher, cwd: prepared.cwd };
           },
           catch: (cause) =>
@@ -85,6 +73,7 @@ export const withPreparedProcess = <A, E, R>(
         }),
         (launcher) => Effect.promise(() => launcher[Symbol.asyncDispose]()),
       );
+      if (snapshot.signal?.aborted) return yield* Effect.interrupt;
       const request: ProcessSpawnOptions = { ...snapshot, cwd: launcher.cwd, env: launcher.env };
       return yield* use(runner, request).pipe(
         Effect.provideService(PreparedProcessBinding, {

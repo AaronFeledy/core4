@@ -37,17 +37,35 @@ export const VOLUME_INSTANCE_LABEL = "dev.lando.volume-instance" as const;
 export const SCRATCH_LABEL = "dev.lando.scratch" as const;
 export const SCRATCH_ID_LABEL = "dev.lando.scratch-id" as const;
 export const AGENT_SESSION_LABEL = "dev.lando.agent-session" as const;
-export const HOST_PROXY_SESSION_LABEL = "dev.lando.host-proxy-session" as const;
+/** Digest of the container-facing host-proxy contract a container was created with. */
+export const HOST_PROXY_CONTRACT_LABEL = "dev.lando.host-proxy-contract" as const;
 export const HOST_PROXY_TRANSPORT_EXTENSION_KEY = "@lando/core/host-proxy-transport";
+/** Container directory bound from the app's container-facing host directory: credentials and local socket. */
+export const HOST_PROXY_CONTAINER_DIR = "/run/lando/host-proxy";
+/** Container path of a host-proxy socket bridged from a provider machine, bound as a file. */
+export const HOST_PROXY_CONTAINER_BRIDGE_SOCKET = "/run/lando/host-proxy.sock";
+export const HOST_PROXY_CONTAINER_LANDO = "/usr/local/bin/lando";
+/** Commands bound to the host-proxy client shim. */
+export const HOST_PROXY_COMMAND_TARGETS: ReadonlyArray<string> = [
+  HOST_PROXY_CONTAINER_LANDO,
+  "/usr/local/bin/xdg-open",
+  "/usr/local/bin/open",
+];
+/** Every container path the host-proxy overlay can mount. */
+export const HOST_PROXY_MOUNT_TARGETS: ReadonlySet<string> = new Set([
+  HOST_PROXY_CONTAINER_DIR,
+  HOST_PROXY_CONTAINER_BRIDGE_SOCKET,
+  ...HOST_PROXY_COMMAND_TARGETS,
+]);
 export const SSH_AGENT_OVERLAY_LABEL = "dev.lando.ssh-agent-overlay" as const;
 export const GPG_AGENT_OVERLAY_LABEL = "dev.lando.gpg-agent-overlay" as const;
 
-export const hostProxySessionDigest = (extensions: ServicePlan["extensions"]): string | undefined => {
+export const hostProxyContractDigest = (extensions: ServicePlan["extensions"]): string | undefined => {
   const transport = extensions[HOST_PROXY_TRANSPORT_EXTENSION_KEY];
-  if (typeof transport !== "object" || transport === null || !("sessionDigest" in transport))
+  if (typeof transport !== "object" || transport === null || !("contractDigest" in transport))
     return undefined;
-  return typeof transport.sessionDigest === "string" && /^[a-f0-9]{16}$/u.test(transport.sessionDigest)
-    ? transport.sessionDigest
+  return typeof transport.contractDigest === "string" && /^[a-f0-9]{16}$/u.test(transport.contractDigest)
+    ? transport.contractDigest
     : undefined;
 };
 
@@ -57,15 +75,15 @@ export const containerIntegrationLabels = (
   extensions: ServicePlan["extensions"] = {},
 ): Record<string, string> => {
   const {
-    [HOST_PROXY_SESSION_LABEL]: _hostProxy,
+    [HOST_PROXY_CONTRACT_LABEL]: _hostProxy,
     [SSH_AGENT_OVERLAY_LABEL]: _ssh,
     [GPG_AGENT_OVERLAY_LABEL]: _gpg,
     ...authored
   } = labels;
-  const sessionDigest = hostProxySessionDigest(extensions);
+  const contractDigest = hostProxyContractDigest(extensions);
   return {
     ...authored,
-    ...(sessionDigest === undefined ? {} : { [HOST_PROXY_SESSION_LABEL]: sessionDigest }),
+    ...(contractDigest === undefined ? {} : { [HOST_PROXY_CONTRACT_LABEL]: contractDigest }),
     ...(environment.SSH_AUTH_SOCK === `${AGENT_SOCKET_CONTAINER_DIR.ssh}/${SSH_AGENT_SOCKET_NAME}`
       ? { [SSH_AGENT_OVERLAY_LABEL]: "true" }
       : {}),

@@ -1,6 +1,7 @@
 import { type ProviderRuntimeSnapshot, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { Effect, Result } from "effect";
 import { TeardownProvider } from "../providers/app-placement.ts";
+import { appliedStateIssueError } from "./applied-state-issue.ts";
 import type { MissingRootScan } from "./missing-app-root-schema.ts";
 import { collectMissingAppRoots } from "./missing-root-candidates.ts";
 
@@ -14,17 +15,12 @@ export const scanMissingAppRoots = Effect.fn("AppOperation.scanMissingAppRoots")
   const snapshots: ProviderRuntimeSnapshot[] = [];
   // Scope each scan so a broken provider cannot hide another provider's leftovers.
   for (const id of ids) {
-    const state =
-      registry.appliedStateInventory === undefined
-        ? undefined
-        : yield* registry.appliedStateInventory(id).pipe(Effect.result);
+    const state = yield* registry.appliedStateInventory(id).pipe(Effect.result);
     const recordedState =
-      state !== undefined &&
-      Result.isSuccess(state) &&
-      (state.success.plans.length > 0 || state.success.unreadable.length > 0);
+      Result.isSuccess(state) && (state.success.plans.length > 0 || state.success.unreadable.length > 0);
     const result = yield* (
       registry.observeRuntime ??
-      Effect.succeed([
+      Effect.succeed<readonly ProviderRuntimeSnapshot[]>([
         {
           providerId: id,
           runtimeObserved: false,
@@ -56,8 +52,12 @@ export const scanMissingAppRoots = Effect.fn("AppOperation.scanMissingAppRoots")
       const providerSnapshots = result.success.filter((item) => item.providerId === id);
       snapshots.push(...providerSnapshots);
       const observed = providerSnapshots[0]?.runtimeObserved === true;
-      const stateFailure = state !== undefined && Result.isFailure(state) ? state.failure : undefined;
-      const unreadable = state !== undefined && Result.isSuccess(state) ? state.success.unreadable.length : 0;
+      const stateFailure = Result.isFailure(state) ? state.failure : undefined;
+      const issues = Result.isSuccess(state) ? state.success.unreadable : [];
+      const unreadable = issues.length;
+      // A newer record outranks a corrupt one: its remediation is to run or install that Lando.
+      const issue = issues.find((item) => item.reason === "newer-version") ?? issues[0];
+      const issueError = issue === undefined ? undefined : appliedStateIssueError(id, issue, "lando apps:gc");
       scans.push({
         providerId: id,
         runtimeObserved: observed,
@@ -69,18 +69,17 @@ export const scanMissingAppRoots = Effect.fn("AppOperation.scanMissingAppRoots")
         complete: observed && stateFailure === undefined && unreadable === 0,
         message:
           stateFailure?.message ??
-          (unreadable > 0
-            ? `${unreadable} applied-state records could not be read.`
+          (issueError !== undefined
+            ? unreadable === 1
+              ? issueError.message
+              : `${unreadable} applied-state records are protected. ${issueError.message}`
             : observed
               ? "Runtime resources inspected."
               : "Runtime not observed; containers and volumes are not listed."),
         ...(stateFailure !== undefined
           ? { errorTag: stateFailure._tag, remediation: stateFailure.remediation }
-          : unreadable > 0
-            ? {
-                errorTag: "AppResolveError",
-                remediation: "Repair the unreadable applied-state records, then rerun apps:gc.",
-              }
+          : issueError !== undefined
+            ? { errorTag: issueError._tag, remediation: issueError.remediation }
             : {}),
       });
     }
@@ -88,7 +87,7 @@ export const scanMissingAppRoots = Effect.fn("AppOperation.scanMissingAppRoots")
   if (ids.length === 0 && selected === undefined && registry.observeRuntime !== undefined)
     snapshots.push(...(yield* registry.observeRuntime));
   const inventory = yield* collectMissingAppRoots(snapshots);
-  for (const [id, failure] of inventory.capabilityFailures) {
+  for (const [id, failure] of inventory.scanFailures) {
     const index = scans.findIndex((scan) => scan.providerId === id);
     if (index < 0) scans.push(failure);
     else scans[index] = failure;

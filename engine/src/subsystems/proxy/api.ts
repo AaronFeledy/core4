@@ -74,4 +74,6 @@ export const unavailableRouterReason = (router: RouterServiceShape): ProxyError 
 export const layerUnavailableFor = (reason: ProxyError, withdraw?: UnavailableRouterWithdrawal) =>
   Layer.succeed(RouterService, makeUnavailableRouter(reason, withdraw));
 
-export const layerUnavailable = layerUnavailableFor(noRouterInstalledReason);
+export const noRouterInstalled = makeUnavailableRouter(noRouterInstalledReason);
+
+export const layerUnavailable = Layer.succeed(RouterService, noRouterInstalled);
