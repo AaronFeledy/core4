@@ -431,7 +431,10 @@ const nodeImagePullLines = nodeReleases.releases
   .map((entry) => `          pull_image docker.io/library/node:${entry.major}`)
   .join("\n");
 
-const landoRuntimeBundleSetupSteps = `      - name: Download current-commit Linux x64 runtime bundle
+const landoRuntimeBundleSetupSteps = (mode: "provider-matrix" | "standard"): string => {
+  const engineFlags = (flags: string): string =>
+    mode === "provider-matrix" ? ` \${{ matrix.suite == 'engine' && '${flags}' || '' }}` : "";
+  return `      - name: Download current-commit Linux x64 runtime bundle
         uses: ${pinnedAction("actions/download-artifact")}
         with:
           name: runtime-bundle-linux-x64-current
@@ -472,7 +475,7 @@ const landoRuntimeBundleSetupSteps = `      - name: Download current-commit Linu
         run: |
           export XDG_RUNTIME_DIR="\${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
           mkdir -p "$XDG_RUNTIME_DIR"
-          dist/lando setup --yes --provider=lando --skip-install-ca --skip-shell-integration --skip-file-sync
+          dist/lando setup --yes --provider=lando --skip-install-ca --skip-shell-integration --skip-file-sync${engineFlags("--enable-linger --smoke")}
           echo "LANDO_CONFIG__default_provider_id=lando" >> "$GITHUB_ENV"
 
       - name: Verify managed runtime socket
@@ -486,7 +489,7 @@ const landoRuntimeBundleSetupSteps = `      - name: Download current-commit Linu
           echo "LANDO_TEST_PODMAN_SOCKET=$LANDO_USER_DATA_ROOT/runtime/run/podman.sock" >> "$GITHUB_ENV"
 
       - name: Gate platform readiness doctor
-        run: bun run scripts/platform-readiness-doctor.ts --binary dist/lando --report provider-diagnostics/platform-readiness-doctor.json
+        run: bun run scripts/platform-readiness-doctor.ts --binary dist/lando --report provider-diagnostics/platform-readiness-doctor.json${engineFlags("--require-delegated-cgroups")}
 
       - name: Configure Docker socket
         run: |
@@ -545,6 +548,7 @@ ${nodeImagePullLines}
           docker_pull_image docker.io/library/mariadb:11.4
           docker_pull_image ${dataHelperImageRef}
           docker_pull_image ${sqliteHelperImageRef}`;
+};
 
 // Each selection runs even after an earlier one fails, so one run reports every failing selection;
 // the step exits with the last failing selection's status.
@@ -634,7 +638,7 @@ ${landoManagedPodmanTeardownCommands}
               > provider-diagnostics/managed-podman-service.log 2>&1 || true
           fi`;
 
-const landoProviderIntegrationSteps = `${landoRootlessPrereqSteps}\n\n${landoRuntimeBundleSetupSteps}\n\n${contractProviderTestSteps}\n\n${landoRuntimeLiveTestSteps}`;
+const landoProviderIntegrationSteps = `${landoRootlessPrereqSteps}\n\n${landoRuntimeBundleSetupSteps("provider-matrix")}\n\n${contractProviderTestSteps}\n\n${landoRuntimeLiveTestSteps}`;
 
 const linuxRuntimeBundleCacheMiss = "steps.runtime-bundle-cache.outputs.cache-hit != 'true'";
 
@@ -827,7 +831,7 @@ const guideScenarioLiveOutputEnv = `          LANDO_GUIDE_SCENARIO_LIVE_OUTPUT: 
 
 export const linuxGuideE2eProviderSetupSteps = `${landoRootlessPrereqSteps}
 
-${landoRuntimeBundleSetupSteps}`;
+${landoRuntimeBundleSetupSteps("standard")}`;
 
 const linuxGuideScenarioE2eSteps = `      - name: Download Linux x64 binary artifact
         uses: ${pinnedAction("actions/download-artifact")}
