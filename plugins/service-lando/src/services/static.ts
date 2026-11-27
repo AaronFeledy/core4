@@ -20,15 +20,21 @@ import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { tcpProbe } from "./_tcp-probe.ts";
 import { resolveWebroot } from "./_webroot.ts";
 import { CADDY_CONFIG_PATH, caddyLauncherCommand, renderCaddyfile } from "./caddy-config.ts";
+import { NGINX_DEFAULT_IMAGE } from "./default-images.ts";
 import { landoErrorPagesBuildStep, nginxErrorPageConfigLines } from "./http-errors.ts";
 import { nginxHiddenPathConfigLines } from "./http-hidden-paths.ts";
-import { nginxDefaultSiteRemovalBuildStep, nginxLauncherCommand } from "./nginx-config.ts";
+import {
+  nginxDefaultSiteRemovalBuildStep,
+  nginxLauncherCommand,
+  stockNginxIdentity,
+  stockNginxLauncherOptions,
+} from "./nginx-config.ts";
 
 export const SUPPORTED_STATIC_SERVERS = ["nginx", "caddy"] as const;
 export type SupportedStaticServer = (typeof SUPPORTED_STATIC_SERVERS)[number];
 
 export const STATIC_SERVER_IMAGES: Record<SupportedStaticServer, string> = {
-  nginx: "nginx:1.26-alpine",
+  nginx: NGINX_DEFAULT_IMAGE,
   caddy: "caddy:2-alpine",
 };
 
@@ -155,7 +161,7 @@ const applyStaticFeature = (ctx: ServiceFeatureContext): void => {
       ctx.setCommand(service.command);
       ctx.setListenerAuthority(launcherAuthority(STATIC_LISTENERS.nginx, port));
     } else {
-      ctx.setCommand(defaultNginxStaticCommand(docRoot, port, service.user));
+      ctx.setCommand(defaultNginxStaticCommand(docRoot, port, service.user), stockNginxLauncherOptions);
     }
   }
   applyAuthoredProcessFields(ctx, ["user"]);
@@ -207,12 +213,8 @@ export const makeStaticServiceType = (server: SupportedStaticServer): ServiceTyp
       server === "caddy" ? "static:caddy" : "static",
       "Put flags in command: or configure the generated server through type settings.",
     ),
-    // Verified linux/amd64: nginx:1.26-alpine config
-    // sha256:42ce3d3585d47518cb0c1ef4bd3d8a65c1edfcbbfd423eda86990a83f378b111 has
-    // nginx:x:101:101:nginx:/var/cache/nginx:/sbin/nologin (cache, not a persisted home).
-    // caddy:2-alpine config sha256:3067cc4e02c091399edbd5d65f85a3ff4d511574aecadb47f280c3761e68852e
-    // has only root. Both server choices therefore declare only the root home.
-    identity: rootIdentity(),
+    // caddy:2-alpine config sha256:3067cc4e02c091399edbd5d65f85a3ff4d511574aecadb47f280c3761e68852e has only root.
+    identity: server === "nginx" ? stockNginxIdentity : rootIdentity(),
     schema: Schema.Unknown,
     resolve: (input) =>
       serviceTypeResolve(id, `Failed to resolve ${id}`, () => {

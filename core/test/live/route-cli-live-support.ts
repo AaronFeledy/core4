@@ -2,8 +2,9 @@ import { expect } from "bun:test";
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { makeLandoPaths } from "@lando/paths";
+import { introspectProviderCapabilities, makePodmanApiClient } from "@lando/provider-lando";
 import { InfoAppResult, StartAppResult } from "@lando/sdk/schema";
-import { Option, Schema } from "effect";
+import { Effect, Option, Schema } from "effect";
 
 import { isScannerLiveEligible, managedProviderSocketPath } from "./scanner-live-fixture.ts";
 
@@ -24,6 +25,23 @@ export const prerequisite = !isScannerLiveEligible()
     : Bun.which("curl") === null
       ? "Install curl in the live-test environment."
       : undefined;
+
+const rootlessPodmanInfo = Schema.Struct({
+  host: Schema.Struct({ security: Schema.Struct({ rootless: Schema.Literal(true) }) }),
+});
+
+// Call only after the prerequisite has confirmed the opted-in managed socket.
+export const managedLinuxMapsProjectUser = async (requireExplicitRootless = false): Promise<boolean> => {
+  if (process.platform !== "linux") return false;
+  const api = makePodmanApiClient(managedProviderSocketPath);
+  // Capability introspection assumes rootless when older engines omit the fact. CI needs proof.
+  const mapsProjectUser = requireExplicitRootless
+    ? api.info.pipe(Effect.map(Schema.is(rootlessPodmanInfo)))
+    : introspectProviderCapabilities(api, "linux").pipe(
+        Effect.map((capabilities) => capabilities.projectUserMapping === "userns-keep-id"),
+      );
+  return Effect.runPromise(mapsProjectUser.pipe(Effect.timeout("5 seconds")));
+};
 
 export const infoEnvelope = Schema.fromJsonString(
   Schema.Struct({ ok: Schema.Literal(true), result: InfoAppResult }),

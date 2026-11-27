@@ -143,6 +143,53 @@ test("typed secret failure keeps its identity and records no invented command ex
   });
 });
 
+test("an app step with output but no exit retains a failed transcript and does not become reusable", async () => {
+  await withTempRoots(async () => {
+    let commands = 0;
+    const secret = "private-build-secret";
+    const safeTail = "PASSWORD=[redacted]\npartial output";
+    const provider = {
+      ...retainedProvider,
+      execStream: () => {
+        commands += 1;
+        return Stream.make({
+          kind: "stdout" as const,
+          chunk: new TextEncoder().encode(`PASSWORD=${secret}\npartial output`),
+        });
+      },
+    };
+    const store = settlementStore();
+    const plan = planWith({ web: [{ id: "install", phase: "app", command: { command: ["private-argv"] } }] });
+    const result = await Effect.runPromise(captureBuild(provider, store, plan));
+    taskDispositions(result.events, { "web:app:install": "task.fail" });
+    if (Exit.isSuccess(result.exit)) throw new TypeError("unobserved exit became success");
+    const errors = result.exit.cause.reasons.filter(Cause.isFailReason).map((r) => r.error);
+    expect(errors).toMatchObject([
+      {
+        _tag: "BuildPhaseFailedError",
+        failures: [{ cause: { _tag: "ServiceExecError" }, outputTail: safeTail }],
+      },
+    ]);
+    const phaseFailure = errors[0];
+    if (phaseFailure?._tag !== "BuildPhaseFailedError") throw new TypeError("expected a build phase failure");
+    expect(phaseFailure.failures[0]).not.toHaveProperty("exitCode");
+    expect(JSON.stringify(errors)).not.toContain("private-argv");
+    expect(JSON.stringify(errors)).not.toContain(secret);
+    expect(
+      result.events.find((event) => event._tag === "task.fail" && event.exitCode !== undefined),
+    ).toBeUndefined();
+    expect(result.entries).toMatchObject([{ outcome: "fail" }]);
+    const receipt = result.entries?.[0];
+    if (receipt === undefined) throw new TypeError("failed build left no receipt");
+    expect(receipt.exitCode).toBeUndefined();
+    const transcript = await Bun.file(receipt.transcriptPath).text();
+    expect(transcript).toContain(safeTail);
+    expect(transcript).not.toContain(secret);
+    await Effect.runPromise(captureBuild(provider, store, plan));
+    expect(commands).toBe(2);
+  });
+});
+
 test("interruption during protected success recording preserves the receipt and one success terminal", async () => {
   await withTempRoots(async () => {
     const entered = Deferred.makeUnsafe<void>();

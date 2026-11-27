@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { chmod, mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { makePodmanApiClient } from "@lando/container-runtime/podman/api-client";
@@ -100,7 +100,6 @@ const start = Effect.fnUntraced(function* (
   const body = `served-by-${name}`;
   yield* Effect.tryPromise(async () => {
     await mkdir(join(root.owned.env.HOME, ".ssh"), { recursive: true, mode: 0o700 });
-    await chmod(scenario.testDir, 0o755);
     await Bun.write(join(scenario.testDir, "index.html"), body);
     await Bun.write(
       join(scenario.testDir, ".lando.yml"),

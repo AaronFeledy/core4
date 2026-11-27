@@ -39,7 +39,7 @@ test("#2292 discovers and prunes build-output-only scratch ids", async () => {
     await mkdir(directory, { recursive: true });
     await writeFile(join(directory, "old.log"), "old output");
     await mkdir(join(directory, "..", "not-canonical"), { recursive: true });
-    expect(scratchGcCandidates([], [], [], [id])).toEqual({ inspected: 1, candidates: [id] });
+    expect(scratchGcCandidates([], [], [id])).toEqual({ inspected: 1, candidates: [id] });
     const report = await Effect.runPromise(
       Effect.flatMap(ScratchAppService, (s) => s.gc()).pipe(Effect.provide(f.layer)),
     );

@@ -63,7 +63,7 @@ export const homeFields = (service: InfoAppService): ReadonlyArray<SummaryField>
   let reason: string;
   switch (home.reason) {
     case "custom-image":
-      reason = "image comes from your Landofile";
+      reason = "the service uses a custom image";
       break;
     case "no-identity":
       reason = `${service.type} doesn't declare image users`;

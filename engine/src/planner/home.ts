@@ -23,7 +23,7 @@ export interface ServiceHomeIntent {
   readonly identity?: ServiceImageIdentity;
   /** Authored `home:` value; `undefined` means enabled with no explicit path. */
   readonly home?: ServiceConfig["home"];
-  /** True when the Landofile supplied the image, so `identity` cannot describe it. */
+  /** True when the effective image is custom, so `identity` cannot describe it. */
   readonly customImage?: boolean;
 }
 
@@ -58,6 +58,17 @@ export const serviceHomeIntent = (input: {
     ...(known === undefined ? {} : { identity: known }),
     ...(input.service.home === undefined ? {} : { home: input.service.home }),
   };
+};
+
+export const homeIntentForArtifact = (
+  intent: ServiceHomeIntent,
+  artifact: ServicePlan["artifact"],
+): ServiceHomeIntent => {
+  const stockImage = intent.identity?.projectUserDefault?.launcherImage;
+  if (stockImage === undefined || (artifact?.kind === "ref" && sameImageReference(stockImage, artifact.ref)))
+    return intent;
+  const { identity: _identity, ...home } = intent;
+  return { ...home, customImage: true };
 };
 
 /** The user principal a home is keyed by: the identity without its `:group`. */

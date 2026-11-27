@@ -22,7 +22,7 @@ export const appsScratchDestroySpec: LandoCommandSpec<ScratchHandle> = {
   aliases: ["scratch:destroy"],
   bootstrap: "scratch",
   args: {
-    id: Args.string({ description: "Scratch app id.", required: true }),
+    id: Args.string({ description: "Scratch app id or the --name it was started with.", required: true }),
   },
   flags: {
     yes: nonPromptingYesFlag,

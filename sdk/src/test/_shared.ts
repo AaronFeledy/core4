@@ -170,8 +170,9 @@ export const planMetadata: PlanMetadata = {
 export const CONTRACT_SPLIT_LINE = "lando-contract-split-line";
 /** Longer than Docker's 16 KiB partial-message split, shorter than the 64 KiB line bound. */
 export const CONTRACT_LONG_LINE = "L".repeat(20_000);
+// Node as PID 1 ignores SIGTERM, so without the handler every stop waits out the engine's grace period.
 const CONTRACT_SERVICE_SCRIPT =
-  "process.stdout.write('lando-contract-split-'); setTimeout(() => { process.stdout.write('line\\n'); process.stdout.write('L'.repeat(20000) + '\\n'); console.log('lando-contract-ready'); setInterval(() => console.log('lando-contract-ready'), 1000); }, 300)";
+  "process.on('SIGTERM', () => process.exit(0)); process.stdout.write('lando-contract-split-'); setTimeout(() => { process.stdout.write('line\\n'); process.stdout.write('L'.repeat(20000) + '\\n'); console.log('lando-contract-ready'); setInterval(() => console.log('lando-contract-ready'), 1000); }, 300)";
 
 /** Whether a planned service runs the contract program, whose console output fakes simulate. */
 export const runsContractServiceScript = (service: ServicePlan | undefined): boolean =>

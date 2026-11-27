@@ -1,15 +1,18 @@
 import { readdir } from "node:fs/promises";
+import { causeRemediation, mapFailures } from "@lando/sdk/command-result";
 import { ScratchAppError, isErrnoCode } from "@lando/sdk/errors";
 import type { AbsolutePath, AppPlan } from "@lando/sdk/schema";
 import { PathsService, RuntimeProviderRegistry, type ScratchAppPaths, StateStore } from "@lando/sdk/services";
 import { Effect } from "effect";
+import { canonicalMissingAppRoot } from "../operations/app-mutation-lock.ts";
 import { withBuiltImageCleanupBatch } from "../services/build-image-cleanup.ts";
 import { makeScratchBuildTranscriptDir } from "../services/build-transcript.ts";
 import type { makeScratchReaper } from "./destroy.ts";
 import { scratchGcCandidates } from "./gc-candidates.ts";
+import { isCanonicalScratchId, scratchIdForInstanceRoot } from "./identity.ts";
 import type { makeScratchLifecycleLock } from "./lifecycle-lock.ts";
 import { ScratchRegistry } from "./registry.ts";
-import { ScratchResourceScanner, isCanonicalScratchId } from "./scanner.ts";
+import { ScratchResourceScanner } from "./scanner.ts";
 
 const directoryScratchIds = (base: string, accept: (id: string) => boolean) =>
   Effect.tryPromise({
@@ -43,17 +46,44 @@ export const makeScratchGc = Effect.fnUntraced(function* (services: {
   const providers = yield* RuntimeProviderRegistry;
   const registry = yield* ScratchRegistry;
   const scanner = yield* ScratchResourceScanner;
+  // Inventories record their canonical owner root; one under another root (a scratch recorded
+  // under its source app before scratches had their own root) names no scratch and is skipped.
+  const ownershipScratchIds = Effect.gen(function* () {
+    const scratchDir = yield* canonicalMissingAppRoot(configuredPaths.scratchDir);
+    const ids: string[] = [];
+    for (const provider of yield* providers.list)
+      for (const ownership of yield* providers.listResourceOwnership?.(provider) ?? Effect.succeed([])) {
+        const id = scratchIdForInstanceRoot(scratchDir, ownership.appRoot);
+        if (id !== undefined) ids.push(id);
+      }
+    return ids;
+  }).pipe(
+    mapFailures(
+      (cause) =>
+        new ScratchAppError({
+          operation: "gc",
+          message: "Unable to read provider resource-ownership inventories.",
+          cause,
+          remediation:
+            causeRemediation(cause) ??
+            "Repair the provider's ownership records, then retry `lando apps:scratch:gc`.",
+        }),
+    ),
+  );
   const candidatesNow = Effect.gen(function* () {
     return scratchGcCandidates(
       yield* registry.list(),
       // A non-canonical instance directory is reported as an error on prune; build output Lando never
       // wrote under a non-canonical id is not a candidate at all.
       yield* directoryScratchIds(configuredPaths.scratchDir, (id) => !services.isUnsafeId(id)),
-      yield* scanner.listScratchIds,
-      yield* directoryScratchIds(
-        makeScratchBuildTranscriptDir(configuredPaths.roots.userDataRoot),
-        isCanonicalScratchId,
-      ),
+      [
+        ...(yield* scanner.listScratchIds),
+        ...(yield* directoryScratchIds(
+          makeScratchBuildTranscriptDir(configuredPaths.roots.userDataRoot),
+          isCanonicalScratchId,
+        )),
+        ...(yield* ownershipScratchIds),
+      ],
     );
   });
   return Effect.fn("ScratchAppService.gc")(function* (options?: { readonly prune?: boolean }) {

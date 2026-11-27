@@ -3,21 +3,22 @@ import { ProcessExecError } from "@lando/sdk/errors";
 import type { ProcessSpawnOptions } from "@lando/sdk/services";
 import { createBunCommandEnv } from "./bun-command-env.ts";
 import { type CapturedHostExecutionContext, prepareHostExecutionContext } from "./host-execution-context.ts";
+import { processCancellation } from "./process-cancellation.ts";
 
 export const prepareProcessSpawn = async (
   captured: CapturedHostExecutionContext,
   input: { readonly signal?: AbortSignal; readonly bunCommandEnv: boolean },
   lookup: (path: string) => Promise<string> = realpath,
 ) => {
-  input.signal?.throwIfAborted();
+  if (input.signal?.aborted) throw processCancellation;
   const context = await prepareHostExecutionContext(captured, lookup);
-  input.signal?.throwIfAborted();
+  if (input.signal?.aborted) throw processCancellation;
   const launcher = input.bunCommandEnv
     ? await createBunCommandEnv({ command: "lando", ...context })
     : { env: context.env, [Symbol.asyncDispose]: async () => {} };
   if (input.signal?.aborted) {
     await launcher[Symbol.asyncDispose]();
-    input.signal.throwIfAborted();
+    throw processCancellation;
   }
   return {
     cwd: context.cwd,

@@ -30,7 +30,7 @@ import { bringDownObservedContainer } from "./service-lifecycle.ts";
 
 export { makeOwnedResourcesCleanup } from "./resource-cleanup.ts";
 export { makeResourceOwnershipStore } from "./resource-ownership.ts";
-export { hasResourceOwnershipRecords } from "./resource-ownership-records.ts";
+export { hasResourceOwnershipRecords, listResourceOwnershipRecords } from "./resource-ownership-records.ts";
 export { PlanfulVolumeCoverage } from "./teardown-volumes.ts";
 export const hasExactVolumeTeardown = (provider: object): boolean =>
   "exactVolumeTeardown" in provider && provider.exactVolumeTeardown === true;

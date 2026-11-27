@@ -98,8 +98,7 @@ export const resolveDataTreeOwnership = (input: {
 
   const prepared: Array<DataTreeOwnership> = [];
   for (const tree of input.trees) {
-    // A Landofile-supplied image is not the image the service type described,
-    // so the owners that type says its image seeds no longer describe it.
+    // Catalog ownership doesn't describe a custom image.
     if (!input.hasCustomImage && tree.seededOwners.includes(principal)) continue;
     if (NUMERIC_PRINCIPAL.test(principal)) {
       // Keep both ids when the author supplied them: `chown 1000` would pick a
@@ -114,7 +113,7 @@ export const resolveDataTreeOwnership = (input: {
         target: tree.target,
         option: "image",
         user: input.plannedUser,
-        reason: `its image is supplied by the Landofile, so Lando does not know whether user ${principal} exists inside it.`,
+        reason: `its custom image has no catalog identity, so Lando does not know whether user ${principal} exists inside it.`,
       });
     }
     if (input.identity === undefined) {

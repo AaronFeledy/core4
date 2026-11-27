@@ -29,6 +29,7 @@ import {
   appIdentityKey,
   landoNetworkingPlan,
 } from "@lando/sdk/schema";
+import { NGINX_DEFAULT_IMAGE } from "@lando/service-lando/services/default-images";
 import { DateTime, Effect } from "effect";
 
 import {
@@ -41,7 +42,6 @@ import { currentTestPlan } from "./value-contracts.ts";
 
 const providerId = ProviderId.make("lando");
 const BACKEND_PORT = 31087;
-const BACKEND_IMAGE = "nginx:1.27";
 
 const metadata = {
   resolvedAt: DateTime.makeUnsafe("2026-09-13T00:00:00Z"),
@@ -152,7 +152,7 @@ export const startProxyDiagnosticsStack = async (socketPath: string): Promise<Pr
   const { dynamicDir } = await writeProxyFiles(root, slug, routes);
 
   const services = {
-    web: servicePlan("web", BACKEND_IMAGE, { command: ["sh", "-c", backendStartScript] }),
+    web: servicePlan("web", NGINX_DEFAULT_IMAGE, { command: ["sh", "-c", backendStartScript] }),
     [TRAEFIK_DIAGNOSTICS_ID]: servicePlan(TRAEFIK_DIAGNOSTICS_ID, TRAEFIK_DIAGNOSTICS_IMAGE, {
       command: [...TRAEFIK_DIAGNOSTICS_COMMAND],
       healthcheck: TRAEFIK_DIAGNOSTICS_HEALTHCHECK,
@@ -194,7 +194,7 @@ export const startProxyDiagnosticsStack = async (socketPath: string): Promise<Pr
   };
 
   try {
-    for (const image of [BACKEND_IMAGE, TRAEFIK_DIAGNOSTICS_IMAGE, TRAEFIK_IMAGE]) {
+    for (const image of new Set([NGINX_DEFAULT_IMAGE, TRAEFIK_DIAGNOSTICS_IMAGE, TRAEFIK_IMAGE])) {
       await Effect.runPromise(pullImage(api, image));
     }
     const helperOptions = await Effect.runPromise(containerHelperTestOptions(api));

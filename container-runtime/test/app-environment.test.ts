@@ -1,10 +1,11 @@
 import { expect, test } from "bun:test";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
-import { AppId } from "@lando/sdk/schema";
-import { Effect, Redacted } from "effect";
+import { AbsolutePath, AppId, type AppPlan, ProviderId, appIdentityKey } from "@lando/sdk/schema";
+import { DateTime, Effect, Redacted } from "effect";
 import { readAppEnvironment } from "../src/app-environment.ts";
 import type { EngineHttpApi } from "../src/engine-api.ts";
 import { APP_LABEL, SERVICE_LABEL } from "../src/labels.ts";
+import { containerOwnershipLabels } from "../src/native-ownership.ts";
 
 const ctx = { providerId: "test", remediation: "Run doctor.", env: {} };
 const app = AppId.make("secret-readback");
@@ -193,4 +194,40 @@ test("transport failures discard their cause and response data", async () => {
   const result = await Effect.runPromise(Effect.result(readAppEnvironment({ app }, names, { api, ctx })));
   expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "ProviderUnavailableError" } });
   expect(JSON.stringify(result)).not.toContain("transport-private-canary");
+});
+
+test("a planned read matches containers by the owner root their labels were written with", async () => {
+  // Given a plan whose location differs from its canonical owner root, and its labelled container.
+  const appRoot = AbsolutePath.make("/private/apps/secret-readback");
+  const plan: AppPlan = {
+    id: app,
+    name: app,
+    slug: app,
+    root: AbsolutePath.make("/apps/secret-readback"),
+    identity: { appRoot, ownerKey: appIdentityKey("owner", appRoot) },
+    provider: ProviderId.make("test"),
+    services: {},
+    stores: [],
+    routes: [],
+    fileSync: [],
+    metadata: { resolvedAt: DateTime.makeUnsafe(0), source: "test", runtime: 4 },
+    extensions: {},
+  };
+  const api: EngineHttpApi = {
+    request: (request) =>
+      Effect.succeed({
+        status: 200,
+        body: JSON.stringify(
+          request.path.startsWith("/containers/json?")
+            ? [{ Id: "owned", Labels: containerOwnershipLabels(plan, "web") }]
+            : { Config: { Env: ["API_VALUE=owned-private"] } },
+        ),
+      }),
+  };
+
+  // When the plan's app environment is read.
+  const values = await Effect.runPromise(readAppEnvironment({ app, plan }, names, { api, ctx }));
+
+  // Then that container's requested value is returned.
+  expect(values.map((value) => Redacted.value(value))).toEqual(["owned-private"]);
 });

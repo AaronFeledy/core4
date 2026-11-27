@@ -1,6 +1,6 @@
 import { join } from "node:path";
 
-import { LandofileFormConflictError } from "@lando/sdk/errors";
+import { LandofileFormConflictError, LandofileNotFoundError } from "@lando/sdk/errors";
 import { LANDOFILE_LAYER_ORDER } from "@lando/sdk/landofile";
 import { Effect } from "effect";
 
@@ -61,6 +61,21 @@ export const landofileLayerPaths = (
     typescriptPath: join(appRoot, `${position.basename}.ts`),
   }));
 
+export const isLocalOverrideLayer = ({ layer }: LandofileLayerPosition): boolean =>
+  layer === "local" || layer === "user";
+
+/** Keeps the not-found wire tag while distinguishing a found root with no eligible layer. */
+export class LandofileLayersOmittedError extends LandofileNotFoundError {
+  constructor(root: string) {
+    super({
+      message: `No eligible Landofile layer found at ${root} with --no-local-overrides.`,
+      cwd: root,
+      remediation:
+        "Retry without --no-local-overrides, or add a Landofile layer that the flag does not omit.",
+    });
+  }
+}
+
 const fileExists = (path: string): Effect.Effect<boolean> => Effect.promise(() => Bun.file(path).exists());
 
 /** Whether the YAML and TypeScript forms of one layer exist, as `[yaml, typescript]`. */
@@ -72,9 +87,11 @@ export const landofileLayerFormsPresent = (position: {
 
 export const presentLandofileLayers = Effect.fn("Landofile.presentLayers")(function* (
   appRoot: string,
+  options?: { readonly omitLocalOverrides?: boolean },
 ): Effect.fn.Return<ReadonlyArray<PresentLandofileLayer>, LandofileFormConflictError> {
   const present: PresentLandofileLayer[] = [];
   for (const position of landofileLayerPaths(appRoot)) {
+    if (options?.omitLocalOverrides && isLocalOverrideLayer(position)) continue;
     const { yamlPath, typescriptPath } = position;
     const [yamlExists, typescriptExists] = yield* landofileLayerFormsPresent(position);
     if (yamlExists && typescriptExists) {

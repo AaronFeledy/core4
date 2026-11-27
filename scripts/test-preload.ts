@@ -11,8 +11,9 @@
  * use.
  */
 import "./require-derived-codegen-preload.ts";
+import { installProcessTestRoots } from "./test-preload-roots.ts";
 
-await import("./test-preload-roots.ts");
+installProcessTestRoots();
 
 // Bundled plugins load the first time a test reads the engine composition, so
 // a test that never reads it never evaluates them. `test:affected` relies on

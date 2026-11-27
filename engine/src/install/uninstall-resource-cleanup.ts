@@ -11,7 +11,12 @@ import {
 } from "@lando/container-runtime/volume-ownership";
 import { LANDO_SHARED_CROSS_APP_NETWORK } from "@lando/sdk/schema";
 import { UninstallResourceCleanupError } from "./uninstall-cleanup-error.ts";
-import { type RuntimeExec, type UninstallRuntime, runUninstallRuntime } from "./uninstall-runtime.ts";
+import {
+  type RuntimeExec,
+  type UninstallRuntime,
+  type UninstallRuntimeSeams,
+  runUninstallRuntime,
+} from "./uninstall-runtime.ts";
 
 const lines = (text: string) =>
   text
@@ -27,11 +32,13 @@ const candidateLabels = {
 export const cleanupUninstallResources = async (
   exec: RuntimeExec,
   runtime: UninstallRuntime,
+  seams: UninstallRuntimeSeams = {},
 ): Promise<string> => {
   const removed: string[] = [];
   const retained: string[] = [];
   const failed: string[] = [];
-  const run = (args: readonly string[]) => runUninstallRuntime(exec, runtime, { args, timeout: 60_000 });
+  const run = (args: readonly string[]) =>
+    runUninstallRuntime(exec, runtime, { args, timeout: 60_000 }, seams);
   try {
     for (const kind of ["container", "network", "volume"] as const) {
       const args = kind === "container" ? ["ps", "-a"] : [kind, "ls"];

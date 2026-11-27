@@ -1093,14 +1093,14 @@ jobs:
           pull_image docker.io/library/redis:7
           pull_image docker.io/library/busybox:1.37
           pull_image docker.io/library/golang:1.22
-          pull_image docker.elastic.co/elasticsearch/elasticsearch:8.17.0
+          pull_image docker.elastic.co/elasticsearch/elasticsearch:8.19.25
           pull_image docker.io/getmeili/meilisearch:v1.11
           pull_image docker.io/axllent/mailpit:v1.30.1
           pull_image docker.io/library/mariadb:11.4
           pull_image docker.io/library/memcached:1.6
           pull_image docker.io/library/mongo:7
           pull_image docker.io/library/mysql:8.0
-          pull_image docker.io/library/nginx:1.27
+          pull_image docker.io/library/nginx:1.30-alpine
           pull_image docker.io/opensearchproject/opensearch:2
           pull_image docker.io/library/solr:9
           pull_image docker.io/library/traefik:v3.3
@@ -2378,14 +2378,14 @@ jobs:
           pull_image docker.io/library/redis:7
           pull_image docker.io/library/busybox:1.37
           pull_image docker.io/library/golang:1.22
-          pull_image docker.elastic.co/elasticsearch/elasticsearch:8.17.0
+          pull_image docker.elastic.co/elasticsearch/elasticsearch:8.19.25
           pull_image docker.io/getmeili/meilisearch:v1.11
           pull_image docker.io/axllent/mailpit:v1.30.1
           pull_image docker.io/library/mariadb:11.4
           pull_image docker.io/library/memcached:1.6
           pull_image docker.io/library/mongo:7
           pull_image docker.io/library/mysql:8.0
-          pull_image docker.io/library/nginx:1.27
+          pull_image docker.io/library/nginx:1.30-alpine
           pull_image docker.io/opensearchproject/opensearch:2
           pull_image docker.io/library/solr:9
           pull_image docker.io/library/traefik:v3.3
@@ -2410,6 +2410,7 @@ jobs:
           LANDO_PROVIDER_TEST_SUITE: ${{ matrix.suite }}
           LANDO_SCENARIO_E2E_BINARY: ${{ github.workspace }}/dist/lando
           LANDO_NATIVE_INIT_E2E: "1"
+          LANDO_TEST_NGINX_PRIVATE: lando
         run: |
           mkdir -p /tmp/lando-provider-test-logs
           set -o pipefail
@@ -2418,6 +2419,10 @@ jobs:
             providers)
               bun run test:selection providers-engine-parity 2>&1 | tee /tmp/lando-provider-test-logs/engine-parity.log || status=$?
               bun run test:selection providers-core-live 2>&1 | tee /tmp/lando-provider-test-logs/core-live.log || status=$?
+              if ! grep -Eq '^NGINX_ROUTE_CLI_EVIDENCE .*"privateFiles":true[,}]' /tmp/lando-provider-test-logs/core-live.log; then
+                echo "Missing private nginx route test evidence" >&2
+                status=1
+              fi
               ;;
             engine)
               bun run test:selection providers-lando 2>&1 | tee /tmp/lando-provider-test-logs/provider-lando-integration.log || status=$?

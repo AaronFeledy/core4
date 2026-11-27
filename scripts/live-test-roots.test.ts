@@ -1,10 +1,15 @@
 import { expect, spyOn, test } from "bun:test";
-import { rm } from "node:fs/promises";
-import { dirname } from "node:path";
+import { chmod, mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import { TEST_ROOT_ENV_KEYS } from "@lando/engine/testing/temp-root-retirement";
-import { runWithLiveTestRoots } from "./live-test-roots.ts";
+import { MissingLiveTestBinaryError, runWithLiveTestRoots } from "./live-test-roots.ts";
 
-const socketEnv = { LANDO_TEST_PODMAN_SOCKET: "/unused-fake.sock", LANDO_SHELL_PROFILE: "/caller-profile" };
+const socketEnv = {
+  LANDO_TEST_PODMAN_SOCKET: "/unused-fake.sock",
+  LANDO_SHELL_PROFILE: "/caller-profile",
+  LANDO_SCENARIO_E2E_BINARY: process.execPath,
+};
 const prepared = async () => 0;
 
 test("forwards TERM and waits for the test child before retiring", async () => {
@@ -156,4 +161,83 @@ test("a failed root preparation skips the tests, still retires, and reports its 
   expect(exit).toBe(3);
   expect(ran).toBe(false);
   expect(retirements).toBe(1);
+});
+
+const mustNotRun = (step: string) => async (): Promise<never> => {
+  throw new Error(`${step} must not run`);
+};
+
+test.each([
+  {
+    name: "a missing override",
+    reason: "missing",
+    binary: async (base: string) => join(base, "missing-lando"),
+  },
+  { name: "a directory override", reason: "directory", binary: async (base: string) => base },
+  ...(process.platform === "win32"
+    ? []
+    : [
+        {
+          name: "a non-executable override",
+          reason: "not-executable",
+          binary: async (base: string) => {
+            const file = join(base, "lando");
+            await writeFile(file, "not executable");
+            await chmod(file, 0o644);
+            return file;
+          },
+        },
+      ]),
+  { name: "a missing default build", reason: "missing", binary: async () => undefined },
+])("rejects $name before preparing, running, or retiring", async ({ reason, binary }) => {
+  const base = await mkdtemp(join(tmpdir(), "lando-live-binary-"));
+  try {
+    const override = await binary(base);
+    const path = override ?? resolve(base, "core/dist/lando");
+    const { LANDO_SCENARIO_E2E_BINARY: _binary, ...env } = socketEnv;
+    const error = await runWithLiveTestRoots(
+      {
+        live: true,
+        cwd: base,
+        env: override === undefined ? env : { ...env, LANDO_SCENARIO_E2E_BINARY: override },
+      },
+      mustNotRun("run"),
+      mustNotRun("retire"),
+      mustNotRun("prepare"),
+    ).catch((cause: unknown) => cause);
+    expect(error).toBeInstanceOf(MissingLiveTestBinaryError);
+    // The message names the checked path and marks when the override chose it.
+    const source = override === undefined ? "" : " (LANDO_SCENARIO_E2E_BINARY)";
+    expect(error).toMatchObject({ reason, path, message: expect.stringContaining(`${path}${source} `) });
+  } finally {
+    await rm(base, { recursive: true, force: true });
+  }
+});
+
+test("retire command with a missing binary exits 2 without posix_spawn and leaves the directory", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "lando-live-retire-"));
+  await mkdir(join(directory, "keep"), { recursive: true });
+  const missing = join(directory, "missing-lando");
+  const child = Bun.spawnSync({
+    cmd: [process.execPath, join(import.meta.dir, "live-test-roots.ts"), "retire", directory],
+    cwd: directory,
+    env: {
+      ...process.env,
+      LANDO_TEST_PODMAN_SOCKET: "/unused-fake.sock",
+      LANDO_SCENARIO_E2E_BINARY: missing,
+    },
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  try {
+    expect(child.exitCode).toBe(2);
+    const stderr = child.stderr.toString();
+    expect(stderr).toContain("(cd core && bun run build)");
+    expect(stderr).toContain("LANDO_SCENARIO_E2E_BINARY");
+    expect(stderr).not.toContain("posix_spawn");
+    expect(stderr).not.toContain("ENOENT");
+    expect(await readdir(directory)).toContain("keep");
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });
