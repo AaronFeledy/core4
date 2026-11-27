@@ -6,6 +6,7 @@ import {
   logsForPlan,
   validateSince,
 } from "@lando/engine/operations/logs";
+import { scratchIsolationConflict } from "@lando/engine/scratch-app/fork-source";
 import { emitOptionalStdout } from "@lando/renderer/output";
 import { type SummaryDocument, formatSummary, worstSummaryTone } from "@lando/renderer/summary";
 import type {
@@ -26,6 +27,7 @@ import {
 import { AbsolutePath, type IsolateMode, StartAppResult } from "@lando/sdk/schema";
 import type {
   ProviderError,
+  ScratchAcquireInput,
   ScratchGcOptions,
   ScratchGcReport,
   ScratchHandle,
@@ -34,7 +36,7 @@ import type {
   ScratchSummary,
 } from "@lando/sdk/services";
 import { RuntimeProviderRegistry, ScratchAppService, ScratchPublishedRoute } from "@lando/sdk/services";
-import { Effect, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 import { mergeAnswerSources, parseAnswerFlags, readAnswersFile } from "../prompts/answer-flags";
 import { type RenderContext, isDecoratedContext, summaryPaintOptions } from "../renderer-boundary";
 import { extractSpecAbortSignal } from "../spec/command-base";
@@ -259,28 +261,59 @@ const validateScratchId = (id: string): Effect.Effect<string, ScratchAppIdInvali
   );
 };
 
-export const scratchStart = Effect.fn("Scratch.start")(function* (
-  options: ScratchStartOptions = {},
-): Effect.fn.Return<ScratchStartResult, ScratchStartError, ScratchAppService> {
+export const classifyScratchStart = (
+  options: ScratchStartOptions,
+): Result.Result<
+  ScratchAcquireInput["source"],
+  ScratchSourceUnresolvedError | ScratchIsolationConflictError
+> => {
   const hasFork = options.fork === true;
   const from = options.from?.trim();
-  const hasRecipe = from !== undefined && from.length > 0;
 
   if (!hasFork && options.source !== undefined) {
-    return yield* unresolvedSource(
-      "apps:scratch:start --source <path> requires --fork.",
-      hasRecipe ? `recipe:${from}` : "none",
-      "Pass --fork with --source <path>, or drop --source.",
+    return Result.fail(
+      unresolvedSource(
+        "apps:scratch:start --source <path> requires --fork.",
+        from ? `recipe:${from}` : "none",
+        "Pass --fork with --source <path>, or drop --source.",
+      ),
     );
   }
-  if (hasFork === hasRecipe) {
-    const source = hasFork && hasRecipe ? `fork+recipe:${from}` : "none";
-    return yield* unresolvedSource(
-      "apps:scratch:start requires exactly one of --fork or --from <recipe-ref>.",
-      source,
+  // An implicit fork has always treated a blank --from as absent. A targeted fork
+  // must not authorize app-local imports when --from was explicitly supplied.
+  const source: ScratchAcquireInput["source"] | undefined =
+    hasFork && (options.source === undefined ? !from : from === undefined)
+      ? options.source === undefined
+        ? { kind: "fork" }
+        : { kind: "fork", path: options.source }
+      : !hasFork && from
+        ? { kind: "recipe", ref: from }
+        : undefined;
+  if (source === undefined)
+    return Result.fail(
+      unresolvedSource(
+        "apps:scratch:start requires exactly one of --fork or --from <recipe-ref>.",
+        hasFork ? `fork+recipe:${from}` : "none",
+      ),
     );
-  }
+  const conflict = scratchIsolationConflict(options);
+  return conflict === undefined ? Result.succeed(source) : Result.fail(conflict);
+};
 
+export const scratchStart = (
+  options: ScratchStartOptions = {},
+): Effect.Effect<ScratchStartResult, ScratchStartError, ScratchAppService> =>
+  Effect.suspend(() =>
+    Result.match(classifyScratchStart(options), {
+      onFailure: Effect.fail,
+      onSuccess: (source) => scratchStartWithSource(options, source),
+    }),
+  );
+
+export const scratchStartWithSource = Effect.fn("Scratch.start")(function* (
+  options: ScratchStartOptions,
+  source: ScratchAcquireInput["source"],
+) {
   const service = yield* ScratchAppService;
   const fileAnswers =
     options.answersFile === undefined
@@ -297,9 +330,7 @@ export const scratchStart = Effect.fn("Scratch.start")(function* (
         });
   const answers = { ...fileAnswers, ...(options.answers ?? {}) };
   const acquireBase = {
-    source: hasFork
-      ? ({ kind: "fork", ...(options.source === undefined ? {} : { path: options.source }) } as const)
-      : ({ kind: "recipe", ref: from ?? "" } as const),
+    source,
     ...(options.name === undefined ? {} : { name: options.name }),
     ...(Object.keys(answers).length === 0 ? {} : { answers }),
     ...(options.yes === undefined ? {} : { yes: options.yes }),

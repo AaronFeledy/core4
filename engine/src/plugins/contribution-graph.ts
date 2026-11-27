@@ -18,6 +18,7 @@ import { CertificateAuthority, PathsService } from "@lando/sdk/services";
 import { Context, Effect, Layer, Option, Result, Schema, Scope } from "effect";
 
 import { bundledPluginModules } from "../composition.ts";
+import { AppPluginRoot, resolveAtPinnedApp } from "./app-plugin-root.ts";
 import { resolveGraphCommands } from "./command-contributions.ts";
 import type { PluginImplementation } from "./implementation-identity.ts";
 import { loadInstalledPluginImplementation } from "./installed-plugin-loader.ts";
@@ -160,18 +161,28 @@ export class PluginContributionGraph extends Context.Service<
         const suppliedResolution = Option.isSome(resolutionOption)
           ? resolutionOption
           : Context.getOption(rawContext, PluginManifestResolution);
+        const appScope = Context.getOption(rawContext, AppPluginRoot);
         const discoverAppPlugins = policy.externalImports && policy.discovery.app;
-        const resolveAt = (cwd: string) =>
+        const resolveSelection = ({
+          appRoot,
+          cwd,
+        }: {
+          readonly appRoot?: string | undefined;
+          readonly cwd?: string;
+        }) =>
           resolvePluginManifests({
             bundled,
             explicit,
-            directories: pluginSelectionDirectories(policy, paths, undefined),
-            ...(discoverAppPlugins ? { cwd } : {}),
+            directories: pluginSelectionDirectories(policy, paths, appRoot),
+            ...(cwd === undefined ? {} : { cwd }),
             disable: policy.discovery.disable,
           });
-        const selected = Option.isSome(suppliedResolution)
-          ? suppliedResolution.value
-          : yield* resolveAt(policy.cwd);
+        const resolveAt = (cwd: string) => resolveSelection(discoverAppPlugins ? { cwd } : {});
+        const selected = Option.isSome(appScope)
+          ? yield* resolveAtPinnedApp(appScope.value, (appRoot) => resolveSelection({ appRoot }))
+          : Option.isSome(suppliedResolution)
+            ? suppliedResolution.value
+            : yield* resolveAt(policy.cwd);
         const diagnostics = [...validationDiagnostics, ...selected.diagnostics].slice(0, 100);
         const loadedPlugins = yield* Effect.forEach(
           [
@@ -183,9 +194,11 @@ export class PluginContributionGraph extends Context.Service<
               (entry) => entry.source === plugin.source && entry.manifest.name === plugin.manifest.name,
             );
             if (loaded !== undefined) return Effect.succeed({ ...loaded, manifest: plugin.manifest });
+            const packageRoot = plugin.packageRoot;
+            if (packageRoot === undefined) return Effect.succeed(plugin);
             return Effect.tryPromise({
               try: async (): Promise<LoadedPluginContribution> => {
-                const imported = await loadInstalledPluginImplementation(plugin.path ?? "", plugin.manifest);
+                const imported = await loadInstalledPluginImplementation(packageRoot, plugin.manifest);
                 return {
                   ...plugin,
                   implementation: imported.implementation,
@@ -231,9 +244,8 @@ export class PluginContributionGraph extends Context.Service<
           ...(discoverAppPlugins
             ? {
                 matchesAppPluginSelection: (appRoot) =>
-                  resolveAt(appRoot).pipe(
+                  resolveSelection({ appRoot }).pipe(
                     Effect.map((candidate) => samePluginSelection(selected.plugins, candidate.plugins)),
-                    Effect.provideService(PathsService, paths),
                   ),
               }
             : {}),
@@ -250,7 +262,7 @@ export class PluginContributionGraph extends Context.Service<
 }
 
 export interface PluginContributionGraphPolicy<R = unknown> {
-  readonly layers: ReadonlyArray<Layer.Layer<unknown, unknown, R>>;
+  readonly layers: ReadonlyArray<Layer.Layer<never, unknown, R>>;
   readonly manifests: ReadonlyArray<ResolvedPluginInput>;
   readonly discovery: {
     readonly bundled: boolean;

@@ -49,10 +49,14 @@ Lando looks for the Landofile there and then in its parent directories, so a
 subdirectory of `site` works too. If Lando can't find an app from that
 directory, it fails without creating a scratch.
 
-The fork uses the plugins already selected for the command or embedding
-runtime. When app-local plugin discovery is enabled, Lando refuses an explicit
-source whose effective plugin selection differs. It does not load the source
-app's plugins to compare the selections.
+The `lando scratch` command uses the source app's local plugins, not the
+plugins from the directory where you run it. These plugins run as host code,
+just as they would if you ran Lando inside the source app. Only fork apps whose
+[local plugins you trust](../plugins/discovery-scopes.mdx#app).
+
+If you call scratch from an existing runtime, the runtime keeps the plugins
+it has already loaded. With app-local discovery enabled, it refuses a source
+that would select different plugins, without importing them to check.
 
 ## Choose a copy or a shared tree
 
@@ -66,7 +70,7 @@ lando scratch --fork --detach --isolate=cwd
 
 With `--isolate=cwd` (or `--mount-cwd`), Lando copies nothing. Edits in the
 mounted directory affect your host files. If you also pass `--source`, it
-selects the Landofile but does not change which directory is mounted.
+selects the app to fork but does not change which directory is mounted.
 Use `--mount-cwd=<target>` to bind the working directory at one path in the
 primary service instead of rebasing the app-relative mounts.
 
@@ -138,7 +142,9 @@ To materialize a recipe instead of forking the app, use [Start a scratch app fro
     <Step name="start-a-full-fork-of-the-source">
       <UseFixture name="fork-from-another-app" />
       <Run command={'lando scratch --fork --source "source app/nested" --detach --format=json'} capture={{ name: "fullId", json: "handle.id" }} />
+      <Run command="lando scratch:info {{capture:fullId}} --format=json" capture={{ name: "fullRoot", json: "app.root" }} />
       <Verify command="lando scratch:info {{capture:fullId}} --format=json" expect={{ stdout: { regex: "\"service\":\\s*\"target\",\\s*\"target\":\\s*\"/app\",\\s*\"source\":\\s*\"[^\"]*/scratch/scratch-fork-target-guide-[a-f0-9]{6}/root\"" } }} />
+      <Verify command={`lando bun -e 'console.log(await Bun.file(process.argv.at(-1) + "/marker.txt").text())' {{capture:fullRoot}}`} expect={{ stdout: { regex: "^changed-in-fork\\n\\n$" } }} />
       <Verify file="fork-from-another-app/source app/marker.txt" expect={{ regex: "^source-marker\\r?\\n$" }} />
     </Step>
     <Step name="mount-the-caller-in-a-cwd-fork-of-the-source">
@@ -149,6 +155,110 @@ To materialize a recipe instead of forking the app, use [Start a scratch app fro
       <Cleanup />
       <Run command="lando scratch:destroy {{capture:cwdId}} --yes" />
       <Run command="lando scratch:destroy {{capture:fullId}} --yes" />
+    </Step>
+  </Scenario>
+  <Scenario id="fork-selects-source-plugins" layer="scenario" render={false} reason="Select exactly the source app plugin when both apps register the same plugin name">
+    <Step name="fork-with-competing-local-plugins">
+      <Run runtime="library" displayCode={'lando scratch --fork --source "source app/nested" --mount-cwd=/caller --detach'} code={`
+const target = join(context.testDir, "source app");
+const replacement = join(context.testDir, "replacement");
+const copyWitness = join(context.testDir, "copy-witness.txt");
+const planWitness = join(context.testDir, "copied-plan.txt");
+const marker = join(context.testDir, "imports.txt");
+const name = "@example/fork-local";
+yield* Effect.promise(async () => {
+  for (const [app, label] of [[context.testDir, "caller"], [target, "target"]] as const) {
+    const registry = join(app, ".lando", "plugins");
+    const path = join(registry, "fork-local");
+    const type = "fork-local:" + label;
+    const manifest = {
+      name, version: "1.0.0", api: 4, entry: "index.ts", contributes: { serviceTypes: [type] },
+      ...(label === "target" ? {
+        subscribers: [{ id: "replace-source", selectors: [{ event: "pre-data-transfer" }, { event: "post-data-transfer" }], module: "./replace.ts" }],
+      } : {}),
+    };
+    await Bun.write(join(app, ".lando.yml"),
+      "name: fork-plugin-" + label + "\nruntime: 4\nrouter:\n  enabled: false\nservices:\n  web:\n    type: " +
+      type + "\n    image: alpine:3.22\n    primary: true\n    home: false\n");
+    await Bun.write(join(path, "package.json"), JSON.stringify({ landoPlugin: manifest }));
+    await Bun.write(join(path, "index.ts"),
+      'import { appendFileSync, realpathSync } from "node:fs";\nimport { Effect, Schema } from "effect";\n' +
+      "appendFileSync(" + JSON.stringify(marker) + ", " + JSON.stringify(label + "\n") + ");\n" +
+      "const id = " + JSON.stringify(type) + ";\n" +
+      "const source = realpathSync.native(" + JSON.stringify(app) + ");\n" +
+      "const planWitness = " + JSON.stringify(planWitness) + ";\n" +
+      'export const serviceTypes = new Map([[id, { id, name: id, base: "lando", schema: Schema.Unknown, ' +
+      'resolve: ({ service, appRoot }) => Effect.sync(() => {\n' +
+      '  if (realpathSync.native(appRoot) !== source) appendFileSync(planWitness, appRoot + "\\n");\n' +
+      '  return { base: "lando", normalizedConfig: service, features: [] };\n' +
+      '}) }]]);\n');
+    const entry = JSON.stringify({ [name]: { name, version: manifest.version, path } });
+    await Bun.write(join(registry, "registry.json"), entry);
+    if (label === "target") {
+      await Bun.write(join(context.testDir, "refused", ".lando", "plugins", "registry.json"), entry);
+      await Bun.write(join(path, "replace.ts"), [
+        'import { rename } from "node:fs/promises";',
+        'import { Effect } from "effect";',
+        "const source = " + JSON.stringify(target) + ";",
+        "const replacement = " + JSON.stringify(replacement) + ";",
+        "const witness = " + JSON.stringify(copyWitness) + ";",
+        'export default () => (event) => Effect.promise(async () => {',
+        '  if (event._tag === "pre-data-transfer") {',
+        '    await rename(source, source + "-original");',
+        '    await rename(replacement, source);',
+        '  } else if (event._tag === "post-data-transfer") {',
+        '    const destination = event.toEndpoint.slice("hostPath:".length);',
+        '    const copied = await Bun.file(destination + "/replacement.txt").exists();',
+        '    await Bun.write(witness, JSON.stringify({ copied, outcome: event.outcome }));',
+        '  }',
+        '});',
+      ].join("\n"));
+    }
+  }
+  await Bun.write(join(target, "nested", ".keep"), "");
+  await Bun.write(join(replacement, "replacement.txt"), "replacement");
+  await Bun.write(join(context.testDir, "refused", ".lando.stop"), "");
+});
+const fork = (source: string, extra: readonly string[] = []) =>
+  context.runCli(["lando", "scratch", "--fork", "--source", source, "--detach", "--format=json", ...extra]);
+const failures = [
+  ["source app", ["--from", "lamp"], { _tag: "ScratchSourceUnresolvedError" }],
+  ["source app", ["--from= "], { _tag: "ScratchSourceUnresolvedError" }],
+  ["source app", ["--mount-cwd=/caller", "--isolate=full"], { _tag: "ScratchIsolationConflictError" }],
+  ["source app/missing", [], { _tag: "ScratchAppError", operation: "acquire" }],
+  ["refused", [], { _tag: "ScratchAppError", operation: "acquire", cause: { _tag: "LandofileNotFoundError" } }],
+] as const;
+for (const [source, flags, error] of failures) {
+  const result = yield* fork(source, flags);
+  expect(result.exitCode).toBe(1);
+  expect(JSON.parse(result.stdout)).toMatchObject({ ok: false, error });
+}
+expect(yield* Effect.promise(() => Bun.file(marker).exists())).toBe(false);
+
+const result = yield* fork("source app/nested", ["--mount-cwd=/caller"]);
+expect(result.exitCode).toBe(0);
+const id: unknown = JSON.parse(result.stdout).result?.handle?.id;
+if (typeof id !== "string") throw new Error("The fork did not return a scratch ID.");
+yield* Effect.gen(function* () {
+  expect(yield* Effect.promise(() => Bun.file(marker).text())).toBe("target\n");
+  const info = yield* context.runCli(["lando", "scratch:info", id, "--format=json"]);
+  expect(JSON.parse(info.stdout)).toMatchObject({
+    ok: true,
+    result: { mounts: expect.arrayContaining([{ service: "web", target: "/caller", source: context.testDir, kind: "bind", readOnly: false }]) },
+  });
+}).pipe(Effect.ensuring(Effect.gen(function* () {
+  const cleanup = yield* context.runCli(["lando", "scratch:destroy", id, "--yes"]).pipe(Effect.orDie);
+  expect(cleanup.exitCode).toBe(0);
+})));
+
+const changed = yield* fork("source app/nested");
+expect(changed.exitCode).toBe(1);
+expect(JSON.parse(changed.stdout)).toMatchObject({ ok: false, error: { _tag: "ScratchAppError", operation: "acquire" } });
+expect(yield* Effect.promise(() => Bun.file(copyWitness).json())).toEqual({ copied: false, outcome: "failure" });
+expect(yield* Effect.promise(() => Bun.file(planWitness).exists())).toBe(false);
+const listed = yield* context.runCli(["lando", "scratch:list", "--format=json"]);
+expect(JSON.parse(listed.stdout)).toMatchObject({ ok: true, result: [] });
+`} />
     </Step>
   </Scenario>
   <Scenario id="reject-invalid-fork-sources" render={false} reason="Reject invalid explicit paths without falling back to an enclosing app">

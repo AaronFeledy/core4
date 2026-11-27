@@ -1,28 +1,34 @@
-import { resolve } from "node:path";
-import { withDiscoveryCwd } from "@lando/landofile/operation-discovery";
+import { OperationDiscovery, withDiscoveryCwd } from "@lando/landofile/operation-discovery";
 import { parseLandofile } from "@lando/landofile/parser";
 import { loadAuthoredDocuments } from "@lando/landofile/root-compile";
-import { causeRemediation, mapFailures } from "@lando/sdk/command-result";
+import { mapFailures } from "@lando/sdk/command-result";
 import {
-  LandofileNotFoundError,
   LandofileVersionConstraintError,
   ScratchAppError,
   ScratchSourceUnresolvedError,
 } from "@lando/sdk/errors";
 import type { LoadScopedLandofile } from "@lando/sdk/schema";
-import { FileSystem } from "@lando/sdk/services";
-import { Effect } from "effect";
+import { Context, Effect, Option, Result } from "effect";
 import type { UserLandofileError } from "../landofile/app-resolution.ts";
-
-const forkSourceRemediation =
-  "Pass `--source` a directory inside the Lando app to fork, or omit it to use the current app.";
+import type { PluginContributionGraphShape } from "../plugins/contribution-graph.ts";
+import {
+  ScratchForkSource,
+  checkAdmittedForkRoot,
+  scratchForkDirectory,
+  scratchForkLoadFailure,
+} from "./fork-source.ts";
 
 export const loadScratchForkLandofile = Effect.fnUntraced(function* (
-  source: { readonly path: string | undefined; readonly cwd: string },
+  request: {
+    readonly cwd: string;
+    readonly source: { readonly path?: string };
+    readonly graph?: PluginContributionGraphShape | undefined;
+  },
   load: Effect.Effect<LoadScopedLandofile, UserLandofileError>,
 ) {
+  const { cwd, source, graph } = request;
   if (source.path === undefined) {
-    return yield* load.pipe(
+    const landofile = yield* load.pipe(
       mapFailures((cause) =>
         cause instanceof LandofileVersionConstraintError
           ? cause
@@ -34,50 +40,45 @@ export const loadScratchForkLandofile = Effect.fnUntraced(function* (
             }),
       ),
     );
+    return { landofile };
   }
 
-  if (source.path.trim().length === 0) {
+  const proof =
+    graph === undefined
+      ? undefined
+      : Option.getOrUndefined(Context.getOption(graph.hostContext, ScratchForkSource));
+  const mapLoadFailure = (directory: string, cause: UserLandofileError) =>
+    cause instanceof LandofileVersionConstraintError ? cause : scratchForkLoadFailure(directory, cause);
+  // The source object is the native command's private token. Other calls on this graph still
+  // take the retained-runtime comparison path, even if they pass the same path string.
+  if (proof?.source === source && proof.cwd === cwd) {
+    const admission = yield* proof.admission;
+    if (Result.isFailure(admission)) return yield* admission.failure;
+    const admitted = admission.success;
+    yield* admitted.verify;
+    const landofile = yield* load.pipe(
+      Effect.provideService(OperationDiscovery, admitted.discovery),
+      mapFailures((cause) => mapLoadFailure(admitted.root, cause)),
+    );
+    yield* checkAdmittedForkRoot(admitted, landofile.context.appRoot);
+    yield* admitted.verify;
+    return { landofile, admitted };
+  }
+
+  const directory = yield* scratchForkDirectory(cwd, source.path);
+  const landofile = yield* withDiscoveryCwd(directory, load).pipe(
+    mapFailures((cause) => mapLoadFailure(directory, cause)),
+  );
+  const root = landofile.context.appRoot;
+  if (graph?.matchesAppPluginSelection !== undefined && !(yield* graph.matchesAppPluginSelection(root))) {
     return yield* new ScratchAppError({
       operation: "acquire",
-      message: "The scratch fork source path is empty.",
-      remediation: forkSourceRemediation,
+      message: `Cannot fork the app at ${root} from ${cwd}: its plugin selection differs from this runtime's.`,
+      remediation:
+        "Run the fork from the source app, or acquire a runtime with a plugin selection that matches the source app.",
     });
   }
-  const directory = resolve(source.cwd, source.path);
-  const fileSystem = yield* FileSystem;
-  const stat = yield* fileSystem.stat(directory).pipe(
-    mapFailures(
-      (cause) =>
-        new ScratchAppError({
-          operation: "acquire",
-          message: `Unable to access scratch fork source directory ${directory}: ${cause.message}`,
-          cause,
-          remediation: causeRemediation(cause) ?? forkSourceRemediation,
-        }),
-    ),
-  );
-  if (!stat.isDirectory) {
-    return yield* new ScratchAppError({
-      operation: "acquire",
-      message: `Scratch fork source ${directory} is not a directory.`,
-      remediation: forkSourceRemediation,
-    });
-  }
-  return yield* withDiscoveryCwd(directory, load).pipe(
-    mapFailures((cause) =>
-      cause instanceof LandofileVersionConstraintError
-        ? cause
-        : new ScratchAppError({
-            operation: "acquire",
-            message: `Unable to load the scratch fork source from ${directory}: ${cause.message}`,
-            cause,
-            remediation:
-              cause instanceof LandofileNotFoundError
-                ? forkSourceRemediation
-                : (causeRemediation(cause) ?? forkSourceRemediation),
-          }),
-    ),
-  );
+  return { landofile };
 });
 
 export const decodeScratchLandofile = (

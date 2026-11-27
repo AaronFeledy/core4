@@ -1,4 +1,3 @@
-import { realpath } from "node:fs/promises";
 import { join } from "node:path";
 import { findAppRoot } from "@lando/landofile/discovery";
 import { canonicalJson } from "@lando/sdk/digest";
@@ -11,7 +10,7 @@ import {
   type PluginManifestSource,
   selectPluginManifests,
 } from "./manifest-selection.ts";
-import { packageRootPath } from "./plugin-module-path.ts";
+import { pinPluginPackageRoot } from "./plugin-module-path.ts";
 
 export interface ManifestResolutionInput {
   readonly bundled: readonly PluginManifestEntry[];
@@ -42,9 +41,9 @@ export const resolvePluginManifests = Effect.fnUntraced(function* (input: Manife
         Effect.tryPromise({
           try: async () => {
             // Pin the package used to read the manifest and later import its implementation.
-            const path = await realpath(packageRootPath(entry.path));
-            const manifest = await loadInstalledPluginManifest(path);
-            return { manifest, source: directory.source, path };
+            const packageRoot = await pinPluginPackageRoot(entry.path);
+            const manifest = await loadInstalledPluginManifest(packageRoot);
+            return { manifest, source: directory.source, packageRoot };
           },
           catch: (cause) => cause,
         }),
@@ -81,12 +80,12 @@ export const samePluginSelection = (
   candidate: ResolvedPluginManifests["plugins"],
 ): boolean =>
   loaded.length === candidate.length &&
-  loaded.every(({ source, path, manifest }, index) => {
+  loaded.every(({ source, packageRoot, manifest }, index) => {
     const other = candidate[index];
     return (
       other !== undefined &&
       source === other.source &&
-      path === other.path &&
+      packageRoot?.canonical === other.packageRoot?.canonical &&
       canonicalJson(manifest) === canonicalJson(other.manifest)
     );
   });
