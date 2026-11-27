@@ -72,3 +72,32 @@ test.each([
     ),
   );
 });
+
+test("drains both child pipes without retaining more than the capture budget per stream", async () => {
+  const payload = `const chunk = "x".repeat(1024 * 1024);
+for (let i = 0; i < 9; i++) { console.log(chunk); console.error(chunk); }`;
+  await Effect.runPromise(
+    ScenarioContextFactory.e2e(
+      {
+        guideId: "background-cli",
+        scenarioId: "bounded-output",
+        render: false,
+        e2eEnv: { ...process.env, LANDO_SCENARIO_E2E_BINARY: process.execPath },
+      },
+      (context) =>
+        Effect.gen(function* () {
+          const child = yield* context.hidden(context.startCli(["-e", payload]));
+          const { stdout, stderr, exitCode } = yield* child.result;
+          const suffix = "\n[scenario output truncated]\n";
+          expect(exitCode).toBe(0);
+          for (const output of [stdout, stderr]) {
+            expect(output.endsWith(suffix)).toBe(true);
+            expect(Buffer.byteLength(output.slice(0, -suffix.length))).toBe(8 * 1024 * 1024);
+          }
+          expect((yield* Effect.flip(child.stdoutLine((line) => line === "absent"))).reason).toBe(
+            "output-limit",
+          );
+        }),
+    ),
+  );
+});

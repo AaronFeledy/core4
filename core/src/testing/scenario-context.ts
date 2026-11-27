@@ -57,9 +57,7 @@ import {
   resolveFetchUrl,
 } from "./scenario-fetch.ts";
 import {
-  type ScenarioCliProcess,
   ScenarioProcessError,
-  type ScenarioStartOptions,
   errorTagFromStderr,
   scenarioChild,
   sourceChildEnvironment,
@@ -70,7 +68,7 @@ import { type TestRuntime, makeTestRuntime } from "./test-runtime";
 
 const repoRoot = resolve(dirname(realpathSync(fileURLToPath(import.meta.url))), "../../..");
 
-export { type ScenarioCliProcess, ScenarioProcessError, type ScenarioStartOptions } from "./scenario-process";
+export { ScenarioProcessError } from "./scenario-process";
 
 /**
  * Scenario runner layer used by generated guide tests.
@@ -121,6 +119,26 @@ export interface ScenarioRunOptions {
   readonly answers?: Readonly<Record<string, string>>;
   /** Hard timeout for a compiled CLI child. */
   readonly timeoutMs?: number;
+}
+
+export interface ScenarioStartOptions {
+  /** Keep stdin open for writes. The default is EOF at spawn. */
+  readonly stdin?: "pipe";
+}
+
+export interface ScenarioCliProcess {
+  readonly command: readonly string[];
+  /** Write and flush bytes to the child's input. */
+  readonly write: (text: string) => Effect.Effect<void, ScenarioProcessError>;
+  /** Send EOF. Repeated calls are safe. */
+  readonly closeInput: Effect.Effect<void>;
+  /** Find the first matching stdout line since spawn, with a bounded wait. */
+  readonly stdoutLine: (
+    matches: (line: string) => boolean,
+    options?: { readonly timeoutMs?: number },
+  ) => Effect.Effect<string, ScenarioProcessError>;
+  /** Await exit and output, recording a run frame at most once. */
+  readonly result: Effect.Effect<ScenarioRunResult, ScenarioProcessError>;
 }
 
 /**

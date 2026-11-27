@@ -1,8 +1,20 @@
 import { Effect, Schema } from "effect";
-import type { ScenarioRunResult, ScenarioTranscriptFrame } from "./scenario-context";
+import type { ScenarioCliProcess, ScenarioRunResult, ScenarioTranscriptFrame } from "./scenario-context";
 
 const outputLimit = 8 * 1024 * 1024;
 const timeoutMs = 20_000;
+const expectedReply = "Check the command and the expected reply.";
+const failureDetails = {
+  "input-closed": ["The CLI child's stdin is closed.", "Start a new CLI child with piped stdin."],
+  "line-timeout": ["Timed out waiting for a matching stdout line.", expectedReply],
+  "exited-before-match": ["CLI stdout closed before a matching line.", expectedReply],
+  "exit-timeout": ["Timed out waiting for the CLI child to exit.", "Close stdin before waiting for exit."],
+  "output-limit": ["Stdout capture limit reached before a matching line.", "Reduce the child's output."],
+  "output-failed": [
+    "Could not read the CLI child's output.",
+    "Check the child process and its output pipes.",
+  ],
+} as const;
 
 export class ScenarioProcessError extends Schema.TaggedError<ScenarioProcessError>()("ScenarioProcessError", {
   reason: Schema.Literals([
@@ -19,26 +31,6 @@ export class ScenarioProcessError extends Schema.TaggedError<ScenarioProcessErro
   remediation: Schema.String,
   stderr: Schema.String,
 }) {}
-
-export interface ScenarioStartOptions {
-  /** Keep stdin open for writes. The default is EOF at spawn. */
-  readonly stdin?: "pipe";
-}
-
-export interface ScenarioCliProcess {
-  readonly command: readonly string[];
-  /** Write and flush bytes to the child's input. */
-  readonly write: (text: string) => Effect.Effect<void, ScenarioProcessError>;
-  /** Send EOF. Repeated calls are safe. */
-  readonly closeInput: Effect.Effect<void>;
-  /** Find the first matching stdout line since spawn, with a bounded wait. */
-  readonly stdoutLine: (
-    matches: (line: string) => boolean,
-    options?: { readonly timeoutMs?: number },
-  ) => Effect.Effect<string, ScenarioProcessError>;
-  /** Await exit and output, recording a run frame at most once. */
-  readonly result: Effect.Effect<ScenarioRunResult, ScenarioProcessError>;
-}
 
 export const errorTagFromStderr = (stderr: string): string | undefined => {
   const match = /code:\s*([A-Za-z0-9_]+)/.exec(stderr) ?? /"code"\s*:\s*"([A-Za-z0-9_]+)"/.exec(stderr);
@@ -77,6 +69,7 @@ export const sourceChildEnvironment = (env: ChildEnvironment): ChildEnvironment 
   Object.fromEntries(sourceEnvKeys.map((key) => [key, env[key]]));
 
 const capture = (stream: ReadableStream<Uint8Array>) => {
+  const reader = stream.getReader();
   const decoder = new TextDecoder();
   const changed = new Set<() => void>();
   let revision = 0;
@@ -93,7 +86,9 @@ const capture = (stream: ReadableStream<Uint8Array>) => {
   let failed = false;
   const drain = (async () => {
     try {
-      for await (const chunk of stream) {
+      while (true) {
+        const { done, value: chunk } = await reader.read();
+        if (done) break;
         const remaining = outputLimit - bytes;
         if (remaining > 0) {
           text += decoder.decode(chunk.subarray(0, remaining), { stream: true });
@@ -107,12 +102,14 @@ const capture = (stream: ReadableStream<Uint8Array>) => {
       if (!(error instanceof Error)) throw error;
       failed = true;
     } finally {
+      reader.releaseLock();
       done = true;
       notify();
     }
   })();
   return {
     drain,
+    stop: () => (done ? Promise.resolve() : reader.cancel()),
     snapshot: () => ({ text, truncated, done, failed, revision }),
     output: () => (truncated ? `${text}\n[scenario output truncated]\n` : text),
     awaitChange: (after: number) =>
@@ -128,6 +125,13 @@ const capture = (stream: ReadableStream<Uint8Array>) => {
 };
 
 type SpawnInput = ReturnType<typeof scenarioChild>;
+const stillRunning = (proc: Pick<Bun.Subprocess, "exitCode" | "signalCode">) =>
+  proc.exitCode === null && proc.signalCode === null;
+
+const processError = (reason: keyof typeof failureDetails, stderr: string) => {
+  const [message, remediation] = failureDetails[reason];
+  return new ScenarioProcessError({ reason, message, remediation, stderr });
+};
 
 export const startScenarioProcess = Effect.fnUntraced(function* (
   launch: SpawnInput,
@@ -137,94 +141,75 @@ export const startScenarioProcess = Effect.fnUntraced(function* (
     readonly record?: (frame: ScenarioTranscriptFrame) => void;
   },
 ) {
-  const error = (reason: ScenarioProcessError["reason"], message: string, remediation: string, stderr = "") =>
-    new ScenarioProcessError({ reason, message, remediation, stderr });
-
   const child = yield* Effect.acquireRelease(
     Effect.try({
       try: () => Bun.spawn({ ...launch, stdin: input.stdin ?? "ignore" }),
       catch: () =>
-        error(
-          "spawn-failed",
-          `Could not start ${launch.cmd[0]} in ${launch.cwd}.`,
-          "Check that the CLI is executable and the working directory still exists.",
-        ),
+        new ScenarioProcessError({
+          reason: "spawn-failed",
+          message: `Could not start ${launch.cmd[0]} in ${launch.cwd}.`,
+          remediation: "Check that the CLI is executable and the working directory still exists.",
+          stderr: "",
+        }),
     }).pipe(
       Effect.map((proc) => {
         const stdout = capture(proc.stdout);
         const stderr = capture(proc.stderr);
         const started = performance.now();
-        const settled = Promise.allSettled([proc.exited, stdout.drain, stderr.drain]).then(
-          ([exit, out, err]) => {
-            if (
-              exit.status === "rejected" ||
-              out.status === "rejected" ||
-              err.status === "rejected" ||
-              stdout.snapshot().failed ||
-              stderr.snapshot().failed
-            ) {
-              return error(
-                "output-failed",
-                "Could not collect the CLI child result.",
-                "Check the child process and its output pipes.",
-                stderr.output(),
-              );
-            }
-            const result: ScenarioRunResult = {
-              command: input.command,
-              stdout: stdout.output(),
-              stderr: stderr.output(),
-              exitCode: exit.value,
-              ...(proc.signalCode === null ? {} : { signal: proc.signalCode }),
-              events: [],
-            };
-            const tag = errorTagFromStderr(result.stderr);
-            input.record?.({
-              kind: "run",
-              command: input.command,
-              stdout: result.stdout,
-              stderr: result.stderr,
-              exit: result.exitCode,
-              durationMs: Math.max(0, performance.now() - started),
-            });
-            return tag === undefined ? result : { ...result, _tag: tag };
-          },
-        );
+        const outputFailure = () => processError("output-failed", stderr.output());
+        const settled = Promise.all([proc.exited, stdout.drain, stderr.drain]).then(([exitCode]) => {
+          if (stdout.snapshot().failed || stderr.snapshot().failed) return outputFailure();
+          const result: ScenarioRunResult = {
+            command: input.command,
+            stdout: stdout.output(),
+            stderr: stderr.output(),
+            exitCode,
+            ...(proc.signalCode === null ? {} : { signal: proc.signalCode }),
+            events: [],
+          };
+          const tag = errorTagFromStderr(result.stderr);
+          input.record?.({
+            kind: "run",
+            command: input.command,
+            stdout: result.stdout,
+            stderr: result.stderr,
+            exit: result.exitCode,
+            durationMs: Math.max(0, performance.now() - started),
+          });
+          return tag === undefined ? result : { ...result, _tag: tag };
+        }, outputFailure);
         return { proc, stdout, stderr, settled };
       }),
     ),
-    ({ proc, settled }) =>
-      Effect.promise(() => {
-        if (proc.exitCode === null && proc.signalCode === null) proc.kill("SIGKILL");
+    ({ proc, settled, stdout, stderr }) =>
+      Effect.promise(async () => {
+        if (stillRunning(proc)) proc.kill("SIGKILL");
+        await proc.exited;
+        // A descendant may still own a pipe after the CLI itself has exited.
+        await Promise.allSettled([stdout.stop(), stderr.stop()]);
         return settled;
       }),
   );
 
   const { proc, stdout, stderr, settled } = child;
   let stdin = proc.stdin;
-  const inputClosed = () =>
-    error(
-      "input-closed",
-      "The CLI child's stdin is closed.",
-      "Start a new CLI child with piped stdin.",
-      stderr.output(),
-    );
+  const failure = (reason: keyof typeof failureDetails) => processError(reason, stderr.output());
   return {
     command: input.command,
     write: (text) =>
       Effect.tryPromise({
         try: async () => {
-          if (stdin === undefined || proc.exitCode !== null || proc.signalCode !== null) throw inputClosed();
+          if (stdin === undefined || !stillRunning(proc)) throw failure("input-closed");
           const pipe = stdin;
           await pipe.write(text);
           await pipe.flush();
         },
-        catch: inputClosed,
+        catch: () => failure("input-closed"),
       }),
     closeInput: Effect.promise(async () => {
       const pipe = stdin;
       stdin = undefined;
-      if (pipe !== undefined && proc.exitCode === null && proc.signalCode === null) await pipe.end();
+      if (pipe !== undefined && stillRunning(proc)) await pipe.end();
     }),
     stdoutLine: (matches, options) =>
       Effect.gen(function* () {
@@ -238,44 +223,19 @@ export const startScenarioProcess = Effect.fnUntraced(function* (
             start = end + 1;
           }
           scan = text.length;
-          if (truncated)
-            return yield* error(
-              "output-limit",
-              "Stdout capture limit reached before a matching line.",
-              "Reduce the child's output.",
-              stderr.output(),
-            );
-          if (failed)
-            return yield* error(
-              "output-failed",
-              "Could not read CLI stdout.",
-              "Check the child's stdout pipe.",
-              stderr.output(),
-            );
+          if (truncated) return yield* failure("output-limit");
+          if (failed) return yield* failure("output-failed");
           if (done) {
             const last = text.slice(start);
             if (last !== "" && matches(last)) return last;
-            return yield* error(
-              "exited-before-match",
-              "CLI stdout closed before a matching line.",
-              "Check the command and the expected reply.",
-              stderr.output(),
-            );
+            return yield* failure("exited-before-match");
           }
           yield* stdout.awaitChange(revision);
         }
       }).pipe(
         Effect.timeoutOrElse({
           duration: options?.timeoutMs ?? timeoutMs,
-          orElse: () =>
-            Effect.fail(
-              error(
-                "line-timeout",
-                "Timed out waiting for a matching stdout line.",
-                "Check the command and the expected reply.",
-                stderr.output(),
-              ),
-            ),
+          orElse: () => Effect.fail(failure("line-timeout")),
         }),
       ),
     result: Effect.promise(() => settled).pipe(
@@ -284,15 +244,7 @@ export const startScenarioProcess = Effect.fnUntraced(function* (
       ),
       Effect.timeoutOrElse({
         duration: timeoutMs,
-        orElse: () =>
-          Effect.fail(
-            error(
-              "exit-timeout",
-              "Timed out waiting for the CLI child to exit.",
-              "Close stdin before waiting for a stdio command to exit.",
-              stderr.output(),
-            ),
-          ),
+        orElse: () => Effect.fail(failure("exit-timeout")),
       }),
     ),
   } satisfies ScenarioCliProcess;
