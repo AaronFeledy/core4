@@ -2,7 +2,11 @@ import { LandofileNotFoundError } from "@lando/sdk/errors";
 import { LandofileService, ManagedFileTransactionGuard, StateStore } from "@lando/sdk/services";
 import { Effect, Layer } from "effect";
 import { compileLandofileFile } from "./file-compile.ts";
-import { presentLandofileLayers, representativeLandofileLayer } from "./layers.ts";
+import {
+  LandofileLayersOmittedError,
+  presentLandofileLayers,
+  representativeLandofileLayer,
+} from "./layers.ts";
 import { type LandofileLoadContext, ensureConsistentRoot } from "./load-context.ts";
 import { compileLandofileRoot, mergeLandofileRootLayers } from "./merge-validate.ts";
 import { discoverForOperation, discoveryCwd } from "./operation-discovery.ts";
@@ -29,6 +33,7 @@ export const findDiscoveredLandofilePath = Effect.fn("Landofile.findDiscoveredPa
   if (result.kind === "found") {
     const layer = representativeLandofileLayer(yield* presentLandofileLayers(result.directory, selection));
     if (layer !== undefined) return { filePath: layer.filePath, appRoot: result.directory };
+    if (selection?.omitLocalOverrides) return yield* new LandofileLayersOmittedError(result.directory);
   }
   let reason: string;
   let remediation = `Run \`lando init\` in ${result.cwd} to create an app.`;

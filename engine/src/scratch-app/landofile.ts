@@ -1,4 +1,5 @@
 import { basename } from "node:path";
+import { LandofileLayersOmittedError } from "@lando/landofile/layers";
 import { parseLandofile } from "@lando/landofile/parser";
 import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
 import { provenanceOf } from "@lando/landofile/provenance";
@@ -50,7 +51,7 @@ export const selectScratchForkSource = Effect.fnUntraced(function* (
       Effect.andThen(findDiscoveredLandofilePath(cwd, { omitLocalOverrides })),
       Effect.flatMap(({ appRoot }) => selectRoot(appRoot)),
       mapFailures((cause) =>
-        cause instanceof LandofileNotFoundError
+        cause instanceof LandofileNotFoundError && !(cause instanceof LandofileLayersOmittedError)
           ? new ScratchSourceUnresolvedError({
               message: "Unable to resolve scratch source fork.",
               source: "fork",

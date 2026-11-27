@@ -1,5 +1,6 @@
 import { realpath, stat } from "node:fs/promises";
 import { resolve } from "node:path";
+import { LandofileLayersOmittedError } from "@lando/landofile/layers";
 import { OperationDiscovery, withAppDiscovery } from "@lando/landofile/operation-discovery";
 import { findDiscoveredLandofilePath } from "@lando/landofile/service";
 import { causeRemediation, mapFailures } from "@lando/sdk/command-result";
@@ -61,7 +62,7 @@ export const scratchForkLoadFailure = (directory: string, cause: { readonly mess
     message: `Unable to load the scratch fork source from ${directory}: ${cause.message}`,
     cause,
     remediation:
-      cause instanceof LandofileNotFoundError
+      cause instanceof LandofileNotFoundError && !(cause instanceof LandofileLayersOmittedError)
         ? forkSourceRemediation
         : (causeRemediation(cause) ?? forkSourceRemediation),
   });

@@ -6,7 +6,7 @@
  * app root), and bounds module evaluation with a configurable timeout.
  */
 import { isBuiltin } from "node:module";
-import { dirname, isAbsolute, relative, resolve } from "node:path";
+import { dirname, extname, isAbsolute, relative, resolve } from "node:path";
 import { normalizeHostPlatform } from "@lando/paths";
 import {
   LandofileParseError,
@@ -108,8 +108,17 @@ const checkImport = (
   return undefined;
 };
 
-const scanImports = (content: string): ReadonlyArray<ImportLike> => {
-  const transpiler = new Bun.Transpiler({ loader: "ts" });
+const scanImports = (filePath: string, content: string): ReadonlyArray<ImportLike> => {
+  const extension = extname(filePath);
+  const loader =
+    extension === ".tsx"
+      ? "tsx"
+      : extension === ".jsx"
+        ? "jsx"
+        : extension === ".js" || extension === ".mjs" || extension === ".cjs"
+          ? "js"
+          : "ts";
+  const transpiler = new Bun.Transpiler({ loader });
   const scanned = transpiler.scan(content);
   return scanned.imports.map((entry) => ({ path: entry.path, kind: entry.kind }));
 };
@@ -134,7 +143,7 @@ export const sandboxScan = (
   Effect.suspend((): Effect.Effect<void, LandofileSandboxError | LandofileParseError> => {
     let imports: ReadonlyArray<ImportLike>;
     try {
-      imports = scanImports(content);
+      imports = scanImports(filePath, content);
     } catch (cause) {
       return Effect.fail(
         new LandofileParseError({
@@ -318,7 +327,7 @@ const readsAmbientEnvironment = async (
   if (seen.has(filePath)) return false;
   seen.add(filePath);
   if (AMBIENT_ENVIRONMENT_REFERENCE.test(content)) return true;
-  for (const entry of scanImports(content)) {
+  for (const entry of scanImports(filePath, content)) {
     if (HOST_SUPPLIED_MODULE.test(entry.path)) continue;
     if (!isRelative(entry.path)) return true;
     const local = await localModuleSource(resolve(dirname(filePath), entry.path));
@@ -333,7 +342,7 @@ const assertContainedImports = async (
   const { hostModules } = await import("./host-module-table.ts");
   const seen = new Set([input.filePath]);
   const visit = async (filePath: string, content: string): Promise<void> => {
-    for (const { path } of scanImports(content)) {
+    for (const { path } of scanImports(filePath, content)) {
       if (Object.hasOwn(hostModules, path)) continue;
       const resolved = Bun.resolveSync(path, dirname(filePath));
       if (isBuiltin(resolved)) continue;
@@ -372,7 +381,7 @@ export const loadLandofileTs = Effect.fnUntraced(function* (
   // A module graph Lando cannot analyze counts as reading the environment.
   if (
     options.environmentRecorder !== undefined &&
-    (yield* Effect.tryPromise(() => readsAmbientEnvironment(options.filePath, options.content)).pipe(
+    (yield* Effect.tryPromise(() => readsAmbientEnvironment(physical, options.content)).pipe(
       Effect.orElseSucceed(() => true),
     ))
   )

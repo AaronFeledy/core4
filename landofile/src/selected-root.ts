@@ -4,7 +4,11 @@ import { LandofileNotFoundError, LandofileParseError } from "@lando/sdk/errors";
 import { AbsolutePath } from "@lando/sdk/schema";
 import { Effect } from "effect";
 import { assertUnderRoot } from "./include-guard.ts";
-import { presentLandofileLayers, representativeLandofileLayer } from "./layers.ts";
+import {
+  LandofileLayersOmittedError,
+  presentLandofileLayers,
+  representativeLandofileLayer,
+} from "./layers.ts";
 import { assertReadableRoot } from "./load-context.ts";
 import { type RootLoadInputs, compileLandofileRoot } from "./merge-validate.ts";
 import { hostExpressionEnvironment } from "./recipe-expressions.ts";
@@ -36,11 +40,13 @@ export const selectLandofileRoot = Effect.fn("Landofile.selectRoot")(function* (
   const layers = yield* presentLandofileLayers(appRoot, input);
   const representative = representativeLandofileLayer(layers);
   if (representative === undefined)
-    return yield* new LandofileNotFoundError({
-      message: `No selected Landofile layer found at ${appRoot}.`,
-      cwd: appRoot,
-      remediation: "The app must have a Landofile layer that is not omitted.",
-    });
+    return yield* input.omitLocalOverrides
+      ? new LandofileLayersOmittedError(appRoot)
+      : new LandofileNotFoundError({
+          message: `No selected Landofile layer found at ${appRoot}.`,
+          cwd: appRoot,
+          remediation: "The app must have a Landofile layer that is not omitted.",
+        });
   const lockfile = join(appRoot, ".lando.lock.yml");
   if (contained)
     yield* Effect.forEach(

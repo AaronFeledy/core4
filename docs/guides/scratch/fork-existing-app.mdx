@@ -112,11 +112,9 @@ To materialize a recipe instead of forking the app, use [Start a scratch app fro
     <Step name="fork-without-overrides">
       <UseFixture name="fork-project-layers" />
       <Run command="lando scratch --fork --source . --detach --no-local-overrides --exclude=.lando.yml --format=json" capture={{ name: "fullId", json: "handle.id" }} />
-      <Verify command="lando scratch:info {{capture:fullId}} --format=json" expect={{ stdout: { regex: "\"port\":\\s*8000" } }} />
-      <Verify command="lando scratch:info {{capture:fullId}} --format=json" expect={{ stdout: { not: { regex: "local-layer|user-layer" } } }} />
+      <Verify command="lando scratch:info {{capture:fullId}} --format=json" expect={{ stdout: { regex: "\"port\":\\s*8000", not: { regex: "local-layer|user-layer" } } }} />
       <Run command="lando scratch --fork --detach --isolate=cwd --no-local-overrides --format=json" capture={{ name: "cwdId", json: "handle.id" }} />
-      <Verify command="lando scratch:info {{capture:cwdId}} --format=json" expect={{ stdout: { regex: "\"port\":\\s*8000" } }} />
-      <Verify command="lando scratch:info {{capture:cwdId}} --format=json" expect={{ stdout: { not: { regex: "local-layer|user-layer" } } }} />
+      <Verify command="lando scratch:info {{capture:cwdId}} --format=json" expect={{ stdout: { regex: "\"port\":\\s*8000", not: { regex: "local-layer|user-layer" } } }} />
       <Verify file="fork-project-layers/.lando.local.yml" expect={{ regex: "local-layer" }} />
       <Verify file="fork-project-layers/.lando.user.ts" expect={{ regex: "user-layer" }} />
     </Step>

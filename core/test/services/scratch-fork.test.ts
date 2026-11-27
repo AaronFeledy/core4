@@ -1244,7 +1244,7 @@ describe("ScratchAppServiceLayer.layer fork acquire", () => {
   });
 
   test.skipIf(process.platform === "win32")(
-    "a copied symlinked TS Landofile imports relative to its target even through the host copy fallback",
+    "a copied symlinked TS Landofile imports relative to its physical target",
     async () => {
       await withTempProject(undefined, async (dir) => {
         const subdir = join(dir, "config");
@@ -1279,6 +1279,35 @@ describe("ScratchAppServiceLayer.layer fork acquire", () => {
       });
     },
   );
+
+  test("a named full fork loads a contained TSX helper", async () => {
+    await withTempProject(undefined, async (dir) => {
+      await Bun.write(
+        join(dir, "helper.tsx"),
+        `/** @jsxRuntime classic */
+        /** @jsx labelFor */
+        const labelFor = (tag) => \`tsx-\${tag}\`;
+        export const label = <helper />;`,
+      );
+      await Bun.write(
+        join(dir, ".lando.ts"),
+        `
+        import { label } from "./helper.tsx";
+        export default { router: { enabled: false }, services: {
+          appserver: { type: "compose", image: "alpine", primary: true, home: false,
+            environment: { MODULE: label } }
+        } };
+      `,
+      );
+      const applied: AppPlan[] = [];
+      await Effect.runPromise(
+        Effect.flatMap(ScratchAppService, (scratch) =>
+          scratch.acquire({ source: { kind: "fork" }, name: "tsx", detached: true }),
+        ).pipe(Effect.scoped, Effect.provide(makeScratchForkLayer(dir, applied))),
+      );
+      expect(applied[0]?.services[ServiceName.make("appserver")]?.environment.MODULE).toBe("tsx-helper");
+    });
+  });
 
   test.each(["#source-marker", "@lando/sdk/unregistered-for-fork"])(
     "a copied TS Landofile refuses project alias %s when it resolves back to the source tree",
@@ -1494,29 +1523,40 @@ describe("ScratchAppServiceLayer.layer fork acquire", () => {
     });
   });
 
-  test("omitting the only layer at the selected source does not discover the enclosing app", async () => {
-    await withTempProject(forkLandofile, async (dir) => {
-      const child = join(dir, "local-only");
-      await mkdir(child);
-      await writeFile(join(child, ".lando.local.yml"), "name: child\n");
-      const applied: AppPlan[] = [];
-      const outcome = await Effect.runPromise(
-        Effect.flatMap(ScratchAppService, (scratch) =>
-          scratch.acquire({
-            source: { kind: "fork", path: "local-only" },
-            noLocalOverrides: true,
-            isolate: "cwd",
-            detached: true,
-          }),
-        ).pipe(Effect.scoped, Effect.result, Effect.provide(makeScratchForkLayer(dir, applied))),
-      );
-      expect(outcome).toMatchObject({
-        _tag: "Failure",
-        failure: { _tag: "ScratchAppError", cause: { _tag: "LandofileNotFoundError", cwd: child } },
+  test.each(["explicit", "implicit"])(
+    "an %s fork with only omitted layers refuses the selected source",
+    async (kind) => {
+      await withTempProject(forkLandofile, async (dir) => {
+        const child = join(dir, "local-only");
+        await mkdir(child);
+        await writeFile(join(child, ".lando.local.yml"), "name: child\n");
+        const applied: AppPlan[] = [];
+        const outcome = await Effect.runPromise(
+          Effect.flatMap(ScratchAppService, (scratch) =>
+            scratch.acquire({
+              source: { kind: "fork", ...(kind === "explicit" ? { path: "local-only" } : {}) },
+              noLocalOverrides: true,
+              isolate: "cwd",
+              detached: true,
+            }),
+          ).pipe(
+            Effect.scoped,
+            Effect.result,
+            Effect.provide(makeScratchForkLayer(kind === "explicit" ? dir : child, applied)),
+          ),
+        );
+        expect(outcome).toMatchObject({
+          _tag: "Failure",
+          failure: {
+            _tag: "ScratchAppError",
+            remediation: expect.stringContaining("--no-local-overrides"),
+            cause: { _tag: "LandofileNotFoundError", cwd: child },
+          },
+        });
+        expect(applied).toEqual([]);
       });
-      expect(applied).toEqual([]);
-    });
-  });
+    },
+  );
 
   test("isolate=none (default) binds the source tree while owning a managed root", async () => {
     await withTempProject(forkLandofile, async (dir) => {

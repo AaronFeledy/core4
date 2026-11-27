@@ -1,6 +1,6 @@
 import { join } from "node:path";
 
-import { LandofileFormConflictError } from "@lando/sdk/errors";
+import { LandofileFormConflictError, LandofileNotFoundError } from "@lando/sdk/errors";
 import { LANDOFILE_LAYER_ORDER } from "@lando/sdk/landofile";
 import { Effect } from "effect";
 
@@ -63,6 +63,18 @@ export const landofileLayerPaths = (
 
 export const isLocalOverrideLayer = ({ layer }: LandofileLayerPosition): boolean =>
   layer === "local" || layer === "user";
+
+/** Keeps the not-found wire tag while distinguishing a found root with no eligible layer. */
+export class LandofileLayersOmittedError extends LandofileNotFoundError {
+  constructor(root: string) {
+    super({
+      message: `No eligible Landofile layer found at ${root} with --no-local-overrides.`,
+      cwd: root,
+      remediation:
+        "Retry without --no-local-overrides, or add a Landofile layer that the flag does not omit.",
+    });
+  }
+}
 
 const fileExists = (path: string): Effect.Effect<boolean> => Effect.promise(() => Bun.file(path).exists());
 
