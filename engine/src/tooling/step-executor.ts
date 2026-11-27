@@ -1,7 +1,8 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import type { ToolingStepConditionError } from "@lando/sdk/errors";
 import type { ExpressionContext } from "@lando/sdk/expressions";
 import type { ToolingVarLiteral } from "@lando/sdk/schema";
-import { Effect, Exit } from "effect";
+import { Cause, Effect, Exit } from "effect";
 import { isEventBoundaryError, isServiceUrlRefusal } from "./event-errors.ts";
 
 import type {
@@ -98,9 +99,14 @@ const executeResolved = <E, A>(
   // while an inline task or canonical command resolves it inside its runner.
   return leaf.ignoreError
     ? presented.pipe(
-        Effect.catch((error) =>
-          isEventBoundaryError(error) || isServiceUrlRefusal(error) ? Effect.fail(error) : Effect.void,
-        ),
+        Effect.catchCause((cause) => {
+          const [reason] = cause.reasons;
+          if (cause.reasons.length !== 1 || reason === undefined || !Cause.isFailReason(reason))
+            return Effect.failCause(cause);
+          return isEventBoundaryError(reason.error) || isServiceUrlRefusal(reason.error)
+            ? Effect.failCause(cause)
+            : Effect.void;
+        }),
       )
     : presented;
 };
@@ -119,12 +125,12 @@ export const runToolingStepProgramWith = <E, A>(
       const attributed = <A2, E2>(
         leaf: ToolingStepLeaf,
         effect: Effect.Effect<A2, E2>,
-      ): Effect.Effect<A2, E | E2> =>
-        Effect.catch(
-          effect,
-          (error): Effect.Effect<never, E | E2> =>
-            Effect.fail(runners.mapLeafError === undefined ? error : runners.mapLeafError(leaf, error)),
-        );
+      ): Effect.Effect<A2, E | E2> => {
+        const { mapLeafError } = runners;
+        return mapLeafError === undefined
+          ? effect
+          : effect.pipe(mapFailures((error) => mapLeafError.call(runners, leaf, error)));
+      };
       const executeLeaf = Effect.fnUntraced(
         function* (leaf: ToolingStepLeaf, leafContext: ExpressionContext, checkCondition: boolean) {
           if (checkCondition && !(yield* dependencies.conditionAllows(leaf.condition, leafContext))) return;

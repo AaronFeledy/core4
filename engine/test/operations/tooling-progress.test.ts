@@ -2,8 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { type LandoEvent, LandoEvent as LandoEventSchema } from "@lando/sdk/events";
 import type { LandoEvent as PublishedEvent } from "@lando/sdk/services";
 import { startChildTaskId } from "@lando/sdk/task-progress";
-import { Effect, Schema } from "effect";
-import { beginLiveToolingTree } from "../../src/operations/tooling-progress.ts";
+import { Cause, Effect, Exit, Schema } from "effect";
+import { beginLiveToolingTree, withLiveToolingTree } from "../../src/operations/tooling-progress.ts";
 
 const collectPublisher = () => {
   const events: LandoEvent[] = [];
@@ -90,4 +90,20 @@ describe("beginLiveToolingTree", () => {
       durationMs: 12,
     });
   });
+
+  test.each(["interrupted", "failure"] as const)(
+    "settles a %s tree without inventing a child exit",
+    async (outcome) => {
+      const publisher = collectPublisher();
+      const work =
+        outcome === "interrupted"
+          ? Effect.interrupt
+          : Effect.failCause(Cause.combine(Cause.fail(new TypeError("test failure")), Cause.interrupt()));
+      const exit = await Effect.runPromiseExit(withLiveToolingTree(work, publisher, "task"));
+      expect(Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause)).toBe(outcome === "interrupted");
+      expect(byTag(publisher.events, "task.fail")).toHaveLength(1);
+      expect(byTag(publisher.events, "task.fail")[0]).not.toHaveProperty("exitCode");
+      expect(byTag(publisher.events, "task.tree.complete")).toMatchObject([{ outcome }]);
+    },
+  );
 });

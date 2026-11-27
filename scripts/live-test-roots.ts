@@ -1,4 +1,5 @@
-import { mkdtemp } from "node:fs/promises";
+import { constants } from "node:fs";
+import { access, mkdtemp, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import {
@@ -16,6 +17,44 @@ type RunnerSignal = "SIGINT" | "SIGTERM";
 const SIGNAL_EXIT_CODES = { SIGINT: 130, SIGTERM: 143 } as const satisfies Record<RunnerSignal, number>;
 type TestChild = Pick<Bun.Subprocess, "kill" | "exited" | "exitCode" | "signalCode">;
 export type TrackTestChild = (child: TestChild) => void;
+type LiveTestBinaryReason = "missing" | "directory" | "not-executable";
+
+const LIVE_TEST_BINARY_PROBLEMS = {
+  missing: "does not exist",
+  directory: "is a directory",
+  "not-executable": "is not executable",
+} as const satisfies Record<LiveTestBinaryReason, string>;
+
+export class MissingLiveTestBinaryError extends Error {
+  readonly path: string;
+  readonly reason: LiveTestBinaryReason;
+  constructor(path: string, reason: LiveTestBinaryReason, overrideSet: boolean) {
+    const source = overrideSet ? " (LANDO_SCENARIO_E2E_BINARY)" : "";
+    super(
+      `Live test CLI ${path}${source} ${LIVE_TEST_BINARY_PROBLEMS[reason]}. Run (cd core && bun run build) or set LANDO_SCENARIO_E2E_BINARY.`,
+    );
+    this.name = "MissingLiveTestBinaryError";
+    this.path = path;
+    this.reason = reason;
+  }
+}
+
+const resolveLiveTestBinaryPath = (cwd: string, env: Env): string =>
+  resolve(cwd, env.LANDO_SCENARIO_E2E_BINARY ?? "core/dist/lando");
+
+const assertLiveTestBinary = async (cwd: string, env: Env): Promise<void> => {
+  const path = resolveLiveTestBinaryPath(cwd, env);
+  let reason: LiveTestBinaryReason | undefined;
+  try {
+    if ((await stat(path)).isDirectory()) reason = "directory";
+    else await access(path, constants.X_OK);
+  } catch (cause) {
+    reason =
+      cause instanceof Error && "code" in cause && cause.code === "ENOENT" ? "missing" : "not-executable";
+  }
+  if (reason !== undefined)
+    throw new MissingLiveTestBinaryError(path, reason, env.LANDO_SCENARIO_E2E_BINARY !== undefined);
+};
 
 async function allocateLiveTestRoots(env: Env, cwd: string): Promise<TempRootRetirement | undefined> {
   const endpoint = env.LANDO_TEST_PODMAN_SOCKET;
@@ -26,12 +65,13 @@ async function allocateLiveTestRoots(env: Env, cwd: string): Promise<TempRootRet
   ) {
     return undefined;
   }
+  await assertLiveTestBinary(cwd, env);
   return ownedLiveTestRoots(await mkdtemp(join(tmpdir(), "lando-live-test-roots-")), endpoint, env, cwd);
 }
 
 /** The roots, environment, and CLI the runner binds to one owned directory and endpoint. */
 function ownedLiveTestRoots(directory: string, endpoint: string, env: Env, cwd: string): TempRootRetirement {
-  const binary = resolve(cwd, env.LANDO_SCENARIO_E2E_BINARY ?? "core/dist/lando");
+  const binary = resolveLiveTestBinaryPath(cwd, env);
   return {
     directory,
     endpoint,
@@ -161,6 +201,15 @@ if (import.meta.main) {
         "lando_user_cache_root, and lando_system_plugin_root.",
     );
     process.exit(2);
+  }
+  try {
+    await assertLiveTestBinary(process.cwd(), process.env);
+  } catch (error) {
+    if (error instanceof MissingLiveTestBinaryError) {
+      console.error(error.message);
+      process.exit(2);
+    }
+    throw error;
   }
   const owned = ownedLiveTestRoots(resolve(directory), endpoint, process.env, process.cwd());
   const result = await retireTempRoots(owned);

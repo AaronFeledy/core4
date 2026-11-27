@@ -11,9 +11,9 @@ const required = process.env.LANDO_GUIDE_E2E === "1";
 const useManaged = process.env.LANDO_TEST_USE_REAL_ROOTS === "1";
 const binary = process.env.LANDO_SCENARIO_E2E_BINARY ?? resolve(import.meta.dir, "../../../core/dist/lando");
 const url = "http://127.0.0.1:8080/";
-const token = (page: string) => {
-  const value = /name=['"]token['"] value=['"]([\d:]+)['"]/u.exec(page)?.[1];
-  if (value === undefined) throw new TypeError("Adminer did not render a CSRF token");
+const token = (page: string, form: string) => {
+  const value = /<input\b[^>]*\sname=['"]token['"]\s+value=['"]([^'"]+)['"]/u.exec(page)?.[1];
+  if (value === undefined) throw new TypeError(`Adminer did not render a CSRF token in ${form}`);
   return value;
 };
 
@@ -125,7 +125,10 @@ services:
         await curl(
           ...cookies,
           "--data",
-          new URLSearchParams({ lando_target: service, token: token(form) }).toString(),
+          new URLSearchParams({
+            lando_target: service,
+            token: token(form, `the ${service} login form`),
+          }).toString(),
           url,
         );
         const query = new URLSearchParams({ [driver]: service, username, db });
@@ -137,7 +140,7 @@ services:
             ...cookies,
             "--data",
             new URLSearchParams({
-              token: token(sql),
+              token: token(sql, "the SQLite SQL form"),
               query: "INSERT INTO notes VALUES ('saved-in-adminer')",
             }).toString(),
             sqlUrl,

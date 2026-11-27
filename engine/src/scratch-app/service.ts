@@ -13,7 +13,7 @@ import {
   LandofileVersionConstraintError,
   type RouteUrlBindingError,
   ScratchAppError,
-  ScratchAppNotFoundError,
+  type ScratchAppNotFoundError,
   ScratchIsolationConflictError,
   ScratchSourceUnresolvedError,
 } from "@lando/sdk/errors";
@@ -84,6 +84,7 @@ import { applyScratchHostnames } from "./hostnames.ts";
 import {
   SCRATCH_EXTENSION_KEY,
   decodeScratchExtension,
+  isCanonicalScratchId,
   isUnsafeScratchId,
   scratchPathsFor,
   stampScratchExtension,
@@ -92,8 +93,8 @@ import { decodeScratchLandofile } from "./landofile.ts";
 import { makeScratchLifecycleLock } from "./lifecycle-lock.ts";
 import { applyMountCwd, isolateScratchMounts } from "./mount-isolation.ts";
 import { openScratchPlan } from "./plan.ts";
+import { resolveScratchReference, sanitizeScratchBase, scratchAppNotFoundError } from "./reference.ts";
 import { ScratchRegistry, type ScratchRegistryEntry, makeScratchRegistry } from "./registry.ts";
-import { isCanonicalScratchId } from "./scanner.ts";
 import { applyScratchStartup } from "./startup.ts";
 
 export { isUnsafeScratchId, scratchProjectRoot } from "./identity.ts";
@@ -269,26 +270,6 @@ const mapInitError = (
     return promptInitError(input, cause);
   }
   return scratchAppError("materialize", "Unable to render the recipe into the scratch app root.", cause);
-};
-
-const scratchAppNotFoundError = (id: string): ScratchAppNotFoundError =>
-  new ScratchAppNotFoundError({
-    message: `Scratch app ${id} was not found.`,
-    id,
-    suggestions: [],
-    remediation: "Run `lando apps:scratch:list` to see currently registered scratch apps.",
-  });
-
-const SCRATCH_BASE_MAX_LENGTH = 40 - "scratch-".length - "-000000".length;
-
-const sanitizeBase = (base: string): string => {
-  const cleaned = base
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/gu, "-")
-    .slice(0, SCRATCH_BASE_MAX_LENGTH)
-    .replace(/^-+|-+$/gu, "");
-  return cleaned.length === 0 ? "scratch" : cleaned;
 };
 
 const DEFAULT_SCRATCH_EXCLUDES = [".git/", "node_modules/", "vendor/", ".lando/cache/", ".DS_Store"] as const;
@@ -539,7 +520,7 @@ const makeScratchAppService = Effect.fnUntraced(function* (
   const synthesizeId = (base: string) =>
     Effect.sync(() => {
       const suffix = sha256Hex(`${base}:${process.pid}:${randomBytes(8).toString("hex")}`).slice(0, 6);
-      return `scratch-${sanitizeBase(base)}-${suffix}`;
+      return `scratch-${sanitizeScratchBase(base)}-${suffix}`;
     });
 
   const paths = (id: string) =>
@@ -956,26 +937,21 @@ const makeScratchAppService = Effect.fnUntraced(function* (
     app: { kind: "scratch", id: entry.id, root: AbsolutePath.make(entry.rootPath) },
   });
 
-  const resolveById = (id: string) =>
+  const resolveEntry = (reference: string) =>
     scratchRegistry
-      .get(id)
-      .pipe(
-        Effect.flatMap((entry) =>
-          entry === undefined
-            ? Effect.fail(scratchAppNotFoundError(id))
-            : Effect.succeed(handleFromEntry(entry)),
-        ),
-      );
+      .list()
+      .pipe(Effect.flatMap((entries) => Effect.fromResult(resolveScratchReference(entries, reference))));
+
+  const resolveById = (reference: string) => resolveEntry(reference).pipe(Effect.map(handleFromEntry));
 
   const list = (): Effect.Effect<ReadonlyArray<ScratchSummary>, ScratchAppError> =>
     scratchRegistry.list().pipe(Effect.map((entries) => entries.map(summaryFromEntry)));
 
   const info = Effect.fn("ScratchAppService.info")(function* (
-    id: string,
+    reference: string,
   ): Effect.fn.Return<ScratchInfo, ScratchAppNotFoundError | ScratchAppError> {
-    const entry = yield* scratchRegistry.get(id);
-    if (entry === undefined) return yield* Effect.fail(scratchAppNotFoundError(id));
-    const scratchPaths = yield* paths(id);
+    const entry = yield* resolveEntry(reference);
+    const scratchPaths = yield* paths(entry.id);
     const cachedPlan = yield* readCachedPlan(scratchPaths.planCache);
     const info = { ...summaryFromEntry(entry), ...scratchPlanDetail(cachedPlan) };
     if (cachedPlan === undefined || cachedPlan.routes.length === 0 || !routerEnabled(cachedPlan)) return info;
@@ -998,9 +974,11 @@ const makeScratchAppService = Effect.fnUntraced(function* (
   const start = (id: string) => resolveById(id);
 
   const destroy = Effect.fn("ScratchAppService.destroy")(function* (
-    id: string,
+    reference: string,
     options: ScratchDestroyOptions = {},
   ) {
+    // Poweroff reaps discovered ids exactly, including ones whose registry entry is gone.
+    const id = options.reason === "poweroff" ? reference : (yield* resolveEntry(reference)).id;
     if (options.reason !== "poweroff" && (isUnsafeScratchId(id) || !isCanonicalScratchId(id)))
       return yield* Effect.fail(scratchAppNotFoundError(id));
     const scratchPaths = yield* paths(id);

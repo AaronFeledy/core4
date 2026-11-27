@@ -911,34 +911,60 @@ describe("ProviderExecToolingEngine.layer", () => {
     expect(provider.calls[0]?.command.terminalResize).toBe(terminalResize);
   });
 
-  test("returns a nonzero exit and skips later commands when attachment is aborted", async () => {
-    // Given
-    const plan = makePlan([baseServicePlan("web", true)]);
-    const controller = new AbortController();
-    let calls = 0;
-    const provider: RuntimeProviderShape = {
-      ...makeFakeProvider([]),
-      execStream: () =>
-        Stream.fromEffect(
-          Effect.sync(() => {
-            calls++;
-            controller.abort();
-            return { exitCode: 0 };
-          }),
+  test.each([
+    { aborted: false, observed: undefined, pending: true, expected: undefined },
+    { aborted: true, observed: undefined, pending: true, expected: undefined },
+    { aborted: true, observed: 0, pending: true, expected: undefined },
+    { aborted: true, observed: 0, pending: false, expected: 0 },
+    { aborted: true, observed: 7, pending: true, expected: 7 },
+  ])(
+    "settles provider tooling with aborted=$aborted observed=$observed pending=$pending",
+    async ({ aborted, observed, pending, expected }) => {
+      // Given
+      const plan = makePlan([baseServicePlan("web", true)]);
+      const controller = new AbortController();
+      let calls = 0;
+      const provider: RuntimeProviderShape = {
+        ...makeFakeProvider([]),
+        execStream: () =>
+          Stream.fromEffect(
+            Effect.sync(() => {
+              calls++;
+              if (aborted) controller.abort();
+            }),
+          ).pipe(
+            Stream.flatMap(() =>
+              observed === undefined ? Stream.empty : Stream.make({ exitCode: observed }),
+            ),
+          ),
+      };
+      // When
+      const exit = await Effect.runPromiseExit(
+        runEngine(
+          {
+            tool: "wait",
+            commands: pending ? [["first"], ["second"]] : [["first"]],
+            signal: controller.signal,
+          },
+          plan,
+          provider,
         ),
-    };
-    // When
-    const result = await Effect.runPromise(
-      runEngine(
-        { tool: "wait", commands: [["first"], ["second"]], signal: controller.signal },
-        plan,
-        provider,
-      ),
-    );
-    // Then
-    expect(result.exitCode).toBe(130);
-    expect(calls).toBe(1);
-  });
+      );
+      // Then
+      if (expected !== undefined) {
+        expect(Exit.isSuccess(exit) && exit.value.exitCode).toBe(expected);
+      } else {
+        if (Exit.isSuccess(exit)) throw new TypeError("tooling completed without observing an exit");
+        if (aborted) expect(Cause.hasInterruptsOnly(exit.cause)).toBe(true);
+        else
+          expect(Cause.findErrorOption(exit.cause)).toMatchObject({
+            _tag: "Some",
+            value: { _tag: "ServiceExecError", service: "web" },
+          });
+      }
+      expect(calls).toBe(1);
+    },
+  );
 
   test("non-PTY tooling gets no PAGER default", async () => {
     const plan = makePlan([baseServicePlan("database", true)]);

@@ -1,12 +1,12 @@
 import { sameRealpath } from "@lando/paths";
-import { type AbsolutePath, AppId, type AppPlan, type ServiceName } from "@lando/sdk/schema";
+import { type AbsolutePath, AppId, type AppPlan, type ServiceName, planAppIdentity } from "@lando/sdk/schema";
 import type { RuntimeProviderRegistry, ServiceRuntimeInfo } from "@lando/sdk/services";
 import { Effect } from "effect";
 import { ownsServiceContainer } from "./native-ownership.ts";
 
 export const ownsAppliedGlobalService = (plan: AppPlan, row: ServiceRuntimeInfo): boolean =>
   row.app === plan.id &&
-  row.appRoot === plan.root &&
+  row.appRoot === planAppIdentity(plan).appRoot &&
   row.providerId === plan.provider &&
   Object.hasOwn(plan.services, row.service) &&
   ownsServiceContainer(plan, row);

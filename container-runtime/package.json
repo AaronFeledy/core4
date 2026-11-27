@@ -42,6 +42,7 @@
     "./testing/native-init": "./test/support/native-init.ts",
     "./testing/build-output-contract": "./test/support/build-output-contract.ts",
     "./testing/volume-archive-fake": "./test/support/volume-archive-fake.ts",
+    "./testing/missing-container": "./test/support/missing-container.ts",
     "./log-file-access": "./src/log-file-access.ts",
     "./log-source-binding": "./src/log-source-binding.ts",
     "./data-plane": "./src/data-plane.ts",
