@@ -1,6 +1,7 @@
 import { mock } from "bun:test";
 import { appendFile } from "node:fs/promises";
 import type { LandoRuntimeOptions } from "@lando/engine/runtime/runtime-options";
+import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { ProviderId } from "@lando/sdk/schema";
 import {
   ConfigService,
@@ -10,7 +11,7 @@ import {
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider, makeTestRouterService, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
-import { Effect, Layer } from "effect";
+import { Cause, Effect, Layer } from "effect";
 import { makeLandoRuntime } from "../../../src/runtime/layer.ts";
 
 const originalRuntime = makeLandoRuntime;
@@ -22,13 +23,27 @@ const provider = {
   ...TestRuntimeProvider,
   id: "lando",
   inspect: (target: Parameters<typeof TestRuntimeProvider.inspect>[0]) =>
-    Effect.succeed({
-      app: target.app,
-      service: target.service,
-      providerId: ProviderId.make("lando"),
-      status: "running" as const,
-      publications: { status: "present" as const, bindings: [] },
-    }),
+    target.service === "inspection-failure"
+      ? Effect.failCause(
+          Cause.combine(
+            Cause.fail(
+              new ProviderUnavailableError({
+                providerId: "lando",
+                operation: "inspect",
+                message: "Unable to inspect service at https://user:inspection-canary@missing.example.",
+                remediation: "Repair runtime.",
+              }),
+            ),
+            Cause.die(new Error("inspection cleanup failed")),
+          ),
+        )
+      : Effect.succeed({
+          app: target.app,
+          service: target.service,
+          providerId: ProviderId.make("lando"),
+          status: "running" as const,
+          publications: { status: "present" as const, bindings: [] },
+        }),
 };
 const registry = Layer.succeed(
   RuntimeProviderRegistry,
@@ -114,7 +129,10 @@ mock.module("../../../src/runtime/layer.ts", () => ({
               .publish(event)
               .pipe(
                 Effect.andThen(
-                  event._tag === "pre-host-proxy-call" || event._tag === "post-host-proxy-call"
+                  event._tag === "pre-host-proxy-call" ||
+                    event._tag === "post-host-proxy-call" ||
+                    event._tag === "cli-app:open-init" ||
+                    event._tag === "cli-app:open-error"
                     ? Effect.promise(() => appendFile(eventPath, `${JSON.stringify(event)}\n`))
                     : Effect.void,
                 ),

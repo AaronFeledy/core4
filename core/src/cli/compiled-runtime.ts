@@ -122,6 +122,7 @@ export const runCompiledCommand = <A, E, R, RE>(
 ): Promise<void> => {
   const spec = landoSpecForId(activeCommandId);
   const effectiveRuntime =
+    options.preCommand === true ||
     spec?.bootstrap === undefined ||
     activeCommandId === "meta:config" ||
     activeCommandId === "meta:doctor" ||

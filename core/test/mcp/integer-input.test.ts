@@ -6,6 +6,7 @@ import { RedactionService } from "@lando/redaction/service";
 import { McpToolInputError } from "@lando/sdk/errors";
 import { Effect, Layer, Result, Schema } from "effect";
 import { logsSpec as typedLogsSpec } from "../../src/cli/command-specs/app/logs";
+import { openSpec as typedOpenSpec } from "../../src/cli/command-specs/app/open";
 import { metaSourcesGcSpec } from "../../src/cli/command-specs/meta/sources/gc";
 import { parseFlagValue } from "../../src/cli/compiled-argv";
 import { validateEventCommandInput } from "../../src/cli/event-command-input";
@@ -22,7 +23,16 @@ import { Flags } from "../../src/cli/spec/metadata";
 import { serviceLayer } from "../../src/mcp-command-executor";
 
 const logsSpec: LandoCommandSpec = typedLogsSpec;
+const openSpec: LandoCommandSpec = typedOpenSpec;
 const sourcesGcSpec: LandoCommandSpec = metaSourcesGcSpec;
+
+test("advertises hostname selection as a string argument and not a route flag", () => {
+  const schema = deriveToolInputSchema(openSpec);
+  expect(schema).toMatchObject({
+    properties: { args: { properties: { hostname: { type: "string" } } } },
+  });
+  expect(schema).not.toHaveProperty("properties.flags.properties.route");
+});
 
 test("projects logs tail as an integer", () => {
   expect(deriveToolInputSchema(logsSpec)).toMatchObject({

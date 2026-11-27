@@ -1,3 +1,4 @@
+import { effectiveRoutePath } from "@lando/engine/operations/connection-url";
 import { activeHostHttpAddresses } from "@lando/engine/operations/service-connections";
 import type { AppPlan, EndpointPlan, EndpointRef, StartedService } from "@lando/sdk/schema";
 import { routeListenerPreference, selectHttpEndpoint } from "@lando/sdk/schema";
@@ -10,10 +11,10 @@ export const OpenTargetSchema = Schema.Struct({
   url: Schema.String,
 });
 export type OpenTarget = typeof OpenTargetSchema.Type;
+type SelectedOpenTarget = OpenTarget & { readonly routePath?: string };
 
 export interface OpenTargetSelection {
   readonly service?: string;
-  readonly route?: string;
   readonly all?: boolean;
 }
 
@@ -44,7 +45,7 @@ export const defaultHttpListeners = (
   );
 };
 
-const preferHttps = (targets: readonly OpenTarget[]): readonly OpenTarget[] => {
+const preferHttps = (targets: readonly SelectedOpenTarget[]): readonly SelectedOpenTarget[] => {
   const target = targets.find((target) => target.scheme === "https") ?? targets[0];
   return target === undefined ? [] : [target];
 };
@@ -53,7 +54,7 @@ export const resolveOpenTargets = (
   plan: Pick<AppPlan, "services">,
   selection: OpenTargetSelection,
   rows: readonly StartedService[],
-): readonly OpenTarget[] => {
+): readonly SelectedOpenTarget[] => {
   const candidates = rows.flatMap((row) =>
     activeHostHttpAddresses(row).map((address) => ({
       source: address.via,
@@ -64,16 +65,10 @@ export const resolveOpenTargets = (
         hostname: address.host,
         scheme: address.protocol,
         url: address.url,
-      } satisfies OpenTarget,
+        ...(address.via === "route" ? { routePath: address.pathPrefix } : {}),
+      } satisfies SelectedOpenTarget,
     })),
   );
-  if (selection.route !== undefined) {
-    return preferHttps(
-      candidates
-        .filter(({ source, target }) => source === "route" && target.hostname === selection.route)
-        .map(({ target }) => target),
-    );
-  }
   const listeners = new Map(
     Object.values(plan.services).map((service) => [
       String(service.name),
@@ -100,7 +95,7 @@ export const resolveOpenTargets = (
                 other.scheme === "https" &&
                 other.service === target.service &&
                 other.hostname === target.hostname &&
-                otherPathPrefix === pathPrefix,
+                effectiveRoutePath(otherPathPrefix) === effectiveRoutePath(pathPrefix),
             ),
         );
   if (selection.all === true) return distinct.map(({ target }) => target);

@@ -8,7 +8,6 @@ import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk
 import { Cause, Effect, Layer } from "effect";
 import { type OpenAppOptions, openApp } from "../../../src/cli/commands/open.ts";
 import { collectOpenConnections } from "../../../src/cli/commands/open-connections.ts";
-import { runOpenForHostProxy } from "../../../src/cli/host-proxy/dispatch.ts";
 import {
   commandServices,
   makePlan,
@@ -70,56 +69,30 @@ const fixture = async (failedService = "mailpit") => {
       }),
     ),
   );
-  return { plan, inspected, services, publicServices, failure };
+  return { plan, inspected, publicServices, failure };
 };
 
-const selections: readonly OpenAppOptions[] = [
-  {},
-  { service: "web" },
-  { service: "web", all: true },
-  { route: "web.myapp.lndo.site", service: "mailpit" },
-];
+const selections: readonly OpenAppOptions[] = [{}, { service: "web" }, { service: "web", all: true }];
 
-test.each([...selections])("public open isolates selected observations: %j", async (selection) => {
-  // Given a healthy selected service and a sibling whose inspection fails.
-  const { inspected, publicServices } = await fixture();
-  // When the public operation resolves the applied app.
-  const result = await Effect.runPromise(
-    invokeOperation(openApp({ ...selection, print: true })).pipe(Effect.provide(publicServices)),
-  );
-  // Then only the selected service contributes actual observations.
-  expect(result).toMatchObject({
-    ok: true,
-    value: { targets: [{ service: "web", url: "https://web.myapp.lndo.site:4433" }] },
-  });
-  expect(inspected).toEqual(["web"]);
-});
-
-test.each([...selections])("host-proxy open isolates selected observations: %j", async (selection) => {
-  // Given
-  const { plan, inspected, services } = await fixture();
-  const argv = ["open", "--print"];
-  if (selection.service !== undefined) argv.push("--service", selection.service);
-  if (selection.route !== undefined) argv.push("--route", selection.route);
-  if (selection.all === true) argv.push("--all");
-  // When
-  const result = await Effect.runPromise(
-    runOpenForHostProxy(plan, { commandId: "app:open", argv, cwd: plan.root, tty: false, env: {} }).pipe(
-      Effect.provide(services),
-    ),
-  );
-  // Then
-  expect(result).toMatchObject({
-    exitCode: 0,
-    envelope: {
+test.each([...selections, { hostname: "web.myapp.lndo.site" }])(
+  "public open isolates selected observations: %j",
+  async (selection) => {
+    // Given a healthy selected service and a sibling whose inspection fails.
+    const { inspected, publicServices } = await fixture();
+    // When the public operation resolves the applied app.
+    const result = await Effect.runPromise(
+      invokeOperation(openApp({ ...selection, print: true })).pipe(Effect.provide(publicServices)),
+    );
+    // Then only the selected service contributes actual observations.
+    expect(result).toMatchObject({
       ok: true,
-      result: { targets: [{ service: "web", url: "https://web.myapp.lndo.site:4433" }] },
-    },
-  });
-  expect(inspected).toEqual(["web"]);
-});
+      value: { targets: [{ service: "web", url: "https://web.myapp.lndo.site:4433" }] },
+    });
+    expect(inspected).toEqual(["web"]);
+  },
+);
 
-test.each([{ service: "missing" }, { route: "missing.test", service: "web" }])(
+test.each([{ service: "missing" }, { hostname: "missing.test" }])(
   "missing open target avoids unrelated inspection: %j",
   async (selection) => {
     // Given
@@ -156,51 +129,6 @@ test.each([{}, { all: true }, { service: "web" }])(
     expect(result.error).toBe(failure);
   },
 );
-
-test.each(["--service", "--route"])("host-proxy missing %s avoids unrelated inspection", async (flag) => {
-  // Given
-  const { plan, inspected, services } = await fixture();
-  // When
-  const result = await Effect.runPromise(
-    runOpenForHostProxy(plan, {
-      commandId: "app:open",
-      argv: ["open", "--print", flag, "missing"],
-      cwd: plan.root,
-      tty: false,
-      env: {},
-    }).pipe(Effect.provide(services)),
-  );
-  // Then
-  expect(result).toMatchObject({ exitCode: 1, envelope: { error: { _tag: "OpenTargetUnresolvedError" } } });
-  expect(inspected).toEqual([]);
-});
-
-test("host-proxy selected failure retains its cleanup defect", async () => {
-  // Given
-  const { plan, services } = await fixture("web");
-  // When
-  const result = await Effect.runPromise(
-    runOpenForHostProxy(plan, {
-      commandId: "app:open",
-      argv: ["open", "--service", "web", "--print"],
-      cwd: plan.root,
-      tty: false,
-      env: {},
-    }).pipe(Effect.provide(services)),
-  );
-  // Then
-  expect(result).toMatchObject({
-    exitCode: 1,
-    envelope: {
-      error: {
-        _tag: "ProviderUnavailableError",
-        additionalErrors: [
-          { _tag: "LandoInternalError", role: "peer", message: "inspection cleanup failed" },
-        ],
-      },
-    },
-  });
-});
 
 test.each([{}, { all: true }])("open skips ineligible sibling observations: %j", async (selection) => {
   // Given

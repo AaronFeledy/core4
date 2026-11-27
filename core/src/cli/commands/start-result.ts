@@ -11,7 +11,7 @@ import type { StartAppResult } from "@lando/sdk/app";
 import type { CheckResult, ServiceConnection, ServiceRoute, StartedService } from "@lando/sdk/schema";
 import type { RenderContext } from "../renderer-boundary";
 import { isDecoratedContext, summaryPaintOptions } from "../renderer-boundary";
-import { appNetworkText, connectionText, routeText } from "./connection-summary";
+import { ROUTE_PATTERN_OPEN_NOTE, appNetworkText, connectionText, routeText } from "./connection-summary";
 import { START_STATUS_TONES, lifecycleLine, serviceRowsText, summaryToneFromTable } from "./service-summary";
 
 export const startStatusTone = summaryToneFromTable(START_STATUS_TONES, "warn");
@@ -188,7 +188,15 @@ export const buildStartSummary = (
             },
           ]
         : []),
-      ...(patterns.length === 0 ? [] : [{ title: "Route patterns", rows: endpointRows(patterns, checks) }]),
+      ...(patterns.length === 0
+        ? []
+        : [
+            {
+              title: "Route patterns",
+              rows: endpointRows(patterns, checks),
+              notes: [ROUTE_PATTERN_OPEN_NOTE],
+            },
+          ]),
       {
         title: "Services",
         rows,

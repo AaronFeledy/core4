@@ -1,82 +1,11 @@
-import { afterEach, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { expect, test } from "bun:test";
+import { mkdir, readFile, symlink, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { writeAppCommandCacheStrict } from "@lando/engine/cache/command-index-writer";
 import { captureHostExecutionContext } from "@lando/engine/services/host-execution-context";
-import { Effect, Schema } from "effect";
-import { HostProxyCall } from "../../../src/cli/host-proxy/call-context";
+import { Effect } from "effect";
 import { hostProxyChildEnv } from "../../../src/cli/host-proxy/call-spawn";
-
-const roots: string[] = [];
-afterEach(async () => {
-  for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true });
-});
-const fixture = async () => {
-  const root = await mkdtemp(join(tmpdir(), "lando-hp-call-"));
-  roots.push(root);
-  const appRoot = join(root, "app");
-  const paths = {
-    userConfRoot: join(root, "conf"),
-    userDataRoot: join(root, "data"),
-    userCacheRoot: join(root, "cache"),
-    systemPluginRoot: join(root, "plugins"),
-    platform: "linux" as const,
-  };
-  await Promise.all(
-    [appRoot, ...Object.values(paths).filter((value) => value !== "linux")].map((path) =>
-      mkdir(path, { recursive: true }),
-    ),
-  );
-  await writeFile(join(appRoot, ".lando.yml"), "name: demo\nservices:\n  appserver:\n    type: node:22\n");
-  const call = Schema.decodeUnknownSync(HostProxyCall.members[0])({
-    operation: "runLando",
-    argv: ["app:open", "--help"],
-    env: {},
-    app: { kind: "user", id: "demo", root: appRoot },
-    mount: { containerRoot: "/app", hostRoot: appRoot },
-    cwd: "/app",
-    callId: "call-test",
-    depth: 0,
-    callerService: "web",
-  });
-  return { root, paths, call };
-};
-const sourceEntry = resolve(import.meta.dir, "../../../bin/lando.ts");
-const invoke = async (
-  call: HostProxyCall,
-  paths: Awaited<ReturnType<typeof fixture>>["paths"],
-  entry = sourceEntry,
-) => {
-  const proc = Bun.spawn(
-    [
-      process.execPath,
-      entry,
-      "__internal:host-proxy-call",
-      ...(entry === sourceEntry ? [] : ["--test-events", join(paths.userDataRoot, "events.jsonl")]),
-    ],
-    {
-      cwd: call.app.root,
-      env: hostProxyChildEnv(process.env, paths, {}, call.depth),
-      stdin: "pipe",
-      stdout: "pipe",
-      stderr: "pipe",
-    },
-  );
-  try {
-    proc.stdin.write(`${JSON.stringify(call)}\n`);
-    await proc.stdin.flush();
-    const [stdout, stderr, exitCode] = await Promise.all([
-      new Response(proc.stdout).text(),
-      new Response(proc.stderr).text(),
-      proc.exited,
-    ]);
-    return { stdout, stderr, exitCode };
-  } finally {
-    proc.kill();
-    await proc.exited;
-  }
-};
+import { fixture, invoke, observedEntry, sourceEntry } from "./call-process-fixture";
 
 test.each(
   [
@@ -124,21 +53,92 @@ test("child publishes redacted pre/post execution hooks on command failure", asy
   const result = await invoke(
     { ...call, argv: ["app:open", "--print", "--format=json"], callerService: "web" },
     paths,
-    resolve(import.meta.dir, "call-test-entry.ts"),
+    observedEntry,
   );
   const events = (await readFile(join(paths.userDataRoot, "events.jsonl"), "utf8"))
     .trim()
     .split("\n")
     .map((line) => JSON.parse(line));
-  expect(result.exitCode).not.toBe(0);
+  expect(result.exitCode).toBe(1);
+  expect(JSON.parse(result.stdout)).toMatchObject({
+    command: "app:open",
+    ok: false,
+    error: { _tag: "OpenTargetUnresolvedError" },
+  });
   expect(
     events
-      .filter((event) => event._tag !== undefined)
+      .filter((event) => event._tag === "pre-host-proxy-call" || event._tag === "post-host-proxy-call")
       .map((event) => [event._tag, event.callId, event.depth, event.outcome]),
   ).toEqual([
     ["pre-host-proxy-call", "call-test", 0, undefined],
     ["post-host-proxy-call", "call-test", 0, "failure"],
   ]);
+});
+
+test.each([
+  ["all", ["--all"]],
+  ["service", ["--service=appserver"]],
+] as const)("child rejects a hostname combined with --%s", async (field, flags) => {
+  const { call, paths } = await fixture();
+  const result = await invoke(
+    { ...call, argv: ["app:open", "docs.demo.lndo.site", ...flags, "--format=json"] },
+    paths,
+  );
+  expect(result.exitCode).toBe(2);
+  expect(JSON.parse(result.stdout).error).toMatchObject({
+    _tag: "CommandInputValidationError",
+    field,
+    reason: "conflict",
+  });
+});
+
+test.each([false, true])(
+  "child rejects a pasted URL before bootstrap (broken config: %s)",
+  async (broken) => {
+    const { call, paths } = await fixture();
+    if (broken) await writeFile(join(paths.userConfRoot, "config.yml"), "router:\n  httpPort: nonsense\n");
+    const result = await invoke(
+      { ...call, argv: ["app:open", "https://user:s3cr3tpass@demo.lndo.site", "--print", "--format=json"] },
+      paths,
+      observedEntry,
+    );
+    const eventFile = Bun.file(join(paths.userDataRoot, "events.jsonl"));
+    const events = (await eventFile.exists()) ? await eventFile.text() : "";
+    expect(result.exitCode).toBe(2);
+    expect(JSON.parse(result.stdout).error).toMatchObject({
+      _tag: "CommandInputValidationError",
+      target: "app:open",
+      field: "hostname",
+      reason: "invalid",
+    });
+    const tags = events
+      .trim()
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => JSON.parse(line)._tag);
+    expect(tags).not.toContain("cli-app:open-init");
+    expect(tags).not.toContain("cli-app:open-error");
+    expect(tags).not.toContain("pre-host-proxy-call");
+    expect(tags).not.toContain("post-host-proxy-call");
+    expect(result.stdout + result.stderr + events).not.toContain("s3cr3tpass");
+  },
+);
+
+test("a valid hostname still reports invalid global config in the CLI child", async () => {
+  const { call, paths } = await fixture();
+  await writeFile(join(paths.userConfRoot, "config.yml"), "router:\n  httpPort: nonsense\n");
+  const result = await invoke(
+    { ...call, argv: ["app:open", "docs.demo.lndo.site", "--print", "--format=json"] },
+    paths,
+  );
+  expect(result.exitCode).toBe(1);
+  expect(JSON.parse(result.stdout).error).toMatchObject({ _tag: "ConfigError" });
+});
+
+test("child no longer accepts the route flag", async () => {
+  const { call, paths } = await fixture();
+  const result = await invoke({ ...call, argv: ["app:open", "--route", "x.test", "--format=json"] }, paths);
+  expect(result.exitCode).toBe(2);
 });
 
 test.each(

@@ -56,6 +56,42 @@ export type RouteHostname = typeof RouteHostname.Type;
 /** Whether a route hostname holds a wildcard, so it matches many request hosts and names no URL. */
 export const isWildcardHostname = (hostname: string): boolean => hostname.includes("*");
 
+/**
+ * Anchored regular-expression source a router loads for a wildcard route hostname.
+ * Each `*` becomes `[a-z0-9-]+`; every other character is literal.
+ */
+export const routeHostnameMatchSource = (routeHostname: string): string =>
+  `^${routeHostname
+    .toLowerCase()
+    .replace(/[.*+?^${}()|[\]\\]/g, (character) => (character === "*" ? "[a-z0-9-]+" : `\\${character}`))}$`;
+
+const WILDCARD_CHARACTER = /^[a-z0-9-]$/u;
+
+/**
+ * Whether a router selects `routeHostname` for a request whose host is `hostname`. Case-insensitive.
+ * Each `*` takes one or more letters, digits, or hyphens and never a dot, so it stays inside one label.
+ * Runs in time proportional to hostname length times pattern length; it builds no regular expression.
+ */
+export const hostnameMatchesRoute = (hostname: string, routeHostname: string): boolean => {
+  const host = hostname.toLowerCase();
+  const pattern = routeHostname.toLowerCase();
+  if (!isWildcardHostname(pattern)) return host === pattern;
+  // A position j means pattern[0..j) matched everything read so far.
+  let positions = new Set([0]);
+  for (const character of host) {
+    const next = new Set<number>();
+    for (const j of positions) {
+      if (j > 0 && pattern[j - 1] === "*" && WILDCARD_CHARACTER.test(character)) next.add(j);
+      const token = pattern[j];
+      if (token === undefined) continue;
+      if (token === "*" ? WILDCARD_CHARACTER.test(character) : token === character) next.add(j + 1);
+    }
+    if (next.size === 0) return false;
+    positions = next;
+  }
+  return positions.has(pattern.length);
+};
+
 export const DomainName = Schema.String.check(
   Schema.isPattern(DOMAIN_NAME_PATTERN, {
     message: "Expected a plain DNS domain such as lndo.site, without a scheme, port, path, or wildcard.",

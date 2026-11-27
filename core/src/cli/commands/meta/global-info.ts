@@ -32,7 +32,7 @@ export type GlobalInfoError =
 export type GlobalInfoServices = LoadGlobalPlanServices | RuntimeProviderRegistry;
 
 export const renderGlobalInfoResult = (result: GlobalInfoResult, ctx?: RenderContext): string =>
-  renderInfoAppResult(result, ctx);
+  renderInfoAppResult(result, ctx, false);
 
 const selectPlanForServices = (
   plan: AppPlan,

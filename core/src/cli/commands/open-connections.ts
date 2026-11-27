@@ -9,15 +9,9 @@ export const collectOpenConnections = Effect.fn("OpenApp.collectConnections")(fu
   plan: AppPlan,
   selection: OpenTargetSelection,
 ) {
-  const routes = plan.routes.filter(
-    (route) =>
-      routerEnabled(plan) &&
-      !isWildcardHostname(route.hostname) &&
-      (selection.route === undefined || route.hostname === selection.route),
-  );
+  const routes = plan.routes.filter((route) => routerEnabled(plan) && !isWildcardHostname(route.hostname));
   const services = Object.fromEntries(
     Object.entries(plan.services).filter(([, service]) => {
-      if (selection.route !== undefined) return routes.some((route) => route.service === service.name);
       if (selection.service !== undefined && service.name !== selection.service) return false;
       if (selection.all === true)
         return (
@@ -40,7 +34,7 @@ export const collectOpenConnections = Effect.fn("OpenApp.collectConnections")(fu
       undefined,
       plan,
     );
-  if (selection.service === undefined && selection.route === undefined && selection.all !== true) {
+  if (selection.service === undefined && selection.all !== true) {
     const observed: StartedService[] = [];
     for (const entry of entries) {
       const listeners = defaultHttpListeners(entry[1].endpoints, entry[1].certs !== undefined);

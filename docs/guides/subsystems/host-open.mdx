@@ -65,7 +65,7 @@ lando exec web -- lando open --print
 lando exec web -- xdg-open https://example.com/x
 ```
 
-The first command prints the app URL without opening a browser. Container `lando` commands stream the same human output as the command on the host; use `--format=json` when a program needs machine output. Ctrl-C or disconnecting the client cancels the host command. The second command launches the exact URL on your host. On Linux, the host needs a working `xdg-open` and desktop session. Stopping or destroying the app closes its host-proxy session.
+The first command prints the app URL without opening a browser. `lando open <hostname>` works the same from inside a service. Container `lando` commands stream the same human output as the command on the host; use `--format=json` when a program needs machine output. Ctrl-C or disconnecting the client cancels the host command. The second command launches the exact URL on your host. On Linux, the host needs a working `xdg-open` and desktop session. Stopping or destroying the app closes its host-proxy session.
 
 Each call runs a fresh Lando process that reads current global config and installed plugins. The worker keeps the host environment from the start that launched it; in-memory config or plugins supplied by an embedding host are not reproduced in children. An invalid global config fails the call with remediation rather than keeping an older config active.
 

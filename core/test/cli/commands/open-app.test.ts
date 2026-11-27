@@ -14,6 +14,7 @@ import {
   ServiceName,
   type StartedService,
   appIdentityKey,
+  isWildcardHostname,
 } from "@lando/sdk/schema";
 import {
   AppPlanner,
@@ -134,7 +135,7 @@ const observed = (plan: AppPlan, ports = { http: 80, https: 443 }) =>
                 pathPrefix: route.pathPrefix ?? "",
               } as const;
               const suffix = port === (protocol === "http" ? 80 : 443) ? "" : `:${port}`;
-              return route.hostname.includes("*")
+              return isWildcardHostname(route.hostname)
                 ? routeRow({ ...address, hostMatch: "pattern" })
                 : routeRow({
                     ...address,
@@ -146,6 +147,45 @@ const observed = (plan: AppPlan, ports = { http: 80, https: 443 }) =>
 
 const run = (plan: AppPlan, options: OpenAppOptions, rec: ReturnType<typeof record>) =>
   Effect.runPromiseExit(openForPlan(plan, options, observed(plan)).pipe(Effect.provide(layers(rec))));
+
+test("open --all omits the HTTP twin of an explicit HTTPS root without rewriting the URL", async () => {
+  const plan = makePlan(
+    [
+      route({ hostname: "web.test", scheme: "http", service: "web" }),
+      { ...route({ hostname: "web.test", scheme: "https", service: "web" }), pathPrefix: "/" },
+      { ...route({ hostname: "web.test", scheme: "http", service: "web" }), pathPrefix: "/docs" },
+    ],
+    ["web"],
+  );
+  const result = await Effect.runPromise(
+    invokeOperation(openForPlan(plan, { all: true, print: true }, observed(plan))).pipe(
+      Effect.provide(layers(record())),
+    ),
+  );
+  expect(result).toMatchObject({
+    ok: true,
+    value: { targets: [{ url: "https://web.test/" }, { url: "http://web.test/docs" }] },
+  });
+});
+
+test.each([{}, { service: "web" }, { all: true }])(
+  "refuses a route with a noncanonical path without printing it: %j",
+  async (selection) => {
+    const plan = makePlan(
+      [{ ...route({ hostname: "web.test", scheme: "https", service: "web" }), pathPrefix: "/docs/../admin" }],
+      ["web"],
+    );
+    const result = await Effect.runPromise(
+      invokeOperation(openForPlan(plan, { ...selection, print: true }, observed(plan))).pipe(
+        Effect.provide(layers(record())),
+      ),
+    );
+    expect(result).toMatchObject({
+      ok: false,
+      error: { _tag: "OpenTargetUnresolvedError", app: "myapp", services: ["web"] },
+    });
+  },
+);
 
 const httpsPlan = () =>
   makePlan([route({ hostname: "web.myapp.lndo.site", scheme: "https", service: "web" })], ["web"]);
@@ -330,46 +370,6 @@ describe("openForPlan", () => {
     expect(rec.commands).toEqual([]);
   });
 
-  test("a disabled router names the unpublished --route even when a host port exists", async () => {
-    // Given: a declared hostname plus an unrelated published port must not look like a bad selector.
-    const rec = record();
-    const plan = {
-      ...httpsPlan(),
-      router: { enabled: false },
-      services: {
-        web: {
-          name: "web",
-          routes: [],
-          endpoints: [{ kind: "published", protocol: "http", port: 8080, publication: { hostPort: 8080 } }],
-        },
-      },
-    } as AppPlan;
-
-    // When
-    const exit = await run(
-      plan,
-      { route: "web.myapp.lndo.site", platform: "linux", env: { DISPLAY: ":0" } },
-      rec,
-    );
-
-    // Then
-    expect(Exit.isFailure(exit)).toBe(true);
-    if (Exit.isFailure(exit)) {
-      const err = Result.getOrThrow(Cause.findError(exit.cause)) as {
-        readonly _tag: string;
-        readonly message: string;
-        readonly remediation?: string;
-      };
-      expect(err._tag).toBe("OpenTargetUnresolvedError");
-      expect(err.message).toContain("--route web.myapp.lndo.site");
-      expect(err.message).toContain("router is disabled");
-      expect(err.remediation).toContain("router:");
-      expect(err.remediation).toContain("enabled: true");
-      expect(err.remediation).not.toContain("Choose one of the listed services");
-    }
-    expect(rec.commands).toEqual([]);
-  });
-
   test("selection miss reports the bad selector instead of missing proxy config", async () => {
     const rec = record();
     const exit = await run(httpsPlan(), { service: "api", platform: "linux", env: { DISPLAY: ":0" } }, rec);
@@ -394,13 +394,6 @@ describe("openForPlan", () => {
   const wildcardWithSibling = makePlan([wildcard, concrete], ["web", "api"]);
 
   test.each([
-    [
-      "explicit pattern with a concrete sibling",
-      wildcardWithSibling,
-      { route: "*.x" },
-      "--route *.x",
-      "concrete hostname",
-    ],
     [
       "service selection with a concrete sibling",
       wildcardWithSibling,
@@ -436,17 +429,6 @@ describe("openForPlan", () => {
     expect(rec.commands).toEqual([]);
   });
 
-  test("router-disabled diagnosis takes precedence over a declared pattern", async () => {
-    const plan = { ...wildcardOnly, router: { enabled: false } };
-    const error = await Effect.runPromise(
-      Effect.flip(openForPlan(plan, { route: "*.x" }, observed(plan))).pipe(Effect.provide(layers(record()))),
-    );
-
-    expect(error).toBeInstanceOf(OpenTargetUnresolvedError);
-    expect(error.message).toContain("router is disabled");
-    expect(error.remediation).toContain("enabled: true");
-  });
-
   test("a pattern-only service can still open its active HTTP publication", async () => {
     const rows = observed(wildcardOnly).map((row) => ({
       ...row,
@@ -475,26 +457,6 @@ describe("openForPlan", () => {
 
     expect(error).toBeInstanceOf(OpenTargetUnresolvedError);
     expect(error.message).toContain("No active host HTTP(S) connection");
-  });
-
-  test("selection miss reports --route when both --route and --service are set", async () => {
-    const rec = record();
-    const exit = await run(
-      httpsPlan(),
-      { route: "missing.myapp.lndo.site", service: "web", platform: "linux", env: { DISPLAY: ":0" } },
-      rec,
-    );
-    expect(Exit.isFailure(exit)).toBe(true);
-    if (Exit.isFailure(exit)) {
-      const err = Result.getOrThrow(Cause.findError(exit.cause)) as {
-        readonly _tag: string;
-        readonly message: string;
-      };
-      expect(err._tag).toBe("OpenTargetUnresolvedError");
-      expect(err.message).toContain("No openable URL matched --route missing.myapp.lndo.site");
-      expect(err.message).not.toContain("--service web");
-    }
-    expect(rec.commands).toEqual([]);
   });
 
   test("S7 headless host degrades to printed with a note, no opener, no events", async () => {
@@ -611,16 +573,25 @@ describe("openForPlan", () => {
     expect(rec.events).toEqual([]);
   });
 
-  test("--json WITH explicit --service selection + tty launches", async () => {
+  test.each([
+    { ttyPresent: true, launch: "opened", commands: [["xdg-open", "https://web.myapp.lndo.site"]] },
+    { ttyPresent: false, launch: "printed", commands: [] },
+  ])("--json WITH explicit --service selection is $launch with host tty=$ttyPresent", async (scenario) => {
     const rec = record();
     const exit = await run(
       httpsPlan(),
-      { json: true, ttyPresent: true, service: "web", platform: "linux", env: { DISPLAY: ":0" } },
+      {
+        json: true,
+        ttyPresent: scenario.ttyPresent,
+        service: "web",
+        platform: "linux",
+        env: { DISPLAY: ":0" },
+      },
       rec,
     );
     expect(Exit.isSuccess(exit)).toBe(true);
-    if (Exit.isSuccess(exit)) expect(exit.value.launch).toBe("opened");
-    expect(rec.commands).toEqual([["xdg-open", "https://web.myapp.lndo.site"]]);
+    if (Exit.isSuccess(exit)) expect(exit.value.launch).toBe(scenario.launch);
+    expect(rec.commands).toEqual([...scenario.commands]);
   });
 });
 

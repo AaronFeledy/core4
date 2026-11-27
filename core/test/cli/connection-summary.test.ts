@@ -4,6 +4,7 @@ import type { InfoAppResult, StartAppResult } from "@lando/sdk/app";
 import { PortNumber, type ServiceConnection, type ServiceRoute, type ServiceState } from "@lando/sdk/schema";
 import { connectionText, routeText } from "../../src/cli/commands/connection-summary";
 import { renderInfoAppResult } from "../../src/cli/commands/info-render";
+import { renderGlobalInfoResult } from "../../src/cli/commands/meta/global-info";
 import { renderGlobalStatusResult } from "../../src/cli/commands/meta/global-status";
 import { renderRebuildAppResult } from "../../src/cli/commands/rebuild";
 import { renderRestartAppResult } from "../../src/cli/commands/restart";
@@ -96,6 +97,12 @@ const renderers = {
 };
 
 describe("typed connection rendering", () => {
+  test("global info reports route patterns without suggesting user-app open", () => {
+    const output = stripAnsi(renderGlobalInfoResult({ ...info, app: "global" }, tty));
+    expect(output).toContain("*.wild.test");
+    expect(output).not.toContain("lando open");
+  });
+
   test.each(Object.entries(renderers))(
     "%s retains unverified addresses and links only active host HTTP",
     (_name, render) => {

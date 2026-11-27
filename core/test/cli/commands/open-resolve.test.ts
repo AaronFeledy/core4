@@ -210,18 +210,13 @@ describe("resolveOpenTargets", () => {
     ];
     expect(resolveOpenTargets(declared, selection, observed)).toEqual([]);
     expect(resolveOpenTargets(declared, { all: true }, observed)).toHaveLength(2);
-    expect(
-      resolveOpenTargets(declared, { route: "second.test" }, observed).map((target) => target.hostname),
-    ).toEqual(["second.test"]);
   });
   test.each([
     [{}, ["api.test"]],
     [{ service: "web" }, ["web.test"]],
-    [{ route: "web-alt.test", service: "api" }, ["web-alt.test"]],
     [{ all: true }, ["api.test", "web.test", "web-alt.test"]],
     [{ all: true, service: "web" }, ["web.test", "web-alt.test"]],
     [{ service: "missing" }, []],
-    [{ route: "missing.test" }, []],
   ] as const)("preserves selection %j", (selection, hosts) => {
     const result = resolveOpenTargets(plan, selection, rows);
     expect(result.map((target) => target.hostname)).toEqual([...hosts]);
@@ -331,7 +326,6 @@ describe("resolveOpenTargets", () => {
     expect(resolveOpenTargets(plan, {}, observed).map((target) => target.url)).toEqual([
       "http://localhost:49152",
     ]);
-    expect(resolveOpenTargets(plan, { route: "web.test" }, observed)).toEqual([]);
   });
 
   test("prefers observed routes before publications on earlier services", () => {

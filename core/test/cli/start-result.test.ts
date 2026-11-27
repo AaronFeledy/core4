@@ -71,6 +71,34 @@ const mixedResult: StartAppResult = {
 
 const emptyResult: StartAppResult = { app: "my-app", servicesStarted: [] };
 
+test.each([true, false])(
+  "start recommends hostname selection only for patterns (present=%s)",
+  (hasPattern) => {
+    const servicesStarted = readyResult.servicesStarted.map((service) =>
+      hasPattern && service.name === "web"
+        ? {
+            ...service,
+            routes: [
+              ...service.routes,
+              routeRow({
+                host: "*.wild.test",
+                hostMatch: "pattern",
+                protocol: "https",
+                port: 443,
+                pathPrefix: "",
+              }),
+            ],
+          }
+        : service,
+    );
+    const sections = buildStartSummary({ ...readyResult, servicesStarted }).sections;
+    const sectionsWithHint = sections.filter(({ notes }) =>
+      notes?.some((note) => note.includes("lando open <hostname>")),
+    );
+    expect(sectionsWithHint.map(({ title }) => title)).toEqual(hasPattern ? ["Route patterns"] : []);
+  },
+);
+
 test("lists both schemes of a pending exact route without linking either", () => {
   const pending: ServiceRoute = {
     host: "demo.lndo.site",

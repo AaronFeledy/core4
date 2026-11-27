@@ -5,6 +5,9 @@ import type { ServiceConnection, ServiceRoute, StartedService } from "@lando/sdk
 
 type ServiceAddresses = Pick<StartedService, "connections" | "routes">;
 
+export const ROUTE_PATTERN_OPEN_NOTE =
+  "Open a hostname a route pattern matches with `lando open <hostname>`.";
+
 export const patternRouteText = (
   address: PatternRouteAddress,
   state: ServiceConnection["state"] = "active",
@@ -68,13 +71,14 @@ export const plainRoutePatternRows = (service: ServiceAddresses & { readonly ser
     route.hostMatch === "pattern" ? [`${service.service}\troute-pattern\t${routeText(route)}`] : [],
   );
 
-export const addressFields = (service: ServiceAddresses): readonly SummaryField[] => [
-  { label: "Host", value: hostAddressValue(service) },
-  ...(service.routes.some((row) => row.hostMatch === "pattern")
-    ? [{ label: "Route patterns", value: routePatternText(service) }]
-    : []),
-  { label: "App Network", value: appNetworkText(service) || "-" },
-];
+export const addressFields = (service: ServiceAddresses): readonly SummaryField[] => {
+  const patterns = routePatternText(service);
+  return [
+    { label: "Host", value: hostAddressValue(service) },
+    ...(patterns === "" ? [] : [{ label: "Route patterns", value: patterns }]),
+    { label: "App Network", value: appNetworkText(service) || "-" },
+  ];
+};
 
 /** Text linking must not also decorate an identical inactive or app-network URI. */
 export const unambiguousHostHttpUrls = (services: readonly ServiceAddresses[]): readonly string[] => {

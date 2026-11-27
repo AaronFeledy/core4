@@ -10,7 +10,9 @@ import {
   ServiceName,
   certificateNameForHostname,
   getJsonSchema,
+  hostnameMatchesRoute,
   isWildcardHostname,
+  routeHostnameMatchSource,
 } from "@lando/sdk/schema";
 import { Result, Schema } from "effect";
 
@@ -63,6 +65,51 @@ test.each([
   ["x.*.test", true],
 ] as const)("classifies hostname %s as wildcard: %s", (hostname, expected) => {
   expect(isWildcardHostname(hostname)).toBe(expected);
+});
+
+test.each([
+  ["*.app.lndo.site", "docs.app.lndo.site", true],
+  ["*.app.lndo.site", "Docs.App.lndo.site", true],
+  ["*.app.lndo.site", "app.lndo.site", false],
+  ["*.app.lndo.site", "a.b.app.lndo.site", false],
+  ["*.app.lndo.site", "my_site.app.lndo.site", false],
+  ["*.app.lndo.site", "docsxappxlndoxsite", false],
+  ["*-app.lndo.site", "foo-app.lndo.site", true],
+  ["*-app.lndo.site", "-app.lndo.site", false],
+  ["api*.app.lndo.site", "api2.app.lndo.site", true],
+  ["api*.app.lndo.site", "api.app.lndo.site", false],
+  ["wild.*.app.lndo.site", "wild.x.app.lndo.site", true],
+  ["wild.*.app.lndo.site", "wild.app.lndo.site", false],
+  ["wild.*.app.lndo.site", "wild.x.y.app.lndo.site", false],
+  ["*.*.lndo.site", "a.b.lndo.site", true],
+  ["*.*.lndo.site", "a.lndo.site", false],
+  ["a*b*c.lndo.site", "axbyc.lndo.site", true],
+  ["a*b*c.lndo.site", "abc.lndo.site", false],
+  ["app.lndo.site", "APP.lndo.site", true],
+  ["app.lndo.site", "xapp.lndo.site", false],
+] as const)("route hostname %s matches %s: %s", (pattern, hostname, expected) => {
+  expect(hostnameMatchesRoute(hostname, pattern)).toBe(expected);
+});
+
+function* stringsUpTo(alphabet: string, length: number, prefix = ""): Iterable<string> {
+  yield prefix;
+  if (length === 0) return;
+  for (const character of alphabet) yield* stringsUpTo(alphabet, length - 1, prefix + character);
+}
+
+test("matches the router's wildcard expression for every short pattern and hostname", () => {
+  const hostnames = [...stringsUpTo("ab-._", 5)];
+  for (const pattern of stringsUpTo("a-.*", 4)) {
+    if (!isWildcardHostname(pattern)) continue;
+    const expression = new RegExp(routeHostnameMatchSource(pattern), "u");
+    expect(hostnames.filter((hostname) => hostnameMatchesRoute(hostname, pattern))).toEqual(
+      hostnames.filter((hostname) => expression.test(hostname)),
+    );
+  }
+});
+
+test("rejects a long hostname against a many-wildcard near miss", () => {
+  expect(hostnameMatchesRoute(`${"a".repeat(62)}b.x`, `${"*-".repeat(30)}a.x`)).toBe(false);
 });
 
 test.each([

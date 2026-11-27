@@ -43,7 +43,7 @@ lando start
 lando info
 ```
 
-The lint exits clean when the YAML parses and the keys are valid. `lando info` lists `https://wp-network.lndo.site` and the pattern `*.wp-network.lndo.site [https pattern]`, which proves the proxy picked up the wildcard. A pattern has no URL of its own, so open a subdomain it matches once the network has one. The proxy issues one certificate that covers both names.
+The lint exits clean when the YAML parses and the keys are valid. `lando info` lists `https://wp-network.lndo.site` and the entry `*.wp-network.lndo.site [https pattern]`. That entry reports the wildcard pattern. The host checks below verify that it serves a concrete subdomain. A pattern has no URL of its own. Once the network has a site, open it with `lando open <site>.wp-network.lndo.site`. The proxy issues one certificate that covers both names.
 
 ## Install the network
 

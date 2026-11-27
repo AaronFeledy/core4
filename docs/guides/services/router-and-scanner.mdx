@@ -43,7 +43,7 @@ router:
 
 When the router is off, Lando skips two things at start: it doesn't launch the shared router, and it doesn't hand the app's routes to it. Everything else runs as usual. Services still get their host ports, `lando ssh` and `lando exec` still work, and `lando info` still prints the host ports and App Network addresses that exist. What you lose is the `*.lndo.site` hostnames: their routes stay listed so you can see what is configured, but they are inactive and not published, and nobody serves them.
 
-`lando open` and `lando share` follow the same rule. Neither hands you a hostname nobody serves: they reach for a published host port instead, and when there is nothing left to reach, `lando open` says the router is off rather than telling you to declare the route you already declared.
+Bare `lando open` can fall back to an active published HTTP port. `lando open <hostname>` requires a matching published route of this app. If the router is off and there's no eligible address, `lando open` reports that the declared routes aren't published.
 
 The routes you declared in `services.<name>.routes` or top-level `proxy:` aren't deleted or rewritten. They're simply never published. Set `enabled: true` (or remove the key) and the next `lando start` publishes them again.
 

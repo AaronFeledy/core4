@@ -60,6 +60,15 @@ export const runBuiltInCommand = (
         signal,
         ...(context === undefined ? {} : { context }),
       });
+      const inputError = entry.spec.validateInput?.(input);
+      if (inputError !== undefined) {
+        return runCompiledCommand(Effect.fail(inputError), Layer.empty, () => undefined, {
+          preCommand: true,
+          usage: true,
+          signal,
+          ...(context === undefined ? {} : { context }),
+        });
+      }
       if (entry.spec.id === "meta:mcp") return runMetaMcp(tokens, signal, context);
 
       const nativeScratch =

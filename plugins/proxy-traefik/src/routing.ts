@@ -3,6 +3,7 @@ import {
   type ProxyAuthority,
   type RoutePlan,
   isWildcardHostname,
+  routeHostnameMatchSource,
 } from "@lando/sdk/schema";
 
 import type { BackendTransportPlan } from "./backend-transport.ts";
@@ -30,7 +31,7 @@ export const quoteRuleArgument = (value: string): string =>
 
 export const routeRule = (route: RoutePlan): string => {
   const host = isWildcardHostname(route.hostname)
-    ? `HostRegexp(${quoteRuleArgument(`^${route.hostname.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, (character) => (character === "*" ? "[a-z0-9-]+" : `\\${character}`))}$`)})`
+    ? `HostRegexp(${quoteRuleArgument(routeHostnameMatchSource(route.hostname))})`
     : `Host(${quoteRuleArgument(route.hostname)})`;
   return route.pathPrefix === undefined
     ? host

@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { hyperlink, stripAnsi } from "@lando/renderer/console-layout";
 import type { InfoAppResult } from "@lando/sdk/app";
 
-import { renderInfoAppResult } from "../../src/cli/commands/info-render.ts";
+import { buildInfoSummary, renderInfoAppResult } from "../../src/cli/commands/info-render.ts";
 import type { RenderContext } from "../../src/cli/renderer-boundary.ts";
 import { connections, routeRow } from "./connection-fixtures";
 
@@ -48,6 +48,22 @@ const tty = (noColor = false): RenderContext => ({
 });
 
 describe("renderInfoAppResult URL hyperlinks", () => {
+  test.each([true, false])(
+    "services recommend hostname selection only for patterns (present=%s)",
+    (hasPattern) => {
+      const services = result.services.map((service) => ({
+        ...service,
+        routes: service.routes.filter((route) => hasPattern || route.hostMatch === "exact"),
+      }));
+      const section = buildInfoSummary({ ...result, services }).sections.find(
+        ({ title }) => title === "services",
+      );
+      expect(section?.notes?.some((note) => note.includes("lando open <hostname>")) ?? false).toBe(
+        hasPattern,
+      );
+    },
+  );
+
   test("wraps printed http(s) endpoints in OSC 8 on a capable TTY", () => {
     const out = renderInfoAppResult(result, tty());
     expect(out).toContain(hyperlink("https://my-app.lndo.site", "https://my-app.lndo.site"));

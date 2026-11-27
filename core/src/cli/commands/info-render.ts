@@ -12,6 +12,7 @@ import { escapeDiagnosticText } from "../diagnostic-text";
 import type { RenderContext } from "../renderer-boundary";
 import { contextAllowsHyperlinks, isDecoratedContext, summaryPaintOptions } from "../renderer-boundary";
 import {
+  ROUTE_PATTERN_OPEN_NOTE,
   addressFields,
   appNetworkText,
   hostAddressValue,
@@ -118,7 +119,7 @@ const jsonDetailsNote = (hasLogSources: boolean, hasStorage: boolean): string =>
   return `Run \`lando info --format=json\` for ${detailList.format(details)}.`;
 };
 
-export const buildInfoSummary = (result: InfoAppResult): SummaryDocument => {
+export const buildInfoSummary = (result: InfoAppResult, showOpenHint = true): SummaryDocument => {
   const hostProxy = result.hostProxy;
   const projectFiles = fileSyncSection(result.fileSync);
   const rows: SummaryRow[] = result.services.map((service) => {
@@ -144,6 +145,14 @@ export const buildInfoSummary = (result: InfoAppResult): SummaryDocument => {
   });
   const hasLogSources = result.services.some((service) => (service.logSources?.length ?? 0) > 0);
   const hasStorage = result.services.some((service) => (service.mounts?.length ?? 0) > 0);
+  const hasPatterns = result.services.some((service) =>
+    service.routes.some((route) => route.hostMatch === "pattern"),
+  );
+  const serviceNotes = [
+    ...(rows.length === 0 ? ["No services are defined for this app."] : []),
+    ...(hasLogSources || hasStorage ? [jsonDetailsNote(hasLogSources, hasStorage)] : []),
+    ...(hasPatterns && showOpenHint ? [ROUTE_PATTERN_OPEN_NOTE] : []),
+  ];
   const agentEnvSection =
     result.agentEnv === undefined
       ? []
@@ -179,11 +188,7 @@ export const buildInfoSummary = (result: InfoAppResult): SummaryDocument => {
       {
         title: "services",
         rows,
-        ...(rows.length === 0
-          ? { notes: ["No services are defined for this app."] }
-          : hasLogSources || hasStorage
-            ? { notes: [jsonDetailsNote(hasLogSources, hasStorage)] }
-            : {}),
+        ...(serviceNotes.length === 0 ? {} : { notes: serviceNotes }),
       },
       ...(projectFiles === undefined ? [] : [projectFiles]),
       ...(hostProxy?.runLando.availability !== "unavailable"
@@ -223,9 +228,13 @@ const hostProxyLines = (result: InfoAppResult): ReadonlyArray<string> => {
   return [`host-proxy\trunLando\t${hostProxy.runLando.availability}${reason}`];
 };
 
-export const renderInfoAppResult = (result: InfoAppResult, ctx?: RenderContext): string => {
+export const renderInfoAppResult = (
+  result: InfoAppResult,
+  ctx?: RenderContext,
+  showOpenHint = true,
+): string => {
   const rendered = isDecoratedContext(ctx)
-    ? formatSummary(buildInfoSummary(result), summaryPaintOptions(ctx))
+    ? formatSummary(buildInfoSummary(result, showOpenHint), summaryPaintOptions(ctx))
     : renderPlainInfoAppResult(result);
   const output =
     result.appliedStateIssue !== undefined

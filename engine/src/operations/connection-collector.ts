@@ -1,5 +1,11 @@
 import { completionIntentServices } from "@lando/container-runtime/dependency-gates";
-import type { AppPlan, ServiceContainerChange, ServiceState, StartedService } from "@lando/sdk/schema";
+import type {
+  AppPlan,
+  RouteEvidence,
+  ServiceContainerChange,
+  ServiceState,
+  StartedService,
+} from "@lando/sdk/schema";
 import {
   RouterService,
   RuntimeProviderRegistry,
@@ -28,18 +34,21 @@ export interface ObservedService extends ServiceAddressObservation {
 
 export type CollectedService = StartedService;
 
-export const collectObservedConnections = Effect.fn("Connections.collectObserved")(function* (
+export const observePlanRoutes = Effect.fnUntraced(function* (plan: AppPlan) {
+  const router = yield* Effect.serviceOption(RouterService);
+  return router._tag === "Some" && plan.routes.length > 0
+    ? yield* router.value
+        .observeRoutes(routeOwnerFromPlan(plan), plan.routes)
+        .pipe(Effect.catchTag("ProxyError", () => Effect.succeed(undefined)))
+    : undefined;
+});
+
+export const projectObservedServices = (
   plan: AppPlan,
   rows: readonly ServiceAddressObservation[],
-) {
-  const router = yield* Effect.serviceOption(RouterService);
+  routeEvidence: RouteEvidence | undefined,
+) => {
   const enabled = routerEnabled(plan);
-  const routeEvidence =
-    router._tag === "Some" && plan.routes.length > 0
-      ? yield* router.value
-          .observeRoutes(routeOwnerFromPlan(plan), plan.routes)
-          .pipe(Effect.catchTag("ProxyError", () => Effect.succeed(undefined)))
-      : undefined;
   const services = Object.values(plan.services);
   return rows.map((row): CollectedService => {
     const service = services.find((service) => String(service.name) === row.name);
@@ -70,6 +79,14 @@ export const collectObservedConnections = Effect.fn("Connections.collectObserved
             }),
     };
   });
+};
+
+export const collectObservedConnections = Effect.fn("Connections.collectObserved")(function* (
+  plan: AppPlan,
+  rows: readonly ServiceAddressObservation[],
+) {
+  const routeEvidence = yield* observePlanRoutes(plan);
+  return projectObservedServices(plan, rows, routeEvidence);
 });
 
 export const observeService = (plan: AppPlan, runtime: ServiceRuntimeInfo): ObservedService => ({

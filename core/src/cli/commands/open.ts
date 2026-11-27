@@ -4,6 +4,7 @@ import { type HostProxyOpenerError, canOpenHost, openUrl } from "@lando/engine/s
 import { RedactionService } from "@lando/redaction/service";
 import type { InfoAppError } from "@lando/sdk/app";
 import type {
+  CommandInputValidationError,
   ComposeKeyRejectedError,
   EventError,
   LandofileLoadExpressionError,
@@ -26,11 +27,13 @@ import { CliInvocation } from "../../runtime/invocation-context";
 import { type ResolvedAppTarget, loadUserLandofile } from "../app-resolution";
 import { isEnvelopeResultFormat } from "../format-flags";
 import type { RenderContext } from "../renderer-boundary";
-import { commandResultFormat } from "../spec/input-coercion";
+import { commandResultFormat, specArgsOf, specFlagsOf, stringFlag } from "../spec/input-coercion";
 import { appendTerminalQr } from "../terminal-qr";
 import { collectOpenConnections } from "./open-connections";
-import { diagnoseUnresolvedOpenTarget } from "./open-diagnosis";
-import { OpenTargetSchema, resolveOpenTargets } from "./open-targets";
+import { diagnoseBrowserRoute, diagnoseUnresolvedOpenTarget } from "./open-diagnosis";
+import { resolveHostnameTarget } from "./open-hostname";
+import { validateOpenSelection } from "./open-input";
+import { type OpenTarget, OpenTargetSchema, resolveOpenTargets } from "./open-targets";
 
 export type { OpenTarget, OpenTargetSelection } from "./open-targets";
 export { OpenTargetSchema, resolveOpenTargets } from "./open-targets";
@@ -58,7 +61,7 @@ export const isOpenableScheme = (url: string): boolean => {
 
 export interface OpenAppOptions {
   readonly service?: string;
-  readonly route?: string;
+  readonly hostname?: string;
   readonly all?: boolean;
   readonly print?: boolean;
   readonly qr?: boolean;
@@ -68,30 +71,22 @@ export interface OpenAppOptions {
   readonly env?: Readonly<Record<string, string | undefined>>;
 }
 
-interface OpenFlags {
-  readonly service?: string;
-  readonly route?: string;
-  readonly all?: boolean;
-  readonly print?: boolean;
-  readonly qr?: boolean;
-}
-
-const flagsFromInput = (input: unknown): OpenFlags =>
-  typeof input === "object" && input !== null ? ((input as { readonly flags?: OpenFlags }).flags ?? {}) : {};
-
 export const openOptionsFromInput = (input: unknown): OpenAppOptions => {
-  const flags = flagsFromInput(input);
+  const flags = specFlagsOf(input);
+  const service = stringFlag(flags, "service");
+  const hostname = stringFlag(specArgsOf(input), "hostname");
   return {
-    ...(flags.service === undefined ? {} : { service: flags.service }),
-    ...(flags.route === undefined ? {} : { route: flags.route }),
-    ...(flags.all === undefined ? {} : { all: flags.all }),
-    ...(flags.print === undefined ? {} : { print: flags.print }),
+    ...(service === undefined ? {} : { service }),
+    ...(hostname === undefined ? {} : { hostname }),
+    ...(typeof flags.all === "boolean" ? { all: flags.all } : {}),
+    ...(typeof flags.print === "boolean" ? { print: flags.print } : {}),
     ...(flags.qr === true ? { qr: true } : {}),
     json: isEnvelopeResultFormat(commandResultFormat(input)),
   };
 };
 
 export type OpenAppError =
+  | CommandInputValidationError
   | ComposeKeyRejectedError
   | OpenTargetUnresolvedError
   | HostProxyOpenUrlSchemeError
@@ -111,10 +106,26 @@ export const openForPlan = Effect.fnUntraced(function* (
   options: OpenAppOptions,
   connections: readonly StartedService[],
 ): Effect.fn.Return<OpenAppResult, OpenAppError, ProcessRunner | EventService | RedactionService> {
-  const targets = resolveOpenTargets(plan, options, connections);
-  if (targets.length === 0)
+  const selected = resolveOpenTargets(plan, options, connections);
+  if (selected.length === 0)
     return yield* Effect.fail(diagnoseUnresolvedOpenTarget(plan, options, connections));
 
+  const targets: OpenTarget[] = [];
+  for (const { routePath, ...target } of selected) {
+    if (routePath !== undefined) {
+      const browserError = diagnoseBrowserRoute(plan, target, routePath);
+      if (browserError !== undefined) return yield* Effect.fail(browserError);
+    }
+    targets.push(target);
+  }
+  return yield* launchOpenTargets(plan, options, targets);
+});
+
+const launchOpenTargets = Effect.fnUntraced(function* (
+  plan: AppPlan,
+  options: OpenAppOptions,
+  targets: readonly OpenTarget[],
+) {
   for (const target of targets) {
     if (!isOpenableScheme(target.url)) {
       return yield* Effect.fail(
@@ -138,7 +149,7 @@ export const openForPlan = Effect.fnUntraced(function* (
     return { app: plan.name, targets, launch: "headless-degraded" as const, note: HEADLESS_NOTE };
   }
 
-  const explicitSelection = options.service !== undefined || options.route !== undefined;
+  const explicitSelection = options.service !== undefined || options.hostname !== undefined;
   if (
     options.json === true &&
     !(explicitSelection && (options.ttyPresent ?? invocation.io.stdoutIsTTY) === true)
@@ -173,6 +184,9 @@ export const openApp = Effect.fn("OpenApp.open")(function* (
   options: OpenAppOptions = {},
   target?: ResolvedAppTarget,
 ): Effect.fn.Return<OpenAppResult, OpenAppError | InfoAppError, OpenAppServices> {
+  const selectionError = validateOpenSelection(options);
+  if (selectionError !== undefined) return yield* Effect.fail(selectionError);
+
   const landofileService = yield* LandofileService;
   const registry = yield* RuntimeProviderRegistry;
   const planner = yield* AppPlanner;
@@ -187,6 +201,10 @@ export const openApp = Effect.fn("OpenApp.open")(function* (
       })),
   );
 
+  if (options.hostname !== undefined) {
+    const selected = yield* resolveHostnameTarget(plan, options.hostname.toLowerCase());
+    return yield* launchOpenTargets(plan, options, [selected]);
+  }
   const connections = yield* collectOpenConnections(plan, options);
   return yield* openForPlan(plan, options, connections);
 });

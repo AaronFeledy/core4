@@ -141,8 +141,11 @@ cross-app `<service>.<app>.internal` aliases are not connections.
 `lando info` hyperlinks, a plain `lando open`, and the post-start scanner all use
 the same set of addresses: `host` connections that are `assigned`, `active`, and
 `http` or `https`, plus routes that are `assigned`, `active`, and
-`hostMatch: "exact"`. A `pattern` route is listed but never linked, opened, or
-probed. `app`-scope addresses are never treated as clickable from the host.
+`hostMatch: "exact"`. So a plain `lando open` opens only active exact routes and
+active HTTP publications, and a `pattern` route is listed but never linked or
+probed. `lando open <hostname>` instead resolves that hostname against this
+app's published routes, patterns included, and returns the URL the router
+serves. `app`-scope addresses are never treated as clickable from the host.
 
 A stopped service keeps its configured connections and routes with
 `state: inactive`, so the addresses stay readable and copyable. `unknown` means
