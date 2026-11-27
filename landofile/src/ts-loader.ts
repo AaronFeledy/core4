@@ -344,7 +344,20 @@ const assertContainedImports = async (
   const visit = async (filePath: string, content: string): Promise<void> => {
     for (const { path } of scanImports(filePath, content)) {
       if (Object.hasOwn(hostModules, path)) continue;
-      const resolved = Bun.resolveSync(path, dirname(filePath));
+      let resolved: string;
+      try {
+        resolved = Bun.resolveSync(path, dirname(filePath));
+      } catch (cause) {
+        throw new LandofileParseError({
+          message: `Cannot resolve '${path}' from ${filePath} in the copied app: ${causeMessage(cause)}`,
+          filePath,
+          line: undefined,
+          column: undefined,
+          remediation:
+            "Check that the import resolves using files included in the full fork. Excluded directories such as node_modules are not copied.",
+          cause,
+        });
+      }
       if (isBuiltin(resolved)) continue;
       const physical = await assertUnderRoot(input.appRoot, resolved, path);
       if (seen.has(physical)) continue;
@@ -370,12 +383,14 @@ export const loadLandofileTs = Effect.fnUntraced(function* (
       // Bun resolves dependencies of a symlinked module relative to its physical target.
       try: () => assertContainedImports({ ...options, filePath: physical }),
       catch: (cause) =>
-        new LandofileSandboxError({
-          message: `Cannot load a copied Landofile module at ${options.filePath}: ${causeMessage(cause)}`,
-          filePath: options.filePath,
-          violation: causeMessage(cause),
-          remediation: "Keep Landofile module files and project imports inside the copied app.",
-        }),
+        cause instanceof LandofileParseError
+          ? cause
+          : new LandofileSandboxError({
+              message: `Cannot load a copied Landofile module at ${options.filePath}: ${causeMessage(cause)}`,
+              filePath: options.filePath,
+              violation: causeMessage(cause),
+              remediation: "Keep Landofile module files and project imports inside the copied app.",
+            }),
     });
   // Reads that bypass ctx.env cannot be recorded, so the load depends on the whole environment.
   // A module graph Lando cannot analyze counts as reading the environment.

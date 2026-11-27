@@ -62,6 +62,8 @@ that would select different plugins, without importing them to check.
 
 By default a fork uses `--isolate=full`: Lando copies your project, loads the Landofile from that copy, and mounts the copy. Edits inside the fork stay in the copy, and edits to your project after startup don't reach the fork. See [Control a full fork copy](./mount-and-share-flags.mdx#control-a-full-fork-copy) for which files Lando copies.
 
+A full fork evaluates the Landofile in the copy, so packages it imports that exist only in excluded directories such as `node_modules` don't carry over.
+
 Pass `--no-local-overrides` to ignore the local and user Landofile layers in
 any fork mode. Lando skips both `.yml` and `.ts` forms without changing the
 source files. In full isolation it also leaves those files out of the copy.

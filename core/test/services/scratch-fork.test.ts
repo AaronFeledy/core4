@@ -1,9 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, readlink, realpath, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import {
   AppPlacementError,
+  LandofileParseError,
   ProviderUnavailableError,
   ProxyApplyError,
   RouteProviderMismatchError,
@@ -1306,6 +1307,63 @@ describe("ScratchAppServiceLayer.layer fork acquire", () => {
         ).pipe(Effect.scoped, Effect.provide(makeScratchForkLayer(dir, applied))),
       );
       expect(applied[0]?.services[ServiceName.make("appserver")]?.environment.MODULE).toBe("tsx-helper");
+    });
+  });
+
+  test("a full fork reports an excluded Landofile package and rolls back before reaching the provider", async () => {
+    await withTempProject(undefined, async (dir) => {
+      const packageName = "lando-test-synthetic-fork-dependency";
+      const packageDir = join(dir, "node_modules", packageName);
+      await mkdir(packageDir, { recursive: true });
+      await writeFile(
+        join(packageDir, "package.json"),
+        JSON.stringify({ name: packageName, type: "module", exports: "./index.js" }),
+      );
+      const entry = join(packageDir, "index.js");
+      await writeFile(entry, 'export default "source-package";');
+      await writeFile(
+        join(dir, ".lando.ts"),
+        `import marker from "${packageName}";
+        export default { name: marker, services: {
+          appserver: { type: "compose", image: "alpine", primary: true, home: false }
+        } };`,
+      );
+      expect(await realpath(Bun.resolveSync(packageName, dir))).toBe(entry);
+
+      const applied: AppPlan[] = [];
+      const destroyed: DestroyCall[] = [];
+      const unexpectedProviderCall = () => {
+        throw new Error("Materialization failure must not reach the provider");
+      };
+      const { outcome, listing } = await Effect.runPromise(
+        Effect.gen(function* () {
+          const scratch = yield* ScratchAppService;
+          const outcome = yield* scratch
+            .acquire({ source: { kind: "fork" }, name: "excluded-package", detached: true })
+            .pipe(Effect.result);
+          return { outcome, listing: yield* scratch.list() };
+        }).pipe(
+          Effect.scoped,
+          Effect.provide(
+            makeScratchForkLayer(dir, applied, destroyed, {
+              onCapabilities: unexpectedProviderCall,
+              onProviderList: unexpectedProviderCall,
+            }),
+          ),
+        ),
+      );
+      if (outcome._tag !== "Failure" || !(outcome.failure instanceof ScratchAppError))
+        throw new Error("Expected a scratch materialization failure", { cause: outcome });
+      const failure = outcome.failure;
+      const cause = failure.cause;
+      expect(failure.operation).toBe("materialize");
+      if (!(cause instanceof LandofileParseError))
+        throw new Error("Expected an import resolution error, not a containment violation", { cause });
+      expect(failure.remediation).toContain("node_modules");
+      expect(cause.message).toContain(packageName);
+      expect(await pathExists(dirname(dirname(cause.filePath)))).toBe(false);
+      expect(await pathExists(entry)).toBe(true);
+      expect({ applied, destroyed, listing }).toEqual({ applied: [], destroyed: [], listing: [] });
     });
   });
 
