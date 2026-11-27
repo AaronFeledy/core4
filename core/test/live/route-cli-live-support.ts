@@ -1,8 +1,12 @@
 import { expect } from "bun:test";
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { engineInfoRootless } from "@lando/container-runtime/capabilities";
+import { makePodmanApiClient } from "@lando/container-runtime/podman/api-client";
+import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
 import { makeLandoPaths } from "@lando/paths";
-import { introspectProviderCapabilities, makePodmanApiClient } from "@lando/provider-lando";
+import { introspectProviderCapabilities } from "@lando/provider-lando";
+import { podmanCapabilitiesForPlatform } from "@lando/provider-podman";
 import { InfoAppResult, StartAppResult } from "@lando/sdk/schema";
 import { Effect, Option, Schema } from "effect";
 
@@ -18,30 +22,91 @@ export const liveProvider = process.env.LANDO_TEST_PROVIDER ?? "lando";
 export const binary = resolve(
   process.env.LANDO_SCENARIO_E2E_BINARY ?? join(import.meta.dir, "../../dist/lando"),
 );
-export const prerequisite = !isScannerLiveEligible()
-  ? `Set LANDO_TEST_PODMAN_SOCKET to the answering managed socket ${managedProviderSocketPath}. Preserve the installation's LANDO_USER_* roots (or set LANDO_TEST_USE_REAL_ROOTS=1) before starting Bun.`
-  : Bun.which(binary) === null
+const managedSocketOptIn = `Set LANDO_TEST_PODMAN_SOCKET to the answering managed socket ${managedProviderSocketPath}. Preserve the installation's LANDO_USER_* roots (or set LANDO_TEST_USE_REAL_ROOTS=1) before starting Bun.`;
+const compiledCliPrerequisite =
+  Bun.which(binary) === null
     ? `Build the compiled CLI or set LANDO_SCENARIO_E2E_BINARY to an executable binary; missing ${binary}.`
     : Bun.which("curl") === null
       ? "Install curl in the live-test environment."
       : undefined;
+export const prerequisite = isScannerLiveEligible() ? compiledCliPrerequisite : managedSocketOptIn;
+
+type RoutePodmanTarget = { readonly provider: "lando" | "podman"; readonly socketPath: string };
+
+export const resolveRoutePodmanTarget = (managedOnly = false): RoutePodmanTarget | undefined => {
+  const provider = !managedOnly && process.env.LANDO_PROVIDER === "podman" ? "podman" : "lando";
+  const socket = resolveLiveProviderSocket();
+  if (socket === undefined) return undefined;
+  if (provider === "lando" && socket.socketPath !== makeLandoPaths().providerSocketPath) return undefined;
+  return { provider, socketPath: socket.socketPath };
+};
+
+export const routeCliPrerequisite = (target: RoutePodmanTarget | undefined) =>
+  target === undefined
+    ? `${managedSocketOptIn} To test against a Podman bridge, run the live selection with the answering socket and no root overrides.`
+    : compiledCliPrerequisite;
+
+export const routeProviderEnv = ({ provider, socketPath }: RoutePodmanTarget) => ({
+  LANDO_PROVIDER: provider,
+  LANDO_TEST_PODMAN_SOCKET: socketPath,
+});
+
+const routePodmanApi = ({ provider, socketPath }: RoutePodmanTarget) =>
+  makePodmanApiClient(socketPath, {
+    env: process.env,
+    providerId: provider,
+    remediation: "Check the opted-in Podman socket.",
+  });
+
+export const inspectRouteContainer = (target: RoutePodmanTarget, container: string) => {
+  const { request } = routePodmanApi(target);
+  if (request === undefined) throw new Error("The Podman client has no HTTP request transport.");
+  return Effect.runPromise(
+    request({ method: "GET", path: `/containers/${encodeURIComponent(container)}/json` }).pipe(
+      Effect.timeout("10 seconds"),
+    ),
+  );
+};
+
+const containerObservation = Schema.fromJsonString(
+  Schema.Struct({ Id: Schema.NonEmptyString, State: Schema.Struct({ Running: Schema.Boolean }) }),
+);
+
+export const observeRouteContainer = async (target: RoutePodmanTarget, container: string) => {
+  const response = await inspectRouteContainer(target, container);
+  expect(response.status, response.body).toBe(200);
+  return Schema.decodeUnknownSync(containerObservation)(response.body);
+};
 
 const rootlessPodmanInfo = Schema.Struct({
   host: Schema.Struct({ security: Schema.Struct({ rootless: Schema.Literal(true) }) }),
 });
 
-// Call only after the prerequisite has confirmed the opted-in managed socket.
-export const managedLinuxMapsProjectUser = async (requireExplicitRootless = false): Promise<boolean> => {
-  if (process.platform !== "linux") return false;
-  const api = makePodmanApiClient(managedProviderSocketPath);
+export const linuxProjectUserMapping = async (target: RoutePodmanTarget, requireExplicitRootless = false) => {
+  if (process.platform !== "linux") return "unsupported";
+  const api = routePodmanApi(target);
   // Capability introspection assumes rootless when older engines omit the fact. CI needs proof.
-  const mapsProjectUser = requireExplicitRootless
-    ? api.info.pipe(Effect.map(Schema.is(rootlessPodmanInfo)))
-    : introspectProviderCapabilities(api, "linux").pipe(
-        Effect.map((capabilities) => capabilities.projectUserMapping === "userns-keep-id"),
-      );
-  return Effect.runPromise(mapsProjectUser.pipe(Effect.timeout("5 seconds")));
+  const mapping =
+    target.provider === "podman"
+      ? api.info.pipe(
+          Effect.map(
+            (info) => podmanCapabilitiesForPlatform("linux", [], engineInfoRootless(info)).projectUserMapping,
+          ),
+        )
+      : requireExplicitRootless
+        ? api.info.pipe(
+            Effect.map((info) => (Schema.is(rootlessPodmanInfo)(info) ? "userns-keep-id" : "unsupported")),
+          )
+        : introspectProviderCapabilities(api, "linux").pipe(
+            Effect.map((capabilities) => capabilities.projectUserMapping),
+          );
+  return Effect.runPromise(mapping.pipe(Effect.timeout("5 seconds")));
 };
+
+// Call only after the managed prerequisite has confirmed the opted-in socket.
+export const managedLinuxMapsProjectUser = async () =>
+  (await linuxProjectUserMapping({ provider: "lando", socketPath: managedProviderSocketPath })) ===
+  "userns-keep-id";
 
 export const infoEnvelope = Schema.fromJsonString(
   Schema.Struct({ ok: Schema.Literal(true), result: InfoAppResult }),
@@ -60,16 +125,20 @@ export const decodeStart = (output: string) => {
     : Schema.decodeUnknownSync(startEnvelope)(line).result;
 };
 
-export const run = async (cwd: string, argv: readonly string[], timeout: number) => {
+export const spawnRouteCommand = async (
+  cwd: string,
+  argv: readonly string[],
+  options: { readonly timeout?: number; readonly env?: Readonly<Record<string, string>> } = {},
+) => {
   // Embedded Bun uses BUN_BE_BUN=1; compiled CLI children must dispatch Lando instead.
   const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => key !== "BUN_BE_BUN"));
   const proc = Bun.spawn([...argv], {
     cwd,
-    env: { ...env, LANDO_PROVIDER: liveProvider, LANDO_TELEMETRY_ENABLED: "false" },
+    env: { ...env, LANDO_TELEMETRY_ENABLED: "false", ...options.env },
     stdin: "ignore",
     stdout: "pipe",
     stderr: "pipe",
-    timeout,
+    timeout: options.timeout ?? 120_000,
     killSignal: "SIGKILL",
   });
   const [exitCode, stdout, stderr] = await Promise.all([
@@ -77,12 +146,23 @@ export const run = async (cwd: string, argv: readonly string[], timeout: number)
     new Response(proc.stdout).text(),
     new Response(proc.stderr).text(),
   ]);
-  expect(exitCode, JSON.stringify({ cwd, argv, exitCode, stdout, stderr })).toBe(0);
-  return stdout;
+  return { cwd, argv, exitCode, stdout, stderr };
 };
 
-export const cli = (cwd: string, args: readonly string[], timeout = 60_000) =>
-  run(cwd, [binary, ...args, "--format=json"], timeout);
+export const succeeded = (result: Awaited<ReturnType<typeof spawnRouteCommand>>) => {
+  expect(result.exitCode, JSON.stringify(result)).toBe(0);
+  return result.stdout;
+};
+
+export const run = async (cwd: string, argv: readonly string[], timeout: number) =>
+  succeeded(await spawnRouteCommand(cwd, argv, { timeout, env: { LANDO_PROVIDER: liveProvider } }));
+
+export const routeCli =
+  (executable: string, env: Readonly<Record<string, string>>) =>
+  async (cwd: string, args: readonly string[], timeout = 60_000) =>
+    succeeded(await spawnRouteCommand(cwd, [executable, ...args, "--format=json"], { timeout, env }));
+
+export const cli = routeCli(binary, { LANDO_PROVIDER: liveProvider });
 
 /**
  * The shared mkcert root certificate setup installed. Real router TLS is
