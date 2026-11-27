@@ -97,7 +97,7 @@ const renderPackageJson = (input: PluginScaffoldInput): string => {
       landoPlugin: manifest,
       dependencies: {
         "@lando/sdk": "^4.0.0",
-        effect: "4.1.4",
+        effect: "4.1.7",
       },
       devDependencies: {
         "@types/bun": "^1.4.0",
