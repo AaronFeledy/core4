@@ -8,7 +8,6 @@ import {
   type ServiceCreds,
   type ServiceCredsConfig,
   ServiceName,
-  canonicalImageReference,
 } from "@lando/sdk/schema";
 import { DEFAULT_PASSWORD } from "@lando/sdk/secrets";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
@@ -16,6 +15,12 @@ import { Effect, Schema } from "effect";
 import { dataNameFor } from "../app-name.ts";
 import { connectionFor } from "./_connection-helpers.ts";
 import { claimsCreds, familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
+import {
+  MYSQL_DATA as DATA_TARGET,
+  applyDatabaseVersion,
+  databaseVersionFeature,
+  isStockDatabaseProcess,
+} from "./_data-version.ts";
 import {
   MYSQL_FAMILY_EXTRA_ARGS,
   configFileDbExtraArgsRemediation,
@@ -46,7 +51,6 @@ export const MARIADB_LISTENER = {
   daemon: "MariaDB",
   when: "All MariaDB services",
 } as const;
-const DATA_TARGET = PortablePath.make("/var/lib/mysql");
 const GUARD_SCRIPT = `series() { sed -n '1s/^[^0-9]*\\([0-9][0-9]*\\)\\.\\([0-9][0-9]*\\)\\..*/\\1.\\2/p'; }
 running=$(mariadbd --version 2>/dev/null | series)
 for info in "${DATA_TARGET}/mariadb_upgrade_info" "${DATA_TARGET}/mysql_upgrade_info"; do
@@ -143,14 +147,14 @@ const applyMariadbFeature = (ctx: ServiceFeatureContext): void => {
   );
 
   applyAuthoredProcessFields(ctx);
+  applyDatabaseVersion(ctx);
 
   const processOwned = service.command !== undefined || service.entrypoint !== undefined;
   const serverConfig = addServerConfigMount(ctx, MARIADB_CONFIG_TARGET);
   if (processOwned) return;
 
   const custom = isNonCatalogArtifact(service, CATALOG_IMAGES);
-  const repository = canonicalImageReference(image).replace(/[:@][^/]*$/u, "");
-  const official = service.build === undefined && repository === "docker.io/library/mariadb";
+  const official = isStockDatabaseProcess(service, image, "mariadb");
   const daemon = ["mariadbd", `--port=${port}`];
   const commandOptions = custom ? undefined : MYSQL_FAMILY_EXTRA_ARGS;
   if (official) {
@@ -228,7 +232,13 @@ export const mariadbServiceType: ServiceType = {
           },
         },
         logSources: MARIADB_LOG_SOURCES,
-        features: [{ id: MARIADB_FEATURE_ID }],
+        features: [
+          databaseVersionFeature("mariadb", {
+            id: MARIADB_FEATURE_ID,
+            service: input.service,
+            image: input.service.image ?? DEFAULT_IMAGE,
+          }),
+        ],
         tooling: mariadbToolingForConnection(ServiceName.make(input.name), {
           family: "mariadb",
           creds,

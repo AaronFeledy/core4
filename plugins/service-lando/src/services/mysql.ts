@@ -15,6 +15,7 @@ import { Effect, Schema } from "effect";
 import { dataNameFor } from "../app-name.ts";
 import { connectionFor } from "./_connection-helpers.ts";
 import { claimsCreds, familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
+import { MYSQL_DATA as DATA_TARGET, applyDatabaseVersion, databaseVersionFeature } from "./_data-version.ts";
 import {
   MYSQL_FAMILY_EXTRA_ARGS,
   configFileDbExtraArgsRemediation,
@@ -45,7 +46,6 @@ export const MYSQL_LISTENER = {
   when: "All MySQL services",
   reserved: [{ port: 33060, use: "X Protocol listener" }],
 } as const;
-const DATA_TARGET = PortablePath.make("/var/lib/mysql");
 export const MYSQL_FEATURE_ID = "service-lando.mysql";
 // Read directly by mysqld, even when host AppArmor blocks the image's
 // /etc/my.cnf and its conf.d include directive.
@@ -114,6 +114,7 @@ const applyMysqlFeature = (ctx: ServiceFeatureContext): void => {
   );
 
   applyAuthoredProcessFields(ctx);
+  applyDatabaseVersion(ctx);
 
   const catalogImages = Object.values(MYSQL_ARTIFACTS);
   const custom = isNonCatalogArtifact(service, catalogImages);
@@ -202,7 +203,13 @@ const makeMysqlServiceType = (id: string, image?: string): ServiceType => ({
           environment: { ...input.service.environment, ...familyEnvFor("mysql", creds) },
         },
         logSources: MYSQL_LOG_SOURCES,
-        features: [{ id: MYSQL_FEATURE_ID }],
+        features: [
+          databaseVersionFeature("mysql", {
+            id: MYSQL_FEATURE_ID,
+            service: input.service,
+            image: image ?? input.service.image ?? DEFAULT_IMAGE,
+          }),
+        ],
         tooling: mysqlToolingForConnection(ServiceName.make(input.name), { family: "mysql", creds, port }),
       };
     });

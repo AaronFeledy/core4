@@ -6,6 +6,11 @@ import { dataNameFor } from "../app-name.ts";
 import { connectionFor } from "./_connection-helpers.ts";
 import { claimsCreds, familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
 import {
+  POSTGRES_DATA as DATA_TARGET,
+  applyDatabaseVersion,
+  databaseVersionFeature,
+} from "./_data-version.ts";
+import {
   PORT_EXTRA_ARGS_REMEDIATION,
   RESERVED_LONG_PORT,
   configFileDbExtraArgsRemediation,
@@ -37,7 +42,6 @@ export const POSTGRES_LISTENER = {
   daemon: "Postgres",
   when: "All PostgreSQL services",
 } as const;
-const DATA_TARGET = PortablePath.make("/var/lib/postgresql/data");
 export const POSTGRES_FEATURE_ID = "service-lando.postgres";
 export const POSTGRES_CONFIG_TARGET = PortablePath.make("/etc/lando/postgresql.conf");
 
@@ -129,6 +133,7 @@ const applyPostgresFeature = (ctx: ServiceFeatureContext): void => {
   }
 
   applyAuthoredProcessFields(ctx);
+  applyDatabaseVersion(ctx);
 };
 
 export const postgresServiceFeature: ServiceFeatureDefinition = {
@@ -196,7 +201,13 @@ export const postgresServiceType: ServiceType = {
             ...familyEnvFor("postgres", creds),
           },
         },
-        features: [{ id: POSTGRES_FEATURE_ID }],
+        features: [
+          databaseVersionFeature("postgres", {
+            id: POSTGRES_FEATURE_ID,
+            service: input.service,
+            image: input.service.image ?? DEFAULT_IMAGE,
+          }),
+        ],
         tooling: postgresToolingForConnection(ServiceName.make(input.name), {
           family: "postgres",
           creds,

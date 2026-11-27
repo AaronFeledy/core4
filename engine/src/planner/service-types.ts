@@ -214,6 +214,7 @@ export const resolvedServiceCacheInput = (entry: ResolvedService) => ({
     id: feature.id,
     index: feature.index,
     priority: feature.definition.priority,
+    // Generated feature config also carries service-owned contracts, such as data-version evidence.
     originalConfig: feature.originalRawConfig,
     applicationConfig: entry.applicationConfigs.get(feature.index) ?? { _tag: "Original" },
   })),
