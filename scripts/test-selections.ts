@@ -426,6 +426,7 @@ export const TEST_PRESETS = [
       "core/test/build/effect-version-pin.test.ts",
       "engine/test/operations/plugin-scaffold.test.ts",
       "engine/test/operations/ensure-global-warm.test.ts",
+      "engine/test/operations/global-mutation-lock.test.ts",
       "engine/test/operations/info-file-sync-*.test.ts",
       "engine/test/services/environment-value-resolver.test.ts",
       "engine/test/services/event-service-waitfor-query.test.ts",
