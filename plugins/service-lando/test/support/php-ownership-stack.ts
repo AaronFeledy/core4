@@ -57,9 +57,9 @@ export type PhpFixture = {
   readonly dockerfile?: string;
 };
 
-export const planPhpFixture = Effect.fn("PhpAcceptance.plan")(function* (
+export const planOwnershipFixture = Effect.fn("ServiceOwnership.plan")(function* (
   root: string,
-  fixture: { readonly id: string; readonly service: PhpFixture["service"] },
+  fixture: { readonly id: string; readonly services: Readonly<Record<string, PhpFixture["service"]>> },
   capabilities: ProviderCapabilities,
 ) {
   const authored = Schema.decodeUnknownSync(LandofileShape)({
@@ -67,7 +67,7 @@ export const planPhpFixture = Effect.fn("PhpAcceptance.plan")(function* (
     runtime: 4,
     provider: "lando",
     router: { enabled: false },
-    services: { web: { type: "php:8.3", via: "apache", port: 8080, certs: false, ...fixture.service } },
+    services: fixture.services,
   });
   yield* writeFixture(root, ".lando.yml", emitLandofileYaml(Schema.encodeSync(LandofileShape)(authored)));
   const file = join(root, ".lando.yml");
@@ -82,6 +82,20 @@ export const planPhpFixture = Effect.fn("PhpAcceptance.plan")(function* (
     ),
   );
 });
+
+export const planPhpFixture = (
+  root: string,
+  fixture: { readonly id: string; readonly service: PhpFixture["service"] },
+  capabilities: ProviderCapabilities,
+) =>
+  planOwnershipFixture(
+    root,
+    {
+      id: fixture.id,
+      services: { web: { type: "php:8.3", via: "apache", port: 8080, certs: false, ...fixture.service } },
+    },
+    capabilities,
+  );
 
 export const acquirePhpStack = Effect.fn("PhpAcceptance.acquire")(function* (
   socketPath: string,

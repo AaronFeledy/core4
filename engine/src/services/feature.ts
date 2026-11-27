@@ -143,6 +143,7 @@ export const applyPreparedService = Effect.fn("ServiceFeature.applyPreparedServi
     readonly featureIds: readonly string[];
     readonly dependencyEnvironments: readonly DependencyEnvironmentIntent[];
     readonly extraArgsLauncher: ExtraArgsLauncher | undefined;
+    readonly launcherProjectUser: DraftServicePlan["launcherProjectUser"];
   },
   ServiceFeatureError
 > {
@@ -206,6 +207,7 @@ export const applyPreparedService = Effect.fn("ServiceFeature.applyPreparedServi
     featureIds: draft.featureIds,
     dependencyEnvironments,
     extraArgsLauncher: launcher.current,
+    launcherProjectUser: draft.launcherProjectUser,
   };
 });
 

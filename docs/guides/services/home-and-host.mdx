@@ -35,14 +35,14 @@ The `app` service gets a persistent home because `node:22` ships a known image a
 
 ## Check what Lando keeps
 
-`lando info` shows the plan, so it answers the question before the app has ever started. Run it from the app directory:
+`lando info` shows the home configuration from the last applied plan for a service. If the service has never been applied, it shows the planned home instead. Run it from the app directory:
 
 ```sh
 lando info
 lando info --format=json
 ```
 
-In the human view, the retained home mount is labeled `(home)` next to the other stores, for example `/root (home), /data (store)`. A service whose home Lando can't place gets a `home` row instead, such as `not kept automatically · image comes from your Landofile · set services.web.home.path to keep one`. The other two reasons read `<type> doesn't declare image users` and `<type> doesn't know where <user>'s home is`.
+In the human view, the retained home mount is labeled `(home)` next to the other stores, for example `/root (home), /data (store)`. A service whose home Lando can't place gets a `home` row instead, such as `not kept automatically · the service uses a custom image · set services.web.home.path to keep one`. The other two reasons read `<type> doesn't declare image users` and `<type> doesn't know where <user>'s home is`.
 
 In JSON, each entry under `services[]` carries a `home` object with one of four states:
 
@@ -62,7 +62,7 @@ Catalog service types declare the users inside the image they ship and where eac
 | `type: "node:22"` | Home persists at `/home/node` or `/root`, depending on `user:` |
 | `type: "php:8.3"` | With a realized project user, home persists at `/var/www` for `www-data`. Otherwise the default is `/root`; `user: www-data` selects `/var/www` |
 | `type: apache` with `user: www-data` | Home persists at `/home/www-data` |
-| `type: nginx` or `type: static` with `user: nginx` | No home store; that account's home is nginx's cache directory. Root keeps `/root` |
+| `type: nginx` or `type: static` using the `nginx` account | No home store, whether selected as the project user or set with `user: nginx`. Root's home path remains `/root` |
 | `type: compose` | No home store; set `home.path` to keep one |
 | `type: "node:22"` with a different `image:` | No home store; set `home.path` to keep one |
 | A catalog type with a `user:` it does not document | No home store; set `home.path` to keep one |
@@ -74,7 +74,7 @@ The php image ships `/var/www` owned by root. Lando creates it for `www-data` in
 
 The store belongs to that one service in that one app folder, and to the user it was planned for. Its name is `<container>--home--<user>-<8-hex digest>`, where `<container>` is built from the folder's **data name** (the name this folder's data was first created under, usually the current app name) and the service key, as `lando-<data slug>--<service>`. Running containers use the current app name in their own names; home and other data stores keep the data-name form so a rename does not orphan them. The readable user part contains lowercase words joined by hyphens, capped at 32 characters; the digest distinguishes the original user names. Only an explicit `home.path` on a service with no known user gets `<container>--home--default`. Planning the app again reuses the volume instead of stacking a second copy.
 
-Changing the effective home user, through `projectUser:`, `user:`, or a provider change, changes the home store. The new user gets a fresh, empty volume, and the previous user's volume stays in place with its contents, so switching back finds everything where it was. Nothing is copied between them.
+Changing the effective home user, through `projectUser:`, `user:`, or a provider change, can change or remove the automatic home mount. If the new user has a known home, Lando selects that user's volume. The previous user's volume stays in place with its contents. Nothing is copied between them.
 
 ### Read a volume transition notice
 
@@ -107,13 +107,21 @@ To get rid of it instead, `lando destroy --volumes` removes the app's volumes, o
 
 A home can hold SSH keys, registry tokens, and shell history, so Lando keeps it out of data commands: database snapshots and exports cover only the database's own data, never a home volume.
 
+### Recover an old nginx root home
+
+On a provider that maps the nginx worker, the first `lando start` that applies the new mapping to an existing stock `nginx`, `static`, or `static:nginx` service can switch its default commands from root to `nginx`. Until you apply the new plan, `lando info` and commands still use the old applied configuration. After applying, `lando exec web -- id` reports `nginx` for a service named `web` with the mapping.
+
+If the old service had a generated `/root` volume, the new plan no longer mounts it. Lando keeps the volume and its contents, and the start warning includes the complete volume name and a `storage:` entry with `target: /root`. `--user root` runs a command as root but doesn't bring back a detached mount.
+
+To recover the files, add the warning's `storage:` entry to the existing service in `.lando.yml`, keeping any other storage entries. Don't run `lando destroy --volumes` to make the change. From the app directory, run `lando start`, then check with `lando exec web --user root -- ls -la /root`, replacing `web` with your service name. You can keep the volume mounted without opting out of the `nginx` command default.
+
 ## When Lando doesn't know where home is
 
 The moment you supply the image yourself, whether through `type: compose`, an `image:` other than the one the service type ships, or a Compose `build:` with a `context`, the service type's metadata stops describing your container. Lando will not guess a path and mount a volume over it, so it plans no home store for that service. That alone never fails planning; caches and credentials inside that home just don't survive a rebuild unless you declare storage for them.
 
 Image references compare canonically, so repeating the image a versioned type already ships is not a custom image. With `type: "mariadb:11.4"`, both `image: mariadb:11.4` and `image: docker.io/library/mariadb:11.4` keep catalog behavior, home included. Without a version in `type:`, any `image:` counts as your own.
 
-The same thing happens when a catalog service runs as a user the image does not document, for example `user: lando-nonexistent` on `type: apache`, and for nginx's `nginx` account, whose home is its cache directory. On nginx and static, root still keeps `/root`. `lando info` tells you which case you hit; see [Check what Lando keeps](#check-what-lando-keeps).
+The same thing happens when a catalog service runs as a user the image does not document, for example `user: lando-nonexistent` on `type: apache`. Lando also leaves `/var/cache/nginx` out of home persistence even when the `nginx` account is the default for user commands. Root processes still use `/root`, but Lando plans no automatic `/root` volume when `nginx` is the project user. `lando info` tells you which case you hit; see [Check what Lando keeps](#check-what-lando-keeps).
 
 To keep a home Lando can't infer, name the path yourself:
 

@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { LandofileShape, PortNumber, ProviderId, ServiceName } from "@lando/sdk/schema";
-import type { ServiceTypeResolution } from "@lando/sdk/services";
+import type { ServiceImageIdentity, ServiceTypeResolution } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
 import { deriveAppPlanCacheKey } from "../../src/cache/app-plan.ts";
 import { type ResolvedService, resolvedServiceCacheInput } from "../../src/planner/service-types.ts";
@@ -15,7 +15,7 @@ const resolution: ServiceTypeResolution = {
   tooling: { psql: { cmd: "psql" } },
   connectionClientNames: ["psql"],
 };
-const keyFor = (value: ServiceTypeResolution) => {
+const keyFor = (value: ServiceTypeResolution, identity?: ServiceImageIdentity) => {
   const entry: ResolvedService = {
     name: "db",
     service: {},
@@ -27,6 +27,7 @@ const keyFor = (value: ServiceTypeResolution) => {
       base: "l337",
       schema: Schema.Unknown,
       resolve: () => Effect.succeed(value),
+      ...(identity === undefined ? {} : { identity }),
     },
     resolution: value,
     logSources: [],
@@ -80,4 +81,17 @@ test("non-SQL credential facts affect cache identity independently of task conte
 
 test("revoked authority affects cache identity even for byte-identical explicit tasks", () => {
   expect(keyFor({ ...resolution, connectionClientNames: [] })).not.toBe(keyFor(resolution));
+});
+
+test("launcher-scoped catalog identity invalidates otherwise identical desired plans", () => {
+  const identity = {
+    defaultUser: "root",
+    homes: { root: "/root" },
+    projectUser: { name: "worker", uid: 120, gid: 121 },
+    projectUserDefault: { launcherImage: "worker:1" },
+  } satisfies ServiceImageIdentity;
+  expect(keyFor(resolution, identity)).not.toBe(keyFor(resolution));
+  expect(keyFor(resolution, identity)).not.toBe(
+    keyFor(resolution, { ...identity, projectUserDefault: { launcherImage: "worker:2" } }),
+  );
 });
