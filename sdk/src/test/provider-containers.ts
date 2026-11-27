@@ -24,7 +24,7 @@ import type {
   ServiceSelector,
 } from "../services/index.ts";
 import { TEST_PROVIDER_ID } from "./_shared.ts";
-import { makeTestProviderServiceVolumes } from "./provider-service-volumes.ts";
+import { makeTestProviderVolumes } from "./provider-volumes.ts";
 
 type ApplyTestProviderContainers = (
   plan: AppPlan,
@@ -33,7 +33,7 @@ type ApplyTestProviderContainers = (
 ) => ReturnType<RuntimeProviderShape["apply"]>;
 
 export const makeTestProviderContainers = () => {
-  const volumes = makeTestProviderServiceVolumes();
+  const volumes = makeTestProviderVolumes();
   const containers = new Map<
     string,
     ServiceRuntimeFields & {
