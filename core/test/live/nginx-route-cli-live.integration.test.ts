@@ -24,13 +24,15 @@ const strictProvider = Schema.decodeUnknownSync(Schema.UndefinedOr(Schema.Litera
 );
 const docker = strictProvider === "docker";
 const provider = docker ? "docker" : "lando";
+const systemDockerSocket = "/var/run/docker.sock";
+const systemDockerHost = `unix://${systemDockerSocket}`;
 
 const requireRootfulDocker = async () => {
   expect(Bun.which("curl"), "The private nginx check requires curl").not.toBeNull();
   expect(process.env.LANDO_TEST_DOCKER_SOCKET, "Opt in to the local system Docker Engine").toBe(
-    "/var/run/docker.sock",
+    systemDockerSocket,
   );
-  const command = ["docker", "--host", "unix:///var/run/docker.sock"];
+  const command = ["docker", "--host", systemDockerHost];
   const engine = await run(
     import.meta.dir,
     [...command, "version", "--format", "{{.Server.Platform.Name}}"],
@@ -74,7 +76,18 @@ describe.serial("compiled CLI stock nginx", () => {
       const cliBinary = docker ? await ensureCompiledCli() : binary;
       const appCli = (cwd: string, args: readonly string[], timeout = 60_000) =>
         docker
-          ? run(cwd, ["env", "LANDO_PROVIDER=docker", cliBinary, ...args, "--format=json"], timeout)
+          ? run(
+              cwd,
+              [
+                "env",
+                "LANDO_PROVIDER=docker",
+                `DOCKER_HOST=${systemDockerHost}`,
+                cliBinary,
+                ...args,
+                "--format=json",
+              ],
+              timeout,
+            )
           : cli(cwd, args, timeout);
       // Given: a uniquely named app outside the repository and, for route coverage, an installed router.
       const root = await mkdtemp(join(tmpdir(), "lando-nginx-route-cli-"));

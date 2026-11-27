@@ -149,8 +149,9 @@
     "CertificateAuthority": [
       "id:string",
       "issueCert:(spec:CertificateSpec) => Effect.Effect<IssuedCertificate,CaError>",
+      "planHostChanges?:Effect.Effect<ReadonlyArray<HostChangeProposal>,CaError>",
       "root:Effect.Effect<CaRootCertificate,CaError>",
-      "setup:(options:CaSetupOptions) => Effect.Effect<CaSetupReport,CaError|PrivilegeError>",
+      "setup:(options:CaSetupOptions) => Effect.Effect<CaSetupReport,CaError|HostChangeApplyError>",
       "trustStores:Effect.Effect<ReadonlyArray<TrustStoreStatus>,CaError>"
     ],
     "CommandFramework": ["id:string"],

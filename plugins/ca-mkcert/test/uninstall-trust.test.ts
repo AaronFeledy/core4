@@ -66,6 +66,16 @@ describe("local CA uninstall step", () => {
     expect(step.preserveOnKeepData).toBeUndefined();
   });
 
+  test("linux names the anchor setup wrote under Lando's fixed name", async () => {
+    await writeFile(join(caroot, "rootCA.pem"), TEST_CERTIFICATES.rootA);
+    const anchor = "/etc/pki/ca-trust/source/anchors/lando-local-ca.pem";
+    const step = await plan("linux", {
+      env: { CAROOT: caroot, PATH: "" },
+      exists: (path) => path === anchor,
+    });
+    expect(step.detail).toContain(`\`sudo rm -f ${anchor} && sudo /usr/bin/update-ca-trust extract\``);
+  });
+
   test("linux names the anchor files, NSS databases and Homebrew bundles that exist", async () => {
     await writeFile(join(caroot, "rootCA.pem"), TEST_CERTIFICATES.rootA);
     const prefix = join(dir, "brew");
@@ -92,9 +102,10 @@ describe("local CA uninstall step", () => {
     expect(step.preserveOnKeepData).toBeUndefined();
     expect(step.detail).toContain(SHA256);
     expect(step.detail).toContain(
-      "`sudo rm -f /usr/local/share/ca-certificates/mkcert_development_CA_4096.crt && sudo update-ca-certificates`",
+      "`sudo rm -f /usr/local/share/ca-certificates/mkcert_development_CA_4096.crt && sudo /usr/sbin/update-ca-certificates`",
     );
     expect(step.detail).not.toContain("/etc/pki/ca-trust/source/anchors");
+    expect(step.detail).not.toContain("ca-certificates/lando-local-ca.crt");
     expect(step.detail).toContain(`\`certutil -D -d sql:${home}/.pki/nssdb -n '${NICKNAME}'\``);
     expect(step.detail).toContain(`\`certutil -D -d sql:${firefox}/abc.default -n '${NICKNAME}'\``);
     expect(step.detail).not.toContain("no-db");

@@ -53,7 +53,7 @@ import {
   ProviderId,
   appIdentityKey,
 } from "@lando/sdk/schema";
-import { FileSystem, type HostChangeProposal, PathsService } from "@lando/sdk/services";
+import { type CaSetupOptions, FileSystem, type HostChangeProposal, PathsService } from "@lando/sdk/services";
 import {
   TestFileSyncEngine,
   makeTestCertificateAuthority,
@@ -1620,7 +1620,7 @@ describe("meta:setup command", () => {
   });
 
   test.skipIf(process.platform === "win32")(
-    "threads host changes into provider setup, one run-scoped PrivilegeService into CA setup, and writes the shell profile as the user",
+    "threads one run's host changes into provider and CA setup, and writes the shell profile as the user",
     async () => {
       const elevated: ReadonlyArray<string>[] = [];
       const privilege = makeTestPrivilegeService({
@@ -1670,15 +1670,13 @@ describe("meta:setup command", () => {
           ),
         );
 
-        // The provider applies planned host changes through the run's applier; the CA, which
-        // still elevates on its own, shares the run's one administrator session.
+        // The provider and the CA apply planned host changes through the run's one applier; no
+        // stage elevates on its own.
+        const providerChanges = Reflect.get(Object(providerSetupOptions[0]), "hostChanges");
         expect(Reflect.get(Object(providerSetupOptions[0]), "privilege")).toBeUndefined();
-        expect(
-          typeof Reflect.get(Object(Reflect.get(Object(providerSetupOptions[0]), "hostChanges")), "apply"),
-        ).toBe("function");
-        const caPrivilege = Reflect.get(Object(caSetupOptions[0]), "privilege");
-        expect(caPrivilege).toBeDefined();
-        expect(caPrivilege).not.toBe(privilege);
+        expect(Reflect.get(Object(caSetupOptions[0]), "privilege")).toBeUndefined();
+        expect(typeof Reflect.get(Object(providerChanges), "apply")).toBe("function");
+        expect(Reflect.get(Object(caSetupOptions[0]), "hostChanges")).toBe(providerChanges);
         // The profile is the user's file: written without elevation, owned by the user.
         expect(elevated).toEqual([]);
         const content = await readFile(profile, "utf-8");
@@ -2677,7 +2675,7 @@ describe("meta:setup command", () => {
 
   test("honors setup skip flags for provider, CA trust install, proxy, shell, and file sync", async () => {
     const calls: string[] = [];
-    const caSetupOptions: Array<{ readonly force: boolean; readonly skipTrustInstall?: boolean }> = [];
+    const caSetupOptions: CaSetupOptions[] = [];
     const provider = {
       ...TestRuntimeProvider,
       id: "lando",
@@ -2693,7 +2691,7 @@ describe("meta:setup command", () => {
     };
     const ca = {
       ...makeTestCertificateAuthority(),
-      setup: (opts: { readonly force: boolean; readonly skipTrustInstall?: boolean }) =>
+      setup: (opts: CaSetupOptions) =>
         Effect.sync(() => {
           caSetupOptions.push(opts);
           calls.push("ca");
@@ -2743,7 +2741,9 @@ describe("meta:setup command", () => {
     );
 
     expect(calls).toEqual(["ca"]);
-    expect(caSetupOptions).toEqual([{ force: false, skipTrustInstall: true }]);
+    expect(caSetupOptions.map(({ force, skipTrustInstall }) => ({ force, skipTrustInstall }))).toEqual([
+      { force: false, skipTrustInstall: true },
+    ]);
   });
 
   test("invokes the selected runtime provider setup and renders the install dir", async () => {

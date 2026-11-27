@@ -19,8 +19,17 @@ import { redactValueWithPolicy, structuralRedaction } from "@lando/sdk/command-r
 import { HostChangeConsentRequiredError } from "@lando/sdk/errors";
 import { GlobalConfig, type HostChange, HostChangeId, ProviderId } from "@lando/sdk/schema";
 import { isSecretFieldName } from "@lando/sdk/secrets";
-import { type HostChangeProposal, PathsService, type ProviderSetupOptions } from "@lando/sdk/services";
-import { makeTestPrivilegeService, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
+import {
+  CertificateAuthority,
+  type HostChangeProposal,
+  PathsService,
+  type ProviderSetupOptions,
+} from "@lando/sdk/services";
+import {
+  makeTestCertificateAuthority,
+  makeTestPrivilegeService,
+  makeTestRuntimeProviderRegistry,
+} from "@lando/sdk/test";
 import { Cause, Effect, Exit, Layer, Schema } from "effect";
 import { SetupResultSchema, setupSpec } from "../../src/cli/command-specs/meta/setup.ts";
 
@@ -40,7 +49,7 @@ const change = (id: string, overrides: Partial<HostChange> = {}): HostChange => 
 
 /** A provider that plans a standard and a separately approved change and applies what it is handed. */
 const fixture = () => {
-  const counts = { setup: 0, opened: 0, elevated: 0, probes: 0 };
+  const counts = { setup: 0, opened: 0, elevated: 0, probes: 0, trusted: 0 };
   const proposals: ReadonlyArray<HostChangeProposal> = [
     {
       change: change("install-uidmap"),
@@ -69,6 +78,27 @@ const fixture = () => {
         }
       }),
   };
+  const trust: HostChangeProposal = {
+    change: change("trust-system-store", {
+      id: HostChangeId.make("ca-mkcert:trust-system-store"),
+      owner: "@lando/ca-mkcert",
+      stage: "ca",
+      requirement: "recommended",
+    }),
+    apply: (steps) => steps.run("run").pipe(Effect.as({ changed: true })),
+  };
+  const ca = CertificateAuthority.of({
+    ...makeTestCertificateAuthority(),
+    planHostChanges: Effect.succeed([trust]),
+    setup: (options) =>
+      Effect.gen(function* () {
+        if (options.hostChanges?.approved(trust.change.id) !== undefined) {
+          yield* options.hostChanges.apply(trust.change.id);
+          counts.trusted += 1;
+        }
+        return { trustStores: [] };
+      }),
+  });
   const privilege = {
     ...makeTestPrivilegeService({
       elevate: () =>
@@ -112,6 +142,7 @@ const fixture = () => {
         InteractionService.of(makeTestInteractionService({ answers: {} }).service),
       ),
       Layer.succeed(PrivilegeService, PrivilegeService.of(privilege)),
+      Layer.succeed(CertificateAuthority, ca),
       httpClientLayerWith({
         fetch: (() => Promise.reject(new Error("no network"))) as unknown as typeof fetch,
       }),
@@ -170,7 +201,21 @@ describe("lando setup --dry-run", () => {
     ]);
     expect(result.elevation.state).toBe("will-prompt");
     expect(written).toEqual([]);
-    expect(counts).toEqual({ setup: 0, opened: 0, elevated: 0, probes: 0 });
+    expect(counts).toEqual({ setup: 0, opened: 0, elevated: 0, probes: 0, trusted: 0 });
+  });
+
+  test("lists trusting the local CA with the provider's changes and names no unpreviewed stage", async () => {
+    const { run } = fixture();
+
+    const result = succeeded((await run({ "dry-run": true, "skip-install-ca": false })).exit);
+
+    if (!result.dryRun) throw new Error("expected a plan");
+    expect(result.changes.map(({ change: planned }) => String(planned.id))).toEqual([
+      "provider-lando:install-uidmap",
+      "provider-lando:enable-linger",
+      "ca-mkcert:trust-system-store",
+    ]);
+    expect(result.notices).toEqual(["The network trust probe was skipped."]);
   });
 
   test("previews the approvals that the same flags would reach in a real run", async () => {
@@ -210,6 +255,32 @@ describe("lando setup host-change consent", () => {
       { id: "provider-lando:enable-linger", outcome: "declined" },
     ]);
     expect([counts.opened, counts.setup, counts.elevated]).toEqual([1, 1, 1]);
+  });
+
+  test("one consent and one session cover trusting the local CA with the provider's changes", async () => {
+    const { counts, run } = fixture();
+
+    const result = succeeded(
+      (await run({ yes: true, "no-interactive": true, "skip-install-ca": false })).exit,
+    );
+
+    expect(
+      result.dryRun ? [] : result.hostChanges.map(({ id, outcome }) => [String(id), outcome]),
+    ).toContainEqual(["ca-mkcert:trust-system-store", "applied"]);
+    expect([counts.opened, counts.elevated, counts.trusted]).toEqual([1, 2, 1]);
+  });
+
+  test("a run that cannot ask skips trusting the local CA instead of failing", async () => {
+    const { counts, run } = fixture();
+
+    const result = succeeded(
+      (await run({ "no-interactive": true, "skip-install-ca": false, "skip-provider": true })).exit,
+    );
+
+    expect(result.dryRun ? [] : result.hostChanges.map(({ id, outcome }) => [String(id), outcome])).toEqual([
+      ["ca-mkcert:trust-system-store", "declined"],
+    ]);
+    expect([counts.opened, counts.elevated, counts.trusted]).toEqual([0, 0, 0]);
   });
 });
 

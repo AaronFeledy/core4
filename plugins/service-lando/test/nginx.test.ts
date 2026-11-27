@@ -202,7 +202,7 @@ describe("nginx ServiceType", () => {
     const plan = await composeNginxPlan({ type: "nginx" });
 
     expect(plan.type).toBe("nginx");
-    expect(plan.artifact).toEqual({ kind: "ref", ref: "nginx:1.26-alpine" });
+    expect(plan.artifact).toEqual({ kind: "ref", ref: "nginx:1.30-alpine" });
     expect(plan.environment).toMatchObject({
       LANDO: "ON",
       LANDO_APP_NAME: "myapp",

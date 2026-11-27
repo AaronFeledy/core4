@@ -20,10 +20,10 @@ import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { tcpProbe } from "./_tcp-probe.ts";
 import { resolveWebroot } from "./_webroot.ts";
 import { CADDY_CONFIG_PATH, caddyLauncherCommand, renderCaddyfile } from "./caddy-config.ts";
+import { NGINX_DEFAULT_IMAGE } from "./default-images.ts";
 import { landoErrorPagesBuildStep, nginxErrorPageConfigLines } from "./http-errors.ts";
 import { nginxHiddenPathConfigLines } from "./http-hidden-paths.ts";
 import {
-  STOCK_NGINX_IMAGE,
   nginxDefaultSiteRemovalBuildStep,
   nginxLauncherCommand,
   stockNginxIdentity,
@@ -34,7 +34,7 @@ export const SUPPORTED_STATIC_SERVERS = ["nginx", "caddy"] as const;
 export type SupportedStaticServer = (typeof SUPPORTED_STATIC_SERVERS)[number];
 
 export const STATIC_SERVER_IMAGES: Record<SupportedStaticServer, string> = {
-  nginx: STOCK_NGINX_IMAGE,
+  nginx: NGINX_DEFAULT_IMAGE,
   caddy: "caddy:2-alpine",
 };
 
@@ -213,6 +213,7 @@ export const makeStaticServiceType = (server: SupportedStaticServer): ServiceTyp
       server === "caddy" ? "static:caddy" : "static",
       "Put flags in command: or configure the generated server through type settings.",
     ),
+    // caddy:2-alpine config sha256:3067cc4e02c091399edbd5d65f85a3ff4d511574aecadb47f280c3761e68852e has only root.
     identity: server === "nginx" ? stockNginxIdentity : rootIdentity(),
     schema: Schema.Unknown,
     resolve: (input) =>

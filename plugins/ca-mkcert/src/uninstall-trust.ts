@@ -1,8 +1,8 @@
 /**
  * The uninstall step for the mkcert local CA. Every Lando data root on a host shares one mkcert
  * `CAROOT`, and so does mkcert itself, so Lando cannot prove the CA is its own and never removes it.
- * The step names the exact trust entries mkcert v1.4.4 and Lando's setup created for this CA in the stores
- * Lando knows about, and the OS commands that remove them; none of them needs Lando's mkcert binary, which
+ * The step names the exact trust entries mkcert v1.4.4 and Lando's setup created for this CA (mkcert's
+ * serial-named anchor and Lando's fixed `lando-local-ca` one) in the stores Lando knows about, and the OS commands that remove them; none of them needs Lando's mkcert binary, which
  * purge deletes. Planning only reads
  * files: the uninstall contract offers no subprocesses.
  */
@@ -16,6 +16,12 @@ import { Effect } from "effect";
 
 import { type HostEnv, locateBundles } from "./homebrew-trust.ts";
 import { discoverNssDatabases } from "./nss-databases.ts";
+import {
+  LANDO_ANCHOR_NAME,
+  LINUX_ANCHOR_STORES,
+  MACOS_STAGED_ROOT,
+  MACOS_SYSTEM_KEYCHAIN,
+} from "./system-trust.ts";
 import { javaKeystoreCommand } from "./uninstall-java.ts";
 
 export const LOCAL_CA_MAINTAINER_ID = "local-ca";
@@ -23,18 +29,6 @@ export const LOCAL_CA_TRUST_STEP_ID = "trust";
 
 const ROOT_FILE = "rootCA.pem";
 const WSL_INTEROP = "/proc/sys/fs/binfmt_misc/WSLInterop";
-
-/** Where mkcert's Linux `-install` writes its anchor, and the command that rebuilds that store, in mkcert's order. */
-export const LINUX_ANCHOR_STORES: ReadonlyArray<{
-  readonly dir: string;
-  readonly ext: string;
-  readonly refresh: string;
-}> = [
-  { dir: "/etc/pki/ca-trust/source/anchors", ext: ".pem", refresh: "update-ca-trust extract" },
-  { dir: "/usr/local/share/ca-certificates", ext: ".crt", refresh: "update-ca-certificates" },
-  { dir: "/etc/ca-certificates/trust-source/anchors", ext: ".crt", refresh: "trust extract-compat" },
-  { dir: "/usr/share/pki/trust/anchors", ext: ".pem", refresh: "update-ca-certificates" },
-];
 
 export interface LocalCaHostAccess {
   readonly env: HostEnv;
@@ -84,7 +78,7 @@ export const localCaIdentity = (pem: string): LocalCaIdentity => {
   };
 };
 
-const quote = (value: string): string =>
+export const quote = (value: string): string =>
   /^[\w@%+=:,./-]+$/u.test(value) ? value : `'${value.replaceAll("'", `'\\''`)}'`;
 
 const run = (command: string): string => `Run \`${command}\`.`;
@@ -121,7 +115,8 @@ const systemStoreCommands = (
     case "darwin":
       return [
         run(`sudo security remove-trusted-cert -d ${quote(posix.join(caroot, ROOT_FILE))}`),
-        run(`sudo security delete-certificate -Z ${ca.sha1} /Library/Keychains/System.keychain`),
+        run(`sudo security delete-certificate -Z ${ca.sha1} ${quote(MACOS_SYSTEM_KEYCHAIN)}`),
+        ...(access.exists(MACOS_STAGED_ROOT) ? [run(`sudo rm -f ${quote(MACOS_STAGED_ROOT)}`)] : []),
       ];
     case "win32":
       return [
@@ -130,15 +125,18 @@ const systemStoreCommands = (
       ];
     case "linux":
     case "wsl": {
-      const fileName = ca.nickname.replaceAll(" ", "_");
-      const anchors = LINUX_ANCHOR_STORES.map((store) => ({
-        ...store,
-        file: posix.join(store.dir, `${fileName}${store.ext}`),
-      })).filter(({ file }) => access.exists(file));
+      // mkcert's `-install` names the anchor after the CA's serial; Lando's setup uses a fixed name.
+      const mkcertName = ca.nickname.replaceAll(" ", "_");
+      const anchors = LINUX_ANCHOR_STORES.flatMap((store) =>
+        [mkcertName, LANDO_ANCHOR_NAME].map((name) => ({
+          refresh: store.refresh.map(quote).join(" "),
+          file: posix.join(store.dir, `${name}${store.ext}`),
+        })),
+      ).filter(({ file }) => access.exists(file));
       const linux =
         anchors.length === 0
-          ? ["No mkcert anchor file for this CA is in the system trust store."]
-          : anchors.map(({ file, refresh }) => run(`sudo rm -f ${file} && sudo ${refresh}`));
+          ? ["No anchor file for this CA is in the system trust store."]
+          : anchors.map(({ file, refresh }) => run(`sudo rm -f ${quote(file)} && sudo ${refresh}`));
       const windows =
         platform === "wsl" || access.exists(WSL_INTEROP)
           ? [

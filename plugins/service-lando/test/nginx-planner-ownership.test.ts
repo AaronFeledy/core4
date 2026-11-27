@@ -3,7 +3,7 @@ import { buildProviderCapabilities } from "@lando/container-runtime/capabilities
 import { createConfigFingerprint } from "@lando/container-runtime/create-fingerprint";
 import { ServiceName } from "@lando/sdk/schema";
 import { Effect } from "effect";
-import { STOCK_NGINX_IMAGE } from "../src/services/nginx-config.ts";
+import { NGINX_DEFAULT_IMAGE } from "../src/services/default-images.ts";
 import { acquireTempAppRoot } from "./support/live-app-scope.ts";
 import { planOwnershipFixture, requireWeb } from "./support/php-ownership-stack.ts";
 
@@ -69,7 +69,7 @@ describe("stock nginx ownership through AppPlanner", () => {
   test.each([
     ["Caddy", { type: "static:caddy" }, "unresolved"],
     ["custom image", { image: "nginx:1.27-alpine" }, "unresolved"],
-    ["explicit unversioned image equal to stock", { image: STOCK_NGINX_IMAGE }, "unresolved"],
+    ["explicit unversioned image equal to stock", { image: NGINX_DEFAULT_IMAGE }, "unresolved"],
     ["replacement build", { build: { context: "." } }, "unresolved"],
     ["authored command", { command: ["nginx", "-g", "daemon off;"] }, "unresolved"],
     ["authored entrypoint", { type: "static:nginx", entrypoint: ["custom-entrypoint"] }, "unresolved"],

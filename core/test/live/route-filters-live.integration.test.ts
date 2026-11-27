@@ -14,6 +14,7 @@ import {
   type ServicePlan,
   appIdentityKey,
 } from "@lando/sdk/schema";
+import { NGINX_DEFAULT_IMAGE } from "@lando/service-lando/services/default-images";
 import { DateTime, Effect } from "effect";
 import { currentTestPlan } from "../_support/value-contracts.ts";
 
@@ -100,7 +101,7 @@ const nginxService: ServicePlan = {
   type: "compose",
   provider: providerId,
   primary: true,
-  artifact: { kind: "ref", ref: "nginx:1.27" },
+  artifact: { kind: "ref", ref: NGINX_DEFAULT_IMAGE },
   command: ["sh", "-c", nginxStartScript],
   environment: {},
   mounts: [],

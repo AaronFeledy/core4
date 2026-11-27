@@ -7,7 +7,7 @@ tags: [docs, elasticsearch, service]
 
 # Add Elasticsearch
 
-Add `type: elasticsearch` under `services` in `.lando.yml`. Lando pulls `docker.elastic.co/elasticsearch/elasticsearch:8.17.0` and listens on `9200`:
+Add `type: elasticsearch` under `services` in `.lando.yml`. Lando pulls `docker.elastic.co/elasticsearch/elasticsearch:8.19.25` and listens on `9200`:
 
 ```yaml
 name: elasticsearch-demo
@@ -57,15 +57,38 @@ A healthy single-node Elasticsearch reports `green` or `yellow`.
 lando es-cli /_cat/indices
 ```
 
+  <Scenario id="query-stock-image" layer="e2e" timeout={300000} render={false} reason="Check that the stock image serves the documented Elasticsearch API">
+    <Step name="scaffold">
+      <UseFixture name="elasticsearch-demo" />
+    </Step>
+    <Step name="start">
+      <Run command="lando start --format=json" />
+    </Step>
+    <Step name="query">
+      <Verify command="lando es-cli /_cluster/health" expect={{ stdout: { regex: "\"status\"\\s*:\\s*\"(green|yellow)\"" } }} />
+      <Verify command="lando es-cli /_cat/indices" />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes" />
+    </Step>
+  </Scenario>
+
+## Upgrade Elasticsearch
+
+1. Check [Elastic's upgrade guidance](https://www.elastic.co/docs/deploy-manage/upgrade/deployment-or-cluster/self-managed) for your current and target versions.
+2. While the old cluster is still running, [register a snapshot repository](https://www.elastic.co/docs/deploy-manage/tools/snapshot-and-restore/self-managed) outside the Elasticsearch data volume and [take a snapshot](https://www.elastic.co/docs/deploy-manage/tools/snapshot-and-restore/create-snapshots#manually-create-a-snapshot). Confirm it completed successfully before rebuilding. Elasticsearch can't downgrade the upgraded data directory. To roll back, [restore the pre-upgrade snapshot](https://www.elastic.co/docs/deploy-manage/tools/snapshot-and-restore/restore-snapshot) into a fresh cluster running the previous version.
+3. Leave `image:` unset to use Lando's default, or [pin your target version](#pin-a-version) in `.lando.yml`. From the app directory, run `lando rebuild`, then [check cluster health](#check-cluster-health) again. Expect `green` or `yellow` for the single-node setup above.
+
 ## Pin a version
 
-Set `image:` when the default Elasticsearch 8 image isn't the version you want:
+To pin a version, replace `<tag>` with the Elasticsearch image tag you want:
 
 ```yaml
 services:
   search:
     type: elasticsearch
-    image: docker.elastic.co/elasticsearch/elasticsearch:7.17.0
+    image: docker.elastic.co/elasticsearch/elasticsearch:<tag>
 ```
 
 ## Change the HTTP port

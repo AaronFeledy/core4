@@ -8,10 +8,10 @@ import type { ProcessResult } from "@lando/sdk/services";
 import { TEST_CERTIFICATES } from "@lando/sdk/test";
 import { Effect, Stream } from "effect";
 
-import { makeSystemTrust } from "../src/system-trust.ts";
+import { INSTALL_TRUST_REMEDIATION, makeSystemTrust } from "../src/system-trust.ts";
 
 const { rootA, rootB } = TEST_CERTIFICATES;
-const INSTALL = "Run `lando setup` without `--skip-install-ca`.";
+const INSTALL = INSTALL_TRUST_REMEDIATION;
 const SPAWN_FAILED = new ProcessExecError({
   message: "spawn ENOENT",
   cmd: "probe",
