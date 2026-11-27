@@ -52,6 +52,7 @@ export const applyCiSelection = (workflow: string): string => {
       profile: \${{ steps.select.outputs.profile }}
       broad: \${{ steps.select.outputs.broad }}
       reason: \${{ steps.select.outputs.reason }}
+      provider_changes: \${{ steps.select.outputs.provider_changes }}
     steps:
 ${setup}
       - name: Select CI profile
