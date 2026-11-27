@@ -1,4 +1,8 @@
 import { resolve } from "node:path";
+import {
+  ELASTICSEARCH_DEFAULT_IMAGE,
+  NGINX_DEFAULT_IMAGE,
+} from "@lando/service-lando/services/default-images";
 import nodeReleases from "../plugins/service-lando/node/releases.json" with { type: "json" };
 import { setupBunSteps } from "./_bun-workflow.ts";
 import { applyCiSelection, ciResultSteps } from "./_ci-selection-workflow.ts";
@@ -523,14 +527,14 @@ ${nodeImagePullLines}
           pull_image docker.io/library/redis:7
           pull_image docker.io/library/busybox:1.37
           pull_image docker.io/library/golang:1.22
-          pull_image docker.elastic.co/elasticsearch/elasticsearch:8.17.0
+          pull_image ${ELASTICSEARCH_DEFAULT_IMAGE}
           pull_image docker.io/getmeili/meilisearch:v1.11
           pull_image docker.io/axllent/mailpit:v1.30.1
           pull_image docker.io/library/mariadb:11.4
           pull_image docker.io/library/memcached:1.6
           pull_image docker.io/library/mongo:7
           pull_image docker.io/library/mysql:8.0
-          pull_image docker.io/library/nginx:1.27
+          pull_image docker.io/library/${NGINX_DEFAULT_IMAGE}
           pull_image docker.io/opensearchproject/opensearch:2
           pull_image docker.io/library/solr:9
           pull_image docker.io/library/traefik:v3.3

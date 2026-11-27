@@ -38,7 +38,7 @@ export const matrixFixtures: readonly MatrixFixture[] = [
         "var app = Microsoft.AspNetCore.Builder.WebApplication.CreateBuilder(args).Build(); app.Run();",
     },
   }, // mcr.microsoft.com/dotnet/sdk:9.0; Kestrel reads ASPNETCORE_HTTP_PORTS.
-  { contract: "elasticsearch", service: { type: "elasticsearch:8" } }, // elasticsearch:8.17.0
+  { contract: "elasticsearch", service: { type: "elasticsearch:8" } },
   {
     contract: "go",
     service: { type: "go:1.23", appMount: "/app", command: ["go", "run", "/app/matrix.go"] },
@@ -65,7 +65,7 @@ func main() { log.Fatal(http.ListenAndServe("0.0.0.0:" + os.Getenv("PORT"), http
   { contract: "mongodb", service: { type: "mongodb:7" } },
   { contract: "mssql", service: { type: "mssql:2022" } },
   { contract: "mysql", service: { type: "mysql:8.0" } },
-  { contract: "nginx", service: { type: "nginx", appMount: "/app" } }, // nginx:1.26-alpine
+  { contract: "nginx", service: { type: "nginx", appMount: "/app" } },
   {
     contract: "node",
     service: {
@@ -108,7 +108,7 @@ func main() { log.Fatal(http.ListenAndServe("0.0.0.0:" + os.Getenv("PORT"), http
   { contract: "ruby", service: { type: "ruby:3.3", command: ruby } },
   { contract: "ruby/rails", service: { type: "ruby:3.3", framework: "rails", command: ruby } },
   { contract: "solr", service: { type: "solr:9" } },
-  { contract: "static", service: { type: "static", appMount: "/app" } }, // nginx:1.26-alpine
+  { contract: "static", service: { type: "static", appMount: "/app" } },
   { contract: "static/caddy", service: { type: "static:caddy", appMount: "/app" } },
   { contract: "tomcat", service: { type: "tomcat:11", appMount: "/app" } }, // Catalog's digest-pinned jre21 artifact.
   { contract: "valkey", service: { type: "valkey" } }, // valkey/valkey:8
