@@ -53,7 +53,7 @@ Set `projectUser: false` on the service to opt out. If you supply your own `comm
 
 ## Mount your project read-only
 
-`type: nginx` mounts your project read-write by default, regardless of whether it serves static files or sends PHP requests to a backend. On a provider that maps the project user, commands in the nginx service can write to the mounted files that your host user can write. [The `static` and `static:nginx` types](./static.mdx) mount the project read-only by default.
+`type: nginx` mounts your project read-write by default, regardless of whether it serves static files or sends PHP requests to a backend. When Lando maps the `nginx` worker to your host user, both the worker and commands run with `lando exec` as that account can write wherever your host user can write on the mount. This is filesystem access, not permission to upload files over HTTP. [The `static` and `static:nginx` types](./static.mdx) mount the project read-only by default.
 
 To make only the nginx service's project mount read-only, add `appMount` to its block in `.lando.yml`. Keep `target: /app` to leave the mount and relative webroot in their usual places:
 
@@ -72,13 +72,13 @@ From the app directory, run `lando app:config:lint`, then `lando start` to apply
     <Step name="plan-default-mount">
       <UseFixture name="nginx-demo" />
       <Run command="lando app:cache:refresh" />
-      <Verify command="lando info --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"bind\",\\s*\"target\":\\s*\"/app\"[^}]*\"readOnly\":\\s*false" } }} />
+      <Verify command="lando info --format=json" expect={{ stdout: { regex: "\\{(?=[^{}]*\"type\":\\s*\"bind\")(?=[^{}]*\"target\":\\s*\"/app\")[^{}]*\"readOnly\":\\s*false\\b" } }} />
     </Step>
     <Step name="plan-read-only-mount">
       <Run command={`lando app:config:set services.web.appMount '{"target":"/app","readOnly":true}' --type json`} />
       <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
       <Run command="lando app:cache:refresh" />
-      <Verify command="lando info --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"bind\",\\s*\"target\":\\s*\"/app\"[^}]*\"readOnly\":\\s*true" } }} />
+      <Verify command="lando info --format=json" expect={{ stdout: { regex: "\\{(?=[^{}]*\"type\":\\s*\"bind\")(?=[^{}]*\"target\":\\s*\"/app\")[^{}]*\"readOnly\":\\s*true\\b" } }} />
     </Step>
     <Step name="cleanup">
       <Cleanup />

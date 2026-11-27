@@ -42,7 +42,7 @@ lando info
 lando info --format=json
 ```
 
-In the human view, the retained home mount is labeled `(home)` next to the other stores, for example `/root (home), /data (store)`. A service whose home Lando can't place gets a `home` row instead, such as `not kept automatically · image comes from your Landofile · set services.web.home.path to keep one`. The other two reasons read `<type> doesn't declare image users` and `<type> doesn't know where <user>'s home is`.
+In the human view, the retained home mount is labeled `(home)` next to the other stores, for example `/root (home), /data (store)`. A service whose home Lando can't place gets a `home` row instead, such as `not kept automatically · the service uses a custom image · set services.web.home.path to keep one`. The other two reasons read `<type> doesn't declare image users` and `<type> doesn't know where <user>'s home is`.
 
 In JSON, each entry under `services[]` carries a `home` object with one of four states:
 

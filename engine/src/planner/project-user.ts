@@ -45,7 +45,7 @@ export interface ResolveProjectUserInput {
   readonly processUser: string | undefined;
   /** Whether the finalized mounts include the app-source bind. */
   readonly appSourceMounted: boolean;
-  /** The service type's image identities, absent for a Landofile-supplied image. */
+  /** Catalog identities applicable to the effective image. */
   readonly identity: ServiceImageIdentity | undefined;
   /** Invoking host ids, needed when the engine realizes the mapping by renumbering. */
   readonly host?: { readonly uid: string; readonly gid: string } | undefined;
@@ -153,10 +153,9 @@ const mappingRefusal = (
  */
 const resolveImageRenumber = (
   input: ResolveProjectUserInput,
-  candidate: ServiceProjectUser,
-  explicit: boolean,
   namedNumeric: ServiceProjectUser | undefined,
 ): CapabilityError | ResolvedProjectUser => {
+  const explicit = input.authored !== undefined;
   const declared = input.identity?.projectUser;
   const launcherPolicy = !explicit && input.identity?.projectUserDefault !== undefined;
   const launcherNumeric = launcherPolicy ? namedNumeric : undefined;
@@ -165,7 +164,9 @@ const resolveImageRenumber = (
     launcherNumeric !== undefined &&
     (!input.stockLauncher ||
       !sameNumericIds(declared, launcherNumeric) ||
-      (processUser !== undefined && !sameNumericIds(configuredNumericUser(processUser), launcherNumeric)))
+      (processUser !== undefined &&
+        processUser !== input.authoredUser &&
+        !sameNumericIds(configuredNumericUser(processUser), launcherNumeric)))
   )
     return explanation(
       "provider-unsupported",
@@ -220,14 +221,15 @@ const resolveImageRenumber = (
             false,
             `Service type ${input.serviceTypeLabel} declares no project user to renumber on this engine.`,
           );
-    const declaresCandidate =
-      namedNumeric === undefined ||
-      (namedNumeric.uid === declared.uid && namedNumeric.gid === declared.gid) ||
-      (namedNumeric.uid === host.uid && namedNumeric.gid === host.gid);
-    if (explicit && !declaresCandidate)
+    if (
+      explicit &&
+      namedNumeric !== undefined &&
+      !sameNumericIds(declared, namedNumeric) &&
+      !sameNumericIds(host, namedNumeric)
+    )
       return mappingRefusal(
         input,
-        `Service ${input.serviceName} cannot map the numeric project user ${namedNumeric?.name ?? candidate.name} on this engine; it renumbers the catalog account ${declared.name} to the host user.`,
+        `Service ${input.serviceName} cannot map the numeric project user ${namedNumeric.name} on this engine; it renumbers the catalog account ${declared.name} to the host user.`,
         `Set services.${input.serviceName}.projectUser to "${declared.name}" or "${declared.uid}:${declared.gid}", or to false to keep the container identity.`,
       );
     return {
@@ -237,12 +239,9 @@ const resolveImageRenumber = (
           : { name: declared.name, uid: host.uid, gid: host.gid },
     };
   }
-  const configured = configuredNumericUser(input.authoredUser);
   if (
     namedNumeric === undefined ||
-    configured === undefined ||
-    namedNumeric.uid !== configured.uid ||
-    namedNumeric.gid !== configured.gid
+    (explicit && !sameNumericIds(configuredNumericUser(input.authoredUser), namedNumeric))
   )
     return explicit
       ? mappingRefusal(
@@ -273,11 +272,12 @@ export const resolveProjectUser = (
   const explicit = input.authored !== undefined;
   // Explicit grammar is validated before applicability so an invalid value
   // never passes because this service happens to have no app-source mount.
+  const explicitNumeric =
+    typeof input.authored === "string" ? configuredNumericUser(input.authored) : undefined;
   let explicitCandidate: ServiceProjectUser | undefined;
   if (typeof input.authored === "string") {
-    const pair = NUMERIC_PAIR.exec(input.authored);
-    if (pair !== null) {
-      explicitCandidate = numericIdentity(pair[1] ?? "", pair[2] ?? "");
+    if (explicitNumeric !== undefined) {
+      explicitCandidate = explicitNumeric;
       if (isRootIdentity(explicitCandidate))
         return invalidAuthoring(
           input,
@@ -323,7 +323,7 @@ export const resolveProjectUser = (
   let numericCandidate: ServiceProjectUser | undefined;
   if (typeof input.authored === "string") {
     candidate = explicitCandidate;
-    numericCandidate = NUMERIC_PAIR.test(input.authored) ? explicitCandidate : undefined;
+    numericCandidate = explicitNumeric;
   } else {
     const declared = input.identity?.projectUser;
     const authored = input.authoredUser;
@@ -355,7 +355,7 @@ export const resolveProjectUser = (
     );
   if (input.capabilities.projectUserMapping === "userns-keep-id") return { projectUser: candidate };
   if (input.capabilities.projectUserMapping === "image-renumber")
-    return resolveImageRenumber(input, candidate, explicit, numericCandidate);
+    return resolveImageRenumber(input, numericCandidate);
   return unsupported(input, explicit);
 };
 
