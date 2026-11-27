@@ -1,6 +1,11 @@
-import { PlanReplanRequiredError } from "@lando/sdk/errors";
+import { PlanReplanRequiredError, ServiceExecError } from "@lando/sdk/errors";
 import { ServiceName, clonedServiceParent } from "@lando/sdk/schema";
-import { LandofileService, RuntimeProviderRegistry } from "@lando/sdk/services";
+import {
+  RuntimeProviderRegistry,
+  StreamFrameSink,
+  UserAppResolver,
+  collectExecStream,
+} from "@lando/sdk/services";
 import { Effect } from "effect";
 
 import { ScheduleJobAmbiguousError, ScheduleJobNotFoundError } from "./errors.ts";
@@ -10,8 +15,8 @@ const resolveScheduleJob = Effect.fn("Schedule.resolveJob")(function* (
   name: string,
   service: string | undefined,
 ) {
-  const landofiles = yield* LandofileService;
-  const landofile = yield* landofiles.discover;
+  const userApps = yield* UserAppResolver;
+  const landofile = yield* userApps.current;
   const jobs = jobsFromLandofile(landofile.document);
   const matches = findScheduleJob(jobs, name, service);
   const job = matches[0];
@@ -53,8 +58,13 @@ export const runScheduleJob = Effect.fn("Schedule.runJob")(function* (input: {
 }) {
   const { document, appRoot, job } = yield* resolveScheduleJob(input.name, input.service);
   const registry = yield* RuntimeProviderRegistry;
-  const planned = yield* registry.resolveAppliedPlan(appRoot, undefined, "exact");
-  if (planned === undefined) {
+  const discovered = yield* registry.resolveAppliedPlan(appRoot, undefined, "exact");
+  const planned = discovered === undefined ? undefined : yield* registry.readAppliedPlanStrict(discovered);
+  if (
+    planned === undefined ||
+    discovered === undefined ||
+    (planned.identity?.appRoot ?? planned.root) !== (discovered.identity?.appRoot ?? discovered.root)
+  ) {
     return yield* Effect.fail(
       new PlanReplanRequiredError({
         app: document.name ?? appRoot,
@@ -83,15 +93,26 @@ export const runScheduleJob = Effect.fn("Schedule.runJob")(function* (input: {
       }),
     );
   }
-  const result = yield* provider.exec(
-    { app: planned.id, service: sidecarName, plan: planned },
-    { command: typeof job.run === "string" ? ["sh", "-c", job.run] : job.run },
+  // With a live sink the job's output streams as it runs and stays out of the result;
+  // without one (YAML, a caller that does not stream) it is collected into the result.
+  const sink = yield* Effect.serviceOption(StreamFrameSink);
+  const result = yield* collectExecStream(
+    provider.execStream(
+      { app: planned.id, service: sidecarName, plan: planned },
+      { command: typeof job.run === "string" ? ["sh", "-c", job.run] : job.run },
+    ),
+    sink,
+    {
+      failure: () =>
+        new ServiceExecError({
+          providerId: provider.id,
+          operation: "exec",
+          service: sidecarName,
+          message: `Scheduled job ${job.service}.${job.name} ended without an observed exit status.`,
+          remediation:
+            "The job may have finished or may still be running. Check what it changed before rerunning it.",
+        }),
+    },
   );
-  return {
-    service: job.service,
-    name: job.name,
-    exitCode: result.exitCode,
-    stdout: result.stdout,
-    stderr: result.stderr,
-  };
+  return { service: job.service, name: job.name, ...result };
 });

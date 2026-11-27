@@ -1,5 +1,5 @@
 /**
- * `meta:setup` optional-service setup steps (CA, router, shell integration).
+ * `meta:setup` optional-service setup steps (router, shell integration, shell profile PATH).
  *
  * Each step resolves its service optionally, runs its `setup`, and records the
  * readiness outcome (satisfied / skipped / unavailable / failed) — honoring the
@@ -9,34 +9,28 @@
 
 import { resolveProxyDefaultDomain } from "@lando/engine/config/proxy-default-domain";
 import { resolveRouterConfigForApp } from "@lando/engine/config/router-config";
-import { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
+import {
+  defaultPosixShellProfilePath,
+  installShellProfileBlock,
+  landoShellenvBlock,
+} from "@lando/engine/host/shell-profile";
 import {
   SSH_SIDECAR_READINESS_POLICY,
   awaitRuntimeSshAgent,
 } from "@lando/engine/subsystems/ssh-agent/session";
+import { mapFailures } from "@lando/sdk/command-result";
 import { SshAgentUnavailableError } from "@lando/sdk/errors";
-import { MessageInfoEvent, MessageWarnEvent } from "@lando/sdk/events";
-import {
-  CertificateAuthority,
-  EventService,
-  type PrivilegeService,
-  RouterService,
-  SshService,
-} from "@lando/sdk/services";
-import { type Context, DateTime, Duration, Effect, Result } from "effect";
+import { MessageWarnEvent } from "@lando/sdk/events";
+import { EventService, RouterService, SshService } from "@lando/sdk/services";
+import { DateTime, Duration, Effect, Result } from "effect";
 import { CliInvocation } from "../../../runtime/invocation-context";
 import { resolveSecretsRedactor } from "../../commands/secrets-redactor";
+import { ShellenvInstallRecordError, renderPosixShellenv } from "../../commands/shellenv";
 import { inputBooleanFlag } from "./setup-inputs";
 import { SYSTEM_RUNTIME_PROVIDERS } from "./setup-provider-selection";
-import type { SetupReadinessRecorder } from "./setup-steps";
+import { type SetupReadinessRecorder, ShellProfileIntegrationError } from "./setup-steps";
 
-type SetupPrivilegeOptions = {
-  readonly privilege?: Context.Service.Shape<typeof PrivilegeService>;
-};
-
-const SKIP_CA_TRUST_EVIDENCE = "Certificate authority trust installation skipped by --skip-install-ca.";
-
-const recordAbsentHostIntegration = (
+export const recordAbsentHostIntegration = (
   recorder: SetupReadinessRecorder,
   selectedProviderId: string,
   id: string,
@@ -51,85 +45,6 @@ const recordAbsentHostIntegration = (
   }
   return recorder.recordUnavailable(id, serviceName);
 };
-
-export const runCaSetupStep = Effect.fn("SetupCommand.runCaSetupStep")(function* (
-  input: unknown,
-  privilegeOptions: SetupPrivilegeOptions,
-  recorder: SetupReadinessRecorder,
-  selectedProviderId = "lando",
-  platform: NodeJS.Platform = process.platform,
-) {
-  const skipTrustInstall = inputBooleanFlag(input, "skip-install-ca");
-  const resolver = yield* Effect.serviceOption(CertificateAuthorityResolver);
-  const authority = yield* Effect.serviceOption(CertificateAuthority);
-  if (resolver._tag === "None" && authority._tag === "None") {
-    if (skipTrustInstall) {
-      yield* recorder.record({ id: "ca", status: "skipped", evidence: SKIP_CA_TRUST_EVIDENCE });
-    } else {
-      yield* recordAbsentHostIntegration(recorder, selectedProviderId, "ca", "Certificate authority");
-    }
-    return;
-  }
-  const ca =
-    resolver._tag === "Some"
-      ? yield* resolver.value.resolve.pipe(
-          Effect.catchTag("NoCertificateAuthorityError", (cause) =>
-            Effect.as(
-              skipTrustInstall
-                ? recorder.record({ id: "ca", status: "skipped", evidence: SKIP_CA_TRUST_EVIDENCE })
-                : recorder.record({
-                    id: "ca",
-                    status: "unavailable",
-                    evidence: cause.message,
-                    remediation: cause.remediation,
-                  }),
-              undefined,
-            ),
-          ),
-          Effect.catchTag("AmbiguousCertificateAuthoritiesError", (cause) =>
-            Effect.as(
-              recorder.record({
-                id: "ca",
-                status: "failed",
-                evidence: cause.message,
-                remediation: cause.remediation,
-              }),
-              undefined,
-            ),
-          ),
-          Effect.tapError((cause) => recorder.recordFailure("ca", cause)),
-        )
-      : authority._tag === "Some"
-        ? authority.value
-        : undefined;
-  if (ca !== undefined) {
-    if (platform === "win32" && !skipTrustInstall) {
-      const events = yield* Effect.serviceOption(EventService);
-      if (events._tag === "Some") {
-        yield* events.value
-          .publish(
-            MessageInfoEvent.make({
-              body: "Installing local certificate trust.\nWindows may open a Security Warning. Approve it to continue.\n--yes cannot answer Windows security prompts.",
-              timestamp: yield* DateTime.now,
-            }),
-          )
-          .pipe(Effect.ignore);
-      }
-    }
-    yield* ca
-      .setup({
-        force: false,
-        ...privilegeOptions,
-        ...(skipTrustInstall ? { skipTrustInstall: true } : {}),
-      })
-      .pipe(Effect.tapError((cause) => recorder.recordFailure("ca", cause)));
-    yield* recorder.record({
-      id: "ca",
-      status: skipTrustInstall ? "skipped" : "satisfied",
-      evidence: skipTrustInstall ? SKIP_CA_TRUST_EVIDENCE : "Certificate authority setup completed.",
-    });
-  }
-});
 
 export const runProxySetupStep = Effect.fn("SetupCommand.runProxySetupStep")(function* (
   input: unknown,
@@ -148,7 +63,8 @@ export const runProxySetupStep = Effect.fn("SetupCommand.runProxySetupStep")(fun
   if (proxy._tag === "Some") {
     const defaultDomain = yield* resolveProxyDefaultDomain;
     const { router, routerPin } = yield* resolveRouterConfigForApp();
-    const autoApprove = inputBooleanFlag(input, "yes") || inputBooleanFlag(input, "no-interactive");
+    // `--no-interactive` declines privileged host changes; only `--yes` approves them.
+    const autoApprove = inputBooleanFlag(input, "yes");
     yield* Effect.scoped(
       proxy.value.setup(
         { defaultDomain, router, routerPin },
@@ -229,4 +145,51 @@ export const runShellServiceSetupStep = Effect.fn("SetupCommand.runShellServiceS
   } else {
     yield* recordAbsentHostIntegration(recorder, selectedProviderId, "shell", "Shell integration");
   }
+});
+
+const SHELL_PROFILE_REMEDIATION =
+  "Fix the install record, then rerun `lando setup` or `lando shellenv` to finish PATH integration.";
+
+/**
+ * Add Lando's PATH block to the user's shell profile, as the invoking user. Windows and
+ * non-interactive runs leave the profile alone. A profile the user cannot write is reported,
+ * never taken over.
+ */
+export const runShellProfileSetupStep = Effect.fn("SetupCommand.runShellProfileSetupStep")(function* (
+  input: unknown,
+  userDataRoot: string,
+  recorder: SetupReadinessRecorder,
+) {
+  if (
+    process.platform === "win32" ||
+    inputBooleanFlag(input, "skip-shell-integration") ||
+    inputBooleanFlag(input, "no-interactive")
+  ) {
+    return;
+  }
+  const profilePath = defaultPosixShellProfilePath((yield* CliInvocation).env);
+  const block = yield* Effect.try({
+    try: () => landoShellenvBlock(renderPosixShellenv(userDataRoot)),
+    catch: (cause) => {
+      if (!(cause instanceof ShellenvInstallRecordError)) throw cause;
+      return new ShellProfileIntegrationError({
+        message: "Shell profile integration failed.",
+        path: cause.file,
+        stderr: cause.message,
+        remediation: SHELL_PROFILE_REMEDIATION,
+      });
+    },
+  }).pipe(Effect.tapError((cause) => recorder.recordFailure("shell", cause.stderr)));
+  yield* installShellProfileBlock(profilePath, block).pipe(
+    mapFailures(
+      (cause) =>
+        new ShellProfileIntegrationError({
+          message: `Lando could not add its PATH block to ${profilePath}.`,
+          path: profilePath,
+          stderr: cause.message,
+          remediation: `Make ${profilePath} writable by your user, or set LANDO_SHELL_PROFILE to a file you own, then rerun \`lando setup\`. Lando never edits your profile as root.`,
+        }),
+    ),
+    Effect.tapError((cause) => recorder.recordFailure("shell", cause.stderr)),
+  );
 });

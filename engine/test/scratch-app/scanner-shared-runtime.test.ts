@@ -115,13 +115,13 @@ test.each([{ fails: false }, { fails: true }])(
           id,
           list: () => Effect.succeed([{ ...service, providerId: ProviderId.make(id), containerId: id }]),
           listVolumes: () => Effect.succeed([volume]),
-          removeObservedService: (observed) =>
+          bringDownObserved: (observed) =>
             Effect.suspend(() => {
               expect(observed.containerId).toBe(id);
               if (fails && id === "podman") return Effect.fail(failure);
               remaining.delete(id);
               events.push(`container:${id}`);
-              return Effect.succeed({ kind: "removed" as const });
+              return Effect.succeed({ service: observed.service, action: "removed" as const });
             }),
           removeVolume: () =>
             Effect.suspend(() => {

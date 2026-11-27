@@ -3,7 +3,6 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runAppEvent } from "@lando/engine/operations/events";
-import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
 import { withProjectEvents } from "@lando/engine/planner/effective-events";
 import { attachEffectiveTooling } from "@lando/engine/planner/effective-tooling";
 import { PluginContributionGraph } from "@lando/engine/plugins/contribution-graph";
@@ -14,7 +13,7 @@ import { makeShellRunnerService } from "@lando/engine/services/shell-runner";
 import { withResolvedCwd } from "@lando/landofile/app-resolution";
 import { discoveryCwd } from "@lando/landofile/operation-discovery";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
-import { normalizeDefect } from "@lando/sdk/command-result";
+import { annotateFailureRole, failureOutcomeFromCause } from "@lando/sdk/command-result";
 import type { ExecutableCommandSpec } from "@lando/sdk/plugins";
 import { RENDERER_CAPABILITIES_NONE } from "@lando/sdk/renderer";
 import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
@@ -22,16 +21,18 @@ import {
   EnvironmentValueResolver,
   EventService,
   type EventServiceShape,
+  InteractionService,
   type LandoEvent,
   ProcessRunner,
   type ProcessSpawnOptions,
   Renderer,
   RuntimeProviderRegistry,
   ShellRunner,
+  StreamFrameSink,
   ToolingEngine,
   type ToolingInvocation,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Cause, Context, DateTime, Effect, Exit, Layer, Queue, Schema, Stream } from "effect";
 import type { BuiltInCommandEntry } from "../../src/cli/built-in-command-registry.ts";
@@ -169,6 +170,30 @@ const eventPlan = (): AppPlan => ({
 });
 
 describe("EventCommandExecutorLayer.layer", () => {
+  test.each(["pre-start", "post-start", "post-rebuild"] as const)(
+    "refuses credential apply declared in %s even with yes",
+    async (event) => {
+      const harness = makeHarness();
+      const plan = withProjectEvents(eventPlan(), {
+        [event]: [{ command: "db:creds:apply", flags: { yes: true } }],
+      });
+      const exit = await Effect.runPromiseExit(
+        runAppEvent(plan, event).pipe(
+          Effect.provideService(EventCommandExecutor, makeEventCommandExecutor(harness.context)),
+          Effect.provide(harness.context),
+        ),
+      );
+      expect(Exit.isFailure(exit) ? Cause.squash(exit.cause) : undefined).toMatchObject({
+        _tag: "LandofileEventStepFailedError",
+        event,
+        kind: "command",
+        message: expect.stringContaining("Database credential changes cannot run"),
+        outputTail: "",
+        remediation: expect.stringContaining("Run `lando db:creds:apply` directly"),
+      });
+    },
+  );
+
   test("uses the retained result terminal instead of narration capabilities or process stdout", async () => {
     const harness = makeHarness();
     const spec = {
@@ -393,13 +418,23 @@ describe("EventCommandExecutorLayer.layer", () => {
     ).toEqual([primary, secondary]);
   });
 
-  test("keeps a nested defect a typed failure after the primary failure", async () => {
+  test("keeps a nested cleanup defect fatal without displacing the typed primary", async () => {
     // Given: a target whose operation fails and whose cleanup dies.
-    const primary = new EventCommandTestError({ message: "target failed" });
+    const primary = {
+      _tag: "EventCommandTestError",
+      message: "target failed",
+      remediation: "Repair the target.",
+    };
     const defect = new Error("cleanup crashed");
     const harness = makeHarness();
     const executor = executorFor(
-      entryFor(testSpec(() => Effect.failCause(Cause.combine(Cause.fail(primary), Cause.die(defect))))),
+      entryFor(
+        testSpec(() =>
+          Effect.fail(primary).pipe(
+            Effect.ensuring(Effect.failCause(annotateFailureRole(Cause.die(defect), "cleanup"))),
+          ),
+        ),
+      ),
       harness,
     );
     // When: the nested target executes.
@@ -412,11 +447,14 @@ describe("EventCommandExecutorLayer.layer", () => {
         cwd: "/workspace/demo",
       }),
     );
-    // Then: both values arrive as Fail reasons, so event-step error mapping still sees them.
-    expect(Exit.isFailure(exit) ? exit.cause.reasons.every(Cause.isFailReason) : false).toBe(true);
-    expect(
-      Exit.isFailure(exit) ? exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error) : [],
-    ).toEqual([primary, normalizeDefect(defect)]);
+    if (!Exit.isFailure(exit)) throw new Error("expected nested command failure");
+    expect(Cause.hasDies(exit.cause)).toBe(true);
+    expect(failureOutcomeFromCause(exit.cause)).toMatchObject({
+      kind: "typed",
+      source: "elected",
+      error: primary,
+      additionalErrors: [{ role: "cleanup", error: defect }],
+    });
   });
 
   test("propagates target interruption", async () => {
@@ -587,6 +625,52 @@ describe("EventCommandExecutorLayer.layer", () => {
     expect(observed).toEqual([{ runtimeCwd: "/workspace/demo", processCwd }]);
     expect(process.cwd()).toBe(processCwd);
   });
+
+  test.each([
+    [{}, false],
+    [{ interactive: true }, true],
+  ] as const)(
+    "a dispatched command with flags %j sees the host terminal as interactive=%j",
+    async (flags, expected) => {
+      // Given a host whose own InteractionService has real terminals and would prompt.
+      const harness = makeHarness();
+      const confirmModes: unknown[] = [];
+      const hostInteraction = InteractionService.of({
+        id: "host",
+        isInteractive: Effect.succeed(true),
+        prompt: () => Effect.die("unused"),
+        promptAll: () => Effect.die("unused"),
+        confirm: (spec) =>
+          Effect.sync(() => {
+            confirmModes.push(spec.mode);
+            return true;
+          }),
+        select: () => Effect.die("unused"),
+        secret: () => Effect.die("unused"),
+      });
+      const observed: boolean[] = [];
+      const spec = testSpec(() =>
+        Effect.gen(function* () {
+          const interaction = yield* InteractionService;
+          observed.push(yield* interaction.isInteractive);
+          yield* Effect.scoped(interaction.confirm({ message: "Continue?" }));
+        }),
+      );
+      const executor = makeEventCommandExecutor(
+        Context.add(harness.context, InteractionService, hostInteraction),
+        [entryFor(spec, { flags: { interactive: Flags.boolean({ description: "Prompt." }) } })],
+      );
+
+      // When
+      await Effect.runPromise(
+        executor.run({ command: "meta:test:event-command", flags, args: {}, argv: [], cwd: process.cwd() }),
+      );
+
+      // Then a non-interactive dispatch never reports or uses the host's terminal.
+      expect(observed).toEqual([expected]);
+      expect(confirmModes).toEqual([expected ? undefined : "non-interactive"]);
+    },
+  );
 
   test("runs nested app commands inside the resolved app root", async () => {
     // Given
@@ -850,6 +934,57 @@ describe("EventCommandExecutorLayer.layer", () => {
     ]);
   });
 
+  test("streams a live plugin command's output during an event step", async () => {
+    // Given: a plugin command that declares live output and emits through the sink.
+    const harness = makeHarness();
+    let sawSink = false;
+    const spec: ExecutableCommandSpec = {
+      id: "meta:example:stream",
+      summary: "Stream from a plugin.",
+      namespace: "meta",
+      bootstrap: "plugins",
+      streamingMode: "live",
+      resultSchema: Schema.Unknown,
+      run: () =>
+        Effect.gen(function* () {
+          const sink = yield* Effect.serviceOption(StreamFrameSink);
+          sawSink = sink._tag === "Some";
+          if (sink._tag === "Some")
+            yield* sink.value.emit({ _tag: "stderr", kind: "bytes", chunk: "working\n" });
+        }),
+    };
+    const context = Context.add(harness.context, PluginContributionGraph, {
+      plugins: [],
+      globalPlugins: [],
+      certificateAuthorities: [],
+      commands: [
+        {
+          id: spec.id,
+          pluginName: "@example/streams",
+          descriptor: { id: spec.id, summary: "Stream from a plugin." },
+          source: "explicit",
+          load: async () => spec,
+        },
+      ],
+      hostContext: Context.empty(),
+    });
+
+    // When
+    await Effect.runPromise(
+      makeEventCommandExecutor(context).run({
+        command: spec.id,
+        flags: {},
+        args: {},
+        argv: [],
+        cwd: process.cwd(),
+      }),
+    );
+
+    // Then: the step got the live sink and its output reached the renderer.
+    expect(sawSink).toBe(true);
+    expect(harness.presentation).toContain("stderr:working\n");
+  });
+
   test("executes an effective tooling canonical id and redacts host secrets in returned output", async () => {
     // Given
     const harness = makeHarness();
@@ -860,14 +995,12 @@ describe("EventCommandExecutorLayer.layer", () => {
     const invocations: string[] = [];
     const hostSecret = "event-executor-host-canary";
     const context = harness.context.pipe(
-      Context.add(RuntimeProviderRegistry, {
-        resolveAppliedPlan: () => Effect.succeed(undefined),
-        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-        appliedPlansFor: () => Effect.succeed([]),
-        list: Effect.succeed([ProviderId.make("test")]),
-        capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-        select: () => Effect.succeed(TestRuntimeProvider),
-      }),
+      Context.add(
+        RuntimeProviderRegistry,
+        makeTestRuntimeProviderRegistry({
+          list: Effect.succeed([ProviderId.make("test")]),
+        }),
+      ),
       Context.add(ToolingEngine, {
         id: "test",
         run: (invocation) =>
@@ -922,14 +1055,12 @@ describe("EventCommandExecutorLayer.layer", () => {
     );
     const invocations: ToolingInvocation[] = [];
     const context = harness.context.pipe(
-      Context.add(RuntimeProviderRegistry, {
-        resolveAppliedPlan: () => Effect.succeed(undefined),
-        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-        appliedPlansFor: () => Effect.succeed([]),
-        list: Effect.succeed([ProviderId.make("test")]),
-        capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-        select: () => Effect.succeed(TestRuntimeProvider),
-      }),
+      Context.add(
+        RuntimeProviderRegistry,
+        makeTestRuntimeProviderRegistry({
+          list: Effect.succeed([ProviderId.make("test")]),
+        }),
+      ),
       Context.add(ToolingEngine, {
         id: "test",
         run: (invocation) =>
@@ -975,14 +1106,12 @@ describe("EventCommandExecutorLayer.layer", () => {
       { inspect: { cmd: "inspect" } },
     );
     const context = harness.context.pipe(
-      Context.add(RuntimeProviderRegistry, {
-        resolveAppliedPlan: () => Effect.succeed(undefined),
-        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-        appliedPlansFor: () => Effect.succeed([]),
-        list: Effect.succeed([ProviderId.make("test")]),
-        capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-        select: () => Effect.succeed(TestRuntimeProvider),
-      }),
+      Context.add(
+        RuntimeProviderRegistry,
+        makeTestRuntimeProviderRegistry({
+          list: Effect.succeed([ProviderId.make("test")]),
+        }),
+      ),
       Context.add(ToolingEngine, {
         id: "test",
         run: (invocation) =>
@@ -1025,14 +1154,12 @@ describe("EventCommandExecutorLayer.layer", () => {
       { inspect: { cmd: "inspect", env: { API_TOKEN: secret } } },
     );
     const context = harness.context.pipe(
-      Context.add(RuntimeProviderRegistry, {
-        resolveAppliedPlan: () => Effect.succeed(undefined),
-        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-        appliedPlansFor: () => Effect.succeed([]),
-        list: Effect.succeed([ProviderId.make("test")]),
-        capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-        select: () => Effect.succeed(TestRuntimeProvider),
-      }),
+      Context.add(
+        RuntimeProviderRegistry,
+        makeTestRuntimeProviderRegistry({
+          list: Effect.succeed([ProviderId.make("test")]),
+        }),
+      ),
       Context.add(ToolingEngine, {
         id: "test",
         run: (invocation) => {

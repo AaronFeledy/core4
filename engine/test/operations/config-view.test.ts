@@ -64,27 +64,24 @@ test("unset preserves YAML parser detail instead of wrapping ConfigError twice",
 });
 
 for (const [key, value] of [
-  ["appEnv", { TEAM: "platform", MODE: "development" }],
-  ["appLabels", { team: "platform", cost: "sandbox" }],
+  ["serviceDefaults.environment", { TEAM: "platform", MODE: "development" }],
+  ["serviceDefaults.labels", { team: "platform", cost: "sandbox" }],
 ] as const) {
   test(`get returns ${key} when set persisted a map`, async () => {
-    // Given
     await run({ subcommand: "set", key, value: JSON.stringify(value), type: "json" });
-    // When
     const result = await run({ subcommand: "get", key });
-    // Then
     expect(result.value).toEqual(value);
     const encoded = Schema.encodeSync(ConfigResultSchema)(result);
     expect("value" in encoded ? encoded.value : undefined).toEqual(value);
   });
   test(`view preserves encoded ${key} when set persisted a map`, async () => {
-    // Given
     const written = await run({ subcommand: "set", key, value: JSON.stringify(value), type: "json" });
-    // When
     const result = await run({});
-    // Then
-    expect(result.config?.[key]).toEqual(value);
-    expect(Schema.encodeSync(ConfigResultSchema)(result)).toMatchObject({ config: { [key]: value } });
+    const field = key === "serviceDefaults.environment" ? "environment" : "labels";
+    expect(result.config?.serviceDefaults?.[field]).toEqual(value);
+    expect(Schema.encodeSync(ConfigResultSchema)(result)).toMatchObject({
+      config: { serviceDefaults: { [field]: value } },
+    });
     const encoded = Schema.encodeSync(ConfigResultSchema)(written);
     expect("value" in encoded ? encoded.value : undefined).toEqual(value);
   });
@@ -94,13 +91,16 @@ test("view excludes persisted internal bookkeeping when loading effective config
   // Given: unknown bookkeeping must not become a public setting.
   await writeFile(
     join(root, "config.yml"),
-    "setup:\n  completed: true\ntelemetry:\n  enabled: false\nappEnv:\n  TEAM: platform\n",
+    "setup:\n  completed: true\ntelemetry:\n  enabled: false\nserviceDefaults:\n  environment:\n    TEAM: platform\n",
   );
   // When
   const result = await run({});
   // Then
   expect(result.config).not.toHaveProperty("setup");
-  expect(result.config).toMatchObject({ telemetry: { enabled: false }, appEnv: { TEAM: "platform" } });
+  expect(result.config).toMatchObject({
+    telemetry: { enabled: false },
+    serviceDefaults: { environment: { TEAM: "platform" } },
+  });
 });
 
 test("view includes hostEvents written in config.yml", async () => {

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import * as sdkErrors from "@lando/sdk/errors";
 import type { ServiceName } from "@lando/sdk/schema";
-import { makeTestCertificateAuthority } from "@lando/sdk/test";
+import { makeTestCertificateAuthority, makeTestPrivilegeService } from "@lando/sdk/test";
 import { Cause, Effect, type Exit } from "effect";
 import { buildTraefikServiceConfig } from "../src/global-services/traefik.ts";
 import {
@@ -86,9 +86,9 @@ const unusedRunner = {
   },
 };
 
-const unusedPrivilege = {
+const unusedPrivilege = makeTestPrivilegeService({
   elevate: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
-};
+});
 
 const memoryFiles = () => {
   const files = new Map<string, string>();
@@ -304,13 +304,13 @@ describe("persistPortAcquisition reuse", () => {
           exists: (path) => Effect.succeed(store.files.has(path)),
           readText: (path) => Effect.succeed(store.files.get(path) ?? ""),
           processRunner: unusedRunner,
-          privilege: {
+          privilege: makeTestPrivilegeService({
             elevate: (command) =>
               Effect.sync(() => {
                 calls.push(command[2] ?? "");
                 return { exitCode: 0, stdout: "", stderr: "" };
               }),
-          },
+          }),
           classifyOverride: override,
           probeForward: () => Effect.succeed({ kind: "success" }),
         },
@@ -1081,7 +1081,7 @@ describe("persistPortAcquisition helper-owned preferred ports", () => {
                   return { exitCode: 0, stdout: "", stderr: "" };
                 }),
             },
-            privilege: {
+            privilege: makeTestPrivilegeService({
               elevate: (command) =>
                 Effect.sync(() => {
                   commands.push([...command]);
@@ -1092,7 +1092,7 @@ describe("persistPortAcquisition helper-owned preferred ports", () => {
                   }
                   return { exitCode: 0, stdout: "", stderr: "" };
                 }),
-            },
+            }),
             classifyOverride: override,
             probeForward: () => Effect.succeed({ kind: "success" }),
           },
@@ -1195,13 +1195,13 @@ describe("persistPortAcquisition helper-owned preferred ports", () => {
                   return { exitCode: 0, stdout: "", stderr: "" };
                 }),
             },
-            privilege: {
+            privilege: makeTestPrivilegeService({
               elevate: (command) =>
                 Effect.sync(() => {
                   elevations.push(command);
                   return { exitCode: 1, stdout: "", stderr: "refused" };
                 }),
-            },
+            }),
             classifyOverride: selected,
             probeForward: () => Effect.succeed({ kind: "failure" }),
           },
@@ -1250,13 +1250,13 @@ describe("persistPortAcquisition helper-owned preferred ports", () => {
             ...unusedRunner,
             run: () => Effect.succeed({ exitCode: 1, stdout: "", stderr: "refused" }),
           },
-          privilege: {
+          privilege: makeTestPrivilegeService({
             elevate: (command) =>
               Effect.sync(() => {
                 elevations.push(command);
                 return { exitCode: 1, stdout: "", stderr: "refused" };
               }),
-          },
+          }),
           classifyOverride: override,
           probeForward: () => Effect.succeed({ kind: "failure" }),
         },
@@ -1441,13 +1441,13 @@ describe("persistPortAcquisition EACCES helper install", () => {
                 return { exitCode: 0, stdout: "", stderr: "" };
               }),
           },
-          privilege: {
+          privilege: makeTestPrivilegeService({
             elevate: () =>
               Effect.sync(() => {
                 mutations.push("elevate");
                 return { exitCode: 0, stdout: "", stderr: "" };
               }),
-          },
+          }),
           classifyOverride,
           probeForward: () => Effect.succeed({ kind: "success" as const }),
           autoApprove: true,

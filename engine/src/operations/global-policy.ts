@@ -34,6 +34,7 @@ import { withReadOnlyLandofile } from "../services/landofile-live.ts";
 import { unavailableRouterReason } from "../subsystems/proxy/api.ts";
 import { readGlobalConsumerReservations } from "./global-consumer-lease.ts";
 import {
+  GlobalConsumerImpactSchema,
   GlobalConsumerProtectionError,
   GlobalConsumerSchema,
   readGlobalConsumerImpact,
@@ -60,6 +61,7 @@ export const GlobalPolicyImpactSchema = Schema.Struct({
   routes: Schema.Array(Schema.Struct({ service: Schema.String, hostname: Schema.String })),
   volumes: Schema.Literal("retained"),
   uncertainties: Schema.Array(Schema.String),
+  appliedStateIssues: GlobalConsumerImpactSchema.fields.appliedStateIssues.pipe(Schema.optionalKey),
   validationErrors: Schema.Array(Schema.String),
 });
 
@@ -103,7 +105,7 @@ const dependencyBlockers = (
   for (const [id, service] of Object.entries(authored ?? {})) {
     if (selected.has(id) || enabled.get(id) === false) continue;
     if (
-      service.dependsOn?.some(
+      service.depends_on?.some(
         (dependency) => dependency.required !== false && selected.has(dependency.service),
       )
     )
@@ -355,7 +357,7 @@ const changePolicy = Effect.fn("GlobalPolicy.change")(function* (
   const activationEpoch = yield* globalActivationEpoch;
   const consumerImpact =
     operation === "enable"
-      ? { consumers: [], uncertainties: [] }
+      ? { consumers: [], uncertainties: [], appliedStateIssues: [] }
       : yield* readGlobalConsumerImpact({
           selectedIds: ids,
           ...(placement._tag === "Success"
@@ -389,6 +391,9 @@ const changePolicy = Effect.fn("GlobalPolicy.change")(function* (
       .filter((route) => selected.has(String(route.service)))
       .map((route) => ({ service: String(route.service), hostname: route.hostname })),
     volumes: "retained",
+    ...(consumerImpact.appliedStateIssues.length === 0
+      ? {}
+      : { appliedStateIssues: consumerImpact.appliedStateIssues }),
     uncertainties: [
       ...supersessionUncertainties,
       ...reserved,
@@ -466,7 +471,11 @@ const changePolicy = Effect.fn("GlobalPolicy.change")(function* (
             : "Running application dependencies could not be verified; policy was left unchanged.",
         consumers: consumerImpact.consumers,
         uncertainties: consumerImpact.uncertainties,
+        ...(consumerImpact.appliedStateIssues.length === 0
+          ? {}
+          : { appliedStateIssues: consumerImpact.appliedStateIssues }),
         remediation:
+          consumerImpact.appliedStateIssues[0]?.remediation ??
           "Stop or reconfigure the named applications and restore any unreadable evidence, then retry. Use --allow-disruption only when you intend to continue despite these consumers or uncertainties; the acknowledgement applies to this invocation.",
       }),
     );

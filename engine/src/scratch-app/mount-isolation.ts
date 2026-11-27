@@ -24,6 +24,7 @@ export const applyMountCwd = (
   plan: AppPlan,
   target: string | undefined,
   hostCwd: string,
+  projectRoot: string = String(plan.root),
 ): AppPlan | undefined => {
   const primaryName = findPrimaryServiceName(plan);
   const primary = primaryName === undefined ? undefined : plan.services[primaryName];
@@ -57,7 +58,7 @@ export const applyMountCwd = (
       },
     };
   }
-  const path = rootPathApi(plan.root);
+  const path = rootPathApi(projectRoot);
   const removedSessions = new Set<string>();
   const services = Object.fromEntries(
     Object.values(plan.services).map((service) => {
@@ -67,7 +68,7 @@ export const applyMountCwd = (
         if (mountKey !== undefined) removedSessions.add(`${service.name}/${mountKey}`);
         return {
           ...bind,
-          source: path.resolve(hostCwd, path.relative(plan.root, mount.source)),
+          source: path.resolve(hostCwd, path.relative(projectRoot, mount.source)),
           realization: "passthrough" as const,
         };
       });
@@ -110,6 +111,7 @@ const sourceContained = async (root: string, source: string): Promise<boolean> =
 export const isolateScratchMounts = Effect.fn("ScratchAppService.isolateMounts")(function* (
   plan: AppPlan,
   suppressRelative: boolean,
+  projectRoot: string = String(plan.root),
 ) {
   const events = yield* EventService;
   const removedSessions = new Set<string>();
@@ -123,7 +125,7 @@ export const isolateScratchMounts = Effect.fn("ScratchAppService.isolateMounts")
       const keep =
         !suppressRelative &&
         (yield* Effect.tryPromise({
-          try: () => sourceContained(plan.root, mount.source),
+          try: () => sourceContained(projectRoot, mount.source),
           catch: (cause) =>
             new ScratchAppError({
               operation: "acquire",

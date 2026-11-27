@@ -123,7 +123,7 @@ export const delegatedScopeRemediation = (reason: DelegatedScopeIneligibility): 
     case "missing-launcher":
       return `Lando starts its runtime with the host's systemd-run and /usr/bin/env so containers get their own cgroups; install systemd and coreutils, ${restart}`;
     case "no-user-manager":
-      return `Lando starts its runtime in a systemd user scope so containers get their own cgroups, and no systemd user manager runs for your user. Enable one with \`loginctl enable-linger $USER\` (or log in through a systemd session), ${restart}`;
+      return `Lando starts its runtime in a systemd user scope so containers get their own cgroups, and no systemd user manager runs for your user. Rerun \`lando setup\` in a terminal and approve enabling lingering (or rerun it with \`--enable-linger\`), or run \`loginctl enable-linger $USER\` yourself, ${restart}`;
     case "cgroup-v1":
       return `This host uses cgroup v1, where containers cannot get their own cgroups without root; boot with the unified cgroup v2 hierarchy (\`systemd.unified_cgroup_hierarchy=1\`), ${restart}`;
     case "missing-controllers":

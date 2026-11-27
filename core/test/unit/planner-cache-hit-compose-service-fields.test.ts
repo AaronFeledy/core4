@@ -5,13 +5,14 @@ import { join } from "node:path";
 import { deserialize } from "node:v8";
 import { CapabilityError } from "@lando/core/errors";
 import { LandofileShape, type ProviderCapabilities, ServiceName } from "@lando/core/schema";
-import { AppPlanner } from "@lando/core/services";
+import { AppPlanner, PathsService } from "@lando/core/services";
 import { APP_PLAN_CACHE_HEADER_BYTES, writeCachedAppPlan } from "@lando/engine/cache/app-plan";
 import { appPlanCachePath } from "@lando/engine/cache/paths";
 import * as AppCacheService from "@lando/engine/cache/service";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
+import { makeLandoPaths } from "@lando/paths";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Cause, Effect, Exit, Layer, Option, Schema } from "effect";
 import { literalLandofile } from "../_support/value-contracts.ts";
@@ -39,7 +40,14 @@ test("Given a cached plan with profiles, when support is omitted, then the cache
     services: { web: { image: "node:lts", home: false } },
   });
   const plannerLayer = AppPlannerLayer.layer.pipe(
-    Layer.provide(Layer.mergeAll(AppCacheService.layer, BunFileSystem.layer, PluginRegistryLayer.layer)),
+    Layer.provide(
+      Layer.mergeAll(
+        AppCacheService.layer,
+        BunFileSystem.layer,
+        PluginRegistryLayer.layer,
+        Layer.succeed(PathsService, makeLandoPaths()),
+      ),
+    ),
   );
   const runPlan = (capabilities: ProviderCapabilities) =>
     Effect.runPromiseExit(

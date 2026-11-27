@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { ProxyConfig } from "@lando/sdk/schema";
-import { makeTestCertificateAuthority } from "@lando/sdk/test";
+import { makeTestCertificateAuthority, makeTestPrivilegeService } from "@lando/sdk/test";
 import { Effect, Schema, Stream } from "effect";
 import { makeTraefikRouterService } from "../src/proxy.ts";
 import type { SocketProxyDependencies } from "../src/proxy-types.ts";
@@ -22,13 +22,13 @@ const harness = (isInteractive: boolean) => {
       stream: () => Stream.empty,
       streamWithExit: () => Stream.empty,
     },
-    privilege: {
+    privilege: makeTestPrivilegeService({
       elevate: (command) =>
         Effect.sync(() => {
           elevations.push(command);
           return { exitCode: 0, stdout: "", stderr: "" };
         }),
-    },
+    }),
     interaction: {
       isInteractive: Effect.succeed(isInteractive),
       confirm: (spec) =>
@@ -93,7 +93,7 @@ test.each([undefined, false])("honors a TTY refusal when automatic consent is %j
   expect(elevations).toEqual([]);
 });
 
-test("keeps default installation without confirmation on non-TTY input", async () => {
+test("a non-interactive run without automatic consent installs nothing", async () => {
   // Given
   const { router, confirms, elevations } = harness(false);
 
@@ -102,7 +102,7 @@ test("keeps default installation without confirmation on non-TTY input", async (
 
   // Then
   expect(confirms).toEqual([]);
-  expect(elevations).toHaveLength(1);
+  expect(elevations).toEqual([]);
 });
 
 test("does not grant consent from decoded proxy configuration", async () => {

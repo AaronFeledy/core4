@@ -162,7 +162,10 @@ describe("host uninstall contributions", () => {
           execute: ({ elevate }) =>
             Effect.gen(function* () {
               if (elevate === undefined) return { outcome: "failed" as const, error: "missing elevate" };
-              const result = yield* elevate(["/bin/true"]);
+              const attempt = yield* Effect.result(elevate(["/bin/true"]));
+              if (attempt._tag === "Failure")
+                return { outcome: "failed" as const, error: attempt.failure.message };
+              const result = attempt.success;
               elevated.push(["/bin/true"]);
               return result.exitCode === 0
                 ? { outcome: "completed" as const }

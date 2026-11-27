@@ -52,6 +52,7 @@ const compose = (service: ServicePlan) =>
 export const createDependencyEnvironments = (input: {
   readonly appRoot: string;
   readonly appSlug: string;
+  readonly nativeSlug?: string;
   readonly dataSlug?: string;
   readonly appKind?: "user" | "scratch" | "global";
   readonly providerCapabilities: ProviderCapabilities;
@@ -152,7 +153,7 @@ export const createDependencyEnvironments = (input: {
       }).map((claim) => [claim.name.toLowerCase(), claim.service]),
     );
     for (const name of consumers.keys())
-      claimed.set(landoServiceContainerName(input.appSlug, name).toLowerCase(), name);
+      claimed.set(landoServiceContainerName(input.nativeSlug ?? input.appSlug, name).toLowerCase(), name);
     const counts = new Map<string, number>();
     for (const { intent } of groups.values()) counts.set(intent.kind, (counts.get(intent.kind) ?? 0) + 1);
     for (const group of groups.values()) {
@@ -170,7 +171,7 @@ export const createDependencyEnvironments = (input: {
       const claims = [
         name,
         `${name}.${input.appSlug}.internal`,
-        landoServiceContainerName(input.appSlug, name),
+        landoServiceContainerName(input.nativeSlug ?? input.appSlug, name),
       ];
       for (const value of claims) {
         const previous = claimed.get(value.toLowerCase());

@@ -39,6 +39,7 @@ export * from "./network-service-fixtures.ts";
  * - templateEngines: static template-engine map keyed by contributed engine id.
  */
 export { type PluginContractInput, TestPluginManifest, runPluginContract } from "./plugin-contract.ts";
+export { type TestPrivilegeServiceOptions, makeTestPrivilegeService } from "./privilege-service.ts";
 export {
   type ContractMatrixCell,
   type ContractMatrixCellResult,
@@ -63,6 +64,7 @@ export * from "./renderer-contract.ts";
 export * from "./renderer-panel-contract.ts";
 export * from "./renderer-panel-protocol.ts";
 export * from "./router-service-contract.ts";
+export { makeTestRuntimeProviderRegistry } from "./runtime-provider-registry.ts";
 export * from "./service-contract.ts";
 export * from "./state-store-contract.ts";
 export { yamlRoundTripCorpus, yamlRoundTripRecord } from "./yaml-round-trip-corpus.ts";

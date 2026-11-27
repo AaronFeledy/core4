@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import * as RendererOutput from "@lando/renderer/output";
 import * as RendererRuntime from "@lando/renderer/runtime";
 import { REDACTED } from "@lando/sdk/secrets";
+import { StreamFrameSink } from "@lando/sdk/services";
 import { Effect, Layer } from "effect";
 import { TestClock } from "effect/testing";
 

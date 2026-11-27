@@ -35,7 +35,7 @@ import { AppResolveError, ComposeKeyRejectedError, LandofileLoadOutsideRootError
 import { definePlugin } from "@lando/sdk/plugins";
 import { PluginManifest } from "@lando/sdk/schema";
 import type { FileSyncEngineShape } from "@lando/sdk/services";
-import { TestRouterService } from "@lando/sdk/test";
+import { TestRouterService, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { DateTime, Effect, Layer, Schema, Stream } from "effect";
 import { makeScenarioProvider } from "../../src/testing/scenario-provider.ts";
 import { preparedFileSyncTargets } from "../_support/prepared-sync-targets.ts";
@@ -431,10 +431,7 @@ describe("@lando/core App-handle library contract", () => {
                 Layer.succeed(RuntimeProvider, acceleratedProvider),
                 Layer.succeed(
                   RuntimeProviderRegistry,
-                  RuntimeProviderRegistry.of({
-                    resolveAppliedPlan: () => Effect.succeed(undefined),
-                    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-                    appliedPlansFor: () => Effect.succeed([]),
+                  makeTestRuntimeProviderRegistry({
                     list: Effect.succeed([ProviderId.make(acceleratedProvider.id)]),
                     capabilities: Effect.succeed(acceleratedProvider.capabilities),
                     select: () => Effect.succeed(acceleratedProvider),

@@ -31,7 +31,13 @@ const event = (value: Readonly<Record<string, unknown>>): LandoEvent => {
 const completedTask = (): TaskTreeViewModel => {
   const viewModel = new TaskTreeViewModel({ color: true, terminalRows: 8 });
   viewModel.apply(
-    event({ _tag: "task.tree.start", parentId: "build", label: "Building", children: ["web"], timestamp }),
+    event({
+      _tag: "task.tree.start",
+      parentId: "build",
+      label: "Building",
+      children: [{ id: "web", label: "web" }],
+      timestamp,
+    }),
   );
   viewModel.apply(
     event({
@@ -73,7 +79,13 @@ describe("task-tree full-tail navigation", () => {
   test("Enter does not fake a full tail when the task has no transcript path", () => {
     const viewModel = new TaskTreeViewModel({ color: true });
     viewModel.apply(
-      event({ _tag: "task.tree.start", parentId: "build", label: "Building", children: ["web"], timestamp }),
+      event({
+        _tag: "task.tree.start",
+        parentId: "build",
+        label: "Building",
+        children: [{ id: "web", label: "web" }],
+        timestamp,
+      }),
     );
     viewModel.apply(event({ _tag: "task.start", taskId: "web", label: "web", timestamp }));
     const controller = new TaskTreeInputController(viewModel, { now: () => timestamp });

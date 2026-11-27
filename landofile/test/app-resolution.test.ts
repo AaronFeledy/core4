@@ -26,17 +26,20 @@ const serviceFor = (shape: LandofileShape): Context.Service.Shape<typeof Landofi
 });
 
 describe("user app resolution seam", () => {
-  test.each(["global", "Global", "global!", "--GLOBAL--"])(
-    "refuses the reserved normalized app slug for %s",
-    async (name) => {
-      await expect(
-        Effect.runPromise(makeResolution().loadUserLandofile(serviceFor({ name }))),
-      ).rejects.toMatchObject({
-        _tag: "AppIdReservedError",
-        reserved: "global",
-      });
-    },
-  );
+  test.each([
+    ["global", "global"],
+    ["Global", "global"],
+    ["global!", "global"],
+    ["--GLOBAL--", "global"],
+    ["Global ABCDEF0123456789", "global-abcdef0123456789"],
+  ])("refuses the reserved normalized app slug for %s", async (name, reserved) => {
+    await expect(
+      Effect.runPromise(makeResolution().loadUserLandofile(serviceFor({ name }))),
+    ).rejects.toMatchObject({
+      _tag: "AppIdReservedError",
+      reserved,
+    });
+  });
 
   test("materializes recipe expressions when loading a non-layer file", async () => {
     // Given

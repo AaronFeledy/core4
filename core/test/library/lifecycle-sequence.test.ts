@@ -127,8 +127,10 @@ const checkWholeApp = (harness: Harness, observation: Observation): void => {
   expect([...observation.record].sort()).toEqual([...harness.desired.current].sort());
 };
 
-const checkStopped = (observation: Observation): void => {
-  expect(runningServices(observation)).toEqual([]);
+const checkStopped = (before: Observation, after: Observation): void => {
+  expect(runningServices(after)).toEqual([]);
+  // Stop keeps every container it found, with the same identity.
+  expect(containerIds(after)).toEqual(containerIds(before));
 };
 
 const checkSelected = (
@@ -159,8 +161,8 @@ const runStep = (harness: Harness, operation: Operation): Effect.Effect<void, un
   Effect.gen(function* () {
     yield* Queue.clear(harness.subscription.queue);
     const before = yield* observe(harness);
+    // Stop keeps containers, so a dropped service's stopped container is removed by the next start too.
     const missingBefore = containersOutsideDesired(before, harness.desired.current)
-      .filter((container) => container.status === "running")
       .map((container) => container.service)
       .sort();
 
@@ -185,7 +187,7 @@ const runStep = (harness: Harness, operation: Operation): Effect.Effect<void, un
         return;
       case "stop":
         expect(removed).toBeUndefined();
-        checkStopped(after);
+        checkStopped(before, after);
         return;
       case "rebuild-selected":
         expect(removed).toBeUndefined();
@@ -265,7 +267,7 @@ test("a selected rebuild keeps the removed service's container and record until 
   );
 });
 
-test("stop after a removal tears down the recorded service and the next start converges", async () => {
+test("stop after a removal keeps the dropped service's container until the next start removes it", async () => {
   await withHarness((harness) => runSequence(harness, ["start", "remove", "stop", "start"]));
 });
 

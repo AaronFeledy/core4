@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { APPLIED_STATE_VERSION } from "@lando/container-runtime/applied-state";
 import { makePluginStateStore } from "@lando/engine/plugins/context-state";
 import { ProviderUnavailableError, StateStoreError } from "@lando/sdk/errors";
 import type { PluginStateBucketSpec, PluginStateStore } from "@lando/sdk/plugins";
@@ -10,7 +11,7 @@ import { makeStateStore } from "@lando/state-store/service";
 import { Cause, DateTime, Effect, Exit, Option, Schema, Stream } from "effect";
 import {
   listAppliedPlans,
-  loadAppliedPlan,
+  loadAppliedPlanStrict,
   persistAppliedPlan,
   removeAppliedPlan,
 } from "../src/applied-state.ts";
@@ -127,17 +128,18 @@ describe("provider-podman applied state", () => {
         });
         await writeFile(path, bytes);
         // When
-        const loaded = await Effect.runPromise(loadAppliedPlan(state, plan.id));
+        const result = await Effect.runPromise(loadAppliedPlanStrict(state, plan.id).pipe(Effect.result));
         // Then
         if (init === "invalid") {
-          expect(loaded).toBeUndefined();
+          expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "ProviderUnavailableError" } });
           expect(await readFile(path, "utf8")).toBe(bytes);
         } else {
+          const loaded = result._tag === "Success" ? result.success : undefined;
           if (loaded === undefined) throw new Error("missing migrated plan");
           expect(loaded.services[serviceName]?.init).toBe(init === "off" ? false : init);
           expect(loaded.services[serviceName]?.extensions.compose).not.toHaveProperty("init");
           expect(planAppIdentity(loaded)).toEqual(planAppIdentity(plan));
-          const peer = await Effect.runPromise(loadAppliedPlan(state, sibling.id));
+          const peer = await Effect.runPromise(loadAppliedPlanStrict(state, sibling.id));
           expect(peer?.root).toBe(sibling.root);
         }
       });
@@ -176,7 +178,7 @@ describe("provider-podman applied state", () => {
               },
             }),
           );
-          await Effect.runPromise(provider.start({ app: plan.id, service: serviceName, plan }));
+          await Effect.runPromise(provider.restart({ app: plan.id, service: serviceName, plan }));
           requests.length = 0;
           const encoded = Schema.encodeSync(AppPlan)(plan);
           const broken = {
@@ -206,14 +208,14 @@ describe("provider-podman applied state", () => {
             operation === "apply" || operation === "reconcile"
               ? provider.apply(plan, { reconcile: operation === "reconcile" })
               : operation === "stop"
-                ? provider.stop(target)
+                ? provider.bringDown({ app: plan.id }, { containers: "stop" })
                 : operation === "stop-supplied"
-                  ? provider.stop({ ...target, plan })
+                  ? provider.bringDown({ app: plan.id, plan }, { containers: "stop" })
                   : operation === "restart"
                     ? provider.restart({ ...target, plan })
-                    : provider.destroy(
+                    : provider.bringDown(
                         { app: plan.id, ...(operation === "destroy-supplied" ? { plan } : {}) },
-                        { volumes: true },
+                        { containers: "remove", volumes: true },
                       );
           const failure = await Effect.runPromise(action.pipe(Effect.flip, Effect.scoped));
           expect(failure).toBeInstanceOf(ProviderUnavailableError);
@@ -253,63 +255,73 @@ describe("provider-podman applied state", () => {
             },
           }),
         );
-        expect(await Effect.runPromise(loadAppliedPlan(state, plan.id))).toBeUndefined();
         expect(await Effect.runPromise(provider.appliedPlans ?? Effect.die("missing inventory"))).toEqual([]);
         expect(await Effect.runPromise(provider.list({ includeUnplanned: true }))).toEqual([]);
         expect(await Effect.runPromise(listAppliedPlans(state))).toEqual({
           plans: [],
-          unreadable: [{ path }],
+          unreadable: [{ path, reason: "unreadable" }],
         });
       });
     });
   }
 
-  test("logs discover the labeled container when applied state is unreadable", async () => {
-    await withStateRoot(async (root) => {
-      const state = stateFor(root);
-      const plan = planFor("log-app");
-      const path = await Effect.runPromise(persistAppliedPlan(state, plan));
-      await writeFile(path, "not json");
-      const streams: string[] = [];
-      const provider = await Effect.runPromise(
-        makeRuntimeProvider({
-          platform: "linux",
-          env: {},
-          conflictDetector: () => Effect.void,
-          appliedPlanState: state,
-          podmanApi: {
-            ping: Effect.void,
-            info: Effect.succeed({ version: { Version: "6.0.0" } }),
-            request: () =>
-              Effect.succeed({
-                status: 200,
-                body: JSON.stringify([
-                  {
-                    Id: "observed-log-container",
-                    Labels: { "dev.lando.app": plan.id, "dev.lando.service": serviceName },
-                  },
-                ]),
-              }),
-            stream: (input) => {
-              streams.push(input.path);
-              return Stream.empty;
+  test.each([false, true])(
+    "logs refuse unreadable applied state even with supplied plan=%s",
+    async (supplied) => {
+      await withStateRoot(async (root) => {
+        const state = stateFor(root);
+        const plan = planFor("log-app");
+        const path = await Effect.runPromise(persistAppliedPlan(state, plan));
+        await writeFile(path, "not json");
+        const streams: string[] = [];
+        const provider = await Effect.runPromise(
+          makeRuntimeProvider({
+            platform: "linux",
+            env: {},
+            conflictDetector: () => Effect.void,
+            appliedPlanState: state,
+            podmanApi: {
+              ping: Effect.void,
+              info: Effect.succeed({ version: { Version: "6.0.0" } }),
+              request: () =>
+                Effect.succeed({
+                  status: 200,
+                  body: JSON.stringify([
+                    {
+                      Id: "observed-log-container",
+                      Labels: { "dev.lando.app": plan.id, "dev.lando.service": serviceName },
+                    },
+                  ]),
+                }),
+              stream: (input) => {
+                streams.push(input.path);
+                return Stream.empty;
+              },
             },
-          },
-        }),
-      );
-      await Effect.runPromise(
-        Stream.runCollect(provider.logs({ app: plan.id, service: serviceName }, { follow: false })),
-      );
-      expect(streams).toHaveLength(1);
-      expect(streams[0]).toStartWith("/containers/observed-log-container/logs?");
-    });
-  });
+          }),
+        );
+        const failure = await Effect.runPromise(
+          Stream.runCollect(
+            provider.logs(
+              { app: plan.id, service: serviceName, ...(supplied ? { plan } : {}) },
+              { follow: false },
+            ),
+          ).pipe(Effect.result),
+        );
+        expect(failure).toMatchObject({
+          _tag: "Failure",
+          failure: { _tag: "ProviderUnavailableError", operation: "applied-state.read" },
+        });
+        expect(streams).toEqual([]);
+      });
+    },
+  );
   test("credential-bearing proxy env round-trips across fresh stores", async () => {
     await withStateRoot(async (root) => {
       const plan = planFor("proxy-app", proxyUrl);
 
       const path = await Effect.runPromise(persistAppliedPlan(stateFor(root), plan));
-      const loaded = await Effect.runPromise(loadAppliedPlan(stateFor(root), plan.id));
+      const loaded = await Effect.runPromise(loadAppliedPlanStrict(stateFor(root), plan.id));
 
       expect(path).toBe(join(root, "applied-plans.json"));
       expect(loaded?.services[serviceName]?.environment.HTTPS_PROXY).toBe(proxyUrl);
@@ -381,7 +393,7 @@ describe("provider-podman applied state", () => {
 
       const plans = await Effect.runPromise(listAppliedPlans(state));
       expect(plans.plans.map((plan) => plan.id)).toEqual([second.id]);
-      expect(await Effect.runPromise(loadAppliedPlan(state, first.id))).toBeUndefined();
+      expect(await Effect.runPromise(loadAppliedPlanStrict(state, first.id))).toBeUndefined();
     });
   });
 
@@ -401,25 +413,29 @@ describe("provider-podman applied state", () => {
       expect(failure?.operation).toBe("applied-state.remove");
       expect(failure?.cause).toBeInstanceOf(StateStoreError);
       expect((failure?.cause as StateStoreError | undefined)?.operation).toBe("mutate");
-      expect(await Effect.runPromise(loadAppliedPlan(state, plan.id))).toEqual(plan);
+      expect<AppPlan | undefined>(await Effect.runPromise(loadAppliedPlanStrict(state, plan.id))).toEqual(
+        plan,
+      );
     });
   });
 
-  test("corrupt collection contents behave as a cache miss", async () => {
+  test("strict load diagnoses corrupt collection contents", async () => {
     await withStateRoot(async (root) => {
       const state = stateFor(root);
       const plan = planFor("corrupt-app");
       const path = await Effect.runPromise(persistAppliedPlan(state, plan));
       await writeFile(path, "not valid json");
 
-      const loaded = await Effect.runPromise(loadAppliedPlan(state, plan.id));
-
-      expect(loaded).toBeUndefined();
-      expect(await Effect.runPromise(listAppliedPlans(state))).toEqual({ plans: [], unreadable: [{ path }] });
+      const failure = await Effect.runPromise(Effect.flip(loadAppliedPlanStrict(state, plan.id)));
+      expect(failure).toMatchObject({ _tag: "ProviderUnavailableError", details: { path } });
+      expect(await Effect.runPromise(listAppliedPlans(state))).toEqual({
+        plans: [],
+        unreadable: [{ path, reason: "unreadable" }],
+      });
     });
   });
 
-  test("unknown collection versions behave as a cache miss", async () => {
+  test("strict load diagnoses a newer collection version", async () => {
     await withStateRoot(async (root) => {
       const state = stateFor(root);
       const plan = planFor("version-app");
@@ -427,10 +443,24 @@ describe("provider-podman applied state", () => {
       const envelope = JSON.parse(await readFile(path, "utf8"));
       await writeFile(path, JSON.stringify({ ...envelope, version: 99 }));
 
-      const loaded = await Effect.runPromise(loadAppliedPlan(state, plan.id));
-
-      expect(loaded).toBeUndefined();
-      expect(await Effect.runPromise(listAppliedPlans(state))).toEqual({ plans: [], unreadable: [{ path }] });
+      const failure = await Effect.runPromise(Effect.flip(loadAppliedPlanStrict(state, plan.id)));
+      expect(failure).toMatchObject({
+        _tag: "AppliedStateVersionError",
+        path,
+        scope: "provider",
+        storedVersion: 99,
+      });
+      expect(await Effect.runPromise(listAppliedPlans(state))).toEqual({
+        plans: [],
+        unreadable: [
+          {
+            path,
+            reason: "newer-version",
+            storedVersion: 99,
+            supportedVersion: APPLIED_STATE_VERSION,
+          },
+        ],
+      });
     });
   });
 
@@ -440,7 +470,10 @@ describe("provider-podman applied state", () => {
 
       const result = await Effect.runPromise(listAppliedPlans(stateFor(root)));
 
-      expect(result).toEqual({ plans: [], unreadable: [{ path: join(root, "applied-plans.json") }] });
+      expect(result).toEqual({
+        plans: [],
+        unreadable: [{ path: join(root, "applied-plans.json"), reason: "unreadable" }],
+      });
     });
   });
 });

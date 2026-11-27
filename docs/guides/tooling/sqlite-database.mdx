@@ -109,7 +109,7 @@ Pruning reads the snapshot catalog only; it does not open the database or need i
 lando db:snapshots:prune --service appserver --keep-latest=3 --preview
 ```
 
-`--keep-latest` applies per service and database path within the selected scope. Automatic recovery snapshots are never pruned manually. `--preview` lists the candidate IDs; running without it removes only those confirmed IDs, so snapshots added while you confirm stay intact.
+`--keep-latest` applies per service and database path within the selected scope. Pruning covers the snapshots you took with `db:snapshot`; add `--recovery` to prune the automatic recovery snapshots instead, with the same `--keep-latest`, `--preview`, and `--yes` behavior. `--preview` lists the candidate IDs; running without it removes only those confirmed IDs, so snapshots added while you confirm stay intact.
 
 ## Storage limits
 
@@ -144,6 +144,19 @@ The helper image is a pinned `alpine/sqlite` build with FTS3, FTS4, FTS5, R*Tree
       <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"database\",\\s*\"sqlite\"" } }} />
     </Step>
   </Scenario>
+  <Scenario id="prune-recovery-bucket" render={false} reason="Regression for pruning automatic SQLite recovery snapshots">
+    <Step name="preview-and-confirm">
+      <UseFixture name="sqlite-database-demo" />
+      <Run command="lando start" />
+      <Run command="lando db:snapshots:prune --recovery --keep-latest 0 --preview --format=json" />
+      <Verify command="lando db:snapshots:prune --recovery --keep-latest 0 --preview --format=json" expect={{ stdout: { regex: "\"retentionApplied\":false" } }} />
+      <Run command="lando db:snapshots:prune --recovery --keep-latest 0 --format=json" expectExit={1} />
+      <Verify errorTag="SqlConfirmRequiredError" expect={{ regex: "recovery SQLite snapshot" }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
   <Scenario id="binary-export-round-trip" layer="e2e" render={false} reason="Verify SQLite file copies against the running app">
     <Step name="start">
       <UseFixture name="sqlite-database-demo" />
@@ -163,6 +176,11 @@ The helper image is a pinned `alpine/sqlite` build with FTS3, FTS4, FTS5, R*Tree
     </Step>
     <Step name="snapshot">
       <Verify command="lando db:snapshot --format=json" expect={{ stdout: { regex: "\"ok\":true.*\"snapshotId\":" } }} />
+    </Step>
+    <Step name="prune-recovery">
+      <Verify command="lando db:snapshots:prune --recovery --keep-latest 0 --yes --format=json" expect={{ stdout: { regex: "\"prunedSnapshotIds\":\\[\"" } }} />
+      <Verify command="lando db:snapshots --format=json" expect={{ stdout: { not: { regex: "\"recoveryReason\":\"(reset|import|restore)\"" } } }} />
+      <Verify command="lando db:snapshots --format=json" expect={{ stdout: { regex: "\"recoveryReason\":\"manual\"" } }} />
     </Step>
     <Step name="cleanup">
       <Cleanup />

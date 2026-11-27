@@ -1,6 +1,6 @@
 import type { ToolingResult } from "@lando/sdk/schema";
+import { StreamFrameSink, createCollectingStreamFrameSink } from "@lando/sdk/services";
 import { Effect, Option } from "effect";
-import { StreamFrameSink, createCollectingStreamFrameSink } from "./stream-frame-sink.ts";
 
 export const withToolingOutput = Effect.fnUntraced(function* <
   A extends Pick<ToolingResult, "stdout" | "stderr">,

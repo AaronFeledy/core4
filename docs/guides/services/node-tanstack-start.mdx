@@ -33,7 +33,7 @@ services:
     port: 3000
     environment:
       DATABASE_URL: "postgresql://{{ services.database.creds.user }}:{{ services.database.creds.password }}@database:5432/{{ services.database.creds.database }}"
-    dependsOn:
+    depends_on:
       database:
         condition: service_healthy
   database:
@@ -49,6 +49,13 @@ tooling:
     description: Run npx inside the web service.
     service: web
     dir: /app
+  dev:
+    cmd: [npm, run, dev]
+    description: Run the dev script with the published hostname allowed in Vite.
+    service: web
+    dir: /app
+    env:
+      __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS: "{{ services.web.hostname }}"
 ```
 
 Start the services and check both runtimes:
@@ -63,7 +70,7 @@ lando psql -c 'SELECT version();'
 
 Check for Node 22.12 or newer within the 22.x line and PostgreSQL 18. The scaffold uses Vite 8, whose [Node requirements](https://vite.dev/guide/#scaffolding-your-first-vite-project) exclude early Node 22 releases. Keep `type: "node:22"`; `node:lts` is a moving image tag.
 
-Lando mounts your app at `/app`. The `npm` and `npx` tooling entries run there inside `web`; the Node service doesn't add them for you. `lando psql` comes from the Postgres service and supplies its credentials.
+Lando mounts your app at `/app`. The `npm` and `npx` tooling entries run there inside `web`; the Node service doesn't add them for you. The `dev` entry starts Vite [once the app exists](#serve-the-app). `lando psql` comes from the Postgres service and supplies its credentials.
 
 `web` starts with Lando's idle Node command. Its URL won't serve a page until you start Vite below.
 
@@ -180,7 +187,6 @@ export default defineConfig({
     host: '0.0.0.0',
     port: 3000,
     strictPort: true,
-    allowedHosts: ['web.tanstack-start-demo.lndo.site'],
   },
   plugins: [tanstackStart(), viteReact()],
 })
@@ -188,7 +194,7 @@ export default defineConfig({
 
 `host` lets Lando's proxy reach Vite from outside the container. `port` matches the Landofile and the scaffold's `dev` script; setting Lando's `PORT` environment variable alone doesn't configure Vite. `strictPort` makes a second server fail rather than silently choosing a port the proxy doesn't use.
 
-The default URL is `https://web.tanstack-start-demo.lndo.site`. If you change the app name or `proxy.defaultDomain`, use the hostname from `lando info` in `allowedHosts`, without the scheme or port. Keep the explicit hostname list; don't use `allowedHosts: true` or allow every `lndo.site` hostname. See [Vite's server options](https://vite.dev/config/server-options).
+Vite also rejects requests for hostnames it doesn't know, and the config has no `allowedHosts` line. The Landofile's `dev` task covers that: it sets Vite's `__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS` variable to `{{ services.web.hostname }}`, the hostname Lando publishes for `web`. By default that's `web.tanstack-start-demo.lndo.site`. Vite allows only that hostname, and the value follows the app's routes, so nothing in your project names it. Keep it to that one hostname; don't use `allowedHosts: true` or allow every `lndo.site` hostname. See [Use the URL in tooling and events](../landofile/expressions.mdx#use-the-url-in-tooling-and-events) and [Vite's server options](https://vite.dev/config/server-options).
 
 Keep `tanstackStart()` before `viteReact()`. The scaffold's Vite 8 supports `resolve.tsconfigPaths`, so you don't need a separate path-alias plugin.
 
@@ -200,13 +206,28 @@ lando npx tsc --noEmit
 
 Check that it exits successfully. If you add more routes later, run `lando npm run generate-routes` before typechecking. The blank scaffold doesn't install a linter or unit-test runner; add your chosen tools before expecting `npm run lint` or `npm test` to exist.
 
-## Serve it on `lando start`
+## Serve the app
 
-Add this line under `services.web` in `.lando.yml`, alongside `port`. Keep the existing `database`, `environment`, `dependsOn`, and `tooling` entries:
+{/* lando-lint: not-e2e the dev server runs in the foreground until interrupted */}
+```sh
+lando dev
+```
+
+`lando dev` runs the scaffold's `dev` script inside `web` with the allowed hostname set. Lando reads that hostname from the routes the last `lando start` applied, so the app has to be started first.
+
+Open the `web` URL from `lando info` and check that it lists `Ship the guide`. The first request can take a moment while Vite starts. Seeing the row checks the proxy, the server function, and the database together. Change the heading in `src/routes/index.tsx` and save; check that the browser updates too. Stop the server with Ctrl-C.
+
+### Serve it on `lando start` instead
+
+To have Vite start with the app, add these lines under `services.web` in `.lando.yml`. `command` goes alongside `port`, and the variable joins `DATABASE_URL` under the existing `environment`:
 
 ```yaml
 command: [npm, run, dev]
+environment:
+  __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS: "{{ service.hostname }}"
 ```
+
+A service's `command` doesn't go through the `dev` task, so the service sets the variable itself. In a service's `environment`, `{{ service.hostname }}` is that service's own published hostname, and it follows any `routes` you give `web`.
 
 Then restart with the changed config:
 
@@ -216,9 +237,7 @@ lando start
 lando info
 ```
 
-Open the `web` URL from `lando info` and check that it lists `Ship the guide`. The first request can take a moment while Vite starts. Seeing the row checks the proxy, the server function, and the database together. Change the heading in `src/routes/index.tsx` and save; check that the browser updates too.
-
-Prefer a foreground server? Leave `command:` out and run `lando npm run dev`, then stop it with Ctrl-C. Use one method at a time; both need port `3000`.
+Use one method at a time; both need port `3000`.
 
 ## Check the production build
 
@@ -287,8 +306,10 @@ Your host shell supplies your user and group IDs. This changes ownership through
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"web\":\\s*\\{[^}]*\"type\":\\s*\"node:22\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"port\":\\s*3000" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\\{\\s*\"type\":\\s*\"postgres:18\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"dev\":\\s*\\{[^}]*\"__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS\":\\s*\"\\{\\{ services\\.web\\.hostname \\}\\}\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { not: { regex: "APP_URL" } } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"DATABASE_URL\":\\s*\"postgresql://\\{\\{ services\\.database\\.creds\\.user \\}\\}:\\{\\{ services\\.database\\.creds\\.password \\}\\}@database:5432/" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"dependsOn\":\\s*\\{\\s*\"database\":\\s*\\{\\s*\"condition\":\\s*\"service_healthy\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"depends_on\":\\s*\\{\\s*\"database\":\\s*\\{\\s*\"condition\":\\s*\"service_healthy\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"npm\":\\s*\\{[^}]*\"service\":\\s*\"web\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"npx\":\\s*\\{[^}]*\"service\":\\s*\"web\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { not: { regex: "\"command\":\\s*\\[" } } }} />
@@ -304,6 +325,7 @@ Your host shell supplies your user and group IDs. This changes ownership through
       <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
       <Run command="lando app:config --format=json" />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"command\":\\s*\\[\\s*\"npm\"\\s*,\\s*\"run\"\\s*,\\s*\"dev\"\\s*\\]" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"environment\":\\s*\\{\\s*\"__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS\":\\s*\"\\{\\{ service\\.hostname \\}\\}\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"condition\":\\s*\"service_healthy\"" } }} />
     </Step>
   </Scenario>

@@ -1,7 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
 
-import { parseRuntimeBundleSources } from "../../../scripts/runtime-bundle-sources.ts";
+import {
+  RUNTIME_BUNDLE_SOURCES_PATH,
+  parseRuntimeBundleSources,
+} from "../../../scripts/runtime-bundle-sources.ts";
 import { fixtureLicense } from "./runtime-bundle-license-fixture.ts";
 
 const sha256 = (value: string): string => createHash("sha256").update(value).digest("hex");
@@ -55,6 +59,34 @@ describe("runtime-bundle source pins", () => {
     expect(() => parseRuntimeBundleSources(sourcePins(runtimeVersion))).toThrow();
   });
 
+  const withPatch = (damage: object): unknown => {
+    const pins = sourcePins("9.9.9-fixture") as { bundles: { "linux-x64": { components: object[] } } };
+    const [passt] = pins.bundles["linux-x64"].components;
+    const patch = {
+      file: "scripts/patches/passt.patch",
+      sha256: sha256("patch"),
+      files: [{ path: "src/passt.c", sourceSha256: sha256("a"), patchedSha256: sha256("b") }],
+      ...damage,
+    };
+    pins.bundles["linux-x64"].components = [{ ...passt, sourcePatches: [patch] }];
+    return pins;
+  };
+
+  test("accepts a source patch pinned under scripts/patches", () => {
+    expect(() => parseRuntimeBundleSources(withPatch({}))).not.toThrow();
+  });
+
+  test.each([
+    ["a patch outside scripts/patches", { file: "scripts/../etc/x.patch" }],
+    [
+      "a patched path that climbs out of the source tree",
+      { files: [{ path: "src/../../go.mod", patchedSha256: sha256("x") }] },
+    ],
+    ["a patch that pins no file", { files: [] }],
+  ])("rejects %s", (_name, damage) => {
+    expect(() => parseRuntimeBundleSources(withPatch(damage))).toThrow();
+  });
+
   test("rejects vendor source-build inputs with archives the builder cannot extract", () => {
     expect(() =>
       parseRuntimeBundleSources({
@@ -94,7 +126,7 @@ describe("runtime-bundle source pins", () => {
   test("Linux catatonit pins composite SPDX with verified static glibc license texts", async () => {
     const { readRuntimeBundleSources } = await import("../../../scripts/runtime-bundle-sources.ts");
     const sources = await readRuntimeBundleSources();
-    expect(sources.runtimeVersion).toBe("0.1.8");
+    expect(sources.runtimeVersion).toBe("0.1.9");
     for (const hostKey of ["linux-x64", "linux-arm64"] as const) {
       const catatonit = sources.bundles[hostKey]?.components.find(
         (component) => component.name === "catatonit",
@@ -116,15 +148,20 @@ describe("runtime-bundle source pins", () => {
         url: "https://raw.githubusercontent.com/bminor/glibc/glibc-2.41/COPYING.LIB",
         sha256: "dc626520dcd53a22f727af3ee42c770e56c97a64fe3adb063799d8ab032fe551",
       });
-      // Debian source/copyright for the exact Built-Using version (not a placeholder).
+      // ftp-master dropped the u4 copyright URL; u5 is byte-identical (same sha256).
       expect(byFile.get("glibc-copyright")).toEqual({
         file: "glibc-copyright",
-        url: "https://metadata.ftp-master.debian.org/changelogs/main/g/glibc/glibc_2.41-12+deb13u4_copyright",
+        url: "https://metadata.ftp-master.debian.org/changelogs/main/g/glibc/glibc_2.41-12+deb13u5_copyright",
         sha256: "f5788886720a2605a946e81d571e6c8162b09f58d2e2ceb8d36e5768fccd850d",
       });
       // license.source stays the catatonit source archive, not the binary .deb.
       expect(catatonit.license.source).toBe(catatonit.source.url);
       expect(catatonit.license.source).not.toBe(catatonit.url);
     }
+    const raw = await readFile(RUNTIME_BUNDLE_SOURCES_PATH, "utf8");
+    expect(raw).toContain("Built-Using glibc (= 2.41-12+deb13u4)");
+    expect(raw).not.toContain("Built-Using glibc (= 2.41-12+deb13u5)");
+    expect(raw).toContain("ftp-master dropped the u4 URL");
+    expect(raw).toContain("byte-identical text, same sha256");
   });
 });

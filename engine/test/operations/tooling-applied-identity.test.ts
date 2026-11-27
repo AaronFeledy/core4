@@ -13,7 +13,7 @@ import {
   ToolingEngine,
   type ToolingInvocation,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { DateTime, Effect } from "effect";
 import { CommandWarnings, makeCommandWarnings } from "../../src/landofile/command-warnings.ts";
 import { executeToolingInvocations } from "../../src/operations/tooling-compile.ts";
@@ -62,17 +62,10 @@ const enclosing = planAt("/tmp/tooling-exact", service({ name: "www-data", uid: 
 
 test("tooling identity never borrows an enclosing app's project user", async () => {
   const seen: ToolingInvocation[] = [];
-  const lookups: Array<string | undefined> = [];
-  const registry = RuntimeProviderRegistry.of({
-    appliedPlansFor: () => Effect.succeed([]),
+  const registry = makeTestRuntimeProviderRegistry({
     capabilities: Effect.die("unused"),
     list: Effect.succeed([nested.provider]),
-    resolveAppliedPlan: (_root, _app, lookup) => {
-      lookups.push(lookup);
-      return lookup === "exact" ? Effect.succeed(undefined) : Effect.succeed(enclosing);
-    },
-    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-    select: () => Effect.succeed(TestRuntimeProvider),
+    readAppliedPlanStrict: () => Effect.succeed(enclosing),
   });
   const engine = ToolingEngine.of({
     id: "test",
@@ -110,7 +103,6 @@ test("tooling identity never borrows an enclosing app's project user", async () 
     ),
   );
 
-  expect(lookups).toEqual(["exact"]);
   expect(seen.map(({ user }) => user)).toEqual([undefined]);
 });
 
@@ -156,13 +148,9 @@ test.each([
   });
   const plan = planAt(nestedRoot, node(remove ? null : currentPin, "lando"));
   const applied = planAt(nestedRoot, node(before, provider ?? "lando"));
-  const registry = RuntimeProviderRegistry.of({
-    appliedPlansFor: () => Effect.succeed([]),
-    capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+  const registry = makeTestRuntimeProviderRegistry({
     list: Effect.succeed([plan.provider]),
-    resolveAppliedPlan: () => Effect.succeed(applied),
-    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" }),
-    select: () => Effect.succeed(TestRuntimeProvider),
+    readAppliedPlanStrict: () => Effect.succeed(applied),
   });
   const warnings = makeCommandWarnings(true);
   const invocation: ToolingInvocation = {

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
@@ -30,16 +30,48 @@ process.stdout.write(child.stdout); process.exit(child.exitCode);`,
     stderr: "pipe",
   });
   expect(child.exitCode).toBe(0);
-  const roots = child.stdout.toString().trim().split("\n");
-  for (const root of roots) {
-    if (root.startsWith(join(tmpdir(), "lando-test-roots-"))) tempRoots.add(dirname(root));
-  }
-  return roots;
+  return child.stdout.toString().trim().split("\n");
 };
 
 afterEach(() => {
   for (const root of tempRoots) rmSync(root, { recursive: true, force: true });
   tempRoots.clear();
+});
+
+describe("preserved symlinks outside tests", () => {
+  const run = (cmd: string[], cwd: string, value?: string) => {
+    const { NODE_PRESERVE_SYMLINKS: _preserveSymlinks, ...env } = process.env;
+    const child = Bun.spawnSync(cmd, {
+      cwd,
+      env: value === undefined ? env : { ...env, NODE_PRESERVE_SYMLINKS: value },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    return { exitCode: child.exitCode, stdout: child.stdout.toString(), stderr: child.stderr.toString() };
+  };
+
+  test.each([
+    { name: "a repo-root bun command with the variable set", cmd: ["-e", "console.log('ran')"], value: "1" },
+    {
+      name: "a repo-root bun command with --preserve-symlinks",
+      cmd: ["--preserve-symlinks", "-e", "console.log('ran')"],
+    },
+  ])("refuses $name before it runs", ({ cmd, value }) => {
+    const child = run([process.execPath, ...cmd], repoRoot, value);
+    expect(child.exitCode).toBe(1);
+    expect(child.stdout).toBe("");
+    expect(child.stderr).toContain("preserved symlinks");
+  });
+
+  test("the source CLI refuses the variable when run from an app folder outside the repo", () => {
+    const appDir = mkdtempSync(join(tmpdir(), "lando-source-cli-symlinks-"));
+    tempRoots.add(appDir);
+    const cli = join(repoRoot, "core/bin/lando.ts");
+    const refused = run([process.execPath, cli, "version"], appDir, "1");
+    expect(refused.exitCode).toBe(1);
+    expect(refused.stderr).toContain("env -u NODE_PRESERVE_SYMLINKS");
+    expect(run([process.execPath, cli, "version"], appDir).exitCode).toBe(0);
+  });
 });
 
 describe("test preload symlink resolution", () => {
@@ -87,6 +119,8 @@ describe("test preload roots", () => {
     expect(parentRoots.every((root) => root.startsWith(join(tmpdir(), "lando-test-roots-")))).toBe(true);
     expect(new Set(parentRoots).size).toBe(4);
     expect(roots.slice(4)).toEqual(parentRoots);
+    const first = parentRoots[0];
+    if (first !== undefined) expect(existsSync(dirname(first))).toBe(false);
   });
 
   test("uses distinct temp trees when separate processes load the preload", () => {
@@ -117,5 +151,40 @@ describe("test preload roots", () => {
   test("still isolates roots when the real-root flag is not 1", () => {
     const roots = runPreload({ LANDO_TEST_USE_REAL_ROOTS: "0" });
     expect(roots.every((root) => root.startsWith(join(tmpdir(), "lando-test-roots-")))).toBe(true);
+  });
+});
+
+describe("test preload engine composition", () => {
+  test("loads bundled plugins only when a test first reads the composition, keeping a value a test installed", () => {
+    const roots = mkdtempSync(join(tmpdir(), "lando-test-composition-"));
+    tempRoots.add(roots);
+    const bundled = join(repoRoot, "core/src/runtime/bundled-plugins.ts");
+    const composition = join(repoRoot, "engine/src/composition.ts");
+    const script = `await import(${JSON.stringify(preload)});
+const loaded = () => require.resolve(${JSON.stringify(bundled)}) in require.cache;
+const before = loaded();
+const lazy = globalThis.__landoEngineCompositionInputs;
+const installed = { bundledPluginModules: [] };
+globalThis.__landoEngineCompositionInputs = installed;
+const plugins = lazy.bundledPluginModules.length;
+const kept = globalThis.__landoEngineCompositionInputs === installed;
+globalThis.__landoEngineCompositionInputs = lazy;
+const { bundledPluginModules } = await import(${JSON.stringify(composition)});
+console.log(JSON.stringify({ before, after: loaded(), plugins, kept, read: bundledPluginModules().length }));`;
+    const env: Record<string, string | undefined> = { ...process.env };
+    for (const key of rootEnvKeys) env[key] = join(roots, key.toLowerCase());
+    const child = Bun.spawnSync([process.execPath, "-e", script], {
+      cwd: repoRoot,
+      env,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    expect(child.exitCode, child.stderr.toString()).toBe(0);
+    const result = JSON.parse(child.stdout.toString());
+    expect(result.before).toBe(false);
+    expect(result.after).toBe(true);
+    expect(result.plugins).toBeGreaterThan(0);
+    expect(result.kept).toBe(true);
+    expect(result.read).toBe(result.plugins);
   });
 });

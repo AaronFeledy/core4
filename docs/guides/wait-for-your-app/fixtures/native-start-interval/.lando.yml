@@ -1,0 +1,10 @@
+name: wait-native-start-interval-refused
+services:
+  web:
+    type: compose
+    image: docker.io/library/alpine:3.20
+    command: sleep infinity
+    healthcheck:
+      command: "true"
+      startPeriodSeconds: 10
+      startIntervalSeconds: 2

@@ -138,6 +138,112 @@ test("selects tests through configured preload imports", async () => {
   ]);
 });
 
+test("attributes a lazy preload load to readers of the global that triggers it", async () => {
+  const root = await fixture();
+  await put(root, "bunfig.toml", '[test]\npreload = ["./pkg/preload.ts"]\n');
+  const preload = (target: string) =>
+    [
+      'const key = "__demoState";',
+      "let state: object | undefined;",
+      'const load = (): object => (state ??= require("./src/plugins"));',
+      `const lazy = new Proxy(${target}, { get: (_target, name) => Reflect.get(load(), name) });`,
+      "Reflect.set(globalThis, key, lazy);",
+    ].join("\n");
+  await put(root, "pkg/preload.ts", preload("{}"));
+  await put(root, "pkg/src/plugins.ts", 'export const plugins = ["one"];\n');
+  await put(root, "pkg/src/state.ts", "export const readState = () => globalThis.__demoState;\n");
+  await put(root, "pkg/test/reader.test.ts", 'import "../src/state";\n');
+  await put(
+    root,
+    "pkg/test/raw.test.ts",
+    'const name = process.argv[2] ?? "";\nReflect.get(globalThis, name);\n',
+  );
+  await put(root, "pkg/test/direct.test.ts", 'import "../src/plugins";\n');
+  await put(root, "pkg/test/other.test.ts", "export {};\n");
+  const eligible = [
+    "pkg/test/direct.test.ts",
+    "pkg/test/other.test.ts",
+    "pkg/test/raw.test.ts",
+    "pkg/test/reader.test.ts",
+  ];
+  const result = await selectAffectedTests({ root, changed: ["pkg/src/plugins.ts"], eligible });
+  expect(result.selected).toEqual([
+    "pkg/test/direct.test.ts",
+    "pkg/test/raw.test.ts",
+    "pkg/test/reader.test.ts",
+  ]);
+  expect(result.preloadGlobalTests).toEqual(["pkg/test/raw.test.ts", "pkg/test/reader.test.ts"]);
+  expect(result.sharedPreloadTests).toEqual([]);
+  expect(result.witnesses.get("pkg/test/reader.test.ts")).toEqual([
+    "pkg/src/plugins.ts",
+    "pkg/src/state.ts",
+    "pkg/test/reader.test.ts",
+  ]);
+
+  // A loader the preload also calls while it loads is eager, so every test depends on it.
+  await put(root, "pkg/preload.ts", preload("load()"));
+  const eager = await selectAffectedTests({ root, changed: ["pkg/src/plugins.ts"], eligible });
+  expect(eager.selected).toEqual(eligible);
+  expect(eager.sharedPreloadTests).toEqual([
+    "pkg/test/other.test.ts",
+    "pkg/test/raw.test.ts",
+    "pkg/test/reader.test.ts",
+  ]);
+});
+
+test("follows source entries a test names as literals, such as a CLI it spawns", async () => {
+  const root = await fixture();
+  await put(root, "pkg/bin/cli.ts", 'import "../src/leaf";\n');
+  await put(root, "pkg/src/leaf.ts", "export const leaf = 1;\n");
+  await put(root, "pkg/src/spawner.ts", 'export const entry = "pkg/bin/cli.ts";\n');
+  await put(root, "pkg/test/root.test.ts", 'Bun.spawn([process.execPath, join(root, "pkg/bin/cli.ts")]);\n');
+  await put(root, "pkg/test/relative.test.ts", 'new URL("../bin/cli.ts", import.meta.url);\n');
+  await put(root, "pkg/test/template.test.ts", "const entry = `${root}/pkg/bin/cli.ts`;\n");
+  await put(root, "pkg/test/segments.test.ts", 'join(root, "pkg", "bin", "cli.ts");\n');
+  await put(root, "pkg/test/production.test.ts", 'import "../src/spawner";\n');
+  const result = await selectAffectedTests({
+    root,
+    changed: ["pkg/src/leaf.ts"],
+    eligible: [
+      "pkg/test/production.test.ts",
+      "pkg/test/relative.test.ts",
+      "pkg/test/root.test.ts",
+      "pkg/test/segments.test.ts",
+      "pkg/test/template.test.ts",
+    ],
+  });
+  expect(result.selected).toEqual([
+    "pkg/test/relative.test.ts",
+    "pkg/test/root.test.ts",
+    "pkg/test/segments.test.ts",
+    "pkg/test/template.test.ts",
+  ]);
+  expect(result.witnesses.get("pkg/test/root.test.ts")).toEqual([
+    "pkg/src/leaf.ts",
+    "pkg/bin/cli.ts",
+    "pkg/test/root.test.ts",
+  ]);
+});
+
+test("resolves data imports as leaf edges", async () => {
+  const root = await fixture();
+  await put(
+    root,
+    "pkg/test/a.test.ts",
+    'import data from "../data/data.json" with { type: "json" };\nvoid data;\n',
+  );
+  await put(root, "pkg/data/data.json", "{}\n");
+  await put(root, "pkg/test/b.test.ts", "export {};\n");
+  const result = await selectAffectedTests({
+    root,
+    changed: ["pkg/data/data.json"],
+    eligible: ["pkg/test/a.test.ts", "pkg/test/b.test.ts"],
+  });
+  expect(result.selected).toEqual(["pkg/test/a.test.ts"]);
+  expect(result.fixtureTests).toEqual([]);
+  expect(result.uncertain.filter((entry) => entry.includes("unresolved local module"))).toEqual([]);
+});
+
 test("broadly selects when a configured preload cannot be statically resolved", async () => {
   for (const preload of ['["../outside.ts"]', '["./pkg/preload-${name}.ts"]', "17"]) {
     const root = await fixture();
@@ -271,46 +377,72 @@ test("reports both rename paths and untracked names containing spaces", async ()
   ]);
 });
 
-test("finds the historical schema regressions in the current repository", async () => {
-  const root = resolve(import.meta.dirname, "../../..");
-  const expected = [
-    "engine/test/services/landofile.test.ts",
-    "landofile/test/pipeline/golden-corpus.test.ts",
-    "sdk/test/schema/json-schema-authoring.test.ts",
-    "sdk/test/schema/landofile-parity.test.ts",
-  ];
-  const result = await selectAffectedTests({
-    root,
-    changed: ["sdk/src/schema/landofile.ts", "sdk/src/schema/json-schema.ts"],
-    eligible: expected,
-  });
-  expect(result.selected).toEqual(expected);
-  expect(result.fixtureTests).toEqual([]);
-  expect(result.unmatched).toEqual([]);
-});
+test(
+  "finds the historical schema regressions in the current repository",
+  async () => {
+    const root = resolve(import.meta.dirname, "../../..");
+    const expected = [
+      "engine/test/services/landofile.test.ts",
+      "landofile/test/pipeline/golden-corpus.test.ts",
+      "sdk/test/schema/json-schema-authoring.test.ts",
+      "sdk/test/schema/landofile-parity.test.ts",
+    ];
+    const result = await selectAffectedTests({
+      root,
+      changed: ["sdk/src/schema/landofile.ts", "sdk/src/schema/json-schema.ts"],
+      eligible: expected,
+    });
+    expect(result.selected).toEqual(expected);
+    expect(result.fixtureTests).toEqual([]);
+    expect(result.unmatched).toEqual([]);
+  },
+  { timeout: 20_000 },
+);
 
-test("finds the historical fixture and digest regressions", async () => {
-  const root = resolve(import.meta.dirname, "../../..");
-  const eligible = [
-    "landofile/test/pipeline/golden-corpus.test.ts",
-    "sdk/test/schema/landofile-parity.test.ts",
-  ];
-  const fixtureResult = await selectAffectedTests({
-    root,
-    changed: ["docs/guides/flags-and-args/fixtures/flags-demo/.lando.tasks.yml"],
-    eligible,
-  });
-  expect(fixtureResult.selected).toEqual(eligible);
-  expect(fixtureResult.fixtureTests).toEqual(eligible);
-  const digestResult = await selectAffectedTests({
-    root,
-    changed: ["landofile/test/fixtures/golden-corpus-digests.json"],
-    eligible,
-  });
-  expect(digestResult.selected).toContain("landofile/test/pipeline/golden-corpus.test.ts");
-});
+test(
+  "finds the historical fixture and digest regressions",
+  async () => {
+    const root = resolve(import.meta.dirname, "../../..");
+    const eligible = [
+      "landofile/test/pipeline/golden-corpus.test.ts",
+      "sdk/test/schema/landofile-parity.test.ts",
+    ];
+    const fixtureResult = await selectAffectedTests({
+      root,
+      changed: ["docs/guides/flags-and-args/fixtures/flags-demo/.lando.tasks.yml"],
+      eligible,
+    });
+    expect(fixtureResult.selected).toEqual(eligible);
+    expect(fixtureResult.fixtureTests).toEqual(eligible);
+    const digestResult = await selectAffectedTests({
+      root,
+      changed: ["landofile/test/fixtures/golden-corpus-digests.json"],
+      eligible,
+    });
+    expect(digestResult.selected).toContain("landofile/test/pipeline/golden-corpus.test.ts");
+  },
+  { timeout: 20_000 },
+);
 
-// This walks the entire canonical graph and matches the unit runner's 20-second budget.
+test(
+  "attributes bundled plugins to composition readers instead of every test",
+  async () => {
+    const root = resolve(import.meta.dirname, "../../..");
+    const reader = "engine/test/operations/app-config-candidate.test.ts";
+    const direct = "plugins/renderer-lando/test/plugin-descriptor.test.ts";
+    const unrelated = "paths/test/containment.test.ts";
+    const result = await selectAffectedTests({
+      root,
+      changed: ["plugins/renderer-lando/src/index.ts"],
+      eligible: [reader, direct, unrelated],
+    });
+    expect(result.selected).toEqual([reader, direct]);
+    expect(result.preloadGlobalTests).toEqual([reader]);
+    expect(result.sharedPreloadTests).toEqual([]);
+  },
+  { timeout: 20_000 },
+);
+
 test(
   "selects every canonical eligible test for the repository preload roots",
   async () => {
@@ -321,7 +453,10 @@ test(
       eligible,
     });
     expect(result.selected).toEqual(eligible);
-    expect(result.sharedPreloadTests).toEqual(eligible);
+    // A test that names the preload file, or imports a runner that does, keeps that import witness.
+    const preloads = ["scripts/test-preload.ts", "scripts/test-preload-teardown.ts"];
+    const viaPreload = eligible.filter((test) => preloads.includes(result.witnesses.get(test)?.[1] ?? ""));
+    expect(result.sharedPreloadTests).toEqual(viaPreload);
     expect(result.unmatched).toEqual([]);
   },
   { timeout: 20_000 },

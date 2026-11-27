@@ -186,6 +186,7 @@ export interface ResolvedService {
   readonly serviceType: ServiceType;
   readonly resolution: ServiceTypeResolution;
   readonly logSources: ReadonlyArray<LogSource>;
+  readonly plannedPort?: ServicePlan["plannedPort"];
   readonly prepared: PreparedServiceComposition;
   readonly endpointContributions: readonly EndpointPlan[];
   readonly applicationConfigs: ReadonlyMap<number, ApplicationConfig>;
@@ -245,6 +246,7 @@ export type PlannedServiceDraft = {
   readonly homeIntent: ServiceHomeIntent;
   readonly draft: AppFeatureServiceDraft;
   readonly logSources: ReadonlyArray<LogSource>;
+  readonly plannedPort?: ServicePlan["plannedPort"];
   readonly routes: ReadonlyArray<NormalizedRoute> | undefined;
   readonly extensions: ServicePlan["extensions"];
   /**

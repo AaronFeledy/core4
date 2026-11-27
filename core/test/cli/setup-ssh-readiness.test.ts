@@ -4,7 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { makeTestDownloader, makeTestInteractionService } from "@lando/core/testing";
 import { GlobalConfigSources } from "@lando/engine/services/config";
+import * as BunFileSystem from "@lando/engine/services/file-system";
 import * as LandoHttpClient from "@lando/http-client";
+import { makeLandoPaths } from "@lando/paths";
 import { AbsolutePath, AppId, GlobalConfig, ProviderId, ServiceName } from "@lando/sdk/schema";
 import {
   ConfigService,
@@ -12,10 +14,11 @@ import {
   EventService,
   GlobalAppService,
   InteractionService,
+  PathsService,
   RuntimeProviderRegistry,
   SshService,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider, makeTestSshService } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry, makeTestSshService } from "@lando/sdk/test";
 import { Deferred, Effect, Fiber, Layer, Schema, Stream } from "effect";
 import { TestClock } from "effect/testing";
 import { setupSpec } from "../../src/cli/command-specs/meta/setup.ts";
@@ -106,18 +109,19 @@ test.each([
                 load: Effect.succeed(config),
                 get: (key) => Effect.succeed(config[key]),
               }),
-              Layer.succeed(RuntimeProviderRegistry, {
-                resolveAppliedPlan: () => Effect.succeed(plan),
-                resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-                appliedPlansFor: () => Effect.succeed([]),
-                list: Effect.succeed([ProviderId.make("lando")]),
-                capabilities: Effect.succeed(provider.capabilities),
-                select: (plan) =>
-                  Effect.sync(() => {
-                    selections.push(typeof plan === "string" ? plan : (plan?.provider ?? "default"));
-                    return provider;
-                  }),
-              }),
+              Layer.succeed(
+                RuntimeProviderRegistry,
+                makeTestRuntimeProviderRegistry({
+                  resolveAppliedPlan: () => Effect.succeed(plan),
+                  list: Effect.succeed([ProviderId.make("lando")]),
+                  capabilities: Effect.succeed(provider.capabilities),
+                  select: (plan) =>
+                    Effect.sync(() => {
+                      selections.push(typeof plan === "string" ? plan : (plan?.provider ?? "default"));
+                      return provider;
+                    }),
+                }),
+              ),
               Layer.succeed(SshService, { ...ssh, id: "sidecar" }),
               Layer.succeed(GlobalAppService, {
                 ...globalAppForProvider(ProviderId.make("lando")),
@@ -128,6 +132,8 @@ test.each([
                   userLandofile: AbsolutePath.make(join(userDataRoot, "global", ".lando.yml")),
                 }),
               }),
+              Layer.succeed(PathsService, makeLandoPaths()),
+              BunFileSystem.layer,
               Layer.succeed(EventService, events),
               Layer.succeed(Downloader, downloader.service),
               Layer.succeed(InteractionService, interaction.service),
@@ -186,6 +192,7 @@ test.each([
   await Effect.runPromise(
     runShellServiceSetupStep({ flags: { "skip-shell-integration": skip } }, recorder).pipe(
       Effect.provideService(SshService, { ...ssh, id }),
+      Effect.provideService(PathsService, makeLandoPaths()),
     ),
   );
   // Then: no runtime registry is needed for other implementations or a skipped sidecar.

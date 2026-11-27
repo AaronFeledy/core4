@@ -6,10 +6,10 @@ services:
     allowOverride: true
     port: 80
     primary: true
-    dependsOn:
+    depends_on:
       - database
     environment:
-      SIMPLETEST_BASE_URL: http://appserver
+      SIMPLETEST_BASE_URL: "http://appserver:{{ service.port }}"
       SIMPLETEST_DB: mysql://lando:lando@database/drupal-demo
       BROWSERTEST_OUTPUT_DIRECTORY: /app/web/sites/simpletest/browser_output
       MINK_DRIVER_ARGS_WEBDRIVER: '["chrome", {"browserName":"chrome","goog:chromeOptions":{"w3c":true,"args":["--headless=new","--disable-gpu","--no-sandbox"]}}, "http://chrome:4444"]'
@@ -35,6 +35,7 @@ tooling:
     user: www-data
     description: Run Drupal's PHPUnit suites as the web server user.
     cmd:
-      - vendor/bin/phpunit
+      - /app/vendor/bin/phpunit
       - -c
-      - web/core
+      - /app/web/core
+    wrapper: true

@@ -33,8 +33,13 @@ export const makeHarness = (issueFailure?: CaError) => {
   const files = new Map<string, string>();
   const certificateAuthority: CertificateAuthorityShape = {
     id: "test-ca",
-    setup: () => Effect.sync(() => void operations.push("ca:setup")),
+    setup: () =>
+      Effect.sync(() => {
+        operations.push("ca:setup");
+        return { trustStores: [] };
+      }),
     root: Effect.succeed({ certificate: rootPem, trusted: true }),
+    trustStores: Effect.succeed([]),
     issueCert: (spec) => {
       calls.push(spec);
       if (issueFailure !== undefined) return Effect.fail(issueFailure);

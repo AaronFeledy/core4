@@ -7,6 +7,19 @@ export interface AcceptCompatibilityOptions {
   readonly baseStoreVersions?: Readonly<Partial<Record<PersistedStoreId, number>>>;
 }
 
+/** The reviewed exception for this exact change at this surface path, if any. */
+export const findCompatibilityException = (
+  exceptions: ReadonlyArray<CompatibilityException>,
+  surface: string,
+  entry: CompatibilityFinding,
+): CompatibilityException | undefined =>
+  exceptions.find(
+    (candidate) =>
+      candidate.fingerprint === entry.fingerprint &&
+      candidate.changeKind === entry.changeKind &&
+      candidate.locations.some((location) => location.surface === surface && location.path === entry.path),
+  );
+
 export const acceptCompatibilityExceptions = (
   surface: string,
   findings: ReadonlyArray<CompatibilityFinding>,
@@ -17,12 +30,7 @@ export const acceptCompatibilityExceptions = (
   const storeVersions = options.storeVersions;
   return findings.map((entry) => {
     if (entry.verdict === "compatible") return entry;
-    const exception = exceptions.find(
-      (candidate) =>
-        candidate.surface === surface &&
-        candidate.changeKind === entry.changeKind &&
-        candidate.path === entry.path,
-    );
+    const exception = findCompatibilityException(exceptions, surface, entry);
     if (persistedStores === undefined || storeVersions === undefined) {
       return exception === undefined
         ? entry
@@ -34,8 +42,14 @@ export const acceptCompatibilityExceptions = (
       return { ...entry, message: `${entry.message} Exception is missing persistedState. ${remediation}` };
     }
     const refs = "store" in declared ? [declared] : declared;
+    // One entry may span surfaces; a ref is relevant when any listed surface persists that store.
+    const coveredStores = new Set(
+      exception.locations.flatMap((location) => [
+        ...(options.persistedStoresBySurface?.get(location.surface) ?? []),
+      ]),
+    );
     if (
-      refs.some((ref) => !persistedStores.has(ref.store)) ||
+      refs.some((ref) => !coveredStores.has(ref.store)) ||
       [...persistedStores].some((store) => !refs.some((ref) => ref.store === store))
     ) {
       return {

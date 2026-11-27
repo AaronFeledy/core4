@@ -13,6 +13,7 @@ import {
   DEFAULT_MAX_DEPTH,
   type HostProxyRunLandoSession,
   type HostProxyRunLandoSessionOptions,
+  checkHostProxySocketPath,
   makeHostProxyToken,
   resolveHostProxyShimArtifact,
   sessionPaths,
@@ -51,6 +52,7 @@ export const createHostProxyRunLandoSession = (
   let stateOwned = false;
   let closePromise: Promise<void> | undefined;
   return Effect.gen(function* () {
+    yield* checkHostProxySocketPath(paths);
     const runtimeContext = yield* Effect.context<RedactionService>();
     const sessionId = makeHostProxyToken();
     const token = makeHostProxyToken();

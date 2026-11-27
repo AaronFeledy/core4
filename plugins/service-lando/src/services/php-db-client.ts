@@ -40,8 +40,8 @@ const isFamily = (value: string): value is PhpDbClientFamily =>
 
 const versionsFor = (family: PhpDbClientFamily): ReadonlyArray<string> => PHP_DB_CLIENT_VERSIONS[family];
 
-export const PHP_DB_CLIENT_REMEDIATION = `Set db_client: auto, db_client: false, or a supported explicit client such as db_client: "mariadb:11.4". Supported values: db_client: auto, db_client: false, ${PHP_DB_CLIENT_FAMILIES.flatMap(
-  (family) => versionsFor(family).map((version) => `db_client: "${family}:${version}"`),
+export const PHP_DB_CLIENT_REMEDIATION = `Set dbClient: auto, dbClient: false, or a supported explicit client such as dbClient: "mariadb:11.4". Supported values: dbClient: auto, dbClient: false, ${PHP_DB_CLIENT_FAMILIES.flatMap(
+  (family) => versionsFor(family).map((version) => `dbClient: "${family}:${version}"`),
 ).join(", ")}.`;
 
 export const resolvePhpDbClient = (value: unknown): PhpDbClientSelection => {
@@ -56,7 +56,7 @@ export const resolvePhpDbClient = (value: unknown): PhpDbClientSelection => {
     }
   }
   throw new ServiceConfigIssue(
-    ["db_client"],
+    ["dbClient"],
     `Unsupported database client ${JSON.stringify(value)}.`,
     PHP_DB_CLIENT_REMEDIATION,
   );
@@ -91,9 +91,9 @@ export const detectPhpDbClients = (
     const detection = familyFromService(view);
     if (detection?.kind === "unknown-mysql") {
       throw new ServiceConfigIssue(
-        ["db_client"],
+        ["dbClient"],
         `Service ${detection.serviceName} has unknown MySQL client compatibility.`,
-        "Set an explicit db_client supported by that custom image, or set db_client: false.",
+        "Set an explicit dbClient supported by that custom image, or set dbClient: false.",
       );
     }
     const detected = detection?.install;
@@ -101,9 +101,9 @@ export const detectPhpDbClients = (
     const current = highest.get(detected.family);
     if (detected.family === "mysql" && current !== undefined && current !== detected.version) {
       throw new ServiceConfigIssue(
-        ["db_client"],
-        `Cannot select db_client: auto for mixed MySQL series ${current} and ${detected.version}.`,
-        "Set an explicit db_client or set db_client: false.",
+        ["dbClient"],
+        `Cannot select dbClient: auto for mixed MySQL series ${current} and ${detected.version}.`,
+        "Set an explicit dbClient or set dbClient: false.",
       );
     }
     if (current === undefined || compareVersions(detected.version, current) > 0) {
@@ -138,7 +138,7 @@ const applyPhpDbClient = Effect.fn("PhpDbClient.apply")(function* (ctx: AppFeatu
     if (!service.featureIds.includes(PHP_FEATURE_ID)) continue;
     const policy = yield* readPhpRuntimePolicy(service, ctx.featureId);
     if (policy.artifactSource === "stock")
-      selections.set(service.serviceName, resolvePhpDbClient(service.normalizedConfig.db_client));
+      selections.set(service.serviceName, resolvePhpDbClient(service.normalizedConfig.dbClient));
   }
   const detected = [...selections.values()].some((selection) => selection.mode === "auto")
     ? detectPhpDbClients(ctx.selected)

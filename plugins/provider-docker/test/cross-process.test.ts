@@ -325,7 +325,9 @@ describe("provider-docker cross-process state", () => {
       expect(await fileExists(path)).toBe(true);
 
       const providerB = await makeProvider(stateDir, fake.api);
-      await Effect.runPromise(providerB.destroy({ app: plan.id }, { volumes: false }));
+      await Effect.runPromise(
+        providerB.bringDown({ app: plan.id }, { containers: "remove", volumes: false }),
+      );
 
       expect(await fileExists(path)).toBe(false);
     });
@@ -339,7 +341,9 @@ describe("provider-docker cross-process state", () => {
       expect(await fileExists(path)).toBe(true);
 
       const providerB = await makeProvider(stateDir, fake.api);
-      await Effect.runPromise(providerB.destroy({ app: plan.id }, { volumes: false, removeState: false }));
+      await Effect.runPromise(
+        providerB.bringDown({ app: plan.id }, { containers: "remove", volumes: false, removeState: false }),
+      );
 
       expect(await fileExists(path)).toBe(true);
     });

@@ -11,6 +11,7 @@ import { Effect, Layer } from "effect";
 import * as AppCacheService from "../../../src/cache/service.ts";
 import * as PluginRegistryLayer from "../../../src/plugins/registry.ts";
 import * as AppPlannerLayer from "../../../src/services/planner.ts";
+import { pathsServiceLayer } from "../../paths-service.ts";
 
 // Given: identical authored mounts and cache location across both plans.
 const appName = process.argv[2];
@@ -47,7 +48,11 @@ const cacheLayer = Layer.effect(
 ).pipe(Layer.provide(AppCacheService.layer));
 const plannerLayer = AppPlannerLayer.layer.pipe(
   Layer.provide(
-    Layer.mergeAll(cacheLayer, PluginRegistryLayer.layerWith({ user: false, app: false }, [serviceLando])),
+    Layer.mergeAll(
+      cacheLayer,
+      PluginRegistryLayer.layerWith({ user: false, app: false }, [serviceLando]),
+      pathsServiceLayer(),
+    ),
   ),
 );
 // When

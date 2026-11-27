@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { type AppPlan, FileSyncSessionRef, PortablePath } from "@lando/sdk/schema";
 import { type FileSyncEngineShape, RuntimeProviderRegistry } from "@lando/sdk/services";
-import { TestFileSyncEngine } from "@lando/sdk/test";
+import { TestFileSyncEngine, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Cause, Effect, Exit } from "effect";
 import {
   beginOrResumeAcceleratedStart,
@@ -169,20 +169,23 @@ test.each(["prepare", "flush"] satisfies FailurePoint[])(
     harness.calls.splice(0);
     await Effect.runPromise(
       startApp({}, targetFor(harness.desired)).pipe(
-        Effect.provideService(RuntimeProviderRegistry, {
-          ...registry,
-          select: () =>
-            Effect.succeed({
-              ...provider,
-              apply: (plan, options) =>
-                readJournal(app).pipe(
-                  Effect.tap(({ pending }) => Effect.sync(() => attemptsAtApply.push(pending?.attemptId))),
-                  Effect.orDie,
-                  Effect.andThen(provider.apply(plan, options)),
-                  Effect.provide(harness.layer),
-                ),
-            }),
-        }),
+        Effect.provideService(
+          RuntimeProviderRegistry,
+          makeTestRuntimeProviderRegistry({
+            ...registry,
+            select: () =>
+              Effect.succeed({
+                ...provider,
+                apply: (plan, options) =>
+                  readJournal(app).pipe(
+                    Effect.tap(({ pending }) => Effect.sync(() => attemptsAtApply.push(pending?.attemptId))),
+                    Effect.orDie,
+                    Effect.andThen(provider.apply(plan, options)),
+                    Effect.provide(harness.layer),
+                  ),
+              }),
+          }),
+        ),
         Effect.provide(harness.layer),
       ),
     );

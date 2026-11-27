@@ -42,6 +42,7 @@ import type {
   ConfigTranslatorRegistry,
   ContainerHelperAssets,
   DataMover,
+  DatabaseCredentialConvergence,
   Downloader,
   EnvironmentValueResolver,
   EventService,
@@ -68,6 +69,7 @@ import type {
   StateStore,
   Telemetry,
   ToolingEngine,
+  UserAppResolver,
 } from "@lando/sdk/services";
 import { InteractionService as InteractionServiceTag } from "@lando/sdk/services";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
@@ -155,7 +157,7 @@ type PluginRuntimeServices =
   | ConfigTranslatorRegistry
   | PluginContributionGraph
   | BuiltInCommandCatalog;
-type CommandRuntimeServices = PluginRuntimeServices | LandofileService | CommandRegistry;
+type CommandRuntimeServices = PluginRuntimeServices | LandofileService | UserAppResolver | CommandRegistry;
 type ToolingRuntimeServices = CommandRuntimeServices;
 type ProviderRuntimeServices =
   | CommandRuntimeServices
@@ -172,6 +174,7 @@ type GlobalRuntimeServices = ProviderRuntimeServices | AppPlanner | BuildOrchest
 type ScratchRuntimeServices =
   | ProviderRuntimeServices
   | LandofileService
+  | UserAppResolver
   | AppPlanner
   | BuildOrchestrator
   | RouterService
@@ -180,9 +183,11 @@ type ScratchRuntimeServices =
   | ScratchResourceScanner
   | ScratchAppService;
 export type AppRuntimeServices =
+  | DatabaseCredentialConvergence
   | ProviderRuntimeServices
   | BuildOrchestrator
   | LandofileService
+  | UserAppResolver
   | CommandRegistry
   | AppPlanner
   | EventService
@@ -264,7 +269,7 @@ export const prepareRuntime = (
     lifecycle,
     embeddingLayers: hostLayersResult.success,
     inputs: {
-      runtimeLayerFactory: { make: makeLandoRuntime },
+      runtimeLayerFactory: { make: makeLandoRuntime, makeProviderInventory },
       lifecycle,
       loggerMode: logging.loggerMode,
       logLevel: logging.logLevel,
@@ -352,6 +357,17 @@ export function makeLandoRuntime(options: unknown, snapshot?: GlobalConfigSnapsh
     ),
   );
 }
+
+const makeProviderInventory = (options: LandoRuntimeOptions, snapshot: GlobalConfigSnapshot["Service"]) =>
+  Layer.unwrap(
+    Effect.gen(function* () {
+      const invocation = yield* CliInvocation;
+      const prepared = prepareRuntime(options, snapshot, invocation);
+      if (Result.isFailure(prepared)) return yield* Effect.fail(prepared.failure);
+      const { makeProviderInventoryLayer } = yield* Effect.promise(() => import("./layers/provider.ts"));
+      return makeProviderInventoryLayer(prepared.success.inputs);
+    }),
+  );
 
 function buildLandoRuntime(
   options: unknown,

@@ -8,12 +8,6 @@ export const DRUPAL_CMS_GIT_ARTIFACT = {
  * Landofile authoring parses shell brace expansions as expressions, so use bare $VAR. */
 const windowsPublicFilesOwnership = [
   'if test "$LANDO_HOST_OS" = win32; then',
-  "  for lando_path in web web/sites web/sites/default web/sites/default/files; do",
-  '    test ! -L "$lando_path" || { echo "Drupal public files path must not contain a symlink: $lando_path" >&2; exit 1; }',
-  "  done",
-  "  lando_root=$(pwd -P)",
-  "  lando_public=$(realpath -e -- web/sites/default/files)",
-  '  test "$lando_public" = "$lando_root/web/sites/default/files" || { echo "Drupal public files path escaped the app root." >&2; exit 1; }',
   '  lando_mount_owner=$(stat -c %u:%g -- "$lando_root") || { echo "Drupal app mount owner could not be read." >&2; exit 1; }',
   '  case "$lando_mount_owner" in *[!0-9:]*|:*|*:|*:*:*) echo "Drupal app mount has invalid uid:gid ownership." >&2; exit 1;; esac',
   '  lando_mount_uid=$(printf "%s" "$lando_mount_owner" | cut -d: -f1)',
@@ -29,19 +23,21 @@ const windowsPublicFilesOwnership = [
   '    if test "$lando_worker_user" = www-data && test "$lando_worker_group" = www-data; then',
   '      test "$lando_worker_uid:$lando_worker_gid" = "$lando_mount_owner" || { echo "Drupal PHP worker does not own the Windows app mount." >&2; exit 1; }',
   "    fi",
-  '    chown -hR -P -- "$lando_worker_user:$lando_worker_group" web/sites/default/files',
+  '    chown -hR -P -- "$lando_worker_user:$lando_worker_group" "$lando_public"',
   "  fi",
   "fi",
 ].join("\n");
 
-export const drupalCmsInstallCommand = (driver: "mysql" | "pgsql", appName: string): string => {
-  const password =
-    driver === "pgsql" ? `$(printf '%s' '${appName}' | sha256sum | cut -c1-16 | sed 's/^/lando-/')` : "lando";
-  return [
-    "mkdir -p web/sites/default/files",
-    `vendor/bin/drush site:install recipes/drupal_cms_starter --db-url="${driver}://lando:${password}@database/${appName}" -y`,
-    'vendor/bin/drush php:eval \'if (!\\Drupal::service("file.htaccess_writer")->write("public://", FALSE)) { throw new \\RuntimeException("Could not protect the Drupal public files directory."); }\'',
-    windowsPublicFilesOwnership,
-    ":",
-  ].join(" && ");
-};
+export const drupalCmsInstallCommand = [
+  "lando_root=$(pwd -P)",
+  'lando_public="$LANDO_WEBROOT/sites/default/files"',
+  'case "$lando_public" in "$lando_root"/*) : ;; *) echo "Drupal public files must be inside the project." >&2; exit 1 ;; esac',
+  'test "$(realpath -m -- "$lando_public")" = "$lando_public" || { echo "Drupal public files path must not contain a symlink or escape the project." >&2; exit 1; }',
+  "lando_path=$lando_public",
+  'while test "$lando_path" != "$lando_root"; do test ! -L "$lando_path" || { echo "Drupal public files path must not contain a symlink: $lando_path" >&2; exit 1; }; lando_path=$(dirname -- "$lando_path"); done',
+  'mkdir -p -- "$lando_public"',
+  'vendor/bin/drush site:install recipes/drupal_cms_starter --db-url="$LANDO_DRUPAL_CMS_DB_URL" -y',
+  'vendor/bin/drush php:eval \'if (!\\Drupal::service("file.htaccess_writer")->write("public://", FALSE)) { throw new \\RuntimeException("Could not protect the Drupal public files directory."); }\'',
+  windowsPublicFilesOwnership,
+  ":",
+].join(" && ");

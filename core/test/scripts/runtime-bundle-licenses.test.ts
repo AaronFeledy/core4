@@ -1,10 +1,14 @@
 import { describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { assembleBundle } from "../../../scripts/assemble-runtime-bundle.ts";
 import { checkRuntimeBundleLicenses } from "../../../scripts/check-runtime-bundle-licenses.ts";
-import { runtimeBundleRecipeUrls } from "../../../scripts/runtime-bundle-licenses.ts";
+import {
+  runtimeBundleRecipeUrls,
+  stageRuntimeBundleLicenses,
+} from "../../../scripts/runtime-bundle-licenses.ts";
 import { parseRuntimeBundleSources } from "../../../scripts/runtime-bundle-sources.ts";
 import { fixtureLicense, licenseBytes } from "./runtime-bundle-license-fixture.ts";
 
@@ -200,36 +204,54 @@ describe("runtime license live checker", () => {
       );
     },
   );
-  const netavark = (version: string) => {
+  const netavark = (sourcePatches: readonly unknown[]) => {
     const parsed = parseRuntimeBundleSources(
       document({
         name: "netavark",
-        version,
-        license: fixtureLicense(version),
+        version: "2.0.0",
+        license: fixtureLicense("2.0.0"),
         sourceBuild: "netavark-linux-native",
         inputs: [
           {
             name: "source",
-            url: `https://example.test/netavark-${version}.tar.gz`,
-            sha256: fixtureLicense(version).texts[0]?.sha256,
+            url: "https://example.test/netavark-2.0.0.tar.gz",
+            sha256: fixtureLicense("2.0.0").texts[0]?.sha256,
             archive: "tar.gz",
           },
         ],
         outputs: [{ source: "netavark", installName: "bin/netavark", mode: 0o755 }],
+        ...(sourcePatches.length > 0 ? { sourcePatches } : {}),
       }),
     );
     const entry = parsed.bundles["darwin-arm64"]?.components[0];
     if (entry === undefined) throw new Error("missing fixture");
     return entry;
   };
-  test("links netavark's patch only for the version the build patches", () => {
-    expect(runtimeBundleRecipeUrls(netavark("2.0.0"), "9.9.9", "AaronFeledy/core4")).toEqual([
+  const patch = (name: string) => ({
+    file: `scripts/patches/${name}`,
+    sha256: "a".repeat(64),
+    files: [{ path: "src/a.rs", patchedSha256: "b".repeat(64) }],
+  });
+  test("links every patch the source build applies, in order", () => {
+    expect(
+      runtimeBundleRecipeUrls(
+        netavark([patch("one.patch"), patch("two.patch")]),
+        "9.9.9",
+        "AaronFeledy/core4",
+      ),
+    ).toEqual([
       "https://github.com/AaronFeledy/core4/tree/runtime-v9.9.9/scripts",
-      "https://github.com/AaronFeledy/core4/tree/runtime-v9.9.9/scripts/patches/netavark-v2.0.0-systemd-user-bus.patch",
+      "https://github.com/AaronFeledy/core4/tree/runtime-v9.9.9/scripts/patches/one.patch",
+      "https://github.com/AaronFeledy/core4/tree/runtime-v9.9.9/scripts/patches/two.patch",
     ]);
-    expect(runtimeBundleRecipeUrls(netavark("2.1.0"), "9.9.9", "AaronFeledy/core4")).toEqual([
+    expect(runtimeBundleRecipeUrls(netavark([]), "9.9.9", "AaronFeledy/core4")).toEqual([
       "https://github.com/AaronFeledy/core4/tree/runtime-v9.9.9/scripts",
     ]);
+  });
+  test("rejects source patches on a component that is not source-built", () => {
+    expect(() =>
+      parseRuntimeBundleSources(document({ ...component(), sourcePatches: [patch("one.patch")] })),
+    ).toThrow(/source patches without a source build/u);
   });
 });
 
@@ -287,6 +309,46 @@ describe("bundled license payload", () => {
         }),
       ).rejects.toThrow(/sha256 verify failed.*license/u);
       expect(calls).toEqual(["https://example.test/1.2.3/LICENSE"]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+  test("cites the glibc-copyright fetch URL and does not claim Built-Using u5", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "runtime-glibc-notices-"));
+    const glibcUrl =
+      "https://metadata.ftp-master.debian.org/changelogs/main/g/glibc/glibc_2.41-12+deb13u5_copyright";
+    const bytes = new TextEncoder().encode("glibc-copyright");
+    const sha256 = createHash("sha256").update(bytes).digest("hex");
+    try {
+      const sources = parseRuntimeBundleSources(
+        document({
+          name: "catatonit",
+          version: "0.2.1-2+b14",
+          license: {
+            spdx: "GPL-2.0-or-later AND LGPL-2.1-or-later",
+            source: "https://example.test/v0.2.1.tar.gz",
+            texts: [{ file: "glibc-copyright", url: glibcUrl, sha256 }],
+          },
+          url: "https://example.test/catatonit",
+          sha256,
+          archive: "none" as const,
+          installName: "bin/catatonit",
+          mode: 0o755,
+        }),
+      );
+      const catatonit = sources.bundles["darwin-arm64"]?.components[0];
+      if (catatonit === undefined) throw new Error("missing fixture");
+      await stageRuntimeBundleLicenses({
+        components: [catatonit],
+        runtimeVersion: "9.9.9",
+        repository: "AaronFeledy/core4",
+        stageDir: dir,
+        fetchArtifact: async () => bytes,
+      });
+      const notices = await readFile(join(dir, "bin/licenses/THIRD_PARTY_NOTICES.md"), "utf8");
+      expect(notices).toContain("catatonit 0.2.1-2+b14");
+      expect(notices).toContain(`(upstream: ${glibcUrl})`);
+      expect(notices).not.toContain("Built-Using glibc (= 2.41-12+deb13u5)");
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

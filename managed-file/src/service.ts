@@ -173,6 +173,30 @@ const fail = (
     }),
   );
 
+const storeAwareManagedFileError = (
+  operation: ManagedFileOperation,
+  cause: unknown,
+  detail: { readonly path?: string } = {},
+): ManagedFileError => {
+  if (cause instanceof StateStoreError && cause.reason === "newer-version") {
+    return new ManagedFileError({
+      reason: "io",
+      operation,
+      ...detail,
+      ...(cause.path === undefined ? {} : { path: detail.path ?? cause.path }),
+      cause,
+      remediation: cause.remediation,
+    });
+  }
+  return new ManagedFileError({
+    reason: "io",
+    operation,
+    ...detail,
+    cause,
+    remediation: remediationForReason("io"),
+  });
+};
+
 const isManagedFileError = (cause: unknown): cause is ManagedFileError =>
   typeof cause === "object" &&
   cause !== null &&
@@ -1062,15 +1086,7 @@ export const makeDiskBackend = Effect.fnUntraced(function* (options: {
       Effect.flatMap((exists) => (exists ? ledgerBucketFor(base, "discard") : Effect.succeed(null))),
       Effect.flatMap((bucket) => (bucket === null ? Effect.succeed({ entries: [] }) : bucket.get)),
       Effect.map((state) => state?.entries ?? []),
-      mapFailures(
-        (cause) =>
-          new ManagedFileError({
-            reason: "io",
-            operation,
-            cause,
-            remediation: remediationForReason("io"),
-          }),
-      ),
+      mapFailures((cause) => storeAwareManagedFileError(operation, cause)),
     );
   };
 
@@ -1163,14 +1179,7 @@ export const makeDiskBackend = Effect.fnUntraced(function* (options: {
           }),
         ),
         mapFailures((cause) =>
-          isManagedFileError(cause)
-            ? cause
-            : new ManagedFileError({
-                reason: "io",
-                operation,
-                cause,
-                remediation: remediationForReason("io"),
-              }),
+          isManagedFileError(cause) ? cause : storeAwareManagedFileError(operation, cause),
         ),
       ),
   } satisfies ManagedFileBackend;

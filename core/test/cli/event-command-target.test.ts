@@ -309,6 +309,7 @@ describe("resolveEventCommandTarget", () => {
         "namespace=db",
         "bootstrap=valid",
         "resultSchema=schema",
+        "streamingMode=absent-or-live",
         "flags.yes=absent-or-optional-boolean-default-false",
       ]);
       expect(error.provided).toEqual([
@@ -316,6 +317,7 @@ describe("resolveEventCommandTarget", () => {
         "namespace=wrong",
         "bootstrap=bogus",
         "resultSchema=non-schema",
+        "streamingMode=absent",
         "flags.yes=absent",
       ]);
     }

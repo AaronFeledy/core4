@@ -3,8 +3,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { renderCompiledRecipeSnapshot } from "@lando/sdk/recipes";
-import { AbsolutePath } from "@lando/sdk/schema";
-import { Effect, Result } from "effect";
+import { AbsolutePath, LandofileShape } from "@lando/sdk/schema";
+import { Effect, Result, Schema } from "effect";
 import { loadCompiledLandofile } from "../src/compiled-loader.ts";
 import { consumeSites } from "../src/compiled-sites.ts";
 import { loadAuthoredDocuments } from "../src/root-compile.ts";
@@ -21,7 +21,7 @@ test("retains origins across dependency shorthand, label lists and build-argumen
           value: {
             services: {
               web: {
-                dependsOn: ["{{ app.name }}"],
+                depends_on: ["{{ app.name }}"],
                 labels: ["LABEL={{ app.name }}", "bare"],
                 build: { context: ".", args: ["ARG={{ app.name }}"] },
               },
@@ -33,7 +33,7 @@ test("retains origins across dependency shorthand, label lists and build-argumen
     ),
   );
   expect(compiled.pendingSites.map((site) => site.path)).toEqual([
-    ["services", "web", "dependsOn", 0, "service"],
+    ["services", "web", "depends_on", 0, "service"],
     ["services", "web", "labels", "LABEL"],
     ["services", "web", "build", "args", "ARG"],
   ]);
@@ -47,7 +47,7 @@ test("retains origins across dependency shorthand, label lists and build-argumen
   expect(resolved.success.document).toMatchObject({
     services: {
       web: {
-        dependsOn: [{ service: "resolved" }],
+        depends_on: [{ service: "resolved" }],
         labels: { LABEL: "resolved", bare: "" },
         build: { args: { ARG: "resolved" } },
       },
@@ -167,4 +167,76 @@ test("loads a compiled recipe carrier without compiling equal-looking option dat
       document: { "x-authored": "resolved", "x-option": "{{ app.name }}" },
       pendingSites: [],
     });
+});
+
+test("serializes materialized route facts by their member and reloads them unchanged", async () => {
+  // Given service environments that read each route fact, including an encoded concat
+  const facts = (service: string) => ({
+    url: { _tag: "RouteText", parts: [{ service, encoding: "raw" }] },
+    hostname: { _tag: "RouteText", parts: [{ service, member: "hostname", encoding: "raw" }] },
+    origin: { _tag: "RouteText", parts: [{ service, member: "origin", encoding: "raw" }] },
+  });
+  const context = { services: { web: facts("web"), api: facts("api") } };
+  const compiled = await Effect.runPromise(
+    loadAuthoredDocuments(
+      [
+        {
+          file: "/app/.lando.yml",
+          value: {
+            services: {
+              api: {},
+              web: {
+                environment: {
+                  HOST: "{{ service.hostname }}",
+                  ORIGIN: "{{ url.encodeComponent(services.api.origin) }}/x",
+                  URL: "{{ services.api.url }}",
+                },
+              },
+            },
+          },
+        },
+      ],
+      { appRoot: "/app", file: "/app/.lando.yml" },
+    ),
+  );
+  const materialize = (document: unknown, pendingSites: typeof compiled.pendingSites) =>
+    Result.getOrThrow(consumeSites({ document, pendingSites, context, scopes: ["services"] }));
+  const consumed = materialize(compiled.document, compiled.pendingSites);
+  expect(consumed.document).toMatchObject({
+    services: {
+      web: {
+        environment: {
+          HOST: facts("web").hostname,
+          ORIGIN: {
+            _tag: "RouteText",
+            parts: [{ service: "api", member: "origin", encoding: "uri-component" }, "/x"],
+          },
+          URL: facts("api").url,
+        },
+      },
+    },
+  });
+  // When
+  const yaml = emitCompiledLandofileYaml({
+    ...compiled,
+    document: Schema.decodeUnknownSync(LandofileShape)(consumed.document),
+    pendingSites: consumed.pendingSites,
+  });
+  // Then each part is spelled by its member and reloading reproduces the descriptors
+  expect(yaml).toContain('services[\\"web\\"].hostname');
+  expect(yaml).toContain('url.encodeComponent(services[\\"api\\"].origin)');
+  expect(yaml).toContain('services[\\"api\\"].url');
+  const root = await mkdtemp(join(tmpdir(), "lando-compiled-route-facts-"));
+  try {
+    await Bun.write(join(root, ".lando.yml"), yaml);
+    const reloaded = await Effect.runPromise(
+      loadLandofileLayers(root, join(root, ".lando.yml"), {
+        ports: makeTestLandofilePorts(join(root, "cache")),
+        templates: { modules: [] },
+      }),
+    );
+    expect(materialize(reloaded.document, reloaded.pendingSites).document).toEqual(consumed.document);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });

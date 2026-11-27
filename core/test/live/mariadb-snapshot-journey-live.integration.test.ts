@@ -1,8 +1,9 @@
 import { expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
+import { retireTempRoots } from "@lando/engine/testing/temp-root-retirement";
 import { CommandResultEnvelope } from "@lando/sdk/schema";
 import { Schema } from "effect";
 import { databaseTransferFixture } from "./database-transfer-fixture.ts";
@@ -46,19 +47,29 @@ for (const provider of providers) {
     async () => {
       if (provider.socketPath === undefined) throw new Error(`A live ${provider.id} socket is required.`);
       const directory = await mkdtemp(join(tmpdir(), `lando-mariadb-journey-${provider.id}-`));
+      const env = {
+        ...process.env,
+        LANDO_USER_CONF_ROOT: join(directory, "config"),
+        LANDO_USER_DATA_ROOT: join(directory, "data"),
+        LANDO_USER_CACHE_ROOT: join(directory, "cache"),
+        LANDO_SYSTEM_PLUGIN_ROOT: join(directory, "system-plugins"),
+        LANDO_PROVIDER: provider.id,
+        LANDO_CONFIG__default_provider_id: provider.id,
+        LANDO_TEST_PODMAN_SOCKET: provider.id === "podman" ? provider.socketPath : undefined,
+        LANDO_TEST_DOCKER_SOCKET: provider.id === "docker" ? provider.socketPath : undefined,
+        LANDO_TEST_WINDOWS_DOCKER_SOCKET: undefined,
+        DOCKER_HOST: `unix://${provider.socketPath}`,
+        LANDO_TELEMETRY_ENABLED: "false",
+      };
+      const binary = process.env.LANDO_SCENARIO_E2E_BINARY;
+      const command =
+        binary === undefined
+          ? ([process.execPath, resolve(import.meta.dir, "../../bin/lando.ts")] as const)
+          : ([binary] as const);
       try {
         let listedSnapshotCount: number | undefined;
         const fixture = await databaseTransferFixture(`mariadb-${provider.id}-journey`, {
-          env: {
-            LANDO_USER_CONF_ROOT: join(directory, "config"),
-            LANDO_USER_DATA_ROOT: join(directory, "data"),
-            LANDO_USER_CACHE_ROOT: join(directory, "cache"),
-            LANDO_SYSTEM_PLUGIN_ROOT: join(directory, "system-plugins"),
-            LANDO_PROVIDER: provider.id,
-            LANDO_CONFIG__default_provider_id: provider.id,
-            DOCKER_HOST: `unix://${provider.socketPath}`,
-            LANDO_TELEMETRY_ENABLED: "false",
-          },
+          env,
           afterDestroy: async (destroyed) => {
             // A failure before the listing already reports its own cause.
             if (listedSnapshotCount === undefined) return;
@@ -186,9 +197,13 @@ for (const provider of providers) {
           await fixture.cleanup();
         }
       } finally {
-        await rm(directory, { recursive: true, force: true });
+        const retirement = await retireTempRoots({ directory, env, endpoint: provider.socketPath, command });
+        expect(
+          [...retirement.retained, ...retirement.failed],
+          JSON.stringify({ directory, ...retirement }),
+        ).toEqual([]);
       }
     },
-    journeyTimeout,
+    journeyTimeout + 240_000,
   );
 }

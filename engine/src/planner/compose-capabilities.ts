@@ -1,6 +1,7 @@
 import { CapabilityError } from "@lando/sdk/errors";
 import {
   type AppPlan,
+  type ComposePreservedPathKey,
   type HostPlatform,
   type PluginManifest,
   type ProviderCapabilities,
@@ -127,6 +128,18 @@ export const assertAuthoredNetworksSupported = (
   );
 };
 
+/**
+ * A provider that withholds a key only until a host condition is met names that step first, then
+ * the provider-neutral fix as the fallback.
+ */
+const leadWithWithheldStep = (
+  withheld: { readonly remediation: string } | undefined,
+  remediation: string,
+): string =>
+  withheld === undefined
+    ? remediation
+    : `${withheld.remediation} Otherwise, ${remediation.charAt(0).toLowerCase()}${remediation.slice(1)}`;
+
 export const assertComposeKnobsSupported = (
   context: CapabilityContext,
   services: ComposeServices,
@@ -148,11 +161,7 @@ export const assertComposeKnobsSupported = (
       feature: `compose knob ${unsupported.key}`,
       capability: "composeSpec",
       providerId: String(providerId),
-      // A provider that withholds the knob only until a host condition is met names that step first.
-      remediation:
-        withheld === undefined
-          ? remediation
-          : `${withheld.remediation} Otherwise, ${remediation.charAt(0).toLowerCase()}${remediation.slice(1)}`,
+      remediation: leadWithWithheldStep(withheld, remediation),
     }),
   );
 };
@@ -204,6 +213,17 @@ export const assertComposeProjectFieldsSupported = (
   );
 };
 
+const preservedPathRemoval = (key: ComposePreservedPathKey, service: string): string => {
+  switch (key) {
+    case "healthcheck.start_interval":
+      return `Move the start cadence to \`readiness.startIntervalSeconds\` on service ${service} (Lando applies it on every provider), or remove \`startIntervalSeconds\` (\`start_interval\`) from \`services.${service}.healthcheck\``;
+    case "depends_on.*.restart":
+      return `Remove ${key} from service ${service}`;
+    default:
+      return key satisfies never;
+  }
+};
+
 export const assertComposePreservedPathsSupported = (
   context: CapabilityContext,
   services: ComposeServices,
@@ -211,6 +231,12 @@ export const assertComposePreservedPathsSupported = (
   const { provider: providerId, capabilities } = context;
   const use = findUnsupportedComposePreservedPath(collectComposePreservedPaths(services), capabilities);
   if (use === undefined) return Effect.void;
+  const remediation = capabilityRemediation(
+    context,
+    preservedPathRemoval(use.key, use.service),
+    (alternative) => findUnsupportedComposePreservedPath([use], alternative) === undefined,
+  );
+  const withheld = capabilities.composePreservedPaths?.withheld?.find((entry) => entry.key === use.key);
   return Effect.fail(
     new CapabilityError({
       message: `Service ${use.service} uses preserved Compose path ${use.key}, which provider ${String(providerId)} does not support.`,
@@ -219,11 +245,7 @@ export const assertComposePreservedPathsSupported = (
       feature: `compose preserved path ${use.key}`,
       capability: "composeSpec",
       providerId: String(providerId),
-      remediation: capabilityRemediation(
-        context,
-        `Remove ${use.key} from service ${use.service}`,
-        (alternative) => findUnsupportedComposePreservedPath([use], alternative) === undefined,
-      ),
+      remediation: leadWithWithheldStep(withheld, remediation),
     }),
   );
 };

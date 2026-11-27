@@ -7,7 +7,7 @@ import {
 } from "@lando/sdk/schema";
 
 import { CREATE_CONFIG_LABEL } from "../create-fingerprint.ts";
-import { HOST_PROXY_SESSION_LABEL, hostProxySessionDigest } from "../labels.ts";
+import { HOST_PROXY_CONTRACT_LABEL } from "../labels.ts";
 import { commonContainerLabels, fingerprintPlannedPublishPorts } from "../plan.ts";
 
 // Private SSH sidecar protocol: the optional POSIX host socket bind endpoint.
@@ -113,14 +113,7 @@ export const bindSourceChanged = (service: ServicePlan, inspected: BringUpInspec
     );
     if (hostSocketMount?.source !== source(SSH_SIDECAR_HOST_SOCKET_DIRECTORY)) return true;
   }
-  if (hostProxySessionDigest(service.extensions) === undefined) return false;
-  return ["/run/lando/host-proxy.sock", "/run/lando/host-proxy/credentials"].some((target) => {
-    const planned = service.mounts.find(
-      (mount): mount is BindMountPlan =>
-        mount.type === "bind" && mount.realization === "passthrough" && mount.target === target,
-    );
-    return planned !== undefined && source(target) !== planned.source;
-  });
+  return false;
 };
 
 export const plannedNetworkMissing = (
@@ -153,10 +146,11 @@ export const bringUpRecreateReasons = (
   const reasons: BringUpRecreateReason[] = [];
   if (publishPortMismatch(service, inspected)) reasons.push("publish-port");
   const expectedLabels = commonContainerLabels(plan, service);
+  // The contract label digests everything a container sees of host-proxy (binds, env, shim), so
+  // enabling, disabling, or changing it needs a new container; a new session behind it does not.
   if (
     bindSourceChanged(service, inspected) ||
-    (hostProxySessionDigest(service.extensions) !== undefined &&
-      inspected.labels?.[HOST_PROXY_SESSION_LABEL] !== expectedLabels[HOST_PROXY_SESSION_LABEL])
+    inspected.labels?.[HOST_PROXY_CONTRACT_LABEL] !== expectedLabels[HOST_PROXY_CONTRACT_LABEL]
   ) {
     reasons.push("bind-source");
   }

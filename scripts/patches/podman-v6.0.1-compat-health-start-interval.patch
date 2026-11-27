@@ -1,0 +1,94 @@
+diff --git a/pkg/api/handlers/compat/containers.go b/pkg/api/handlers/compat/containers.go
+index ecebdda..25feb59 100644
+--- a/pkg/api/handlers/compat/containers.go
++++ b/pkg/api/handlers/compat/containers.go
+@@ -628,11 +628,12 @@ func LibpodToContainerJSON(l *libpod.Container, sz bool) (*handlers.LegacyImageI
+ 	var healthcheck *container.HealthConfig
+ 	if inspect.Config.Healthcheck != nil {
+ 		healthcheck = &container.HealthConfig{
+-			Test:        inspect.Config.Healthcheck.Test,
+-			Interval:    inspect.Config.Healthcheck.Interval,
+-			Timeout:     inspect.Config.Healthcheck.Timeout,
+-			StartPeriod: inspect.Config.Healthcheck.StartPeriod,
+-			Retries:     inspect.Config.Healthcheck.Retries,
++			Test:          inspect.Config.Healthcheck.Test,
++			Interval:      inspect.Config.Healthcheck.Interval,
++			Timeout:       inspect.Config.Healthcheck.Timeout,
++			StartPeriod:   inspect.Config.Healthcheck.StartPeriod,
++			StartInterval: inspect.Config.Healthcheck.StartInterval,
++			Retries:       inspect.Config.Healthcheck.Retries,
+ 		}
+ 	}
+ 
+diff --git a/pkg/api/handlers/compat/containers_create.go b/pkg/api/handlers/compat/containers_create.go
+index a829510..81e0eee 100644
+--- a/pkg/api/handlers/compat/containers_create.go
++++ b/pkg/api/handlers/compat/containers_create.go
+@@ -116,6 +116,10 @@ func CreateContainer(w http.ResponseWriter, r *http.Request) {
+ 		utils.Error(w, http.StatusInternalServerError, fmt.Errorf("fill out specgen: %w", err))
+ 		return
+ 	}
++	// The CLI options have no start interval; carry Docker's field over.
++	if body.Config.Healthcheck != nil && body.Config.Healthcheck.StartInterval > 0 {
++		sg.HealthConfig.StartInterval = body.Config.Healthcheck.StartInterval
++	}
+ 	// moby always create the working directory
+ 	localTrue := true
+ 	sg.CreateWorkingDir = &localTrue
+diff --git a/pkg/specgen/generate/container.go b/pkg/specgen/generate/container.go
+index ed1ef76..dfd7749 100644
+--- a/pkg/specgen/generate/container.go
++++ b/pkg/specgen/generate/container.go
+@@ -84,6 +84,9 @@ func applyHealthCheckOverrides(s *specgen.SpecGenerator, healthCheckFromImage *m
+ 		if overrideHealthCheckConfig.StartPeriod != 0 {
+ 			s.HealthConfig.StartPeriod = overrideHealthCheckConfig.StartPeriod
+ 		}
++		if overrideHealthCheckConfig.StartInterval != 0 {
++			s.HealthConfig.StartInterval = overrideHealthCheckConfig.StartInterval
++		}
+ 	}
+ 
+ 	disableInterval := false
+diff --git a/pkg/specgen/generate/healthcheck_start_interval_test.go b/pkg/specgen/generate/healthcheck_start_interval_test.go
+new file mode 100644
+index 0000000..32ca4d2
+--- /dev/null
++++ b/pkg/specgen/generate/healthcheck_start_interval_test.go
+@@ -0,0 +1,37 @@
++//go:build !remote && (linux || freebsd)
++
++package generate
++
++import (
++	"testing"
++	"time"
++
++	"github.com/stretchr/testify/assert"
++	"github.com/stretchr/testify/require"
++	"go.podman.io/image/v5/manifest"
++	"go.podman.io/podman/v6/pkg/specgen"
++)
++
++func TestApplyHealthCheckOverridesStartInterval(t *testing.T) {
++	image := func() *manifest.Schema2HealthConfig {
++		return &manifest.Schema2HealthConfig{
++			Test:          []string{"CMD-SHELL", "true"},
++			Interval:      30 * time.Second,
++			StartInterval: 5 * time.Second,
++		}
++	}
++
++	t.Run("override replaces the image start interval", func(t *testing.T) {
++		s := &specgen.SpecGenerator{}
++		s.HealthConfig = &manifest.Schema2HealthConfig{StartInterval: time.Second}
++		require.NoError(t, applyHealthCheckOverrides(s, image()))
++		assert.Equal(t, time.Second, s.HealthConfig.StartInterval)
++		assert.Equal(t, []string{"CMD-SHELL", "true"}, s.HealthConfig.Test)
++	})
++
++	t.Run("image start interval is inherited", func(t *testing.T) {
++		s := &specgen.SpecGenerator{}
++		require.NoError(t, applyHealthCheckOverrides(s, image()))
++		assert.Equal(t, 5*time.Second, s.HealthConfig.StartInterval)
++	})
++}

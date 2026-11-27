@@ -1,10 +1,9 @@
-import { mapFailures } from "@lando/sdk/command-result";
+import { causeRemediation, mapFailures } from "@lando/sdk/command-result";
 import { AppPlacementError, GlobalAppError } from "@lando/sdk/errors";
 import { GlobalAppService } from "@lando/sdk/services";
 import { Effect } from "effect";
 import { ensureAppPlacement, resolveAppPlacement } from "../providers/app-placement.ts";
 import { hostProviderSelection } from "../providers/host-provider.ts";
-import { taggedErrorRemediation } from "../providers/managed.ts";
 
 const globalPlacementInput = Effect.gen(function* () {
   const selection = yield* hostProviderSelection;
@@ -15,7 +14,7 @@ const globalPlacementInput = Effect.gen(function* () {
 
 export const resolveGlobalPlacement = Effect.fn("GlobalApp.resolvePlacement")(function* () {
   const { selection, app } = yield* globalPlacementInput;
-  return { ...(yield* resolveAppPlacement(app, selection.providerId)), selection };
+  return { ...(yield* resolveAppPlacement(app, selection.providerId, undefined, true)), selection };
 });
 
 export const globalCreateProviderId = Effect.fn("GlobalApp.createProviderId")(
@@ -42,7 +41,7 @@ export const globalCreateProviderId = Effect.fn("GlobalApp.createProviderId")(
           message: "Unable to resolve global app placement.",
           operation: "placement",
           remediation:
-            taggedErrorRemediation(cause) ?? "Run `lando setup` to install a runtime provider, then retry.",
+            causeRemediation(cause) ?? "Run `lando setup` to install a runtime provider, then retry.",
           cause,
         }),
   ),

@@ -92,17 +92,20 @@ describe("top-level lowering", () => {
     expect(result.diagnostics[0]?.message).toContain("appMount.excludes");
   });
 
-  test.each([".env", [".env", ".env.local"]])("preserves env_file when supplied as %j", (env_file) => {
-    // Given / When
-    const result = lowerTopLevel({ env_file }, ctx);
-    // Then
-    expect(result).toEqual({
-      fragment: { env_file },
-      appMountExcludes: [],
-      appMountIncludes: [],
-      diagnostics: [],
-    });
-  });
+  test.each([".env", [".env", ".env.local"]])(
+    "emits serviceDefaults.env_file when supplied as %j",
+    (env_file) => {
+      // Given / When
+      const result = lowerTopLevel({ env_file }, ctx);
+      // Then
+      expect(result).toEqual({
+        fragment: { serviceDefaults: { env_file } },
+        appMountExcludes: [],
+        appMountIncludes: [],
+        diagnostics: [],
+      });
+    },
+  );
 
   test.each(["volumes", "networks"])("normalizes shorthand when %s contains named resources", (key) => {
     // Given

@@ -7,6 +7,7 @@ export interface TestSelection {
   readonly args?: readonly string[];
   /** Run as `bun --no-orphans test`, killing every descendant on exit; live suites keep their daemons. */
   readonly noOrphans?: true;
+  readonly usesInheritedLivePodmanRoots?: true;
   readonly unit?: "exclude";
   readonly runner?: "go";
   readonly jobs: readonly { readonly workflow: string; readonly job: string }[];
@@ -146,9 +147,10 @@ export const TEST_SELECTIONS = [
   },
   {
     id: "providers-core-live",
+    usesInheritedLivePodmanRoots: true,
     paths: ["core/test/live/"],
     jobs: live,
-    needs: "Live provider socket and compiled CLI",
+    needs: "Live provider socket and compiled CLI; shared-engine-data-roots uses the explicit Podman socket",
   },
   {
     id: "providers-lando",
@@ -297,6 +299,12 @@ export const TEST_SELECTIONS = [
     needs: "Live managed Podman and compiled CLI",
   },
   {
+    id: "ca-mkcert-homebrew-trust-live",
+    paths: ["plugins/ca-mkcert/test/homebrew-trust.integration.test.ts"],
+    jobs: [{ workflow: "nightly.yml", job: "provider-lando-e2e-linux-x64" }],
+    needs: "Answering LANDO_TEST_PODMAN_SOCKET, network for the Homebrew image and bottles, compiled CLI",
+  },
+  {
     id: "nightly-tier",
     paths: NIGHTLY_TIER_TESTS,
     unit: "exclude",
@@ -352,6 +360,15 @@ export const TEST_SELECTIONS = [
       "core/test/build/node-releases-bump-workflow.test.ts",
     ],
     jobs: [{ workflow: "node-releases-bump.yml", job: "bump" }],
+  },
+  {
+    id: "xdebug-bump",
+    paths: [
+      "core/test/scripts/xdebug-update.test.ts",
+      "core/test/build/xdebug-bump-workflow.test.ts",
+      "plugins/service-lando/test/php-xdebug.test.ts",
+    ],
+    jobs: [{ workflow: "xdebug-bump.yml", job: "bump" }],
   },
 ] as const satisfies readonly TestSelection[];
 

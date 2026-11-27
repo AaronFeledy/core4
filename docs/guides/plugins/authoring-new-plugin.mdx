@@ -229,14 +229,15 @@ That key is `contributes.renderers`. Core still owns plain, JSON, and verbose fa
 ## Certificate authority plugins
 
 `@lando/ca-mkcert` is the bundled example. Declare yours under
-`contributes.certificateAuthorities` and implement the four members of
+`contributes.certificateAuthorities` and implement the five members of
 `CertificateAuthority` from `@lando/sdk/services`:
 
 | Member | What it does |
 | --- | --- |
 | `id` | The id from your manifest. |
-| `setup(options)` | Installs what you need and creates your root. After it succeeds, `root` must work. Honor `skipTrustInstall` by leaving the host trust store alone. |
-| `root` | Yields `{ certificate }`, the PEM of the root that signs your leaves. Fail with a `CaError` and a remediation when setup hasn't run or there is no root yet. |
+| `setup(options)` | Installs what you need, creates your root, and trusts it on the host. After it succeeds, `root` must work. Honor `skipTrustInstall` by writing to no trust store. Return `{ trustStores }`: one `TrustStoreChange` row per host trust store you manage, with its `state` after setup and `changed` when this run added your root. `lando setup` prints the rows and turns every store that still doesn't trust your root into a warning; setup fails only when you return a `CaError`. |
+| `trustStores` | Yields the same rows as `TrustStoreStatus`, without `changed`. Read only: inspect, never install or prompt. Report a store you can't inspect as `unknown` instead of failing; fail with a `CaError` only when you have no root. `lando doctor` warns about every row that isn't `trusted`. Return an empty list if you manage no stores. |
+| `root` | Yields `{ certificate, trusted }`: the PEM of the root that signs your leaves, and whether the host's system trust store already contains it. Keep it cheap, because every HTTPS start reads it. Fail with a `CaError` and a remediation when setup hasn't run or there is no root yet. |
 | `issueCert(spec)` | Issues a leaf for `spec.cn` and `spec.sans` and returns PEM values: `{ certificate, privateKey, root: { certificate } }`, with `privateKey` wrapped in `Redacted`. |
 
 Return values, not file paths, and keep no copy of what you issue. Lando and the
@@ -253,7 +254,7 @@ an authority that reports one root and signs with another gets asked for a new
 certificate on every start.
 
 Run `runCaContract` from `@lando/sdk/test` against your authority in your own
-tests. It checks setup, `root`, the shape of what `issueCert` returns, and that
+tests. It checks setup and `trustStores` rows, `root`, the shape of what `issueCert` returns, and that
 the issued pair verifies against both the root it came with and `root` read
 afterwards. To make the same judgment yourself, call `certificatePairIsCurrent`
 from `@lando/sdk/certificates` with the requested names, the current root, and
@@ -494,6 +495,55 @@ get no stream, so when `input.stdio` lacks the stream you asked for, fail with
 description, so leave it out of your own. Each stream can be claimed by one
 argument, which can't be `multiple`.
 
+### Stream a process's output while it runs
+
+A command that runs a long process, such as a scheduled job or a database
+client, should show that process's output as it arrives. Set
+`streamingMode: "live"` on the spec and send the output to `StreamFrameSink`
+from `@lando/sdk/services`. When `run` drains a provider exec stream,
+`collectExecStream` does the sending for you. This is the core of the bundled
+`schedule:run`:
+
+```ts
+import { StreamFrameSink, collectExecStream } from "@lando/sdk/services";
+
+export const spec = {
+  id: "schedule:run",
+  namespace: "schedule",
+  bootstrap: "app",
+  streamingMode: "live",
+  resultSchema: ScheduleRunResult,
+  run: Effect.fn("Schedule.run")(function* (input) {
+    // Resolve the job, its provider, and the exec target first.
+    const sink = yield* Effect.serviceOption(StreamFrameSink);
+    const output = yield* collectExecStream(provider.execStream(target, { command }), sink);
+    return { service: job.service, name: job.name, ...output };
+  }),
+} as const satisfies ExecutableCommandSpec<ScheduleRunResult>;
+```
+
+With the declaration, Lando gives `run` a sink whenever someone watches the
+output. A terminal shows each chunk as the process writes it. `--format=json`
+and `--format=ndjson` write one JSON frame per line, `stdout` and `stderr`
+frames for the output and a single `result` frame last, and `--help` lists
+`ndjson` among the `--format` values. An MCP call gets the same chunks as
+progress notifications before its result, and a Landofile event that runs the
+command streams it too.
+
+The sink is optional, so read it with `Effect.serviceOption`. `--format=yaml`
+has none, because it prints one document after the command ends, and code that
+calls your `run` directly may provide none either. `collectExecStream` follows
+the same rule as Lando's own `exec`: with a sink it sends every chunk and
+returns no `stdout` or `stderr`, and without one it collects both for your
+result. Declare those result fields optional. To send output yourself, emit raw
+chunks such as `sink.emit({ _tag: "stderr", kind: "bytes", chunk, service })`.
+The sink masks registered secrets and encodes the frames, so don't redact or
+JSON-encode the chunks first.
+
+A command without `streamingMode` gets no sink from the CLI and refuses
+`--format=ndjson` with `RendererSelectionError`, naming the formats it does
+support. Any other value fails to load with `PluginDescriptorMismatchError`.
+
 ## Verify
 
 Check your generated service and package before you start replacing the example.
@@ -503,7 +553,7 @@ Check your generated service and package before you start replacing the example.
     <Step name="scaffold">
       <Run command="lando meta:plugin:new @acme/lando-plugin-demo ./demo --template bare --cspace acme --description Demo-plugin --no-interactive --format=json" />
       <Verify file="demo/src/service.ts" expect={{ regex: "extends Context\\.Service<[\\s\\S]*@acme/lando-plugin-demo/Greeter[\\s\\S]*static readonly layer = Layer\\.effect\\([\\s\\S]*Greeter\\.of\\([\\s\\S]*Effect\\.fn\\(\"Greeter\\.greet\"\\)" }} />
-      <Verify file="demo/package.json" expect={{ regex: "\"name\":\\s*\"@acme/lando-plugin-demo\"[\\s\\S]*\"effect\":\\s*\"4\\.0\\.0\"[\\s\\S]*\"typescript\":\\s*\"\\^7\\.0\\.2\"" }} />
+      <Verify file="demo/package.json" expect={{ regex: "\"name\":\\s*\"@acme/lando-plugin-demo\"[\\s\\S]*\"effect\":\\s*\"4\\.1\\.4\"[\\s\\S]*\"typescript\":\\s*\"\\^7\\.0\\.2\"" }} />
     </Step>
   </Scenario>
 </Guide>

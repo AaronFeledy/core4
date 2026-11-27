@@ -19,7 +19,7 @@ export const source = {
         framework: "wordpress",
         uploadDirs: ["wp-content/uploads"],
         port: 80,
-        dependsOn: ["database"],
+        depends_on: ["database"],
         routes: defaultRoutes,
       },
       database: { type: "mariadb" },
@@ -31,13 +31,32 @@ export const source = {
         cmds: ["wp"],
         wrapper: true,
       },
+      "wp-install": {
+        service: "appserver",
+        description: "Install WordPress at the URL Lando publishes.",
+        cmd: ["wp", "core", "install", "--url={{ services.appserver.url }}"],
+        wrapper: true,
+      },
+      "wp-replace-url": {
+        service: "appserver",
+        description: "Replace an imported site URL with the one Lando publishes.",
+        args: { from: { required: true, description: "URL the imported database uses." } },
+        cmd: [
+          "wp",
+          "search-replace",
+          "{{ args.from }}",
+          "{{ services.appserver.url }}",
+          "--all-tables",
+          "--skip-columns=guid",
+        ],
+      },
       composer: composerTool,
     },
   },
   variants: [
     {
       when: "{{ options.redis }}",
-      config: { services: { appserver: { dependsOn: ["cache"] }, cache: { type: "redis" } } },
+      config: { services: { appserver: { depends_on: ["cache"] }, cache: { type: "redis" } } },
     },
   ],
   postInit: [

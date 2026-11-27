@@ -5,15 +5,7 @@
     "outDir": "./dist",
     "tsBuildInfoFile": "./.tsbuildinfo",
     "composite": true,
-    "noEmit": false,
-    "paths": {
-      "@lando/engine": ["../engine/src/index.ts"],
-      "@lando/engine/*": ["../engine/src/*/index.ts"],
-      "@lando/redaction": ["../redaction/src/index.ts"],
-      "@lando/redaction/*": ["../redaction/src/*.ts"],
-      "@lando/sdk": ["../sdk/src/index.ts"],
-      "@lando/sdk/*": ["../sdk/src/*/index.ts"]
-    }
+    "noEmit": false
   },
   "include": ["./src/**/*.ts"],
   "exclude": ["./dist", "./node_modules"],

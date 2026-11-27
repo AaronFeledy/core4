@@ -30,8 +30,8 @@ import { beginOrResumeAcceleratedStart } from "@lando/engine/operations/accelera
 import * as hostProxyWorker from "@lando/engine/subsystems/host-proxy/worker";
 import { stubContainerHelper } from "@lando/engine/testing/container-helper";
 import { FileSyncStartError } from "@lando/sdk/errors";
-import type { FileSyncEngineShape } from "@lando/sdk/services";
-import { TestRouterService } from "@lando/sdk/test";
+import type { BringDownOptions, FileSyncEngineShape } from "@lando/sdk/services";
+import { TestRouterService, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Cause, DateTime, Deferred, Effect, Exit, Fiber, Layer, Stream } from "effect";
 import { preparedFileSyncTargets } from "../_support/prepared-sync-targets.ts";
 import { withCwd, withEnvVar } from "../_support/temp-cwd.ts";
@@ -213,11 +213,11 @@ const lifecycleProvider = (provider: RuntimeProviderShape): RuntimeProviderShape
           }),
         ),
       ),
-    destroy: (selector, options) =>
-      provider.destroy(selector, options).pipe(
+    bringDown: (selector, options) =>
+      provider.bringDown(selector, options).pipe(
         Effect.tap(() =>
           Effect.sync(() => {
-            if (options.removeState !== false) appliedPlan = undefined;
+            if (options.containers === "remove" && options.removeState !== false) appliedPlan = undefined;
           }),
         ),
       ),
@@ -295,7 +295,7 @@ const appLayer = (
         Layer.succeed(RuntimeProvider, RuntimeProvider.of(fixtureProvider)),
         Layer.succeed(
           RuntimeProviderRegistry,
-          RuntimeProviderRegistry.of({
+          makeTestRuntimeProviderRegistry({
             resolveAppliedPlan: (root) =>
               (fixtureProvider.appliedPlans ?? Effect.succeed([])).pipe(
                 Effect.map((plans) => plans.find((candidate) => candidate.root === root)),
@@ -764,6 +764,27 @@ describe("App handle managed lifecycle scopes", () => {
     });
   });
 
+  test("selected stop keeps the managed start scope that running siblings still use", async () => {
+    await withTempApp(async (dir) => {
+      const tracking = makeTrackingEngine();
+      const base = planWithFileSync(dir);
+      const worker = { ...webService, name: ServiceName.make("worker"), primary: false, endpoints: [] };
+      const plan: AppPlan = { ...base, services: { ...base.services, [worker.name]: worker } };
+      const sizes = await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const app = yield* resolveApp();
+            yield* app.start();
+            yield* app.stop({ services: [worker.name] });
+            return tracking.sessions.size;
+          }),
+        ).pipe(Effect.provide(appLayer(tracking.engine, dir, plan))),
+      );
+
+      expect(sizes).toBe(1);
+    });
+  });
+
   test("successful destroy closes the managed start scope before returning", async () => {
     await withTempApp(async (dir) => {
       const tracking = makeTrackingEngine();
@@ -818,16 +839,16 @@ describe("App handle managed lifecycle scopes", () => {
       });
     });
   }
-  test("repeated accelerated stop fails closed after the managed session was drained", async () => {
+  test("repeated accelerated stop succeeds after the managed session was drained", async () => {
     await withTempApp(async (dir) => {
       const tracking = makeTrackingEngine();
-      const destroys: Array<{ volumes: boolean; removeState: boolean | undefined }> = [];
+      const destroys: Array<BringDownOptions> = [];
       const provider: RuntimeProviderShape = {
         ...TestRuntimeProvider,
-        destroy: (selector, options) =>
+        bringDown: (selector, options) =>
           Effect.sync(() => {
-            destroys.push({ volumes: options.volumes, removeState: options.removeState });
-          }).pipe(Effect.andThen(TestRuntimeProvider.destroy(selector, options))),
+            destroys.push(options);
+          }).pipe(Effect.andThen(TestRuntimeProvider.bringDown(selector, options))),
       };
       const secondStop = await Effect.runPromise(
         Effect.scoped(
@@ -840,9 +861,8 @@ describe("App handle managed lifecycle scopes", () => {
         ).pipe(Effect.provide(appLayer(tracking.engine, dir, planWithFileSync(dir), provider))),
       );
 
-      expect(secondStop._tag).toBe("Failure");
-      if (secondStop._tag === "Failure") expect(secondStop.failure._tag).toBe("FileSyncStopError");
-      expect(destroys).toEqual([{ volumes: false, removeState: false }]);
+      expect(secondStop._tag).toBe("Success");
+      expect(destroys).toEqual([{ containers: "stop" }, { containers: "stop" }]);
       expect(tracking.sessions.size).toBe(0);
     });
   });
@@ -855,7 +875,7 @@ describe("App handle managed lifecycle scopes", () => {
         let finalizerCalls = 0;
         const provider: RuntimeProviderShape = {
           ...TestRuntimeProvider,
-          destroy: Effect.fnUntraced(function* () {
+          bringDown: Effect.fnUntraced(function* () {
             destroyCalls += 1;
             return yield* Effect.fail(
               new ProviderUnavailableError({
@@ -938,10 +958,10 @@ describe("App handle managed lifecycle scopes", () => {
       let finalizerCalls = 0;
       const provider: RuntimeProviderShape = {
         ...TestRuntimeProvider,
-        destroy: (selector, options) =>
+        bringDown: (selector, options) =>
           Effect.sync(() => {
             destroyCalls += 1;
-            return TestRuntimeProvider.destroy(selector, options);
+            return TestRuntimeProvider.bringDown(selector, options);
           }).pipe(Effect.flatten),
       };
       const engine: FileSyncEngineShape = {
@@ -1419,10 +1439,7 @@ describe("App handle managed lifecycle scopes", () => {
                   Layer.succeed(RuntimeProvider, RuntimeProvider.of(fixtureProvider)),
                   Layer.succeed(
                     RuntimeProviderRegistry,
-                    RuntimeProviderRegistry.of({
-                      resolveAppliedPlan: () => Effect.succeed(undefined),
-                      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-                      appliedPlansFor: () => Effect.succeed([]),
+                    makeTestRuntimeProviderRegistry({
                       list: Effect.succeed([ProviderId.make(fixtureProvider.id)]),
                       capabilities: Effect.succeed(fixtureProvider.capabilities),
                       select: () => Effect.succeed(fixtureProvider),

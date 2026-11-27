@@ -2,11 +2,13 @@ import type { ExecutableCommandSpec } from "@lando/sdk/plugins";
 
 import { dbCommandRedactionTokens, dbInputFromCommand, runDbCommand } from "../run.ts";
 import { type DbCommandResult, DbCommandResult as DbCommandResultSchema } from "../schemas.ts";
+import { render } from "./recovery-hint.ts";
 
 export const spec = {
   id: "db:import",
   namespace: "db",
   bootstrap: "app",
+  streamingMode: "live",
   flags: {
     service: { type: "string", description: "Target database service." },
     yes: { type: "boolean", default: false, description: "Skip confirmation prompts." },
@@ -17,4 +19,5 @@ export const spec = {
   resultSchema: DbCommandResultSchema,
   redactionTokens: dbCommandRedactionTokens,
   run: (input) => runDbCommand(dbInputFromCommand("import", input)),
+  render,
 } as const satisfies ExecutableCommandSpec<DbCommandResult>;

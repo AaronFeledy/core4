@@ -1,5 +1,6 @@
 import type { VariableProps } from "@lando/sdk/docs/components";
 import { Result } from "effect";
+import { validateCaptures } from "./captures.ts";
 import { guideCommandArgv } from "./command-argv.ts";
 import { semanticError } from "./diagnostic.ts";
 import type {
@@ -154,7 +155,7 @@ const resolveCell = (
       const command = (text: string): { readonly command: string; readonly argv?: ReadonlyArray<string> } => {
         const projected = replace(text, "command");
         // Readers paste the display projection, so both projections must have one shell-word reading.
-        const argv = guideCommandArgv(projected);
+        const argv = guideCommandArgv(projected, display ? undefined : { captures: true });
         if (Result.isFailure(argv))
           return semanticError(guide, scenario, {
             ...variantDetail(variant),
@@ -212,6 +213,7 @@ const resolveCell = (
     }),
   });
   const steps = selected.steps.map((step) => projectStep(step, false));
+  validateCaptures(guide, scenario, { steps, variant });
   const publicSteps = scenario.render
     ? selected.steps.filter((step) => !step.hidden).map((step) => projectStep(step, true))
     : [];
@@ -258,6 +260,14 @@ export const resolveGuide = (guide: ParsedGuide): GuideScenarioAst => {
   const ids = new Map<string, number>();
   const cells: Array<{ readonly scenarioId: string; readonly resolved: ResolvedScenario }> = [];
   for (const scenario of guide.scenarios) {
+    if (scenario.faults !== undefined && (scenario.layer ?? guide.frontmatter.defaultLayer) === "e2e")
+      semanticError(guide, scenario, {
+        code: "guide.scenario.faults-e2e",
+        line: scenario.line,
+        component: "Scenario",
+        prop: "faults",
+        name: "e2e",
+      });
     if ((scenario.layer ?? guide.frontmatter.defaultLayer) !== "e2e") {
       const fetch = scenario.body
         .flatMap((item) => {

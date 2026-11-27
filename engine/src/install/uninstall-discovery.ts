@@ -1,11 +1,10 @@
-import { readFile, readdir } from "node:fs/promises";
-import { join } from "node:path";
-import { makeLandoPaths } from "@lando/paths";
-import { AppId, AppPlan } from "@lando/sdk/schema";
-import { Effect, Schema } from "effect";
-import type { DiscoveredApp } from "../operations/uninstall.ts";
+import { normalizeHostPlatform } from "@lando/paths";
+import { causeMessage } from "@lando/sdk/errors";
+import type { LandoPluginModule, ProviderPurgeHook, ProviderPurgeResult } from "@lando/sdk/plugins";
+import { Effect, Result } from "effect";
+import { canonicalMissingAppRoot } from "../operations/app-mutation-lock.ts";
+import type { DiscoveredApp, PreparedUninstallCleanup } from "../operations/uninstall.ts";
 import { artifactBuildStoreKey } from "../services/build-artifact-name.ts";
-import { cleanupUninstallBuiltImages } from "./uninstall-built-images.ts";
 import { UninstallResourceCleanupError, uninstallCleanupFailure } from "./uninstall-cleanup-error.ts";
 import { assertManagedStorageResolved } from "./uninstall-managed-storage.ts";
 import { cleanupUninstallResources } from "./uninstall-resource-cleanup.ts";
@@ -14,132 +13,122 @@ import {
   type UninstallRuntimeSeams,
   availableUninstallRuntimes,
   defaultRuntimeExec,
-  runUninstallRuntime,
 } from "./uninstall-runtime.ts";
 import { assertUninstallSyncSafe } from "./uninstall-sync-preflight.ts";
 
-const AppliedPlanRecord = Schema.fromJsonString(
-  Schema.Struct({ version: Schema.Literal(1), data: Schema.Record(AppId, AppPlan) }),
-);
+export type UninstallProviderHook = { readonly providerId: string; readonly purge: ProviderPurgeHook };
 
-const assertNoRecordedUserApps = async (userDataRoot: string): Promise<void> => {
-  const plugins = makeLandoPaths({ userDataRoot }).pluginsDir;
-  const directories: string[] = [];
-  for (const base of [join(plugins, "@lando"), join(userDataRoot, "providers")]) {
-    let providers: readonly string[];
-    try {
-      providers = await readdir(base);
-    } catch (cause) {
-      if (cause instanceof Error && "code" in cause && cause.code === "ENOENT") continue;
-      throw cause;
-    }
-    for (const provider of providers.filter((name) => name.startsWith("provider-"))) {
-      directories.push(
-        join(base, provider, base === join(userDataRoot, "providers") ? "apps" : "applied-plans"),
-      );
-      if (base !== join(plugins, "@lando")) continue;
-      const recordPath = join(base, provider, "applied-plans.json");
-      let contents: string;
-      try {
-        contents = await readFile(recordPath, "utf8");
-      } catch (cause) {
-        if (cause instanceof Error && "code" in cause && cause.code === "ENOENT") continue;
-        throw cause;
-      }
-      const record = Schema.decodeUnknownSync(AppliedPlanRecord)(contents);
-      if (Object.entries(record.data).some(([id, plan]) => id !== "global" || plan.id !== "global"))
-        throw uninstallCleanupFailure(
-          `No runtime is available to verify recorded Lando apps in ${recordPath}; preserve their state and restore the runtime.`,
-        );
-    }
-  }
-  for (const directory of directories) {
-    let entries: readonly string[];
-    try {
-      entries = await readdir(directory);
-    } catch (cause) {
-      if (cause instanceof Error && "code" in cause && cause.code === "ENOENT") continue;
-      throw cause;
-    }
-    for (const entry of entries.filter((name) => name.endsWith(".json"))) {
-      const envelope: unknown = JSON.parse(await readFile(join(directory, entry), "utf8"));
-      const data: unknown =
-        typeof envelope === "object" && envelope !== null
-          ? (Reflect.get(envelope, "data") ?? Reflect.get(envelope, "plan"))
-          : undefined;
-      if (typeof data !== "object" || data === null || Reflect.get(data, "id") !== "global")
-        throw uninstallCleanupFailure(
-          "neither docker nor podman is available to verify recorded Lando apps; preserve their state and restore the runtime.",
-        );
-    }
-  }
-};
+export const providerPurgeHooks = (
+  modules: readonly Pick<LandoPluginModule, "runtimeProviders">[],
+): readonly UninstallProviderHook[] =>
+  modules.flatMap((module) =>
+    [...(module.runtimeProviders?.values() ?? [])].flatMap(({ id, purge }) =>
+      purge === undefined ? [] : [{ providerId: id, purge }],
+    ),
+  );
 
-export const makeListDiscoveredApps =
+const plural = (count: number, noun: string): string => `${count} ${noun}${count === 1 ? "" : "s"}`;
+
+const summary = (result: ProviderPurgeResult): string =>
+  [
+    `${result.endpoint}: removed ${plural(result.removed.length, "resource")}.`,
+    ...(result.retained.length === 0 ? [] : [`Kept: ${result.retained.join("; ")}.`]),
+    ...(result.failed.length === 0 ? [] : [`Failed: ${result.failed.join("; ")}.`]),
+    ...(result.outsideScope === 0
+      ? []
+      : [`Left ${plural(result.outsideScope, "resource")} from other installations in place.`]),
+  ].join(" ");
+
+export const makePrepareUninstallCleanup =
   (
+    hooks: readonly UninstallProviderHook[],
     exec: RuntimeExec = defaultRuntimeExec,
     platform: NodeJS.Platform = process.platform,
     seams: UninstallRuntimeSeams = {},
   ) =>
-  async (userDataRoot: string, _userCacheRoot: string): Promise<readonly DiscoveredApp[]> => {
-    const runtimes = await availableUninstallRuntimes({ userDataRoot, platform, exec, seams });
-    if (runtimes.length === 0)
-      await assertNoRecordedUserApps(userDataRoot).catch((cause: unknown) => {
-        if (cause instanceof UninstallResourceCleanupError) throw cause;
-        throw uninstallCleanupFailure(
-          `Cannot inspect recorded Lando apps under ${userDataRoot}; preserve their state and restore access.`,
-          cause,
-        );
-      });
+  async (userDataRoot: string, userCacheRoot: string): Promise<PreparedUninstallCleanup> => {
+    const env = seams.hostEnv ?? { ...process.env };
+    const dataRoot = await Effect.runPromise(canonicalMissingAppRoot(userDataRoot));
+    const buildStore = await Effect.runPromise(artifactBuildStoreKey(userCacheRoot));
+    const input = {
+      platform: normalizeHostPlatform({ platform, env: { ...env } }),
+      env,
+      dataRoot,
+      buildStore,
+    };
+    const observed = await Effect.runPromise(
+      Effect.forEach(hooks, ({ providerId, purge }) =>
+        Effect.map(Effect.result(purge(input)), (result) => ({ providerId, result })),
+      ),
+    );
     const apps: DiscoveredApp[] = [];
-    for (const runtime of runtimes) {
-      const ids = new Set<string>();
-      for (const label of ["dev.lando.app", "com.lando.app"]) {
-        const result = await runUninstallRuntime(
-          exec,
-          runtime,
-          {
-            args: ["ps", "--filter", `label=${label}`, "--format", `{{.Label "${label}"}}`],
-          },
-          seams,
-        ).catch((cause: unknown) => {
-          throw uninstallCleanupFailure(
-            `Cannot discover Lando apps with runtime ${runtime.cmd} (${runtime.providerId}, label=${label}); preserve state and restore runtime access.`,
-            cause,
-          );
-        });
-        for (const id of result.stdout.split(/\r?\n/u).filter(Boolean)) ids.add(id);
-      }
-      for (const appId of ids)
-        apps.push({
-          appId,
-          appName: appId,
-          providerId: runtime.providerId,
-          appRoot: "(unknown)",
-          services: [],
-        });
-    }
-    return apps;
-  };
-
-export const makeCleanupDiscoveredApps =
-  (
-    userDataRoot = makeLandoPaths().roots.userDataRoot,
-    exec: RuntimeExec = defaultRuntimeExec,
-    platform: NodeJS.Platform = process.platform,
-    seams: UninstallRuntimeSeams = {},
-  ) =>
-  async (
-    _apps: readonly DiscoveredApp[],
-    userCacheRoot = makeLandoPaths().roots.userCacheRoot,
-  ): Promise<string> => {
-    const runtimes = await availableUninstallRuntimes({ userDataRoot, platform, exec, seams });
-    if (platform === "win32") await assertUninstallSyncSafe({ userDataRoot, runtimes, exec });
-    for (const runtime of runtimes) await cleanupUninstallResources(exec, runtime);
-    for (const runtime of runtimes) await assertManagedStorageResolved(exec, runtime);
-    const store = await Effect.runPromise(artifactBuildStoreKey(userCacheRoot));
     const details: string[] = [];
-    for (const runtime of runtimes.filter((runtime) => !runtime.managed))
-      details.push(await cleanupUninstallBuiltImages(exec, runtime, store));
-    return details.join(" ");
+    const observations = observed.flatMap(({ providerId, result }) => {
+      if (Result.isFailure(result)) {
+        throw uninstallCleanupFailure(
+          `Cannot inspect ${providerId} resources: ${causeMessage(result.failure)} ${result.failure.remediation.replace(/\.$/u, "")}`,
+          result.failure,
+        );
+      }
+      const found = result.success;
+      if (!found) return [];
+      switch (found.kind) {
+        case "skipped":
+          details.push(
+            `${providerId}: no engine answered at ${found.endpoint}, so there was nothing to clean there (${found.reason.replace(/\.$/u, "")}).`,
+          );
+          return [];
+        case "reachable": {
+          const { container, network, volume, image } = found.counts;
+          details.push(
+            `${providerId} (${found.endpoint}): this installation owns ${plural(container, "container")}, ${plural(network, "network")}, ${plural(volume, "volume")}, and ${plural(image, "built image")} there.`,
+          );
+          apps.push(
+            ...found.apps.map(({ appId, appRoot }) => ({
+              appId,
+              appRoot,
+              appName: appId,
+              providerId,
+              services: [],
+            })),
+          );
+          return [found];
+        }
+        default:
+          return found satisfies never;
+      }
+    });
+    const scope = "Resources from other Lando installations stay in place.";
+    return {
+      apps,
+      detail: [...details, scope].join(" "),
+      cleanup: async () => {
+        const runtimes = await availableUninstallRuntimes({ userDataRoot, platform, exec, seams });
+        if (platform === "win32")
+          await assertUninstallSyncSafe({
+            userDataRoot,
+            runtimes,
+            exec,
+            hostSyncPresent: observations.some(({ syncPresent }) => syncPresent),
+            seams,
+          });
+        const results = await Effect.runPromise(Effect.forEach(observations, (found) => found.sweep()));
+        const actual = [...details, ...results.map(summary)].join(" ");
+        const retained = results.flatMap((result) => result.retained);
+        const failed = results.flatMap((result) => result.failed);
+        if (retained.length > 0 || failed.length > 0)
+          throw new UninstallResourceCleanupError({
+            message: `Incomplete provider cleanup. ${actual}`,
+            removed: results.flatMap((result) => result.removed),
+            retained,
+            failed,
+            remediation: "Inspect retained or failed resources and recover their data before retrying purge.",
+          });
+        for (const runtime of runtimes) {
+          await cleanupUninstallResources(exec, runtime, seams);
+          await assertManagedStorageResolved(exec, runtime, seams);
+        }
+        return actual;
+      },
+    };
   };

@@ -11,7 +11,7 @@ import {
   ServiceName,
   appIdentityKey,
 } from "@lando/sdk/schema";
-import type { AppliedTeardownEvidence, LandoEvent } from "@lando/sdk/services";
+import type { AppliedTeardownEvidence, LandoEvent, ServiceRuntimeInfo } from "@lando/sdk/services";
 import {
   EventService,
   PathsService,
@@ -19,7 +19,7 @@ import {
   RuntimeProviderRegistry,
   StateStore,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider, makeTestRouterService } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRouterService, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { DateTime, Effect, Layer, Stream } from "effect";
 import { executeGlobalTeardown } from "../../src/operations/global-teardown.ts";
@@ -55,15 +55,15 @@ test.each(["applied", "orphans", "owned", "absent"] as const)(
     };
     const provider = {
       ...TestRuntimeProvider,
-      destroy: () =>
+      bringDown: () =>
         Effect.sync(() => {
           calls.push("destroy");
-          return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
+          return { kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } };
         }),
-      removeObservedService: () =>
+      bringDownObserved: (observed: ServiceRuntimeInfo) =>
         Effect.sync(() => {
           calls.push("orphan");
-          return { kind: "removed" as const };
+          return { service: observed.service, action: "removed" as const };
         }),
       cleanupOwnedResources: () =>
         Effect.sync(() => {
@@ -129,10 +129,7 @@ test.each(["applied", "orphans", "owned", "absent"] as const)(
       ),
       Layer.succeed(
         RuntimeProviderRegistry,
-        RuntimeProviderRegistry.of({
-          appliedPlansFor: () => Effect.succeed([]),
-          resolveAppliedPlan: () => Effect.succeed(undefined),
-          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+        makeTestRuntimeProviderRegistry({
           list: Effect.succeed([providerId]),
           capabilities: Effect.succeed(provider.capabilities),
           select: () => Effect.succeed(provider),

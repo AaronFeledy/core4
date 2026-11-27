@@ -7,6 +7,7 @@ import {
   SSH_AGENT_SOCKET_NAME,
   type ServicePlan,
   duplicateMountTarget,
+  mountTargetCovers,
   orderMounts,
 } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
@@ -97,10 +98,7 @@ export const withSshAgentOverlay = Effect.fnUntraced(function* (
       },
     });
     // Existing ownership wins, including directories where a nested bind could create a host file.
-    const knownHostsOwned = service.mounts.some((mount) => {
-      const mountTarget = mount.target.replace(/\/+$/, "");
-      return knownHostsTarget === mountTarget || knownHostsTarget.startsWith(`${mountTarget}/`);
-    });
+    const knownHostsOwned = service.mounts.some((mount) => mountTargetCovers(mount.target, knownHostsTarget));
     if (options?.knownHostsFile !== undefined && !knownHostsOwned) {
       mounts.push({
         type: "bind",

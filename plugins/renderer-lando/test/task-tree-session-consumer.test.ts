@@ -31,7 +31,7 @@ const treeStart = (parentId: string, children: ReadonlyArray<string>, label = pa
     _tag: "task.tree.start",
     parentId,
     label,
-    children,
+    children: children.map((id) => ({ id, label: id })),
     timestamp: ts,
   });
 const taskStart = (taskId: string, parentId: string, transcriptPath?: string): LandoEvent =>

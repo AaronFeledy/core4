@@ -1,11 +1,15 @@
 import { describe, expect, test } from "bun:test";
 import { sha256Hex } from "@lando/sdk/digest";
 import {
+  AbsolutePath,
   PHYSICAL_VOLUME_LOCK_TIER,
   defaultRouteHostname,
   landoAppStoreName,
   landoCacheStoreName,
+  landoDataRootToken,
   landoDependencyEnvironmentStoreName,
+  landoNativeAppSlug,
+  landoNetworkingPlan,
   landoServiceContainerName,
   landoServiceHomeStoreName,
   landoServiceShadowStoreName,
@@ -13,6 +17,31 @@ import {
   landoServiceStoreName,
   physicalVolumeLockTier,
 } from "@lando/sdk/schema";
+
+test("global native names use the owning data root without changing DNS aliases", () => {
+  const dataRoot = AbsolutePath.make("/roots/A");
+  const token = sha256Hex("data-root\0/roots/A").slice(0, 16);
+  const input = {
+    slug: "global",
+    identity: { dataRoot },
+    serviceNames: ["ssh-agent"],
+    sharedCrossAppNetwork: true,
+  };
+  const nativeSlug = landoNativeAppSlug(input);
+  expect(landoDataRootToken(dataRoot)).toBe(token);
+  expect(landoServiceContainerName(nativeSlug, "ssh-agent")).toBe(`lando-global-${token}--ssh-agent`);
+  expect(landoNativeAppSlug({ slug: "global" })).toBe("global");
+  expect(landoNetworkingPlan(input)).toMatchObject({
+    perAppBridge: { name: `lando-global-${token}` },
+    sharedNetworkMembership: {
+      name: `lando_bridge_${token}`,
+      aliases: { "ssh-agent": ["ssh-agent.global.internal"] },
+    },
+  });
+  expect(physicalVolumeLockTier(landoServiceStoreName(nativeSlug, "a".repeat(60), "data"))).toBe(
+    PHYSICAL_VOLUME_LOCK_TIER.globalApp,
+  );
+});
 
 const DNS_LABEL = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/u;
 

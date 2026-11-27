@@ -20,6 +20,7 @@ export const listContainerArtifacts = Effect.fn("RuntimeProvider.listArtifacts")
   api: EngineHttpApi,
   selector: ArtifactSelector,
   ctx: ProviderErrorContext,
+  options: { readonly all?: true } = {},
 ): Effect.fn.Return<ReadonlyArray<ArtifactListing>, ProviderUnavailableError | ProviderInternalError> {
   const request = api.request;
   if (request === undefined) return yield* Effect.fail(missingApi(ctx, "listArtifacts"));
@@ -29,7 +30,7 @@ export const listContainerArtifacts = Effect.fn("RuntimeProvider.listArtifacts")
   });
   const response = yield* request({
     method: "GET",
-    path: `/images/json?filters=${encodeURIComponent(filters)}`,
+    path: `/images/json?filters=${encodeURIComponent(filters)}${options.all ? "&all=true" : ""}`,
   }).pipe(
     mapFailures((cause) => {
       const fields = {

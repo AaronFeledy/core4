@@ -340,8 +340,10 @@ test("keeps gate nodes out of the task tree, its counts, and every build-step ev
     // Then
     const treeStart = events.find((event) => event._tag === "task.tree.start");
     if (treeStart?._tag !== "task.tree.start") throw new TypeError("task tree start event is missing");
-    if (!Array.isArray(treeStart.children)) throw new TypeError("task tree children are missing");
-    expect(treeStart.children).toEqual(["web:app:install", "cache:app:install"]);
+    expect(treeStart.children).toEqual([
+      { id: "web:app:install", label: "Build web" },
+      { id: "cache:app:install", label: "Build cache" },
+    ]);
     const gatePattern = /:(running|healthy|completed)$/u;
     expect(
       events.filter((event) => "taskId" in event && gatePattern.test(String(event.taskId))),

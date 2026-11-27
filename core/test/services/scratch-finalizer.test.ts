@@ -195,18 +195,16 @@ const makeRecordingLayer = (
               : Effect.succeed({ changed: true }),
           ),
         )),
-    start: () => die("start"),
-    stop: () => die("stop"),
     restart: () => die("restart"),
     waitForExit: () => Effect.succeed({ exitCode: 0 }),
-    destroy: (target, options) =>
+    bringDown: (target, options) =>
       Effect.sync(() => {
         destroyCalls.push({
           app: String(target.app),
-          volumes: options.volumes,
+          volumes: options.volumes === true,
           removeState: options.removeState,
         });
-        return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
+        return { kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } };
       }),
     exec: () => die("exec"),
     execStream: () => Stream.die("scratch finalizer test provider should not call execStream"),
@@ -331,7 +329,7 @@ describe("ScratchAppServiceLayer.layer scope-bound finalizer", () => {
       );
       expect(Exit.hasInterrupts(exit)).toBe(true);
       expect(appliedPlans).toHaveLength(1);
-      expect(destroyCalls).toHaveLength(keepOnFailure ? 0 : 2);
+      expect(destroyCalls).toHaveLength(keepOnFailure ? 0 : 3);
       expect(
         await directoryExists(
           join(process.env.LANDO_USER_DATA_ROOT ?? "", "scratch", String(appliedPlans[0]?.id)),
@@ -376,7 +374,7 @@ describe("ScratchAppServiceLayer.layer scope-bound finalizer", () => {
       );
       expect(retained.outcome._tag).toBe("Failure");
       expect(retained.entries).toHaveLength(keepOnFailure ? 1 : 0);
-      expect(destroyCalls.length).toBe(keepOnFailure ? 0 : 2);
+      expect(destroyCalls.length).toBe(keepOnFailure ? 0 : 3);
       expect(
         await directoryExists(
           join(process.env.LANDO_USER_DATA_ROOT ?? "", "scratch", String(appliedPlans[0]?.id)),
@@ -414,7 +412,7 @@ describe("ScratchAppServiceLayer.layer scope-bound finalizer", () => {
         ),
       );
       expect(Exit.hasInterrupts(exit)).toBe(true);
-      expect(destroyCalls).toHaveLength(keepOnFailure ? 0 : 2);
+      expect(destroyCalls).toHaveLength(keepOnFailure ? 0 : 3);
       expect(
         await directoryExists(
           join(process.env.LANDO_USER_DATA_ROOT ?? "", "scratch", String(appliedPlans[0]?.id)),
@@ -444,7 +442,7 @@ describe("ScratchAppServiceLayer.layer scope-bound finalizer", () => {
 
       expect(retained.outcome._tag).toBe("Failure");
       expect(retained.entries).toHaveLength(keepOnFailure ? 1 : 0);
-      expect(destroyCalls).toHaveLength(keepOnFailure ? 0 : 2);
+      expect(destroyCalls).toHaveLength(keepOnFailure ? 0 : 3);
       expect(
         await directoryExists(
           join(process.env.LANDO_USER_DATA_ROOT ?? "", "scratch", String(appliedPlans[0]?.id)),
@@ -471,10 +469,11 @@ describe("ScratchAppServiceLayer.layer scope-bound finalizer", () => {
       expect(appliedPlans).toHaveLength(1);
       const appliedPlan = appliedPlans.at(0);
       if (appliedPlan === undefined) throw new Error("scratch acquire did not apply a plan");
-      expect(destroyCalls).toHaveLength(2);
+      expect(destroyCalls).toHaveLength(3);
       expect(destroyCalls[0]?.app).toBe(String(appliedPlan.id));
       expect(destroyCalls[0]?.volumes).toBe(false);
-      expect(destroyCalls[1]?.volumes).toBe(true);
+      expect(destroyCalls[1]).toMatchObject({ volumes: true, removeState: false });
+      expect(destroyCalls[2]).toMatchObject({ volumes: false, removeState: true });
       expect(await directoryExists(instanceRoot)).toBe(false);
       expect(events.filter((event) => !event._tag.startsWith("task.")).map((event) => event._tag)).toEqual([
         "pre-global-start",
@@ -512,7 +511,7 @@ describe("ScratchAppServiceLayer.layer scope-bound finalizer", () => {
         ).pipe(Effect.provide(makeRecordingLayer(appliedPlans, destroyCalls, { events }))),
       );
       // When the scope closes, then the scope's plan still reaps provider resources and the root.
-      expect(destroyCalls).toHaveLength(2);
+      expect(destroyCalls).toHaveLength(3);
       expect(await directoryExists(instanceRoot)).toBe(false);
       expect(events.filter((event) => event._tag === "post-scratch-destroy")).toHaveLength(1);
     });
@@ -534,7 +533,7 @@ describe("ScratchAppServiceLayer.layer scope-bound finalizer", () => {
         ).pipe(Effect.provide(makeRecordingLayer(appliedPlans, destroyCalls, { events }))),
       );
       // When the scope closes, then only the explicit destroy bracket was published.
-      expect(destroyCalls).toHaveLength(2);
+      expect(destroyCalls).toHaveLength(3);
       expect(events.filter((event) => event._tag === "pre-scratch-destroy")).toHaveLength(1);
       expect(events.find((event) => event._tag === "pre-scratch-destroy")).toMatchObject({
         reason: "explicit",
@@ -586,7 +585,7 @@ describe("ScratchAppServiceLayer.layer scope-bound finalizer", () => {
 
       expect(Exit.hasInterrupts(exit)).toBe(true);
       expect(appliedPlans).toHaveLength(1);
-      expect(destroyCalls).toHaveLength(2);
+      expect(destroyCalls).toHaveLength(3);
       expect(destroyCalls[0]?.app).toBe(String(appliedPlans.at(0)?.id));
     });
   });
@@ -616,7 +615,7 @@ describe("ScratchAppServiceLayer.layer scope-bound finalizer", () => {
       expect(result.detached).toBe(false);
       expect(result.rendered).toBe(true);
       expect(appliedPlans).toHaveLength(1);
-      expect(destroyCalls).toHaveLength(2);
+      expect(destroyCalls).toHaveLength(3);
       expect(io.stdout()).toContain(`started: ${result.handle.id}`);
     });
   });

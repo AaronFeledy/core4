@@ -12,7 +12,7 @@ import { persistedShallowKeys, persistedShapeKeys, publishedShapeKey } from "./p
  * JSON Schema shapes also match unrelated contracts.
  */
 const PERSISTED_SCHEMA_ROOTS = [
-  { schemaId: "AppPlan", store: "applied-state" },
+  { schemaId: "AppliedAppPlan", store: "applied-state" },
   { schemaId: "TunnelSession", store: "tunnel-registry" },
 ] as const satisfies ReadonlyArray<{ readonly schemaId: string; readonly store: PersistedStoreId }>;
 
@@ -53,7 +53,9 @@ const collectLocalRefNames = (value: JsonValue, into: Set<string>): void => {
     const match = /^#\/(?:\$defs|definitions)\/([^/]+)$/.exec(ref);
     if (match?.[1] !== undefined) into.add(decodeURIComponent(match[1]));
   }
-  for (const child of Object.values(value)) collectLocalRefNames(child, into);
+  for (const [key, child] of Object.entries(value)) {
+    if (key !== "$defs" && key !== "definitions") collectLocalRefNames(child, into);
+  }
 };
 
 /** Local `$defs` / `definitions` names and `$ref` targets reachable inside one document. */
@@ -61,10 +63,28 @@ const collectJsonSchemaRefNames = (schema: JsonSchema): ReadonlySet<string> => {
   const names = new Set<string>();
   collectLocalRefNames(schema, names);
   const defs = schema.$defs ?? schema.definitions;
-  if (isJsonObject(defs)) {
-    for (const name of Object.keys(defs)) names.add(name);
-  }
+  if (isJsonObject(defs))
+    for (const name of names) {
+      const target = defs[name];
+      if (target !== undefined) collectLocalRefNames(target, names);
+    }
   return names;
+};
+
+/** Before AppliedAppPlan was published, the AppPlan artifact also described non-persisted hooks. */
+export const legacyAppliedPayload = (schema: JsonSchema): JsonSchema => {
+  if (!isJsonObject(schema.properties)) return schema;
+  const { events: _events, ...properties } = schema.properties;
+  const { $defs, definitions, ...body } = schema;
+  const projected = { ...body, properties };
+  const defs = $defs ?? definitions;
+  if (!isJsonObject(defs)) return projected;
+  const key = $defs === undefined ? "definitions" : "$defs";
+  const reachable = collectJsonSchemaRefNames({ ...projected, [key]: defs });
+  return {
+    ...projected,
+    [key]: Object.fromEntries(Object.entries(defs).filter(([id]) => reachable.has(id))),
+  };
 };
 
 /**
@@ -77,9 +97,15 @@ export const buildPersistedSurfaceStores = (
   previousRootSchemas: ReadonlyMap<string, JsonSchema> = new Map(),
 ): ReadonlyMap<string, ReadonlySet<PersistedStoreId>> => {
   const storesBySurface = new Map<string, Set<PersistedStoreId>>();
+  const previousRoot = (schemaId: string) => {
+    const previous = previousRootSchemas.get(schemaId);
+    if (previous !== undefined || schemaId !== "AppliedAppPlan") return previous;
+    const legacy = previousRootSchemas.get("AppPlan");
+    return legacy === undefined ? undefined : legacyAppliedPayload(legacy);
+  };
   const rootDocuments = PERSISTED_SCHEMA_ROOTS.flatMap(({ schemaId }) => [
     rootSchemas.get(schemaId),
-    previousRootSchemas.get(schemaId),
+    previousRoot(schemaId),
   ]).filter((schema) => schema !== undefined);
   const shallowKeys = persistedShallowKeys(rootDocuments);
   const publishedShapes = [...publishedSchemaIds].map((schemaId) => ({
@@ -100,7 +126,7 @@ export const buildPersistedSurfaceStores = (
 
   for (const root of PERSISTED_SCHEMA_ROOTS) {
     add(root.schemaId, root.store);
-    for (const schema of [rootSchemas.get(root.schemaId), previousRootSchemas.get(root.schemaId)]) {
+    for (const schema of [rootSchemas.get(root.schemaId), previousRoot(root.schemaId)]) {
       if (schema === undefined) continue;
       for (const defName of collectJsonSchemaRefNames(schema)) {
         const normalized = normalizeSchemaDefName(defName);

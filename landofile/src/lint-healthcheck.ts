@@ -12,6 +12,7 @@ const LANDO_FIELDS = [
   "intervalSeconds",
   "timeoutSeconds",
   "startPeriodSeconds",
+  "startIntervalSeconds",
 ] as const;
 const COMPOSE_REMEDIATION = {
   test: "Use `command:` without the `CMD` or `CMD-SHELL` marker, or `kind: none` for `NONE`. If a Lando command is already set, keep only the intended command.",
@@ -20,7 +21,8 @@ const COMPOSE_REMEDIATION = {
   timeout:
     "Use `timeoutSeconds:` with a number in seconds (for example, `timeout: 1s` becomes `timeoutSeconds: 1`).",
   start_period: "Use `startPeriodSeconds:` with a number in seconds.",
-  start_interval: "Keep only `start_interval:` with the intended duration.",
+  start_interval:
+    "Use `startIntervalSeconds:` with a number in seconds for Lando healthchecks, or keep only `start_interval:` with the intended Compose duration.",
   disable: "Use `kind: none` to disable the probe, or remove `disable:` to leave it enabled.",
 } as const;
 const COMPOSE_FIELDS = ["test", "interval", "timeout", "start_period", "start_interval", "disable"] as const;
@@ -64,8 +66,8 @@ function* probeFindings(
           const source = sourceAt(fieldPath);
           const candidates =
             field === "start_interval"
-              ? Object.hasOwn(healthcheck, "startInterval")
-                ? ["startInterval"]
+              ? Object.hasOwn(healthcheck, "startIntervalSeconds")
+                ? ["startIntervalSeconds"]
                 : []
               : lando;
           const conflict = candidates.find((key) => {
@@ -83,12 +85,14 @@ function* probeFindings(
           };
         }
       } else {
-        const candidates = Object.hasOwn(healthcheck, "startInterval") ? [...lando, "startInterval"] : lando;
+        const candidates = Object.hasOwn(healthcheck, "startIntervalSeconds")
+          ? [...lando, "startIntervalSeconds"]
+          : lando;
         for (const field of candidates) {
           const source = sourceAt([...path, field]);
           if (
             !compose.some((other) => {
-              if (field === "startInterval" && other !== "start_interval") return false;
+              if (field === "startIntervalSeconds" && other !== "start_interval") return false;
               const origin = sourceAt([...path, other]);
               return origin.file !== source.file || origin.layer !== source.layer;
             })

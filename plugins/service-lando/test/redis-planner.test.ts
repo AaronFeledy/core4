@@ -1,18 +1,25 @@
 import { expect, test } from "bun:test";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
+import { makeLandoPaths } from "@lando/paths";
 import { LandofileValidationError } from "@lando/sdk/errors";
 import { LandofileShape } from "@lando/sdk/schema";
-import { AppPlanner } from "@lando/sdk/services";
+import { AppPlanner, PathsService } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { Effect, Schema } from "effect";
+import { Effect, Layer, Schema } from "effect";
 import { compileTestLandofile } from "./support/compiled-landofile.ts";
 
 const planEither = (landofile: typeof LandofileShape.Type) =>
   Effect.runPromise(
     Effect.flatMap(AppPlanner, (planner) =>
       planner.plan(compileTestLandofile(landofile), TestRuntimeProvider.capabilities),
-    ).pipe(Effect.result, Effect.provide(AppPlannerLayer.layer), Effect.provide(PluginRegistryLayer.layer)),
+    ).pipe(
+      Effect.result,
+      Effect.provide(
+        AppPlannerLayer.layer.pipe(Layer.provide(Layer.succeed(PathsService, makeLandoPaths()))),
+      ),
+      Effect.provide(PluginRegistryLayer.layer),
+    ),
   );
 
 test("creates no generated stores when Redis persistence is disabled", async () => {
@@ -25,7 +32,12 @@ test("creates no generated stores when Redis persistence is disabled", async () 
   const plan = await Effect.runPromise(
     Effect.flatMap(AppPlanner, (planner) =>
       planner.plan(compileTestLandofile(landofile), TestRuntimeProvider.capabilities),
-    ).pipe(Effect.provide(AppPlannerLayer.layer), Effect.provide(PluginRegistryLayer.layer)),
+    ).pipe(
+      Effect.provide(
+        AppPlannerLayer.layer.pipe(Layer.provide(Layer.succeed(PathsService, makeLandoPaths()))),
+      ),
+      Effect.provide(PluginRegistryLayer.layer),
+    ),
   );
   // Then
   expect(plan.stores).toEqual([]);

@@ -1,6 +1,6 @@
 import { AppId, type AppPlan, LoadScopedLandofile, ProviderId, appIdentityKey } from "@lando/sdk/schema";
-import { AppPlanner, type ProviderRuntimeSnapshot, RuntimeProviderRegistry } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { AppPlanner, type ProviderRuntimeSnapshot } from "@lando/sdk/services";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect } from "effect";
 import { plan } from "./start-progress-topology-support.ts";
 
@@ -32,13 +32,11 @@ export const identityRegistry = (
   applied: readonly AppPlan[] = [],
   snapshots?: readonly ProviderRuntimeSnapshot[],
 ) =>
-  RuntimeProviderRegistry.of({
+  makeTestRuntimeProviderRegistry({
     list: Effect.succeed([ProviderId.make("lando")]),
-    capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
     appliedPlansFor: () => Effect.succeed(applied),
     select: () => Effect.succeed({ ...TestRuntimeProvider, listVolumes: () => Effect.succeed([]) }),
     resolveAppliedPlan: () => Effect.succeed(applied[0]),
-    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" }),
     ...(snapshots === undefined ? {} : { observeRuntime: Effect.succeed(snapshots) }),
   });
 export const identityPlanner = (plan: AppPlan) =>

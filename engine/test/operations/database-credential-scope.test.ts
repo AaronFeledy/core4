@@ -1,20 +1,20 @@
 import { expect, test } from "bun:test";
+import { makeLandoPaths } from "@lando/paths";
 import {
   type AppPlan,
   type DatabaseConnection,
   PortNumber,
+  PortablePath,
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
 import type { CommandSpec, ServiceRuntimeInfo } from "@lando/sdk/services";
-import { Effect, Stream } from "effect";
-import {
-  connectionChanged,
-  databaseCredentialCheckScope,
-} from "../../src/operations/database-credentials.ts";
+import { PathsService } from "@lando/sdk/services";
+import { Effect, Layer, Stream } from "effect";
+import { connectionChanged } from "../../src/operations/database-credentials.ts";
 import { rebuildApp } from "../../src/operations/rebuild.ts";
 import { restartApp } from "../../src/operations/restart.ts";
-import { appliedPlanRecord, makeHarness, plan, runStart, web } from "./start-progress-topology-support.ts";
+import { appliedPlanRecord, makeHarness, plan, runStart } from "./start-progress-topology-support.ts";
 
 const dbName = ServiceName.make("db");
 
@@ -22,21 +22,27 @@ const connection = (
   overrides: Partial<DatabaseConnection["creds"]> = {},
   port = 3306,
 ): DatabaseConnection => ({
-  family: "mariadb",
+  family: "postgres",
   port: PortNumber.make(port),
   creds: { user: "lando", password: "original", database: "appdb", ...overrides },
 });
 
-/** A planned database service that carries `web`'s artifact, command, and one published listener. */
 const dbService = (overrides: Partial<DatabaseConnection["creds"]> = {}, port = 3306): ServicePlan => ({
   name: dbName,
-  type: "mariadb",
+  type: "postgres",
+  serviceTypeId: "postgres",
   provider: plan.provider,
   primary: true,
-  ...(web.artifact === undefined ? {} : { artifact: web.artifact }),
-  ...(web.command === undefined ? {} : { command: web.command }),
+  artifact: { kind: "ref", ref: "postgres:16" },
   environment: {},
-  mounts: [],
+  mounts: [
+    {
+      type: "volume",
+      store: "db-data",
+      target: PortablePath.make("/var/lib/postgresql/data"),
+      readOnly: false,
+    },
+  ],
   endpoints: [
     {
       kind: "published",
@@ -50,13 +56,17 @@ const dbService = (overrides: Partial<DatabaseConnection["creds"]> = {}, port = 
   dependsOn: [],
   hostAliases: [],
   metadata: plan.metadata,
-  extensions: {},
+  extensions: { "@lando/core/catalog-database": "postgres:16" },
   connection: connection(overrides, port),
 });
 
 const dbPlan = (overrides: Partial<DatabaseConnection["creds"]> = {}): AppPlan => {
   const service = dbService(overrides);
-  return { ...plan, services: { [service.name]: service } };
+  return {
+    ...plan,
+    stores: [{ name: "db-data", kind: "data", scope: "service" }],
+    services: { [service.name]: service },
+  };
 };
 
 const observation = (
@@ -77,81 +87,33 @@ const observation = (
   },
 });
 
-const withoutDatabase = (source: AppPlan): AppPlan => ({ ...source, services: { [web.name]: web } });
-
-/** The database client command starts with the family client, so those are the check execs. */
 const checkCalls = (calls: ReadonlyArray<CommandSpec>) =>
-  calls.filter((call) => call.command[0] === "mariadb");
+  calls.filter((call) => call.command[0] === "sh" && call.command[1] === "-ec");
 
-const startScope = (options: {
-  readonly desired?: AppPlan;
-  readonly previousPlan?: AppPlan;
-  readonly before?: ServiceRuntimeInfo;
-  readonly afterContainerId?: string;
-}): readonly string[] => {
-  const desired = options.desired ?? dbPlan();
-  return databaseCredentialCheckScope({
-    plan: desired,
-    ...(options.previousPlan === undefined ? {} : { previousPlan: options.previousPlan }),
-    before: options.before === undefined ? [] : [options.before],
-    after: new Map([[String(dbName), observation(desired, dbName, options.afterContainerId ?? "c1")]]),
+const matched = () =>
+  Stream.make(
+    { kind: "stdout" as const, chunk: new TextEncoder().encode("lando-matched\n") },
+    { exitCode: 0 },
+  );
+const volume = (source: AppPlan, service: ServiceName) => {
+  const mount = source.services[service]?.mounts[0];
+  const store = mount?.type === "volume" ? mount.store : `${service}-data`;
+  return Effect.succeed({
+    ref: { app: source.id, store },
+    identity: {
+      coordinationKey: store,
+      nativeName: store,
+      generation: "test-generation",
+      ownerRoot: source.root,
+      origin: "created" as const,
+    },
   });
 };
 
-test("a running, unchanged database service is outside the start check scope", () => {
-  const desired = dbPlan();
-  expect(
-    startScope({
-      previousPlan: desired,
-      before: observation(desired, dbName, "c1"),
-      afterContainerId: "c1",
-    }),
-  ).toEqual([]);
-});
-
-test("a database service this operation started or created is in scope", () => {
-  const desired = dbPlan();
-  expect(startScope({ previousPlan: desired, before: observation(desired, dbName, "c1", "exited") })).toEqual(
-    ["db"],
-  );
-  expect(startScope({ previousPlan: desired })).toEqual(["db"]);
-});
-
-test("a database service this operation recreated is in scope", () => {
-  const desired = dbPlan();
-  expect(
-    startScope({ previousPlan: desired, before: observation(desired, dbName, "c1"), afterContainerId: "c2" }),
-  ).toEqual(["db"]);
-});
-
-test("a database service with no pre-apply applied plan entry is in scope", () => {
-  const desired = dbPlan();
-  expect(startScope({ before: observation(desired, dbName, "c1") })).toEqual(["db"]);
-  expect(
-    startScope({ previousPlan: withoutDatabase(desired), before: observation(desired, dbName, "c1") }),
-  ).toEqual(["db"]);
-});
-
-test("a changed connection descriptor puts a running database service in scope", () => {
-  const desired = dbPlan({ password: "changed" });
-  expect(startScope({ desired, previousPlan: dbPlan(), before: observation(desired, dbName, "c1") })).toEqual(
-    ["db"],
-  );
+test("detects database name and port changes in connection descriptors", () => {
   expect(connectionChanged(dbService(), dbService({ database: "other" }))).toBe(true);
   expect(connectionChanged(dbService(), dbService({}, 3307))).toBe(true);
   expect(connectionChanged(dbService(), dbService())).toBe(false);
-});
-
-test("a non-database service is never in the start check scope", () => {
-  const desired = { ...plan, services: { [web.name]: web } };
-  expect(
-    databaseCredentialCheckScope({
-      plan: desired,
-      previousPlan: desired,
-      before: [observation(desired, dbName, "c1")],
-      after: new Map([[String(web.name), observation(desired, dbName, "c1")]]),
-    }),
-  ).toEqual([]);
 });
 
 const startWithDatabase = async (options: {
@@ -165,10 +127,25 @@ const startWithDatabase = async (options: {
   const calls: CommandSpec[] = [];
   const harness = makeHarness({
     plannedApp: desired,
+    apply: () =>
+      Effect.succeed({
+        changed: true,
+        services: {
+          [dbName]: {
+            action:
+              options.before?.status === "exited"
+                ? "started"
+                : options.afterContainerId === "c2"
+                  ? "replaced"
+                  : "kept",
+          },
+        },
+      }),
     providerOverrides: {
+      observeVolume: ({ service }) => volume(desired, service),
       execStream: (_target, spec) => {
         calls.push(spec);
-        return Stream.fromIterable([{ exitCode: 0 }]);
+        return matched();
       },
       list: () => Effect.succeed(options.before === undefined ? [] : [options.before]),
     },
@@ -178,7 +155,10 @@ const startWithDatabase = async (options: {
       ? {}
       : { resolveAppliedPlan: () => Effect.succeed(appliedPlanRecord(applied)) }),
   });
-  await runStart(harness, desired);
+  await runStart(
+    { ...harness, layer: harness.layer.pipe(Layer.merge(Layer.succeed(PathsService, makeLandoPaths()))) },
+    desired,
+  );
   return checkCalls(calls);
 };
 
@@ -227,16 +207,38 @@ test("a start whose creds descriptor changed checks the running database", async
 });
 
 test("a start checks only the database services whose answer can change", async () => {
-  const alpha = { ...dbService(), name: ServiceName.make("alpha") };
-  const beta = { ...dbService(), name: ServiceName.make("beta") };
-  const desired: AppPlan = { ...plan, services: { [alpha.name]: alpha, [beta.name]: beta } };
+  const named = (name: "alpha" | "beta"): ServicePlan => ({
+    ...dbService(),
+    name: ServiceName.make(name),
+    mounts: [
+      {
+        type: "volume",
+        store: `${name}-data`,
+        target: PortablePath.make("/var/lib/postgresql/data"),
+        readOnly: false,
+      },
+    ],
+  });
+  const alpha = named("alpha");
+  const beta = named("beta");
+  const desired: AppPlan = {
+    ...plan,
+    stores: ["alpha-data", "beta-data"].map((name) => ({ name, scope: "service", kind: "data" })),
+    services: { [alpha.name]: alpha, [beta.name]: beta },
+  };
   const checked: string[] = [];
   const harness = makeHarness({
     plannedApp: desired,
+    apply: () =>
+      Effect.succeed({
+        changed: true,
+        services: { [alpha.name]: { action: "kept" }, [beta.name]: { action: "started" } },
+      }),
     providerOverrides: {
+      observeVolume: ({ service }) => volume(desired, service),
       execStream: (target, spec) => {
-        if (spec.command[0] === "mariadb") checked.push(String(target.service));
-        return Stream.fromIterable([{ exitCode: 0 }]);
+        if (checkCalls([spec]).length > 0) checked.push(String(target.service));
+        return matched();
       },
       list: () =>
         Effect.succeed([
@@ -247,7 +249,10 @@ test("a start checks only the database services whose answer can change", async 
     inspect: (target) => Effect.succeed(observation(desired, target.service, `c-${target.service}`)),
     resolveAppliedPlan: () => Effect.succeed(appliedPlanRecord(desired)),
   });
-  await runStart(harness, desired);
+  await runStart(
+    { ...harness, layer: harness.layer.pipe(Layer.merge(Layer.succeed(PathsService, makeLandoPaths()))) },
+    desired,
+  );
   expect(checked).toEqual(["beta"]);
 });
 
@@ -262,10 +267,12 @@ const selectedOperationWithDatabase = async (operation: typeof restartApp | type
   const calls: CommandSpec[] = [];
   const harness = makeHarness({
     plannedApp: desired,
+    apply: () => Effect.succeed({ changed: true, services: { [dbName]: { action: "started" } } }),
     providerOverrides: {
+      observeVolume: ({ service }) => volume(desired, service),
       execStream: (_target, spec) => {
         calls.push(spec);
-        return Stream.fromIterable([{ exitCode: 0 }]);
+        return matched();
       },
       list: () => Effect.succeed([observation(desired, dbName, "c1")]),
     },
@@ -276,7 +283,10 @@ const selectedOperationWithDatabase = async (operation: typeof restartApp | type
     resolveAppliedPlan: () => Effect.succeed(appliedPlanRecord(desired)),
   });
   await Effect.runPromise(
-    operation({ services: [dbName] }, operationTarget(desired)).pipe(Effect.provide(harness.layer)),
+    operation({ services: [dbName] }, operationTarget(desired)).pipe(
+      Effect.provide(harness.layer),
+      Effect.provideService(PathsService, makeLandoPaths()),
+    ),
   );
   return checkCalls(calls);
 };

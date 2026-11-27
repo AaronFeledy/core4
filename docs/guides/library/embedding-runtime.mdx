@@ -66,7 +66,7 @@ or fails. A confirmed terminal exit during a healthy dependency gate ends the wa
 
 Author `readiness` independently of native `healthcheck`. Omitted readiness keeps a type's contributed probe, otherwise falls back to effective native health. `readiness: false` blocks fallback but not process/completion supervision; `healthcheck: false` disables native monitoring without disabling explicit or contributed readiness. Disabling readiness does not relax a `service_healthy` gate.
 
-`app.info()` only observes runtime state and projects safe configuration metadata. Native `health` and lifecycle `readiness` are separate: readiness is `disabled`, `not-configured`, or `not-observed`, not a retained proof that start passed. Info does not execute probes. Use the result of `app.start()` for the gate observed by that invocation; neither a running container nor native healthy state proves it.
+`app.info()` only observes runtime state and projects safe configuration metadata. Native `health` and lifecycle `readiness` are separate. Readiness is `disabled`, `not-configured`, or `not-observed`, not a retained proof that start passed. Native health is `unknown` when the provider's `capabilities.serviceHealth` is `none`, because nothing runs the check there. Info does not execute probes. Use the result of `app.start()` for the gate observed by that invocation; neither a running container nor native healthy state proves it.
 
 The handle retains its resolved plan and captured Landofile. `exec`, deep `info`, and handle-bound tooling reuse that object, including when `agentEnv` is omitted. A later file edit does not refresh the handle. Re-resolve with `runtime.app(originalSelector)` or layer-native `resolveApp(originalSelector)` to capture edits; supply an updated object when the selector contains a Landofile shape. Ordinary CLI invocations still discover fresh configuration.
 
@@ -83,6 +83,8 @@ other.
 
 Pass Effect service overrides through `plugins.layers`; each layer is built once and
 its services take precedence over matching services from the bootstrap layer modules.
+For routed scratch apps, Lando uses your router to prepare for shared services,
+publish the scratch routes, and withdraw them on cleanup.
 Pass already-loaded plugin descriptors through `plugins.manifests` when the runtime
 must register contributions such as providers or certificate authorities without
 enabling filesystem discovery or external imports. Each resolved entry pairs one
@@ -111,7 +113,7 @@ const runtime = makeLandoRuntime({
   config: {
     userDataRoot: "/srv/lando/data",
     router: { httpPort: 8123 },
-    appEnv: { TEAM: "platform" },
+    serviceDefaults: { environment: { TEAM: "platform" } },
   },
 });
 ```
@@ -162,6 +164,35 @@ await Effect.runPromise(
 );
 ```
 
+## Acquire a scratch app
+
+`runtime.scratch(input)` acquires a disposable scratch app through the retained
+runtime. Lando resolves the scratch from the runtime's `cwd`, not the process
+working directory: a fork discovers the Landofile at or above that directory,
+and `mountCwd` binds that directory into the primary service.
+
+```ts
+import { Effect } from "effect";
+import { openLandoRuntime } from "@lando/core";
+import { ScratchAppService } from "@lando/core/services";
+
+const program = Effect.gen(function* () {
+  const runtime = yield* openLandoRuntime({ cwd: "/work/my-app/src" });
+  const handle = yield* runtime.scratch({
+    source: { kind: "fork" },
+    detached: true,
+    mountCwd: { target: "/cwd" },
+  });
+  // runtime.run provides ScratchAppService, so later calls need no extra layer.
+  yield* runtime.run(ScratchAppService.pipe(Effect.flatMap((scratch) => scratch.destroy(handle.id))));
+});
+
+await Effect.runPromise(Effect.scoped(program));
+```
+
+A routed scratch fails to start when its routes can't be published, and Lando
+cleans it up unless you pass `keepOnFailure: true`.
+
 For command-shaped dispatch, `@lando/core/cli` exposes the programmatic `runCli`
 entry point, while the lower-level Effect operations behind built-in commands remain
 available from `@lando/core/cli/operations` (for example `startApp`, `infoApp`, and
@@ -191,17 +222,17 @@ const provider = LandoCore.RuntimeProvider.of({
 });
 const providerLayers = [
   LandoTesting.withService(LandoCore.RuntimeProvider, provider),
-  LandoTesting.withService(LandoCore.RuntimeProviderRegistry, {
+  LandoTesting.withService(LandoCore.RuntimeProviderRegistry, LandoTesting.makeTestRuntimeProviderRegistry({
     appliedPlansFor: (root) => Effect.sync(() => [...appliedPlans.values()].filter((plan) => plan.root === root)),
-    list: Effect.succeed([]),
-    capabilities: Effect.succeed(provider.capabilities),
     select: () => Effect.succeed(provider),
     resolveAppliedPlan: (root) => Effect.sync(() => appliedPlans.get(root)),
     resolveTeardownEvidence: (root) => Effect.sync(() => {
       const plan = appliedPlans.get(root);
       return plan === undefined ? { kind: "absent" as const } : { kind: "applied" as const, plan };
     }),
-  }),
+    readAppliedPlanStrict: ({ id }) =>
+      Effect.sync(() => [...appliedPlans.values()].find((plan) => plan.id === id)),
+  })),
   LandoTesting.withService(RouterService, TestRouterService),
 ];
 yield* Effect.promise(() =>
@@ -241,6 +272,157 @@ const program = openLandoRuntime({ cwd: process.cwd() }).pipe(
 
 const info = await Effect.runPromise(Effect.scoped(program));
 console.log(info.app, info.services.map((service) => service.service));`}
+      />
+    </Step>
+  </Scenario>
+
+  <Scenario id="scratch-runtime-cwd" render={false} reason="Exercise retained runtime cwd and host router overrides across scratch acquisition and cleanup">
+    <Step name="scratch-from-nested-runtime-cwd">
+      <Run
+        runtime="library"
+        code={`const [{ RouterService, ScratchAppService }, { makeTestRouterService }, { Layer }, { ProxyApplyError }] = yield* Effect.promise(() =>
+  Promise.all([import("@lando/core/services"), import("@lando/sdk/test"), import("effect"), import("@lando/sdk/errors")]),
+);
+const appliedPlans = new Map<string, import("@lando/core/schema").AppPlan>();
+const provider = LandoCore.RuntimeProvider.of({
+  ...LandoTesting.TestRuntimeProvider,
+  appliedPlans: Effect.sync(() => [...appliedPlans.values()]),
+  apply: (plan, options) => LandoTesting.TestRuntimeProvider.apply(plan, options).pipe(
+    Effect.tap(() => Effect.sync(() => appliedPlans.set(plan.id, plan))),
+  ),
+});
+const hostRouter = makeTestRouterService();
+let acquisitions = 0;
+let releases = 0;
+let prepared = 0;
+let setups = 0;
+let failPublication = false;
+const published: import("@lando/sdk/schema").AppRouteOwner[] = [];
+const routerLayer = Layer.effect(RouterService, Effect.acquireRelease(
+  Effect.sync(() => {
+    acquisitions += 1;
+    return RouterService.of({
+      ...hostRouter,
+      id: "traefik",
+      prepare: () => Effect.sync(() => { prepared += 1; }),
+      setup: (config) => hostRouter.setup(config).pipe(Effect.tap(() => Effect.sync(() => { setups += 1; }))),
+      applyRoutes: (routes, owner) => hostRouter.applyRoutes(routes, owner).pipe(
+        Effect.tap(() => Effect.sync(() => void published.push(owner))),
+        Effect.flatMap((result) => failPublication
+          ? Effect.fail(new ProxyApplyError({
+              app: owner.id,
+              proxyId: "traefik",
+              message: "Injected publication failure",
+              remediation: "Retry with a working router.",
+            }))
+          : Effect.succeed(result)),
+      ),
+    });
+  }),
+  () => Effect.sync(() => { releases += 1; }),
+));
+const providerLayers = [
+  LandoTesting.withService(LandoCore.RuntimeProvider, provider),
+  LandoTesting.withService(LandoCore.RuntimeProviderRegistry, LandoTesting.makeTestRuntimeProviderRegistry({
+    appliedPlansFor: (root) => Effect.sync(() => [...appliedPlans.values()].filter((plan) => plan.root === root)),
+    select: () => Effect.succeed(provider),
+    resolveAppliedPlan: (root) => Effect.sync(() => [...appliedPlans.values()].findLast((plan) => plan.root === root)),
+    resolveTeardownEvidence: (root) => Effect.sync(() => {
+      const plan = [...appliedPlans.values()].findLast((plan) => plan.root === root);
+      return plan === undefined ? { kind: "absent" as const } : { kind: "applied" as const, plan };
+    }),
+    readAppliedPlanStrict: ({ id }) => Effect.sync(() => appliedPlans.get(id)),
+  })),
+  routerLayer,
+];
+const nested = join(context.testDir, "src", "module");
+const recipeDir = join(context.testDir, "recipe");
+yield* Effect.promise(async () => {
+  await Bun.write(
+    join(context.testDir, ".lando.yml"),
+    "name: embedded-scratch\nruntime: 4\nservices:\n  web:\n    type: node:22\n    port: 8080\n    primary: true\n    home: false\n    routes:\n      - hostname: web.lndo.site\n        scheme: http\n",
+  );
+  await Bun.write(join(nested, ".keep"), "");
+  await Bun.write(
+    join(recipeDir, "recipe.yml"),
+    "id: recipe\ntitle: Cwd\ndescription: Fixture\nversion: 1.0.0\nconfig:\n  runtime: 4\n  router:\n    enabled: false\n  services:\n    cache:\n      type: redis\n      primary: true\n      home: false\n",
+  );
+});
+expect(process.cwd()).not.toBe(nested);
+const options = {
+  cwd: nested,
+  config: {
+    defaultProviderId: "test",
+    userDataRoot: join(context.testDir, "data"),
+    userConfRoot: join(context.testDir, "config"),
+    userCacheRoot: join(context.testDir, "cache"),
+  },
+  configSources: { user: false, env: false },
+  plugins: { policy: "bundled-only", layers: providerLayers },
+} as const;
+const [fork, recipe] = yield* Effect.scoped(Effect.gen(function* () {
+  const runtime = yield* LandoCore.openLandoRuntime(options);
+  const forkInput = { source: { kind: "fork" }, detached: true, isolate: "none", mountCwd: { target: "/cwd" } } as const;
+  const destroy = (id: string) =>
+    runtime.run(ScratchAppService.pipe(Effect.flatMap((scratch) => scratch.destroy(id))));
+  const fork = yield* runtime.scratch(forkInput);
+  expect(prepared).toBe(1);
+  expect(setups).toBe(1);
+  expect(published.map((owner) => String(owner.id))).toEqual([fork.id]);
+  expect(hostRouter.routesByOwner.size).toBe(1);
+  yield* destroy(fork.id);
+  expect(hostRouter.routesByOwner.size).toBe(0);
+
+  failPublication = true;
+  const failure = yield* Effect.flip(runtime.scratch(forkInput));
+  expect(failure).toMatchObject({ _tag: "ScratchAppError", cause: { _tag: "ProxyApplyError" } });
+  expect(published).toHaveLength(2);
+  expect(hostRouter.routesByOwner.size).toBe(0);
+
+  const recipe = yield* runtime.scratch({
+    source: { kind: "recipe", ref: recipeDir },
+    detached: true,
+    yes: true,
+    nonInteractive: true,
+    mountCwd: { target: "/cwd" },
+  });
+  yield* destroy(recipe.id);
+  expect(acquisitions).toBe(1);
+  expect(releases).toBe(0);
+  return [fork, recipe] as const;
+}));
+expect(releases).toBe(1);
+// The applied root is canonical; only the native realpath also expands Windows 8.3 short names.
+const { realpathSync } = yield* Effect.promise(() => import("node:fs"));
+const canonical = (path: string | undefined) => (path === undefined ? undefined : realpathSync.native(path));
+const cwdBindSource = (id: string) =>
+  Object.values(appliedPlans.get(id)?.services ?? {})
+    .flatMap((service) => service.mounts)
+    .flatMap((mount) => (mount.type === "bind" && mount.target === "/cwd" ? [mount.source] : []))[0];
+// A cwd fork's resources belong to its own scratch instance, not to the source app it reads from.
+expect(String(appliedPlans.get(fork.id)?.root)).toBe(join(realpathSync.native(join(context.testDir, "data", "scratch")), fork.id, "root"));
+expect(appliedPlans.get(fork.id)?.requires?.globalServices).toEqual(["traefik"]);
+expect(canonical(cwdBindSource(fork.id))).toBe(canonical(nested));
+expect(canonical(cwdBindSource(recipe.id))).toBe(canonical(nested));
+
+failPublication = false;
+const scratchLayer = LandoCore.makeLandoRuntime({ ...options, bootstrap: "scratch" });
+yield* Effect.scoped(Effect.gen(function* () {
+  const scratchOption = yield* Effect.serviceOption(ScratchAppService);
+  if (scratchOption._tag === "None") return yield* Effect.die("Scratch bootstrap did not provide ScratchAppService");
+  const scratch = scratchOption.value;
+  const handle = yield* scratch.acquire({ source: { kind: "fork" }, detached: true, isolate: "none" });
+  expect(prepared).toBe(3);
+  expect(setups).toBe(3);
+  expect(String(published.at(-1)?.id)).toBe(handle.id);
+  yield* scratch.destroy(handle.id);
+  expect(hostRouter.routesByOwner.size).toBe(0);
+  expect(acquisitions).toBe(2);
+  expect(releases).toBe(1);
+}).pipe(Effect.provide(scratchLayer)));
+expect(releases).toBe(2);`}
+        displayCode={`const runtime = yield* openLandoRuntime({ cwd: "/work/my-app/src" });
+const handle = yield* runtime.scratch({ source: { kind: "fork" }, detached: true, mountCwd: { target: "/cwd" } });`}
       />
     </Step>
   </Scenario>

@@ -24,6 +24,7 @@ import {
   HOST_IP_ENV_KEY,
 } from "../../src/subsystems/networking.ts";
 import { literalTestLandofile } from "../compiled-landofile.ts";
+import { pathsServiceLayer } from "../paths-service.ts";
 
 const capabilities = {
   ...TestRuntimeProvider.capabilities,
@@ -205,7 +206,9 @@ describe("AppPlanner home persistence and host reachability", () => {
           planner.plan(literalTestLandofile(landofile({ web: { type: "node:22" } }), appRoot), capabilities),
         ).pipe(
           Effect.provide(
-            AppPlannerLayer.layer.pipe(Layer.provide(Layer.mergeAll(registry, BunFileSystem.layer))),
+            AppPlannerLayer.layer.pipe(
+              Layer.provide(Layer.mergeAll(registry, BunFileSystem.layer, pathsServiceLayer())),
+            ),
           ),
         ),
       );

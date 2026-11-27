@@ -199,6 +199,26 @@ describe("lifecycle dialect", () => {
     });
   });
 
+  test.each([
+    { dialect: dockerLifecycleDialect, startInterval: false, floors: ["1.48"] },
+    { dialect: dockerLifecycleDialect, startInterval: true, floors: ["1.48", "1.44"] },
+    { dialect: libpodLifecycleDialect, startInterval: true, floors: ["1.44"] },
+    { dialect: libpodLifecycleDialect, startInterval: false, floors: undefined },
+  ] as const)(
+    "$dialect.engine create with start interval $startInterval asks for API floors $floors",
+    async ({ dialect, startInterval, floors }) => {
+      // Given a service whose native healthcheck may carry a start interval
+      const extensions = startInterval ? { compose: { healthcheck: { start_interval: "2s" } } } : {};
+      const appliedPlan = { ...plan, services: { [serviceName]: { ...service, extensions } } };
+      const fake = makeBringUpApi([{ status: 201, body: "{}" }], { plan: appliedPlan });
+      // When
+      await Effect.runPromise(bringUp(appliedPlan, { api: fake.api, ctx, dialect }));
+      // Then the create request names every API floor its fields need
+      const create = fake.requests.find((request) => request.path.startsWith("/containers/create?"));
+      expect(create?.minimumApiVersions).toEqual(floors);
+    },
+  );
+
   for (const dialect of [dockerLifecycleDialect, libpodLifecycleDialect]) {
     test(`${dialect.engine} uses explicit shared-only membership without a later connect`, async () => {
       // Given

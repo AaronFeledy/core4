@@ -6,7 +6,7 @@ import {
 } from "../../../scripts/schema-compatibility/model.ts";
 import { normalizeJsonSchema } from "../../../scripts/schema-compatibility/normalize.ts";
 import { environmentDeltas } from "./fixtures/x-extension-environment.delta.ts";
-import { routeTextDeltas } from "./fixtures/x-extension-route-text.delta.ts";
+import { routeMemberDeltas, routeTextDeltas } from "./fixtures/x-extension-route-text.delta.ts";
 import { wireObject } from "./x-extension-wire-proof.ts";
 
 const compileTransitions = (deltas: typeof environmentDeltas) =>
@@ -52,3 +52,23 @@ const replayFields = (deltas: typeof environmentDeltas) => {
 
 export const evolveHistoricalEnvironment = replayFields(environmentDeltas);
 export const evolveHistoricalRouteText = replayFields(routeTextDeltas);
+
+/** Replay one exact reviewed object projection wherever it occurs; a near miss stays unchanged. */
+const replayObject = (deltas: typeof routeMemberDeltas) => {
+  return (historical: JsonSchema, mode: "bare" | "authoring" = "bare"): JsonSchema => {
+    const transitions = deltas.filter((entry) =>
+      mode === "bare" ? entry.mode === "bare" : entry.mode !== "bare",
+    );
+    const visit = (value: JsonValue): JsonValue => {
+      const transition = transitions.find((entry) => jsonEquals(value, entry.before));
+      if (transition !== undefined) return structuredClone(transition.after);
+      if (Array.isArray(value)) return value.map(visit);
+      if (!isJsonObject(value)) return value;
+      return Object.fromEntries(Object.entries(value).map(([key, child]) => [key, visit(child)]));
+    };
+    return normalizeJsonSchema(wireObject(visit(historical)));
+  };
+};
+
+/** Route parts gained the optional member after the schema parity checkpoint, so replay it after parity. */
+export const evolveHistoricalRouteMember = replayObject(routeMemberDeltas);

@@ -1,5 +1,6 @@
 import { Schema, SchemaIssue } from "effect";
 import { authoringSource, directiveValue, isSemanticSite } from "./authoring-issue-metadata.ts";
+import { applyRenamedConfigKey } from "./renamed-keys.ts";
 import { validationExpectation } from "./validation-expectation.ts";
 import { schemaIssueKind } from "./validation-issue-kind.ts";
 import {
@@ -13,7 +14,12 @@ import {
 } from "./validation-issue-projection.ts";
 import { ValidationIssue, type ValidationIssuePath } from "./validation-issue-schema.ts";
 import { suggestionForUnknownKey } from "./validation-key-suggestion.ts";
-import { diagnosticUnionCandidates, selectByKeyPresence, unionValueMessage } from "./validation-union.ts";
+import {
+  diagnosticUnionCandidates,
+  selectByContainer,
+  selectByKeyPresence,
+  unionValueMessage,
+} from "./validation-union.ts";
 
 export { ValidationIssue, ValidationIssuePath, ValidationIssueSource } from "./validation-issue-schema.ts";
 export { closestKeys, suggestionForUnknownKey } from "./validation-key-suggestion.ts";
@@ -108,6 +114,7 @@ export const SchemaIssueLeaf = Schema.Struct({
   path: Schema.Array(Schema.PropertyKey),
   message: Schema.String,
   suggestion: Schema.optionalKey(Schema.String),
+  reason: ValidationIssue.fields.reason,
   kind: ValidationIssue.fields.kind,
 });
 export type SchemaIssueLeaf = typeof SchemaIssueLeaf.Type;
@@ -117,7 +124,14 @@ export type SchemaIssueLeaf = typeof SchemaIssueLeaf.Type;
 const distinctLeaves = (leaves: ReadonlyArray<SchemaIssueLeaf>): ReadonlyArray<SchemaIssueLeaf> => {
   const seen = new Set<string>();
   return leaves.filter((leaf) => {
-    const key = JSON.stringify([leaf._tag, leaf.path.map(String), leaf.message, leaf.suggestion, leaf.kind]);
+    const key = JSON.stringify([
+      leaf._tag,
+      leaf.path.map(String),
+      leaf.message,
+      leaf.suggestion,
+      leaf.kind,
+      leaf.reason,
+    ]);
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
@@ -125,12 +139,12 @@ const distinctLeaves = (leaves: ReadonlyArray<SchemaIssueLeaf>): ReadonlyArray<S
 };
 
 /** Flatten diagnostics, hiding authoring-only alternatives and synthetic directive payload paths. */
-export const schemaIssueLeaves = (
+const schemaIssueLeavesInner = (
   issue: SchemaIssue.Issue,
   path: ReadonlyArray<PropertyKey> = [],
   options?: SchemaValidationIssueOptions,
 ): ReadonlyArray<SchemaIssueLeaf> => {
-  const walk = (child: SchemaIssue.Issue) => schemaIssueLeaves(child, path, options);
+  const walk = (child: SchemaIssue.Issue) => schemaIssueLeavesInner(child, path, options);
   const kind = schemaIssueKind(
     issue,
     options !== undefined && Object.hasOwn(options, "input")
@@ -146,24 +160,49 @@ export const schemaIssueLeaves = (
     });
   switch (issue._tag) {
     case "Pointer":
-      return schemaIssueLeaves(issue.issue, [...path, ...issue.path], options);
+      return schemaIssueLeavesInner(issue.issue, [...path, ...issue.path], options);
     case "Encoding":
       return walk(issue.issue);
     case "Composite":
       return distinctLeaves(issue.issues.flatMap(walk));
     case "AnyOf": {
+      const input =
+        options !== undefined && Object.hasOwn(options, "input") ? valueAt(options.input, path) : issue.input;
+      const shapeCandidates = selectByContainer(issue.issues, input);
       const value = directiveValue(issue.ast);
       if (value !== undefined) {
         const directives = issue.issues.filter(directiveIssue);
         if (directives.length > 0) return directives.flatMap(directivePayloadIssues).flatMap(walk);
-        const children = issue.issues.filter((child) => !authoringNonCandidate(child));
+        const children = shapeCandidates.filter((child) => !authoringNonCandidate(child));
         return children.length === 0 ? walk(expectationIssue(value, issue)) : children.flatMap(walk);
       }
+      const resolveReason = (authoringSource(issue.ast) ?? issue.ast).annotations?.[
+        "lando/union-failure-reason"
+      ];
+      const summarize = (message: string): readonly SchemaIssueLeaf[] => {
+        const reason: unknown =
+          typeof resolveReason === "function"
+            ? resolveReason(
+                options !== undefined && Object.hasOwn(options, "input")
+                  ? valueAt(options.input, path, true)
+                  : input,
+              )
+            : undefined;
+        return [
+          {
+            _tag: "Type",
+            path,
+            message,
+            ...classification,
+            ...(typeof reason === "string" ? { reason } : {}),
+          },
+        ];
+      };
       if (authoringSource(issue.ast) !== undefined) {
-        const children = issue.issues.filter((child) => !authoringNonCandidate(child));
+        const children = shapeCandidates.filter((child) => !authoringNonCandidate(child));
         const candidates = diagnosticUnionCandidates(issue.ast, children);
         const message = unionValueMessage(issue.ast, candidates);
-        if (message !== undefined) return [{ _tag: "Type", path, message, ...classification }];
+        if (message !== undefined) return summarize(message);
         const attempted = new SchemaIssue.AnyOf(issue.ast, candidates, issue.input, {
           reportInput: SchemaIssue.hasInput(issue),
         });
@@ -179,20 +218,29 @@ export const schemaIssueLeaves = (
               ),
             );
       }
-      const message = unionValueMessage(issue.ast, issue.issues);
-      if (message !== undefined) return [{ _tag: "Type", path, message, ...classification }];
-      if (issue.issues.length > 0) return unionLeaves(issue.issues);
+      const message = unionValueMessage(issue.ast, shapeCandidates);
+      if (message !== undefined) return summarize(message);
+      if (shapeCandidates.length > 0) return unionLeaves(shapeCandidates);
       break;
     }
     case "InvalidType":
       if (authoringSource(issue.ast) !== undefined) return walk(expectationIssue(issue.ast, issue));
       break;
-    case "Filter":
-      if (isSemanticSite(issue.filter)) return walk(issue.issue);
-      if (SchemaIssue.defaultCheckHook(issue) === undefined && issue.issue._tag !== "InvalidValue") {
-        return walk(issue.issue).map((leaf) => ({ ...leaf, kind: "value" }));
+    case "Filter": {
+      const reason = issue.filter.annotations?.["lando/issue-reason"];
+      const semantic = isSemanticSite(issue.filter);
+      if (
+        semantic ||
+        (SchemaIssue.defaultCheckHook(issue) === undefined && issue.issue._tag !== "InvalidValue")
+      ) {
+        return walk(issue.issue).map((leaf) => ({
+          ...leaf,
+          ...(semantic ? {} : { kind: "value" }),
+          ...(leaf.reason === undefined && typeof reason === "string" ? { reason } : {}),
+        }));
       }
       break;
+    }
     case "UnexpectedKey":
     case "MissingKey":
     case "InvalidValue":
@@ -207,6 +255,13 @@ export const schemaIssueLeaves = (
     return [{ _tag: "Type", path, message: validationExpectation(issue.ast), ...classification }];
   }
   const unknownKey = normalizedPath.at(-1);
+  const reason = (
+    issue._tag === "Filter"
+      ? issue.filter.annotations
+      : issue._tag === "InvalidValue"
+        ? issue.annotations
+        : undefined
+  )?.["lando/issue-reason"];
   const suggestion =
     issue._tag === "UnexpectedKey" && typeof unknownKey === "string"
       ? suggestionForUnknownKey(unknownKey, [
@@ -219,9 +274,22 @@ export const schemaIssueLeaves = (
     path,
     message: formatted.message,
     ...classification,
+    ...(typeof reason === "string" ? { reason } : {}),
     ...(suggestion === undefined ? {} : { suggestion }),
   }));
 };
+
+/** Flatten diagnostics, applying removed-key renames once at the root walk. */
+export const schemaIssueLeaves = (
+  issue: SchemaIssue.Issue,
+  path: ReadonlyArray<PropertyKey> = [],
+  options?: SchemaValidationIssueOptions,
+): ReadonlyArray<SchemaIssueLeaf> =>
+  distinctLeaves(
+    schemaIssueLeavesInner(issue, path, options).map((leaf) =>
+      applyRenamedConfigKey(leaf, valueAt(options?.input, leaf.path)),
+    ),
+  );
 
 /** Standard Schema V1 path and message, plus a closest-key suggestion for unexpected keys. */
 export const validationIssuesFromSchemaIssue = (

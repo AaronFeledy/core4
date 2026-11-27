@@ -26,8 +26,8 @@ test.each([undefined, "renamed", "sibling"])(
     if (snapshot.snapshotId === undefined) throw new Error("Expected captured snapshot");
     const deps = {
       ...fixture.deps,
-      appliedPlans: Effect.succeed([
-        {
+      findAppliedSource: () =>
+        Effect.succeed({
           ...sourcePlan(fixture.harness.root),
           id: AppId.make("sibling"),
           identity: {
@@ -35,8 +35,7 @@ test.each([undefined, "renamed", "sibling"])(
             dataName: "sql-app",
             repoGroupKey: "repository:sql-app",
           },
-        },
-      ]),
+        }),
       plan: {
         ...fixture.deps.plan,
         id: "renamed",

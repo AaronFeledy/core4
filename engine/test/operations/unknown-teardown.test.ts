@@ -6,7 +6,7 @@ import { withDiscoveryCwd } from "@lando/landofile/operation-discovery";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { AbsolutePath, LoadScopedLandofile, ProviderId, appIdentityKey } from "@lando/sdk/schema";
 import { RuntimeProviderRegistry } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect } from "effect";
 import { destroyApp, destroyAppAtRoot, destroyAppForTarget } from "../../src/operations/destroy.ts";
 import { globalDestroy } from "../../src/operations/global-destroy.ts";
@@ -69,11 +69,11 @@ test.each(
       getStatus,
       ...(mode === "no-ensure-ready" ? {} : { ensureReady }),
       inspectAppliedFileSync: stoppedProviderInspection("stopped Windows", () => running),
-      destroy: () =>
+      bringDown: () =>
         Effect.sync(() => {
           expect(running).toBe(true);
           destroyed++;
-          return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
+          return { kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } };
         }),
     };
     const harness = makeHarness({
@@ -106,7 +106,7 @@ test.each(
       expect(result).toMatchObject({ _tag: "Success", success: { outcome: "destroyed" } });
       expect(preparations).toBe(1);
       expect(
-        global === undefined ? destroyed : global.calls.filter((call) => call === "destroy").length,
+        global === undefined ? destroyed : global.calls.filter((call) => call === "bringDown").length,
       ).toBe(1);
     } else {
       expect(result).toMatchObject({
@@ -211,12 +211,17 @@ test("destroy with an explicit provider reads only that provider's applied state
           { yes: true, providerId: ProviderId.make("lando") },
           { plan: applied, root, app: { kind: "user", id: applied.id, root } },
         ).pipe(
-          Effect.provideService(RuntimeProviderRegistry, {
-            ...registry,
-            // Only an unscoped read reaches the unreadable provider.
-            appliedPlansFor: (root, providerId) =>
-              providerId === "lando" ? registry.appliedPlansFor(root, providerId) : Effect.fail(unrelated),
-          }),
+          Effect.provideService(
+            RuntimeProviderRegistry,
+            makeTestRuntimeProviderRegistry({
+              ...registry,
+              // Only an unscoped read reaches the unreadable provider.
+              appliedPlansFor: (root, options) =>
+                options?.providerId === "lando"
+                  ? registry.appliedPlansFor(root, options)
+                  : Effect.fail(unrelated),
+            }),
+          ),
         );
       }).pipe(Effect.provide(harness.layer), Effect.result),
     );

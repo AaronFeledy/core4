@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { join } from "node:path";
+import { failureOutcomeFromCause, orDieWithRole } from "@lando/sdk/command-result";
 import { ArchiveFormatError, DataTransferError, ProviderUnavailableError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, PortablePath, ServiceName } from "@lando/sdk/schema";
 import { TestRuntimeProvider } from "@lando/sdk/test";
@@ -56,7 +57,7 @@ for (const archive of [false, true]) {
       );
       const cleanup = new Error("provider cleanup failed");
       const body = Stream.fromEffect(
-        Effect.acquireRelease(Effect.void, () => Effect.die(cleanup)).pipe(
+        Effect.acquireRelease(Effect.void, () => Effect.die(cleanup).pipe(orDieWithRole("cleanup"))).pipe(
           Effect.andThen(Effect.fail(providerError)),
         ),
       );
@@ -81,17 +82,16 @@ for (const archive of [false, true]) {
       );
       expect(Exit.isFailure(result)).toBe(true);
       if (!Exit.isFailure(result)) throw new Error("Expected provider failure");
-      const failures = result.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error);
-      expect(failures).toHaveLength(1);
-      const failure = failures[0];
+      const outcome = failureOutcomeFromCause(result.cause);
+      expect(outcome.kind).toBe("typed");
+      const failure = outcome.error;
       expect(failure).toBeInstanceOf(DataTransferError);
       if (!(failure instanceof DataTransferError)) throw new Error("Expected provider transfer error");
       expect(failure.operation).toBe("copyFromService");
       expect(failure.remediation).toBe("Start the selected provider.");
       expect(failure.cause).toBe(providerError);
-      expect(result.cause.reasons.filter(Cause.isDieReason).map((reason) => reason.defect)).toEqual([
-        cleanup,
-      ]);
+      expect(outcome.additionalErrors.map(({ role }) => role)).toEqual(["cleanup"]);
+      expect(outcome.additionalErrors[0]?.error).toBe(cleanup);
     });
   });
 }

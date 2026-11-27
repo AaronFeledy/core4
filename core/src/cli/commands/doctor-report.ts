@@ -10,6 +10,7 @@ import type {
   DoctorSkip,
 } from "./doctor-contract";
 import {
+  DOCTOR_SECTION_LABELS,
   type DoctorSectionOutcome,
   checksOutcome,
   doctorTreeSummary,
@@ -29,7 +30,6 @@ import { resolveSecretsRedactor } from "./secrets-redactor";
 
 export type { DoctorReport } from "./doctor-contract";
 export { DoctorReportSchema } from "./doctor-contract";
-export { renderDoctorReportAsNdjson } from "./doctor-render-ndjson";
 export { type DoctorRenderOptions, buildDoctorReportSummary, renderDoctorReport } from "./doctor-render-text";
 export { doctorCompletion, makeDoctorReport, summarizeDoctorChecks } from "./doctor-report-model";
 
@@ -164,6 +164,6 @@ const collectWithTree = Effect.fnUntraced(function* (input: CollectDoctorReportI
 
 const sectionOutcomeFor = (id: DoctorSectionId, output: DoctorSectionOutput): DoctorSectionOutcome => {
   if (output.checks.length === 0 && output.skipped.length > 0)
-    return { summary: `${id} · skipped`, skipped: true };
+    return { summary: `${DOCTOR_SECTION_LABELS[id]} · skipped`, skipped: true };
   return checksOutcome(id, output.checks);
 };

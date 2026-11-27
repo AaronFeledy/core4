@@ -1,0 +1,5 @@
+name: vendor-on-host-demo
+services:
+  app:
+    type: "node:22"
+    primary: true

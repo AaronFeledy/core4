@@ -165,9 +165,12 @@ export const runtimeInstalledVersionPath = (runtimeBinDir: string): string =>
 export const managedCatatonitIdentityPath = (runtimeBinDir: string): string =>
   join(runtimeBinDir, CATATONIT_IDENTITY_RECEIPT);
 
-/** True when the recipe version is the helper-bearing Linux payload (not the 0.1.7 bridge). */
+/** First Linux runtime payload that ships catatonit; every later runtime ships it too. */
+const FIRST_NATIVE_INIT_HELPER_RUNTIME_VERSION = "0.1.8" as const;
+
+/** True when the runtime version is a helper-bearing Linux payload (not the 0.1.7 bridge). */
 export const runtimeRecipeIncludesNativeInitHelper = (version: string): boolean =>
-  version === CATATONIT_MANIFEST.recipeRuntimeVersion;
+  Bun.semver.satisfies(version, `>=${FIRST_NATIVE_INIT_HELPER_RUNTIME_VERSION}`);
 
 export const catatonitPackageForArch = (arch: string): CatatonitPackage | undefined => {
   if (arch === "x64" || arch === "amd64") return CATATONIT_MANIFEST.packages.x64;

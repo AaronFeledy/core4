@@ -8,12 +8,12 @@
  * single in-flight request.
  */
 
-import { StreamFrameSink, type StreamFrameSinkFrame } from "@lando/engine/operations/stream-frame-sink";
 import { makeLiveHoldTimer } from "@lando/redaction/live-hold-timer";
 import { structuralRedaction } from "@lando/sdk/command-result";
 import { McpTransportError } from "@lando/sdk/errors";
 import { StreamFrame } from "@lando/sdk/schema";
 import type { Redactor, TieredRedactionValues } from "@lando/sdk/secrets";
+import { StreamFrameSink, type StreamFrameSinkFrame } from "@lando/sdk/services";
 import { Clock, Effect, type Fiber, Scope, Semaphore } from "effect";
 import { redactBoundedJsonValue } from "./bounded-json";
 import type { McpNotify } from "./dispatch";

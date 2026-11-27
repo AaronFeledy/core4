@@ -185,8 +185,8 @@ test("omits internal agent and host-proxy mounts from user storage facts", async
     AGENT_SOCKET_CONTAINER_DIR.ssh,
     AGENT_SOCKET_CONTAINER_DIR.gpg,
     "/run/lando/gpg-agent-keys",
+    "/run/lando/host-proxy",
     "/run/lando/host-proxy.sock",
-    "/run/lando/host-proxy/credentials",
     "/usr/local/bin/lando",
     "/usr/local/bin/xdg-open",
     "/usr/local/bin/open",
@@ -200,7 +200,7 @@ test("omits internal agent and host-proxy mounts from user storage facts", async
     },
     extensions: {
       ...service.extensions,
-      "@lando/core/host-proxy-transport": { sessionDigest: "0123456789abcdef" },
+      "@lando/core/host-proxy-transport": { contractDigest: "0123456789abcdef" },
     },
     mounts: targets.map((target) => ({
       type: "volume" as const,

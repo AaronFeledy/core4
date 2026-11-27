@@ -12,10 +12,11 @@ import {
   RemoteSource,
   RuntimeProviderRegistry,
 } from "@lando/core/services";
-import { TestDataset, TestRemoteSource, TestRuntimeProvider } from "@lando/core/testing";
+import { TestDataset, TestRemoteSource } from "@lando/core/testing";
 import { SnapshotNotFoundError } from "@lando/sdk/errors";
 import { type SyncResult, SyncResult as SyncResultSchema, appIdentityKey } from "@lando/sdk/schema";
 import type { DataMoverShape, InteractionServiceShape, RemoteSourceShape } from "@lando/sdk/services";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect, Layer, Redacted, Schema, Stream } from "effect";
 import { pushSpec } from "../../src/cli/command-specs/app/push.ts";
 import { currentTestPlan, literalLandofile } from "../_support/value-contracts.ts";
@@ -127,7 +128,7 @@ const isCommandSpec = (
   typeof (value as { readonly id?: unknown }).id === "string";
 
 describe("remote sync command skeleton", () => {
-  test("registers app command specs with result schemas and remote flags", async () => {
+  test("registers app command specs with result schemas and no command-owned format flag", async () => {
     const modules = await Promise.all([
       import("../../src/cli/command-specs/app/pull.ts"),
       import("../../src/cli/command-specs/app/push.ts"),
@@ -144,7 +145,7 @@ describe("remote sync command skeleton", () => {
     for (const spec of specs) {
       expect(spec?.bootstrap).toBe("app");
       expect(spec?.resultSchema, `${spec?.id} must carry a resultSchema`).toBeDefined();
-      expect(spec?.flags, `${spec?.id} must define remote skeleton flags`).toHaveProperty("format");
+      expect(spec?.flags, `${spec?.id} must leave --format to the dispatcher`).not.toHaveProperty("format");
     }
   });
 
@@ -307,12 +308,7 @@ describe("remote sync command skeleton", () => {
               Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
               Layer.succeed(
                 RuntimeProviderRegistry,
-                RuntimeProviderRegistry.of({
-                  resolveAppliedPlan: () => Effect.succeed(undefined),
-                  resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-                  appliedPlansFor: () => Effect.succeed([]),
-                  list: Effect.succeed([]),
-                  capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+                makeTestRuntimeProviderRegistry({
                   select: () => Effect.die("target supplies the plan"),
                 }),
               ),
@@ -382,12 +378,7 @@ describe("remote sync command skeleton", () => {
                   Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
                   Layer.succeed(
                     RuntimeProviderRegistry,
-                    RuntimeProviderRegistry.of({
-                      resolveAppliedPlan: () => Effect.succeed(undefined),
-                      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-                      appliedPlansFor: () => Effect.succeed([]),
-                      list: Effect.succeed([]),
-                      capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+                    makeTestRuntimeProviderRegistry({
                       select: () => Effect.die("provider selection is not used"),
                     }),
                   ),
@@ -452,12 +443,7 @@ describe("remote sync command skeleton", () => {
                 Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
                 Layer.succeed(
                   RuntimeProviderRegistry,
-                  RuntimeProviderRegistry.of({
-                    resolveAppliedPlan: () => Effect.succeed(undefined),
-                    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-                    appliedPlansFor: () => Effect.succeed([]),
-                    list: Effect.succeed([]),
-                    capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+                  makeTestRuntimeProviderRegistry({
                     select: () => Effect.die("target supplies the plan"),
                   }),
                 ),
@@ -511,12 +497,7 @@ describe("remote sync command skeleton", () => {
         Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
         Layer.succeed(
           RuntimeProviderRegistry,
-          RuntimeProviderRegistry.of({
-            resolveAppliedPlan: () => Effect.succeed(undefined),
-            resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-            appliedPlansFor: () => Effect.succeed([]),
-            list: Effect.succeed([]),
-            capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+          makeTestRuntimeProviderRegistry({
             select: () => Effect.die("target supplies the plan"),
           }),
         ),
@@ -570,12 +551,7 @@ describe("remote sync command skeleton", () => {
         Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
         Layer.succeed(
           RuntimeProviderRegistry,
-          RuntimeProviderRegistry.of({
-            resolveAppliedPlan: () => Effect.succeed(undefined),
-            resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-            appliedPlansFor: () => Effect.succeed([]),
-            list: Effect.succeed([]),
-            capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+          makeTestRuntimeProviderRegistry({
             select: () => Effect.die("target supplies the plan"),
           }),
         ),
@@ -641,12 +617,7 @@ describe("remote sync command skeleton", () => {
         Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
         Layer.succeed(
           RuntimeProviderRegistry,
-          RuntimeProviderRegistry.of({
-            resolveAppliedPlan: () => Effect.succeed(undefined),
-            resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-            appliedPlansFor: () => Effect.succeed([]),
-            list: Effect.succeed([]),
-            capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+          makeTestRuntimeProviderRegistry({
             select: () => Effect.die("target supplies the plan"),
           }),
         ),
@@ -711,12 +682,7 @@ describe("remote sync command skeleton", () => {
                 Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
                 Layer.succeed(
                   RuntimeProviderRegistry,
-                  RuntimeProviderRegistry.of({
-                    resolveAppliedPlan: () => Effect.succeed(undefined),
-                    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-                    appliedPlansFor: () => Effect.succeed([]),
-                    list: Effect.succeed([]),
-                    capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+                  makeTestRuntimeProviderRegistry({
                     select: () => Effect.die("target supplies the plan"),
                   }),
                 ),
@@ -774,12 +740,7 @@ describe("remote sync command skeleton", () => {
         Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
         Layer.succeed(
           RuntimeProviderRegistry,
-          RuntimeProviderRegistry.of({
-            resolveAppliedPlan: () => Effect.succeed(undefined),
-            resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-            appliedPlansFor: () => Effect.succeed([]),
-            list: Effect.succeed([]),
-            capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+          makeTestRuntimeProviderRegistry({
             select: () => Effect.die("target supplies the plan"),
           }),
         ),
@@ -920,12 +881,7 @@ describe("remote sync command skeleton", () => {
                 Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
                 Layer.succeed(
                   RuntimeProviderRegistry,
-                  RuntimeProviderRegistry.of({
-                    resolveAppliedPlan: () => Effect.succeed(undefined),
-                    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-                    appliedPlansFor: () => Effect.succeed([]),
-                    list: Effect.succeed([]),
-                    capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+                  makeTestRuntimeProviderRegistry({
                     select: () => Effect.die("target supplies the plan"),
                   }),
                 ),

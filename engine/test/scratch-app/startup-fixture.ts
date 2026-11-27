@@ -2,10 +2,11 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { makeLandoPaths } from "@lando/paths";
-import type { ScratchAppError } from "@lando/sdk/errors";
-import { AbsolutePath, AppId, type AppPlan } from "@lando/sdk/schema";
+import type { EventError, LandofileValidationError, ScratchAppError } from "@lando/sdk/errors";
+import { AbsolutePath, AppId, type AppPlan, GlobalConfig, type ServicePlan } from "@lando/sdk/schema";
 import {
   AppPlanner,
+  ConfigService,
   EventService,
   type LandoEvent,
   LandofileService,
@@ -16,11 +17,12 @@ import {
   type RuntimeProviderShape,
   StateStore,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { makeStateStore } from "@lando/state-store/service";
-import { Effect, Layer, Stream } from "effect";
+import { Effect, Layer, Schema, Stream } from "effect";
 import {
+  SCRATCH_REGISTRY_VERSION,
   ScratchRegistry,
   type ScratchRegistryEntry,
   planScratchRegistryWrite,
@@ -28,6 +30,7 @@ import {
 import { ScratchResourceScanner } from "../../src/scratch-app/scanner.ts";
 import * as Scratch from "../../src/scratch-app/service.ts";
 import * as FileSystem from "../../src/services/file-system.ts";
+import { layerUnavailable } from "../../src/subsystems/proxy/api.ts";
 import { literalTestLandofile } from "../compiled-landofile.ts";
 import { testEnvironmentResolverLayer } from "../environment-values.ts";
 import { emptySnapshotsLayer } from "../operations/data-mover-support.ts";
@@ -36,10 +39,16 @@ import { ownerOnlyFileAccess } from "../private-file-access.ts";
 
 interface StartupFixtureOptions {
   readonly onEvent?: (event: LandoEvent) => void;
+  readonly eventFailure?: EventError;
+  readonly planScratch?: Effect.Effect<void, LandofileValidationError>;
   /** Runs before the registry records the scratch app as running. */
   readonly registration?: Effect.Effect<void, ScratchAppError>;
   /** Publishes a route for `web` and starts through this router. */
   readonly router?: RouterServiceShape;
+  readonly routes?: AppPlan["routes"];
+  readonly defaultDomain?: string | undefined;
+  /** Fields merged into the source app's `web` service. */
+  readonly web?: Partial<Pick<ServicePlan, "user" | "endpoints">>;
 }
 
 export const withStartupFixture = async (
@@ -74,7 +83,16 @@ export const withStartupFixture = async (
 const makeFixture = async (
   root: string,
   overrides: Partial<RuntimeProviderShape>,
-  { registration = Effect.void, router, onEvent }: StartupFixtureOptions,
+  {
+    registration = Effect.void,
+    router,
+    routes,
+    defaultDomain,
+    onEvent,
+    eventFailure,
+    planScratch,
+    web: webOverrides,
+  }: StartupFixtureOptions,
 ) => {
   const sourceRoot = AbsolutePath.make(join(root, "source"));
   await mkdir(sourceRoot);
@@ -87,7 +105,8 @@ const makeFixture = async (
     ...plan,
     root: sourceRoot,
     routes:
-      router === undefined
+      routes ??
+      (router === undefined
         ? []
         : [
             {
@@ -98,11 +117,12 @@ const makeFixture = async (
               endpoint: 3000,
               backend: { service: web.name, protocol: "http", port: 3000 },
             },
-          ],
+          ]),
     router: { enabled: router !== undefined },
     services: {
       [web.name]: {
         ...web,
+        ...webOverrides,
         healthcheck: {
           kind: "command",
           command: ["probe"],
@@ -121,19 +141,16 @@ const makeFixture = async (
       Effect.sync(() => {
         applied.push(plan);
       }).pipe(Effect.andThen(TestRuntimeProvider.apply(plan, options))),
-    destroy: (target, options) =>
+    bringDown: (target, options) =>
       Effect.sync(() => {
         if (options.removeState === true) destroyed.push(String(target.app));
-        return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
+        return { kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } };
       }),
     ...overrides,
   };
   const providers = Layer.succeed(
     RuntimeProviderRegistry,
-    RuntimeProviderRegistry.of({
-      appliedPlansFor: () => Effect.succeed([]),
-      resolveAppliedPlan: () => Effect.succeed(undefined),
-      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+    makeTestRuntimeProviderRegistry({
       list: Effect.succeed([source.provider]),
       capabilities: Effect.succeed(provider.capabilities),
       select: () => Effect.succeed(provider),
@@ -142,7 +159,7 @@ const makeFixture = async (
   const registry = ScratchRegistry.of({
     get: (id) => Effect.sync(() => entries.get(id)),
     list: () => Effect.sync(() => [...entries.values()]),
-    read: () => Effect.sync(() => ({ version: 2, entries: [...entries.values()] })),
+    read: () => Effect.sync(() => ({ version: SCRATCH_REGISTRY_VERSION, entries: [...entries.values()] })),
     upsert: (...write) =>
       (write[0] === "mark-running" ? registration : Effect.void).pipe(
         Effect.andThen(planScratchRegistryWrite(entries.get(write[1].id), ...write)),
@@ -156,9 +173,19 @@ const makeFixture = async (
         entries.delete(id);
       }),
   });
+  const config = Schema.decodeUnknownSync(GlobalConfig)(
+    defaultDomain === undefined ? {} : { proxy: { defaultDomain } },
+  );
   const dependencies = Layer.mergeAll(
     PrivateFileAccessService.layer,
-    router === undefined ? Layer.empty : Layer.succeed(RouterService, router),
+    router === undefined ? layerUnavailable : Layer.succeed(RouterService, router),
+    Layer.succeed(
+      ConfigService,
+      ConfigService.of({
+        load: Effect.succeed(config),
+        get: (key) => Effect.succeed(config[key]),
+      }),
+    ),
     FileSystem.layer,
     Layer.succeed(PathsService, makeLandoPaths()),
     Layer.succeed(StateStore, makeStateStore({ privateFileAccess: ownerOnlyFileAccess })),
@@ -170,13 +197,15 @@ const makeFixture = async (
     Layer.succeed(
       AppPlanner,
       AppPlanner.of({
-        plan: (landofile) =>
-          Effect.succeed({
-            ...source,
-            id: AppId.make(landofile.document.name ?? source.name),
-            name: landofile.document.name ?? source.name,
-            valueModel: 1 as const,
-          }),
+        plan: (landofile, _capabilities, options) =>
+          (options?.kind === "scratch" ? (planScratch ?? Effect.void) : Effect.void).pipe(
+            Effect.as({
+              ...source,
+              id: AppId.make(landofile.document.name ?? source.name),
+              name: landofile.document.name ?? source.name,
+              valueModel: 1 as const,
+            }),
+          ),
       }),
     ),
     Layer.succeed(
@@ -207,7 +236,9 @@ const makeFixture = async (
           Effect.sync(() => {
             events.push(event);
             onEvent?.(event);
-          }),
+          }).pipe(
+            Effect.andThen(eventFailure?.event === event._tag ? Effect.fail(eventFailure) : Effect.void),
+          ),
         subscribe: () => Stream.empty,
         subscribeQueue: Effect.die("unused"),
         waitFor: () => Effect.never,

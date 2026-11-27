@@ -27,12 +27,16 @@ import {
   containerHelperSourceDigest,
 } from "@lando/container-runtime/container-helper/source";
 import { makeLandoRuntime } from "@lando/core";
+import {
+  CONTAINER_HELPER_BINARY_NAMES,
+  CONTAINER_HELPER_NOTICE_NAMES,
+  CONTAINER_HELPER_REQUIRED_NAMES,
+  defaultContainerHelperCacheRoot,
+  publishContainerHelper,
+} from "./container-helper-cache.ts";
 
 const MAX_ARCHIVE_BYTES = 64 * 1024 * 1024;
-const binaryNames = CONTAINER_HELPER_ARCHES.map((arch) => `linux-${arch}/${CONTAINER_HELPER_FILE}`);
-const noticeNames = ["licenses/go/LICENSE", "licenses/go/PATENTS", "licenses/go/files.json"];
-const artifactNames = new Set([...binaryNames, ...noticeNames]);
-const requiredArtifactNames = [...binaryNames, "licenses/go/LICENSE", "licenses/go/files.json"];
+const artifactNames = new Set([...CONTAINER_HELPER_BINARY_NAMES, ...CONTAINER_HELPER_NOTICE_NAMES]);
 
 /** Only compiler inputs and explicit Go test data cross into the builder. */
 export const containerHelperSourceArchive = async (root: string): Promise<AsyncIterable<Uint8Array>> => {
@@ -87,7 +91,7 @@ export const containerHelperBuildSpec = (options: {
         (arch) =>
           `GOARCH=${containerHelperGoArch(arch)} GOOS=linux go build -trimpath -buildvcs=false -ldflags="$1" -o dist/linux-${arch}/${CONTAINER_HELPER_FILE} . >&2`,
       ),
-      `tar -cf - -C dist ${requiredArtifactNames.join(" ")} $(test ! -f dist/licenses/go/PATENTS || printf licenses/go/PATENTS) | base64`,
+      `tar -cf - -C dist ${CONTAINER_HELPER_REQUIRED_NAMES.join(" ")} $(test ! -f dist/licenses/go/PATENTS || printf licenses/go/PATENTS) | base64`,
     ].join("\n"),
     "lando-container-helper-build",
     options.linkerFlags,
@@ -192,7 +196,7 @@ export const containerHelperBuildArtifacts = (tar: Uint8Array): ReadonlyMap<stri
     if (header.every((byte) => byte === 0)) {
       if (tar.length - offset < TAR_BLOCK_SIZE * 2 || !tar.subarray(offset).every((byte) => byte === 0))
         throw new Error("Invalid helper artifact tar terminator.");
-      for (const name of requiredArtifactNames)
+      for (const name of CONTAINER_HELPER_REQUIRED_NAMES)
         if (!files.has(name)) throw new Error(`Missing helper build artifact: ${name}`);
       return files;
     }
@@ -259,7 +263,7 @@ if (import.meta.main) {
       const path = join(staging, name);
       await mkdir(dirname(path), { recursive: true });
       await writeFile(path, bytes);
-      if (binaryNames.includes(name)) await chmod(path, 0o755);
+      if (CONTAINER_HELPER_BINARY_NAMES.includes(name)) await chmod(path, 0o755);
     }
     await containerHelperNotices(staging);
     const dist = resolve(CONTAINER_HELPER_SOURCE_ROOT, "dist");
@@ -271,6 +275,16 @@ if (import.meta.main) {
       await rename(path, join(dist, name));
     }
     await writeFile(CONTAINER_HELPER_SOURCE_DIGEST_PATH, `${digest}\n`);
+    // Other worktrees restore this build through `bun run bootstrap`; the build stands without it.
+    await publishContainerHelper({
+      dist,
+      sourceDigest: digest,
+      cacheRoot: defaultContainerHelperCacheRoot(),
+    }).catch((cause: unknown) =>
+      process.stderr.write(
+        `warning: could not cache the helper build: ${cause instanceof Error ? cause.message : String(cause)}\n`,
+      ),
+    );
     if (cleanupFailure !== undefined) throw Cause.squash(cleanupFailure);
   } finally {
     await rm(temporary, { recursive: true, force: true });

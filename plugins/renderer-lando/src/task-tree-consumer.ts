@@ -2,7 +2,7 @@ import type { RendererNarrationIO } from "@lando/sdk/renderer";
 import { EventService, type LandoEvent } from "@lando/sdk/services";
 import { DateTime, Effect, Fiber, Layer, Option, Queue, Semaphore } from "effect";
 
-import { renderLandoLine } from "./format.ts";
+import { isRenderableTaskTreeEvent, renderLandoLine } from "./format.ts";
 import { TaskTreeInputController } from "./keybindings.ts";
 import type { LiveRegionControllerOptions } from "./opentui/live-region-controller.ts";
 import {
@@ -272,17 +272,19 @@ export const layer = (
           unsubscribe?.();
           yield* Fiber.interrupt(fiber);
           const remaining = yield* Queue.clear(queue).pipe(Effect.option);
-          if (Option.isSome(remaining)) {
-            for (const event of remaining.value) yield* serialized(consume(event));
-          }
           toolingStatus.stop();
+          const queued = Option.isSome(remaining) ? remaining.value : [];
+          for (const event of queued) {
+            if (isRenderableTaskTreeEvent(event)) yield* serialized(consume(event));
+          }
           const substrate = active;
+          if (substrate !== undefined && shouldFlushSessionOnDispose(session, substrate.hasTasks())) {
+            session = yield* serialized(commitOpenSession(session, substrate, recordOpenTuiSubstrateFailure));
+          }
+          for (const event of queued) {
+            if (!isRenderableTaskTreeEvent(event)) yield* serialized(consume(event));
+          }
           if (substrate !== undefined) {
-            if (shouldFlushSessionOnDispose(session, substrate.hasTasks())) {
-              session = yield* serialized(
-                commitOpenSession(session, substrate, recordOpenTuiSubstrateFailure),
-              );
-            }
             journal.detach(substrate.controller);
             yield* serialized(substrate.transcriptTail.close);
             substrate.dispose();

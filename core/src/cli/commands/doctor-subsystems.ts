@@ -1,5 +1,5 @@
 import { unavailableRouterReason } from "@lando/engine/subsystems/proxy/api";
-import { RouterService, SshService } from "@lando/sdk/services";
+import { type PathsService, RouterService, SshService } from "@lando/sdk/services";
 import { Effect, Option } from "effect";
 import type { DoctorFinding, DoctorSectionResult } from "./doctor-contract";
 import { idleGlobalProvider } from "./doctor-global-runtime";
@@ -24,7 +24,7 @@ export interface SubsystemDoctorOptions {
 
 export const subsystemDoctor = Effect.fn("DoctorSubsystems.check")(function* (
   options: SubsystemDoctorOptions = {},
-): Effect.fn.Return<DoctorSectionResult, never> {
+): Effect.fn.Return<DoctorSectionResult, never, PathsService> {
   const fix = options.fix === true;
   const proxy = Option.getOrUndefined(yield* Effect.serviceOption(RouterService));
   const ssh = Option.getOrUndefined(yield* Effect.serviceOption(SshService));

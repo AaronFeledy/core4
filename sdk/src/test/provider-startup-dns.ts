@@ -96,7 +96,7 @@ export const checkProviderStartupDns = Effect.fnUntraced(function* (
   }).pipe(
     Effect.onExit(() =>
       provider
-        .destroy({ app: plan.id, plan }, { volumes: true })
+        .bringDown({ app: plan.id, plan }, { containers: "remove", volumes: true })
         .pipe(mapFailures(mapProviderFailure("destroy cleans up the startup DNS fixture")), Effect.asVoid),
     ),
   );

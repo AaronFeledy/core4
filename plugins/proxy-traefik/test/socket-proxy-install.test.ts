@@ -2,13 +2,14 @@ import { describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { PrivilegeCredentialsRequiredError } from "@lando/sdk/errors";
 import type {
   PrivilegeService,
   ProcessResult,
   ProcessRunner,
   ProcessSpawnOptions,
 } from "@lando/sdk/services";
-import { makeTestCertificateAuthority } from "@lando/sdk/test";
+import { makeTestCertificateAuthority, makeTestPrivilegeService } from "@lando/sdk/test";
 import { Cause, type Context, Effect, Exit, Schema } from "effect";
 import {
   DEFAULT_BACKEND_HTTPS_TRY_LIST,
@@ -88,13 +89,13 @@ const makePrivilege = (
 } => {
   const calls: Array<ReadonlyArray<string>> = [];
   return {
-    service: {
+    service: makeTestPrivilegeService({
       elevate: (command) =>
         Effect.sync(() => {
           calls.push([...command]);
           return typeof result === "function" ? result(command) : result;
         }),
-    },
+    }),
     calls: () => [...calls],
   };
 };
@@ -387,6 +388,45 @@ describe("installSocketProxy", () => {
         }),
       ),
     ).toBe(true);
+  });
+
+  test("reports missing administrator access without touching the host", async () => {
+    // Given: sudo cannot be satisfied in this run.
+    const calls: Array<ReadonlyArray<string>> = [];
+    const denied = new PrivilegeCredentialsRequiredError({
+      purpose: "install the helper",
+      message: "needs a password",
+      remediation: "Run `sudo -v`, or set `SUDO_ASKPASS`.",
+    });
+
+    // When: install runs.
+    const outcome = await Effect.runPromise(
+      installSocketProxy({
+        user: "lando-dev",
+        userDataRoot: "/lando",
+        exists: hostFiles({ [packagedProxyd]: "binary" }).exists,
+        readText: hostFiles().readText,
+        processRunner: makeRunner(() => ok()).service,
+        privilege: makeTestPrivilegeService({
+          elevate: (command) =>
+            Effect.sync(() => {
+              calls.push(command);
+              return ok();
+            }),
+          open: () => Effect.fail(denied),
+        }),
+        httpTarget: 8080,
+        httpsTarget: 8443,
+      }),
+    );
+
+    // Then: the outcome carries the remediation and nothing ran elevated.
+    expect(outcome).toEqual({
+      kind: "privilege-unavailable",
+      message: denied.message,
+      remediation: denied.remediation,
+    });
+    expect(calls).toEqual([]);
   });
 
   test("elevates one script with units, polkit path, daemon-reload, and no enable", async () => {

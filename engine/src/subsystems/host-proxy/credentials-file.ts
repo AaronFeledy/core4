@@ -1,11 +1,10 @@
-import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { mapFailures } from "@lando/sdk/command-result";
 import { HostProxyTransportUnavailableError } from "@lando/sdk/errors";
 import { writeFileAtomic } from "@lando/state-store/atomic";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Effect, Option } from "effect";
-import { verifyHostProxyRunDirectory } from "./run-directory.ts";
+import { HOST_PROXY_CREDENTIALS_NAME, ensureHostProxyContainerDirectory } from "./run-directory.ts";
 
 interface SessionCredentials {
   readonly app: string;
@@ -13,6 +12,10 @@ interface SessionCredentials {
   readonly token: string;
 }
 
+/**
+ * Replaces the session credentials in the run directory's container-facing directory atomically,
+ * so containers that bind that directory read the new session's credentials.
+ */
 export const writeHostProxyCredentials = (
   directory: string,
   credentials: SessionCredentials,
@@ -20,13 +23,14 @@ export const writeHostProxyCredentials = (
   const write = Effect.gen(function* () {
     const access = yield* PrivateFileAccessService;
     yield* Effect.tryPromise(async () => {
-      await mkdir(directory, { recursive: true, mode: 0o700 });
-      await verifyHostProxyRunDirectory(directory);
+      const containerDirectory = await ensureHostProxyContainerDirectory(directory);
       await access.enforce(directory);
       await access.verify(directory);
-      await writeFileAtomic(join(directory, "credentials"), JSON.stringify({ version: 1, ...credentials }), {
-        mode: 0o444,
-      });
+      await writeFileAtomic(
+        join(containerDirectory, HOST_PROXY_CREDENTIALS_NAME),
+        JSON.stringify({ version: 1, ...credentials }),
+        { mode: 0o444 },
+      );
     });
   });
   return Effect.gen(function* () {

@@ -24,3 +24,20 @@ test("structural collection excludes weak words and metadata while retaining pub
     ),
   ).toEqual(["root-private"]);
 });
+
+test("collects secret-named string members from flat JSON environment maps", () => {
+  const env = {
+    LANDO_SERVICE_DEFAULTS_ENVIRONMENT: ' {"API_TOKEN":"trace-private","REGION":"region-public"}',
+    LANDO_SERVICE_DEFAULTS_LABELS: '{"clientSecret":"label-private","password":"lando","cacheKey":"public"}',
+    OTHER_MAP: '{"cacheKey":"cache-private"}',
+    MALFORMED: '{"API_TOKEN":"invalid-private"',
+    NESTED: '{"API_TOKEN":"nested-map-private","child":{"API_TOKEN":"nested-private"}}',
+    ARRAY: '[{"API_TOKEN":"array-private"}]',
+  };
+
+  expect(collectSecretEnvValues(env, new Set(["public"]))).toEqual([
+    "trace-private",
+    "label-private",
+    "cache-private",
+  ]);
+});

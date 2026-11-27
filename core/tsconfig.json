@@ -5,15 +5,7 @@
     "outDir": "./dist",
     "tsBuildInfoFile": "./.tsbuildinfo",
     "composite": true,
-    "noEmit": false,
-    "paths": {
-      "@lando/paths": ["../paths/src/paths.ts"],
-      "@lando/paths/*": ["../paths/src/*.ts"],
-      "@lando/state-store": ["../state-store/src/index.ts"],
-      "@lando/state-store/*": ["../state-store/src/*.ts"],
-      "@lando/source-acquisition": ["../source-acquisition/src/index.ts"],
-      "@lando/source-acquisition/*": ["../source-acquisition/src/*.ts"]
-    }
+    "noEmit": false
   },
   "include": ["./src/**/*.ts", "./bin/**/*.ts", "./package.json"],
   "exclude": ["./dist", "./node_modules", "./test"],

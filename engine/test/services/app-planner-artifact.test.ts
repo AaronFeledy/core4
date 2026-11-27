@@ -6,10 +6,11 @@ import { LandofileValidationError } from "@lando/sdk/errors";
 import { PluginManifest, type ServiceConfig, ServiceName } from "@lando/sdk/schema";
 import { AppPlanner, PluginRegistry, type ServiceType } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { Effect, Schema } from "effect";
+import { Effect, Layer, Schema } from "effect";
 import * as Registry from "../../src/plugins/registry.ts";
 import * as Planner from "../../src/services/planner.ts";
 import { literalTestLandofile } from "../compiled-landofile.ts";
+import { pathsServiceLayer } from "../paths-service.ts";
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -92,7 +93,10 @@ const plan = async (
           ),
           { ...TestRuntimeProvider.capabilities, artifactBuild: true },
         ),
-      ).pipe(Effect.provide(Planner.layer), Effect.provideService(PluginRegistry, customRegistry));
+      ).pipe(
+        Effect.provide(Planner.layer.pipe(Layer.provide(pathsServiceLayer()))),
+        Effect.provideService(PluginRegistry, customRegistry),
+      );
     }).pipe(Effect.provide(Registry.layer)),
   );
 };

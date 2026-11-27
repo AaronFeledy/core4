@@ -31,7 +31,18 @@ const TABLE_COMMANDS = [
   "meta:recipes:list",
 ] as const;
 
-const NDJSON_COMMANDS = ["meta:doctor"] as const;
+/** Commands that stream frames under `--format=json`, plus doctor's own report. */
+const NDJSON_COMMANDS = [
+  "app:exec",
+  "app:logs",
+  "app:rebuild",
+  "app:ssh",
+  "app:start",
+  "apps:scratch:logs",
+  "apps:scratch:run",
+  "meta:doctor",
+  "meta:global:logs",
+] as const;
 
 const specForId = (id: string) => {
   const entry = builtInCommandEntries.find((candidate) => candidate.spec.id === id);
@@ -64,32 +75,36 @@ describe("universal result-format advertisement", () => {
   });
 
   test("an opt-in format extends the universal set rather than replacing it", () => {
-    expect([...commandResultFormats({ resultFormats: ["table"] })]).toEqual([
-      "text",
-      "json",
-      "yaml",
-      "table",
-    ]);
-    expect(supportsResultFormat({ resultFormats: ["ndjson"] }, "ndjson")).toBe(true);
-    expect(supportsResultFormat({ resultFormats: ["ndjson"] }, "table")).toBe(false);
+    expect([...commandResultFormats({ rendersTable: true })]).toEqual(["text", "json", "yaml", "table"]);
+    // advertisedFormats is the manifest-side pre-computed set
+    expect(supportsResultFormat({ advertisedFormats: ["ndjson"] }, "ndjson")).toBe(true);
+    expect(supportsResultFormat({ advertisedFormats: ["ndjson"] }, "table")).toBe(false);
+  });
+
+  test("a frame-streaming command offers ndjson without declaring it", () => {
+    expect([...commandResultFormats({ streaming: {} })]).toEqual(["text", "json", "yaml", "ndjson"]);
+    expect([...commandResultFormats({ streamingMode: "live" })]).toEqual(["text", "json", "yaml", "ndjson"]);
+    expect([...commandResultFormats({ ndjsonReport: {} })]).toEqual(["text", "json", "yaml", "ndjson"]);
+    // A per-input live mode alone does not stream frames for every input.
+    expect(supportsResultFormat({ streamingMode: () => "live" }, "ndjson")).toBe(false);
   });
 });
 
 describe("per-command result-format capability", () => {
   test("exactly the commands that render a table declare it", () => {
     const declared = builtInCommandEntries
-      .filter((entry) => entry.spec.resultFormats?.includes("table") === true)
+      .filter((entry) => entry.spec.rendersTable === true && entry.status.kind === "implemented")
       .map((entry) => entry.spec.id)
       .sort();
     expect(declared).toEqual([...TABLE_COMMANDS]);
   });
 
-  test("exactly the commands that emit a frame stream declare ndjson", () => {
-    const declared = builtInCommandEntries
-      .filter((entry) => entry.spec.resultFormats?.includes("ndjson") === true)
+  test("exactly the frame-streaming commands and doctor's report offer ndjson", () => {
+    const offered = builtInCommandEntries
+      .filter((entry) => supportsResultFormat(entry.spec, "ndjson"))
       .map((entry) => entry.spec.id)
       .sort();
-    expect(declared).toEqual([...NDJSON_COMMANDS]);
+    expect(offered).toEqual([...NDJSON_COMMANDS]);
   });
 
   test("no spec carries a competing format option list of its own", () => {
@@ -147,14 +162,21 @@ describe("generated command-registry manifest", () => {
     for (const [id, command] of Object.entries(commandRegistryManifest.commands)) {
       const options = manifestFormatOptions(id);
       expect(options).toBeDefined();
-      const spec = command as { readonly spec?: { readonly resultFormats?: readonly string[] } };
-      const optIn = spec.spec?.resultFormats ?? [];
+      const spec = command as { readonly spec?: { readonly advertisedFormats?: readonly string[] } };
+      const optIn = spec.spec?.advertisedFormats ?? [];
       expect([...(options ?? [])]).toEqual(["text", "json", "yaml", ...optIn]);
     }
   });
 
-  test("version drops table and ndjson; doctor keeps ndjson", () => {
+  test("the manifest offers exactly what each spec produces", () => {
+    for (const entry of builtInCommandEntries) {
+      expect(manifestFormatOptions(entry.spec.id)).toEqual([...commandResultFormats(entry.spec)]);
+    }
+  });
+
+  test("version drops table and ndjson; doctor and streaming commands keep ndjson", () => {
     expect(manifestFormatOptions("meta:version")).toEqual(["text", "json", "yaml"]);
+    expect(manifestFormatOptions("app:logs")).toEqual(["text", "json", "yaml", "ndjson"]);
     expect(manifestFormatOptions("meta:doctor")).toEqual(["text", "json", "yaml", "ndjson"]);
     expect(manifestFormatOptions("apps:list")).toEqual(["text", "json", "yaml", "table"]);
     expect(manifestFormatOptions("meta:recipes:validate")).toEqual(["text", "json", "yaml"]);
@@ -175,6 +197,9 @@ describe("lando help", () => {
     );
     expect(renderCommandHelp({ spec: specForId("apps:list"), status: { kind: "implemented" } })).toContain(
       "--format (text, json, yaml, table)",
+    );
+    expect(renderCommandHelp({ spec: specForId("app:exec"), status: { kind: "implemented" } })).toContain(
+      "--format (text, json, yaml, ndjson)",
     );
   });
 });

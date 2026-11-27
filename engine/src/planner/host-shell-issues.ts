@@ -1,3 +1,4 @@
+import { routeUrlSiteError } from "@lando/landofile/compiled-sites";
 import type { LandofileProvenance } from "@lando/landofile/provenance";
 import { normalizeToolingTask } from "@lando/landofile/tooling-normalize";
 import { getLandofileValueSource, landofileValidationError, pathsOverlap } from "@lando/landofile/validation";
@@ -237,6 +238,36 @@ const hostEventExpressionIssues = (
     }),
   );
 
+/** Public service URL reads in `hostEvents` follow the same admission as Landofile event steps. */
+const hostEventUrlIssues = (
+  hostEvents: HostEvents,
+): ReadonlyArray<ValidationIssue & { readonly rule: ConfigLintRuleId }> =>
+  Object.entries(hostEvents).flatMap(([event, steps]) =>
+    (steps ?? []).flatMap((step, index) => {
+      const fields: ReadonlyArray<readonly [ValidationIssuePath, string]> =
+        typeof step === "string"
+          ? [[["hostEvents", event, index], step]]
+          : Object.entries(step).flatMap(([key, value]) =>
+              typeof value === "string" ? [[["hostEvents", event, index, key], value] as const] : [],
+            );
+      return fields.flatMap(([path, text]) => {
+        if (!text.includes("{{")) return [];
+        const parsed = parseExpressionEither(text, {
+          filePath: "config.yml",
+          bareShellParameters: "preserve",
+        });
+        if (Result.isFailure(parsed)) return [];
+        const refusal = routeUrlSiteError(parsed.success, { file: "config.yml", layer: "config-file", path });
+        return (refusal?.issues ?? []).map((issue) => ({
+          rule: "unsupported-expression" as const,
+          path: issue.path,
+          message: issue.message,
+          ...(issue.suggestion === undefined ? {} : { suggestion: issue.suggestion }),
+        }));
+      });
+    }),
+  );
+
 /**
  * Findings for `hostEvents`: unsupported `${NAME}` forms in any step, and Bun Shell dialect issues in
  * `:host` commands at `hostEvents.<event>[i].cmd`. Config loading already rejects an unbalanced
@@ -248,6 +279,7 @@ export const hostEventsShellIssues = (
   const events = Object.keys(hostEvents);
   return [
     ...hostEventExpressionIssues(hostEvents),
+    ...hostEventUrlIssues(hostEvents),
     ...hostEventCommands(hostEvents, [], "hostEvents").flatMap((command) => {
       const text = hostEventRunText(command.command);
       return text === undefined

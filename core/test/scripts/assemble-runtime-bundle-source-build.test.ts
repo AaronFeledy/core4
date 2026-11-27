@@ -2,13 +2,14 @@ import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import {
   RUNTIME_BUNDLE_SOURCES_PATH,
   assembleBundle,
   parseRuntimeBundleSources,
 } from "../../../scripts/assemble-runtime-bundle.ts";
+import { patchedSource, upstreamSource } from "./netavark-patch-fixture.ts";
 import { fixtureLicense } from "./runtime-bundle-license-fixture.ts";
 
 const realisticPortableLdd = `
@@ -24,10 +25,17 @@ const podmanSourceBytes = new TextEncoder().encode("pinned-podman-source");
 const rootlessportSourceBytes = new TextEncoder().encode("pinned-rootlessport-source");
 const sha256 = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
 
-const fixtureSourceArchive = async (dir: string): Promise<Uint8Array> => {
+const fixtureSourceArchive = async (
+  dir: string,
+  files: Readonly<Record<string, string>> = {},
+): Promise<Uint8Array> => {
   const sourceDir = await mkdtemp(join(tmpdir(), "rb-src-fixture-"));
   try {
     await mkdir(join(sourceDir, "podman-6.0.1"), { recursive: true });
+    for (const [path, content] of Object.entries(files)) {
+      await mkdir(dirname(join(sourceDir, "podman-6.0.1", path)), { recursive: true });
+      await writeFile(join(sourceDir, "podman-6.0.1", path), content);
+    }
     await Bun.$`tar -czf ${join(dir, "podman-source.tar.gz")} -C ${sourceDir} podman-6.0.1`.quiet();
     return await readFile(join(dir, "podman-source.tar.gz"));
   } finally {
@@ -35,7 +43,7 @@ const fixtureSourceArchive = async (dir: string): Promise<Uint8Array> => {
   }
 };
 
-const sourceBuildSources = (sourceArchive: Uint8Array) =>
+const sourceBuildSources = (sourceArchive: Uint8Array, sourcePatches: readonly unknown[] = []) =>
   parseRuntimeBundleSources({
     schemaVersion: 1,
     runtimeVersion: "9.9.9-source",
@@ -52,6 +60,7 @@ const sourceBuildSources = (sourceArchive: Uint8Array) =>
             installName: "bin/podman",
             mode: 493,
             sourceBuild: "podman-linux-native",
+            ...(sourcePatches.length > 0 ? { sourcePatches } : {}),
           },
         ],
       },
@@ -63,7 +72,7 @@ describe("Linux Podman source build", () => {
     const sources = parseRuntimeBundleSources(
       JSON.parse(await readFile(RUNTIME_BUNDLE_SOURCES_PATH, "utf8")),
     );
-    expect(sources.runtimeVersion).toBe("0.1.8");
+    expect(sources.runtimeVersion).toBe("0.1.9");
 
     for (const hostKey of ["linux-x64", "linux-arm64"]) {
       const podman = sources.bundles[hostKey]?.components.find((component) => component.name === "podman");
@@ -99,6 +108,7 @@ describe("Linux Podman source build", () => {
             "BUILDTAGS=grpcnotrace libsqlite3 systemd seccomp containers_image_openpgp",
           );
           expect(command).toContain("EXTRA_LDFLAGS=-buildid=");
+          expect(command.some((arg) => arg.startsWith("BUILD_ORIGIN="))).toBe(false);
           if (cwd === undefined) throw new Error("source build requires cwd");
           await mkdir(join(cwd, "bin"), { recursive: true });
           await writeFile(join(cwd, "bin", "podman"), podmanSourceBytes);
@@ -123,6 +133,62 @@ describe("Linux Podman source build", () => {
       });
 
       expect(events).toEqual(["build", "portability", "portability", "verify"]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("applies pinned source patches before building and marks the build origin", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "rb-asm-source-patch-"));
+    try {
+      const patched = "src/dns/aardvark.rs";
+      const sourceArchive = await fixtureSourceArchive(dir, { [patched]: upstreamSource });
+      const patchFile = "scripts/patches/netavark-v2.0.0-systemd-user-bus.patch";
+      const sourcePatch = {
+        file: patchFile,
+        sha256: sha256(await readFile(join(import.meta.dir, "../../..", patchFile))),
+        files: [
+          {
+            path: patched,
+            sourceSha256: sha256(new TextEncoder().encode(upstreamSource)),
+            patchedSha256: sha256(new TextEncoder().encode(patchedSource)),
+          },
+        ],
+      };
+      const events: string[] = [];
+      const runner = async (command: ReadonlyArray<string>, cwd?: string): Promise<void> => {
+        if (command[0] === "tar" || command[0] === "patch") {
+          if (command[0] === "patch") events.push("patch");
+          await Bun.spawn({
+            cmd: [...command],
+            ...(cwd === undefined ? {} : { cwd }),
+            stdout: "ignore",
+            stderr: "ignore",
+          }).exited;
+          return;
+        }
+        if (command[0] === "make") {
+          events.push("build");
+          if (cwd === undefined) throw new Error("source build requires cwd");
+          expect(await readFile(join(cwd, patched), "utf8")).toBe(patchedSource);
+          expect(command).toContain("BUILD_ORIGIN=lando-runtime (patched)");
+          await mkdir(join(cwd, "bin"), { recursive: true });
+          await writeFile(join(cwd, "bin", "podman"), podmanSourceBytes);
+          await writeFile(join(cwd, "bin", "rootlessport"), rootlessportSourceBytes);
+        }
+      };
+
+      await assembleBundle({
+        repository: "AaronFeledy/core4",
+        hostKey: "linux-x64",
+        sources: sourceBuildSources(sourceArchive, [sourcePatch]),
+        outDir: dir,
+        fetchArtifact: async () => sourceArchive,
+        inspectCommand: async () => realisticPortableLdd,
+        verifyCommand: runner,
+      });
+
+      expect(events).toEqual(["patch", "build"]);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

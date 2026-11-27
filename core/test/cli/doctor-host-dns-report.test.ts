@@ -4,6 +4,7 @@ import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import { makeLandoPaths } from "@lando/paths";
 import { GlobalConfig, ProviderId } from "@lando/sdk/schema";
 import { ConfigService, PathsService, RuntimeProviderRegistry } from "@lando/sdk/services";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect, Schema } from "effect";
 import { HostDnsResolver } from "../../src/cli/commands/doctor-host-dns";
 import { collectRuntimeDoctor as doctorReport } from "./doctor-report-fixture";
@@ -32,13 +33,8 @@ test.each([
         Effect.provideService(PathsService, makeLandoPaths({ env: process.env })),
         Effect.provideService(
           RuntimeProviderRegistry,
-          RuntimeProviderRegistry.of({
-            resolveAppliedPlan: () => Effect.succeed(undefined),
-            resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-            appliedPlansFor: () => Effect.succeed([]),
+          makeTestRuntimeProviderRegistry({
             list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
-            capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-            select: () => Effect.succeed(TestRuntimeProvider),
           }),
         ),
         Effect.provideService(

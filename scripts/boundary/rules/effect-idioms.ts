@@ -141,7 +141,7 @@ export const effectIdiomsRule = {
           if (path === "effect/Effect/mapError" || path === "effect/Stream/mapError") {
             report(
               node,
-              "Use mapFailures/mapStreamFailures from @lando/sdk/command-result: Effect 4 mapError keeps only the first failure and drops cleanup reasons, defects, and interrupts.",
+              "Use mapFailures/mapStreamFailures from @lando/sdk/command-result: they hand each failure its role and are the one failure mapper in shipped source.",
             );
           }
         }

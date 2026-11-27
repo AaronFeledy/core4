@@ -1,5 +1,5 @@
+import { resolveAppliedGlobalService } from "@lando/container-runtime/applied-global-service";
 import { redactString, standaloneSecretsRedactor } from "@lando/container-runtime/redact";
-import { sameRealpath } from "@lando/paths";
 import { mapFailures } from "@lando/sdk/command-result";
 import {
   CaError,
@@ -305,17 +305,12 @@ export const makeTraefikRouterService = (
     ...RouterService.of({
       ...ROUTER_IDENTITY,
       observeRoutes: makeRouteObserver(dependencies, pendingReload),
+      // Only a recorded acquisition proves the ports; a guessed default could name the wrong port.
       routeAuthorities: Effect.fn("RouterService.routeAuthorities")(function* (routes) {
         const acquisition = yield* readAcquisitionState(dependencies.fileSystem, dependencies.paths);
-        return authoritiesFor(
-          routes,
-          acquisition === undefined
-            ? DEFAULT_AUTHORITY_PORTS
-            : {
-                http: acquisition.httpPort,
-                https: acquisition.httpsPort,
-              },
-        );
+        return acquisition === undefined
+          ? []
+          : authoritiesFor(routes, { http: acquisition.httpPort, https: acquisition.httpsPort });
       }),
       prepare: Effect.fn("RouterService.prepare")(
         (config) =>
@@ -537,36 +532,23 @@ export const layer = (stateStore: PluginStateStore) =>
                 onNone: () => ({}),
                 onSome: (registry) => ({
                   readTraefikState: Effect.fn("TraefikRouter.readTraefikState")(function* () {
-                    const provider = yield* registry.select(yield* globalApp.providerId);
-                    if (!(yield* provider.isAvailable)) return "unknown" as const;
-                    if ((yield* provider.getStatus).state === "idle") return "stopped" as const;
-                    const root = (yield* globalApp.paths).root;
-                    const services = yield* provider.list({
-                      app: AppId.make("global"),
-                      includeUnplanned: true,
-                    });
-                    const owned = services.find(
-                      (service) =>
-                        service.app === "global" &&
-                        service.service === "traefik" &&
-                        service.providerId === provider.id &&
-                        service.appRoot !== undefined &&
-                        sameRealpath(service.appRoot, root),
+                    const appRoot = (yield* globalApp.paths).root;
+                    const owned = yield* resolveAppliedGlobalService(
+                      registry,
+                      { appRoot, dataRoot: paths.roots.userDataRoot },
+                      ServiceName.make("traefik"),
                     );
-                    return owned === undefined
-                      ? ("stopped" as const)
-                      : owned.status === "running"
-                        ? ("running" as const)
-                        : ("stopped" as const);
+                    return owned?.observed.status === "running" ? ("running" as const) : ("stopped" as const);
                   }),
                   readTraefikPublications: Effect.fn("TraefikRouter.readTraefikPublications")(function* () {
-                    const provider = yield* registry.select(yield* globalApp.providerId);
-                    const service = yield* provider.inspect({
-                      app: AppId.make("global"),
-                      service: ServiceName.make("traefik"),
-                    });
-                    return service.status === "running"
-                      ? service.publications
+                    const appRoot = (yield* globalApp.paths).root;
+                    const owned = yield* resolveAppliedGlobalService(
+                      registry,
+                      { appRoot, dataRoot: paths.roots.userDataRoot },
+                      ServiceName.make("traefik"),
+                    );
+                    return owned?.observed.status === "running"
+                      ? owned.observed.publications
                       : { status: "unknown" as const };
                   }),
                   readTraefikLogs: Effect.fn("TraefikRouter.readTraefikLogs")(function* () {

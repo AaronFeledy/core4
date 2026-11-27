@@ -1,0 +1,9 @@
+name: xdebug-custom-image
+services:
+  app:
+    type: "php:8.3"
+    image: "php:8.3-cli-bookworm"
+    via: cli
+    command: ["sleep", "infinity"]
+    primary: true
+    xdebug: true

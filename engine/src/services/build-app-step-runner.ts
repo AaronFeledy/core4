@@ -1,6 +1,6 @@
-import { redactProviderError } from "@lando/redaction/provider-error";
+import { isProviderError, redactProviderError } from "@lando/redaction/provider-error";
 import { mapDefectCause, mapStreamFailures } from "@lando/sdk/command-result";
-import type { SecretStoreError } from "@lando/sdk/errors";
+import type { SecretStoreError, ServiceExecError } from "@lando/sdk/errors";
 import type { AppPlan, BuildStep } from "@lando/sdk/schema";
 import type {
   EventService,
@@ -9,7 +9,9 @@ import type {
   RuntimeProviderShape,
   StateStore,
 } from "@lando/sdk/services";
+import { requireObservedExit } from "@lando/sdk/services";
 import { Cause, type Context, Effect, Stream } from "effect";
+import { execExitUnobserved } from "../operations/exec-stream-drain.ts";
 import type { HostProbeRunners } from "../subsystems/healthcheck/attempt.ts";
 import { type AppStep, providerCommand } from "./build-app-plan.ts";
 import type { BuildRedaction } from "./build-redaction.ts";
@@ -25,12 +27,23 @@ export interface AppBuildInput {
   readonly stateStore: Context.Service.Shape<typeof StateStore>;
 }
 
-export interface AppBuildStepResult {
+type AppBuildStepCompletion =
+  | { readonly exitCode: number; readonly providerFailure?: never; readonly failureOrigin?: never }
+  | {
+      readonly exitCode?: never;
+      readonly providerFailure: ProviderError;
+      readonly failureOrigin: "provider";
+    }
+  | {
+      readonly exitCode?: never;
+      readonly providerFailure: ServiceExecError;
+      readonly failureOrigin: "unobserved-exit";
+    };
+
+export type AppBuildStepResult = AppBuildStepCompletion & {
   readonly durationMs: number;
-  readonly exitCode?: number;
   readonly outputTail?: string;
-  readonly providerFailure?: ProviderError;
-}
+};
 
 const isSecretStoreError = (failure: ProviderError): failure is SecretStoreError =>
   failure._tag === "SecretNotFoundError" ||
@@ -61,7 +74,13 @@ export const runAppBuildStep = Effect.fn("BuildOrchestrator.runAppBuildStep")(fu
         isSecretStoreError(failure) ? failure : redactProviderError(failure, input.redaction.redactor),
       ),
       Stream.catchCause((cause) =>
-        Stream.failCause(mapDefectCause(cause, (defect) => input.redaction.redactor.redactValue(defect))),
+        Stream.failCause(
+          mapDefectCause(cause, (defect) => {
+            if (!isProviderError(defect)) return input.redaction.redactor.redactValue(defect);
+            if (isSecretStoreError(defect)) return defect;
+            return redactProviderError(defect, input.redaction.redactor);
+          }),
+        ),
       ),
       Stream.catchCause((cause) => {
         const reason = cause.reasons[0];
@@ -86,14 +105,25 @@ export const runAppBuildStep = Effect.fn("BuildOrchestrator.runAppBuildStep")(fu
       ),
     );
   yield* output.end;
-  if (providerFailure !== undefined) yield* output.note(`Error: ${providerFailure.message}`);
-  else if (exitCode !== undefined && exitCode !== 0)
-    yield* output.note(`Error: ${appStepExitMessage(step, exitCode)}`);
+  const completion: AppBuildStepCompletion =
+    providerFailure === undefined
+      ? yield* requireObservedExit(exitCode, {
+          failure: () => execExitUnobserved(input.provider.id, step.service),
+        }).pipe(
+          Effect.match({
+            onFailure: (providerFailure) => ({ providerFailure, failureOrigin: "unobserved-exit" as const }),
+            onSuccess: (exitCode) => ({ exitCode }),
+          }),
+        )
+      : { providerFailure, failureOrigin: "provider" };
+  if (completion.providerFailure !== undefined)
+    yield* output.note(`Error: ${completion.providerFailure.message}`);
+  else if (completion.exitCode !== 0)
+    yield* output.note(`Error: ${appStepExitMessage(step, completion.exitCode)}`);
   const outputTail = output.tail();
   return {
     durationMs: performance.now() - started,
-    ...(providerFailure !== undefined || exitCode === undefined ? {} : { exitCode }),
     ...(outputTail === undefined ? {} : { outputTail }),
-    ...(providerFailure === undefined ? {} : { providerFailure }),
+    ...completion,
   };
 });

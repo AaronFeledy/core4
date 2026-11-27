@@ -39,12 +39,12 @@ import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import type {
   AppSelector,
-  DestroyOptions,
+  BringDownOptions,
   RouterServiceShape,
   RuntimeProviderShape,
 } from "@lando/sdk/services";
 import { ContainerHelperAssets } from "@lando/sdk/services";
-import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRouterService, TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Cause, DateTime, Effect, Exit, Layer, Option, Stream } from "effect";
 import * as BunShellRunner from "../_support/shell-runner.ts";
@@ -210,7 +210,7 @@ const makeRestartLayer = (
   // A started app as a provider reports it: every lookup answers the same record, without Landofile events.
   const { events: _events, ...appliedRecord } = currentTestPlan(plannedApp);
   const events: string[] = [];
-  const destroyCalls: Array<{ readonly target: AppSelector; readonly options: DestroyOptions }> = [];
+  const destroyCalls: Array<{ readonly target: AppSelector; readonly options: BringDownOptions }> = [];
   const applyCalls: Array<{
     readonly reconcile: boolean;
     readonly services: ReadonlyArray<string>;
@@ -241,14 +241,27 @@ const makeRestartLayer = (
           recordedServices: Object.keys((applyOptions.recordedPlan ?? appliedPlan).services),
         });
       }).pipe(Effect.as({ changed: true })),
-    stop: (target) =>
+    list: () =>
+      Effect.succeed(
+        Object.values(plannedApp.services).map((service) => ({
+          app: plannedApp.id,
+          appRoot: plannedApp.identity?.appRoot ?? plannedApp.root,
+          service: service.name,
+          providerId: plannedApp.provider,
+          containerId: `cid-${String(service.name)}`,
+          status: "running" as const,
+          publications: { status: "unknown" as const },
+        })),
+      ),
+    bringDownObserved: (observed) =>
       Effect.sync(() => {
-        stopCalls.push(target.service);
+        stopCalls.push(observed.service);
+        return { service: observed.service, action: "stopped" as const };
       }),
-    destroy: (target, options) =>
+    bringDown: (target, options) =>
       Effect.sync(() => {
         destroyCalls.push({ target, options });
-        return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
+        return { kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } };
       }),
     inspect: (target) =>
       Effect.succeed({
@@ -308,7 +321,7 @@ const makeRestartLayer = (
     requiredStartServicesLayer(proxy),
     Layer.succeed(
       RuntimeProviderRegistry,
-      RuntimeProviderRegistry.of({
+      makeTestRuntimeProviderRegistry({
         resolveTeardownEvidence: () => Effect.succeed({ kind: "applied" as const, plan: appliedRecord }),
         appliedPlansFor: () => Effect.succeed([appliedRecord]),
         list: Effect.succeed([providerId]),
@@ -377,7 +390,7 @@ describe("lando restart", () => {
     ).toEqual(["pre-restart", "pre-stop", "post-stop", "pre-start", "post-start", "post-restart"]);
     expect(harness.events.filter((event) => event === "task.detail")).toHaveLength(6);
   });
-  test("destroys then applies provider-lando and publishes stop+start events", async () => {
+  test("stops then applies provider-lando and publishes stop+start events", async () => {
     const harness = makeRestartLayer();
     const result = await Effect.runPromise(restartApp().pipe(Effect.provide(harness.layer)));
 
@@ -406,7 +419,7 @@ describe("lando restart", () => {
       "post-restart",
     ]);
     expect(harness.destroyCalls).toHaveLength(1);
-    expect(harness.destroyCalls).toMatchObject([{ options: { volumes: false, removeState: false } }]);
+    expect(harness.destroyCalls).toMatchObject([{ options: { containers: "stop" } }]);
     expect(harness.applyCalls).toEqual([{ reconcile: false, services: ["web"], recordedServices: ["web"] }]);
     expect(result.servicesStarted.map((service) => [service.name, service.state])).toEqual([
       ["web", "running"],
@@ -448,7 +461,7 @@ describe("lando restart", () => {
     expect(harness.routeApplies).toEqual([]);
     expect(harness.applyCalls).toEqual([]);
     expect(harness.destroyCalls).toHaveLength(1);
-    expect(harness.destroyCalls).toMatchObject([{ options: { volumes: false, removeState: false } }]);
+    expect(harness.destroyCalls).toMatchObject([{ options: { containers: "stop" } }]);
     expect(harness.events).toContain("post-app-stop");
     expect(harness.events).toContain("pre-app-start");
     expect(harness.events).not.toContain("post-app-start");

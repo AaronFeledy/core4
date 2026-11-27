@@ -1,6 +1,7 @@
+import { scanRootOwnership } from "@lando/engine/host/root-ownership";
 import { config as writeConfig } from "@lando/engine/operations/config";
 import {
-  SetupProviderSwitchResultSchema,
+  preflightGlobalProviderSwitch,
   switchGlobalProviderForSetup,
 } from "@lando/engine/operations/setup-provider-switch";
 import { ensureAppPlacement } from "@lando/engine/providers/app-placement";
@@ -11,16 +12,16 @@ import {
   resolveProviderSelection,
 } from "@lando/engine/providers/precedence";
 import { GlobalConfigSources } from "@lando/engine/services/config";
-import { NetworkTrust } from "@lando/http-client/network-trust";
 import { RedactionService } from "@lando/redaction/service";
-import { formatSummary } from "@lando/renderer/summary";
 import { mapFailures } from "@lando/sdk/command-result";
 import { AppPlacementError } from "@lando/sdk/errors";
 import {
   ConfigService,
   type Downloader,
+  type FileSystem,
   GlobalAppService,
   InteractionService,
+  PathsService,
   PrivilegeService,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
@@ -29,15 +30,14 @@ import {
  *
  * Provider precedence is flag, environment, configuration, interactive choice, default.
  */
-import { Effect, Schema } from "effect";
+import { Effect } from "effect";
 import type * as HttpClient from "effect/http/HttpClient";
 import { CliInvocation } from "../../../runtime/invocation-context";
-import { networkTrustFromResolved, validateSetupNetworkTrust } from "../../commands/setup-network-trust";
-import { ShellenvInstallRecordError, installShellProfileIntegration } from "../../commands/shellenv";
-import { isDecoratedContext, summaryPaintOptions } from "../../renderer-boundary";
+import { validateSetupNetworkTrust } from "../../commands/setup-network-trust";
 
 import type { LandoCommandSpec } from "../../spec/command-base";
-import { SETUP_COMMAND_FLAGS, contributedSetupFlagsForProvider } from "./setup-command-flags";
+import { runCaSetupStep } from "./setup-ca-step";
+import { SETUP_COMMAND_FLAGS } from "./setup-command-flags";
 import {
   type SetupResult,
   SetupResultSchema,
@@ -45,39 +45,59 @@ import {
   inputInstallDir,
   inputNetworkProbe,
   inputProviderFlag,
-  inputStringFlag,
   sourceInstallDir,
 } from "./setup-inputs";
-import { authorizeProviderSetupPlan } from "./setup-provider-authorization";
+import { makeRunPrivilege } from "./setup-privilege";
 import {
   SYSTEM_RUNTIME_PROVIDERS,
   maybeSelectSetupProvider,
   setupProviderPlan,
-  systemRuntimeUnavailableError,
 } from "./setup-provider-selection";
-import { runCaSetupStep, runProxySetupStep, runShellServiceSetupStep } from "./setup-service-steps";
+import { runProviderSetupStep } from "./setup-provider-step";
+import { renderSetupResult } from "./setup-render";
+import { runProxySetupStep, runShellProfileSetupStep, runShellServiceSetupStep } from "./setup-service-steps";
 import {
+  RootOwnedLandoFilesError,
   SetupStepFailedError,
-  ShellProfileIntegrationError,
   makeSetupReadinessRecorder,
   runFileSyncSetupStep,
-  runtimeServiceReadinessFor,
 } from "./setup-steps";
-import { buildSetupSummary, caInjectionNote, fileSyncStatusLine } from "./setup-summary";
 
 export { SetupResultSchema } from "./setup-inputs";
 export { maybeSelectSetupProvider } from "./setup-provider-selection";
-export { SetupStepFailedError, ShellProfileIntegrationError } from "./setup-steps";
+export { RootOwnedLandoFilesError, SetupStepFailedError, ShellProfileIntegrationError } from "./setup-steps";
+
+/**
+ * Root-owned files under Lando's roots (usually from running lando with sudo) break later writes
+ * with generic IO errors. Setup checks first and names the fix; it never repairs them as root.
+ */
+const refuseRootOwnedLandoFiles = Effect.fnUntraced(function* () {
+  const uid = process.getuid?.();
+  const gid = process.getgid?.();
+  if (uid === undefined || gid === undefined) return;
+  const paths = yield* PathsService;
+  const { rootOwned } = yield* scanRootOwnership({ paths, uid, gid });
+  if (rootOwned.length === 0) return;
+  return yield* Effect.fail(
+    new RootOwnedLandoFilesError({
+      message: `Lando's files include ${rootOwned.length} owned by root, usually left by running lando with sudo, so setup cannot write them.`,
+      paths: rootOwned.map((entry) => entry.path),
+      remediation: `Give them back to your user, then rerun \`lando setup\` without sudo (Lando asks for administrator access itself when a step needs it):\n${rootOwned.map((entry) => entry.remediation).join("\n")}`,
+    }),
+  );
+});
 
 export const setupSpec: LandoCommandSpec<
   SetupResult,
   unknown,
   | ConfigService
   | GlobalConfigSources
+  | PathsService
   | RuntimeProviderRegistry
   | HttpClient.HttpClient
   | Downloader
   | InteractionService
+  | FileSystem
 > = {
   resultSchema: SetupResultSchema,
   id: "meta:setup",
@@ -116,6 +136,7 @@ export const setupSpec: LandoCommandSpec<
     const userDataRootRaw = globalConfig.userDataRoot;
     const userDataRoot =
       typeof userDataRootRaw === "string" && userDataRootRaw.length > 0 ? userDataRootRaw : undefined;
+    yield* refuseRootOwnedLandoFiles();
     const redaction = yield* Effect.serviceOption(RedactionService);
     const recorder = makeSetupReadinessRecorder(
       userDataRoot,
@@ -164,8 +185,12 @@ export const setupSpec: LandoCommandSpec<
     const withHostProvider = Effect.provideService(HostProviderOverride, selectedProvider);
     const provider = yield* registry.select(setupProviderPlan(selectedProvider));
     const networkProbe = inputNetworkProbe(input);
-    const privilege = yield* Effect.serviceOption(PrivilegeService);
-    const privilegeOptions = privilege._tag === "Some" ? { privilege: privilege.value } : {};
+    const hostPrivilege = yield* Effect.serviceOption(PrivilegeService);
+    const privilege =
+      hostPrivilege._tag === "Some" ? yield* makeRunPrivilege(hostPrivilege.value) : undefined;
+    const privilegeOptions = privilege === undefined ? {} : { privilege };
+    const withRunPrivilege = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+      privilege === undefined ? effect : Effect.provideService(effect, PrivilegeService, privilege);
 
     const selectedProviderId = String(selectedProvider);
     const network = yield* validateSetupNetworkTrust(globalConfig, networkProbe).pipe(
@@ -174,104 +199,36 @@ export const setupSpec: LandoCommandSpec<
 
     const shouldPersistProvider =
       (selection.source === "flag" || selection.source === "prompt") && selectedProvider !== config;
-
-    if (!inputBooleanFlag(input, "skip-provider")) {
-      if (selectedProviderId in SYSTEM_RUNTIME_PROVIDERS) {
-        const available = yield* provider.isAvailable.pipe(
-          Effect.tapError((cause) => recorder.recordFailure("provider", cause)),
-        );
-        if (!available) {
-          const error = systemRuntimeUnavailableError(selectedProviderId);
-          yield* recorder.recordFailure("provider", error);
-          return yield* Effect.fail(error);
-        }
-      }
-      const runtimeBundleUrl = inputStringFlag(input, "runtime-bundle-url");
-      const runtimeBundleSha256 = inputStringFlag(input, "runtime-bundle-sha256");
-      const setupFlags = contributedSetupFlagsForProvider(input, selectedProviderId);
-      const inspectOptions = {
-        force: false,
-        network,
-        ...(runtimeBundleUrl === undefined ? {} : { runtimeBundleUrl }),
-        ...(runtimeBundleSha256 === undefined ? {} : { runtimeBundleSha256 }),
-        ...(Object.keys(setupFlags).length === 0 ? {} : { setupFlags }),
-      };
-      const plan = yield* provider
-        .planSetup(inspectOptions)
-        .pipe(Effect.tapError((cause) => recorder.recordFailure("provider", cause)));
-      const approvedPlan = yield* authorizeProviderSetupPlan(plan, {
-        yes: inputBooleanFlag(input, "yes"),
-        nonInteractive: inputBooleanFlag(input, "no-interactive"),
-        interaction,
-      }).pipe(Effect.tapError((cause) => recorder.recordFailure("provider", cause)));
-      yield* Effect.scoped(
-        provider.setup(approvedPlan, {
-          ...inspectOptions,
-          ...privilegeOptions,
-        }),
-      ).pipe(
-        Effect.provideService(NetworkTrust, networkTrustFromResolved(network)),
-        Effect.tapError((cause) => recorder.recordFailure("provider", cause)),
-      );
-      recorder.setRuntimeService(yield* runtimeServiceReadinessFor(provider));
-      yield* recorder.record({
-        id: "provider",
-        status: "satisfied",
-        evidence: `Provider ${selectedProviderId} setup completed.`,
-      });
-    } else {
-      yield* recorder.record({
-        id: "provider",
-        status: "skipped",
-        evidence: `Provider ${selectedProviderId} setup skipped by --skip-provider.`,
-      });
-    }
-
-    const providerSwitch = yield* switchGlobalProviderForSetup(selectedProvider).pipe(
+    const checkedSwitch = yield* preflightGlobalProviderSwitch(selectedProvider).pipe(
       Effect.tapError((cause) => recorder.recordFailure("provider", cause)),
     );
+
+    yield* runProviderSetupStep({
+      input,
+      provider,
+      selectedProviderId,
+      network,
+      privilegeOptions,
+      interaction,
+      recorder,
+    });
+
+    const providerSwitch = yield* switchGlobalProviderForSetup(selectedProvider, {
+      checked: checkedSwitch,
+    }).pipe(Effect.tapError((cause) => recorder.recordFailure("provider", cause)));
     if (!inputBooleanFlag(input, "skip-provider") && shouldPersistProvider) {
       yield* writeConfig({ subcommand: "set", key: "defaultProviderId", value: selectedProviderId }).pipe(
         Effect.tapError((cause) => recorder.recordFailure("provider", cause)),
       );
     }
-    yield* runCaSetupStep(input, privilegeOptions, recorder, selectedProviderId).pipe(withHostProvider);
-    yield* runProxySetupStep(input, recorder, selectedProviderId).pipe(withHostProvider);
+    const trustStores = yield* runCaSetupStep(input, privilegeOptions, recorder, selectedProviderId).pipe(
+      withHostProvider,
+    );
+    yield* runProxySetupStep(input, recorder, selectedProviderId).pipe(withHostProvider, withRunPrivilege);
     yield* runShellServiceSetupStep(input, recorder, selectedProviderId).pipe(withHostProvider);
 
-    if (
-      process.platform !== "win32" &&
-      !inputBooleanFlag(input, "skip-shell-integration") &&
-      !inputBooleanFlag(input, "no-interactive") &&
-      privilege._tag === "Some" &&
-      userDataRoot !== undefined
-    ) {
-      const shellProfile = yield* Effect.try({
-        try: () => installShellProfileIntegration(userDataRoot, privilege.value),
-        catch: (cause) => {
-          if (!(cause instanceof ShellenvInstallRecordError)) throw cause;
-          return new ShellProfileIntegrationError({
-            message: "Shell profile integration failed.",
-            stderr: cause.message,
-            remediation:
-              "Fix shell profile write permissions, then rerun `lando setup` or `lando shellenv` to finish PATH integration.",
-          });
-        },
-      }).pipe(
-        Effect.flatten,
-        Effect.tapError((cause) => recorder.recordFailure("shell", cause.stderr)),
-      );
-      if (shellProfile.exitCode !== 0) {
-        yield* recorder.recordFailure("shell", shellProfile.stderr);
-        return yield* Effect.fail(
-          new ShellProfileIntegrationError({
-            message: "Shell profile integration failed.",
-            stderr: shellProfile.stderr,
-            remediation:
-              "Fix shell profile write permissions, then rerun `lando setup` or `lando shellenv` to finish PATH integration.",
-          }),
-        );
-      }
+    if (userDataRoot !== undefined) {
+      yield* runShellProfileSetupStep(input, userDataRoot, recorder);
     }
 
     const fileSyncStatus = yield* runFileSyncSetupStep({
@@ -308,44 +265,8 @@ export const setupSpec: LandoCommandSpec<
       fileSyncStatus,
       networkCaInjectionConfigured,
       ...(providerSwitch === undefined ? {} : { providerSwitch }),
+      ...(trustStores === undefined ? {} : { trustStores }),
     };
   }, Effect.scoped),
-  render: (result, _input, ctx) => {
-    if (
-      typeof result !== "object" ||
-      result === null ||
-      !("providerId" in result) ||
-      !("installDir" in result) ||
-      !("networkCaInjectionConfigured" in result) ||
-      typeof result.networkCaInjectionConfigured !== "boolean"
-    ) {
-      return undefined;
-    }
-    const status = "fileSyncStatus" in result ? String(result.fileSyncStatus) : "satisfied";
-    const providerId = String(result.providerId);
-    const installDir = String(result.installDir);
-    const notes = result.networkCaInjectionConfigured ? [caInjectionNote] : [];
-    if ("providerSwitch" in result && Schema.is(SetupProviderSwitchResultSchema)(result.providerSwitch)) {
-      const switched = result.providerSwitch;
-      notes.push(
-        `Global services switched from ${switched.fromProviderId} to ${switched.toProviderId}; old volumes and router configuration were kept.`,
-      );
-      for (const app of switched.remainingApps)
-        notes.push(
-          `${app.id} remains on ${switched.fromProviderId}. In ${app.root}, run \`lando destroy --provider=${switched.fromProviderId} --yes\`, then \`lando start\`. A Landofile \`provider:\` still pins the app. Data volumes are not copied.`,
-        );
-    }
-    if (process.platform === "win32") {
-      notes.push(
-        "To keep Lando on PATH in new PowerShell sessions, create `$PROFILE` if needed, then append the output of `lando shellenv --shell=powershell` to it. Keep any existing profile content.",
-      );
-    }
-    if (isDecoratedContext(ctx))
-      return formatSummary(
-        buildSetupSummary({ providerId, installDir, fileSyncStatus: status, notes }),
-        summaryPaintOptions(ctx),
-      );
-    const completion = `setup complete: Lando runtime (${providerId})\n${fileSyncStatusLine(status)}\nLANDO_INSTALL_DIR="${installDir}"`;
-    return notes.length === 0 ? completion : `${completion}\n${notes.join("\n")}`;
-  },
+  render: renderSetupResult,
 };

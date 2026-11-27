@@ -31,7 +31,7 @@ export const makeBootstrapLayer = (bootstrap: BootstrapLevel, inputs: BootstrapL
     case "global":
       return withPluginLayerOverrides(makeGlobalBootstrapLayer(inputs));
     case "scratch":
-      return withPluginLayerOverrides(makeScratchBootstrapLayer(inputs));
+      return makeScratchBootstrapLayer(inputs);
     case "app":
       return withPluginLayerOverrides(makeAppBootstrapLayer(inputs));
   }

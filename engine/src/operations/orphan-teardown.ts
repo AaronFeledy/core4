@@ -3,9 +3,11 @@ import {
   teardownVolumeClasses,
   volumeClassFromLabels,
 } from "@lando/container-runtime/volume-classes";
+import { orDieWithRole } from "@lando/sdk/command-result";
 import {
   type AppLockTimeoutError,
   type AppResolveError,
+  type AppliedStateVersionError,
   ProviderUnavailableError,
   type StateStoreError,
 } from "@lando/sdk/errors";
@@ -35,10 +37,17 @@ import { cleanupAppWorkers } from "./destroy-provider.ts";
 import { ownedCleanupChanged, prepareOwnedResourceCleanup } from "./owned-resource-teardown.ts";
 import { withShutdownObservations } from "./shutdown-observations.ts";
 
+/** A damaged or newer-format applied record protects its app's resources from the sweep. */
+export const isProtectedAppliedState = <E extends { readonly _tag: string }>(
+  error: E,
+): error is Extract<E, ProviderUnavailableError | AppliedStateVersionError> =>
+  error._tag === "AppliedStateVersionError" ||
+  (error instanceof ProviderUnavailableError && error.operation === "applied-state.read");
+
 export interface OrphanTeardownOptions {
-  /** Remove the data volumes recorded against the root; `stop` never does. */
+  /** Remove the data volumes recorded against the root. */
   readonly volumes: boolean;
-  /** Remove the cache volumes recorded against the root; `stop` never does. */
+  /** Remove the cache volumes recorded against the root. */
   readonly purgeCaches: boolean;
 }
 
@@ -65,9 +74,9 @@ const now = () => DateTime.nowUnsafe();
  * `RuntimeProviderRegistry.select` resolves a provider from `plan.provider` alone, and the app
  * mutation lock is keyed on the app being torn down, so an orphan group still needs a plan-shaped
  * value for both even though no plan survives. It describes no resources: every container and
- * volume here is removed by the identity the provider itself observed.
+ * volume here is acted on by the identity the provider itself observed.
  */
-const selectionPlan = (group: AppliedOrphanGroup, root: AbsolutePath): AppPlan => ({
+export const orphanSelectionPlan = (group: AppliedOrphanGroup, root: AbsolutePath): AppPlan => ({
   id: group.appId,
   name: String(group.appId),
   slug: String(group.appId),
@@ -107,7 +116,7 @@ export const tearDownOrphans = Effect.fnUntraced(function* (input: {
       const observationSources: Array<readonly ServiceShutdownObservation[] | undefined> = [];
       const volumesRemoved: { data: number; cache: number } = { ...noVolumesRemoved };
       for (const group of input.groups) {
-        const plan = selectionPlan(group, input.root);
+        const plan = orphanSelectionPlan(group, input.root);
         const ref = { id: group.appId, root: input.root };
         let protectedState = false;
         yield* withAppMutationLock(
@@ -115,9 +124,9 @@ export const tearDownOrphans = Effect.fnUntraced(function* (input: {
           Effect.gen(function* () {
             const provider = yield* registry.select(plan);
             for (const service of group.services) {
-              const removal = yield* provider.removeObservedService(service);
+              const removal = yield* provider.bringDownObserved(service, "remove");
               observationSources.push(removal.shutdownObservations);
-              if (removal.kind === "removed") services.push(String(service.service));
+              if (removal.action === "removed") services.push(String(service.service));
             }
             if (!removeVolumes) return;
             const candidates = group.volumes.flatMap((volume) => {
@@ -160,27 +169,26 @@ export const tearDownOrphans = Effect.fnUntraced(function* (input: {
           }).pipe(
             Effect.tapError((error) =>
               Effect.sync(() => {
-                protectedState =
-                  error._tag === "ProviderUnavailableError" && error.operation === "applied-state.read";
+                protectedState = isProtectedAppliedState(error);
               }),
             ),
-            Effect.ensuring(Effect.suspend(() => (protectedState ? Effect.void : cleanupAppWorkers(ref)))),
+            Effect.ensuring(
+              Effect.suspend(() => (protectedState ? Effect.void : cleanupAppWorkers(ref, "retire"))),
+            ),
           ),
         ).pipe(
-          Effect.catchIf(
-            (error) => error._tag === "ProviderUnavailableError" && error.operation === "applied-state.read",
-            (error) =>
-              Effect.gen(function* () {
-                const events = yield* Effect.serviceOption(EventService);
-                if (Option.isSome(events))
-                  yield* events.value
-                    .publish({
-                      _tag: "message.warn",
-                      body: `Skipped resources for app ${group.appId}: ${error.message}`,
-                      timestamp: now(),
-                    })
-                    .pipe(Effect.orDie);
-              }),
+          Effect.catchIf(isProtectedAppliedState, (error) =>
+            Effect.gen(function* () {
+              const events = yield* Effect.serviceOption(EventService);
+              if (Option.isSome(events))
+                yield* events.value
+                  .publish({
+                    _tag: "message.warn",
+                    body: `Skipped resources for app ${group.appId}: ${error.message} ${error.remediation}`,
+                    timestamp: now(),
+                  })
+                  .pipe(orDieWithRole("cleanup"));
+            }),
           ),
         );
       }

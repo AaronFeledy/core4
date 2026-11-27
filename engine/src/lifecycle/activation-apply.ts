@@ -6,12 +6,18 @@ import {
 } from "@lando/sdk/services";
 import { Effect, Option } from "effect";
 import type { PreparedRuntimeProvider } from "../providers/prepared.ts";
+import { convergeActivationCredentials } from "./activation-credentials.ts";
 import { HostMountPoints, prepareHostMountPoints } from "./host-mount-points.ts";
 import { type PreparedRouteUrls, lowerRouteUrls } from "./route-url-bindings.ts";
 import { recordRouteUrlEvidence } from "./route-url-evidence.ts";
 import { type PreparedCertificates, stampPreparedCertificates } from "./service-certificates.ts";
 import { withPlanVolumeCoordination } from "./volume-coordination.ts";
 import { volumeCreationRecorder } from "./volume-initialization.ts";
+
+export const openDatabaseCredentialSession = Effect.fnUntraced(function* (plan: AppPlan) {
+  if (!Object.values(plan.services).some((service) => service.connection !== undefined)) return undefined;
+  return yield* (yield* EnvironmentValueResolver).openSession();
+});
 
 export interface ActivationApply<E, R> {
   readonly provider: PreparedRuntimeProvider;
@@ -26,6 +32,7 @@ export interface ActivationApply<E, R> {
   readonly signal?: AbortSignal;
   readonly beforeApply?: Effect.Effect<void, E, R>;
   readonly environment?: EnvironmentValueResolverSession;
+  readonly previousPlan?: AppPlan | undefined;
 }
 
 export const applyActivation = Effect.fn("Activation.apply")(
@@ -39,7 +46,7 @@ export const applyActivation = Effect.fn("Activation.apply")(
           record === undefined ? undefined : recordRouteUrlEvidence(record, stamped, request.routeUrls);
         const session = request.environment ?? (yield* (yield* EnvironmentValueResolver).openSession());
         const stateStore = yield* StateStore;
-        return yield* withPlanVolumeCoordination({
+        const applied = yield* withPlanVolumeCoordination({
           plan,
           provider: request.provider,
           stateStore,
@@ -65,6 +72,14 @@ export const applyActivation = Effect.fn("Activation.apply")(
             });
           }),
         });
+        const credentialChanges = yield* convergeActivationCredentials({
+          plan,
+          provider: request.provider,
+          previousPlan: request.previousPlan,
+          applied,
+          session,
+        });
+        return { ...applied, ...(credentialChanges.length === 0 ? {} : { credentialChanges }) };
       }),
     ),
 );

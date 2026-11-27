@@ -1,4 +1,4 @@
-import { Context, type Effect, type Scope } from "effect";
+import { Context, type Effect, Schema, type Scope } from "effect";
 
 import type {
   AppPlacementError,
@@ -10,7 +10,13 @@ import type {
   ScratchIsolationConflictError,
   ScratchSourceUnresolvedError,
 } from "../errors/index.ts";
-import type { AbsolutePath, AppRef, IsolateMode } from "../schema/index.ts";
+import {
+  type AbsolutePath,
+  type AppRef,
+  type IsolateMode,
+  ProxyAuthority,
+  ServiceName,
+} from "../schema/index.ts";
 
 export interface ScratchAppPaths {
   readonly base: AbsolutePath;
@@ -60,6 +66,9 @@ export interface ScratchAcquireInput {
 export interface ScratchHandle {
   readonly id: string;
   readonly app: AppRef;
+  readonly credentialChanges?: NonNullable<
+    import("../schema/app-results.ts").StartAppResult["credentialChanges"]
+  >;
 }
 
 /**
@@ -116,15 +125,24 @@ export interface ScratchServiceEndpoints {
   }>;
 }
 
+export const ScratchPublishedRoute = Schema.Struct({
+  ...ProxyAuthority.fields,
+  service: ServiceName.annotate({ description: "Scratch service receiving requests to this URL." }),
+  url: Schema.String.annotate({
+    description: "Published route URL, including any nonstandard port and path prefix.",
+  }),
+});
+export type ScratchPublishedRoute = typeof ScratchPublishedRoute.Type;
+
 /**
- * Full inspection of a single scratch app: the same fields as a
- * `ScratchSummary` plus the realized mount points, network membership, and
- * per-service endpoints read from the cached plan.
+ * Full scratch inspection: summary, cached mount/network/endpoint details,
+ * and, when the scratch declares enabled routes, the routes the router confirms.
  */
 export interface ScratchInfo extends ScratchSummary {
   readonly mounts: ReadonlyArray<ScratchMountPoint>;
   readonly network: ScratchNetworkMembership;
   readonly endpoints: ReadonlyArray<ScratchServiceEndpoints>;
+  readonly routes?: ReadonlyArray<ScratchPublishedRoute>;
 }
 
 export interface ScratchStartOptions {

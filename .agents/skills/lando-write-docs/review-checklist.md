@@ -21,7 +21,7 @@ Use this checklist with [SKILL.md](SKILL.md). Check technical truth and the read
 - [ ] If executable: prose survives stripping JSX; no vars-only scenarios, sentence-valued component props, or shell fences inside scenarios; fixtures are referenced and relevant gates pass.
 - [ ] The feature's edge-case and regression tests live in its home guide as hidden steps or test-only scenarios, not repeated on other pages. No hidden step or test-only scenario was removed to shorten the page, and no hidden step changes what the visible steps show.
 - [ ] A guide has one `<Guide>` element containing all scenarios. Confirm the scenario count; focused tests require success and a positive test count.
-- [ ] Object-valued guide props contain no single quotes in strings/regexes. Boxed TTY command output is asserted through `--format=json`.
+- [ ] Object-valued guide props hold only literals, arrays, and plain objects. Boxed TTY command output is asserted through `--format=json`.
 - [ ] Scenarios use isolated resources, hold on a host with Lando already installed, and never run destructive commands.
 - [ ] If owned: PRD `## Guide Coverage`, `Shipped` INDEX row, coverage/transcript/drift checks, and any required static-test phrases remain correct.
 

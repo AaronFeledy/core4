@@ -23,11 +23,11 @@ services:
         - npm config set fund false
       app:
         - npm ci
-        - run: chown -R node:node /app/node_modules
+        - run: ln -sf /app/bin/dev /usr/local/bin/dev
           user: root
 ```
 
-Save this in `.lando.yml` at your project root. The `npm ci` step assumes your project already has a package lockfile. From that directory, lint the configuration, then start:
+Save this in `.lando.yml` at your project root. The `npm ci` step assumes your project already has a package lockfile. The last step links a project script onto the service's `PATH`: it needs root to write `/usr/local/bin` and runs in `build.app` because the script arrives with your code. From that directory, lint the configuration, then start:
 
 ```sh
 lando app:config:lint
@@ -39,7 +39,7 @@ lando start
 | Key | When it runs | Where | Good for |
 | --- | --- | --- | --- |
 | `build.artifact` | While the image is produced | Inside the image build, no app mount | System packages, global tools, anything that belongs in the image |
-| `build.app` | After the container starts | Inside the running container with your app mounted | `npm ci`, `composer install`, permission fixes on mounted code |
+| `build.app` | After the container starts | Inside the running container with your app mounted | `npm ci`, `composer install`, links to scripts in your code |
 
 Each key takes one entry or an ordered array. Lando runs the list top to bottom and keeps the order you wrote.
 
@@ -92,15 +92,15 @@ The files in the build context are build inputs. When the context is the app fol
 
 `lando destroy` keeps the newest image of each built service for up to seven days, so a `lando start` in that window reuses it without building. `lando destroy --purge-caches` removes those images right away. See [Tear down](../cli/everyday-commands.mdx#tear-down).
 
-A `build.app` step did its work inside one container, so its result counts only for that container. `lando start` reports the step as cached while the service still has the container the step ran in, and runs the step in every new container:
+A `build.app` step did its work inside one container, so its result counts only for that container. `lando start` can reuse it only if Lando recorded exit code `0`. A result without a recorded exit code is not reusable, even if the container stayed. For a step with a recorded success:
 
 | What you ran | `build.app` steps |
 | --- | --- |
 | `lando start` again, container kept | Cached |
+| `lando stop`, then `lando start` | Cached. Stop keeps the container, and so does the step's work |
+| `lando restart` | Cached, for every container it keeps |
 | `lando restart -s <service>`, container kept | Not run. The container stays, and so does the step's work |
-| `lando restart -s <service>` that replaces or creates the container | Run again, for that service only |
-| `lando stop`, then `lando start` | Run again |
-| `lando restart` | Run again |
+| `lando restart` or `lando restart -s <service>` that replaces or creates a container | Run again, for that service only |
 | `lando destroy`, then `lando start` | Run again |
 | `lando start` after a Landofile change that recreates a container, such as a new image, command, environment, or mount | Run again, for the recreated service only |
 | `lando rebuild` | Run again, always |
@@ -111,14 +111,14 @@ Editing a step's command or `user` runs it on the next `lando start`, even in a 
 
 An interrupted `build.app` step needs no cleanup. Press Ctrl-C during `lando start` or `lando rebuild`, then run `lando start`. The step you interrupted runs again, along with the steps that hadn't started. A step that had already finished stays cached while its container stays.
 
-Because `build.app` steps repeat, write them so a second run is harmless. `npm ci`, `composer install`, and the `chown` above already are. Your app mount and named volumes outlive the container, so a rerun step finds the files its last run left there. A step that appends to a file in your project should check before it appends.
+Because `build.app` steps repeat, write them so a second run is harmless. `npm ci`, `composer install`, and the `ln -sf` above already are. Your app mount and named volumes outlive the container, so a rerun step finds the files its last run left there. A step that appends to a file in your project should check before it appends.
 
-Put anything that belongs to the image in `build.artifact`: system packages and global tools. The image keeps them across `lando stop`, and nothing has to run again.
+Put anything that belongs to the image in `build.artifact`: system packages and global tools. The image keeps them when Lando replaces a container, and nothing has to run again.
 
 Two limits:
 
 - Lando doesn't read the files a `build.app` step uses. Editing `package-lock.json` doesn't rerun `npm ci` in a container that stayed. Run `lando rebuild` for that.
-- A `tmpfs` mount is emptied whenever its container stops, including a `lando restart -s <service>` that keeps the container, and the step isn't rerun to fill it.
+- A `tmpfs` mount is emptied whenever its container stops, including `lando stop` and `lando restart`, which keep the container, and the step isn't rerun to fill it.
 
 ## Read step output and failures
 
@@ -143,7 +143,9 @@ The two phases fail differently:
 | `build.artifact` | Stops the start, along with the other services' image builds, which are reported as aborted | Nothing. No container exists yet |
 | `build.app` | Lets steps that don't depend on the failed one finish, then fails the start with every failed step listed | The app's containers |
 
-Either way the error names the service, repeats the last lines of the step's output, and gives the `lando logs --build` command that prints all of it. To read it and get going again, see [Recover from a failed build step](./php-build-failures.mdx).
+Either way the error names the service and can include the last lines of the step's output. To read the saved output with `lando logs --build` and get going again, see [Recover from a failed build step](./php-build-failures.mdx).
+
+If a `build.app` step's output ends without an exit status, Lando saves the output but records the step as failed, not cached. Check what the step changed before running `lando start` again, because the next start can run the step again even if it already did its work.
 
 ## Check what the planner sees
 
@@ -170,7 +172,7 @@ lando app:cache:refresh
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"run\":\\s*\"apt-get update -y && apt-get install -y --no-install-recommends jq\",\\s*\"user\":\\s*\"root\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"npm config set fund false\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"npm ci\"" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"run\":\\s*\"chown -R node:node /app/node_modules\",\\s*\"user\":\\s*\"root\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"run\":\\s*\"ln -sf /app/bin/dev /usr/local/bin/dev\",\\s*\"user\":\\s*\"root\"" } }} />
     </Step>
     <Step name="resolve-plan">
       <Run command="lando app:cache:refresh" />

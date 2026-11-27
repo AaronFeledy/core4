@@ -126,6 +126,7 @@ export const buildInfoSummary = (result: InfoAppResult): SummaryDocument => {
         { label: "provider", value: service.provider },
         ...planMetadataFields(service),
         ...probeFields(service),
+        ...(service.url === undefined ? [] : [{ label: "URL", value: service.url }]),
         ...connectionFields(service.connections),
         ...storageFields(service),
         ...homeFields(service),
@@ -224,7 +225,11 @@ export const renderInfoAppResult = (result: InfoAppResult, ctx?: RenderContext):
   const rendered = isDecoratedContext(ctx)
     ? formatSummary(buildInfoSummary(result), summaryPaintOptions(ctx))
     : renderPlainInfoAppResult(result);
-  return contextAllowsHyperlinks(ctx) ? linkKnownHttpUrls(rendered, infoHttpUrls(result)) : rendered;
+  const output =
+    result.appliedStateIssue !== undefined
+      ? `${rendered}\n\nApplied state: unknown. ${escapeDiagnosticText(result.appliedStateIssue.message)} ${escapeDiagnosticText(result.appliedStateIssue.remediation)}`
+      : rendered;
+  return contextAllowsHyperlinks(ctx) ? linkKnownHttpUrls(output, infoHttpUrls(result)) : output;
 };
 
 const renderPlainInfoAppResult = (result: InfoAppResult): string => {
@@ -253,8 +258,10 @@ const renderPlainInfoAppResult = (result: InfoAppResult): string => {
     const probes = probeFields(service).map(
       (field) => `${escapeDiagnosticText(service.service)}\t${field.label}\t${field.value}`,
     );
+    const urlRows = service.url === undefined ? [] : [`${service.service}\turl\t${service.url}`];
     return [
       base,
+      ...urlRows,
       ...metadataRows,
       ...probes,
       ...plainStorageRows(service),

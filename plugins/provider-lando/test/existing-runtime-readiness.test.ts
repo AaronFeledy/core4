@@ -124,8 +124,11 @@ test("old reachable managed runtime serves rescue requests without repair or ext
       await Effect.runPromise(Stream.runCollect(provider.logs({ app, service, plan }, { follow: false }))),
     ).toBeDefined();
     expect(await Effect.runPromise(provider.list({ app, includeUnplanned: true }))).toHaveLength(1);
-    expect(await Effect.runPromise(provider.destroy({ app, plan }, { volumes: false }))).toMatchObject({
-      kind: "destroyed",
+    expect(
+      await Effect.runPromise(provider.bringDown({ app, plan }, { containers: "remove", volumes: false })),
+    ).toMatchObject({
+      kind: "removed",
+      containers: [{ service, containerId: "exact-owned-id", action: "removed" }],
       volumesRemoved: { data: 0, cache: 0 },
       shutdownObservations: [
         { appId: app, service, containerId: "exact-owned-id", status: "exited", exitCode: 0 },
@@ -258,7 +261,7 @@ test.each([false, undefined])("starting init:%s does not prepare a sibling's nat
         },
       }),
     );
-    await Effect.runPromise(provider.start({ app, service, plan: selectedPlan }));
+    await Effect.runPromise(provider.restart({ app, service, plan: selectedPlan }));
     expect((await readdir(runtimeBinDir)).includes("catatonit")).toBe(false);
   } finally {
     await rm(root, { recursive: true, force: true });

@@ -586,7 +586,7 @@ describe("Windows named-volume sync helper", () => {
     expect(fake.volume).toBeDefined();
   });
 
-  test("fails before Podman requests for an unknown receipt version", async () => {
+  test("fails before Podman requests for a newer receipt envelope version", async () => {
     const fake = makeFakeApi();
     const key = `${createHash("sha256")
       .update(JSON.stringify([spec.appId, spec.service, spec.mountKey]))
@@ -605,7 +605,9 @@ describe("Windows named-volume sync helper", () => {
     await Effect.runPromise(bucket.set({ old: "receipt" }));
     const error = await failureOf(ensureWindowsSyncHelper(fake.api, fake.stateStore, spec));
     expect(error).toBeInstanceOf(ProviderUnavailableError);
-    expect(error.message).toContain("unknown version");
+    expect(error.remediation).toMatch(/newer Lando|upgrade/i);
+    expect(error.remediation).not.toMatch(/corrupt|remove the|move it aside/i);
+    expect(error.cause).toMatchObject({ reason: "newer-version", storedVersion: 3, supportedVersion: 2 });
     expect(fake.calls).toEqual([]);
   });
 

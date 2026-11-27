@@ -4,7 +4,12 @@ import { isDeepStrictEqual } from "node:util";
 import { sameRealpath } from "@lando/paths";
 import { makeDiagnosticTail } from "@lando/redaction";
 import { mapFailures, mergeFailure } from "@lando/sdk/command-result";
-import { FileSyncDriftError, FileSyncStartError, FileSyncStopError } from "@lando/sdk/errors";
+import {
+  FileSyncDriftError,
+  FileSyncStartError,
+  FileSyncStopError,
+  StateStoreError,
+} from "@lando/sdk/errors";
 import type { PluginStateStore } from "@lando/sdk/plugins";
 import { runProbe } from "@lando/sdk/probe";
 import type { FileSyncDisposalPhase, FileSyncSessionSpec, FileSyncSessionStatus } from "@lando/sdk/schema";
@@ -112,11 +117,7 @@ export const hasDurableMutagenOwnership = (
       ),
     )
     .pipe(
-      mapFailures((error) =>
-        error instanceof FileSyncStartError
-          ? error
-          : startError("Could not read Mutagen session ownership state."),
-      ),
+      mapFailures((error) => mapStoreSyncError("Could not read Mutagen session ownership state.", error)),
     );
 
 export interface MutagenProcessClientOptions {
@@ -199,6 +200,51 @@ const stopError = (
     remediation: REMEDIATION,
     ...(outputTail === undefined ? {} : { outputTail }),
   });
+
+const isNewerVersionStoreError = (cause: unknown): cause is StateStoreError =>
+  cause instanceof StateStoreError && cause.reason === "newer-version";
+
+/** Map a ledger/lock store failure without replacing newer-version upgrade remediation. */
+const mapStoreSyncError = (
+  message: string,
+  error: unknown,
+  spec?: FileSyncSessionSpec,
+): FileSyncStartError => {
+  if (error instanceof FileSyncStartError) return error;
+  if (isNewerVersionStoreError(error))
+    return new FileSyncStartError({
+      engineId: ENGINE_ID,
+      message,
+      ...(spec === undefined ? {} : { sessionSpec: spec }),
+      remediation: error.remediation,
+      cause: error,
+    });
+  return startError(message, spec);
+};
+
+const mapStoreStopError = (error: unknown, name: string): FileSyncStopError => {
+  if (error instanceof FileSyncStopError) return error;
+  if (isNewerVersionStoreError(error))
+    return new FileSyncStopError({
+      engineId: ENGINE_ID,
+      sessionRef: name,
+      message: error.message,
+      remediation: error.remediation,
+      cause: error,
+    });
+  if (error instanceof FileSyncStartError || error instanceof FileSyncDriftError)
+    return new FileSyncStopError({
+      engineId: ENGINE_ID,
+      sessionRef: name,
+      message: error.message,
+      remediation: error.remediation,
+      cause: error,
+      ...(error instanceof FileSyncStartError && error.outputTail !== undefined
+        ? { outputTail: error.outputTail }
+        : {}),
+    });
+  return stopError({ message: error instanceof Error ? error.message : String(error) }, name);
+};
 
 const knownLedger = (bucket: StateBucket<SessionLedger>, value: SessionLedger | null) =>
   value !== null
@@ -553,7 +599,10 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
           error instanceof FileSyncDriftError ||
           error instanceof FileSyncStopError
             ? (error as TaggedSyncError<E>)
-            : startError("Could not read or lock Mutagen session ownership state."),
+            : (mapStoreSyncError(
+                "Could not read or lock Mutagen session ownership state.",
+                error,
+              ) as TaggedSyncError<E>),
         ),
       );
 
@@ -570,7 +619,7 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
           error instanceof FileSyncDriftError ||
           error instanceof FileSyncStopError
             ? (error as TaggedSyncError<E>)
-            : startError("Could not lock this app's Mutagen sessions."),
+            : (mapStoreSyncError("Could not lock this app's Mutagen sessions.", error) as TaggedSyncError<E>),
         ),
       );
   };
@@ -1125,9 +1174,7 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
           }),
         );
       }),
-    ).pipe(
-      mapFailures((error) => (error instanceof FileSyncStopError ? error : stopError(error, String(app.id)))),
-    );
+    ).pipe(mapFailures((error) => mapStoreStopError(error, String(app.id))));
 
   const disposeApp = (app: FileSyncSessionSpec["app"]) =>
     withAppLock(
@@ -1227,7 +1274,7 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
           }
         }),
       ),
-    ).pipe(mapFailures((error) => stopError(error, String(app.id))));
+    ).pipe(mapFailures((error) => mapStoreStopError(error, String(app.id))));
 
   const completeAppDisposal = (app: FileSyncSessionSpec["app"]) =>
     withAppLock(
@@ -1272,7 +1319,7 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
           }));
         }),
       ),
-    ).pipe(mapFailures((error) => stopError(error, String(app.id))));
+    ).pipe(mapFailures((error) => mapStoreStopError(error, String(app.id))));
 
   const disposalPhase = (app: FileSyncSessionSpec["app"]) =>
     withAppLock(
@@ -1309,7 +1356,7 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
           }),
         ),
       ),
-    ).pipe(mapFailures((error) => stopError(error, String(app.id))));
+    ).pipe(mapFailures((error) => mapStoreStopError(error, String(app.id))));
 
   const createOwned = (name: string, spec: FileSyncSessionSpec) =>
     withLedger((bucket) =>
@@ -1513,7 +1560,7 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
             Effect.asVoid,
           ),
         ),
-      ).pipe(mapFailures((error) => stopError(error, name))),
+      ).pipe(mapFailures((error) => mapStoreStopError(error, name))),
     resume: (name) =>
       withNamedApp(name, (app) =>
         withLedger((bucket) =>
@@ -1596,7 +1643,7 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
             }),
           ),
         );
-      }).pipe(mapFailures((error) => stopError(error, name))),
+      }).pipe(mapFailures((error) => mapStoreStopError(error, name))),
     list: withLedger((bucket) =>
       readKnownLedger(bucket).pipe(
         Effect.flatMap((value) => reconcilePreparing(bucket, value)),

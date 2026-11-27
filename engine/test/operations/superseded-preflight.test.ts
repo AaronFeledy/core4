@@ -3,20 +3,20 @@ import { rmSync } from "node:fs";
 import { FileSyncStartError } from "@lando/sdk/errors";
 import { AppId, type AppPlan, appIdentityKey } from "@lando/sdk/schema";
 import { ManagedFileTransactionGuard, RuntimeProviderRegistry } from "@lando/sdk/services";
-import { TestFileSyncEngine } from "@lando/sdk/test";
+import { TestFileSyncEngine, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect } from "effect";
 import type { ResolvedAppTarget } from "../../src/landofile/app-resolution.ts";
 import { destroyApp } from "../../src/operations/destroy.ts";
 import { rebuildApp } from "../../src/operations/rebuild.ts";
 import { restartApp } from "../../src/operations/restart.ts";
 import { startApp } from "../../src/operations/start.ts";
-import { stopApp } from "../../src/operations/stop.ts";
 import { FileSyncResolver } from "../../src/plugins/file-sync-resolver.ts";
 import { acceleratedPlan } from "./accelerated-start-recovery-support.ts";
 import { ordinaryPlan } from "./start-file-sync-rotation-support.ts";
 import { makeHarness, plan } from "./start-progress-topology-support.ts";
 
-const operations = [startApp, restartApp, rebuildApp, stopApp, destroyApp].map(
+// Stop only stops an earlier name's containers, so it never prepares a retirement.
+const operations = [startApp, restartApp, rebuildApp, destroyApp].map(
   (operation) => (_options: Record<string, never>, target: ResolvedAppTarget) =>
     Effect.gen(function* () {
       yield* operation({}, target);
@@ -121,15 +121,18 @@ test.each(operations)(
       const base = await Effect.runPromise(harness.runtimeProviderRegistry.select());
       const result = await Effect.runPromise(
         operation({}, { plan, root: plan.root, app: { kind: "user", id: plan.id, root: plan.root } }).pipe(
-          Effect.provideService(RuntimeProviderRegistry, {
-            ...harness.runtimeProviderRegistry,
-            select: () =>
-              Effect.succeed({
-                ...base,
-                inspectAppliedFileSync: (plan) =>
-                  Effect.succeed({ status: plan.id === unsafe.id ? "unknown" : "ordinary" }),
-              }),
-          }),
+          Effect.provideService(
+            RuntimeProviderRegistry,
+            makeTestRuntimeProviderRegistry({
+              ...harness.runtimeProviderRegistry,
+              select: () =>
+                Effect.succeed({
+                  ...base,
+                  inspectAppliedFileSync: (plan) =>
+                    Effect.succeed({ status: plan.id === unsafe.id ? "unknown" : "ordinary" }),
+                }),
+            }),
+          ),
           Effect.provideService(ManagedFileTransactionGuard, {
             assertReadable: () => Effect.void,
             pending: () => Effect.succeed(null),

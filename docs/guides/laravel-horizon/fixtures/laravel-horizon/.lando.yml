@@ -14,11 +14,7 @@ services:
       artifact:
         - run: a2enmod rewrite
           user: root
-    appMount:
-      target: /app
-      includes:
-        - vendor
-    dependsOn:
+    depends_on:
       - database
       - cache
     routes:
@@ -36,19 +32,16 @@ services:
     environment:
       APP_URL: "{{ services.appserver.url }}"
     restart: unless-stopped
-    appMount:
-      target: /app
-      includes:
-        - vendor
-    dependsOn:
+    depends_on:
       database:
         condition: service_healthy
       cache:
         condition: service_healthy
 tooling:
   artisan:
-    cmds:
-      - "php artisan"
+    cmd:
+      - :php-local
+      - artisan
     description: "Run a Laravel Artisan command inside the appserver service."
     wrapper: true
     service: appserver

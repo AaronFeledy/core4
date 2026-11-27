@@ -15,7 +15,7 @@ import {
   SecretStore,
   type ServiceType,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Effect, Layer, Schema, Stream } from "effect";
 import { runAppEvent } from "../../src/operations/events.ts";
@@ -101,14 +101,14 @@ const fixture = async (source: string, hostEvents: HostEvents = {}) => {
     Events.layer,
     Layer.succeed(PrivateFileAccessService, ownerOnlyFileAccess),
     resolver,
-    Layer.succeed(RuntimeProviderRegistry, {
-      appliedPlansFor: () => Effect.succeed([]),
-      resolveAppliedPlan: () => Effect.succeed(undefined),
-      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" }),
-      list: Effect.succeed([plan.provider]),
-      capabilities: Effect.succeed(provider.capabilities),
-      select: () => Effect.succeed(provider),
-    }),
+    Layer.succeed(
+      RuntimeProviderRegistry,
+      makeTestRuntimeProviderRegistry({
+        list: Effect.succeed([plan.provider]),
+        capabilities: Effect.succeed(provider.capabilities),
+        select: () => Effect.succeed(provider),
+      }),
+    ),
     Tooling.layer.pipe(Layer.provide(resolver)),
     Layer.succeed(EventCommandExecutor, {
       validate: () => Effect.void,
@@ -234,6 +234,32 @@ test("retains authored host expressions while project expressions use captured c
   }
 });
 
+test("reports a runtime condition that is not a boolean as a step that did not run", async () => {
+  // Given a condition that evaluates to the event's string payload.
+  const h = await fixture('events:\n  pre-start:\n    - cmd: echo forbidden\n      if: "{{ event.CANARY }}"');
+  try {
+    // When the event executes.
+    const error = await Effect.runPromise(
+      runAppEvent(h.plan, "pre-start", { CANARY: "runtime-canary" }).pipe(
+        Effect.provide(h.runtime),
+        Effect.flip,
+      ),
+    );
+    // Then the refusal is the message, not process output, and no exit code is invented.
+    expect(error).toMatchObject({
+      _tag: "LandofileEventStepFailedError",
+      index: 0,
+      message: expect.stringContaining("Event pre-start step 1 did not run:"),
+      outputTail: "",
+    });
+    expect(error).not.toHaveProperty("exitCode");
+    expect(error.remediation).not.toContain("Bun Shell");
+    expect(h.specs).toEqual([]);
+  } finally {
+    await h.close();
+  }
+});
+
 test("rejects an inert compiled condition instead of evaluating it against runtime context", async () => {
   // Given a literal condition string that would become true if reparsed.
   const h = await fixture(
@@ -250,8 +276,10 @@ test("rejects an inert compiled condition instead of evaluating it against runti
     expect(error).toMatchObject({
       _tag: "LandofileEventStepFailedError",
       index: 0,
-      outputTail: "Compiled event step condition must be a boolean.",
+      message: "Event pre-start step 1 did not run: Compiled event step condition must be a boolean.",
+      outputTail: "",
     });
+    expect(error).not.toHaveProperty("exitCode");
     // Then no command or secret lookup occurs.
     expect(h.specs).toEqual([]);
     expect(h.reads).toEqual([]);

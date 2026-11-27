@@ -1,5 +1,12 @@
 import { type JsonSchema, Result, Schema } from "effect";
-import { type SchemaNode, conjoin, conjuncts, fixedKeys, schemaChild } from "./config-key-navigation.ts";
+import {
+  type SchemaNode,
+  conjoin,
+  conjuncts,
+  fixedKeys,
+  primaryDescription,
+  schemaChild,
+} from "./config-key-navigation.ts";
 import { projectKeySchema } from "./config-key-projection.ts";
 import { schemaSummary } from "./config-key-summary.ts";
 import { type ValidationIssuePath, formatValidationIssuePath } from "./validation-issue.ts";
@@ -42,13 +49,9 @@ export const ConfigKeyDescription = Schema.Struct({
 });
 export type ConfigKeyDescription = typeof ConfigKeyDescription.Type;
 
-const descriptionOf = (document: JsonSchema.JsonSchema, node: SchemaNode): string | undefined => {
-  const descriptions = new Set(
-    conjuncts(document, node).flatMap((part) =>
-      typeof part === "object" && typeof part.description === "string" ? [part.description] : [],
-    ),
-  );
-  return descriptions.size === 0 ? undefined : [...descriptions].join(" ");
+const withDescription = (node: SchemaNode, description: string | undefined): SchemaNode => {
+  if (typeof node === "boolean" || description === undefined) return node;
+  return node.allOf === undefined ? { ...node, description } : node;
 };
 
 export const describeJsonSchemaPath = (
@@ -79,11 +82,11 @@ export const describeJsonSchemaPath = (
   }
   const parts = conjuncts(document, node);
   const defaultValue = parts.find((part) => typeof part !== "boolean" && "default" in part);
-  const description = descriptionOf(document, node);
+  const description = primaryDescription(document, node);
   const key = formatValidationIssuePath(path);
   const keys = fixedKeys(document, node).map((name) => {
     const child = schemaChild(document, node, name) ?? true;
-    const childDescription = descriptionOf(document, child);
+    const childDescription = primaryDescription(document, child);
     return {
       key: formatValidationIssuePath([...path, name]),
       summary: schemaSummary(document, child),
@@ -98,6 +101,6 @@ export const describeJsonSchemaPath = (
       ? { default: Schema.decodeUnknownSync(Schema.Json)(defaultValue.default) }
       : {}),
     ...(keys.length === 0 ? {} : { keys }),
-    schema: projectKeySchema(document, conjoin(parts)),
+    schema: projectKeySchema(document, withDescription(conjoin(parts), description)),
   });
 };

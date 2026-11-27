@@ -6,7 +6,8 @@ import { StateStoreError } from "../errors/index.ts";
 
 import { AbsolutePath } from "../schema/index.ts";
 import type { DurableStateBucketSpec, StateBucketSpec, StateStoreShape } from "../services/index.ts";
-import { ContractFailure, bytesEqual, decodeUtf8, utf8 } from "./_shared.ts";
+import { defineTransitions } from "../transitions/index.ts";
+import { ContractFailure, bytesEqual, decodeUtf8, isSdkError, utf8 } from "./_shared.ts";
 
 const stateStoreContractFailure = (assertion: string, details?: unknown): ContractFailure =>
   new ContractFailure({ message: `StateStore contract failed: ${assertion}`, assertion, details });
@@ -93,6 +94,100 @@ const stateStoreJsonEnvelopeBytes = (version: number, data: unknown): Uint8Array
 
 const stateStoreDirname = (file: AbsolutePath): AbsolutePath =>
   Schema.decodeUnknownSync(AbsolutePath)(dirname(file));
+
+const assertNewerVersionProtection = Effect.fnUntraced(function* (harness: StateStoreContractHarness) {
+  const value = { count: 1, label: "replacement" };
+  const open = (
+    key: string,
+    overrides: Partial<DurableStateBucketSpec<StateStoreContractDoc, StateStoreContractDoc>>,
+  ) =>
+    harness.store
+      .open(stateStoreDocSpec(harness, key, overrides))
+      .pipe(mapFailures((cause) => stateStoreContractFailure(`open ${key}`, cause)));
+  const transitions = defineTransitions<"absent" | "present">()({
+    put: { from: ["absent"], to: "present", settledIn: ["present"] },
+  });
+  for (const codec of ["json", "binary"] as const) {
+    let migrated = false;
+    const key = `newer-${codec}`;
+    const options = {
+      codec,
+      lock: "advisory",
+      onCorrupt: "quarantine",
+      onVersionMismatch: () => {
+        migrated = true;
+        return value;
+      },
+    } as const;
+    const bucket = yield* open(key, options);
+    const newerBytes =
+      codec === "json"
+        ? stateStoreJsonEnvelopeBytes(2, { unknown: "newer schema" })
+        : Uint8Array.of(0x4c, 0x53, 0x42, 0x31, 0, 0, 0, 2, 0xff);
+    yield* harness.writeRaw(bucket.path, newerBytes);
+    const operations: Record<string, Effect.Effect<unknown, StateStoreError | ContractFailure>> = {
+      get: bucket.get,
+      set: bucket.set(value),
+      remove: bucket.remove,
+      update: bucket.update(() => value),
+      modify: bucket.modify(() => [undefined, value]),
+      mutate: bucket.mutate(() => Effect.succeed({ _tag: "Remove", result: undefined })),
+      transition: bucket.transition({
+        transitions,
+        operation: "put",
+        state: () => "absent",
+        next: () => value,
+        illegal: () => stateStoreContractFailure("unexpected illegal transition"),
+      }),
+    };
+    for (const [operation, action] of Object.entries(operations)) {
+      const result = yield* Effect.result(action);
+      const failure = Result.isFailure(result) ? result.failure : undefined;
+      yield* requireStateStoreContract(
+        isSdkError(failure, StateStoreError) &&
+          failure.reason === "newer-version" &&
+          failure.path === bucket.path &&
+          failure.storedVersion === 2 &&
+          failure.supportedVersion === 1 &&
+          failure.operation === (operation === "set" || operation === "remove" ? operation : "get"),
+        `${codec} ${operation} refuses newer state`,
+        result,
+      );
+      const raw = yield* harness.readRaw(bucket.path);
+      yield* requireStateStoreContract(
+        raw !== null && bytesEqual(raw, newerBytes),
+        `${codec} ${operation} preserves bytes`,
+      );
+    }
+    const discard = yield* open(key, { ...options, onNewerVersion: "discard" });
+    const discarded = yield* discard.get.pipe(
+      mapFailures((cause) => stateStoreContractFailure("discard newer state", cause)),
+    );
+    yield* requireStateStoreContract(discarded === null && !migrated, `${codec} newer state never migrates`);
+    const files = yield* harness.list(stateStoreDirname(bucket.path));
+    yield* requireStateStoreContract(
+      !files.some((file) => file.startsWith(`${key}.corrupt-`)),
+      `${codec} newer state never quarantines`,
+    );
+
+    yield* harness.writeRaw(bucket.path, "malformed frame");
+    yield* bucket
+      .set(value)
+      .pipe(mapFailures((cause) => stateStoreContractFailure("replace malformed bytes", cause)));
+    const read = yield* bucket.get.pipe(
+      mapFailures((cause) => stateStoreContractFailure("read replacement", cause)),
+    );
+    yield* requireStateStoreContract(
+      read?.count === value.count && read.label === value.label,
+      `${codec} set replaces a malformed frame`,
+    );
+    const afterSet = yield* harness.list(stateStoreDirname(bucket.path));
+    yield* requireStateStoreContract(
+      !afterSet.some((file) => file.startsWith(`${key}.corrupt-`)),
+      `${codec} set probes without quarantining`,
+    );
+  }
+});
 
 const stateStoreRecord = (value: unknown): Readonly<Record<string, unknown>> | null =>
   typeof value === "object" && value !== null ? (value as Readonly<Record<string, unknown>>) : null;
@@ -311,6 +406,8 @@ export const runStateStoreContract = Effect.fnUntraced(
       migrated,
     );
 
+    yield* assertNewerVersionProtection(harness);
+
     // 4. Corruption handling: quarantine sidecar and fail mode.
     const quarantineSeed = yield* store
       .open(stateStoreDocSpec(harness, "corrupt-quarantine.json"))
@@ -350,7 +447,7 @@ export const runStateStoreContract = Effect.fnUntraced(
     const corruptFail = yield* Effect.result(corruptFailBucket.get);
     yield* requireStateStoreContract(
       Result.isFailure(corruptFail) &&
-        corruptFail.failure instanceof StateStoreError &&
+        isSdkError(corruptFail.failure, StateStoreError) &&
         corruptFail.failure.reason === "decode" &&
         corruptFail.failure.operation === "get",
       'onCorrupt "fail" surfaces a StateStoreError with reason decode',

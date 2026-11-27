@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import type { EngineHttpResponse } from "@lando/container-runtime/engine-api";
-import { loadAppliedPlan } from "@lando/provider-docker";
-import { ServiceName, landoAppNetworkName } from "@lando/sdk/schema";
+import { loadAppliedPlanStrict, persistAppliedPlan } from "@lando/provider-docker";
+import { ServiceName, landoAppNetworkName, planAppIdentity } from "@lando/sdk/schema";
 import { Effect, Result, Schema } from "effect";
 import { makeRuntimeProvider } from "./provider-fixture.ts";
 import { webFor, withInventory } from "./resource-ownership-support.ts";
@@ -13,6 +13,30 @@ const CreateBodyLabels = Schema.Struct({
 const NetworkCreateBody = Schema.Struct({
   Name: Schema.String,
   Labels: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+});
+
+test("direct scoped apply cannot bypass legacy adoption preflight", async () => {
+  await withInventory(async ({ plan, root, state, store }) => {
+    await Effect.runPromise(persistAppliedPlan(state, plan));
+    const desired = { ...plan, identity: { ...planAppIdentity(plan), dataRoot: root } };
+    const provider = await Effect.runPromise(
+      makeRuntimeProvider({
+        platform: "linux",
+        appliedPlanState: state,
+        dockerApi: {
+          info: Effect.succeed({}),
+          request: () => Effect.succeed({ status: 404, body: "" }),
+        },
+      }),
+    );
+
+    const result = await Effect.runPromise(
+      Effect.scoped(provider.apply(desired, { reconcile: false })).pipe(Effect.result),
+    );
+
+    expect(result).toMatchObject({ _tag: "Failure", failure: { operation: "data-root-adoption" } });
+    expect(await Effect.runPromise(store.load(root))).toBeUndefined();
+  });
 });
 
 test("failed apply leaves durable ownership hints for verified later cleanup without rollback", async () => {
@@ -77,7 +101,7 @@ test("failed apply leaves durable ownership hints for verified later cleanup wit
     // Retention: apply does not compensate/teardown on failure.
     expect(deleteAttempts).toBe(0);
     expect(networks.has(privateNetwork)).toBe(true);
-    expect(await Effect.runPromise(loadAppliedPlan(state, desired.id))).toBeUndefined();
+    expect(await Effect.runPromise(loadAppliedPlanStrict(state, desired.id))).toBeUndefined();
     expect(await Effect.runPromise(store.summary(root))).toBeDefined();
     const cleanup = provider.cleanupOwnedResources;
     if (cleanup === undefined) throw new TypeError("built-in cleanup port is missing");
@@ -199,14 +223,16 @@ test("destroy of a partial apply is a no-op and ownership inventory removes reta
       Effect.scoped(provider.apply(desired, { reconcile: false })).pipe(Effect.result),
     );
     expect(Result.isFailure(failed)).toBe(true);
-    expect(await Effect.runPromise(loadAppliedPlan(state, desired.id))).toBeUndefined();
+    expect(await Effect.runPromise(loadAppliedPlanStrict(state, desired.id))).toBeUndefined();
     expect(await Effect.runPromise(store.summary(root))).toBeDefined();
     // Explicit retained container + private network before cleanup.
     expect(containers.has(containerName)).toBe(true);
     expect(networks.has(privateNetwork)).toBe(true);
 
     // When: destroy without applied plan is a no-op for planful teardown.
-    const destroyed = await Effect.runPromise(provider.destroy({ app: desired.id }, { volumes: false }));
+    const destroyed = await Effect.runPromise(
+      provider.bringDown({ app: desired.id }, { containers: "remove", volumes: false }),
+    );
     expect(destroyed).toMatchObject({ kind: "no-op", reason: "no-applied-plan" });
     expect(containers.has(containerName)).toBe(true);
     expect(networks.has(privateNetwork)).toBe(true);
@@ -306,6 +332,6 @@ test("unknown ownership on retry fails closed without mutating foreign resources
     expect(calls.filter((call) => call.includes("/start"))).toEqual([]);
     expect(calls.filter((call) => call.includes("/containers/create"))).toEqual([]);
     expect(calls.length).toBeGreaterThan(callsAfterFirst);
-    expect(await Effect.runPromise(loadAppliedPlan(state, desired.id))).toBeUndefined();
+    expect(await Effect.runPromise(loadAppliedPlanStrict(state, desired.id))).toBeUndefined();
   });
 });

@@ -46,6 +46,7 @@ import {
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
 } from "@lando/sdk/services";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import * as StateStoreLayer from "@lando/state-store/service";
 import { Effect, Fiber, Layer, Queue, Schema, type Scope, Stream } from "effect";
 import { ownerOnlyFileAccess } from "./private-file-access.ts";
@@ -403,14 +404,14 @@ describe("live volume snapshot round trip", () => {
                       silentEvents,
                       passthroughRedaction,
                       Layer.succeed(PathsService, PathsService.of(paths)),
-                      Layer.succeed(RuntimeProviderRegistry, {
-                        appliedPlansFor: () => Effect.succeed([]),
-                        resolveAppliedPlan: () => Effect.succeed(undefined),
-                        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-                        list: Effect.succeed([ProviderId.make(fx.provider.id)]),
-                        capabilities: Effect.succeed(fx.provider.capabilities),
-                        select: () => Effect.succeed(fx.provider),
-                      }),
+                      Layer.succeed(
+                        RuntimeProviderRegistry,
+                        makeTestRuntimeProviderRegistry({
+                          list: Effect.succeed([ProviderId.make(fx.provider.id)]),
+                          capabilities: Effect.succeed(fx.provider.capabilities),
+                          select: () => Effect.succeed(fx.provider),
+                        }),
+                      ),
                     ),
                   ),
                 ),

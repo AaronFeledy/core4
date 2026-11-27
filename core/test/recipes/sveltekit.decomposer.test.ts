@@ -70,6 +70,13 @@ describe("sveltekit decomposition", () => {
           cmd: [":node-local", "svelte-kit"],
           wrapper: true,
         },
+        dev: {
+          service: "web",
+          description: "Run the Vite dev server on the address Lando publishes.",
+          cmd: [":node-local", "vite", "dev", "--host", "0.0.0.0", "--port", "5173", "--strictPort"],
+          env: { __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS: "{{ services.web.hostname }}" },
+          wrapper: true,
+        },
       },
     });
     expect<unknown>(result.fragment).toEqual({
@@ -85,10 +92,10 @@ describe("sveltekit decomposition", () => {
     )(authoringOf(withDatabase));
     expect(Object.keys(authoring.services)).toEqual(["web", "database"]);
     expect<unknown>(authoring.services.database).toEqual({ type: "{{ recipe.database }}" });
-    const web = Schema.decodeUnknownSync(Schema.Struct({ dependsOn: Schema.optionalKey(Schema.Unknown) }))(
+    const web = Schema.decodeUnknownSync(Schema.Struct({ depends_on: Schema.optionalKey(Schema.Unknown) }))(
       authoring.services.web,
     );
-    expect<unknown>(web.dependsOn).toEqual(["database"]);
+    expect<unknown>(web.depends_on).toEqual(["database"]);
   });
 
   test("preserves authoring data when only Node and adapter tokens vary", () => {

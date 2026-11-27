@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { makeLandoRuntime, resolveApp } from "@lando/core";
 import { AbsolutePath, ProviderId } from "@lando/core/schema";
 import { LandofileService, RuntimeProviderRegistry } from "@lando/core/services";
-import { makeTestRuntimeProvider } from "@lando/sdk/test";
+import { makeTestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect, Layer, Stream } from "effect";
 import { withEnvVar } from "../_support/temp-cwd.ts";
 
@@ -42,10 +42,7 @@ test("public captured handle reuses configuration until resolution while emergen
               layers: [
                 Layer.succeed(
                   RuntimeProviderRegistry,
-                  RuntimeProviderRegistry.of({
-                    resolveAppliedPlan: () => Effect.succeed(undefined),
-                    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-                    appliedPlansFor: () => Effect.succeed([]),
+                  makeTestRuntimeProviderRegistry({
                     list: Effect.succeed([ProviderId.make("test")]),
                     capabilities: Effect.succeed(provider.capabilities),
                     select: () => Effect.succeed(provider),

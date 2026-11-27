@@ -1,6 +1,7 @@
 import { basename, dirname, join } from "node:path";
 import { StateStoreError } from "@lando/sdk/errors";
 import { FileSystem, StateStore } from "@lando/sdk/services";
+import { storeErrorRemediation } from "@lando/state-store";
 import { Effect, Result, Schema } from "effect";
 import {
   journalRecovery,
@@ -20,8 +21,10 @@ const unreadableJournal = (path: string, error: StateStoreError): typeof Unreada
   path,
   _tag: error._tag,
   message: `The accelerated-start journal could not be read (${error.reason}).`,
-  remediation:
+  remediation: storeErrorRemediation(
+    error,
     "Restore a readable journal from a trusted backup or repair its durable-state format using the Lando version that wrote it. Preserve this journal and its resources until ownership can be verified.",
+  ),
 });
 
 export const readAcceleratedStartInventory = Effect.fnUntraced(function* (includeCompleted = false) {

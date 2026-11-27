@@ -429,22 +429,29 @@ Lando resolves the working directory before starting a command, so relative path
 
 ## Smoke test the running site
 
-Host scripts can poke the app through its public URL. Save this as `.lando/scripts/smoke.bun.sh`:
+A host command can fetch the app through its public URL. A script can't read Landofile expressions, so declare this one as a host task in `.lando.yml`, where `{{ services.web.url }}` is the address the router publishes for `web`:
 
-```sh
-# ---
-# desc: Fetch a URL from the running site and fail loudly
-# ---
-curl -sf "$1"
+```yaml
+tooling:
+  smoke:
+    description: Fetch a path from the running site and fail loudly
+    service: ":host"
+    args:
+      path:
+        order: 0
+        required: true
+        description: Path to fetch, such as version.txt
+    cmd: [curl, -sf, "{{ services.web.url }}/{{ args.path }}"]
 ```
 
-Start the app and pass the `web` URL from `lando info`. Lando adds a port such as `:8443` when 443 was taken:
+Start the app, then run the task:
 
 ```sh
 lando start
-lando info
-lando smoke https://web.scripts-demo.lndo.site/version.txt
+lando smoke version.txt
 ```
+
+Lando fills in the URL each time the task runs, including a port such as `:8443` when 443 was taken. Before the first `lando start` there's no address to read, so the task fails without running `curl`. [Use the URL in tooling and events](../landofile/expressions.mdx#use-the-url-in-tooling-and-events) covers where the expression works. To keep the logic in a script, pass the URL as an argument from a task like this one, for example `cmd: [bash, ./scripts/smoke.sh, "{{ services.web.url }}"]`.
 
 That prints the stamped SHA. Ask for a path that does not exist and `curl -f` exits `22`, so `lando smoke` exits `22` too. You can use that exit code in a git hook.
 
@@ -466,7 +473,7 @@ lando peek
 
 That starts the app, then prints the stamped SHA from inside `web`. The app and its URL stay up after the script exits, the same as a `lando start` you type yourself.
 
-`lando` in a script is the `lando` on your `PATH`. If your `PATH` has none, it is the Lando that started the script, so `./lando peek` from a download folder works too. Call it by name. A path-qualified binary such as `./bin/lando` inside the script still runs as Bun instead of Lando: Bun Shell file mode exports Lando's embedded-Bun switches (`BUN_BE_BUN` and related flags) and has no `unset` for them. That upstream shell limitation also applies to other Bun-compiled CLIs the script starts by path. Prefer the bare `lando` name for nested Lando calls.
+`lando` in a script is the Lando that started the script, even when another Lando, such as Lando 3, comes first on your `PATH`. So `./lando peek` from a download folder works too, and the nested call reads the same app state. Call it by name. A path-qualified binary such as `./bin/lando` inside the script still runs as Bun instead of Lando: Bun Shell file mode exports Lando's embedded-Bun switches (`BUN_BE_BUN` and related flags) and has no `unset` for them. That upstream shell limitation also applies to other Bun-compiled CLIs the script starts by path. Prefer the bare `lando` name for nested Lando calls.
 
 Package scripts you run with `lando bun run` follow the same rule: `lando` in them runs Lando, and `bun` runs the Bun the Lando executable provides. A nested `lando bun` inside one of those scripts fails with `BunSelfReentryError` before another Bun child starts; call `bun` directly instead. How `lando bun` reports its child's exit and output is in [Script Lando with JSON](../../scripting-with-json/#capture-bun-backed-commands).
 
@@ -580,6 +587,25 @@ lando stamp abc1234
     </Step>
   </Scenario>
 
+  <Scenario id="smoke-published-url" layer="e2e" timeout={300000} render={false} reason="Run the host smoke task against the URL the router publishes">
+    <Step name="scaffold-smoke">
+      <UseFixture name="scripts-demo" />
+      <Run command="lando build" />
+      <Run command="lando stamp abc1234" />
+    </Step>
+    <Step name="refuse-smoke-before-start">
+      <Verify command="lando smoke version.txt --format=json" expectExit={1} expect={{ stdout: { regex: "\"reason\":\\s*\"app-not-started\"" } }} />
+    </Step>
+    <Step name="start-smoke"><Run command="lando start --format=json" /></Step>
+    <Step name="smoke">
+      <Verify command="lando smoke version.txt" expect={{ stdout: { regex: "abc1234" } }} />
+      <Verify command="lando smoke missing.txt" expectExit={22} />
+    </Step>
+    <Step name="cleanup-smoke">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes" />
+    </Step>
+  </Scenario>
   <Scenario id="missing-front-matter" render>
     A missing front-matter block does not prevent the refresh that `lando start` also performs. Lint locates it, refresh warns and succeeds, and healthy commands still run. Only the broken script refuses execution.
     <Step name="lint-missing-front-matter">

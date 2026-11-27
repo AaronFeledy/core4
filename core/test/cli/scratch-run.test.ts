@@ -28,7 +28,6 @@ import {
 import * as BunDataMover from "@lando/data-mover/service";
 import * as AppCacheService from "@lando/engine/cache/service";
 import { AGENT_CONTEXT_ENV_ALLOWLIST } from "@lando/engine/config/agent-env";
-import { StreamFrameSink, type StreamFrameSinkFrame } from "@lando/engine/operations/stream-frame-sink";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as ScratchRegistryLayer from "@lando/engine/scratch-app/registry";
 import { makeScratchRegistry } from "@lando/engine/scratch-app/registry";
@@ -43,13 +42,16 @@ import * as BunFileSystem from "@lando/engine/services/file-system";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
 import * as BunProcessRunner from "@lando/engine/services/process-runner";
 import * as EnvSecretStore from "@lando/engine/services/secret-store";
+import { layerUnavailable } from "@lando/engine/subsystems/proxy/api";
 import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import * as RendererOutput from "@lando/renderer/output";
 import * as RendererRuntime from "@lando/renderer/runtime";
-import { ServiceExecError } from "@lando/sdk/errors";
+import { ScratchAppError, ServiceExecError } from "@lando/sdk/errors";
+import { StreamFrameSink, type StreamFrameSinkFrame } from "@lando/sdk/services";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import * as StateStoreLayer from "@lando/state-store/service";
 import { makeStateStore } from "@lando/state-store/service";
@@ -204,18 +206,16 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
         }
         return { changed: true };
       }),
-    start: () => die("start"),
-    stop: () => die("stop"),
     restart: () => die("restart"),
     waitForExit: () => Effect.succeed({ exitCode: 0 }),
-    destroy: (target, destroyOptions) =>
+    bringDown: (target, destroyOptions) =>
       Effect.sync(() => {
-        const call = { app: String(target.app), volumes: destroyOptions.volumes };
+        const call = { app: String(target.app), volumes: destroyOptions.volumes === true };
         if (destroyOptions.removeState === false) options.stopCalls?.push(call);
         else recorded.destroyCalls.push(call);
-        return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
+        return { kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } };
       }),
-    removeObservedService: () => Effect.succeed({ kind: "absent" as const }),
+    bringDownObserved: (observed) => Effect.succeed({ service: observed.service, action: "absent" as const }),
     readAppEnvironment: () => Effect.succeed([]),
     exec: () => die("exec"),
     execStream: (target, spec) => {
@@ -283,16 +283,14 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
   const pathsLive = Layer.succeed(PathsService, makeLandoPaths());
   const registryLive = Layer.succeed(
     RuntimeProviderRegistry,
-    RuntimeProviderRegistry.of({
-      resolveAppliedPlan: () => Effect.succeed(undefined),
-      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-      appliedPlansFor: () => Effect.succeed([]),
+    makeTestRuntimeProviderRegistry({
       list: Effect.succeed([providerId]),
       capabilities: Effect.succeed(provider.capabilities),
       select: () => Effect.succeed(provider),
     }),
   );
   const scratchDeps = Layer.mergeAll(
+    layerUnavailable,
     stateStoreLayer,
     BunFileSystem.layer,
     PrivateFileAccessService.layer,
@@ -532,7 +530,10 @@ describe("scratchRun", () => {
 
       expect(recorded.destroyCalls).toHaveLength(1);
       expect(recorded.destroyCalls[0]?.app).toBe(String(plan.id));
-      expect(stopCalls).toEqual([{ app: String(plan.id), volumes: false }]);
+      expect(stopCalls).toEqual([
+        { app: String(plan.id), volumes: false },
+        { app: String(plan.id), volumes: true },
+      ]);
 
       const toolboxService = plan.services[Object.keys(plan.services)[0] as keyof typeof plan.services];
       const appBind = toolboxService === undefined ? undefined : serviceAppMount(toolboxService);
@@ -674,6 +675,64 @@ describe("scratchRun", () => {
         scratchList().pipe(Effect.provide(layer), Effect.provide(testSupportLayer())),
       );
       expect(summaries).toEqual([]);
+    });
+  });
+
+  test("--keep does not detach when exec emits output but never reports its exit", async () => {
+    await withTempProject(async () => {
+      const recorded: Recorded = { appliedPlans: [], destroyCalls: [], execCalls: [] };
+      const privateArg = "private-scratch-argv";
+      const partialOutput = "partial command output";
+      const layer = makeHarnessLayer(recorded, {
+        execStream: () => Stream.make({ kind: "stdout", chunk: new TextEncoder().encode(partialOutput) }),
+      });
+      const failure = await Effect.runPromise(
+        scratchRun({ command: ["echo", privateArg], mount: true, keep: true, answers: {} }).pipe(
+          Effect.provide(layer),
+          Effect.provide(testSupportLayer()),
+          Effect.flip,
+        ),
+      );
+
+      if (!(failure instanceof ScratchAppError) || !(failure.cause instanceof ServiceExecError))
+        throw new TypeError("expected scratch failure with its exec cause");
+      expect(failure.remediation).toBe(failure.cause.remediation);
+      expect(JSON.stringify(failure)).not.toContain(privateArg);
+      expect(JSON.stringify(failure)).not.toContain(partialOutput);
+      expect(recorded.execCalls).toHaveLength(1);
+      expect(recorded.destroyCalls).toHaveLength(1);
+      const summaries = await Effect.runPromise(
+        scratchList().pipe(Effect.provide(layer), Effect.provide(testSupportLayer())),
+      );
+      expect(summaries).toEqual([]);
+    });
+  });
+
+  test("a stopped scratch reports scratch recovery rather than the provider's app-start advice", async () => {
+    await withTempProject(async () => {
+      const recorded: Recorded = { appliedPlans: [], destroyCalls: [], execCalls: [] };
+      const providerError = new ServiceExecError({
+        providerId,
+        operation: "exec",
+        service: "toolbox",
+        message: "The service is not running.",
+        remediation: "Run `lando start` and retry.",
+      });
+      const layer = makeHarnessLayer(recorded, { execStream: () => Stream.fail(providerError) });
+
+      const failure = await Effect.runPromise(
+        scratchRun({ command: ["true"], mount: true, keep: false, answers: {} }).pipe(
+          Effect.provide(layer),
+          Effect.provide(testSupportLayer()),
+          Effect.flip,
+        ),
+      );
+
+      if (!(failure instanceof ScratchAppError)) throw new TypeError("expected scratch execution failure");
+      expect(failure.remediation).toContain("lando run --");
+      expect(failure.remediation).not.toContain("lando start");
+      expect(failure.cause).toBe(providerError);
+      expect(recorded.destroyCalls).toHaveLength(1);
     });
   });
 

@@ -21,6 +21,7 @@ export const manifest = Schema.decodeSync(PluginManifest)({
       { id: "db:snapshots:prune", summary: "Preview or apply database snapshot retention." },
       { id: "db:restore", summary: "Restore a database service from a snapshot." },
       { id: "db:reset", summary: "Reset a database service to an empty state." },
+      { id: "db:creds:apply", summary: "Preview or repair credentials for a running database service." },
       { id: "db:seed", summary: "Seed a fresh database from a dump, snapshot, or running app." },
     ],
   },
@@ -37,6 +38,7 @@ export const plugin = definePlugin({
     ["db:snapshots:prune", () => import("./commands/prune.ts").then((module) => module.spec)],
     ["db:restore", () => import("./commands/restore.ts").then((module) => module.spec)],
     ["db:reset", () => import("./commands/reset.ts").then((module) => module.spec)],
+    ["db:creds:apply", () => import("./commands/creds-apply.ts").then((module) => module.spec)],
     ["db:seed", () => import("./commands/seed.ts").then((module) => module.spec)],
   ]),
 });

@@ -5,6 +5,10 @@
  * published `InteractionService` Effect interface. `PromptIO` is an internal
  * Live-layer detail here, not the public prompting surface.
  *
+ * A batch that reads the terminal first takes it from the command's live progress
+ * (`suspendCommandProgress`): a drawn task tree holds stdin in raw mode, so a
+ * line-mode answer would never arrive and Ctrl-C would not reach the prompt.
+ *
  * Renderer-boundary carve-out: this module owns the Live-layer stdin reader
  * and the no-renderer fallback writer. Prompt output
  * routes through `Renderer.output.stderr` whenever a `Renderer` is
@@ -46,6 +50,7 @@ import {
 } from "@lando/sdk/services";
 import { Cause, type Context, Effect, Layer, Option, Redacted, Semaphore } from "effect";
 
+import { suspendCommandProgress } from "../cli/command-progress.ts";
 import {
   type ChoicesCommandRunner,
   type CollectPromptsOptions,
@@ -370,7 +375,10 @@ export const makeInteractionService = (deps: InteractionServiceDeps = {}): Inter
       ...(chrome === undefined ? {} : { chrome }),
       ...(driver === undefined ? {} : { interactiveDriver: driver }),
     };
-    return yield* promptLock.withPermits(1)(runEngine(collect, rendererOption));
+    const engine = runEngine(collect, rendererOption);
+    const reads =
+      gate.interactive && tty && !gate.yes && specs.some(({ name }) => answers[name] === undefined);
+    return yield* promptLock.withPermits(1)(reads ? suspendCommandProgress(engine) : engine);
   });
 
   const promptAll = Effect.fn("InteractionService.promptAll")(
@@ -427,12 +435,39 @@ export const makeInteractionService = (deps: InteractionServiceDeps = {}): Inter
 
   return InteractionService.of({
     id,
-    isInteractive: Effect.sync(isInteractiveTerminal),
+    // The same decision a prompt batch without per-call overrides makes.
+    isInteractive: Effect.sync(
+      () => resolveGate(undefined, isInteractiveTerminal(), defaultMode).interactive,
+    ),
     prompt,
     promptAll,
     confirm,
     select,
     secret,
+  });
+};
+
+/**
+ * The same service, answering for a non-interactive invocation: `isInteractive` is false and
+ * prompts without their own interactivity choice resolve as non-interactive. Nested commands that
+ * reuse a host's service (event-dispatched commands) use it so they never take the terminal.
+ */
+export const nonInteractiveView = (service: InteractionServiceShape): InteractionServiceShape => {
+  const pinned = <O extends PromptBatchOptions>(options: O): O =>
+    options.mode === undefined && options.interactive === undefined
+      ? { ...options, mode: "non-interactive" }
+      : options;
+  return InteractionService.of({
+    id: service.id,
+    isInteractive: Effect.succeed(false),
+    prompt: (spec) =>
+      service
+        .promptAll([spec], { mode: "non-interactive" })
+        .pipe(Effect.map((answers) => answers[spec.name] as SdkPromptAnswer)),
+    promptAll: (specs, options) => service.promptAll(specs, pinned(options ?? {})),
+    confirm: (spec) => service.confirm(pinned(spec)),
+    select: (spec) => service.select(pinned(spec)),
+    secret: (spec) => service.secret(pinned(spec)),
   });
 };
 

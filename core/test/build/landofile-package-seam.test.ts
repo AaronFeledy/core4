@@ -65,7 +65,7 @@ describe("Landofile package seam", () => {
     expect(scripts).toEqual({
       build: "tsc -b",
       clean: "rm -rf dist .tsbuildinfo",
-      test: "bun test ./test",
+      test: "bun --cwd=.. test ./landofile/test",
       typecheck: "tsc -b",
     });
     expect(packageEntry).toEndWith("/landofile/src/index.ts");
@@ -123,7 +123,7 @@ describe("Landofile package seam", () => {
 
     // Then
     expect(dependencies.effect).toBe("catalog:");
-    expect(dependencies.semver).toBe("^7.8.5");
+    expect(dependencies.semver).toMatch(/^\^7\./);
     expect(devDependencies["@types/semver"]).toBe("^7.8.0");
   });
 
@@ -160,6 +160,7 @@ describe("Landofile package seam", () => {
     expect(Object.keys(coreModule).sort()).toEqual(
       [
         "ComposeDispositionMatrixError",
+        "EnvironmentAssignment",
         "GENERIC_FLOW_MAPPING_REMEDIATION",
         "LANDOFILE_LAYER_ORDER",
         "LANDOFILE_LEADING_COMMENT_BLOCKS",

@@ -1,8 +1,9 @@
+import { mapFailures } from "@lando/sdk/command-result";
 import type { ToolingStepConditionError } from "@lando/sdk/errors";
 import type { ExpressionContext } from "@lando/sdk/expressions";
 import type { ToolingVarLiteral } from "@lando/sdk/schema";
-import { Effect, Exit } from "effect";
-import { isEventBoundaryError } from "./event-errors.ts";
+import { Cause, Effect, Exit } from "effect";
+import { isEventBoundaryError, isServiceUrlRefusal } from "./event-errors.ts";
 
 import type {
   ToolingStepIteration,
@@ -25,7 +26,7 @@ interface StepExecutionDependencies {
   readonly conditionAllows: (
     condition: ToolingStepLeaf["condition"],
     context: ExpressionContext,
-  ) => Effect.Effect<boolean, ToolingStepConditionError>;
+  ) => Effect.Effect<boolean, ToolingStepConditionError | ToolingStepExpressionError>;
   readonly resolveLeaf: (
     leaf: ToolingStepLeaf,
     context: ExpressionContext,
@@ -93,9 +94,19 @@ const executeResolved = <E, A>(
   const presented = run.pipe(
     Effect.flatMap((result) => (leaf.silent ? Effect.void : runners.present({ leaf, context, result }))),
   );
+  // `ignoreError` tolerates a step that ran and failed. A step refused because a URL it reads
+  // cannot be resolved never ran, on every path: a direct command resolves it before this point,
+  // while an inline task or canonical command resolves it inside its runner.
   return leaf.ignoreError
     ? presented.pipe(
-        Effect.catch((error) => (isEventBoundaryError(error) ? Effect.fail(error) : Effect.void)),
+        Effect.catchCause((cause) => {
+          const [reason] = cause.reasons;
+          if (cause.reasons.length !== 1 || reason === undefined || !Cause.isFailReason(reason))
+            return Effect.failCause(cause);
+          return isEventBoundaryError(reason.error) || isServiceUrlRefusal(reason.error)
+            ? Effect.failCause(cause)
+            : Effect.void;
+        }),
       )
     : presented;
 };
@@ -110,20 +121,23 @@ export const runToolingStepProgramWith = <E, A>(
     Effect.gen(function* () {
       const deferred: Array<Effect.Effect<void, E | ToolingStepConditionError | ToolingStepExpressionError>> =
         [];
+      // Every failure of a leaf, its predicate included, is attributed to that leaf.
+      const attributed = <A2, E2>(
+        leaf: ToolingStepLeaf,
+        effect: Effect.Effect<A2, E2>,
+      ): Effect.Effect<A2, E | E2> => {
+        const { mapLeafError } = runners;
+        return mapLeafError === undefined
+          ? effect
+          : effect.pipe(mapFailures((error) => mapLeafError.call(runners, leaf, error)));
+      };
       const executeLeaf = Effect.fnUntraced(
         function* (leaf: ToolingStepLeaf, leafContext: ExpressionContext, checkCondition: boolean) {
           if (checkCondition && !(yield* dependencies.conditionAllows(leaf.condition, leafContext))) return;
           const resolved = yield* dependencies.resolveLeaf(leaf, leafContext);
           yield* executeResolved(resolved.leaf, resolved.context, runners);
         },
-        (effect, leaf) =>
-          effect.pipe(
-            Effect.catch((error) =>
-              runners.mapLeafError === undefined
-                ? Effect.fail(error)
-                : Effect.fail(runners.mapLeafError(leaf, error)),
-            ),
-          ),
+        (effect, leaf) => attributed(leaf, effect),
       );
       const executeNode = (
         node: ToolingStepNode,
@@ -131,7 +145,7 @@ export const runToolingStepProgramWith = <E, A>(
       ): Effect.Effect<void, E | ToolingStepConditionError | ToolingStepExpressionError> => {
         if (node.kind === "leaf") return executeLeaf(node.leaf, nodeContext, true);
         if (node.kind === "defer") {
-          return dependencies.conditionAllows(node.leaf.condition, nodeContext).pipe(
+          return attributed(node.leaf, dependencies.conditionAllows(node.leaf.condition, nodeContext)).pipe(
             Effect.flatMap((allowed) =>
               Effect.sync(() => {
                 if (allowed) deferred.push(executeLeaf(node.leaf, nodeContext, false));

@@ -1,3 +1,5 @@
+import { dataRootRefusal } from "@lando/container-runtime/native-ownership";
+import { LANDO_DATA_ROOT_LABEL } from "@lando/sdk/schema";
 import { absurd } from "effect";
 
 export const SOCKET_PROXY_UNIT_PATHS = [
@@ -124,10 +126,19 @@ export const foreignSocketProxyNotice = (
   switch (classification.kind) {
     case "foreign":
       switch (classification.reason) {
-        case "other-root":
+        case "other-root": {
+          const { message, remediation } = dataRootRefusal({
+            kind: "router",
+            nativeName: "socket proxy on ports 80 and 443",
+            labels:
+              classification.ownerRoot === undefined
+                ? undefined
+                : { [LANDO_DATA_ROOT_LABEL]: classification.ownerRoot },
+          });
           return style === "brief"
-            ? `Ports 80 and 443 are served by the Lando install at ${classification.ownerRoot}.`
-            : `Ports 80 and 443 are served by the socket proxy of the Lando install at ${classification.ownerRoot}, so this install uses fallback ports. If you no longer use that install, remove it with \`LANDO_USER_DATA_ROOT=${classification.ownerRoot} lando uninstall --purge\`, then run \`lando setup\` here.`;
+            ? message
+            : `${message} This installation uses fallback ports. ${remediation}`;
+        }
         case "missing-root":
           return style === "brief"
             ? `Ports 80 and 443 are held by a socket proxy left by a removed Lando install (${classification.ownerRoot}); run \`lando setup\` to take it over.`

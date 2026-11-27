@@ -7,6 +7,8 @@ export {
   resolveCommandCompletion,
 } from "./completion.ts";
 export {
+  ConvertedDefectAnnotation,
+  type FailureOutcome,
   FailureRoleAnnotation,
   type ProjectedFailure,
   annotateFailureRole,
@@ -18,6 +20,7 @@ export {
   mapFailures,
   mapStreamFailures,
   mergeFailure,
+  orDieWithRole,
   primaryFailureReason,
   raceJoined,
   withDeadline,
@@ -28,7 +31,12 @@ import { CommandResultEnvelope } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
 import { internalErrorRemediation, taggedErrorJson } from "./diagnostic.ts";
 
-export { internalErrorRemediation, normalizeDefect, taggedErrorJson } from "./diagnostic.ts";
+export {
+  causeRemediation,
+  internalErrorRemediation,
+  normalizeDefect,
+  taggedErrorJson,
+} from "./diagnostic.ts";
 export {
   type ToolingDiagnostic,
   boundedDiagnosticSummary,

@@ -1,22 +1,28 @@
 import { mapFailures } from "@lando/sdk/command-result";
 import { ProviderUnavailableError, ServiceNotFoundError } from "@lando/sdk/errors";
-import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
+import {
+  type AppPlan,
+  type ContainerDisposition,
+  LANDO_DATA_ROOT_LABEL,
+  type ServicePlan,
+} from "@lando/sdk/schema";
 import type {
-  DestroyOutcome,
-  ObservedServiceRemoval,
+  BringDownOutcome,
+  ObservedBringDown,
   ProviderError,
   ServiceRuntimeIdentity,
   ServiceRuntimeInfo,
   ServiceSelector,
 } from "@lando/sdk/services";
 import { Effect } from "effect";
+import { type AdoptionReceipt, dataRootRefusal, decideDataRootOwnership } from "./data-root-ownership.ts";
 import type { EngineHttpApi, ProviderErrorContext } from "./engine-api.ts";
 import { missingApi, missingService } from "./engine-errors.ts";
-import { serviceContainerOwnershipProblem } from "./native-ownership.ts";
+import { decodeNativeObservation, serviceContainerOwnershipProblem } from "./native-ownership.ts";
 import { serviceContainerName } from "./plan.ts";
 import { redactDetails, redactorFor, withApiReason } from "./redact.ts";
 import { absentShutdown } from "./shutdown-observation.ts";
-import { stopAndRemoveContainer } from "./stop-container.ts";
+import { bringDownContainer } from "./stop-container.ts";
 
 export type ServiceLifecycleAction = "start" | "stop" | "restart";
 
@@ -161,72 +167,124 @@ export const postExactServiceLifecycle = (
   ).pipe(Effect.asVoid);
 };
 
-/**
- * Stops and removes the one container behind an observation the provider itself reported, without
- * consulting any applied plan. The container id is the whole address: a name could be reused by a
- * recreated container, and an observation carrying no id is a service the provider already found
- * nothing for, which is an absent receipt rather than an error.
- */
-export const removeObservedContainer = (
+const OBSERVED_OPERATION = "bringDownObserved";
+
+/** Reads one container's live name and labels by native id; a missing container is `undefined`. */
+const liveContainer = Effect.fnUntraced(function* (
   observed: ServiceRuntimeInfo,
-  options: ServiceLifecycleOptions,
-): Effect.Effect<ObservedServiceRemoval, ProviderError> => {
-  const operation = "removeObservedService";
-  if (String(observed.providerId) !== options.ctx.providerId) {
-    return Effect.fail(
+  containerId: string,
+  runtime: { readonly request: NonNullable<EngineHttpApi["request"]>; readonly ctx: ProviderErrorContext },
+) {
+  const { request, ctx } = runtime;
+  const response = yield* request({
+    method: "GET",
+    path: `/containers/${encodeURIComponent(containerId)}/json`,
+  });
+  if (response.status === 404) return undefined;
+  const live = response.status === 200 ? decodeNativeObservation(response.body) : undefined;
+  if (live === undefined)
+    return yield* Effect.fail(
       new ProviderUnavailableError({
-        providerId: options.ctx.providerId,
-        operation,
-        message: `provider-${options.ctx.providerId} cannot remove a container observed by ${observed.providerId}.`,
-        details: { service: observed.service, observedProvider: observed.providerId },
-        remediation: options.ctx.remediation,
+        providerId: ctx.providerId,
+        operation: OBSERVED_OPERATION,
+        message: withApiReason(
+          `Container ${containerId} could not be inspected before bringing it down (HTTP ${response.status}).`,
+          response,
+          redactorFor(ctx),
+        ),
+        details: { service: observed.service, containerId },
+        remediation: ctx.remediation,
       }),
     );
-  }
+  const name = live.Name ?? live.name;
+  return {
+    nativeName: name === undefined ? undefined : name.replace(/^\//u, ""),
+    labels: live.Config?.Labels ?? live.Labels ?? live.labels ?? undefined,
+  };
+});
+
+/**
+ * Stops, or stops and removes, the one container behind an observation the provider itself
+ * reported, without consulting any applied plan. The container id is the whole address: a name could
+ * be reused by a recreated container, and an observation carrying no id is a service the provider
+ * already found nothing for, which is an absent receipt rather than an error. The observation never
+ * authorizes the mutation: the container's live labels, read by id, must prove the observed app,
+ * root, service, provider, and data root first.
+ */
+export const bringDownObservedContainer = Effect.fnUntraced(function* (
+  observed: ServiceRuntimeInfo,
+  containers: ContainerDisposition,
+  options: ServiceLifecycleOptions & {
+    readonly dataRoot?: string | undefined;
+    readonly receipts?: readonly AdoptionReceipt[];
+  },
+): Effect.fn.Return<ObservedBringDown, ProviderError> {
+  const operation = OBSERVED_OPERATION;
+  const verb = containers === "stop" ? "stop" : "remove";
+  if (String(observed.providerId) !== options.ctx.providerId)
+    return yield* new ProviderUnavailableError({
+      providerId: options.ctx.providerId,
+      operation,
+      message: `provider-${options.ctx.providerId} cannot ${verb} a container observed by ${observed.providerId}.`,
+      details: { service: observed.service, observedProvider: observed.providerId },
+      remediation: options.ctx.remediation,
+    });
+  const service = observed.service;
   const containerId = observed.containerId;
   const identity = {
     appId: observed.app,
     providerId: observed.providerId,
-    service: observed.service,
+    service,
     ...(containerId === undefined ? {} : { containerId }),
   };
-  if (containerId === undefined)
-    return Effect.succeed({ kind: "absent", shutdownObservations: [absentShutdown(identity)] });
-  // Observed identity alone is not mutation authority: the container's own labels must prove it.
-  const ownershipProblem = serviceContainerOwnershipProblem(observed.labels, {
+  const absent = { service, action: "absent", shutdownObservations: [absentShutdown(identity)] } as const;
+  if (containerId === undefined) return absent;
+  const request = options.api?.request;
+  if (request === undefined)
+    return yield* missingApi(
+      options.ctx,
+      operation,
+      `provider-${options.ctx.providerId} ${operation} requires a container engine API client.`,
+    );
+  const live = yield* liveContainer(observed, containerId, { request, ctx: options.ctx });
+  if (live === undefined) return absent;
+  const native = {
+    kind: "container",
+    nativeName: live.nativeName ?? containerId,
+    nativeId: containerId,
+    labels: live.labels,
+  } as const;
+  if (
+    options.dataRoot !== undefined &&
+    decideDataRootOwnership(native, {
+      dataRoot: options.dataRoot,
+      receipts: live.nativeName === undefined ? [] : (options.receipts ?? []),
+    }) !== "owned"
+  )
+    return yield* new ProviderUnavailableError({
+      providerId: options.ctx.providerId,
+      operation,
+      ...dataRootRefusal(native),
+      details: { service, containerId, label: LANDO_DATA_ROOT_LABEL },
+    });
+  const ownershipProblem = serviceContainerOwnershipProblem(live.labels, {
     app: String(observed.app),
     appRoot: observed.appRoot === undefined ? "" : String(observed.appRoot),
-    service: String(observed.service),
+    service: String(service),
+    dataRoot: options.dataRoot === undefined ? undefined : live.labels?.[LANDO_DATA_ROOT_LABEL],
     providerId: options.ctx.providerId,
   });
-  if (ownershipProblem !== undefined) {
-    return Effect.fail(
-      new ProviderUnavailableError({
-        providerId: options.ctx.providerId,
-        operation,
-        message: `Container ${containerId} does not prove Lando service ownership: ${ownershipProblem} is missing or disagrees.`,
-        details: { service: observed.service, containerId, label: ownershipProblem },
-        remediation: `Inspect container ${containerId} with your container runtime and remove it there, or restore its ${ownershipProblem} label so it matches the observed app, root, and service.`,
-      }),
-    );
-  }
-  const request = options.api?.request;
-  if (request === undefined) {
-    return Effect.fail(
-      missingApi(
-        options.ctx,
-        operation,
-        `provider-${options.ctx.providerId} ${operation} requires a container engine API client.`,
-      ),
-    );
-  }
-  return stopAndRemoveContainer(identity, { api: { request }, ctx: options.ctx }).pipe(
-    Effect.map(({ kind, shutdownObservations }) => ({ kind, shutdownObservations })),
-  );
-};
+  if (ownershipProblem !== undefined)
+    return yield* new ProviderUnavailableError({
+      providerId: options.ctx.providerId,
+      operation,
+      message: `Container ${containerId} does not prove Lando service ownership: ${ownershipProblem} is missing or disagrees.`,
+      details: { service, containerId, label: ownershipProblem },
+      remediation: `Inspect container ${containerId} with your container runtime and ${verb} it there, or restore its ${ownershipProblem} label so it matches the observed app, root, and service.`,
+    });
+  const result = yield* bringDownContainer(identity, containers, { api: { request }, ctx: options.ctx });
+  return { service, containerId, action: result.action, shutdownObservations: result.shutdownObservations };
+});
 
-/** The `destroy` answer when the provider tore resources down. */
-export const DESTROYED: DestroyOutcome = { kind: "destroyed", volumesRemoved: { data: 0, cache: 0 } };
-
-/** The `destroy` answer when the provider was handed no plan and holds no applied record. */
-export const DESTROY_NO_OP: DestroyOutcome = { kind: "no-op", reason: "no-applied-plan" };
+/** The `bringDown` answer when the provider was handed no plan and holds no applied record. */
+export const BRING_DOWN_NO_OP: BringDownOutcome = { kind: "no-op", reason: "no-applied-plan" };

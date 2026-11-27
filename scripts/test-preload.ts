@@ -5,23 +5,45 @@
  * entries (`core/bin/lando.ts`, the host-proxy worker, the shim) install a
  * loopback NO_PROXY guard; this preload mirrors it for the test process.
  *
- * The codegen guard must run before bundled-plugins is resolved. Static ESM
- * imports are linked together, so the guard is a separate first preload in
- * bunfig.toml and this file also awaits the plugins import after a static
- * guard import for local/preload-flag use.
+ * The codegen guard must run before any generated module is resolved. Static
+ * ESM imports are linked together, so the guard is a separate first preload in
+ * bunfig.toml and this file also imports it statically for local/preload-flag
+ * use.
  */
 import "./require-derived-codegen-preload.ts";
+import { installProcessTestRoots } from "./test-preload-roots.ts";
 
-const preserveSymlinks = process.env.NODE_PRESERVE_SYMLINKS;
-if (preserveSymlinks && preserveSymlinks !== "0") {
-  process.stderr.write(
-    "Tests cannot run with NODE_PRESERVE_SYMLINKS enabled: CI runs without it, and it can load workspace packages twice (#2541). Run `env -u NODE_PRESERVE_SYMLINKS bun test ...` or remove the export from your shell profile.\n",
-  );
-  process.exit(1);
-}
+installProcessTestRoots();
 
-await import("./test-preload-roots.ts");
-await import("../core/src/runtime/bundled-plugins.ts");
+// Bundled plugins load the first time a test reads the engine composition, so
+// a test that never reads it never evaluates them. `test:affected` relies on
+// this: it attributes this lazy load only to files that name the global key.
+const compositionKey = "__landoEngineCompositionInputs";
+let composition: object | undefined;
+const loadComposition = (): object => {
+  if (composition) return composition;
+  // Loading installs the composition; keep a value a test installed meanwhile.
+  const installed: unknown = Reflect.get(globalThis, compositionKey);
+  const loaded: {
+    readonly bundledEngineCompositionInputs: object;
+  } = require("../core/src/runtime/bundled-plugins.ts");
+  composition = loaded.bundledEngineCompositionInputs;
+  Reflect.set(globalThis, compositionKey, installed === lazyComposition ? composition : installed);
+  return composition;
+};
+const lazyComposition = new Proxy(
+  {},
+  {
+    get: (_target, key) => Reflect.get(loadComposition(), key),
+    has: (_target, key) => Reflect.has(loadComposition(), key),
+    ownKeys: () => Reflect.ownKeys(loadComposition()),
+    getOwnPropertyDescriptor: (_target, key) => {
+      const descriptor = Reflect.getOwnPropertyDescriptor(loadComposition(), key);
+      return descriptor && { ...descriptor, configurable: true };
+    },
+  },
+);
+Reflect.set(globalThis, compositionKey, lazyComposition);
 
 const entries = (process.env.NO_PROXY ?? "")
   .split(",")

@@ -324,6 +324,12 @@ export const CODEGEN_CATALOG = [
     workspace: "repo",
   },
   {
+    id: "xdebug-bump-workflow",
+    ownership: "committed-workflow",
+    script: "build-xdebug-bump-workflow.ts",
+    workspace: "repo",
+  },
+  {
     id: "platform-readiness-workflow",
     ownership: "committed-workflow",
     script: "build-platform-readiness-workflow.ts",

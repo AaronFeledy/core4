@@ -41,6 +41,7 @@ const testDeprecationLayer = () => {
       lookup: () => Effect.succeed(Option.none()),
       register: () => Effect.void,
       registerAlias: () => Effect.void,
+      claimWarning: () => Effect.succeed(true),
     }),
   );
 };

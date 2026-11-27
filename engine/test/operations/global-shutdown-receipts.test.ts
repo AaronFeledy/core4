@@ -3,6 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AbsolutePath, ProviderId, ServiceName, type ServiceShutdownObservation } from "@lando/sdk/schema";
+import type { ServiceRuntimeInfo } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect, Schema } from "effect";
 import { GlobalDestroyResultSchema, globalDestroy } from "../../src/operations/global-destroy.ts";
@@ -21,7 +22,7 @@ const observation: ServiceShutdownObservation = {
   exitCode: 143,
 };
 
-test.each(["destroyed", "no-op"] as const)(
+test.each(["removed", "no-op"] as const)(
   "whole global %s receipt preserves provider shutdown facts",
   async (kind) => {
     // Given
@@ -29,10 +30,15 @@ test.each(["destroyed", "no-op"] as const)(
     const harness = makeHarness();
     const provider = {
       ...resolved.provider,
-      destroy: () =>
+      bringDown: () =>
         Effect.succeed(
-          kind === "destroyed"
-            ? { kind, volumesRemoved: { data: 0, cache: 0 }, shutdownObservations: [observation] }
+          kind === "removed"
+            ? {
+                kind,
+                containers: [],
+                volumesRemoved: { data: 0, cache: 0 },
+                shutdownObservations: [observation],
+              }
             : { kind, reason: "no-applied-plan" as const, shutdownObservations: [observation] },
         ),
     };
@@ -44,7 +50,7 @@ test.each(["destroyed", "no-op"] as const)(
     );
     // Then
     expect(receipt.shutdownObservations).toEqual([observation]);
-    expect(receipt.changed).toBe(kind === "destroyed");
+    expect(receipt.changed).toBe(kind === "removed");
   },
 );
 
@@ -53,12 +59,16 @@ test("whole global orphan teardown preserves attributed removal facts", async ()
   const { resolved } = globalHarness();
   const provider = {
     ...TestRuntimeProvider,
-    removeObservedService: () =>
-      Effect.succeed({ kind: "removed" as const, shutdownObservations: [observation] }),
+    bringDownObserved: (observed: ServiceRuntimeInfo) =>
+      Effect.succeed({
+        service: observed.service,
+        action: "removed" as const,
+        shutdownObservations: [observation],
+      }),
   };
   const harness = makeHarness({
     selectProvider: () => Effect.succeed(provider),
-    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" }),
+    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
   });
   // When
   const receipt = await Effect.runPromise(
@@ -101,7 +111,8 @@ test("whole global legacy provider honestly omits unsupported observations", asy
   const harness = makeHarness();
   const provider = {
     ...resolved.provider,
-    destroy: () => Effect.succeed({ kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } }),
+    bringDown: () =>
+      Effect.succeed({ kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } }),
   };
   // When
   const receipt = await Effect.runPromise(
@@ -135,15 +146,22 @@ for (const command of ["stop", "destroy"] as const) {
             },
           },
         ];
+        const facts = kind === "unobserved" ? {} : { shutdownObservations: observations };
         const harness = await globalTeardownHarness(root, {
           ...(kind === "absent" ? {} : { plan: globalPlanAt(AbsolutePath.make(join(root, "global"))) }),
           destroyOutcome:
             kind === "no-op"
               ? { kind, reason: "no-applied-plan", shutdownObservations: observations }
+              : { kind: "removed", containers: [], volumesRemoved: { data: 0, cache: 0 }, ...facts },
+          stopOutcome:
+            kind === "no-op"
+              ? { kind, reason: "no-applied-plan", shutdownObservations: observations }
               : {
-                  kind: "destroyed",
-                  volumesRemoved: { data: 0, cache: 0 },
-                  ...(kind === "unobserved" ? {} : { shutdownObservations: observations }),
+                  kind: "stopped",
+                  containers: [
+                    { service: ServiceName.make("ssh-agent"), containerId: "global-mail", action: "stopped" },
+                  ],
+                  ...facts,
                 },
         });
         // When the engine operation runs and its public command schema encodes the result.

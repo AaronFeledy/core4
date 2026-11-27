@@ -1,0 +1,9 @@
+name: db-creds-apply-mysql
+services:
+  db:
+    type: mysql
+    creds:
+      user: fixture_before
+      database: credential_demo
+      password: mysql-fixture-pass-one
+      rootPassword: mysql-root-pass-one

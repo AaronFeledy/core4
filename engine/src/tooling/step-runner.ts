@@ -1,4 +1,5 @@
 import {
+  type InvocationProgram,
   bindToolingShellSite,
   compiledValueError,
   evaluateInvocationSite,
@@ -129,11 +130,46 @@ export const resolveLeaf = Effect.fnUntraced(function* (leaf: ToolingStepLeaf, c
   }
 });
 
+/** Resolves the public route facts a step's sites read; undefined when they read none. */
+export type ToolingStepServiceUrls = (
+  sites: InvocationProgram,
+) => Effect.Effect<
+  | Readonly<Record<string, { readonly url: string; readonly hostname: string; readonly origin: string }>>
+  | undefined,
+  ToolingCompileError
+>;
+
+const withServiceUrls = (
+  resolve: ToolingStepServiceUrls | undefined,
+  sites: InvocationProgram,
+  context: ExpressionContext,
+): Effect.Effect<ExpressionContext, ToolingCompileError> =>
+  resolve === undefined || sites.length === 0
+    ? Effect.succeed(context)
+    : Effect.map(resolve(sites), (urls) =>
+        urls === undefined ? context : { ...context, services: { ...context.services, ...urls } },
+      );
+
+/** Public URLs resolve per leaf, where its predicate or body is evaluated, never for the whole program. */
 export const runToolingStepProgram = <E, A>(
   program: ToolingStepProgram,
   context: ExpressionContext,
   runners: ToolingStepRunners<E, A>,
-) => runToolingStepProgramWith(program, context, runners, { conditionAllows, resolveLeaf, resolveSelector });
+  serviceUrls?: ToolingStepServiceUrls,
+) =>
+  runToolingStepProgramWith(program, context, runners, {
+    conditionAllows: (condition, leafContext) =>
+      typeof condition === "object"
+        ? withServiceUrls(serviceUrls, [condition], leafContext).pipe(
+            Effect.flatMap((resolved) => conditionAllows(condition, resolved)),
+          )
+        : conditionAllows(condition, leafContext),
+    resolveLeaf: (leaf, leafContext) =>
+      withServiceUrls(serviceUrls, leaf.invocationSites ?? [], leafContext).pipe(
+        Effect.flatMap((resolved) => resolveLeaf(leaf, resolved)),
+      ),
+    resolveSelector,
+  });
 
 const resolveSelector = Effect.fnUntraced(function* (node: ToolingStepForNode, context: ExpressionContext) {
   if (node.selectorInvocation === undefined) return node.selector;

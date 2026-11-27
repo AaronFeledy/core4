@@ -111,8 +111,9 @@ What each part does:
   on failure or interruption. Keep it in every scenario that creates an app.
   For `layer="e2e"`, put `lando destroy -y --volumes` or `lando destroy -y --purge`
   in the same step.
-- A regex inside `expect={{ ... }}` must contain no single quote. The prop is
-  converted to JSON, and that conversion turns every `'` into `"`.
+- Write `expect={{ ... }}` with literals, arrays, and plain objects only. The
+  compiler evaluates the prop without running it, so a variable, a function
+  call, or a template with `${}` fails the guide build. Either quote style works.
 
 A scenario must exercise or assert product behavior. Keep prose outside the
 scenario, and do not add a scenario solely to hold variables or setup.
@@ -224,7 +225,7 @@ without starting a shell:
 When an attribute needs both quote characters, use a template literal:
 
 ```mdx
-<Run command={`lando config set appEnv '{"TEAM":"platform"}'`} />
+<Run command={`lando config set serviceDefaults.environment '{"TEAM":"platform"}'`} />
 ```
 
 ### What a default scenario runs
@@ -354,6 +355,13 @@ Everything else stays literal: `<Run runtime="library" code>` and
 payloads. Tokens inside `Run.command` are substituted, including tokens in
 `--answer` arguments. A dotted token such as `{{ app.name }}` in a Landofile
 template or foreign syntax is not a guide binding and is left as written.
+
+`{{capture:name}}` is a different token: it is resolved at run time from a
+`capture` on an earlier `<Run>` in a test-only scenario, and only a `<Run>` or
+`<Verify>` `command` may use it, as one whole argument after the command name.
+The compiler rejects a capture token used before its capture, an unknown
+capture, and a capture in a rendered scenario. See
+[E2E smoke scenarios](../guides/authoring/e2e-smoke-scenarios.mdx) for the reader-facing rules.
 
 Hidden steps can reference visible or hidden bindings. A visible component
 cannot reference a binding declared only in a `<Hidden>` block, even when

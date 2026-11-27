@@ -1,10 +1,7 @@
 import { createHash } from "node:crypto";
 import { lstatSync, readFileSync } from "node:fs";
-import { dirname, join, win32 } from "node:path";
+import { dirname, win32 } from "node:path";
 import { makeLandoPaths, resolveLandoRoots } from "@lando/paths";
-
-import type { PrivilegeService, ProcessResult } from "@lando/sdk/services";
-import type { Context, Effect } from "effect";
 
 export type ShellenvShell = "posix" | "powershell";
 
@@ -228,38 +225,3 @@ export const renderShellenv = (
   shell === "powershell"
     ? renderPowerShellShellenv(userDataRoot, currentExecutablePath)
     : renderPosixShellenv(userDataRoot, currentExecutablePath);
-
-const landoShellenvBlock = (userDataRoot: string): string =>
-  ["# >>> LANDO4 shellenv >>>", renderPosixShellenv(userDataRoot), "# <<< LANDO4 shellenv <<<"].join("\n");
-
-export const defaultPosixShellProfilePath = (env: NodeJS.ProcessEnv = process.env): string => {
-  const override = env.LANDO_SHELL_PROFILE;
-  if (override !== undefined && override !== "") return override;
-  const home = env.HOME ?? ".";
-  const shell = env.SHELL?.split(/[\\/]/u).at(-1) ?? "";
-  if (shell === "zsh") return join(home, ".zshrc");
-  if (shell === "bash") return join(home, ".bashrc");
-  return join(home, ".profile");
-};
-
-export const shellProfileInstallCommand = (
-  userDataRoot: string,
-  profilePath = defaultPosixShellProfilePath(),
-): ReadonlyArray<string> => {
-  const block = landoShellenvBlock(userDataRoot);
-  const script = [
-    `profile=${posixQuote(profilePath)}`,
-    `block=${posixQuote(block)}`,
-    'mkdir -p "$(dirname "$profile")"',
-    'touch "$profile"',
-    'if ! grep -Fq "# >>> LANDO4 shellenv >>>" "$profile"; then',
-    '  printf "\\n%s\\n" "$block" >> "$profile"',
-    "fi",
-  ].join("\n");
-  return ["sh", "-c", script];
-};
-
-export const installShellProfileIntegration = (
-  userDataRoot: string,
-  privilege: Context.Service.Shape<typeof PrivilegeService>,
-): Effect.Effect<ProcessResult, never> => privilege.elevate(shellProfileInstallCommand(userDataRoot));

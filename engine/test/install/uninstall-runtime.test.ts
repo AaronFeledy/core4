@@ -1,11 +1,15 @@
 import { expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, rmdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
+import { resolveManagedRuntimeDir } from "@lando/container-runtime/podman/managed-runtime-dir";
+import { makeLandoPaths } from "@lando/paths";
 import { Effect } from "effect";
+import { makePrepareUninstallCleanup } from "../../src/install/uninstall-discovery.ts";
 import {
   type UninstallRuntime,
   type UninstallRuntimeSeams,
+  availableUninstallRuntimes,
   defaultRuntimeExec,
   runUninstallRuntime,
   uninstallRuntimes,
@@ -38,6 +42,7 @@ const fixture = (script: string) => {
   const config = join(data, "runtime", "config");
   const bin = join(data, "runtime", "bin");
   const runtimeDir = join(data, "runtime");
+  mkdirSync(runtimeDir, { recursive: true });
   const overlay = {
     CONTAINERS_CONF: join(config, "containers.conf"),
     CONTAINERS_REGISTRIES_CONF: join(config, "registries.conf"),
@@ -50,7 +55,6 @@ const fixture = (script: string) => {
   const runtime: UninstallRuntime = {
     cmd: process.execPath,
     providerId: "lando",
-    managed: true,
     managedSpawn: "linux",
     runtimeDir,
     argsPrefix: ["--eval", script, "--", "prefix marker"],
@@ -158,7 +162,6 @@ test("connection spawn strips redirects and never applies Linux config overlay",
   const runtime: UninstallRuntime = {
     cmd: process.execPath,
     providerId: "lando",
-    managed: true,
     managedSpawn: "connection",
     argsPrefix: ["--eval", inspectScript, "--", "conn"],
   };
@@ -192,9 +195,14 @@ test("uninstallRuntimes uses connection spawn on darwin and win32, linux only on
   const linux = uninstallRuntimes(root, "linux", { PATH: "/usr/bin" });
   const darwin = uninstallRuntimes(root, "darwin", { PATH: "/usr/bin", CONTAINER_HOST: "x" });
   const win32 = uninstallRuntimes(root, "win32", { PATH: "/usr/bin", CONTAINER_HOST: "x" });
-  const managedLinux = linux.find((r) => r.managed);
-  const managedDarwin = darwin.find((r) => r.managed);
-  const managedWin = win32.find((r) => r.managed);
+  expect([linux, darwin, win32].map((runtimes) => runtimes.map(({ providerId }) => providerId))).toEqual([
+    ["lando"],
+    ["lando"],
+    ["lando"],
+  ]);
+  const [managedLinux] = linux;
+  const [managedDarwin] = darwin;
+  const [managedWin] = win32;
   if (managedLinux === undefined || managedDarwin === undefined || managedWin === undefined)
     throw new Error("managed runtime fixture missing");
   expect(managedLinux.managedSpawn).toBe("linux");
@@ -211,3 +219,134 @@ test("uninstallRuntimes uses connection spawn on darwin and win32, linux only on
   expect(managedWin.argsPrefix).toEqual(["--connection", "lando-root"]);
   expect(managedWin.cmd.endsWith("podman.exe")).toBe(true);
 });
+
+test("a missing runtime tree is not prepared or spawned", async () => {
+  using f = fixture(inspectScript);
+  rmSync(f.runtimeDir, { recursive: true, force: true });
+  const exec = async () => {
+    throw new Error("missing runtime tree must not be spawned");
+  };
+
+  await expect(runUninstallRuntime(exec, f.runtime, { args: ["--version"] }, f.seams)).rejects.toMatchObject({
+    code: "ENOENT",
+  });
+  expect(f.prepareCalls).toEqual([]);
+});
+
+test.skipIf(process.platform !== "linux")(
+  "a missing runtime tree under default seams does not create a private runtime dir",
+  async () => {
+    const root = mkdtempSync(join(tmpdir(), "lando-uninstall-missing-tree-"));
+    const userDataRoot = join(root, "data");
+    mkdirSync(userDataRoot, { recursive: true });
+    const runtimeDir = makeLandoPaths({ userDataRoot }).runtimeDir;
+    const privateDir = await Effect.runPromise(resolveManagedRuntimeDir(runtimeDir));
+    const exec = async () => ({ stdout: "podman" });
+    try {
+      await runUninstallRuntime(
+        exec,
+        {
+          cmd: join(runtimeDir, "bin", "podman"),
+          providerId: "lando",
+          managedSpawn: "linux",
+          runtimeDir,
+          argsPrefix: [],
+        },
+        { args: ["--version"] },
+      ).catch(() => undefined);
+      expect(typeof privateDir).toBe("string");
+      if (typeof privateDir === "string") expect(existsSync(privateDir)).toBe(false);
+    } finally {
+      if (typeof privateDir === "string" && existsSync(privateDir)) rmdirSync(privateDir);
+      rmSync(root, { recursive: true, force: true });
+    }
+  },
+);
+
+test("cleanup passes prepared XDG_RUNTIME_DIR and injected host env to every managed spawn", async () => {
+  const root = mkdtempSync(join(tmpdir(), "lando-uninstall-seams-"));
+  const userDataRoot = join(root, "data");
+  const userCacheRoot = join(root, "cache");
+  const runtimeDir = makeLandoPaths({ userDataRoot }).runtimeDir;
+  mkdirSync(runtimeDir, { recursive: true });
+  const privateDir = join(root, "injected-xdg");
+  const calls: Array<{ readonly args: readonly string[]; readonly env?: NodeJS.ProcessEnv }> = [];
+  const exec = async (
+    _file: string,
+    args: readonly string[],
+    options: { readonly env?: NodeJS.ProcessEnv },
+  ) => {
+    calls.push({
+      args: [...args],
+      ...(options.env === undefined ? {} : { env: options.env }),
+    });
+    if (args.includes("--version")) return { stdout: "podman" };
+    if (args.includes("df"))
+      return {
+        stdout: JSON.stringify([
+          { Type: "Containers", Total: 0 },
+          { Type: "Local Volumes", Total: 0 },
+        ]),
+      };
+    return { stdout: "" };
+  };
+  try {
+    await (
+      await makePrepareUninstallCleanup([], exec, "linux", {
+        hostEnv: { HOME: "/home/injected", PATH: "/usr/bin" },
+        prepareRuntimeDir: () => Effect.succeed(privateDir),
+      })(userDataRoot, userCacheRoot)
+    ).cleanup();
+    expect(calls.length).toBeGreaterThan(0);
+    for (const call of calls) {
+      expect(call.env?.XDG_RUNTIME_DIR).toBe(privateDir);
+      expect(call.env?.HOME).toBe("/home/injected");
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test.each(["reused", "replaced", "verified"] as const)(
+  "requires a root-owned receipt and a live VM match before using lando-root: %s",
+  async (scenario) => {
+    const root = mkdtempSync(join(tmpdir(), "lando-uninstall-vm-"));
+    const state = join(root, "providers", "provider-lando");
+    mkdirSync(state, { recursive: true });
+    writeFileSync(
+      join(state, "setup-state.json"),
+      JSON.stringify({
+        machine: { name: "lando", createdByLando: scenario !== "reused", createdAt: "recorded" },
+      }),
+    );
+    const calls: string[][] = [];
+    try {
+      const result = availableUninstallRuntimes({
+        userDataRoot: root,
+        platform: "darwin",
+        exec: async (_file, args) => {
+          calls.push([...args]);
+          return {
+            stdout:
+              args[0] === "machine"
+                ? JSON.stringify([{ Created: scenario === "replaced" ? "new" : "recorded" }])
+                : "podman",
+          };
+        },
+      });
+      if (scenario === "replaced")
+        await expect(result).rejects.toMatchObject({ _tag: "UninstallResourceCleanupError" });
+      else expect(await result).toHaveLength(scenario === "verified" ? 1 : 0);
+      expect(calls).toEqual(
+        scenario === "reused"
+          ? []
+          : [
+              ["machine", "inspect", "lando"],
+              ...(scenario === "verified" ? [["--connection", "lando-root", "--version"]] : []),
+            ],
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  },
+);

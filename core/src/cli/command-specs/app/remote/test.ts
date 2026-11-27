@@ -2,7 +2,7 @@ import { appRemoteTest } from "@lando/engine/operations/remote";
 import { RemoteTestResult } from "@lando/sdk/schema";
 import { renderRemoteTestResult } from "../../../commands/remote";
 import type { LandoCommandSpec } from "../../../spec/command-base";
-import { remoteConfigFlags, remoteEnvArg, remoteTestOptionsFromInput } from "./common";
+import { remoteConfigFlags, remoteEnvArg, remoteFormatFromInput, remoteTestOptionsFromInput } from "./common";
 
 export const remoteTestSpec: LandoCommandSpec<RemoteTestResult> = {
   id: "app:remote:test",
@@ -13,6 +13,5 @@ export const remoteTestSpec: LandoCommandSpec<RemoteTestResult> = {
   args: { env: remoteEnvArg },
   resultSchema: RemoteTestResult,
   run: (input) => appRemoteTest(remoteTestOptionsFromInput(input)),
-  render: (result, input, ctx) =>
-    renderRemoteTestResult(result, remoteTestOptionsFromInput(input).format, ctx),
+  render: (result, input, ctx) => renderRemoteTestResult(result, remoteFormatFromInput(input), ctx),
 };

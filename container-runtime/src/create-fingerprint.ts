@@ -15,7 +15,8 @@ import { fileModeMountIdentity } from "./file-mode-mounts.ts";
 import {
   AGENT_SESSION_LABEL,
   GPG_AGENT_OVERLAY_LABEL,
-  HOST_PROXY_SESSION_LABEL,
+  HOST_PROXY_CONTRACT_LABEL,
+  HOST_PROXY_MOUNT_TARGETS,
   SSH_AGENT_OVERLAY_LABEL,
   containerIntegrationLabels,
 } from "./labels.ts";
@@ -27,6 +28,16 @@ import { compileServiceProbe } from "./service-probe.ts";
 export const CREATE_CONFIG_LABEL = "dev.lando.create-config";
 
 const CREATE_ARTIFACT_IDENTITY = "@lando/container-runtime/create-artifact";
+const SCRATCH_PLAN_EXTENSION_KEY = "@lando/core/scratch";
+
+const scratchHostExecutionRoot = (plan: AppPlan): string => {
+  const extension = plan.extensions[SCRATCH_PLAN_EXTENSION_KEY];
+  if (typeof extension === "object" && extension !== null && "projectRoot" in extension) {
+    const projectRoot = extension.projectRoot;
+    if (typeof projectRoot === "string" && projectRoot.length > 0) return projectRoot;
+  }
+  return plan.root;
+};
 
 /** The artifact as container identity sees it: provenance metadata never recreates a container. */
 const artifactIdentity = (artifact: ServicePlan["artifact"]) => {
@@ -104,12 +115,8 @@ export const createConfigFingerprint = (
     sessionMountTargets.add(AGENT_SOCKET_CONTAINER_DIR.gpg);
     sessionMountTargets.add("/run/lando/gpg-agent-keys");
   }
-  if (integrationLabels[HOST_PROXY_SESSION_LABEL] !== undefined) {
-    sessionMountTargets.add("/run/lando/host-proxy.sock");
-    sessionMountTargets.add("/run/lando/host-proxy/credentials");
-    sessionMountTargets.add("/usr/local/bin/lando");
-    sessionMountTargets.add("/usr/local/bin/xdg-open");
-    sessionMountTargets.add("/usr/local/bin/open");
+  if (integrationLabels[HOST_PROXY_CONTRACT_LABEL] !== undefined) {
+    for (const target of HOST_PROXY_MOUNT_TARGETS) sessionMountTargets.add(target);
   }
   const projection = {
     artifactProvenance: createArtifactIdentity(service),
@@ -172,7 +179,7 @@ export const createConfigFingerprint = (
         ([key]) =>
           key !== CREATE_CONFIG_LABEL &&
           key !== AGENT_SESSION_LABEL &&
-          key !== HOST_PROXY_SESSION_LABEL &&
+          key !== HOST_PROXY_CONTRACT_LABEL &&
           key !== SSH_AGENT_OVERLAY_LABEL &&
           key !== GPG_AGENT_OVERLAY_LABEL,
       ),
@@ -194,7 +201,9 @@ export const createConfigFingerprint = (
               service.readiness.executionTarget === "host"
                 ? service.readiness.command
                 : compileServiceProbe(service.readiness, plan, service),
-            ...(service.readiness.executionTarget === "host" ? { hostRoot: plan.root } : {}),
+            ...(service.readiness.executionTarget === "host"
+              ? { hostRoot: scratchHostExecutionRoot(plan) }
+              : {}),
           },
     exposedPorts: physicalListenerPorts(service.endpoints),
     publications: physicalPublications(service.endpoints).sort((a, b) =>

@@ -133,6 +133,11 @@ const decodeMachineFailure = Schema.decodeUnknownResult(Schema.fromJsonString(Sc
   errors: Schema.optionalKey(Schema.Array(machineError)),
   code: Schema.optionalKey(Schema.String),
 })));
+// A streaming command's machine output is a frame sequence that ends in one result frame.
+const decodeResultFrame = Schema.decodeUnknownResult(Schema.fromJsonString(Schema.Struct({
+  _tag: Schema.Literal("result"),
+  envelope: Schema.Struct({ error: Schema.optionalKey(machineError) }),
+})));
 const errorTagFromRun = (run: ScenarioRunResult | undefined): string | undefined => {
   if (run === undefined || run.exitCode === 0) return undefined;
   if (run._tag !== undefined) return run._tag;
@@ -142,6 +147,9 @@ const errorTagFromRun = (run: ScenarioRunResult | undefined): string | undefined
       const tag = decoded.success.error?._tag ?? decoded.success.errors?.[0]?.code ?? decoded.success.code;
       if (tag !== undefined) return tag;
     }
+    const frame = decodeResultFrame(output.trimEnd().split("\\n").at(-1) ?? "");
+    if (Result.isSuccess(frame) && frame.success.envelope.error?._tag !== undefined)
+      return frame.success.envelope.error._tag;
   }
   return /^code:[ \\t]*([A-Za-z0-9_]+)[ \\t]*$/m.exec(run.stderr)?.[1];
 };
@@ -210,7 +218,7 @@ ${
   try {
 `
 }  const exit = await Effect.runPromiseExit(
-    ${contextRunner}({ guideId: ${JSON.stringify(guide.frontmatter.id)}, scenarioId: ${JSON.stringify(scenario.id)}, render: ${scenario.render} }, (context) =>
+    ${contextRunner}({ guideId: ${JSON.stringify(guide.frontmatter.id)}, scenarioId: ${JSON.stringify(scenario.id)}, render: ${scenario.render}${scenario.faults === undefined ? "" : `, faults: ${JSON.stringify(scenario.faults)}`} }, (context) =>
       Effect.gen(function* () {
         let lastRun: ScenarioRunResult | undefined;
         // <Verify event> asserts on what the most recent CLI invocation published.

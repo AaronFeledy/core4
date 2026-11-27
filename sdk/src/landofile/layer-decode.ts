@@ -1,10 +1,10 @@
 import { Effect, Schema } from "effect";
 import { mapFailures } from "../command-result/failure.ts";
 import { type LandofileParseError, LandofileValidationError } from "../errors/landofile.ts";
-import { LandofileShape, SERVICE_CONFIG_ALIASES } from "../schema/landofile.ts";
+import { LandofileShape } from "../schema/landofile.ts";
 import type { LandofileDecodedOverlay, LandofileOverlayValue } from "../schema/landofile-overlay.ts";
 import { validationIssuesFromCause } from "../schema/validation-issue.ts";
-import { type DirectivePath, canonicalDirectivePath, directivePathProblem } from "./directive-paths.ts";
+import { type DirectivePath, directivePathProblem } from "./directive-paths.ts";
 import { isLandofileOverride, isMergeDirective, override, reset } from "./merge-directives.ts";
 import { isPlainRecord } from "./record.ts";
 
@@ -73,7 +73,7 @@ const decodeLayer = Effect.fnUntraced(function* <A>(
       const keys = Reflect.ownKeys(value);
       if (keys.length !== (isLandofileOverride(value) ? 2 : 1)) fail(path, "Malformed directive wrapper.");
       directives.push({
-        path: canonicalDirectivePath(path),
+        path,
         kind: isLandofileOverride(value) ? "override" : "reset",
       });
       if (!isLandofileOverride(value)) return ABSENT;
@@ -82,18 +82,8 @@ const decodeLayer = Effect.fnUntraced(function* <A>(
     }
     if (Array.isArray(value)) return value.map((entry, index) => extract(entry, [...path, index]));
     if (!isPlainRecord(value)) return value;
-    const entries = Object.entries(value).filter(
-      ([key]) =>
-        !(
-          path.length === 2 &&
-          path[0] === "services" &&
-          SERVICE_CONFIG_ALIASES.some(
-            ([alias, canonical]) => key === alias && Object.hasOwn(value, canonical),
-          )
-        ),
-    );
     return Object.fromEntries(
-      entries.flatMap(([key, entry]) => {
+      Object.entries(value).flatMap(([key, entry]) => {
         const result = extract(entry, [...path, key]);
         return result === ABSENT ? [] : [[key, result]];
       }),

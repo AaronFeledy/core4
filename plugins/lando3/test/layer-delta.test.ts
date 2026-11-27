@@ -126,30 +126,30 @@ describe("layer deltas", () => {
       { services: { php: { config: { b: reset() } } } },
     ]);
   });
-  test("a removed service retains earlier dependsOn prefixes and overrides the later list", () => {
+  test("a removed service retains earlier depends_on prefixes and overrides the later list", () => {
     const result = check([
       prefix("dist", {
         services: {
-          appserver: { dependsOn: ["database", "cache"], type: "php:8.3" },
+          appserver: { depends_on: ["database", "cache"], type: "php:8.3" },
           cache: { type: "redis" },
           database: { type: "mariadb" },
         },
       }),
       prefix("local", {
         services: {
-          appserver: { dependsOn: ["database"], type: "php:8.3" },
+          appserver: { depends_on: ["database"], type: "php:8.3" },
           database: { type: "mariadb" },
         },
       }),
     ]);
     const dist = result.emitted[0]?.fragment;
-    const dependsOn =
+    const depends_on =
       isPlainRecord(dist) && isPlainRecord(dist.services) && isPlainRecord(dist.services.appserver)
-        ? dist.services.appserver.dependsOn
+        ? dist.services.appserver.depends_on
         : undefined;
-    expect(dependsOn).toEqual(["database", "cache"]);
+    expect(depends_on).toEqual(["database", "cache"]);
     expect(result.emitted[1]?.fragment).toMatchObject({
-      services: { appserver: { dependsOn: override(["database"]) }, cache: reset() },
+      services: { appserver: { depends_on: override(["database"]) }, cache: reset() },
     });
     expect(dist).toHaveProperty("services.cache");
   });

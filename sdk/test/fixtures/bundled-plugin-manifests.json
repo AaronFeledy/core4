@@ -184,6 +184,11 @@
               "description": "Verify container run, image build, and healthcheck operations during setup.",
               "name": "smoke",
               "type": "boolean"
+            },
+            {
+              "description": "Approve enabling systemd lingering when no systemd user manager runs for you. It stays enabled across logout and reboot; --yes does not approve it.",
+              "name": "enable-linger",
+              "type": "boolean"
             }
           ]
         }
@@ -519,6 +524,10 @@
           {
             "id": "db:reset",
             "summary": "Reset a database service to an empty state."
+          },
+          {
+            "id": "db:creds:apply",
+            "summary": "Preview or repair credentials for a running database service."
           },
           {
             "id": "db:seed",

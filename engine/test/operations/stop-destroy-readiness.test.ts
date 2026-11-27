@@ -24,7 +24,7 @@ test.each(["stop", "destroy"] as const)("%s leaves runtime readiness untouched",
   const target = { plan, root: plan.root, app: { kind: "user" as const, id: plan.id, root: plan.root } };
 
   if (operation === "stop") {
-    await Effect.runPromise(haltAppRuntime({}, target).pipe(Effect.provide(harness.layer)));
+    await Effect.runPromise(haltAppRuntime(target).pipe(Effect.provide(harness.layer)));
   } else {
     await Effect.runPromise(destroyAppForTarget({}, target).pipe(Effect.provide(harness.layer)));
   }
@@ -54,7 +54,7 @@ test.each(["stop", "destroy"] as const)("%s handles an idle owning runtime", asy
   const target = { plan, root: plan.root, app: { kind: "user" as const, id: plan.id, root: plan.root } };
   const result =
     operation === "stop"
-      ? (await Effect.runPromise(haltAppRuntime({}, target).pipe(Effect.provide(harness.layer)))).result
+      ? (await Effect.runPromise(haltAppRuntime(target).pipe(Effect.provide(harness.layer)))).result
       : await Effect.runPromise(destroyAppForTarget({}, target).pipe(Effect.provide(harness.layer)));
   expect(result.outcome).toBe(operation === "stop" ? "stopped" : "destroyed");
   expect(preparations).toBe(operation === "stop" ? 0 : 1);
@@ -72,7 +72,7 @@ test("idle stop uses the same status observation for coordination and provider a
     onDestroy: () => mutations.push("destroy"),
   });
   const target = { plan, root: plan.root, app: { kind: "user" as const, id: plan.id, root: plan.root } };
-  await Effect.runPromise(haltAppRuntime({}, target).pipe(Effect.provide(harness.layer)));
+  await Effect.runPromise(haltAppRuntime(target).pipe(Effect.provide(harness.layer)));
   expect(mutations).toEqual([]);
   expect(reads).toBe(1);
 });
@@ -100,7 +100,7 @@ test("halt does not look up a retained global cache", async () => {
     root: applied.root,
     app: { kind: "user" as const, id: applied.id, root: applied.root },
   };
-  const result = await Effect.runPromise(haltAppRuntime({}, target).pipe(Effect.provide(harness.layer)));
+  const result = await Effect.runPromise(haltAppRuntime(target).pipe(Effect.provide(harness.layer)));
   expect(result.result.outcome).toBe("stopped");
   expect(located).not.toContain(cache);
 });
@@ -125,7 +125,7 @@ test("halt asks for this app's exact applied plan", async () => {
       landofile: literalTestLandofile({ name: desired.name, services: {} }, root),
     };
 
-    await Effect.runPromise(haltAppRuntime({}, target).pipe(Effect.provide(harness.layer)));
+    await Effect.runPromise(haltAppRuntime(target).pipe(Effect.provide(harness.layer)));
 
     expect(lookups.at(-1)).toBe("exact");
   } finally {

@@ -37,8 +37,8 @@ interface InstallCase {
 const cases: readonly InstallCase[] = [
   {
     name: "accepts coverage in the same guide",
-    prose: "lando drupal-scaffold",
-    exercise: '<Run command="lando drupal-scaffold --yes" />',
+    prose: "lando nextjs-scaffold",
+    exercise: '<Run command="lando nextjs-scaffold --yes" />',
     keys: [],
   },
   {
@@ -104,16 +104,16 @@ const cases: readonly InstallCase[] = [
   },
   {
     name: "refuses coverage from the test provider layer",
-    prose: "lando drupal-scaffold",
-    exercise: '<Run command="lando drupal-scaffold" />',
+    prose: "lando nextjs-scaffold",
+    exercise: '<Run command="lando nextjs-scaffold" />',
     layer: "scenario",
-    keys: ["lando drupal-scaffold"],
+    keys: ["lando nextjs-scaffold"],
   },
   ...["bash", "shell", "console"].map((language) => ({
     name: `checks ${language} prose fences`,
-    prose: "lando drupal-scaffold",
+    prose: "lando nextjs-scaffold",
     language,
-    keys: ["lando drupal-scaffold"],
+    keys: ["lando nextjs-scaffold"],
   })),
 ];
 

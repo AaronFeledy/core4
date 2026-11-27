@@ -5,7 +5,7 @@ import { BuildOrchestrator, EventService, RouterService } from "@lando/sdk/servi
 import { DateTime, Effect } from "effect";
 import { routerEnabled } from "../config/router-config.ts";
 import type { ResolvedAppTarget } from "../landofile/app-resolution.ts";
-import { applyActivation } from "../lifecycle/activation-apply.ts";
+import { applyActivation, openDatabaseCredentialSession } from "../lifecycle/activation-apply.ts";
 import { prepareRouteUrlBindings } from "../lifecycle/route-url-bindings.ts";
 import { prepareServiceCertificates } from "../lifecycle/service-certificates.ts";
 import { completeStartup } from "../lifecycle/startup-completion.ts";
@@ -15,10 +15,6 @@ import type { AdmittedServices } from "./app-activation.ts";
 import { applyAndObserveServices } from "./apply-observe.ts";
 import { publishApplyOutcomeNotices } from "./apply-outcome-notices.ts";
 import { collectPlanConnections, startedServices } from "./connection-collector.ts";
-import {
-  openDatabaseCredentialSession,
-  publishDatabaseCredentialWarningsSafely,
-} from "./database-credential-warnings.ts";
 import { fileSyncBundle } from "./file-sync-bundle.ts";
 import { sameFileSyncSessionSpec } from "./file-sync-paths.ts";
 import { withGlobalConsumerAdmission } from "./global-consumer-admission.ts";
@@ -28,6 +24,7 @@ import { refuseRetainedRouteConsumers, retainedRouteReferences } from "./selecte
 import type { StartManagedScope } from "./start-file-sync.ts";
 import { markStartMutation } from "./start-incomplete-notice.ts";
 import { projectDebuggerOverlay, withAcquiredStartOverlays } from "./start-overlays.ts";
+import { ownedContainers } from "./stop-selection.ts";
 
 export type SelectedRelaunchOperation = "restart" | "rebuild";
 
@@ -147,6 +144,7 @@ export const relaunchSelectedServices = Effect.fnUntraced(function* (
             });
             yield* refuseRetainedRouteConsumers({ retained, runtimePlan, proof: routeUrls, operation });
             const environment = yield* openDatabaseCredentialSession(runtimePlan);
+            const owned = ownedContainers(target.plan, yield* provider.list({ app: target.plan.id }));
             for (const service of [...services].reverse()) {
               if (signal?.aborted === true) return yield* Effect.interrupt;
               yield* events.publish(
@@ -159,9 +157,8 @@ export const relaunchSelectedServices = Effect.fnUntraced(function* (
                 }),
               );
               // A planned service whose container is already gone needs no stop.
-              yield* provider
-                .stop({ app: target.plan.id, service: service.name, plan: runtimePlan })
-                .pipe(Effect.catchTag("ServiceNotFoundError", () => Effect.void));
+              for (const container of owned.filter((observed) => observed.service === service.name))
+                yield* provider.bringDownObserved(container, "stop");
               yield* events.publish(
                 PostServiceStopEvent.make({
                   eventName: "post-service-stop",
@@ -178,6 +175,7 @@ export const relaunchSelectedServices = Effect.fnUntraced(function* (
                 routeUrls,
                 provider,
                 plan: runtimePlan,
+                previousPlan: appliedPlan,
                 certificates,
                 reconcile: operation === "rebuild",
                 recordedPlan: record,
@@ -210,19 +208,15 @@ export const relaunchSelectedServices = Effect.fnUntraced(function* (
               ...(signal === undefined ? {} : { signal }),
               ...(landofileRouter === undefined ? {} : { landofileRouter }),
             });
-            if (environment !== undefined) {
-              yield* publishDatabaseCredentialWarningsSafely({
-                provider,
-                plan: runtimePlan,
-                services: ready,
-                session: environment,
-                ...(appliedPlan === undefined ? {} : { previousPlan: appliedPlan }),
-              });
-            }
-            return startedServices(
-              yield* collectPlanConnections(readinessPlan, ready),
-              launch.applied.services,
-            );
+            return {
+              servicesStarted: startedServices(
+                yield* collectPlanConnections(readinessPlan, ready),
+                launch.applied.services,
+              ),
+              ...(launch.applied.credentialChanges === undefined
+                ? {}
+                : { credentialChanges: launch.applied.credentialChanges }),
+            };
           }),
         ),
       );

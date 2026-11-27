@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, rm, symlink } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { makeLandoPaths } from "@lando/paths";
 import { LandofileParseError, SshError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -16,18 +17,24 @@ import {
   ConfigService,
   GlobalAppService,
   LandofileService,
+  PathsService,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider, makeTestSshService } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry, makeTestSshService } from "@lando/sdk/test";
 import { Effect, Fiber, Schema } from "effect";
 import { TestClock } from "effect/testing";
 import { type DoctorFinding, DoctorReportSchema } from "../../src/cli/commands/doctor-contract.ts";
-import { makeDoctorReport, renderDoctorReportAsNdjson } from "../../src/cli/commands/doctor-report.ts";
+import { makeDoctorReport } from "../../src/cli/commands/doctor-report.ts";
 import { sshAgentPostureCheck } from "../../src/cli/commands/doctor-ssh-agent.ts";
 import { subsystemDoctor } from "../../src/cli/commands/doctor-subsystems.ts";
 import { globalAppForProvider } from "../_support/global-provider.ts";
 import { globalPlanAt } from "../_support/global-teardown-harness.ts";
+import { renderDoctorReportAsNdjson } from "./doctor-report-fixture";
 import { DefaultSubsystemDoctorLayer } from "./doctor-subsystem-fixture.ts";
+
+const testPaths = makeLandoPaths();
+const runWithPaths = <A, E>(effect: Effect.Effect<A, E, PathsService>) =>
+  Effect.runPromise(effect.pipe(Effect.provideService(PathsService, testPaths)));
 
 const inputs = () => ({
   globalConfig: {},
@@ -68,10 +75,8 @@ const applied = globalPlanAt(root, {
   intervalSeconds: 1,
   retries: 1,
 });
-const sidecarRegistry = RuntimeProviderRegistry.of({
-  appliedPlansFor: () => Effect.succeed([]),
+const sidecarRegistry = makeTestRuntimeProviderRegistry({
   resolveAppliedPlan: () => Effect.succeed(applied),
-  resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
   list: Effect.succeed([ProviderId.make("lando")]),
   capabilities: Effect.succeed(runningSidecar.capabilities),
   select: () => Effect.succeed(runningSidecar),
@@ -93,7 +98,7 @@ describe("SSH agent doctor posture", () => {
     });
     const upstreams: unknown[] = [];
     // When
-    const check = await Effect.runPromise(
+    const check = await runWithPaths(
       sshAgentPostureCheck({
         ...inputs(),
         globalConfig: { sshAgent: { sidecar: true, socket: "/global/agent.sock" } },
@@ -127,7 +132,7 @@ describe("SSH agent doctor posture", () => {
       remediation: "Correct the YAML syntax in /app/.lando.yml.",
     });
     // When
-    const check = await Effect.runPromise(
+    const check = await runWithPaths(
       sshAgentPostureCheck({
         ...inputs(),
         globalConfig: { sshAgent: { sidecar: false } },
@@ -147,7 +152,7 @@ describe("SSH agent doctor posture", () => {
     const input = inputs();
     const upstreams: unknown[] = [];
     // When
-    const check = await Effect.runPromise(
+    const check = await runWithPaths(
       sshAgentPostureCheck({
         ...input,
         probe: async (upstream) => {
@@ -177,7 +182,7 @@ describe("SSH agent doctor posture", () => {
       discovery: { home: "/home/test", exists: async () => true },
     };
     // When
-    const check = await Effect.runPromise(sshAgentPostureCheck(input));
+    const check = await runWithPaths(sshAgentPostureCheck(input));
     // Then
     expect(check).toMatchObject({
       status: "pass",
@@ -194,7 +199,7 @@ describe("SSH agent doctor posture", () => {
       globalConfig: { sshAgent: { sidecar: false, socket: "/missing-agent.sock" } },
     };
     // When
-    const check = await Effect.runPromise(sshAgentPostureCheck(input));
+    const check = await runWithPaths(sshAgentPostureCheck(input));
     // Then reason and path survive the doctor catch.
     expect(check).toMatchObject({
       status: "warn",
@@ -227,7 +232,7 @@ describe("SSH agent doctor posture", () => {
     });
     try {
       // When doctor inspects host mode.
-      const check = await Effect.runPromise(
+      const check = await runWithPaths(
         sshAgentPostureCheck({
           ...inputs(),
           globalConfig: { sshAgent: { sidecar: false } },
@@ -260,7 +265,7 @@ describe("SSH agent doctor posture", () => {
     await symlink(join(root, "absent"), dangling);
     try {
       // When doctor inspects host mode.
-      const check = await Effect.runPromise(
+      const check = await runWithPaths(
         sshAgentPostureCheck({
           ...inputs(),
           globalConfig: { sshAgent: { sidecar: false } },
@@ -287,7 +292,7 @@ describe("SSH agent doctor posture", () => {
     // Given
     const input = { ...inputs(), globalConfig: { sshAgent: { sidecar: false } } };
     // When
-    const check = await Effect.runPromise(sshAgentPostureCheck(input));
+    const check = await runWithPaths(sshAgentPostureCheck(input));
     // Then
     expect(check).toMatchObject({
       status: "warn",
@@ -307,7 +312,7 @@ describe("SSH agent doctor posture", () => {
       },
     };
     // When
-    const check = await Effect.runPromise(sshAgentPostureCheck(input));
+    const check = await runWithPaths(sshAgentPostureCheck(input));
     // Then
     expect(check).toMatchObject({ status: "warn", details: { upstream: { reachable: false } } });
     expect(check.solutions[0]?.command).toBe("lando doctor --fix");
@@ -318,7 +323,7 @@ describe("SSH agent doctor posture", () => {
     // Given
     const input = { ...inputs(), capabilities: {} };
     // When
-    const check = await Effect.runPromise(sshAgentPostureCheck(input));
+    const check = await runWithPaths(sshAgentPostureCheck(input));
     // Then
     expect(check).toMatchObject({
       status: "warn",
@@ -331,7 +336,7 @@ describe("SSH agent doctor posture", () => {
     let calls = 0;
     const input = inputs();
     // When
-    const check = await Effect.runPromise(
+    const check = await runWithPaths(
       sshAgentPostureCheck({
         ...input,
         globalConfig: { sshAgent: { sidecar: false } },
@@ -355,7 +360,7 @@ describe("SSH agent doctor posture", () => {
     let ready = false;
     const input = inputs();
     // When
-    const check = await Effect.runPromise(
+    const check = await runWithPaths(
       sshAgentPostureCheck({
         ...input,
         fix: true,
@@ -400,7 +405,7 @@ describe("SSH agent doctor posture", () => {
       },
     };
     // When
-    const check = await Effect.runPromise(
+    const check = await runWithPaths(
       Effect.gen(function* () {
         const fiber = yield* Effect.forkChild(sshAgentPostureCheck(input));
         yield* TestClock.adjust("30 seconds");
@@ -441,7 +446,7 @@ describe("SSH agent doctor posture", () => {
           Effect.sync(() => ({ exitCode: ++probes < 3 || !answers ? 2 : 0, stdout: "", stderr: "" })),
       };
       // When
-      const check = await Effect.runPromise(
+      const check = await runWithPaths(
         Effect.gen(function* () {
           const fiber = yield* Effect.forkChild(
             sshAgentPostureCheck({
@@ -461,14 +466,15 @@ describe("SSH agent doctor posture", () => {
           yield* TestClock.adjust("30 seconds");
           return yield* Fiber.join(fiber);
         }).pipe(
-          Effect.provideService(RuntimeProviderRegistry, {
-            resolveAppliedPlan: () => Effect.succeed(applied),
-            resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-            appliedPlansFor: () => Effect.succeed([]),
-            list: Effect.succeed([provider.id]),
-            capabilities: Effect.succeed(provider.capabilities),
-            select: () => Effect.succeed(provider),
-          }),
+          Effect.provideService(
+            RuntimeProviderRegistry,
+            makeTestRuntimeProviderRegistry({
+              resolveAppliedPlan: () => Effect.succeed(applied),
+              list: Effect.succeed([provider.id]),
+              capabilities: Effect.succeed(provider.capabilities),
+              select: () => Effect.succeed(provider),
+            }),
+          ),
           Effect.provideService(GlobalAppService, globalApp),
           Effect.provide(TestClock.layer()),
         ),
@@ -491,7 +497,7 @@ describe("SSH agent doctor posture", () => {
     const input = inputs();
     const message = "SSH agent sidecar could not start: statfs /home/test/.ssh: no such file or directory";
     // When doctor attempts automatic repair.
-    const check = await Effect.runPromise(
+    const check = await runWithPaths(
       sshAgentPostureCheck({
         ...input,
         fix: true,
@@ -525,7 +531,7 @@ describe("SSH agent doctor posture", () => {
     const input = inputs();
     const secret = "env-only-sidecar-token-7f3a";
     // When doctor attempts automatic repair with that environment.
-    const check = await Effect.runPromise(
+    const check = await runWithPaths(
       sshAgentPostureCheck({
         ...input,
         fix: true,
@@ -557,7 +563,7 @@ describe("SSH agent doctor posture", () => {
     const input = inputs();
     const secret = "probe-socket-token-91c2";
     // When doctor attempts automatic repair.
-    const check = await Effect.runPromise(
+    const check = await runWithPaths(
       sshAgentPostureCheck({
         ...input,
         fix: true,
@@ -580,7 +586,7 @@ describe("SSH agent doctor posture", () => {
       sshAgent: { sidecar: false, socket: "/missing" },
     });
     // When
-    const report = await Effect.runPromise(
+    const report = await runWithPaths(
       subsystemDoctor({ sshAgent: { ...input, globalConfig: undefined } }).pipe(
         Effect.provideService(
           ConfigService,
@@ -598,7 +604,7 @@ describe("SSH agent doctor posture", () => {
 
   test("typed SSH details survive report encoding and NDJSON", async () => {
     // Given
-    const check = await Effect.runPromise(
+    const check = await runWithPaths(
       sshAgentPostureCheck({
         ...inputs(),
         globalConfig: { sshAgent: { sidecar: false, socket: "/missing-agent.sock" } },
@@ -622,7 +628,7 @@ describe("SSH agent doctor posture", () => {
 
   test("sidecar posture key identifies the managed agent", async () => {
     // Given / When
-    const check = await Effect.runPromise(sshAgentPostureCheck(inputs()));
+    const check = await runWithPaths(sshAgentPostureCheck(inputs()));
     // Then
     expect(posture(check).mode).toBe("sidecar");
     expect(check.context.securityPosture).toBe("sidecar-managed-keys");
@@ -636,7 +642,7 @@ describe("SSH agent doctor posture", () => {
       discovery: { home: "/home/test", exists: async () => true },
     };
     // When
-    const check = await Effect.runPromise(sshAgentPostureCheck(input));
+    const check = await runWithPaths(sshAgentPostureCheck(input));
     // Then
     expect(posture(check).mode).toBe("host");
     expect(check.context.securityPosture).toBe("host-signatures");
@@ -655,7 +661,7 @@ describe("SSH agent doctor posture", () => {
       },
     };
     // When
-    const check = await Effect.runPromise(sshAgentPostureCheck(input));
+    const check = await runWithPaths(sshAgentPostureCheck(input));
     // Then
     expect(posture(check).mode).toBe("host");
     expect(check.context.securityPosture).toBe("host-win32-loopback");

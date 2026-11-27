@@ -1,8 +1,9 @@
 import { expect, test } from "bun:test";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
+import { makeLandoPaths } from "@lando/paths";
 import { LandofileShape, ServiceName, type ServicePlan } from "@lando/sdk/schema";
-import { AppPlanner } from "@lando/sdk/services";
+import { AppPlanner, PathsService } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect, Layer, Schema } from "effect";
 import { services } from "../src/index.ts";
@@ -35,7 +36,10 @@ test.each([
   { name: "custom image", config: { image: "python:3.12" }, expected: [] },
   {
     name: "replacement build carrying the catalog tag",
-    config: { image: "python:3.12-slim", build: { context: ".", dockerfileInline: "FROM python:3.12-slim" } },
+    config: {
+      image: "python:3.12-slim",
+      build: { context: ".", dockerfile_inline: "FROM python:3.12-slim" },
+    },
     expected: [],
   },
 ])("declares the expected launchers for $name", async ({ config, expected }) => {
@@ -69,7 +73,9 @@ const planPython = async (overrides: Readonly<Record<string, unknown>> = {}) => 
         projectUserMapping: "userns-keep-id",
       }),
     ).pipe(
-      Effect.provide(AppPlannerLayer.layer),
+      Effect.provide(
+        AppPlannerLayer.layer.pipe(Layer.provide(Layer.succeed(PathsService, makeLandoPaths()))),
+      ),
       Effect.provide(Layer.merge(services, PluginRegistryLayer.layer)),
     ),
   );
@@ -142,7 +148,7 @@ test("leaves an authored Dockerfile in charge of its Python toolchain", async ()
   // Given
   const dockerfile = "FROM python:3.12-slim\nRUN python -m pip install uv==0.12.23\n";
   // When
-  const service = await planPython({ build: { context: ".", dockerfileInline: dockerfile } });
+  const service = await planPython({ build: { context: ".", dockerfile_inline: dockerfile } });
   // Then
   expect(service.artifact).toMatchObject({ kind: "build", specInline: dockerfile });
   expect(buildStepsFor(service).some((step) => step.id === "service-lando.python:uv")).toBe(false);

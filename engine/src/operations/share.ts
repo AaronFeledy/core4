@@ -34,13 +34,11 @@ export interface ShareOptions {
   readonly provider?: string;
   readonly detach?: boolean;
   readonly yes?: boolean;
-  readonly format?: "text" | "json";
 }
 
 export interface ShareListOptions {
   readonly cwd?: string;
   readonly provider?: string;
-  readonly format?: "text" | "json";
 }
 
 export interface ShareStopOptions extends ShareListOptions {

@@ -65,7 +65,7 @@ export const phpAppserver = (framework: string) => ({
   framework,
   webroot: "{{ recipe.webroot }}",
   composer: "{{ recipe.composer }}",
-  dependsOn: ["database"],
+  depends_on: ["database"],
 });
 
 export const drupalOptions = {
@@ -81,7 +81,25 @@ export const drupalOptions = {
     prompt: { message: "Database" },
   },
   composer: composerOption,
-  webroot: webrootOption("web"),
+} as const satisfies Readonly<Record<string, RecipeSourceOption>>;
+
+const defaultDrupalWebroot = webrootOption("web");
+export const drupalSiteOptions = {
+  ...drupalOptions,
+  webroot: {
+    ...defaultDrupalWebroot,
+    prompt: {
+      ...defaultDrupalWebroot.prompt,
+      message: "PHP webroot (for a new scaffold, use a directory name such as web or docroot)",
+      validationMessage:
+        "Enter a PHP webroot path. For a new scaffold, use one directory name such as web or docroot.",
+    },
+  },
+  testing: {
+    type: { kind: "boolean" },
+    default: false,
+    prompt: { message: "Add PHPUnit and browser testing?" },
+  },
 } as const satisfies Readonly<Record<string, RecipeSourceOption>>;
 
 /** Separate additions avoid deleting Apache fields in the FPM branch. */

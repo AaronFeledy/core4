@@ -98,6 +98,7 @@ describe("ruby:3.3 ServiceType", () => {
     expect(String(serviceAppMount(plan)?.source)).toBe(APP_ROOT);
     expect(String(serviceAppMount(plan)?.target)).toBe("/app");
     expect(serviceAppMount(plan)?.readOnly).toBe(false);
+    expect(serviceAppMount(plan)?.excludes).toEqual([".bundle", "vendor/bundle"]);
 
     expect(
       plan.mounts.filter(
@@ -217,7 +218,7 @@ describe("ruby:3.3 ServiceType", () => {
       type: "ruby:3.3",
       framework: "rails",
       webroot: "frontend/public",
-      workingDirectory: "/work",
+      working_dir: "/work",
       environment: { RAILS_ENV: "production", FOO: "bar", BINDING: "127.0.0.2" },
     });
 

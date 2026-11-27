@@ -38,7 +38,7 @@ lando redis-cli ping
 lando psql
 ```
 
-`lando console` is `php bin/console` on `appserver`. Swap `symfony-demo` for your app name anywhere you pass the database name yourself.
+`lando console` runs `php bin/console` on `appserver`, from any directory in the app. Swap `symfony-demo` for your app name anywhere you pass the database name yourself.
 
 ## See what the recipe writes
 
@@ -47,7 +47,7 @@ lando psql
 | `appserver` | `php:8.4`, `framework: symfony`, webroot `public`, Composer `2`, Apache on port `80`, depends on `database` and `cache`, gets `DATABASE_URL` and `REDIS_URL` |
 | `database` | `type: postgres:16` |
 | `cache` | `type: redis` |
-| Tooling | `lando console` (`php bin/console`) and `lando composer` on `appserver` |
+| Tooling | `lando console` (`php bin/console` from the app root, wherever you run it) and `lando composer` on `appserver` |
 
 Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pass `--answer=database=mariadb:11.4` when you want MariaDB instead.
 

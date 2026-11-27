@@ -23,9 +23,9 @@ lando composer install < /dev/null
 
 Redirected input still reaches the command as plain bytes, with no terminal in between, so `lando psql < dump.sql` runs the dump and exits.
 
-Interrupting that non-PTY run with `SIGINT` or `SIGTERM`, say from an editor task or a CI step that runs `lando npm run dev`, stops the command inside the container and everything it started, waits for them to exit, and exits `130` or `143`. The port the dev server held is free for the next run. Processes a command backgrounds on purpose keep running after a normal exit, as with `docker exec`. See [Interrupt a command](../cli/exec.mdx#interrupt-a-command).
+Interrupting an active non-PTY container command with `SIGINT` or `SIGTERM`, say from an editor task or a CI step that runs `lando npm run dev`, stops the command and everything it started, waits for them to exit, and exits `130` or `143`. The port the dev server held is free for the next run. Processes a command backgrounds on purpose keep running after a normal exit, as with `docker exec`. See [Interrupt a command](../cli/exec.mdx#interrupt-a-command).
 
-The tree has a parent task for the command and one child for the run, then a complete or fail close with the exit code. Command output does not ride that tree as per-line `task.detail` events. Host and container tools share one sink: bytes print as they arrive, value-only redacted and byte-exact, including a last line with no trailing newline.
+The tree has a parent task for the command and one child for the run. It reports an exit code for an observed command failure, not for an interruption or a failure that prevented the command from starting. Command output does not ride that tree as per-line `task.detail` events. Host and container tools share one sink: bytes print as they arrive, value-only redacted and byte-exact, including a last line with no trailing newline.
 
 Redirect stdout and the file or pipe gets the command's output and nothing else. The examples below use an app-defined task named `gen`; replace it with your own task. The task tree, warnings, and other Lando messages go to stderr, so a dump task writes a clean dump. Redirecting stdout also drops the PTY, whatever stdin is:
 
@@ -38,11 +38,15 @@ The same split applies to `:host` tasks, `.bun.sh` scripts, `lando exec`, and `l
 
 A non-zero exit follows the same shape. Stderr still streams. The failing child closes with the exit code, and the parent records the failure in its counts. JSON and YAML results set `ok: false` while retaining the command's typed result and tagged failure; choosing a machine format does not turn a failed child into success.
 
+If a host or service tool's stream ends without a reported exit status, Lando fails the task without a tool exit code or a completed result. It does not retry the tool or run later steps in that task. See [Exit codes](../cli/exec.mdx#exit-codes) before rerunning it.
+
+If you call tooling with an abort signal, an abort that stops a running step, cuts off output that Lando was still collecting, or prevents a pending step or hook from starting interrupts the invocation. A late abort does not replace a completed failure, or a successful final result when nothing else needs to run.
+
 ## Secrets on the wire
 
 Human formats mask only known secret values on the live byte stream, including values split across writes. Lando holds only a trailing prefix that could complete a known value, at most the length of the longest one, because a password authored as a literal in a committed YAML layer is masked only as a whole token and needs the next byte to decide. It leaves assignments, URLs, arbitrary binary bytes, and line endings alone otherwise. stdout and stderr follow the same rule on a terminal or in a file. See [What gets masked, and where](../config/secret-stores.mdx#what-gets-masked-and-where) for which values are masked everywhere and which only as whole tokens.
 
-Live JSON commands such as `lando exec --format=json` first mask registered values across byte boundaries. They emit a frame for each complete line, flushing a partial line at end of stream or at 64 KiB. Invalid UTF-8 becomes the replacement character. The full secrets profile then masks the frame text, so pattern matching restarts at each capped fragment. Registered-value matching spans those fragments.
+Live JSON commands such as `lando exec --format=json` (or `--format=ndjson`, the same stream) first mask registered values across byte boundaries. They emit a frame for each complete line, flushing a partial line at end of stream or at 64 KiB. Invalid UTF-8 becomes the replacement character. The full secrets profile then masks the frame text, so pattern matching restarts at each capped fragment. Registered-value matching spans those fragments.
 
 ## Pick a renderer mode
 
@@ -59,7 +63,7 @@ Captured results include `stdout` and `stderr`, even when both are empty strings
 
 [MCP calls](../agent-native/mcp.mdx#read-streamed-command-output) retain a bounded, redacted tail in the final envelope's `output` field. A progress token also enables live notifications; it is not required to receive final output. `output.truncated` tells you whether any captured output was dropped. MCP text output follows the same UTF-8 and redaction rules as live JSON output, not the byte-exact human stream.
 
-With a human result format, the `json` renderer writes progress and messages to stderr as structured events. Live JSON commands such as `lando exec --format=json` put events in the stdout stream instead, so one newline-delimited stream carries `stdout` and `stderr` data frames, `event` frames, and the final `result` frame. Events keep their own order, but their position relative to data frames can shift, because a data frame waits for its complete line. Filter on `_tag` rather than position.
+With a human result format, the `json` renderer writes progress and messages to stderr as structured events. Live JSON commands such as `lando exec --format=json` or `--format=ndjson` put events in the stdout stream instead, so one newline-delimited stream carries `stdout` and `stderr` data frames, `event` frames, and the final `result` frame. Events keep their own order, but their position relative to data frames can shift, because a data frame waits for its complete line. Filter on `_tag` rather than position.
 
 When both streams reach your terminal, Lando erases the live tree, writes each output chunk to its own stdout or stderr channel, then repaints the tree on stderr. A partial output line waits for its newline before the tree repaints. Redirect stdout to a file and the live tree stays on your terminal. Pipe stdout into another command and Lando prints one progress line per event instead, since that command writes to the same terminal and a repaint would wipe its output. Redirect stderr and you get only the command's stdout on your terminal. Interactive prompts also draw on stderr, so redirecting stdout does not disable them.
 

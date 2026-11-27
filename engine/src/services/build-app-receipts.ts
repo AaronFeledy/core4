@@ -1,7 +1,20 @@
-import { annotateFailureRole, mapFailures, mergeFailure } from "@lando/sdk/command-result";
-import { BuildPhaseFailedError, type BuildStepFailedError, ProviderInternalError } from "@lando/sdk/errors";
+import {
+  annotateFailureRole,
+  failureOutcomeFromCause,
+  mapDefectCause,
+  mapFailureCause,
+  mapFailures,
+  mergeFailure,
+} from "@lando/sdk/command-result";
+import {
+  BuildPhaseFailedError,
+  type BuildStepFailedError,
+  ProviderInternalError,
+  StateStoreError,
+} from "@lando/sdk/errors";
 import { MessageWarnEvent } from "@lando/sdk/events";
 import type { BuildAppError } from "@lando/sdk/services";
+import { storeErrorRemediation } from "@lando/state-store";
 import { Cause, DateTime, Effect } from "effect";
 import { commandWarningsUseMachineOutput, recordCommandWarning } from "../landofile/command-warnings.ts";
 import { type AppBuildAttempt, appBuildResultWarning } from "./build-app-disposition.ts";
@@ -31,6 +44,28 @@ export const makeAppBuildReceipts = (input: AppBuildInput) => {
   ): Effect.fn.Return<void, BuildAppError> {
     const { step } = appStep;
     const exitCode = receipt.outcome === "complete" ? receipt.exitCode : receipt.failure?.exitCode;
+    const wrapStorageFailure = (cause: StateStoreError) =>
+      receipt.outcome === "complete"
+        ? new ProviderInternalError({
+            providerId: input.provider.id,
+            operation: "buildResults",
+            cause,
+            message: input.redaction.redactor.redactString(
+              `Build step ${step.id} completed, but its result could not be recorded.`,
+            ),
+            remediation: storeErrorRemediation(
+              cause,
+              "Check access to the build-results cache before retrying. The command already ran; retrying may run it again.",
+            ),
+            details: {
+              step: step.id,
+              service: step.service,
+              phase: "app",
+              buildKey: step.buildKey,
+              transcriptPath: attempt.transcriptPath,
+            },
+          })
+        : buildResultsError(input.provider.id, cause);
     const persist = Effect.gen(function* () {
       yield* recordBuildResult(yield* bucket, {
         phase: "app",
@@ -44,27 +79,21 @@ export const makeAppBuildReceipts = (input: AppBuildInput) => {
         ...(exitCode === undefined ? {} : { exitCode }),
       });
     }).pipe(
-      mapFailures((cause) =>
-        receipt.outcome === "complete"
-          ? new ProviderInternalError({
-              providerId: input.provider.id,
-              operation: "buildResults",
-              cause,
-              message: input.redaction.redactor.redactString(
-                `Build step ${step.id} completed, but its result could not be recorded.`,
-              ),
-              remediation:
-                "Check access to the build-results cache before retrying. The command already ran; retrying may run it again.",
-              details: {
-                step: step.id,
-                service: step.service,
-                phase: "app",
-                buildKey: step.buildKey,
-                transcriptPath: attempt.transcriptPath,
-              },
-            })
-          : buildResultsError(input.provider.id, cause),
-      ),
+      Effect.catchCause((cause) => {
+        const primary = failureOutcomeFromCause(cause);
+        let mapped = mapFailureCause(cause, wrapStorageFailure);
+        if (
+          primary.kind === "typed" &&
+          primary.source === "elected" &&
+          primary.error instanceof StateStoreError
+        ) {
+          const storageFailure = primary.error;
+          mapped = mapDefectCause(mapped, (defect, role) =>
+            role === undefined && defect === storageFailure ? wrapStorageFailure(storageFailure) : defect,
+          );
+        }
+        return Effect.failCause(mapped);
+      }),
     );
     switch (receipt.outcome) {
       case "complete":

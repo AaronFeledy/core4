@@ -7,7 +7,9 @@ import {
   AbsolutePath,
   AppId,
   type AppPlan,
+  LANDO_DATA_ROOT_LABEL,
   ProviderId,
+  type ResourceOwnershipMember,
   ServiceName,
   appIdentityKey,
 } from "@lando/sdk/schema";
@@ -47,7 +49,13 @@ test("per-app inventory damage does not poison readable plans or an unrelated cw
     ...provider("docker", { appliedPlans: Effect.succeed([plan]) }),
     appliedStateInventory: Effect.succeed({
       plans: [plan],
-      unreadable: [{ appId: AppId.make("damaged-a"), path: "/tmp/isolated-state/damaged-a.json" }],
+      unreadable: [
+        {
+          reason: "unreadable" as const,
+          appId: AppId.make("damaged-a"),
+          path: "/tmp/isolated-state/damaged-a.json",
+        },
+      ],
     }),
   };
   expect(await Effect.runPromise(resolveTeardownEvidence(root, [damaged]))).toEqual({
@@ -66,7 +74,7 @@ test("an unreadable aggregate record does not poison another provider's app", as
     ...provider("podman"),
     appliedStateInventory: Effect.succeed({
       plans: [],
-      unreadable: [{ path: "/tmp/isolated-podman/applied-plans.json" }],
+      unreadable: [{ reason: "unreadable" as const, path: "/tmp/isolated-podman/applied-plans.json" }],
     }),
   };
   expect(
@@ -89,7 +97,11 @@ test.each(["per-app", "record"] as const)(
       appliedStateInventory: Effect.succeed({
         plans: [],
         unreadable: [
-          { path: "/tmp/isolated-state/applied.json", ...(layout === "per-app" ? { appId } : {}) },
+          {
+            reason: "unreadable" as const,
+            path: "/tmp/isolated-state/applied.json",
+            ...(layout === "per-app" ? { appId } : {}),
+          },
         ],
       }),
       resourceOwnership: (requested: AbsolutePath) =>
@@ -104,18 +116,8 @@ test.each(["per-app", "record"] as const)(
             : undefined,
         ),
     };
-    const evidence = await Effect.runPromise(resolveTeardownEvidence(root, [damaged]));
-    expect(evidence).toEqual({
-      kind: "owned",
-      ownership: [
-        {
-          appRoot: root,
-          ownerKey: appIdentityKey("owner", root),
-          providerId: ProviderId.make("docker"),
-          appIds: [appId],
-        },
-      ],
-    });
+    const failure = await Effect.runPromise(Effect.flip(resolveTeardownEvidence(root, [damaged])));
+    expect(failure).toMatchObject({ _tag: "ProviderUnavailableError", operation: "applied-state.read" });
     expect(
       await Effect.runPromise(resolveTeardownEvidence(AbsolutePath.make("/tmp/outside-app"), [damaged])),
     ).toEqual({ kind: "absent" });
@@ -149,7 +151,7 @@ test("unreadable applied state refuses teardown before label-owned resources can
 });
 
 test.each(["per-app", "record"] as const)(
-  "read-only discovery treats %s protected state as unknown, not orphaned",
+  "decision lookup refuses %s protected state at an independently owned root",
   async (layout) => {
     const appId = AppId.make("damaged-a");
     const damaged = {
@@ -170,7 +172,11 @@ test.each(["per-app", "record"] as const)(
       appliedStateInventory: Effect.succeed({
         plans: [],
         unreadable: [
-          { path: "/tmp/isolated-state/applied.json", ...(layout === "per-app" ? { appId } : {}) },
+          {
+            reason: "unreadable" as const,
+            path: "/tmp/isolated-state/applied.json",
+            ...(layout === "per-app" ? { appId } : {}),
+          },
         ],
       }),
       resourceOwnership: () =>
@@ -181,7 +187,8 @@ test.each(["per-app", "record"] as const)(
           appIds: [appId],
         }),
     };
-    expect(await Effect.runPromise(resolveAppliedPlanEvidence(root, [damaged]))).toBeUndefined();
+    const failure = await Effect.runPromise(Effect.flip(resolveAppliedPlanEvidence(root, [damaged])));
+    expect(failure).toMatchObject({ _tag: "ProviderUnavailableError", operation: "applied-state.read" });
   },
 );
 
@@ -297,23 +304,254 @@ for (const problem of ["corrupt", "offline", "incapable"] as const) {
   });
 }
 
-test("inventory-only evidence refuses non-teardown resolution", async () => {
-  // Given
-  const b = {
-    ...provider("docker", { isAvailable: Effect.succeed(true) }),
-    resourceOwnership: () =>
-      Effect.succeed({
-        appRoot: root,
-        ownerKey: appIdentityKey("owner", root),
-        providerId: ProviderId.make("docker"),
-        appIds: [AppId.make("failed-b")],
+const destroyedApp = AppId.make("destroyed");
+
+const recorded = (kind: ResourceOwnershipMember["kind"], nativeName: string): ResourceOwnershipMember => ({
+  kind,
+  nativeName,
+  appId: destroyedApp,
+  ...(kind === "container" ? { service: ServiceName.make("web") } : {}),
+});
+
+const ownershipOf = (providerId: string, members?: ReadonlyArray<ResourceOwnershipMember>) => ({
+  appRoot: root,
+  ownerKey: appIdentityKey("owner", root),
+  providerId: ProviderId.make(providerId),
+  appIds: [destroyedApp],
+  ...(members === undefined ? {} : { members }),
+});
+
+const withOwnership = (base: RuntimeProviderShape, hints: ReturnType<typeof ownershipOf>) => ({
+  ...base,
+  resourceOwnership: () => Effect.succeed(hints),
+  canCleanupOwnedResources: Effect.succeed(true),
+});
+
+const retainedVolume = {
+  ref: { app: destroyedApp, store: "data" },
+  identity: {
+    coordinationKey: "lando:destroyed:data",
+    nativeName: "lando-destroyed--web--storage--data",
+    generation: "generation-1",
+    ownerRoot: root,
+    origin: "created" as const,
+  },
+};
+
+const runningContainer = (name: string) => ({
+  app: destroyedApp,
+  appRoot: root,
+  service: ServiceName.make("web"),
+  providerId: ProviderId.make("docker"),
+  containerId: `${name}-id`,
+  nativeName: name,
+  labels: {
+    "dev.lando.app": "destroyed",
+    "dev.lando.app-root": root,
+    "dev.lando.service": "web",
+    "dev.lando.provider": "docker",
+  },
+  status: "running" as const,
+  publications: { status: "unknown" as const },
+});
+
+const refusal = (exit: Exit.Exit<unknown, unknown>) =>
+  failureValue(exit) as { readonly detail?: unknown; readonly message: string; readonly remediation: string };
+
+describe("resolveAppliedPlanEvidence without a matching plan", () => {
+  test.each([
+    {
+      name: "a destroy that kept a data volume",
+      members: [recorded("volume", retainedVolume.identity.nativeName)],
+      volumes: [retainedVolume],
+    },
+    {
+      name: "a recorded volume the runtime no longer holds",
+      members: [recorded("volume", retainedVolume.identity.nativeName)],
+      volumes: [],
+    },
+    {
+      name: "a recorded private network without containers",
+      members: [recorded("network", "lando-destroyed--default"), recorded("volume", "data")],
+      volumes: [],
+    },
+    {
+      name: "a recorded container the running runtime no longer reports",
+      members: [recorded("container", "lando-destroyed--web"), recorded("volume", "data")],
+      volumes: [],
+    },
+  ])("$name resolves as never applied", async ({ members, volumes }) => {
+    const filters: ListFilter[] = [];
+    const docker = withOwnership(
+      provider("docker", {
+        list: (filter) =>
+          Effect.sync(() => {
+            filters.push(filter);
+            return [];
+          }),
+        listVolumes: () => Effect.succeed(volumes),
       }),
-    canCleanupOwnedResources: Effect.succeed(true),
-  };
-  // When
-  const exit = await Effect.runPromiseExit(resolveAppliedPlanEvidence(root, [b]));
-  // Then
-  expect(failureDetail(exit)).toBe("provider-resources");
+      ownershipOf("docker", members),
+    );
+
+    expect(await Effect.runPromise(resolveAppliedPlanEvidence(root, [docker], undefined, "exact"))).toBe(
+      undefined,
+    );
+    expect(filters).toEqual([{ includeUnplanned: true }]);
+  });
+
+  test("teardown still receives the retained volumes a destroy kept", async () => {
+    const hints = ownershipOf("docker", [recorded("volume", retainedVolume.identity.nativeName)]);
+    const docker = withOwnership(
+      provider("docker", { listVolumes: () => Effect.succeed([retainedVolume]) }),
+      hints,
+    );
+
+    expect(await Effect.runPromise(resolveTeardownEvidence(root, [docker]))).toEqual({
+      kind: "orphans",
+      groups: [
+        {
+          providerId: ProviderId.make("docker"),
+          appId: destroyedApp,
+          services: [],
+          volumes: [retainedVolume],
+        },
+      ],
+      ownership: [hints],
+    });
+  });
+
+  test("teardown attributes a volume two providers report to the provider that labelled it", async () => {
+    // One runtime reachable through both providers, as when DOCKER_HOST points at the Podman socket.
+    const labelled = { ...retainedVolume, labels: { "dev.lando.provider": "podman" } };
+    const shared = { listVolumes: () => Effect.succeed([labelled]) };
+
+    const evidence = await Effect.runPromise(
+      resolveTeardownEvidence(root, [provider("docker", shared), provider("podman", shared)]),
+    );
+
+    expect(evidence).toEqual({
+      kind: "orphans",
+      groups: [
+        { providerId: ProviderId.make("podman"), appId: destroyedApp, services: [], volumes: [labelled] },
+      ],
+    });
+  });
+
+  test("retained volumes resolve without observing a stopped runtime", async () => {
+    const stopped = withOwnership(
+      provider("docker", {
+        isAvailable: Effect.succeed(false),
+        list: () => Effect.die("a stopped runtime is never listed"),
+        listVolumes: () => Effect.die("a stopped runtime is never listed"),
+      }),
+      ownershipOf("docker", [recorded("volume", "data"), recorded("network", "default")]),
+    );
+
+    expect(await Effect.runPromise(resolveAppliedPlanEvidence(root, [stopped]))).toBeUndefined();
+  });
+
+  test("a recorded container labelled for another data root resolves as never applied", async () => {
+    const foreign = {
+      ...runningContainer("lando-destroyed--web"),
+      labels: {
+        ...runningContainer("lando-destroyed--web").labels,
+        [LANDO_DATA_ROOT_LABEL]: "/tmp/applied-state-peer-data",
+      },
+    };
+    const docker = withOwnership(
+      provider("docker", { list: () => Effect.succeed([foreign]) }),
+      ownershipOf("docker", [recorded("container", "lando-destroyed--web")]),
+    );
+
+    expect(
+      await Effect.runPromise(
+        resolveAppliedPlanEvidence(root, [docker], undefined, "exact", "/tmp/applied-state-local-data"),
+      ),
+    ).toBeUndefined();
+  });
+
+  test("a recorded container the runtime still holds refuses and names it", async () => {
+    const docker = withOwnership(
+      provider("docker", { list: () => Effect.succeed([runningContainer("inventory-only-web")]) }),
+      ownershipOf("docker", [recorded("container", "inventory-only-web"), recorded("volume", "data")]),
+    );
+
+    const failure = refusal(await Effect.runPromiseExit(resolveAppliedPlanEvidence(root, [docker])));
+
+    expect(failure).toMatchObject({
+      _tag: "AppResolveError",
+      reason: "mismatch",
+      detail: "provider-resources",
+    });
+    expect(failure.message).toContain("docker");
+    expect(failure.message).toContain("inventory-only-web");
+    expect(failure.remediation).toContain(root);
+    expect(failure.remediation).toContain("`lando start`");
+    expect(failure.remediation).toContain("`lando destroy --provider=docker --yes`");
+  });
+
+  test("a recorded container on a runtime Lando could not check refuses as unverified", async () => {
+    const stopped = withOwnership(
+      provider("docker", {
+        isAvailable: Effect.succeed(false),
+        list: () => Effect.die("a stopped runtime is never listed"),
+      }),
+      ownershipOf("docker", [recorded("container", "lando-destroyed--web")]),
+    );
+
+    const failure = refusal(await Effect.runPromiseExit(resolveAppliedPlanEvidence(root, [stopped])));
+
+    expect(failure.detail).toBe("provider-resources");
+    expect(failure.message).toContain("could not check the docker runtime (not running or not answering)");
+    expect(failure.message).toContain("lando-destroyed--web");
+  });
+
+  test("an ownership record written for another root names the record to remove", async () => {
+    const docker = withOwnership(provider("docker"), {
+      ...ownershipOf("docker", [recorded("volume", "data")]),
+      appRoot: AbsolutePath.make("/apps/elsewhere"),
+    });
+
+    const failure = refusal(await Effect.runPromiseExit(resolveAppliedPlanEvidence(root, [docker])));
+
+    expect(failure.detail).toBe("provider-resources");
+    expect(failure.message).toContain(`docker ownership record for ${root}`);
+    expect(failure.remediation).toContain(`resource-ownership/${appIdentityKey("owner", root)}.json`);
+    expect(failure.remediation).not.toContain("teardown");
+  });
+
+  test("an ownership hint without members still refuses", async () => {
+    const docker = withOwnership(provider("docker"), ownershipOf("docker"));
+
+    const failure = refusal(await Effect.runPromiseExit(resolveAppliedPlanEvidence(root, [docker])));
+
+    expect(failure.detail).toBe("provider-resources");
+    expect(failure.message).toContain("docker");
+  });
+
+  test("the refusal names at most five containers", async () => {
+    const names = ["web-1", "web-2", "web-3", "web-4", "web-5", "web-6"];
+    const docker = provider("docker", { list: () => Effect.succeed(names.map(runningContainer)) });
+
+    const failure = refusal(await Effect.runPromiseExit(resolveAppliedPlanEvidence(root, [docker])));
+
+    expect(failure.message).toContain("web-5 and 1 more");
+    expect(failure.message).not.toContain("web-6");
+  });
+
+  test("a global app's refusal names only its destroy command", async () => {
+    const docker = provider("docker", { list: () => Effect.succeed([runningContainer("global-web")]) });
+
+    const failure = refusal(
+      await Effect.runPromiseExit(
+        resolveAppliedPlanEvidence(root, [docker], { kind: "global", id: "global" }, "exact"),
+      ),
+    );
+
+    expect(failure.remediation).toContain("`lando global:destroy --provider=docker --yes`");
+    expect(failure.remediation).not.toContain("lando start");
+  });
 });
 
 test.each([
@@ -333,7 +571,7 @@ test.each([
     name: "ancestor resolution",
     run: (providers: ReadonlyArray<RuntimeProviderShape>) =>
       resolveAppliedPlanEvidence(root, providers).pipe(Effect.asVoid),
-    filter: {},
+    filter: { includeUnplanned: true },
   },
 ])("$name uses the intended runtime discovery filter", async ({ run, filter }) => {
   const filters: ListFilter[] = [];
@@ -393,6 +631,150 @@ const planFor = (providerId: string): AppPlan => ({
     runtime: 4,
   },
   extensions: {},
+});
+
+test.each(["per-app", "record"] as const)(
+  "teardown retains %s inventory protection so runtime resources do not become orphans",
+  async (layout) => {
+    const appId = AppId.make("damaged-a");
+    const damaged = {
+      ...provider("docker", {
+        isAvailable: Effect.succeed(true),
+        list: () =>
+          Effect.succeed([
+            {
+              providerId: ProviderId.make("docker"),
+              app: appId,
+              appRoot: root,
+              service: ServiceName.make("web"),
+              status: "running" as const,
+              publications: { status: "unknown" as const },
+            },
+          ]),
+      }),
+      appliedStateInventory: Effect.succeed({
+        plans: [],
+        unreadable: [
+          {
+            reason: "unreadable" as const,
+            path: "/tmp/isolated-state/applied.json",
+            ...(layout === "per-app" ? { appId } : {}),
+          },
+        ],
+      }),
+      resourceOwnership: () =>
+        Effect.succeed({
+          appRoot: root,
+          ownerKey: appIdentityKey("owner", root),
+          providerId: ProviderId.make("docker"),
+          appIds: [appId],
+        }),
+      canCleanupOwnedResources: Effect.succeed(true),
+    };
+    const failure = await Effect.runPromise(Effect.flip(resolveTeardownEvidence(root, [damaged])));
+    expect(failure).toMatchObject({ _tag: "ProviderUnavailableError", operation: "applied-state.read" });
+  },
+);
+
+test.each(["per-app", "record"] as const)(
+  "teardown retains newer-version %s inventory with upgrade protection, not orphan mutation",
+  async (layout) => {
+    const appId = AppId.make("newer-a");
+    const damaged = {
+      ...provider("docker", {
+        isAvailable: Effect.succeed(true),
+        list: () =>
+          Effect.succeed([
+            {
+              providerId: ProviderId.make("docker"),
+              app: appId,
+              appRoot: root,
+              service: ServiceName.make("web"),
+              status: "running" as const,
+              publications: { status: "unknown" as const },
+            },
+          ]),
+      }),
+      appliedStateInventory: Effect.succeed({
+        plans: [],
+        unreadable: [
+          {
+            reason: "newer-version" as const,
+            path: "/tmp/isolated-state/applied.json",
+            storedVersion: 11,
+            supportedVersion: 10,
+            ...(layout === "per-app" ? { appId } : {}),
+          },
+        ],
+      }),
+      resourceOwnership: () =>
+        Effect.succeed({
+          appRoot: root,
+          ownerKey: appIdentityKey("owner", root),
+          providerId: ProviderId.make("docker"),
+          appIds: [appId],
+        }),
+      canCleanupOwnedResources: Effect.succeed(true),
+    };
+    const failure = await Effect.runPromise(Effect.flip(resolveTeardownEvidence(root, [damaged])));
+    expect(failure).toMatchObject({ _tag: "AppliedStateVersionError", appId, storedVersion: 11 });
+  },
+);
+
+test("protected inventory never infers an app root from the unreadable filename", async () => {
+  const appId = AppId.make("damaged-a");
+  const damaged = {
+    ...provider("docker", { isAvailable: Effect.succeed(true) }),
+    appliedStateInventory: Effect.succeed({
+      plans: [],
+      unreadable: [
+        {
+          reason: "unreadable" as const,
+          appId,
+          // Filename looks like another root; protection matches appId/provider only.
+          path: "/tmp/other-app/damaged-a.json",
+        },
+      ],
+    }),
+    resourceOwnership: (requested: AbsolutePath) =>
+      Effect.succeed(
+        requested === root
+          ? {
+              appRoot: root,
+              ownerKey: appIdentityKey("owner", root),
+              providerId: ProviderId.make("docker"),
+              appIds: [appId],
+            }
+          : undefined,
+      ),
+    canCleanupOwnedResources: Effect.succeed(true),
+  };
+  const failure = await Effect.runPromise(Effect.flip(resolveTeardownEvidence(root, [damaged])));
+  expect(failure).toMatchObject({ _tag: "ProviderUnavailableError", operation: "applied-state.read" });
+  expect(
+    await Effect.runPromise(resolveTeardownEvidence(AbsolutePath.make("/tmp/other-app"), [damaged])),
+  ).toEqual({ kind: "absent" });
+});
+
+test("an unreadable inventory on provider B does not block provider A's applied plan", async () => {
+  const plan = planFor("lando");
+  const a = provider("lando", { appliedPlans: Effect.succeed([plan]) });
+  const b = {
+    ...provider("docker"),
+    appliedStateInventory: Effect.succeed({
+      plans: [],
+      unreadable: [
+        {
+          reason: "newer-version" as const,
+          path: "/tmp/b/applied.json",
+          storedVersion: 11,
+          supportedVersion: 10,
+        },
+      ],
+    }),
+  };
+  expect(await Effect.runPromise(resolveAppliedPlanEvidence(root, [a, b]))).toEqual(plan);
+  expect(await Effect.runPromise(resolveTeardownEvidence(root, [a, b]))).toEqual({ kind: "applied", plan });
 });
 
 describe("observeProviderRuntime", () => {
@@ -549,6 +931,7 @@ describe("resolveAppliedPlanEvidence", () => {
 
     expect(result._tag).toBe("Failure");
     expect(failureDetail(result)).toBe("provider-resources");
+    expect(failureMessage(result)).toContain("appserver (app orphaned-app)");
   });
 
   test("ignores runtime services owned by another app root", async () => {
@@ -571,31 +954,6 @@ describe("resolveAppliedPlanEvidence", () => {
     );
 
     expect(result).toBeUndefined();
-  });
-
-  test("does not report absence while an owned volume remains", async () => {
-    const result = await Effect.runPromiseExit(
-      resolveAppliedPlanEvidence(root, [
-        provider("lando", {
-          listVolumes: () =>
-            Effect.succeed([
-              {
-                ref: { app: AppId.make("orphaned-app"), store: "database" },
-                identity: {
-                  coordinationKey: "lando:orphaned-app:database",
-                  nativeName: "orphaned-app_database",
-                  generation: "generation-1",
-                  ownerRoot: root,
-                  origin: "created",
-                },
-              },
-            ]),
-        }),
-      ]),
-    );
-
-    expect(result._tag).toBe("Failure");
-    expect(failureDetail(result)).toBe("provider-resources");
   });
 
   test("propagates provider runtime evidence failures", async () => {
@@ -896,4 +1254,141 @@ describe("exact applied-plan lookup", () => {
 
     expect(resolved).toEqual(nested);
   });
+});
+
+test("verified adoption receipts retain exact unlabeled orphans for cleanup", async () => {
+  const dataRoot = AbsolutePath.make("/tmp/applied-state-local-data");
+  const foreign = AbsolutePath.make("/tmp/applied-state-foreign-data");
+  const ownershipLabels = {
+    "dev.lando.app": "failed-b",
+    "dev.lando.app-root": root,
+    "dev.lando.service": "web",
+    "dev.lando.provider": "docker",
+  };
+  const unlabeled = {
+    app: AppId.make("failed-b"),
+    appRoot: root,
+    service: ServiceName.make("web"),
+    providerId: ProviderId.make("docker"),
+    status: "running" as const,
+    publications: { status: "unknown" as const },
+    containerId: "inventory-only-web",
+    nativeName: "legacy-web",
+    labels: ownershipLabels,
+  };
+  const foreignLabeled = {
+    ...unlabeled,
+    containerId: "foreign-web",
+    labels: { ...ownershipLabels, [LANDO_DATA_ROOT_LABEL]: foreign },
+  };
+  const ownership = {
+    ...provider("docker", {
+      isAvailable: Effect.succeed(true),
+      list: () => Effect.succeed([unlabeled, foreignLabeled]),
+    }),
+    resourceOwnership: () =>
+      Effect.succeed({
+        appRoot: root,
+        ownerKey: appIdentityKey("owner", root),
+        providerId: ProviderId.make("docker"),
+        appIds: [AppId.make("failed-b")],
+        members: [
+          {
+            kind: "container" as const,
+            nativeName: "legacy-web",
+            nativeId: "inventory-only-web",
+            dataRoot,
+            appId: AppId.make("failed-b"),
+            service: ServiceName.make("web"),
+          },
+        ],
+      }),
+    canCleanupOwnedResources: Effect.succeed(true),
+  };
+  const evidence = await Effect.runPromise(resolveTeardownEvidence(root, [ownership], undefined, dataRoot));
+  expect(evidence.kind).toBe("orphans");
+  if (evidence.kind !== "orphans") throw new Error("expected orphans");
+  expect(evidence.groups).toHaveLength(1);
+  expect(String(evidence.groups[0]?.providerId)).toBe("docker");
+  expect(String(evidence.groups[0]?.appId)).toBe("failed-b");
+  expect(evidence.groups[0]?.services.map((service) => service.containerId)).toEqual(["inventory-only-web"]);
+});
+
+test("historical applied plans without a data root remain selectable", async () => {
+  const dataRoot = AbsolutePath.make("/tmp/applied-state-local-data");
+  const historical = planFor("lando");
+  const foreign = {
+    ...planFor("lando"),
+    id: AppId.make("foreign-app"),
+    name: "foreign-app",
+    identity: { appRoot: root, ownerKey: "foreign-owner", dataRoot: AbsolutePath.make("/tmp/other-data") },
+  };
+  const resolved = await Effect.runPromise(
+    resolveAppliedPlanEvidence(
+      root,
+      [provider("lando", { appliedPlans: Effect.succeed([historical, foreign]) })],
+      undefined,
+      "exact",
+      dataRoot,
+    ),
+  );
+  expect(resolved).toEqual(historical);
+});
+
+test("unlabeled orphans without inventory-only proof are out of scope for a data root", async () => {
+  const dataRoot = AbsolutePath.make("/tmp/applied-state-local-data");
+  const unlabeled = {
+    app: AppId.make("ghost"),
+    appRoot: root,
+    service: ServiceName.make("web"),
+    providerId: ProviderId.make("lando"),
+    status: "running" as const,
+    publications: { status: "unknown" as const },
+    containerId: "ghost-web",
+  };
+  const evidence = await Effect.runPromise(
+    resolveTeardownEvidence(
+      root,
+      [provider("lando", { list: () => Effect.succeed([unlabeled]) })],
+      undefined,
+      dataRoot,
+    ),
+  );
+  expect(evidence).toEqual({ kind: "absent" });
+});
+
+test("ownership without members does not claim unlabeled orphans for a data root", async () => {
+  const dataRoot = AbsolutePath.make("/tmp/applied-state-local-data");
+  const unlabeled = {
+    app: AppId.make("failed-b"),
+    appRoot: root,
+    service: ServiceName.make("web"),
+    providerId: ProviderId.make("docker"),
+    status: "running" as const,
+    publications: { status: "unknown" as const },
+    containerId: "broad-web",
+    labels: {
+      "dev.lando.app": "failed-b",
+      "dev.lando.app-root": root,
+      "dev.lando.service": "web",
+      "dev.lando.provider": "docker",
+    },
+  };
+  const ownership = {
+    ...provider("docker", {
+      isAvailable: Effect.succeed(true),
+      list: () => Effect.succeed([unlabeled]),
+    }),
+    resourceOwnership: () =>
+      Effect.succeed({
+        appRoot: root,
+        ownerKey: appIdentityKey("owner", root),
+        providerId: ProviderId.make("docker"),
+        appIds: [AppId.make("failed-b")],
+      }),
+    canCleanupOwnedResources: Effect.succeed(true),
+  };
+  const evidence = await Effect.runPromise(resolveTeardownEvidence(root, [ownership], undefined, dataRoot));
+  // Inventory without member rows is "owned" cleanup state, not historical unlabeled runtime proof.
+  expect(evidence.kind).toBe("owned");
 });

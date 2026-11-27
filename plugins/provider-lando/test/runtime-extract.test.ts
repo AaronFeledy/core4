@@ -184,10 +184,10 @@ describe("installRuntimeBundle", () => {
       ]);
 
       const result = await Effect.runPromise(
-        installRuntimeBundle({ archiveBytes, version: "1.0.0", runtimeBinDir, platform: "linux" }),
+        installRuntimeBundle({ archiveBytes, version: "0.0.1", runtimeBinDir, platform: "linux" }),
       );
 
-      expect(result).toEqual({ installed: true, runtimeBinDir, version: "1.0.0" });
+      expect(result).toEqual({ installed: true, runtimeBinDir, version: "0.0.1" });
       expect(existsSync(join(runtimeBinDir, "podman"))).toBe(true);
       expect(existsSync(join(runtimeBinDir, "gvproxy"))).toBe(true);
       if (process.platform !== "win32") {
@@ -209,7 +209,7 @@ describe("installRuntimeBundle", () => {
       ]);
 
       await Effect.runPromise(
-        installRuntimeBundle({ archiveBytes, version: "1.0.0", runtimeBinDir, platform: "linux" }),
+        installRuntimeBundle({ archiveBytes, version: "0.0.1", runtimeBinDir, platform: "linux" }),
       );
 
       expect(existsSync(join(runtimeBinDir, "podman"))).toBe(true);
@@ -233,7 +233,7 @@ describe("installRuntimeBundle", () => {
       await Effect.runPromise(
         installRuntimeBundle({
           archiveBytes: new Uint8Array([1]),
-          version: "1.0.0",
+          version: "0.0.1",
           runtimeBinDir,
           platform: "linux",
           extractImpl: () => [{ path: "podman", bytes: encoder.encode("working-podman"), mode: 0o755 }],
@@ -242,13 +242,13 @@ describe("installRuntimeBundle", () => {
       const archiveBytes = buildStoredZip("nested/podman", encoder.encode("zip-podman"));
 
       const exit = await Effect.runPromiseExit(
-        installRuntimeBundle({ archiveBytes, version: "2.0.0", runtimeBinDir, platform: "linux" }),
+        installRuntimeBundle({ archiveBytes, version: "0.0.2", runtimeBinDir, platform: "linux" }),
       );
 
       expect(expectFailure(exit)).toBeInstanceOf(ProviderRuntimeExtractError);
       expect(await readFile(join(runtimeBinDir, "podman"), "utf8")).toBe("working-podman");
       expect((await readFile(join(runtimeBinDir, ".runtime-installed-version"), "utf8")).trim()).toBe(
-        "1.0.0",
+        "0.0.1",
       );
     } finally {
       await rm(root, { recursive: true, force: true });
@@ -261,7 +261,7 @@ describe("installRuntimeBundle", () => {
       const archiveBytes = buildStoredZip("podman", encoder.encode("zip-podman"));
 
       const result = await Effect.runPromise(
-        installRuntimeBundle({ archiveBytes, version: "1.0.0", runtimeBinDir, platform: "linux" }),
+        installRuntimeBundle({ archiveBytes, version: "0.0.1", runtimeBinDir, platform: "linux" }),
       );
 
       expect(result.installed).toBe(true);
@@ -340,7 +340,7 @@ describe("installRuntimeBundle", () => {
     try {
       const archiveBytes = buildTarGz([{ path: "../escape", bytes: encoder.encode("evil") }]);
       const exit = await Effect.runPromiseExit(
-        installRuntimeBundle({ archiveBytes, version: "1.0.0", runtimeBinDir, platform: "linux" }),
+        installRuntimeBundle({ archiveBytes, version: "0.0.1", runtimeBinDir, platform: "linux" }),
       );
       const failure = expectFailure(exit);
       expect(failure).toBeInstanceOf(ProviderRuntimeExtractError);
@@ -357,7 +357,7 @@ describe("installRuntimeBundle", () => {
     try {
       const archiveBytes = buildTarGz([{ path: "/etc/evil", bytes: encoder.encode("evil") }]);
       const exit = await Effect.runPromiseExit(
-        installRuntimeBundle({ archiveBytes, version: "1.0.0", runtimeBinDir, platform: "linux" }),
+        installRuntimeBundle({ archiveBytes, version: "0.0.1", runtimeBinDir, platform: "linux" }),
       );
       expect(expectFailure(exit)).toBeInstanceOf(ProviderRuntimeExtractError);
       expect(existsSync(runtimeBinDir)).toBe(false);
@@ -371,7 +371,7 @@ describe("installRuntimeBundle", () => {
     try {
       const archiveBytes = buildTarGz([{ path: "podman", typeflag: "2" }]);
       const exit = await Effect.runPromiseExit(
-        installRuntimeBundle({ archiveBytes, version: "1.0.0", runtimeBinDir, platform: "linux" }),
+        installRuntimeBundle({ archiveBytes, version: "0.0.1", runtimeBinDir, platform: "linux" }),
       );
       expect(expectFailure(exit)).toBeInstanceOf(ProviderRuntimeExtractError);
       expect(existsSync(runtimeBinDir)).toBe(false);
@@ -388,7 +388,7 @@ describe("installRuntimeBundle", () => {
 
       // When: installation validates the strict runtime archive.
       const exit = await Effect.runPromiseExit(
-        installRuntimeBundle({ archiveBytes, version: "1.0.0", runtimeBinDir, platform: "linux" }),
+        installRuntimeBundle({ archiveBytes, version: "0.0.1", runtimeBinDir, platform: "linux" }),
       );
 
       // Then: publication fails closed without creating the destination.
@@ -410,7 +410,7 @@ describe("installRuntimeBundle", () => {
 
       // When: installation parses the longname member.
       const exit = await Effect.runPromiseExit(
-        installRuntimeBundle({ archiveBytes, version: "1.0.0", runtimeBinDir, platform: "linux" }),
+        installRuntimeBundle({ archiveBytes, version: "0.0.1", runtimeBinDir, platform: "linux" }),
       );
 
       // Then: traversal is rejected before publication.
@@ -455,7 +455,7 @@ describe("installRuntimeBundle", () => {
 
       // When: installation stages the member but rejects the incomplete runtime.
       const exit = await Effect.runPromiseExit(
-        installRuntimeBundle({ archiveBytes, version: "1.0.0", runtimeBinDir, platform: "linux" }),
+        installRuntimeBundle({ archiveBytes, version: "0.0.1", runtimeBinDir, platform: "linux" }),
       );
 
       // Then: staged files and the destination are absent while the created parent remains empty.
@@ -475,7 +475,7 @@ describe("installRuntimeBundle", () => {
       await Effect.runPromise(
         installRuntimeBundle({
           archiveBytes: new Uint8Array([1]),
-          version: "1.0.0",
+          version: "0.0.1",
           runtimeBinDir,
           platform: "linux",
           extractImpl: () => [{ path: "podman", bytes: encoder.encode("old-podman"), mode: 0o755 }],
@@ -485,7 +485,7 @@ describe("installRuntimeBundle", () => {
       const exit = await Effect.runPromiseExit(
         installRuntimeBundle({
           archiveBytes: buildTarGz([{ path: "empty-dir", typeflag: "5" }]),
-          version: "2.0.0",
+          version: "0.0.2",
           runtimeBinDir,
           platform: "linux",
         }),
@@ -494,7 +494,7 @@ describe("installRuntimeBundle", () => {
       expect(expectFailure(exit)).toBeInstanceOf(ProviderRuntimeExtractError);
       expect(await readFile(join(runtimeBinDir, "podman"), "utf8")).toBe("old-podman");
       expect((await readFile(join(runtimeBinDir, ".runtime-installed-version"), "utf8")).trim()).toBe(
-        "1.0.0",
+        "0.0.1",
       );
     } finally {
       await rm(root, { recursive: true, force: true });
@@ -510,7 +510,7 @@ describe("installRuntimeBundle", () => {
       const exit = await Effect.runPromiseExit(
         installRuntimeBundle({
           archiveBytes,
-          version: "1.0.0",
+          version: "0.0.1",
           runtimeBinDir,
           platform: "linux",
           maxDecompressedBytes: cap,
@@ -540,7 +540,7 @@ describe("installRuntimeBundle", () => {
       const first = await Effect.runPromise(
         installRuntimeBundle({
           archiveBytes: new Uint8Array([1]),
-          version: "1.0.0",
+          version: "0.0.1",
           runtimeBinDir,
           platform: "linux",
           extractImpl,
@@ -549,7 +549,7 @@ describe("installRuntimeBundle", () => {
       const second = await Effect.runPromise(
         installRuntimeBundle({
           archiveBytes: new Uint8Array([1]),
-          version: "1.0.0",
+          version: "0.0.1",
           runtimeBinDir,
           platform: "linux",
           extractImpl,
@@ -557,10 +557,10 @@ describe("installRuntimeBundle", () => {
       );
 
       expect(first.installed).toBe(true);
-      expect(second).toEqual({ installed: false, runtimeBinDir, version: "1.0.0" });
+      expect(second).toEqual({ installed: false, runtimeBinDir, version: "0.0.1" });
       expect(calls).toBe(1);
       expect((await readFile(join(runtimeBinDir, ".runtime-installed-version"), "utf8")).trim()).toBe(
-        "1.0.0",
+        "0.0.1",
       );
     } finally {
       await rm(root, { recursive: true, force: true });
@@ -571,15 +571,15 @@ describe("installRuntimeBundle", () => {
     const { root, runtimeBinDir } = await makeTempRuntimeBinDir();
     try {
       await mkdir(join(runtimeBinDir, "bin"), { recursive: true });
-      await writeFile(join(runtimeBinDir, ".runtime-installed-version"), "1.0.0\n");
+      await writeFile(join(runtimeBinDir, ".runtime-installed-version"), "0.0.1\n");
       await writeFile(join(runtimeBinDir, "bin", "podman"), "old-podman");
       const archiveBytes = buildTarGz([{ path: "bin/podman", bytes: encoder.encode("new-podman") }]);
 
       const result = await Effect.runPromise(
-        installRuntimeBundle({ archiveBytes, version: "1.0.0", runtimeBinDir, platform: "linux" }),
+        installRuntimeBundle({ archiveBytes, version: "0.0.1", runtimeBinDir, platform: "linux" }),
       );
 
-      expect(result).toEqual({ installed: true, runtimeBinDir, version: "1.0.0" });
+      expect(result).toEqual({ installed: true, runtimeBinDir, version: "0.0.1" });
       expect(await readFile(join(runtimeBinDir, "podman"), "utf8")).toBe("new-podman");
       expect(existsSync(join(runtimeBinDir, "bin", "podman"))).toBe(false);
     } finally {
@@ -591,7 +591,7 @@ describe("installRuntimeBundle", () => {
     const { root, runtimeBinDir } = await makeTempRuntimeBinDir();
     try {
       await mkdir(runtimeBinDir, { recursive: true });
-      await writeFile(join(runtimeBinDir, ".runtime-installed-version"), "1.0.0\n");
+      await writeFile(join(runtimeBinDir, ".runtime-installed-version"), "0.0.1\n");
       await writeFile(join(runtimeBinDir, "podman.exe"), "podman");
       await writeFile(join(runtimeBinDir, "gvproxy.exe"), "gvproxy");
       await writeFile(join(runtimeBinDir, "win-sshproxy.exe"), "win-sshproxy");
@@ -600,7 +600,7 @@ describe("installRuntimeBundle", () => {
       const result = await Effect.runPromise(
         installRuntimeBundle({
           archiveBytes: new Uint8Array([1]),
-          version: "1.0.0",
+          version: "0.0.1",
           runtimeBinDir,
           platform: "win32",
           extractImpl: () => {
@@ -610,7 +610,7 @@ describe("installRuntimeBundle", () => {
         }),
       );
 
-      expect(result).toEqual({ installed: false, runtimeBinDir, version: "1.0.0" });
+      expect(result).toEqual({ installed: false, runtimeBinDir, version: "0.0.1" });
       expect(calls).toBe(0);
     } finally {
       await rm(root, { recursive: true, force: true });
@@ -623,7 +623,7 @@ describe("installRuntimeBundle", () => {
       const { root, runtimeBinDir } = await makeTempRuntimeBinDir();
       try {
         await mkdir(runtimeBinDir, { recursive: true });
-        await writeFile(join(runtimeBinDir, ".runtime-installed-version"), "1.0.0\n");
+        await writeFile(join(runtimeBinDir, ".runtime-installed-version"), "0.0.1\n");
         for (const name of ["podman.exe", "gvproxy.exe", "win-sshproxy.exe"]) {
           if (name !== missingHelper) await writeFile(join(runtimeBinDir, name), `old-${name}`);
         }
@@ -631,7 +631,7 @@ describe("installRuntimeBundle", () => {
         const result = await Effect.runPromise(
           installRuntimeBundle({
             archiveBytes: new Uint8Array([1]),
-            version: "1.0.0",
+            version: "0.0.1",
             runtimeBinDir,
             platform: "win32",
             extractImpl: () =>
@@ -643,7 +643,7 @@ describe("installRuntimeBundle", () => {
           }),
         );
 
-        expect(result).toEqual({ installed: true, runtimeBinDir, version: "1.0.0" });
+        expect(result).toEqual({ installed: true, runtimeBinDir, version: "0.0.1" });
         expect(await readFile(join(runtimeBinDir, missingHelper), "utf8")).toBe(`new-${missingHelper}`);
       } finally {
         await rm(root, { recursive: true, force: true });
@@ -994,13 +994,13 @@ describe("installRuntimeBundle", () => {
           ],
         });
 
-      await Effect.runPromise(install("1.0.0", "old-only"));
-      await Effect.runPromise(install("2.0.0", "new-only"));
+      await Effect.runPromise(install("0.0.1", "old-only"));
+      await Effect.runPromise(install("0.0.2", "new-only"));
 
       expect(existsSync(join(runtimeBinDir, "old-only"))).toBe(false);
       expect(existsSync(join(runtimeBinDir, "new-only"))).toBe(true);
       expect((await readFile(join(runtimeBinDir, ".runtime-installed-version"), "utf8")).trim()).toBe(
-        "2.0.0",
+        "0.0.2",
       );
     } finally {
       await rm(root, { recursive: true, force: true });

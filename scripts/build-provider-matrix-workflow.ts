@@ -11,7 +11,11 @@ import { landoRootlessPrereqSteps } from "./build-ci-workflow.ts";
 import { renderInstallDockerCeLatestStep } from "./ci-docker-install.ts";
 import { LINUX_X64_TEST_RUNNER } from "./ci-platforms.ts";
 import { renderAssertPodman6Step, renderInstallPodman6Step } from "./ci-podman-install.ts";
-import { PROVIDER_ACCEPTANCE_CELLS, type ProviderAcceptanceCellPlan } from "./provider-matrix-plan.ts";
+import {
+  DOCKER_LATEST_ASSERTED_CHECK_IDS,
+  PROVIDER_ACCEPTANCE_CELLS,
+  type ProviderAcceptanceCellPlan,
+} from "./provider-matrix-plan.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 const OUTPUT = resolve(REPO_ROOT, ".github/workflows/provider-matrix.yml");
@@ -237,14 +241,16 @@ ${renderInstallDockerCeLatestStep({ condition: "matrix.cell == 'docker-engine-li
         run: |
           bun run scripts/provider-matrix-acceptance.ts --cell '\${{ matrix.cell }}' --report-dir provider-matrix-reports
 
-      - name: Assert Docker latest exec creates 0644 files
+      - name: Assert Docker latest feature checks passed
         if: \${{ matrix.cell == 'docker-engine-linux-latest' }}
         run: |
           bun -e '
             const report = await Bun.file("provider-matrix-reports/docker-engine-linux-latest.json").json();
-            const check = report.checks.find((entry) => entry.id === "exec-umask-mode");
-            if (check?.outcome !== "passed") {
-              throw new Error("exec-umask-mode " + (check?.outcome ?? "missing"));
+            for (const id of ${JSON.stringify(DOCKER_LATEST_ASSERTED_CHECK_IDS)}) {
+              const check = report.checks.find((entry) => entry.id === id);
+              if (check?.outcome !== "passed") {
+                throw new Error(id + " " + (check?.outcome ?? "missing"));
+              }
             }
           '
 

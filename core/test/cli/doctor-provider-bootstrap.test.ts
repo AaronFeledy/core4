@@ -18,10 +18,10 @@ import {
   DoctorReportSchema,
   buildDoctorReportSummary,
   renderDoctorReport,
-  renderDoctorReportAsNdjson,
 } from "../../src/cli/commands/doctor-report";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary";
 import { withCwd } from "../_support/temp-cwd";
+import { renderDoctorReportAsNdjson } from "./doctor-report-fixture";
 
 describe("doctor provider-bootstrap failure", () => {
   test.each(["mcp", "network-trust"])(

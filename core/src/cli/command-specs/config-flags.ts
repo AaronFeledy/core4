@@ -1,6 +1,5 @@
 import { Flags } from "../spec/metadata";
 
-export const formatFlag = Flags.string({ description: "Output format.", default: "table" });
 export const typeFlag = Flags.string({
   description: "Value type for set; inferred from the config schema when omitted.",
   options: ["string", "number", "boolean", "json", "yaml"],

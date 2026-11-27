@@ -1,0 +1,10 @@
+name: xdebug-primary
+services:
+  fpm86:
+    type: "php:8.3"
+    via: fpm
+    xdebug: true
+  web86:
+    type: "php:8.3"
+    primary: true
+    xdebug: true

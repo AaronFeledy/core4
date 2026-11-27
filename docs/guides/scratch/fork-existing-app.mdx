@@ -31,9 +31,11 @@ lando scratch --fork --name review --detach
 
 `lando scratch` and `lando scratch:start` are aliases of `apps:scratch:start`. Pass exactly one of `--fork` or `--from`. Bare `lando scratch --help` shows the scratch topic page, the same as `lando help scratch`; ask `lando scratch:start --help` for this command's flags.
 
-`--detach` returns only after the fork passes startup readiness, including enabled healthchecks. Without it the session stays attached until Ctrl+C, then the scratch is destroyed. Readiness failure or interruption during acquisition cleans up the scratch unless you passed `--keep-on-failure`; user-app start retention does not apply to scratch apps.
+`--detach` returns only after the fork passes startup readiness, including enabled healthchecks. Without it the session stays attached until Ctrl+C, then Lando tries to destroy the scratch. If the fork's routes can't be published, readiness fails, or you interrupt acquisition, Lando tries to clean up the scratch, including any routes the router already wrote. Use `--keep-on-failure` to skip that cleanup and inspect what the failed start created. User-app start retention does not apply to scratch apps.
 
-`--name` is only the base for the generated id (`scratch-<base>-<6hex>`). The source Landofile is not rewritten.
+If cleanup fails, Lando reports the scratch id without replacing the original startup error. If the scratch still appears in `lando scratch:list`, run `lando scratch:destroy <id>` after fixing the reported problem.
+
+`--name` sets the base of the generated id (`scratch-<base>-<6hex>`), so `--name review` gives an id like `scratch-review-3f9a1c`. Lando shortens the base to at most 25 characters. The source Landofile is not rewritten. Scratch commands that take an id also accept that name; see [Inspect one scratch](./list-and-info.mdx#inspect-one-scratch).
 
 ## Choose a copy or a shared tree
 
@@ -65,7 +67,7 @@ lando scratch:info <id>
 lando scratch:destroy <id>
 ```
 
-`scratch:destroy` removes the fork's containers, volumes, and snapshots it took. Snapshots of the app you forked stay put, even with `--isolate=cwd`. Add `--keep-volumes` to keep the fork's named volumes and snapshots for inspection; an anonymous volume from an image `VOLUME` path still leaves with its container.
+`scratch:destroy` removes the fork's containers, volumes, and snapshots it took. Snapshots of the app you forked stay put, even with `--isolate=cwd`. A cwd fork still owns its own volumes under the scratch instance, so destroying it does not break `lando info` or `lando start` in the source app. Add `--keep-volumes` to keep the fork's named volumes and snapshots for inspection; an anonymous volume from an image `VOLUME` path still leaves with its container.
 
 A fork whose services have the same build inputs as the app's reuses the images Lando already built for the app. Destroying the fork keeps the newest image Lando built for each of its services for up to seven days, so the next fork of the same stack starts without building.
 

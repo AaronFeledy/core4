@@ -19,6 +19,7 @@ const subsystems: readonly {
   {
     name: "host-proxy",
     targets: [
+      "/run/lando/host-proxy",
       "/run/lando/host-proxy.sock",
       "/usr/local/bin/lando",
       "/usr/local/bin/open",

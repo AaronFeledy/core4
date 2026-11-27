@@ -238,14 +238,12 @@ test("delayed failure replaces history while concurrent observations retain the 
   });
 });
 
-test("unknown envelope version fails with UpdateNetworkError corrupt wording", async () => {
+test("newer envelope version fails with upgrade remediation and preserves bytes", async () => {
   const root = await mkdtemp(join(tmpdir(), "lando-freshness-version-"));
   roots.push(root);
   const statePath = join(root, "state.json");
-  await writeFile(
-    statePath,
-    `${JSON.stringify({ version: 99, data: { stable: { latest: "9.9.9" } } }, null, 2)}\n`,
-  );
+  const raw = `${JSON.stringify({ version: 99, data: { stable: { latest: "9.9.9" } } }, null, 2)}\n`;
+  await writeFile(statePath, raw);
 
   const result = await run(
     Effect.result(enforceManifestFreshness(manifest("4.2.0"), statePath, { persist: false })),
@@ -254,10 +252,10 @@ test("unknown envelope version fails with UpdateNetworkError corrupt wording", a
     _tag: "Failure",
     failure: {
       _tag: "UpdateNetworkError",
-      message: expect.stringContaining("failed schema validation"),
-      remediation: expect.stringContaining("Remove the corrupt freshness file"),
+      cause: { _tag: "StateStoreError", reason: "newer-version", storedVersion: 99 },
     },
   });
+  expect(await readFile(statePath, "utf8")).toBe(raw);
 });
 
 test.each(["malformed envelope", '{"version":99,"data":{"stable":{"latest":"9.9.9"}}}'])(

@@ -21,6 +21,7 @@ import { outputRegisteredTestProvider } from "@lando/engine/testing/output-provi
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { StreamFrame } from "@lando/sdk/schema";
 import type { LogChunk, LogTarget, RuntimeProviderShape } from "@lando/sdk/services";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { DateTime, Effect, Layer, Redacted, Schema, Stream } from "effect";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 
@@ -145,12 +146,11 @@ const makeLayer = (
     removeArtifact: () => Effect.succeed({ kind: "absent" as const }),
     listArtifacts: () => Effect.succeed([]),
     apply: () => Effect.succeed({ changed: false }),
-    start: () => Effect.void,
-    stop: () => Effect.void,
     restart: () => Effect.void,
     waitForExit: () => Effect.succeed({ exitCode: 0 }),
-    destroy: () => Effect.succeed({ kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } }),
-    removeObservedService: () => Effect.succeed({ kind: "absent" as const }),
+    bringDown: () =>
+      Effect.succeed({ kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } }),
+    bringDownObserved: (observed) => Effect.succeed({ service: observed.service, action: "absent" as const }),
     readAppEnvironment: () => Effect.succeed(providerValues.map((value) => Redacted.make(value))),
     exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
     execStream: () => Stream.die("not used"),
@@ -198,10 +198,7 @@ const makeLayer = (
     Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(currentTestPlan(plan)) })),
     Layer.succeed(
       RuntimeProviderRegistry,
-      RuntimeProviderRegistry.of({
-        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-        appliedPlansFor: () => Effect.succeed([]),
-        resolveAppliedPlan: () => Effect.succeed(undefined),
+      makeTestRuntimeProviderRegistry({
         list: Effect.succeed([providerId]),
         capabilities: Effect.succeed(capabilities),
         select: () => Effect.succeed(outputRegisteredTestProvider(provider, plan)),

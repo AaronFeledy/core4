@@ -56,7 +56,16 @@ export interface ManagedPodmanOverlayEnvParts {
   readonly runtimeBinDir?: string;
   readonly privateRuntimeDir?: string;
   readonly hostPath?: string;
+  /**
+   * The installed runtime's Podman schedules healthchecks inside `podman system service` when the
+   * service opts in. Set it only for a runtime that ships that scheduler: the overlay is launch
+   * identity, so a change relaunches the service.
+   */
+  readonly serviceHealthchecks?: boolean;
 }
+
+/** Opt-in for the scheduler the managed runtime's Podman runs inside `podman system service`. */
+const MANAGED_SERVICE_HEALTHCHECKS_ENV = "PODMAN_SERVICE_HEALTHCHECKS";
 
 export const privateRuntimeDirName = (canonicalRuntimeDir: string): string => {
   const digest = createHash("sha256").update(canonicalRuntimeDir).digest("hex");
@@ -107,6 +116,7 @@ export const managedPodmanOverlayEnv = (
     XDG_CONFIG_HOME: parts.runtimeConfigDir,
     DISABLE_HC_SYSTEMD: "true",
     LANDO_MANAGED_CONFIG_REVISION: "2-native-init",
+    ...(parts.serviceHealthchecks === true ? { [MANAGED_SERVICE_HEALTHCHECKS_ENV]: "1" } : {}),
     ...(parts.privateRuntimeDir === undefined ? {} : { XDG_RUNTIME_DIR: parts.privateRuntimeDir }),
     ...(pathValue === undefined ? {} : { PATH: pathValue }),
   };

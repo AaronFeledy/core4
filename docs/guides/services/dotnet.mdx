@@ -56,7 +56,7 @@ ASP.NET Core 8+ reads `ASPNETCORE_HTTP_PORTS` and binds HTTP on all interfaces a
 
 Lando uses the same port for this variable and the internal HTTP endpoint, replacing the official SDK image's `8080` environment default. To move the listener, set `port:` on `appserver`; you do not need `--urls` for the normal case.
 
-An authored `environment.ASPNETCORE_HTTP_PORTS` must be one literal integer equal to the planned port. Malformed values, port lists, and unequal values fail planning at `services.appserver.environment.ASPNETCORE_HTTP_PORTS`, including inherited `appEnv` and env-file values. Set `port:` instead.
+An authored `environment.ASPNETCORE_HTTP_PORTS` must be one literal integer equal to the planned port. Malformed values, port lists, and unequal values fail planning at `services.appserver.environment.ASPNETCORE_HTTP_PORTS`, including inherited `serviceDefaults.environment` and env-file values. Set `port:` instead.
 
 Use `--no-launch-profile`: `launchSettings.json` can set `applicationUrl`, which becomes `ASPNETCORE_URLS` and overrides `ASPNETCORE_HTTP_PORTS`. An authored `ASPNETCORE_URLS`, a `--urls` argument, or application code configuring Kestrel also takes precedence. Lando does not validate or rewrite those URLs. If you set `--urls` in a Landofile `command:`, use `"http://0.0.0.0:{{ service.port }}"` as the argument to follow the [planned port](../landofile/expressions.mdx#your-services-own-port).
 

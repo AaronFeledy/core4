@@ -2,7 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { SCRATCH_DESIRED_PLAN_VERSION } from "@lando/engine/scratch-app/plan";
 import { type ScratchRegistryEntry, makeScratchRegistry } from "@lando/engine/scratch-app/registry";
+import { ProxyError } from "@lando/sdk/errors";
+import type { RouteEvidence, RoutePlan } from "@lando/sdk/schema";
 import {
   AbsolutePath,
   AppId,
@@ -13,8 +16,9 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
-import type { ScratchInfo, ScratchSummary } from "@lando/sdk/services";
-import { ScratchAppService } from "@lando/sdk/services";
+import type { RouterServiceShape, ScratchInfo, ScratchSummary } from "@lando/sdk/services";
+import { RouterService, ScratchAppService } from "@lando/sdk/services";
+import { makeTestRouterService } from "@lando/sdk/test";
 import { makeStateStore } from "@lando/state-store/service";
 import { DateTime, Effect, Schema } from "effect";
 import {
@@ -24,6 +28,7 @@ import {
   renderScratchListResult,
 } from "../../src/cli/commands/scratch.ts";
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
+import { withService } from "../../src/testing/test-runtime.ts";
 import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
 import { withEnvVar } from "../_support/temp-cwd.ts";
 
@@ -43,7 +48,7 @@ const seedScratchPlan = (instanceRoot: string, plan: AppPlan): Promise<void> =>
         root: { path: AbsolutePath.make(instanceRoot) },
         key: "plan.bin",
         schema: AppPlanSchema,
-        version: 2,
+        version: SCRATCH_DESIRED_PLAN_VERSION,
         codec: "binary",
         mode: 0o600,
         onCorrupt: "quarantine",
@@ -148,10 +153,18 @@ const withTempRoots = async <T>(
   }
 };
 
-const scratchRuntime = () => makeLandoRuntime({ bootstrap: "scratch" });
+const scratchRuntime = (router?: RouterServiceShape) =>
+  makeLandoRuntime({
+    bootstrap: "scratch",
+    ...(router === undefined
+      ? {}
+      : { plugins: { policy: "bundled-only", layers: [withService(RouterService, router)] } }),
+  });
 
-const runScratch = <A, E>(effect: Effect.Effect<A, E, ScratchAppService>): Promise<A> =>
-  Effect.runPromise(effect.pipe(Effect.provide(scratchRuntime())));
+const runScratch = <A, E>(
+  effect: Effect.Effect<A, E, ScratchAppService>,
+  router?: RouterServiceShape,
+): Promise<A> => Effect.runPromise(effect.pipe(Effect.provide(scratchRuntime(router))));
 
 const seedEntry = (dataRoot: string, overrides: Partial<ScratchRegistryEntry>): ScratchRegistryEntry => {
   const id = overrides.id ?? "scratch-seed-000000";
@@ -161,6 +174,7 @@ const seedEntry = (dataRoot: string, overrides: Partial<ScratchRegistryEntry>): 
     isolate: "full",
     detached: false,
     rootPath: join(dataRoot, "scratch", id, "root"),
+    layout: "managed",
     status: "running",
     createdAt: "2026-05-31T18:00:00.000Z",
     updatedAt: "2026-05-31T18:00:00.000Z",
@@ -321,6 +335,106 @@ describe("ScratchAppService list/info backed by the registry", () => {
       expect(info.mounts).toEqual([]);
       expect(info.network).toEqual({});
       expect(info.endpoints).toEqual([]);
+    });
+  });
+
+  const route = (service: string, hostname: string): RoutePlan => ({
+    priority: 2,
+    hostname,
+    scheme: "http",
+    service: ServiceName.make(service),
+    backend: { service: ServiceName.make(service), protocol: "http", port: 80 },
+  });
+  const routes = [
+    route("appserver", "appserver.scratch-routes-000006.lndo.site"),
+    route("database", "admin.scratch-routes-000006.lndo.site"),
+  ];
+  const observing = (observeRoutes: RouterServiceShape["observeRoutes"]): RouterServiceShape => ({
+    ...makeTestRouterService(),
+    id: "test",
+    observeRoutes,
+  });
+  const confirmed =
+    (only: ReadonlyArray<RoutePlan>): RouterServiceShape["observeRoutes"] =>
+    () =>
+      Effect.succeed({
+        configuredAuthorities: [],
+        observation: {
+          status: "present",
+          publications: only.map((entry) => ({
+            route: entry,
+            authority: { scheme: "http", hostname: entry.hostname, port: 38080 },
+          })),
+        },
+      } satisfies RouteEvidence);
+
+  interface InfoRoutesCase {
+    readonly router: RouterServiceShape;
+    readonly plan?: Partial<Pick<AppPlan, "router" | "routes">>;
+    readonly expected: ReadonlyArray<{ readonly service: string; readonly url: string }> | undefined;
+  }
+  const appserverUrl = "http://appserver.scratch-routes-000006.lndo.site:38080";
+  const infoRoutesCases: ReadonlyArray<readonly [string, InfoRoutesCase]> = [
+    [
+      "every route the router confirms",
+      {
+        router: observing(confirmed(routes)),
+        expected: [
+          { service: "appserver", url: appserverUrl },
+          { service: "database", url: "http://admin.scratch-routes-000006.lndo.site:38080" },
+        ],
+      },
+    ],
+    [
+      "only the routes the router confirms",
+      {
+        router: observing(confirmed(routes.slice(0, 1))),
+        expected: [{ service: "appserver", url: appserverUrl }],
+      },
+    ],
+    [
+      "no routes when the router cannot confirm them",
+      {
+        router: observing(() =>
+          Effect.succeed({ configuredAuthorities: [], observation: { status: "unknown" } }),
+        ),
+        expected: [],
+      },
+    ],
+    [
+      "no routes when observation fails",
+      {
+        router: observing(() =>
+          Effect.fail(new ProxyError({ proxyId: "test", message: "down", remediation: "Start the router." })),
+        ),
+        expected: [],
+      },
+    ],
+    [
+      "no routes field when routing is disabled",
+      { router: observing(confirmed(routes)), plan: { router: { enabled: false } }, expected: undefined },
+    ],
+    [
+      "no routes field when the scratch declares no routes",
+      { router: observing(confirmed(routes)), plan: { routes: [] }, expected: undefined },
+    ],
+  ];
+
+  test.each(infoRoutesCases)("info reports %s", async (_label, { router, plan: overrides, expected }) => {
+    await withTempRoots(async ({ dataRoot }) => {
+      const id = "scratch-routes-000006";
+      await Effect.runPromise(seedRegistry(seedEntry(dataRoot, { id })));
+      const instanceRoot = join(dataRoot, "scratch", id);
+      await Bun.write(join(instanceRoot, ".keep"), "");
+      await seedScratchPlan(instanceRoot, { ...planWithDetails(dataRoot, id), routes, ...overrides });
+
+      const info = await runScratch(
+        Effect.flatMap(ScratchAppService, (service) => service.info(id)),
+        router,
+      );
+      expect(info.routes?.map(({ service, url }) => ({ service: String(service), url }))).toEqual(
+        expected === undefined ? undefined : [...expected],
+      );
     });
   });
 });

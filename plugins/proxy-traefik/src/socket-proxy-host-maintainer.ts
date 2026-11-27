@@ -2,7 +2,7 @@ import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import type { HostMaintenanceContribution, HostUninstallInput } from "@lando/sdk/plugins";
 import type { HostUninstallStep } from "@lando/sdk/schema";
-import { Effect } from "effect";
+import { Effect, Result } from "effect";
 
 import {
   SOCKET_PROXY_EXIT_NEEDS_FLOCK,
@@ -118,16 +118,25 @@ export const makeSocketProxyHostMaintainer = (
         detail: `Privileged removal is required.\n${SOCKET_PROXY_MANUAL_REMOVAL_COMMANDS}`,
       };
     }
-    const result = yield* input.elevate([
-      "/bin/sh",
-      "-c",
-      buildUninstallScript({
-        unitPaths,
-        polkitPath,
-        canonicalUserDataRoot: snapshot.root,
-        priorDigests: snapshot.digests,
-      }),
-    ]);
+    const elevated = yield* input
+      .elevate([
+        "/bin/sh",
+        "-c",
+        buildUninstallScript({
+          unitPaths,
+          polkitPath,
+          canonicalUserDataRoot: snapshot.root,
+          priorDigests: snapshot.digests,
+        }),
+      ])
+      .pipe(Effect.result);
+    if (Result.isFailure(elevated)) {
+      return {
+        outcome: "manual",
+        detail: `${elevated.failure.message} ${elevated.failure.remediation}\n${SOCKET_PROXY_MANUAL_REMOVAL_COMMANDS}`,
+      };
+    }
+    const result = elevated.success;
     if (result.exitCode === 0) return { outcome: "completed" };
     if (result.exitCode === SOCKET_PROXY_EXIT_NEEDS_FLOCK) {
       return {

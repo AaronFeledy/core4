@@ -13,6 +13,7 @@ import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import { appSteps } from "../../src/services/build-app-plan.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";
+import { pathsServiceLayer } from "../paths-service.ts";
 
 test.each([
   ["VALUE: first", "VALUE: second", false],
@@ -27,7 +28,9 @@ test.each([
     privateFileAccess: { enforce: async () => undefined, verify: async () => undefined },
   });
   const layer = AppPlannerLayer.layer.pipe(
-    Layer.provide(Layer.merge(PluginRegistryLayer.layer, BunFileSystem.layer)),
+    Layer.provide(
+      Layer.mergeAll(Layer.merge(PluginRegistryLayer.layer, BunFileSystem.layer), pathsServiceLayer()),
+    ),
   );
   const keyFor = async (env: string) => {
     await writeFile(

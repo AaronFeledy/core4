@@ -69,6 +69,12 @@ describe("managedPodmanOverlayEnv and child env", () => {
     });
     expect(overlay.PATH?.startsWith("/bin")).toBe(true);
     expect(overlay.PATH?.endsWith("/usr/bin")).toBe(true);
+    // The scheduler opt-in is launch identity: absent unless the installed runtime ships it.
+    expect(overlay.PODMAN_SERVICE_HEALTHCHECKS).toBeUndefined();
+    expect(
+      managedPodmanOverlayEnv({ runtimeConfigDir: "/cfg", serviceHealthchecks: true })
+        .PODMAN_SERVICE_HEALTHCHECKS,
+    ).toBe("1");
 
     const host = {
       HOME: "/home/me",

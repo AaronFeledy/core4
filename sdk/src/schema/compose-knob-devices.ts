@@ -5,9 +5,15 @@ import { layerMerge } from "./layer-merge.ts";
 const ExtensionFields = Schema.Record(Schema.TemplateLiteral(["x-", Schema.String]), Schema.Unknown);
 
 export const ComposeDevice = Schema.Struct({
-  source: Schema.String,
-  target: Schema.optionalKey(Schema.String),
-  permissions: Schema.optionalKey(Schema.String),
+  source: Schema.String.annotate({
+    description: "Host device path to map into the container.",
+  }),
+  target: Schema.optionalKey(Schema.String).annotate({
+    description: "In-container device path; defaults to the host source path when omitted.",
+  }),
+  permissions: Schema.optionalKey(Schema.String).annotate({
+    description: 'Device access permissions using only "r", "w", and "m".',
+  }),
 }).pipe((self) => Schema.StructWithRest(self, [ExtensionFields]));
 export type ComposeDevice = typeof ComposeDevice.Type;
 
@@ -81,8 +87,12 @@ const UlimitValue = Schema.Union([
 ]);
 
 export const ComposeUlimit = Schema.Struct({
-  soft: UlimitValue,
-  hard: UlimitValue,
+  soft: UlimitValue.annotate({
+    description: "Soft process resource limit; -1 means unlimited where the runtime allows it.",
+  }),
+  hard: UlimitValue.annotate({
+    description: "Hard process resource limit; -1 means unlimited where the runtime allows it.",
+  }),
 }).pipe((self) => Schema.StructWithRest(self, [ExtensionFields]));
 export type ComposeUlimit = typeof ComposeUlimit.Type;
 

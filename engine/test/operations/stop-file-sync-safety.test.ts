@@ -314,6 +314,96 @@ describe("stop file sync safety", () => {
     expect(calls).toEqual(["stop-provider", "drain", "stop-provider", "drain"]);
   });
 
+  test("stops when a paused session belongs to a service whose container is already gone", async () => {
+    const calls: string[] = [];
+    const paused = { ...session, status: "paused" as const };
+    const harness = makeHarness({
+      appliedFileSyncState: "accelerated",
+      appliedFileSyncSessions: [session.spec],
+      list: () => Effect.succeed([]),
+      fileSync: {
+        ...TestFileSyncEngine,
+        id: "mutagen",
+        sessionsPersistAcrossProcesses: true,
+        isAvailable: Effect.succeed(true),
+        listSessions: () => Effect.succeed([paused]),
+        appLifecycle: {
+          invalidateDrain: () => Effect.void,
+          drain: () =>
+            Effect.sync(() => {
+              calls.push("drain");
+            }),
+          dispose: () => Effect.void,
+          completeDisposal: () => Effect.void,
+          disposalPhase: () => Effect.succeed("active" as const),
+        },
+      },
+      destroyEffect: Effect.sync(() => {
+        calls.push("stop-provider");
+      }),
+    });
+    const exit = await runStop(harness);
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(calls).toEqual(["stop-provider", "drain"]);
+  });
+
+  test("stops when a terminated session belongs to a service whose container is already gone", async () => {
+    const calls: string[] = [];
+    const harness = makeHarness({
+      appliedFileSyncState: "accelerated",
+      appliedFileSyncSessions: [session.spec],
+      list: () => Effect.succeed([]),
+      fileSync: {
+        ...TestFileSyncEngine,
+        id: "mutagen",
+        isAvailable: Effect.succeed(true),
+        listSessions: () => Effect.succeed([]),
+        flushSession: () =>
+          Effect.sync(() => {
+            calls.push("flush");
+          }),
+        terminateSession: () =>
+          Effect.sync(() => {
+            calls.push("terminate");
+          }),
+      },
+      destroyEffect: Effect.sync(() => {
+        calls.push("stop-provider");
+      }),
+    });
+    const exit = await runStop(harness);
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(calls).toEqual(["stop-provider"]);
+  });
+
+  test("an unrecorded paused session still blocks stop when its service container is gone", async () => {
+    const calls: string[] = [];
+    const unrecorded = {
+      ...session,
+      ref: FileSyncSessionRef.make("stop-web-cache"),
+      mountKey: "cache",
+      spec: { ...session.spec, mountKey: "cache" },
+      status: "paused" as const,
+    };
+    const harness = makeHarness({
+      appliedFileSyncState: "accelerated",
+      appliedFileSyncSessions: [session.spec],
+      list: () => Effect.succeed([]),
+      fileSync: {
+        ...TestFileSyncEngine,
+        id: "mutagen",
+        isAvailable: Effect.succeed(true),
+        listSessions: () => Effect.succeed([{ ...session, status: "paused" as const }, unrecorded]),
+      },
+      destroyEffect: Effect.sync(() => {
+        calls.push("stop-provider");
+      }),
+    });
+    const exit = await runStop(harness);
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(calls).toEqual([]);
+  });
+
   test("stops app writers before flushing and terminating a verified session", async () => {
     const calls: string[] = [];
     const harness = makeHarness({

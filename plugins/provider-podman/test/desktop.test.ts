@@ -347,7 +347,7 @@ describe.each([
     const provider = await buildProvider(stateDir, platform, fake.api);
     await Effect.runPromise(Effect.scoped(provider.apply(plan, { reconcile: true })));
 
-    await Effect.runPromise(provider.destroy({ app: appId }, { volumes: true }));
+    await Effect.runPromise(provider.bringDown({ app: appId }, { containers: "remove", volumes: true }));
 
     expect(
       fake.calls.some((call) => call.path.endsWith("?force=true&v=true") && call.method === "DELETE"),

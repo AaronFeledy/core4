@@ -91,6 +91,7 @@ describe("renderCommandHelp", () => {
       "lando exec [--service SERVICE | SERVICE] -- [COMMAND...]",
     );
     expect(commandStructureExample("app:start")).toBe("lando start [--service SERVICE]");
+    expect(commandStructureExample("app:stop")).toBe("lando stop [--service SERVICE]");
   });
 
   test("exec attaches stdin only through an explicit interactive flag", () => {
@@ -173,9 +174,10 @@ describe("renderCommandHelp", () => {
     const help = renderCommandHelp(entry);
 
     // Then the locked footer lists every Lando flag and this command's formats.
+    // app:start streams, so it advertises ndjson.
     const footer = help.split("\n").at(-1) ?? "";
     for (const token of [
-      "--format (text, json, yaml)",
+      "--format (text, json, yaml, ndjson)",
       "--json [fields]",
       "--jq",
       "--renderer",

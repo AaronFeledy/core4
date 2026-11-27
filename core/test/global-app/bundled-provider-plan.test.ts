@@ -1,12 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import "../../src/runtime/engine-composition.ts";
 
+import { selectStartWarnings } from "@lando/engine/operations/start-warnings";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import { HostProviderOverride } from "@lando/engine/providers/host-provider";
 import { bundledFirstGlobalServiceLoader } from "@lando/engine/services/bundled-global-service-loader";
 import { materializeGlobalServices } from "@lando/engine/services/global-services";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
 import { loadAuthoredDocuments } from "@lando/landofile/root-compile";
+import { makeLandoPaths } from "@lando/paths";
 import { dockerCapabilitiesForPlatform } from "@lando/provider-docker";
 import { providerLandoCapabilitiesForPlatform } from "@lando/provider-lando";
 import { podmanCapabilitiesForPlatform } from "@lando/provider-podman";
@@ -16,9 +18,10 @@ import {
   type ProviderCapabilities,
   ProviderId,
   ServiceName,
+  landoSharedCrossAppNetworkName,
 } from "@lando/sdk/schema";
-import { AppPlanner, PluginRegistry } from "@lando/sdk/services";
-import { Effect, Schema } from "effect";
+import { AppPlanner, PathsService, PluginRegistry } from "@lando/sdk/services";
+import { Effect, Layer, Schema } from "effect";
 
 const bundledProviders: ReadonlyArray<readonly [string, (platform: HostPlatform) => ProviderCapabilities]> = [
   ["lando", (platform) => providerLandoCapabilitiesForPlatform(platform)],
@@ -37,6 +40,7 @@ describe("bundled global services on bundled providers", () => {
     async (id, _platform, capabilities) => {
       // Given
       const providerId = ProviderId.make(id);
+      const paths = makeLandoPaths();
       const program = Effect.gen(function* () {
         const manifests = yield* (yield* PluginRegistry).list;
         const services = yield* materializeGlobalServices({
@@ -45,7 +49,7 @@ describe("bundled global services on bundled providers", () => {
           providerId,
           loadServiceConfig: bundledFirstGlobalServiceLoader.load,
         });
-        const landofile = Schema.decodeUnknownSync(LandofileShape)({
+        const landofile = Schema.encodeSync(LandofileShape)({
           name: "global",
           runtime: 4,
           provider: providerId,
@@ -56,16 +60,16 @@ describe("bundled global services on bundled providers", () => {
         );
         // When
         const root = process.cwd();
-        const compiled = yield* loadAuthoredDocuments(
-          [{ file: `${root}/.lando.yml`, value: Schema.encodeSync(LandofileShape)(landofile) }],
-          { appRoot: root, file: `${root}/.lando.yml` },
-        );
+        const compiled = yield* loadAuthoredDocuments([{ file: `${root}/.lando.yml`, value: landofile }], {
+          appRoot: root,
+          file: `${root}/.lando.yml`,
+        });
         const plan = yield* (yield* AppPlanner).plan(compiled, capabilities);
         return { contributed, planned: Object.keys(plan.services), plan };
       }).pipe(
         // The global app is always planned on the host provider.
         Effect.provideService(HostProviderOverride, providerId),
-        Effect.provide(AppPlannerLayer.layer),
+        Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(Layer.succeed(PathsService, paths)))),
         Effect.provide(PluginRegistryLayer.layer),
       );
 
@@ -76,8 +80,12 @@ describe("bundled global services on bundled providers", () => {
         expect.arrayContaining(["traefik", "traefik-diagnostics", "ssh-agent", "mailpit"]),
       );
       expect([...planned].sort()).toEqual([...contributed].sort());
+      // Stock global services earn no start warnings, so every app start that ensures them stays quiet.
+      expect(selectStartWarnings(plan)).toEqual([]);
       expect(plan.networking?.perAppBridge).toBeNull();
-      expect(plan.networking?.sharedNetworkMembership?.name).toBe("lando_bridge_network");
+      expect(plan.networking?.sharedNetworkMembership?.name).toBe(
+        landoSharedCrossAppNetworkName(paths.roots.userDataRoot),
+      );
       for (const name of planned) {
         expect(plan.networking?.sharedNetworkMembership?.aliases[ServiceName.make(name)]).toContain(
           `${name}.global.internal`,

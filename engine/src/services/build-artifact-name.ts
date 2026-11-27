@@ -2,7 +2,7 @@ import { sha256Hex } from "@lando/sdk/digest";
 import { Effect } from "effect";
 import { canonicalMissingAppRoot } from "../operations/app-mutation-lock.ts";
 
-export const BUILT_ARTIFACT_STORE_LABEL = "dev.lando.build-store";
+export { BUILT_ARTIFACT_STORE_LABEL } from "@lando/container-runtime/image-build";
 
 export const artifactBuildStoreKey = (userCacheRoot: string) =>
   canonicalMissingAppRoot(userCacheRoot).pipe(Effect.map((root) => sha256Hex(root).slice(0, 8)));

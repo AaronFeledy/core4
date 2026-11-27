@@ -28,6 +28,7 @@ import {
   delegatedLaunchEligibility,
   delegatedScopeRemediation,
 } from "./delegated-scope.ts";
+import { offlineNativeHealthScheduling, withNativeHealth } from "./native-health-runtime.ts";
 
 const PROVIDER_ID = "lando";
 
@@ -129,6 +130,10 @@ export const providerLandoCapabilitiesForPlatform = (
         : ("host-ids" as const);
   return buildProviderCapabilities({
     bindMounts: true,
+    // A machine's Podman runs under the VM's systemd and schedules its own healthcheck timers.
+    // Linux starts at `none`: Lando cannot vouch for an external socket, and only the managed
+    // service's launch proves its in-service scheduler (`withNativeHealth`).
+    serviceHealth: family === "linux" ? "none" : "native",
     artifactBuild: true,
     artifactPull: true,
     bindMountPerformance: bindMountPerformanceForPlatform(family),
@@ -160,8 +165,9 @@ export const mvpProviderCapabilities = (platform: HostPlatform, arch?: string): 
   providerLandoCapabilitiesForPlatform(platform, hostProxyContainerTargets(arch));
 
 /**
- * Offline declaration for the managed runtime on this host: Linux declares `deploy.resources`
- * when the next launch can run in a delegated systemd user scope; macOS and Windows withhold it.
+ * Offline declaration for the managed runtime on this host. Linux declares `deploy.resources` when
+ * the next launch can run in a delegated systemd user scope, and native health when the runtime
+ * the next `lando setup` installs schedules it; macOS and Windows withhold `deploy.resources`.
  */
 export const declaredProviderLandoCapabilities = (
   platform: HostPlatform,
@@ -170,7 +176,10 @@ export const declaredProviderLandoCapabilities = (
 ): ProviderCapabilities => {
   const capabilities = mvpProviderCapabilities(platform, arch);
   return hostPlatformFamily(platform) === "linux"
-    ? withResourceControl(capabilities, linuxResourceControl(platform, host))
+    ? withNativeHealth(
+        withResourceControl(capabilities, linuxResourceControl(platform, host)),
+        offlineNativeHealthScheduling(),
+      )
     : capabilities;
 };
 

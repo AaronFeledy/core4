@@ -92,7 +92,7 @@ Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pass `-
 
 For the MySQL answer path, use `lando mysql` instead of `lando mariadb` for database commands.
 
-`lando joomla` is `php cli/joomla.php`. That file arrives with the CMS package, not with init. Run it from the app root; a subdirectory changes the relative path.
+`lando joomla` runs `php cli/joomla.php` from the app root, wherever in the app you run it. That file arrives with the CMS package, not with init.
 
 ## Connect Joomla to MariaDB
 
@@ -146,7 +146,7 @@ lando start
 lando xdebug status
 ```
 
-`xdebug: true` uses mode `debug` and connects to your IDE on port `9003`. Map `/app` to your project root in the IDE. `lando xdebug off` and `lando xdebug on` toggle it without another rebuild. Xdebug isn't available on `php:8.6`. PhpStorm setup lives in [Debug PHP with Xdebug in PhpStorm](../tooling/xdebug-phpstorm.mdx).
+`xdebug: true` uses mode `debug` and connects to your IDE on port `9003`. Map `/app` to your project root in the IDE. `lando xdebug off` and `lando xdebug on` toggle it without another rebuild. PhpStorm setup lives in [Debug PHP with Xdebug in PhpStorm](../tooling/xdebug-phpstorm.mdx).
 
 ## Catch outgoing mail
 

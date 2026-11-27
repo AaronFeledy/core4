@@ -9,11 +9,13 @@ tags: [docs, recipes, drupal, php, database]
 
 `lando init --recipe drupal` writes PHP 8.4, Apache, MariaDB 11.4, Composer 2, and webroot `web`. Edit `.lando.yml` after that, then `lando start`.
 
-Init prompts for Drupal 10 or 11, PHP 8.1 through 8.6, Apache or nginx plus FPM, MariaDB, MySQL, or PostgreSQL, Composer, and webroot. `--yes` keeps Drupal 11, PHP 8.4, Apache, `mariadb:11.4`, Composer 2, and `web`.
+Init prompts for Drupal 10 or 11, PHP 8.1 through 8.6, Apache or nginx plus FPM, MariaDB, MySQL, or PostgreSQL, Composer, webroot, and testing.
+
+For a new project, pass `--answer=webroot=docroot` at init so the first start scaffolds into `docroot/`. For an existing checkout, run `lando init . --recipe drupal --yes --answer=webroot=docroot` from the project root; start adopts the tree and leaves your files alone. Replace `docroot` with `.` or a nested path if that's where the site lives.
 
 ## See the generated defaults
 
-The generated Landofile is an Apache-backed `appserver` on `php:8.4`, webroot `web`, `allowOverride: true`, `composer: "2"`, a `database` service with `type: mariadb:11.4`, plus `drush` and `composer` tooling that call project-local `vendor/bin/drush` and `composer`.
+The generated Landofile is an Apache-backed `appserver` on `php:8.4`, webroot `web`, `allowOverride: true`, `composer: "2"`, a `database` service with `type: mariadb:11.4`, plus `drush`, `phpcs`, `phpcbf`, and `phpstan` tooling that run the project-local tools through `:drupal-local`, and `composer`.
 
 <Guide>
   <Scenario id="default-recipe-output" render>
@@ -55,12 +57,12 @@ services:
 
 ## Swap the database engine
 
-The default `database` service is `type: mariadb:11.4`. Swap `type:` to another engine or pin an image. With a custom MySQL image, set the PHP service's `db_client` to a compatible version because Lando cannot infer client compatibility from that image. Starting does not migrate old data.
+The default `database` service is `type: mariadb:11.4`. Swap `type:` to another engine or pin an image. With a custom MySQL image, set the PHP service's `dbClient` to a compatible version because Lando cannot infer client compatibility from that image. Starting does not migrate old data.
 
 ```yaml
 services:
   appserver:
-    db_client: mysql:8.4
+    dbClient: mysql:8.4
   database:
     type: mysql
     image: mysql:8.4
@@ -82,13 +84,13 @@ services:
 
 ## Run two database services
 
-Add a second database service and put it on the appserver `dependsOn` list. Select the PHP client explicitly for the custom MySQL image.
+Add a second database service and put it on the appserver `depends_on` list. Select the PHP client explicitly for the custom MySQL image.
 
 ```yaml
 services:
   appserver:
-    db_client: mysql:8.0
-    dependsOn:
+    dbClient: mysql:8.0
+    depends_on:
       - database
       - database-legacy
   database:
@@ -110,11 +112,11 @@ services:
       <Run command="lando app:config --format=json" />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\\{[^}]*\"type\":\\s*\"mariadb\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database-legacy\":\\s*\\{[^}]*\"type\":\\s*\"mysql\"" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"dependsOn\":.*\"database-legacy\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"depends_on\":.*\"database-legacy\"" } }} />
     </Step>
   </Scenario>
 
-## Set a Drush URI and move the webroot
+## Set a Drush URI for an existing layout
 
 The generated `drush` task gets the current app URL from `lando open --print`, including a nondefault proxy port. Set `DRUSH_OPTIONS_URI` under `services.appserver.environment` only to pin a different URL, such as a custom domain; Drush then uses that value instead of the live one. Moving the webroot to `docroot` does not require changing the generated Drush task: `vendor/bin/drush` remains at the Composer project root.
 
@@ -173,6 +175,27 @@ services:
       <Run command="lando info --format=json" />
       <Verify command="lando info --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"bind\",\\s*\"target\":\\s*\"/usr/local/etc/php/conf\\.d/zzz-custom\\.ini\",\\s*\"source\":\\s*\"[^\"]*(?:/|\\\\\\\\)bind-mounted-config(?:/|\\\\\\\\)config(?:/|\\\\\\\\)custom-php\\.ini\",\\s*\"readOnly\":\\s*true" } }} />
       <Verify command="lando info --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"bind\",\\s*\"target\":\\s*\"/etc/mysql/conf\\.d/zzz-custom\\.cnf\",\\s*\"source\":\\s*\"[^\"]*(?:/|\\\\\\\\)bind-mounted-config(?:/|\\\\\\\\)config(?:/|\\\\\\\\)custom-mariadb\\.cnf\",\\s*\"readOnly\":\\s*true" } }} />
+    </Step>
+  </Scenario>
+  <Scenario id="adopt-docroot" layer="e2e" timeout={600000} render={false} reason="Serve the existing front controller from the adopted docroot">
+    <Step name="adopt">
+      <UseFixture name="existing-docroot" />
+      <Run command="lando init . --recipe drupal --name=existing-docroot --yes --answer=webroot=docroot" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"webroot\":\\s*\"docroot\"" } }} />
+      <Verify file="existing-docroot/composer.json" expect={'{ "name": "fixture/existing-drupal" }\n'} />
+      <Verify file="existing-docroot/docroot/index.php" expect={{ regex: "^<\\?php echo \\x27existing-drupal-front-controller\\x27;\\n(?![\\s\\S])" }} />
+    </Step>
+    <Step name="serve-adopted-docroot">
+      <Run command="lando start" />
+      <Verify file="existing-docroot/composer.json" expect={'{ "name": "fixture/existing-drupal" }\n'} />
+      <Verify file="existing-docroot/docroot/index.php" expect={{ regex: "^<\\?php echo \\x27existing-drupal-front-controller\\x27;\\n(?![\\s\\S])" }} />
+      <Verify command="lando exec appserver -- test -e vendor/bin/drush" expectExit={1} />
+      <Verify command="lando exec appserver -- test -e composer.lock" expectExit={1} />
+      <Fetch url="{{route:appserver}}/" expect={{ status: 200, body: { regex: "existing-drupal-front-controller" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes" />
     </Step>
   </Scenario>
 </Guide>

@@ -46,6 +46,8 @@ lando setup --yes
 lando setup --yes --provider=lando
 ```
 
-`--no-interactive` skips prompts and keeps the same guided defaults. Combine `--yes` with an explicit `--provider` when you want a fully determined run.
+`--no-interactive` skips prompts and keeps the same guided defaults, but it approves no privileged host change: add `--yes` for that. Combine `--yes` with an explicit `--provider` when you want a fully determined run.
+
+Without a terminal, setup cannot ask for your `sudo` password. When a step needs administrator access, run `sudo -v` first or set `SUDO_ASKPASS`; otherwise setup stops before changing anything. See [When setup needs administrator access](../install/path-and-setup.mdx#when-setup-needs-administrator-access).
 
 See [Pick a container provider](./provider-selection.mdx). After setup, run [lando doctor](../subsystems/doctor-walkthrough.mdx).

@@ -130,7 +130,7 @@ test("#2302 nightly reporter waits for every job with issue permission only on t
       .sort(),
   );
   expect(permissions).toEqual({ contents: "read" });
-  expect(reporter?.permissions).toEqual({ issues: "write" });
+  expect(reporter?.permissions).toEqual({ actions: "read", issues: "write" });
   expect(
     Object.entries(jobs)
       .filter(([, job]) => job.permissions?.issues === "write")
@@ -188,9 +188,10 @@ test.skipIf(process.platform === "win32").each([true, false])(
     expect(commands).toContain(
       existing ? "gh issue comment 42 --body" : `gh issue create --title ${title} --body`,
     );
+    const body = await fixture.issueBody();
     expect(
-      commands
-        .match(/^Failed jobs: (.+?)(?: --assignee \S+)? repo=\S+$/m)?.[1]
+      body
+        .match(/^Failed jobs: (.+)$/m)?.[1]
         ?.split(", ")
         .sort(),
     ).toEqual([
@@ -199,7 +200,7 @@ test.skipIf(process.platform === "win32").each([true, false])(
       "file-sync-contract-linux-x64 (neutral_new)",
       "refresh-test-timings-linux-x64 (timed out or cancelled)",
     ]);
-    expect(commands).toContain("https://example.invalid/fork/core4/actions/runs/42");
+    expect(body).toContain("https://example.invalid/fork/core4/actions/runs/42");
     expect(commands).toContain("repo=fork/core4");
     expect(commands.includes("--assignee AaronFeledy")).toBe(!existing);
   },

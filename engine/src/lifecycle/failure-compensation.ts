@@ -1,4 +1,5 @@
 import { mergeFailure } from "@lando/sdk/command-result";
+import type { FailureRole } from "@lando/sdk/schema";
 import { Cause, Effect, Exit } from "effect";
 
 export { mergeFailure };
@@ -26,12 +27,13 @@ export const runAllAndMergeFailures = Effect.fn("Lifecycle.runAllAndMergeFailure
 export const compensateFailure = <A, E, R, CleanupError, CleanupServices>(
   effect: Effect.Effect<A, E, R>,
   cleanup: Effect.Effect<void, CleanupError, CleanupServices>,
+  role: FailureRole = "rollback",
 ): Effect.Effect<A, E | CleanupError, R | CleanupServices> =>
   Effect.matchCauseEffect(effect, {
     onSuccess: Effect.succeed,
     onFailure: (failureCause) =>
       Effect.matchCauseEffect(cleanup, {
         onSuccess: () => Effect.failCause(failureCause),
-        onFailure: (cleanupCause) => Effect.failCause(mergeFailure(failureCause, cleanupCause, "rollback")),
+        onFailure: (cleanupCause) => Effect.failCause(mergeFailure(failureCause, cleanupCause, role)),
       }),
   });

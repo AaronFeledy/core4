@@ -6,12 +6,12 @@ import {
   EnvironmentValueResolver,
   EventService,
   InteractionService,
-  LandofileService,
   PathsService,
   RuntimeProvider,
   RuntimeProviderRegistry,
   ServiceReadiness,
   StateStore,
+  UserAppResolver,
 } from "@lando/sdk/services";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { withPhysicalVolumeLock } from "@lando/state-store/volume-lock";
@@ -26,7 +26,7 @@ import { toSqlLandofile, toSqlPlan } from "./views.ts";
 
 export const runDbCommand = Effect.fn("Sql.runDbCommand")(function* (input: DbCommandInput) {
   yield* validateExportCompression(input);
-  const landofiles = yield* LandofileService;
+  const userApps = yield* UserAppResolver;
   const environmentResolver = yield* EnvironmentValueResolver;
   const registry = yield* RuntimeProviderRegistry;
   const mover = yield* DataMover;
@@ -36,10 +36,15 @@ export const runDbCommand = Effect.fn("Sql.runDbCommand")(function* (input: DbCo
   const stateStore = yield* StateStore;
   const paths = yield* PathsService;
   const privateFileAccess = yield* PrivateFileAccessService;
-  const landofile = yield* landofiles.discover;
+  const landofile = yield* userApps.current;
   const authored = toSqlLandofile(landofile.document);
-  const planned = yield* registry.resolveAppliedPlan(landofile.context.appRoot, undefined, "exact");
-  if (planned === undefined)
+  const discovered = yield* registry.resolveAppliedPlan(landofile.context.appRoot, undefined, "exact");
+  const planned = discovered === undefined ? undefined : yield* registry.readAppliedPlanStrict(discovered);
+  if (
+    planned === undefined ||
+    discovered === undefined ||
+    (planned.identity?.appRoot ?? planned.root) !== (discovered.identity?.appRoot ?? discovered.root)
+  )
     return yield* Effect.fail(
       new PlanReplanRequiredError({
         app: landofile.document.name ?? landofile.context.appRoot,
@@ -72,7 +77,12 @@ export const runDbCommand = Effect.fn("Sql.runDbCommand")(function* (input: DbCo
       providerId: planned.provider,
       waitForReady: (service) =>
         readiness.wait({ provider, plan: planned, services: [ServiceName.make(service)] }),
-      ...(provider.appliedPlans === undefined ? {} : { appliedPlans: provider.appliedPlans }),
+      findAppliedSource: (selector) =>
+        "id" in selector
+          ? registry.readAppliedPlanStrict({ id: AppId.make(selector.id), provider: planned.provider })
+          : registry
+              .appliedPlansFor(selector.root, { providerId: planned.provider })
+              .pipe(Effect.map(([source]) => source)),
       inspectSource: (target) => provider.inspect(target),
       canonicalizeSourcePath: (path) =>
         Effect.tryPromise({

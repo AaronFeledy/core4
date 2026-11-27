@@ -4,11 +4,7 @@ import { dirname, join } from "node:path";
 import { gzipSync } from "node:zlib";
 
 import { DATABASE_FAMILY_DEFAULT_PORTS } from "@lando/sdk/database-creds";
-import {
-  SnapshotAmbiguousError,
-  SnapshotNotFoundError,
-  SqlRecoveryUnavailableError,
-} from "@lando/sdk/errors";
+import { SnapshotNotFoundError, SqlRecoveryUnavailableError } from "@lando/sdk/errors";
 import type {
   DataEndpoint,
   DataTransferResult,
@@ -152,7 +148,19 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
             ),
         }),
     },
-    ...(options.appliedPlans === undefined ? {} : { appliedPlans: options.appliedPlans }),
+    ...(options.findAppliedSource === undefined ? {} : { findAppliedSource: options.findAppliedSource }),
+    ...(options.appliedPlans === undefined
+      ? {}
+      : {
+          findAppliedSource: (selector) =>
+            (options.appliedPlans ?? Effect.succeed([])).pipe(
+              Effect.map((plans) =>
+                plans.find((plan) =>
+                  "id" in selector ? selector.id === plan.id : selector.root === plan.root,
+                ),
+              ),
+            ),
+        }),
     inspectSource:
       options.inspectSource ??
       ((target) =>
@@ -168,22 +176,15 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
       return Effect.gen(function* () {
         const exact = (yield* list({ ...scope, id: reference })).find((entry) => entry.id === reference);
         if (exact !== undefined) return exact;
-        const matches = (yield* list({ ...scope, label: reference }))
+        // Mirror production: the newest snapshot with the label wins (ties break by id, like listings).
+        const match = (yield* list({ ...scope, label: reference }))
           .filter((entry) => entry.label === reference)
           .toSorted(
-            (left, right) => DateTime.toEpochMillis(right.createdAt) - DateTime.toEpochMillis(left.createdAt),
-          );
-        if (matches.length > 1)
-          return yield* Effect.fail(
-            new SnapshotAmbiguousError({
-              message: `Snapshot label ${reference} is ambiguous.`,
-              snapshotId: reference,
-              matchCount: matches.length,
-              candidateIds: matches.map((entry) => entry.id),
-              remediation: "Run `lando db:snapshots` and retry with a snapshot id.",
-            }),
-          );
-        const match = matches[0];
+            (left, right) =>
+              DateTime.toEpochMillis(left.createdAt) - DateTime.toEpochMillis(right.createdAt) ||
+              (left.id < right.id ? -1 : left.id > right.id ? 1 : 0),
+          )
+          .at(-1);
         if (match !== undefined) return match;
         return yield* Effect.fail(
           new SnapshotNotFoundError({
@@ -300,7 +301,11 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
         );
       }
       execs.push({ command, ...(env === undefined ? {} : { env }) });
-      return sqlResult({ exitCode: options.execFails === true ? 1 : 0, stdout: "", stderr: "" });
+      return sqlResult({
+        exitCode: options.execFails === true ? 1 : 0,
+        stdout: "",
+        stderr: options.execStderr ?? "",
+      });
     },
     confirm: () => Effect.succeed(false),
     waitForReady: () => Effect.void,

@@ -4,11 +4,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CapabilityError } from "@lando/core/errors";
 import { LandofileShape, type ProviderCapabilities, ServiceName } from "@lando/core/schema";
-import { AppPlanner } from "@lando/core/services";
+import { AppPlanner, PathsService } from "@lando/core/services";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { Cause, Effect, Exit, Option, Schema } from "effect";
+import { Cause, Effect, Exit, Layer, Option, Schema } from "effect";
 
 const supportedCapabilities: ProviderCapabilities = {
   ...TestRuntimeProvider.capabilities,
@@ -29,13 +29,19 @@ const withTempCwd = async <A>(run: () => Promise<A>): Promise<A> => {
   }
 };
 
+import { makeLandoPaths } from "@lando/paths";
 import { literalLandofile } from "../_support/value-contracts.ts";
 
 const planExit = (landofile: typeof LandofileShape.Type, capabilities: ProviderCapabilities) =>
   Effect.runPromiseExit(
     Effect.flatMap(AppPlanner, (planner) =>
       planner.plan(literalLandofile(landofile, process.cwd()), capabilities),
-    ).pipe(Effect.provide(AppPlannerLayer.layer), Effect.provide(PluginRegistryLayer.layer)),
+    ).pipe(
+      Effect.provide(
+        AppPlannerLayer.layer.pipe(Layer.provide(Layer.succeed(PathsService, makeLandoPaths()))),
+      ),
+      Effect.provide(PluginRegistryLayer.layer),
+    ),
   );
 
 const expectFailure = <E>(exit: Exit.Exit<unknown, E>): E => {

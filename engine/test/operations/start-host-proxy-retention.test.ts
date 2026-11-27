@@ -35,7 +35,7 @@ for (const lifetime of ["detached", "managed", "failure", "interrupted"] as cons
       sessionId: "proxy-session",
       token: "token",
       controlToken: "control-token",
-      socketPath: "/relay/proxy.sock",
+      socketPath: "/relay/container/sock",
       shimPath: "/relay/shim",
       transport: "unix-socket",
       closed: Promise.resolve(),
@@ -83,7 +83,7 @@ for (const lifetime of ["detached", "managed", "failure", "interrupted"] as cons
       const closedBeforeScope = closed;
       await Effect.runPromise(Scope.close(scope, Exit.void));
       // Then
-      expect(socket).toBe("/run/lando/host-proxy.sock");
+      expect(socket).toBe("/run/lando/host-proxy/sock");
       expect(closedBeforeScope).toBe(0);
       expect(closed).toBe(lifetime === "detached" ? 0 : 1);
       switch (lifetime) {
@@ -130,7 +130,7 @@ for (const reused of [false, true]) {
           sessionId: "proxy-session",
           token: "token",
           controlToken: "control-token",
-          socketPath: "/relay/proxy.sock",
+          socketPath: "/relay/container/sock",
           shimPath: "/relay/shim",
           transport: "unix-socket",
           reused,
@@ -192,7 +192,7 @@ test("a whole-app start keeps the host-proxy worker a needed service still uses"
     sessionId: "proxy-session",
     token: "token",
     controlToken: "control-token",
-    socketPath: "/relay/proxy.sock",
+    socketPath: "/relay/container/sock",
     shimPath: "/relay/shim",
     transport: "unix-socket",
     closed: Promise.resolve(),

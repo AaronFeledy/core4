@@ -21,6 +21,7 @@ export const openRouteReloadAck = (stateStore: PluginStateStore, ownerKey: AppRo
     lock: "advisory",
     onCorrupt: "discard",
     onVersionMismatch: "discard",
+    onNewerVersion: "discard",
   });
 
 export const routeReloadDigest = (values: ReadonlyArray<string | undefined>): string => {

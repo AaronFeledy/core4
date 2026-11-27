@@ -1,5 +1,6 @@
 import { withAgentContextEnv } from "@lando/engine/config/agent-env";
 import { resolveAgentEnvForwardAllowlist } from "@lando/engine/config/agent-env-policy";
+import { execExitUnobserved } from "@lando/engine/operations/exec-stream-drain";
 import { availableServiceList, unknownPlanServiceError } from "@lando/engine/operations/unknown-service";
 import { appliedServicePlan, selectCommandIdentity } from "@lando/engine/services/execution-identity";
 import { RedactionService, createPayloadValues } from "@lando/redaction/service";
@@ -26,6 +27,7 @@ import {
   RuntimeProviderRegistry,
   SecretStore,
   ShellRunner,
+  drainExecStream,
 } from "@lando/sdk/services";
 /**
  * `lando shell` — host shell at the app root by default, or a service shell with `--service`.
@@ -310,28 +312,25 @@ export const shellApp = Effect.fn("ShellApp.shell")(function* (
       ...(terminalSize === undefined ? {} : { terminalSize }),
       terminalResize: resizeStream(io),
     };
-    let exitCode = 0;
-    yield* withInteractiveStdinRawMode(
+    const exitCode = yield* withInteractiveStdinRawMode(
       io,
-      Effect.scoped(
-        provider.execStream(target, spec).pipe(
-          Stream.runForEach((chunk) => {
-            if ("exitCode" in chunk) {
-              exitCode = chunk.exitCode;
-              return Effect.void;
-            }
-            const bytes = payloads[chunk.kind].write(chunk.chunk);
-            return chunk.kind === "stdout" ? writeStdout(options.io, bytes) : writeStderr(options.io, bytes);
-          }),
-          Effect.ensuring(
-            Effect.suspend(() =>
-              Effect.all([
-                writeStdout(options.io, payloads.stdout.flush()),
-                writeStderr(options.io, payloads.stderr.flush()),
-              ]),
-            ),
+      drainExecStream(
+        provider.execStream(target, spec),
+        (chunk) => {
+          const bytes = payloads[chunk.kind].write(chunk.chunk);
+          return chunk.kind === "stdout" ? writeStdout(options.io, bytes) : writeStderr(options.io, bytes);
+        },
+        { signal: options.signal, failure: () => execExitUnobserved(provider.id, service.name) },
+      ).pipe(
+        Effect.ensuring(
+          Effect.suspend(() =>
+            Effect.all([
+              writeStdout(options.io, payloads.stdout.flush()),
+              writeStderr(options.io, payloads.stderr.flush()),
+            ]),
           ),
         ),
+        Effect.scoped,
       ),
     );
     return {

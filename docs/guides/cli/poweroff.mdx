@@ -8,8 +8,9 @@ tags: [docs, cli, lifecycle]
 
 # Power off every app
 
-`lando poweroff` stops every Lando-managed app on the host, not just this
-one.
+`lando poweroff` stops the apps owned by the current Lando data root, not just
+the app in your current directory. Apps from another data root stay running,
+even on the same container engine.
 
 Warning: this command reaches beyond the current app. Run it only when you
 mean to stop everything. It removes scratch apps and their disposable data
@@ -21,11 +22,11 @@ Run this from any directory on your host:
 lando poweroff -y
 ```
 
-Each app stops through the same lifecycle as `lando stop` from its own app root, so its Landofile stop steps, file-sync drain, and route withdrawal still run. An app whose applied record is gone is stopped anyway: Lando removes the containers it can prove belong to that root and keeps their named volumes. Apps whose containers have already exited are skipped, so their stop steps do not run again.
+Each app stops through the same lifecycle as `lando stop` from its own app root, so its Landofile stop steps, file-sync drain, and route withdrawal still run. An app whose applied record is gone is stopped anyway: Lando stops the containers it can prove belong to that root and keeps them and their named volumes. Like `lando stop`, poweroff keeps every user app's containers, so the next `lando start` starts them again in place. Apps whose containers have already exited are skipped, so their stop steps do not run again.
 
 The summary lists apps that stopped under `Powered off`. If Lando checked an app and found nothing to stop, it lists that app under `Nothing to stop`.
 
-If one app fails, poweroff still attempts the remaining user and scratch apps and reports each failure with its remediation. It also reports a provider it cannot observe if that provider has recorded resources or reports a runtime that isn't idle. An unreadable accelerated-start journal is also a failure. A failure before the global stop skips it, and Lando leaves the managed runtime available so you can fix the problem and retry.
+If one app fails, poweroff still attempts the remaining user and scratch apps and reports each failure with its remediation. It also reports a provider it cannot observe if that provider has recorded resources or reports a runtime that isn't idle. An unreadable accelerated-start journal is also a failure. Damaged applied state uses restore-or-move-aside recovery; state written by a newer Lando uses upgrade recovery and stays on disk. A failure before the global stop skips it, and Lando leaves the managed runtime available so you can fix the problem and retry.
 
 A failed `post-stop` step does not prevent poweroff from continuing or change its exit code. The summary names the affected app, event, failure, and remediation. With `--format=json`, look for `landofileEvents.status: "failed"` on the affected app in `result.apps`, or in `error.apps` if another app could not stop. `landofileEvents.stepFailure` carries the error tag, redacted message, and remediation.
 
@@ -39,9 +40,13 @@ A failed `post-stop` step does not prevent poweroff from continuing or change it
       <Verify event="post-start" />
     </Step>
     <Step name="poweroff">
-      <Run command="lando poweroff -y --format=json" />
       <Verify command="lando poweroff -y --format=json" expect={{ stdout: { regex: "\"outcome\":\\s*\"stopped\"" } }} />
     </Step>
+    <Hidden reason="A second poweroff finds every kept container already stopped, global services included">
+      <Step name="poweroff-again">
+        <Verify command="lando poweroff -y --format=json" expect={{ stdout: { not: { regex: "\"outcome\":\\s*\"stopped\"" } } }} />
+      </Step>
+    </Hidden>
     <Step name="cleanup">
       <Cleanup />
       <Run command="lando destroy -y" />
@@ -51,7 +56,7 @@ A failed `post-stop` step does not prevent poweroff from continuing or change it
 
 ## Scope flags
 
-Skip the shared global app with `--keep-global`, so host-wide services such
+Skip this data root's global app with `--keep-global`, so services such
 as the proxy keep running. Skip scratch apps with `--keep-scratch`, so
 disposable throwaway apps stay up while every other app stops.
 Use both flags to keep both kinds of app. The command reports what it kept

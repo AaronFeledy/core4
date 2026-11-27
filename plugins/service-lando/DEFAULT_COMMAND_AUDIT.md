@@ -54,7 +54,6 @@ section below.
 | `static` / `static:nginx` | `src/services/static.ts` `defaultStaticCommand` | `/tmp/lando-nginx.conf` | works | **fixed** |
 | `solr` with `cores:` | `src/services/solr.ts` | `/var/solr/data/<core>/conf`, under a `/var/solr` tree prepared in the image for the planned user | works | **fixed** |
 | `minio` | `src/services/minio.ts` | `mkdir` under `/data`, a tree prepared in the image for the planned user | works | **fixed** |
-| `mssql` on the selected catalog image | `src/services/mssql-startup.ts` | SQL Server creates the configured database under `/var/opt/mssql`; the wrapper writes no config files | default `mssql` user owns the image data tree; other users need access to it | process fixtures and live 2019/2022 backup, restore, and persistent restart verified |
 | `varnish` without a VCL bind | `src/services/varnish.ts` | `/tmp/lando-backend.vcl` | write works; the daemon still needs root for its default `:80` | safe write, privileged port |
 | `redis` with `password:` | `src/services/redis.ts` | `/tmp/lando-redis.conf` | works | safe |
 | `php:*` via `cli` | `src/services/php-via.ts` `PHP_CLI_KEEP_ALIVE` | none | works | safe |
@@ -64,9 +63,11 @@ section below.
 | `postgres`, `mongodb` with `config.server` | `src/services/postgres.ts`, `src/services/mongodb.ts` | none; the command only names a config path | works | safe |
 
 Service types with no Lando-emitted default command (`compose`, `lando`,
-`mariadb`, `mysql`, `mailhog`, `mailpit`, `phpmyadmin`, `tomcat`,
+`mariadb`, `mysql`, `mssql`, `mailhog`, `mailpit`, `phpmyadmin`, `tomcat`,
 `rabbitmq`, `localstack`, `elasticsearch`, `opensearch`, `meilisearch`) are out
 of scope here: their images own startup, and Lando adds no write.
+For catalog SQL Server, the activation credential worker, not a startup
+wrapper, creates the configured database when it is missing.
 
 Build steps are also out of scope. They declare `user: "root"` and run during
 the image build, not as container PID 1, so a non-root service user cannot

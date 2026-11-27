@@ -1,5 +1,5 @@
 import type { LandofileLoadFailure, LandofileValidationError } from "@lando/sdk/errors";
-import { type LogSource, ServiceName, type ValidationIssuePath } from "@lando/sdk/schema";
+import { type LogSource, type PortNumber, ServiceName, type ValidationIssuePath } from "@lando/sdk/schema";
 import { Effect, Result } from "effect";
 import { loadTopLevelEnvFiles } from "./env-files.ts";
 import {
@@ -10,6 +10,7 @@ import {
 import { normalizeAppSlug } from "./naming.ts";
 import { type PlannerIssue, attributePlannerIssue, expressionPlannerIssue } from "./resolved-validation.ts";
 import { validateServiceSeed } from "./seed-validation.ts";
+import { plannedPortFor } from "./self-read-hint.ts";
 import { serviceExpressionFacts } from "./service-credential-facts.ts";
 import { type ResolvedServiceSeed, type ServiceSeedInput, resolveSeed } from "./service-seed.ts";
 
@@ -24,7 +25,8 @@ export const resolveServiceSeeds = Effect.fn("AppPlanner.resolveServices")(funct
   input: ServiceSeedInput,
 ) {
   const { landofile, fileSystem, appRoot } = input;
-  const appSlug = normalizeAppSlug(input.dataName ?? landofile.name ?? "app", appRoot);
+  const appSlug =
+    input.nativeDataSlug ?? normalizeAppSlug(input.dataName ?? landofile.name ?? "app", appRoot);
   const issues: PlannerIssue[] = [];
   const record = (error: LandofileValidationError) => {
     const attributed = error.issues.map((issue) =>
@@ -35,7 +37,7 @@ export const resolveServiceSeeds = Effect.fn("AppPlanner.resolveServices")(funct
   };
   const loadedTopLevelEnvFiles = yield* loadTopLevelEnvFiles({
     appRoot,
-    envFiles: landofile.env_file ?? [],
+    envFiles: landofile.serviceDefaults?.env_file ?? [],
     fileSystem,
   }).pipe(Effect.result);
   if (Result.isFailure(loadedTopLevelEnvFiles)) record(loadedTopLevelEnvFiles.failure);
@@ -50,7 +52,10 @@ export const resolveServiceSeeds = Effect.fn("AppPlanner.resolveServices")(funct
   const documents = { ...landofile.services };
   const resolvedByName = new Map<
     string,
-    ResolvedServiceSeed & { readonly logSources: readonly LogSource[] }
+    ResolvedServiceSeed & {
+      readonly logSources: readonly LogSource[];
+      readonly plannedPort: PortNumber | undefined;
+    }
   >();
   const unavailable = new Map<string, readonly PlannerIssue[]>();
   const skippedServices = new Map<string, PlannerIssue>();
@@ -128,8 +133,9 @@ export const resolveServiceSeeds = Effect.fn("AppPlanner.resolveServices")(funct
     for (const error of checked.errors) record(error);
     documents[key] = seed.authoredService;
     pendingSites = pendingSites.filter(({ path }) => path[0] !== "services" || path[1] !== name);
-    serviceCredsScope[name] = serviceExpressionFacts(name, seed.resolution);
-    resolvedByName.set(name, { ...seed, logSources: checked.logSources });
+    const plannedPort = plannedPortFor(seed.serviceType.plannedPort, seed.service);
+    serviceCredsScope[name] = serviceExpressionFacts(name, seed.resolution, plannedPort);
+    resolvedByName.set(name, { ...seed, logSources: checked.logSources, plannedPort });
   }
   const services = Object.keys(landofile.services ?? {}).flatMap((name) => {
     const seed = resolvedByName.get(name);

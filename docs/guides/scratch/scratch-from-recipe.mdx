@@ -47,7 +47,9 @@ lando scratch:destroy <id>
 
 Destroy keeps the newest image Lando built for each of the scratch's services for up to seven days. Start another scratch app from the same recipe in that window and it reuses those images instead of building them again.
 
-`--detach` returns after services pass startup readiness. Enabled healthchecks must pass; services without checks settle in a running state, and completion jobs must exit 0. Without `--detach` the session stays attached. A failed or interrupted acquisition cleans up scratch resources by default. `--keep-on-failure` retains failed acquisition state for inspection and explicit destruction; it does not turn a failed start into success.
+`--detach` returns after services pass startup readiness. Enabled healthchecks must pass; services without checks settle in a running state, and completion jobs must exit 0. Without `--detach` the session stays attached.
+
+If acquisition fails or you interrupt it, Lando tries to remove anything it created for that scratch. If cleanup fails, Lando reports the scratch id alongside the original failure. Check `lando scratch:list` and, if it still lists the scratch, run `lando scratch:destroy <id>` after fixing the reported problem. Use `--keep-on-failure` to skip automatic cleanup and inspect what the failed start created. The start still reports a failure.
 
 `lando run --from lamp -- composer --version` runs one command in a disposable scratch app. When `--from` is omitted, `lando run` uses the bundled toolbox recipe.
 
@@ -66,10 +68,16 @@ lando start
 - [Everyday commands](../cli/everyday-commands.mdx)
 
 <Guide>
-  <Scenario id="scratch-failure-policy" tags={["scenario"]} render={false} reason="Verify acquisition flags without starting scratch containers">
-    <Step name="check-failure-policy">
-      <Run command="lando scratch:start --help" />
-      <Verify command="lando scratch:start --help" expect={{ stdout: { regex: "--keep-on-failure" } }} />
+  <Scenario id="scratch-failure-policy" layer="scenario" tags={["scenario"]} faults={["router.apply-routes"]} render={false} reason="Verify the retention policy when scratch route publication fails">
+    <Step name="reap-failed-scratch">
+      <Run command="lando scratch:start --from lamp --yes --detach --format=json" expectExit={1} />
+      <Verify errorTag="ScratchAppError" expect={{ regex: "\"cause\":\\s*\\{[^{}]*\"_tag\":\\s*\"ProxyApplyError\"" }} />
+      <Verify command="lando scratch:list --format=json" expect={{ stdout: { regex: "\"result\":\\s*\\[\\s*\\]" } }} />
+    </Step>
+    <Step name="retain-failed-scratch">
+      <Run command="lando scratch:start --from lamp --yes --detach --keep-on-failure --format=json" expectExit={1} />
+      <Verify errorTag="ScratchAppError" expect={{ regex: "\"cause\":\\s*\\{[^{}]*\"_tag\":\\s*\"ProxyApplyError\"" }} />
+      <Verify command="lando scratch:list --format=json" expect={{ stdout: { regex: "\"result\":\\s*\\[\\s*\\{[^{}]*\"id\":\\s*\"scratch-[^\"]+\"[^{}]*(?:\\{[^{}]*\\}[^{}]*)+\\}\\s*\\]" } }} />
     </Step>
   </Scenario>
 </Guide>

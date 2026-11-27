@@ -1,0 +1,8 @@
+# lando-lint: expect-invalid build.mixed-families
+name: diagnostic-reason
+services:
+  web:
+    image: alpine
+    build:
+      context: .
+      app: echo ok

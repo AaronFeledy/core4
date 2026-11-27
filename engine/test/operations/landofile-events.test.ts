@@ -8,7 +8,7 @@ import { LandofileParseError } from "@lando/sdk/errors";
 import { type LandoEvent, LandoEvent as LandoEventSchema } from "@lando/sdk/events";
 import { AbsolutePath, AppId, AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
 import { AppPlanner, EventService, LandofileService, RuntimeProviderRegistry } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { DateTime, Effect, Layer, Schema, Stream } from "effect";
 import type { ResolvedAppTarget } from "../../src/landofile/app-resolution.ts";
 import { resolveLandofileEventPlan } from "../../src/operations/landofile-events.ts";
@@ -78,13 +78,8 @@ const runtime = (input: {
     ),
     Layer.succeed(
       RuntimeProviderRegistry,
-      RuntimeProviderRegistry.of({
+      makeTestRuntimeProviderRegistry({
         list: Effect.succeed([ProviderId.make("test")]),
-        capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-        appliedPlansFor: () => Effect.succeed([]),
-        select: () => Effect.succeed(TestRuntimeProvider),
-        resolveAppliedPlan: () => Effect.succeed(undefined),
-        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" }),
       }),
     ),
     Layer.succeed(

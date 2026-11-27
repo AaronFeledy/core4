@@ -14,7 +14,10 @@ import { Context, Effect, Layer, Schema } from "effect";
 // live layer consumes the runtime's StateStore so configured roots and private-file
 // access are shared with the rest of the runtime.
 
-export const SCRATCH_REGISTRY_VERSION = 2 as const;
+export const SCRATCH_REGISTRY_VERSION = 3 as const;
+
+export const ScratchRegistryLayout = Schema.Literals(["legacy", "managed"]);
+export type ScratchRegistryLayout = typeof ScratchRegistryLayout.Type;
 
 const ScratchSourceSchema = Schema.Union([
   Schema.Struct({ kind: Schema.Literal("fork") }),
@@ -29,6 +32,7 @@ const RegistryEntrySchema = Schema.Struct({
   shareGlobalStorage: Schema.optionalKey(Schema.Boolean),
   ownerPid: Schema.optionalKey(Schema.Number),
   rootPath: Schema.String,
+  layout: ScratchRegistryLayout,
   status: Schema.Literals(["acquiring", "running", "destroyed-pending-cleanup"]),
   createdAt: Schema.String,
   updatedAt: Schema.String,
@@ -36,12 +40,59 @@ const RegistryEntrySchema = Schema.Struct({
 
 export const ScratchRegistryEntriesSchema = Schema.Array(RegistryEntrySchema);
 
-const LegacyRegistryEntriesSchema = Schema.Array(
+const LegacyEntryFields = {
+  id: Schema.String,
+  source: ScratchSourceSchema,
+  isolate: Schema.Literals(["full", "baked", "cwd"]),
+  detached: Schema.Boolean,
+  shareGlobalStorage: Schema.optionalKey(Schema.Boolean),
+  ownerPid: Schema.optionalKey(Schema.Number),
+  rootPath: Schema.String,
+  createdAt: Schema.String,
+  updatedAt: Schema.String,
+};
+
+const LegacyV1EntriesSchema = Schema.Array(
   Schema.Struct({
-    ...RegistryEntrySchema.fields,
+    ...LegacyEntryFields,
     status: Schema.Union([RegistryEntrySchema.fields.status, Schema.Literal("stopping")]),
   }),
 );
+
+const LegacyV2EntriesSchema = Schema.Array(
+  Schema.Struct({
+    ...LegacyEntryFields,
+    status: RegistryEntrySchema.fields.status,
+  }),
+);
+
+const withLegacyLayout = (
+  entries: ReadonlyArray<{
+    readonly id: string;
+    readonly source: ScratchRegistryEntry["source"];
+    readonly isolate: ScratchRegistryEntry["isolate"];
+    readonly detached: boolean;
+    readonly shareGlobalStorage?: boolean;
+    readonly ownerPid?: number;
+    readonly rootPath: string;
+    readonly status: ScratchRegistryEntry["status"] | "stopping";
+    readonly createdAt: string;
+    readonly updatedAt: string;
+  }>,
+): ScratchRegistryEntry[] =>
+  entries.map((entry) => {
+    const status = entry.status;
+    switch (status) {
+      case "stopping":
+        return { ...entry, status: "destroyed-pending-cleanup" as const, layout: "legacy" as const };
+      case "acquiring":
+      case "running":
+      case "destroyed-pending-cleanup":
+        return { ...entry, status, layout: "legacy" as const };
+      default:
+        return status satisfies never;
+    }
+  });
 
 const RegistryEnvelopeSchema = Schema.Struct({
   version: Schema.Literal(SCRATCH_REGISTRY_VERSION),
@@ -167,20 +218,10 @@ const openRegistryBucket = (
       lock: "advisory",
       onCorrupt: "quarantine",
       onVersionMismatch: (raw, fromVersion) => {
-        Schema.decodeUnknownSync(Schema.Literal(1))(fromVersion);
-        return Schema.decodeUnknownSync(LegacyRegistryEntriesSchema)(raw).map((entry) => {
-          const status = entry.status;
-          switch (status) {
-            case "stopping":
-              return { ...entry, status: "destroyed-pending-cleanup" as const };
-            case "acquiring":
-            case "running":
-            case "destroyed-pending-cleanup":
-              return { ...entry, status };
-            default:
-              return status satisfies never;
-          }
-        });
+        if (fromVersion === 1) return withLegacyLayout(Schema.decodeUnknownSync(LegacyV1EntriesSchema)(raw));
+        if (fromVersion === 2) return withLegacyLayout(Schema.decodeUnknownSync(LegacyV2EntriesSchema)(raw));
+        Schema.decodeUnknownSync(Schema.Never)(fromVersion);
+        return [];
       },
       default: [],
     })

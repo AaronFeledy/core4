@@ -68,7 +68,7 @@ describe("joomla decomposition", () => {
           composer: "{{ recipe.composer }}",
           allowOverride: true,
           port: 80,
-          dependsOn: ["database"],
+          depends_on: ["database"],
           routes: [{ hostname: "{{ app.name }}.{{ proxy.defaultDomain }}", scheme: "both" }],
         },
         database: { type: "{{ recipe.database }}" },
@@ -77,7 +77,7 @@ describe("joomla decomposition", () => {
         joomla: {
           service: "appserver",
           description: "Run the Joomla CLI inside the appserver service.",
-          cmds: ["php cli/joomla.php"],
+          cmd: [":php-local", "cli/joomla.php"],
           wrapper: true,
         },
         composer: {

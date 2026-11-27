@@ -1,6 +1,8 @@
 #!/usr/bin/env bun
 import { availableParallelism } from "node:os";
 import { join } from "node:path";
+import { MissingLiveTestBinaryError, type TrackTestChild, runWithLiveTestRoots } from "../live-test-roots.ts";
+import { withRunnerOwnedTestRoots } from "../test-preload-roots.ts";
 import { rewriteScenarioSourceMappedOutput } from "./scenario-source-mapper.ts";
 
 export const LIVE_OUTPUT_ENV = "LANDO_GUIDE_SCENARIO_LIVE_OUTPUT";
@@ -59,7 +61,7 @@ export const drainStream = async (
   const [live, buffered] = stream.tee();
   const pump = (async (): Promise<void> => {
     const reader = live.getReader();
-    for (;;) {
+    while (true) {
       const { done, value } = await reader.read();
       if (done) break;
       tee(value);
@@ -69,68 +71,91 @@ export const drainStream = async (
   return text;
 };
 
+const isE2eRun = (args: ReadonlyArray<string>, env: Readonly<Record<string, string | undefined>>): boolean =>
+  env.LANDO_GUIDE_E2E === "1" ||
+  args.some((arg, index) => {
+    let pattern: string | undefined;
+    if (arg.startsWith("--test-name-pattern=")) {
+      pattern = arg.slice("--test-name-pattern=".length);
+    } else if (arg === "--test-name-pattern" || arg === "-t") {
+      pattern = args[index + 1];
+    }
+    return pattern?.replaceAll("\\", "").includes("[e2e]") === true;
+  });
+
 export const guideScenarioTestArgs = (
   args: ReadonlyArray<string>,
   env: Readonly<Record<string, string | undefined>> = process.env,
   cpus = availableParallelism(),
 ): ReadonlyArray<string> => {
-  const e2e =
-    env.LANDO_GUIDE_E2E === "1" ||
-    args.some((arg, index) => {
-      let pattern: string | undefined;
-      if (arg.startsWith("--test-name-pattern=")) {
-        pattern = arg.slice("--test-name-pattern=".length);
-      } else if (arg === "--test-name-pattern" || arg === "-t") {
-        pattern = args[index + 1];
-      }
-      return pattern?.replaceAll("\\", "").includes("[e2e]") === true;
-    });
   const serialArgs = args.some((arg) => arg === "--max-concurrency" || arg.startsWith("--max-concurrency="))
     ? args
     : [...args, "--max-concurrency=1"];
-  if (e2e) return [...serialArgs, "--parallel=1", "--max-concurrency=1"];
+  if (isE2eRun(args, env)) return [...serialArgs, "--parallel=1", "--max-concurrency=1"];
   return args.some((arg) => arg === "--parallel" || arg.startsWith("--parallel="))
     ? serialArgs
     : [...serialArgs, `--parallel=${Math.max(1, Math.min(8, cpus))}`];
 };
 
-const main = async (): Promise<never> => {
-  const live = liveOutputEnabled(process.env);
+const runTests = async (
+  args: readonly string[],
+  env: Readonly<Record<string, string | undefined>>,
+  track: TrackTestChild,
+): Promise<number> => {
+  const live = liveOutputEnabled(env);
   const proc = Bun.spawn({
-    cmd: [
-      process.execPath,
-      "test",
-      ...guideScenarioTestArgs(await expandSmokeE2e(Bun.argv.slice(2), process.cwd())),
-    ],
+    cmd: [process.execPath, "test", ...guideScenarioTestArgs(args, env)],
     cwd: process.cwd(),
-    env: process.env,
+    env,
     stdout: "pipe",
     stderr: "pipe",
   });
+  track(proc);
 
-  if (live) process.stdout.write(`${LIVE_OUTPUT_BANNER}\n`);
-  const [exitCode, stdout, stderr] = await Promise.all([
-    proc.exited,
-    drainStream(
-      proc.stdout,
-      live
-        ? (chunk) => {
-            process.stdout.write(chunk);
-          }
-        : null,
-    ),
-    drainStream(
-      proc.stderr,
-      live
-        ? (chunk) => {
-            process.stderr.write(chunk);
-          }
-        : null,
-    ),
-  ]);
+  try {
+    if (live) process.stdout.write(`${LIVE_OUTPUT_BANNER}\n`);
+    const [exitCode, stdout, stderr] = await Promise.all([
+      proc.exited,
+      drainStream(
+        proc.stdout,
+        live
+          ? (chunk) => {
+              process.stdout.write(chunk);
+            }
+          : null,
+      ),
+      drainStream(
+        proc.stderr,
+        live
+          ? (chunk) => {
+              process.stderr.write(chunk);
+            }
+          : null,
+      ),
+    ]);
 
-  if (live) process.stdout.write(`${MAPPED_OUTPUT_BANNER}\n`);
-  process.stdout.write(rewriteScenarioSourceMappedOutput(`${stdout}${stderr}`));
+    if (live) process.stdout.write(`${MAPPED_OUTPUT_BANNER}\n`);
+    process.stdout.write(rewriteScenarioSourceMappedOutput(`${stdout}${stderr}`));
+    return exitCode;
+  } finally {
+    if (proc.exitCode === null && proc.signalCode === null) proc.kill("SIGKILL");
+    await proc.exited;
+  }
+};
+
+const main = async (): Promise<never> => {
+  const cwd = process.cwd();
+  const args = await expandSmokeE2e(Bun.argv.slice(2), cwd);
+  const live = process.env.LANDO_GUIDE_E2E === "1";
+  let exitCode = 1;
+  try {
+    exitCode = await withRunnerOwnedTestRoots({ env: process.env, live }, (env) =>
+      runWithLiveTestRoots({ live, cwd, env }, (childEnv, track) => runTests(args, childEnv, track)),
+    );
+  } catch (error) {
+    if (!(error instanceof MissingLiveTestBinaryError)) throw error;
+    console.error(error.message);
+  }
   // Bun's empty-write callback can precede flushing; end both streams before exiting.
   await Promise.all(
     [process.stdout, process.stderr].map((stream) => new Promise<void>((resolve) => stream.end(resolve))),

@@ -1,4 +1,4 @@
-import { lstat as nodeLstat, rename } from "node:fs/promises";
+import { appendFile, lstat as nodeLstat, rename } from "node:fs/promises";
 import { FileIoError, FileNotFoundError, FilePermissionError } from "@lando/sdk/errors";
 import { type FileStat, FileSystem, type FileSystemError } from "@lando/sdk/services";
 import { writeFileAtomic } from "@lando/state-store/atomic";
@@ -56,7 +56,7 @@ async function* readChunks(path: string): AsyncGenerator<Uint8Array> {
 
   const reader = file.stream().getReader();
   try {
-    for (;;) {
+    while (true) {
       const { done, value } = await reader.read();
       if (done) {
         break;
@@ -98,6 +98,8 @@ const stat = async (path: string): Promise<FileStat> => {
       mtimeMs: stats.mtimeMs,
       isFile: stats.isFile(),
       isDirectory: stats.isDirectory(),
+      uid: stats.uid,
+      gid: stats.gid,
     };
   } catch (cause) {
     if (codeFrom(cause) === "ENOENT") {
@@ -116,6 +118,8 @@ const lstat = async (path: string): Promise<FileStat> => {
       isFile: stats.isFile(),
       isDirectory: stats.isDirectory(),
       isSymbolicLink: stats.isSymbolicLink(),
+      uid: stats.uid,
+      gid: stats.gid,
     };
   } catch (cause) {
     if (codeFrom(cause) === "ENOENT") {
@@ -168,6 +172,11 @@ const fileSystemService: Context.Service.Shape<typeof FileSystem> = FileSystem.o
     Effect.tryPromise({
       try: () => write(path, content),
       catch: mapFileError(path, `Failed to write ${path}`),
+    }),
+  append: (path, content) =>
+    Effect.tryPromise({
+      try: () => appendFile(path, content),
+      catch: mapFileError(path, `Failed to append to ${path}`),
     }),
   writeAtomic: (path, content) =>
     Effect.uninterruptible(

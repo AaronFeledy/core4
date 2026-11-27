@@ -24,7 +24,7 @@ const pending = [
 
 for (const command of ["stop", "destroy"] as const) {
   for (const mode of ["complete", "idle", "route-failure", "absent", "scoped"] as const) {
-    test(`${command} clears only proven whole-app resource cleanup (${mode})`, async () => {
+    test(`${command} clears only proven cleanup (${mode})`, async () => {
       const root = await mkdtemp(join(tmpdir(), "global-teardown-reconciliation-"));
       try {
         const appRoot = AbsolutePath.make(join(root, "global"));
@@ -53,10 +53,12 @@ for (const command of ["stop", "destroy"] as const) {
         );
         expect(result.outcome._tag).toBe(mode === "route-failure" ? "Failure" : "Success");
         expect(result.receipt.revision).toBe(3);
+        // Stop keeps containers, so it can only ever prove route cleanup; container removal and
+        // evidence obligations survive it for a later destroy or reconciliation.
         expect(result.receipt.pending).toEqual(
-          mode === "complete" || (mode === "idle" && command === "destroy")
+          command === "destroy" && (mode === "complete" || mode === "idle")
             ? [pending[3]]
-            : mode === "absent" || mode === "idle"
+            : mode === "absent" || mode === "idle" || (command === "stop" && mode === "complete")
               ? pending.filter((entry) => entry.phase !== "routes")
               : pending,
         );

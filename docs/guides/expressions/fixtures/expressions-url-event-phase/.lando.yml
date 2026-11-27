@@ -1,0 +1,9 @@
+name: url-event-phase
+services:
+  web:
+    type: nginx
+    primary: true
+events:
+  pre-start:
+    - service: web
+      cmd: "echo Starting {{ services.web.url }}"

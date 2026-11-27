@@ -109,6 +109,7 @@ for (const [yaml, path, count] of [
   ["networks: {peer: {name: chosen}}", ["networks", "peer", "name"], 1],
   ["networks: {'bad/key': {}}", ["networks", "bad/key"], 1],
   ["networks: {peer: {external: true, name: lando_bridge_network}}", ["networks", "peer"], 1],
+  ["networks: {peer: {external: true, name: lando_bridge_0123456789abcdef}}", ["networks", "peer"], 1],
   ["networks: {peer: {external: true, name: lando-validation}}", ["networks", "peer"], 1],
   ["networks: {peer: {external: true, name: lando-validation_former-owned}}", ["networks", "peer"], 1],
   [
@@ -154,12 +155,12 @@ test("lint permits service default membership and declared external networks", a
   );
 });
 
-test("top-level env file failures aggregate with independent service and route issues", async () => {
+test("serviceDefaults env file failures aggregate with independent service and route issues", async () => {
   await withApp(
-    "env_file: [missing.env]\nservices:\n  db:\n    type: validation\n    environment: {FAIL: yes}\n  web:\n    type: validation\n    routes: [bad_host!]\n",
+    "serviceDefaults:\n  env_file: [missing.env]\nservices:\n  db:\n    type: validation\n    environment: {FAIL: yes}\n  web:\n    type: validation\n    routes: [bad_host!]\n",
     async (root) => {
       const { lint } = await compareIssues(root, [
-        ["env_file", 0],
+        ["serviceDefaults", "env_file", 0],
         ["services", "db", "port"],
         ["services", "web", "routes", 0],
       ]);

@@ -88,7 +88,7 @@ describe("Compose compatibility matrix", () => {
     expect(primary).toContain("extra_hosts");
     expect(primary).toContain("published");
     expect(primary).toContain("8080");
-    expect(primary).toContain("dependsOn");
+    expect(primary).toContain("depends_on");
     expect(primary).toContain("service_started");
     expect(applyRemediation).not.toContain('<Run command="lando app:config --format=json"');
     expect(applyRemediation).toContain(

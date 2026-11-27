@@ -245,7 +245,6 @@ describe("native argv parser seam", () => {
       ),
     ).toEqual({
       services: ["traefik"],
-      format: "json",
     });
     expect(globalStatusFormatFromInput(compiledInput("meta:global:status", ["--format", "json"]))).toBe(
       "json",

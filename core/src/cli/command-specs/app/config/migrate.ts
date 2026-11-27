@@ -42,7 +42,6 @@ export const appConfigMigrateSpec: LandoCommandSpec<AppConfigMigrateResult> = {
       description: "Never prompt for migration approval.",
       default: false,
     }),
-    format: Flags.string({ description: "Output format.", default: "text" }),
   },
   run: Effect.fn("ConfigMigrateCommand.run")(function* (input: unknown) {
     const privateFileAccess = yield* PrivateFileAccessService;

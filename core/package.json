@@ -110,7 +110,7 @@
     "remark-frontmatter": "5.0.0",
     "remark-mdx": "3.1.1",
     "remark-parse": "11.0.0",
-    "semver": "^7.8.5",
+    "semver": "^7.8.6",
     "unified": "11.0.5",
     "uqr": "^0.1.3"
   },
@@ -125,7 +125,7 @@
     "build:manifest": "bun run ../scripts/build-command-registry-manifest.ts",
     "build:compile": "bun run ../scripts/build-compiled-binary.ts --outfile ./dist/lando --minify --sourcemap=external && bun run ../scripts/sanitize-compiled-binary.ts ./dist/lando",
     "clean": "rm -rf dist .tsbuildinfo",
-    "test": "bun test",
+    "test": "bun --cwd=.. test ./core/test",
     "typecheck": "tsc -b",
     "prepack": "bun run build:manifest && bun run ../scripts/check-compiled-binary-notices.ts --core-dist"
   }

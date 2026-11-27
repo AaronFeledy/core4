@@ -259,4 +259,37 @@ describe("EventService.subscribeWithHistory", () => {
     expect(outcome.history).toEqual([expected]);
     expect(outcome.queued).toEqual([expected]);
   });
+
+  test("redacts declared tree children like the task.start events that later carry their ids", async () => {
+    const redaction = makeRedactionService();
+    await Effect.runPromise(redaction.registerValues(["acme-secret"]));
+    const history = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const events = yield* EventService;
+          yield* events.subscribeWithHistory();
+          yield* events.publish({
+            _tag: "task.tree.start",
+            parentId: "build",
+            label: "Building",
+            children: [{ id: "build:acme-secret", label: "Build acme-secret" }],
+            timestamp: "2026-10-30T00:00:00Z",
+          });
+          yield* events.publish({
+            _tag: "task.start",
+            taskId: "build:acme-secret",
+            parentId: "build",
+            label: "Build acme-secret",
+            timestamp: "2026-10-30T00:00:00Z",
+          });
+          return (yield* events.subscribeWithHistory()).history;
+        }),
+      ).pipe(
+        Effect.provide(Events.layerWith(4).pipe(Layer.provide(Layer.succeed(RedactionService, redaction)))),
+      ),
+    );
+    const [treeStart, taskStart] = history;
+    expect(treeStart?.children).toEqual([{ id: taskStart?.taskId, label: taskStart?.label }]);
+    expect(JSON.stringify(history)).not.toContain("acme-secret");
+  });
 });

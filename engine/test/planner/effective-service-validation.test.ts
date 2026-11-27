@@ -5,11 +5,12 @@ import { join } from "node:path";
 import { LandofileShape, ServiceName } from "@lando/sdk/schema";
 import { AppPlanner } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { Effect, Schema } from "effect";
+import { Effect, Layer, Schema } from "effect";
 import { appConfigLint } from "../../src/operations/app-config-lint.ts";
 import * as Registry from "../../src/plugins/registry.ts";
 import * as Planner from "../../src/services/planner.ts";
 import { literalTestLandofile } from "../compiled-landofile.ts";
+import { pathsServiceLayer } from "../paths-service.ts";
 
 test("lint aggregates service-relative image and bind findings without derivative claims noise", async () => {
   // Given
@@ -53,7 +54,10 @@ test.each([
           ...TestRuntimeProvider.capabilities,
           artifactBuild: true,
         }),
-      ).pipe(Effect.provide(Planner.layer), Effect.provide(Registry.layer)),
+      ).pipe(
+        Effect.provide(Planner.layer.pipe(Layer.provide(pathsServiceLayer()))),
+        Effect.provide(Registry.layer),
+      ),
     );
     // Then
     expect(plan.services[ServiceName.make("store")]?.artifact).toMatchObject(
