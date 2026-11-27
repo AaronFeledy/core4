@@ -48,7 +48,7 @@
       "dependencyDashboardApproval": true
     },
     {
-      "description": "Effect is pinned in the root workspace catalog and guarded by core/test/build/effect-version-pin.test.ts. Upgrades need codegen and review, so they wait for approval on the Dependency Dashboard.",
+      "description": "The root workspace catalog is the only place the Effect version is written by hand. Upgrades need codegen and review, so they wait for approval on the Dependency Dashboard.",
       "matchPackageNames": ["effect"],
       "dependencyDashboardApproval": true
     },

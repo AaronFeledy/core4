@@ -4,7 +4,6 @@ import { resolve } from "node:path";
 import { scanModuleEdges } from "../../../scripts/module-edge-scan.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
-const EFFECT_VERSION = "4.1.7";
 const DEPENDENCY_FIELDS = [
   "dependencies",
   "devDependencies",
@@ -14,7 +13,11 @@ const DEPENDENCY_FIELDS = [
 
 interface PackageManifest {
   readonly name?: string;
-  readonly workspaces?: unknown;
+  readonly version?: string;
+  readonly workspaces?: {
+    readonly packages?: readonly string[];
+    readonly catalog?: Readonly<Record<string, string>>;
+  };
   readonly dependencies?: Record<string, string>;
   readonly devDependencies?: Record<string, string>;
   readonly peerDependencies?: Record<string, string>;
@@ -25,8 +28,7 @@ const readManifest = async (path: string): Promise<PackageManifest> =>
   JSON.parse(await Bun.file(path).text()) as PackageManifest;
 
 const rootManifest = await readManifest(resolve(repoRoot, "package.json"));
-const workspaceGlobs =
-  (rootManifest.workspaces as { packages?: ReadonlyArray<string> } | undefined)?.packages ?? [];
+const workspaceGlobs = rootManifest.workspaces?.packages ?? [];
 
 const workspaceDirs = async (): Promise<ReadonlyArray<string>> => {
   const dirs: string[] = [];
@@ -61,13 +63,11 @@ const importsEffect = async (dir: string): Promise<boolean> => {
 describe("Effect version pin", () => {
   test("root workspaces use the object form with an exact effect catalog entry", () => {
     // Given: the root manifest owns the single Effect version.
-    const workspaces = rootManifest.workspaces as
-      | { packages?: unknown; catalog?: Record<string, string> }
-      | undefined;
+    const workspaces = rootManifest.workspaces;
 
     // Then: the catalog pins exactly one Effect release and lists workspace packages.
     expect(Array.isArray(workspaces?.packages)).toBe(true);
-    expect(workspaces?.catalog?.effect).toBe(EFFECT_VERSION);
+    expect(workspaces?.catalog?.effect).toMatch(/^\d+\.\d+\.\d+$/u);
   });
 
   test("every workspace declares effect through the catalog and depends on no @effect package", async () => {
@@ -100,6 +100,6 @@ describe("Effect version pin", () => {
 
   test("the installed effect matches the catalog pin", async () => {
     const installed = await readManifest(resolve(repoRoot, "node_modules/effect/package.json"));
-    expect((installed as { version?: string }).version).toBe(EFFECT_VERSION);
+    expect(installed.version).toBe(rootManifest.workspaces?.catalog?.effect);
   });
 });
