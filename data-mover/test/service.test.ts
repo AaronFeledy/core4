@@ -44,7 +44,7 @@ import {
   RuntimeProvider,
   StateStore,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProvider } from "@lando/sdk/test";
 import { collectVerifiedStream } from "@lando/sdk/verified-stream";
 import * as StateStoreLayer from "@lando/state-store/service";
 import { volumeInitialization } from "@lando/state-store/volume-initialization";
@@ -64,8 +64,8 @@ import {
 import { TestClock } from "effect/testing";
 import { decodeArchiveStream, encodeArchiveStream } from "../src/archive-stream.ts";
 import * as BunDataMover from "./support.ts";
-import { fixtureOwnerKey, fixtureVolume } from "./support.ts";
-import { parseTarArchive, tarArchive } from "./tar-fixture.ts";
+import { fixtureOwnerKey, fixtureVolume, writeFixtureVolume } from "./support.ts";
+import { concatBytes, parseTarArchive, tarArchive } from "./tar-fixture.ts";
 
 const stateStoreLayer = StateStoreLayer.layer.pipe(Layer.provide(BunProcessRunner.layer));
 
@@ -2061,31 +2061,41 @@ describe("BunDataMover.layer", () => {
       const dataRoot = join(dir, "data");
       const previousDataRoot = process.env.LANDO_USER_DATA_ROOT;
       process.env.LANDO_USER_DATA_ROOT = dataRoot;
+      const provider = makeTestRuntimeProvider();
+      const store = { app, store: "data" };
 
       try {
-        const listed = await Effect.runPromise(
+        const { listed, restored } = await Effect.runPromise(
           Effect.scoped(
             Effect.gen(function* () {
               const dataMover = yield* DataMover;
-              const handle = yield* dataMover.snapshot(
-                { app, store: "data" },
-                { volumeSnapshot: "native", label: "native-one" },
-              );
-              yield* dataMover.restore(handle, { app, store: "data" });
-              return yield* dataMover.listSnapshots({ app, store: "data" });
+              yield* writeFixtureVolume(provider, store, "original snapshot payload");
+              const handle = yield* dataMover.snapshot(store, {
+                volumeSnapshot: "native",
+                label: "native-one",
+              });
+              yield* writeFixtureVolume(provider, store, "changed payload");
+              yield* dataMover.restore(handle, store);
+              const restored = yield* provider.exportVolume(store).pipe(Stream.runCollect);
+              const listed = yield* dataMover.listSnapshots(store);
+              return { listed, restored };
             }),
           ).pipe(
             Effect.provide(BunDataMover.layer),
             Effect.provide(
               providerLayer({
                 capabilities: dataPlaneCapabilities({ volumeSnapshot: "native" }),
-                listVolumes: ({ store }) => Effect.succeed([fixtureVolume({ app, store: store ?? "data" })]),
+                listVolumes: provider.listVolumes,
+                locateVolume: provider.locateVolume,
+                snapshotVolume: provider.snapshotVolume,
+                restoreVolume: provider.restoreVolume,
               }),
             ),
             Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
           ),
         );
 
+        expect(payloadFromTree(concatBytes(restored))).toBe("original snapshot payload");
         const info = listed[0];
         if (info === undefined) throw new Error("expected native snapshot metadata");
         expect(info?.label).toBe("native-one");

@@ -13,7 +13,6 @@ import {
   ProviderId,
   ServiceName,
   type ServicePlan,
-  type VolumeInfo,
 } from "@lando/sdk/schema";
 import {
   AppPlanner,
@@ -96,7 +95,7 @@ export const makeHarness = (
     readonly router?: typeof RouterService.Service;
     readonly fileSync?: typeof FileSyncEngine.Service;
     readonly stateStore?: StateStoreShape;
-    readonly volumes?: ReadonlyArray<VolumeInfo>;
+    readonly volumeProvider?: Pick<RuntimeProviderShape, "listVolumes" | "locateVolume">;
     readonly appliedFileSyncState?: "missing" | "ordinary" | "accelerated" | "unknown";
     readonly appliedFileSyncSessions?: ReadonlyArray<FileSyncSessionSpec>;
     readonly appliedFileSyncEngineId?: string;
@@ -126,7 +125,8 @@ export const makeHarness = (
             publications: { status: "unknown" as const },
           })),
         )),
-    listVolumes: () => Effect.succeed(options.volumes ?? []),
+    listVolumes: options.volumeProvider?.listVolumes ?? (() => Effect.succeed([])),
+    locateVolume: options.volumeProvider?.locateVolume ?? TestRuntimeProvider.locateVolume,
     ...(options.appliedFileSyncState === undefined
       ? {}
       : {
