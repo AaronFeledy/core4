@@ -15,6 +15,7 @@ import { TestClock } from "effect/testing";
 import type { DoctorSectionResult } from "../../src/cli/commands/doctor.ts";
 import { doctor } from "../../src/cli/commands/doctor.ts";
 import { resilientDoctorReport } from "../../src/cli/commands/doctor-bootstrap";
+import { HostProxyDoctorFileSystem } from "../../src/cli/commands/doctor-host-proxy-filesystem";
 import { probeBudgetMs } from "../../src/cli/commands/doctor-plugin-checks.ts";
 import { DoctorReportSchema, collectDoctorReport } from "../../src/cli/commands/doctor-report.ts";
 import { independentSection } from "../../src/cli/commands/doctor-sections";
@@ -72,11 +73,20 @@ const doctorModule = (check: PluginDoctorCheckContribution): LandoPluginModule =
   doctorChecks: [check],
 });
 
+const absentHostProxyRoot = Layer.effect(
+  HostProxyDoctorFileSystem,
+  Effect.map(HostProxyDoctorFileSystem, (live) => ({
+    ...live,
+    readRoot: () => Effect.succeed({ _tag: "absent" }),
+  })),
+).pipe(Layer.provide(HostProxyDoctorFileSystem.layer));
+
 const layersFor = (registry: ReturnType<typeof makeTestRuntimeProviderRegistry>) =>
   Layer.mergeAll(
     Layer.succeed(RuntimeProviderRegistry, registry),
     Layer.succeed(ConfigService, ConfigService.of(buildConfigService())),
     Layer.succeed(PathsService, makeLandoPaths({ platform: "linux", env: {} })),
+    absentHostProxyRoot,
   );
 
 const selfSections = (report: DoctorSectionResult) =>
@@ -490,9 +500,8 @@ describe("doctor chaos: plugin-contributed checks", () => {
         yield* Deferred.await(hangStarted);
         yield* Effect.yieldNow;
         expect(Option.isSome(yield* Deferred.poll(healthyStarted))).toBe(true);
-        // Expire the plugin probe, then let the report finish its host-proxy directory read
-        // without also expiring the outer section.
-        yield* TestClock.adjust(probeBudgetMs(1_000));
+        yield* TestClock.adjust("1 second");
+        expect(fiber.pollUnsafe()).toBeDefined();
         return yield* Fiber.join(fiber);
       }).pipe(Effect.provide(layers), Effect.provide(TestClock.layer())),
     );
@@ -551,7 +560,7 @@ describe("doctor chaos: plugin-contributed checks", () => {
     };
     const layers = layersFor(statusRegistry(TestRuntimeProvider.getStatus));
 
-    // When
+    // When the Deferred, not elapsed time, decides completion order
     const options = { env: {} };
     const report = await Effect.runPromise(
       collectDoctorReport({
@@ -572,6 +581,7 @@ describe("doctor chaos: plugin-contributed checks", () => {
         .filter((check) => check.section === "provider" && check.name.startsWith("chaos-order-"))
         .map((entry) => entry.name),
     ).toEqual(["chaos-order-first", "chaos-order-second"]);
+    expect(selfSections(report)).toEqual([]);
   });
 
   test("keeps inner attribution when sequential plugin and provider probes exhaust the report budget", async () => {

@@ -257,7 +257,7 @@ test("the real repository has no unowned tests or unexecuted declarations", asyn
     collectTestInventory({ presets: [] }),
   ]);
   expect(result.issues.map(formatOwnershipIssue)).toEqual([]);
-  expect(result.entries).toEqual(withoutPresets);
+  expect(withoutPresets).toEqual(result.entries);
 });
 
 test("a preset checks every selector but cannot admit a test with live prerequisites", async () => {

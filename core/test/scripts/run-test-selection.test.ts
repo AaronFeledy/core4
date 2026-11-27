@@ -198,13 +198,9 @@ test.each([
 });
 
 test("matches file, tree, and glob selectors without substring expansion", () => {
-  expect(selectionMatches({ id: "tree", paths: ["pkg/test/"], jobs: [] }, "pkg/test/nested/a.test.ts")).toBe(
-    true,
-  );
-  expect(selectionMatches({ id: "tree", paths: ["pkg/test/"], jobs: [] }, "other/pkg/test/a.test.ts")).toBe(
+  expect(selectionMatches({ id: "tree", paths: ["pkg/test/"] }, "pkg/test/nested/a.test.ts")).toBe(true);
+  expect(selectionMatches({ id: "tree", paths: ["pkg/test/"] }, "other/pkg/test/a.test.ts")).toBe(false);
+  expect(selectionMatches({ id: "glob", paths: ["pkg/test/*.test.ts"] }, "pkg/test/nested/a.test.ts")).toBe(
     false,
   );
-  expect(
-    selectionMatches({ id: "glob", paths: ["pkg/test/*.test.ts"], jobs: [] }, "pkg/test/nested/a.test.ts"),
-  ).toBe(false);
 });

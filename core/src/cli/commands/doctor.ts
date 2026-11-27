@@ -5,7 +5,7 @@ import { makePluginCapabilityIndex } from "@lando/engine/plugins/module-set";
 import { resolveProviderSelection } from "@lando/engine/providers/precedence";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
 import { ConfigService, PathsService, RuntimeProviderRegistry } from "@lando/sdk/services";
-import { DateTime, Effect, Option, Result } from "effect";
+import { DateTime, Effect, Layer, Option, Result } from "effect";
 import { CliInvocation } from "../../runtime/invocation-context";
 import { interruptOnAbort } from "./doctor-abort";
 import { collectArtifactRefreshDoctorCheck } from "./doctor-artifact-refresh";
@@ -312,6 +312,7 @@ export const doctor = Effect.fn("Doctor.collect")(
       { platform: options.platform ?? provider.platform },
       redactor,
     );
+    const hostProxyFileSystem = yield* Effect.serviceOption(HostProxyDoctorFileSystem);
     const hostProxy = yield* probe(
       "host-proxy",
       hostProxyTransportDoctorChecks({
@@ -324,7 +325,13 @@ export const doctor = Effect.fn("Doctor.collect")(
           exec: provider.exec,
         },
         sourceEnv,
-      }).pipe(Effect.provide(HostProxyDoctorFileSystem.layer)),
+      }).pipe(
+        Effect.provide(
+          Option.isSome(hostProxyFileSystem)
+            ? Layer.succeed(HostProxyDoctorFileSystem, hostProxyFileSystem.value)
+            : HostProxyDoctorFileSystem.layer,
+        ),
+      ),
       { checks: [] },
       sectionBudget,
     );
