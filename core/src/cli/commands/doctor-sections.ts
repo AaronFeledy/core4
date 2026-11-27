@@ -131,9 +131,8 @@ export const doctorSections = (input: {
     configSection({
       id: "lando-roots",
       // The config tier provides roots but not file access, so the producer brings its own.
-      run: rootOwnershipDoctor(redact).pipe(
+      run: rootOwnershipDoctor(redact, { fix: options.fix === true }).pipe(
         Effect.provide(BunFileSystem.layer),
-        Effect.map((checks): DoctorSectionResult => ({ checks })),
       ),
     }),
     configSection({

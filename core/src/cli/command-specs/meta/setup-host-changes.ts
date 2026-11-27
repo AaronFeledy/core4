@@ -48,6 +48,8 @@ export interface SetupHostChangePlanInput {
   readonly network: ResolvedSetupNetworkTrust;
   readonly privilege: PrivilegeShape | undefined;
   readonly recorder: SetupReadinessRecorder;
+  /** Giving root-owned Lando files back, planned before setup writes anything under the roots. */
+  readonly rootRepair?: HostChangeProposal | undefined;
 }
 
 const inspectOptionsFor = (
@@ -114,6 +116,7 @@ export const planSetupHostChanges = Effect.fn("SetupCommand.planHostChanges")(fu
 ) {
   const inspectOptions = inspectOptionsFor(plan.input, plan.selectedProviderId, plan.network);
   const proposed = [
+    ...(plan.rootRepair === undefined ? [] : [plan.rootRepair]),
     ...(yield* providerProposals({ ...plan, inspectOptions })),
     ...(yield* planCaHostChanges(plan.input, plan.recorder)),
     ...(yield* routerProposals(plan.input, plan.recorder)),
