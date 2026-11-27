@@ -75,7 +75,7 @@ const rootlessPrerequisiteCopy: Record<RootlessPrerequisite, RootlessPrerequisit
   "xdg-runtime-dir": {
     message: "Rootless Podman requires a private runtime directory base for your session.",
     remediation:
-      "Rerun `lando setup` in a terminal and approve enabling lingering (or pass `--enable-linger`) so systemd creates /run/user/$(id -u) for you. Otherwise ensure /run/user/$(id -u) exists, is owned by your user, and has mode 0700, or export XDG_RUNTIME_DIR to a directory with the same properties, then rerun `lando setup`.",
+      "Ensure /run/user/$(id -u) exists, is owned by your user, and has mode 0700, or export XDG_RUNTIME_DIR to a directory with the same properties, then rerun `lando setup`.",
   },
 };
 
