@@ -408,5 +408,12 @@ describe("buildCatalog", () => {
         flags: { properties: { source: { enum: ["raw", "merged", "resolved"] }, path: { type: "string" } } },
       },
     });
+    expect(catalog.tools.find((tool) => tool.toolId === "app:config:get")?.inputSchema).not.toHaveProperty(
+      "properties.args.required",
+    );
+    for (const tool of catalog.tools) {
+      expect(tool.inputSchema).not.toHaveProperty("properties.flags.required");
+      expect(tool.inputSchema).toHaveProperty("properties.flags.properties.source.type", "string");
+    }
   });
 });

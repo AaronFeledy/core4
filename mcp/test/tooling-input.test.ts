@@ -10,6 +10,7 @@ const input = Result.getOrThrow(
       loud: { boolean: true, default: true },
       mode: { choices: ["dev", "prod"], required: true },
       innocent: { sensitive: true },
+      format: {},
     },
     args: { target: { required: true }, suffix: { default: "" } },
   }),
@@ -74,6 +75,7 @@ test("publishes authoritative enum, defaults, parent requirements, closed groups
           loud: { type: "boolean", default: true },
           mode: { enum: ["dev", "prod"] },
           innocent: { type: "string", writeOnly: true },
+          format: { type: "string" },
         },
       },
       args: {

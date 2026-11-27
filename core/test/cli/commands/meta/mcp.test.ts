@@ -158,9 +158,19 @@ describe("classifyMcpServeStartup", () => {
 
     // Then
     expect(supported).toBeUndefined();
-    expect(machine?._tag).toBe("McpTransportError");
-    expect(tty?._tag).toBe("McpTransportError");
-    expect(missing?._tag).toBe("McpTransportError");
+    expect(machine).toMatchObject({
+      _tag: "McpTransportError",
+      message: "MCP serve mode cannot use command-result machine output.",
+      remediation: expect.stringContaining("add --list"),
+    });
+    expect(tty).toMatchObject({
+      _tag: "McpTransportError",
+      message: "MCP serve mode requires usable non-TTY stdin and stdout descriptors.",
+    });
+    expect(missing).toMatchObject({
+      _tag: "McpTransportError",
+      remediation: expect.stringContaining("stdin and stdout connected as pipes"),
+    });
   });
 });
 

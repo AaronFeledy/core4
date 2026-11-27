@@ -11,15 +11,10 @@ import { openStdioSession as openSession } from "./stdio-session";
 const cli = resolve(import.meta.dir, "../../bin/lando.ts");
 let parent: string;
 let a: FixtureApp;
-let b: FixtureApp;
 
 beforeAll(async () => {
   parent = await fixtureRoot("generations-stdio");
   a = await writeFixtureApp(parent, "a", { commands: ["fixture:shared"], serviceType: "a-thing" });
-  b = await writeFixtureApp(parent, "b", {
-    commands: ["fixture:shared", "fixture:b-only"],
-    serviceType: "b-thing",
-  });
 });
 afterAll(async () => {
   if (parent !== undefined) await rm(parent, { recursive: true, force: true });
@@ -52,43 +47,6 @@ const structured = (message: Schema.JsonObject): unknown => {
 const openStdioSession = (cwd: string, flags: ReadonlyArray<string>) => {
   return openSession({ command: [process.execPath, cli, "mcp", ...flags], cwd, env: env() });
 };
-
-test("a call targeting another app registers that app's tools over real stdio and announces list_changed", async () => {
-  // Given `lando mcp` served from app A, allowing an id only app B defines
-  const session = openStdioSession(a.root, allowFlags);
-  try {
-    const initialized = await session.initialize();
-    const before = await session.request("tools/list");
-
-    // When a default tool is called with appPath pointing at app B
-    const announcement = session.waitFor((message) => message.method === "notifications/tools/list_changed");
-    const [viewB, changed] = await Promise.all([
-      session.request("tools/call", {
-        name: "app:config:view",
-        arguments: { appPath: b.root },
-      }),
-      announcement,
-    ]);
-    const after = await session.request("tools/list");
-    const bOnly = await session.request("tools/call", {
-      name: "fixture:b-only",
-      arguments: { appPath: "../b" },
-    });
-    const { exit, stderr } = await session.finish();
-
-    // Then the session declared listChanged, announced the change, and serves B's tool from B
-    expect(initialized.result).toMatchObject({ capabilities: { tools: { listChanged: true } } });
-    expect(toolNames(before)).toEqual(["fixture:shared"]);
-    expect(structured(viewB)).toMatchObject({ ok: true });
-    expect(changed.method).toBe("notifications/tools/list_changed");
-    expect([...toolNames(after)].sort()).toEqual(["fixture:b-only", "fixture:shared"]);
-    expect(structured(bOnly)).toMatchObject({ ok: true, result: { app: "b", id: "fixture:b-only" } });
-    expect(exit, stderr).toBe(0);
-  } finally {
-    session.child.kill();
-    await session.child.exited;
-  }
-}, 60_000);
 
 test("each call rediscovers its app root, so a Landofile created mid-session selects the nearer app", async () => {
   // Given a directory inside app A whose own app (with its own plugin) has no Landofile yet

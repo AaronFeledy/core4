@@ -7,7 +7,7 @@ import { StreamFrameSink } from "@lando/sdk/services";
 import { Deferred, Effect, Fiber, Layer, Schema, Stdio, Stream } from "effect";
 import { forEach as forEachChunk } from "effect/Sink";
 import { TestClock } from "effect/testing";
-import { eventLayer, serverLayer, startServer, toolErrorObject } from "./server";
+import { eventLayer, resultObject, serverLayer, startServer, toolErrorObject } from "./server";
 import { expectMcpTransportFailure } from "./stdio-transport-test-support";
 
 test("stdio-outbound-deadline-disconnects", async () => {
@@ -181,12 +181,14 @@ test("stdio-outstanding-request-cap-rejects-the-257th-as-busy-with-default-concu
         const observedMaximum = maximum;
         yield* Deferred.succeed(release, undefined);
         const results = yield* Effect.forEach(calls, (call) => call.response);
-        return { busy, results, observedMaximum };
+        return { busy, busyId: last.id, results, observedMaximum };
       }),
     ),
   );
   expect(observed.observedMaximum).toBe(4);
   expect(observed.results).toHaveLength(257);
+  expect(observed.busy).toMatchObject({ jsonrpc: "2.0", id: observed.busyId });
+  expect(observed.results.filter((message) => resultObject(message).isError === false)).toHaveLength(256);
   expect(events.filter((event) => event._tag === "pre-mcp-call")).toHaveLength(257);
   expect(events.filter((event) => event._tag === "post-mcp-call")).toHaveLength(257);
   expect(events.filter((event) => event._tag === "post-mcp-call" && event.outcome === "failure")).toEqual([
