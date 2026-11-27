@@ -1,10 +1,11 @@
 /**
- * A fresh read of the host's system trust store. Bun snapshots the system store once per process,
- * so setup cannot use that snapshot to verify the trust `mkcert -install` just added; this module
- * reads the store again every time. It only reads: it never installs, prompts, or elevates.
+ * A fresh read of the host's system trust store, and where each Linux family keeps its anchors.
+ * Bun snapshots the system store once per process, so setup cannot use that snapshot to verify
+ * the trust it just added; this module reads the store again every time. It only reads: it never
+ * installs, prompts, or elevates.
  */
 import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, posix } from "node:path";
 import type { TrustStoreStatus } from "@lando/sdk/schema";
 import type { ProcessRunner } from "@lando/sdk/services";
 import { type Context, Effect, Result } from "effect";
@@ -12,7 +13,59 @@ import { type Context, Effect, Result } from "effect";
 import { PEM_BLOCK, pemsContainRoot, sha1Hex } from "./host-trust.ts";
 import { failureDetail } from "./mkcert-command.ts";
 
-export const INSTALL_TRUST_REMEDIATION = "Run `lando setup` without `--skip-install-ca`.";
+export const INSTALL_TRUST_REMEDIATION =
+  "Run `lando setup` without `--skip-install-ca` and approve trusting the local CA (`--yes` approves it).";
+
+/** A Linux family's anchor directory and the command that rebuilds its bundle from the anchors. */
+export interface LinuxAnchorStore {
+  readonly family: string;
+  readonly dir: string;
+  readonly ext: ".pem" | ".crt";
+  readonly refresh: readonly [string, ...string[]];
+}
+
+/** Anchor stores in mkcert's order; the first whose directory and refresh command exist is the host's. */
+export const LINUX_ANCHOR_STORES: ReadonlyArray<LinuxAnchorStore> = [
+  {
+    family: "Fedora/RHEL",
+    dir: "/etc/pki/ca-trust/source/anchors",
+    ext: ".pem",
+    refresh: ["/usr/bin/update-ca-trust", "extract"],
+  },
+  {
+    family: "Debian/Ubuntu",
+    dir: "/usr/local/share/ca-certificates",
+    ext: ".crt",
+    refresh: ["/usr/sbin/update-ca-certificates"],
+  },
+  {
+    family: "Arch",
+    dir: "/etc/ca-certificates/trust-source/anchors",
+    ext: ".crt",
+    refresh: ["/usr/bin/trust", "extract-compat"],
+  },
+  {
+    family: "openSUSE",
+    dir: "/usr/share/pki/trust/anchors",
+    ext: ".pem",
+    refresh: ["/usr/sbin/update-ca-certificates"],
+  },
+];
+
+/** The file name Lando gives the local CA in an anchor store; fixed, because every data root shares the CA. */
+export const LANDO_ANCHOR_NAME = "lando-local-ca";
+
+export const landoAnchorPath = (store: LinuxAnchorStore): string =>
+  posix.join(store.dir, `${LANDO_ANCHOR_NAME}${store.ext}`);
+
+/** Where setup stages the root on macOS: root-owned, so no user can swap the file `security` reads. */
+export const MACOS_STAGE_DIR = "/Library/Application Support/Lando";
+export const MACOS_STAGED_ROOT = `${MACOS_STAGE_DIR}/local-ca.pem`;
+export const MACOS_SYSTEM_KEYCHAIN = "/Library/Keychains/System.keychain";
+
+/** The host's anchor store, or undefined when it has none Lando knows. */
+export const detectLinuxAnchorStore = (exists: (path: string) => boolean): LinuxAnchorStore | undefined =>
+  LINUX_ANCHOR_STORES.find((store) => exists(store.dir) && exists(store.refresh[0]));
 
 /** Distro CA bundles, in the order OpenSSL-based clients on each family find them. */
 export const LINUX_SYSTEM_BUNDLES: ReadonlyArray<string> = [
