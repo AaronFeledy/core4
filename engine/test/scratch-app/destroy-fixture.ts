@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, realpath, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { makeLandoPaths } from "@lando/paths";
@@ -15,7 +15,6 @@ import {
   AbsolutePath,
   AppId,
   AppPlan,
-  LandofileShape,
   ProviderId,
   type ResourceOwnership,
   type SnapshotInfo,
@@ -28,7 +27,6 @@ import {
   DataMover,
   EventService,
   type LandoEvent,
-  LandofileService,
   type OwnedResourcesCleanupOptions,
   PathsService,
   RouterService,
@@ -39,7 +37,8 @@ import {
 import { TestRuntimeProvider, makeTestRouterService, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { makeStateStore } from "@lando/state-store/service";
-import { DateTime, Effect, Layer, Predicate, Schema, Stream } from "effect";
+import { DateTime, Effect, Layer, Predicate, Stream } from "effect";
+import { RuntimeCwd } from "../../src/runtime/cwd.ts";
 import { SCRATCH_EXTENSION_KEY } from "../../src/scratch-app/identity.ts";
 import { SCRATCH_DESIRED_PLAN_VERSION } from "../../src/scratch-app/plan.ts";
 import {
@@ -177,6 +176,10 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
   if (!options.ownershipOnly) await mkdir(join(instanceRoot, "root"), { recursive: true });
   const managedRoot = AbsolutePath.make(join(await realpath(root), "scratch", id, "root"));
   const sourceRoot = AbsolutePath.make(join(root, "source-app"));
+  if (options.copyFail) {
+    await mkdir(sourceRoot, { recursive: true });
+    await writeFile(join(sourceRoot, ".lando.yml"), "name: demo\nruntime: 4\nservices: {}\n");
+  }
   let ownership: ReadonlyArray<ResourceOwnership> = options.ownershipOnly
     ? [
         {
@@ -304,16 +307,7 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
       AppPlanner,
       AppPlanner.of({ plan: () => Effect.succeed({ ...plan, valueModel: 1 as const }) }),
     ),
-    Layer.succeed(
-      LandofileService,
-      LandofileService.of({
-        discover: Effect.succeed(
-          literalTestLandofile(
-            Schema.decodeUnknownSync(LandofileShape)({ name: "demo", runtime: 4, services: {} }),
-          ),
-        ),
-      }),
-    ),
+    Layer.succeed(RuntimeCwd, sourceRoot),
     Layer.succeed(
       Scratch.ScratchInitAppPort,
       Scratch.ScratchInitAppPort.of({ initApp: () => Promise.reject(new TypeError("unused recipe")) }),
@@ -468,5 +462,4 @@ export const runDestroy = (fixture: Awaited<ReturnType<typeof makeFixture>>, kee
     ),
   );
 
-import { literalTestLandofile } from "../compiled-landofile.ts";
 import { testEnvironmentResolverLayer } from "../environment-values.ts";

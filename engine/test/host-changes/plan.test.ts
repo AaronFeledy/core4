@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { HostChangeContractError } from "@lando/sdk/errors";
 import { HostChangeId, type HostChangeStep } from "@lando/sdk/schema";
 import { Effect, Exit } from "effect";
-import { previewApprovals, validateHostChangePlan } from "../../src/host-changes/plan";
+import { previewApprovals, privilegePurpose, validateHostChangePlan } from "../../src/host-changes/plan";
 import { change, proposal } from "./fixtures";
 
 const context = { setupFlags: new Set(["enable-thing"]) };
@@ -214,5 +214,21 @@ describe("previewApprovals", () => {
     expect(
       previewApprovals([standard, flagged, terminalOnly], inputs).map(({ approvedBy }) => approvedBy),
     ).toEqual([["--yes"], ["--enable-thing"], []]);
+  });
+});
+
+describe("privilegePurpose", () => {
+  test.each([
+    [["Install uidmap"], "install uidmap"],
+    [
+      ["Disable lingering for dev", "Remove Lando's local CA from the system store"],
+      "disable lingering for dev and remove Lando's local CA from the system store",
+    ],
+    [
+      ["Install uidmap", "Enable lingering for dev", "Trust Lando's local CA"],
+      "install uidmap, enable lingering for dev, and trust Lando's local CA",
+    ],
+  ])("reads %j as one clause", (summaries, purpose) => {
+    expect(privilegePurpose(summaries)).toBe(purpose);
   });
 });

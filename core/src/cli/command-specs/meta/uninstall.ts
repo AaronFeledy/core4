@@ -8,7 +8,7 @@ import type { PrivateFileAccessService } from "@lando/state-store/private-file-a
 import { renderUninstallResult } from "../../commands/uninstall";
 import type { LandoCommandSpec } from "../../spec/command-base";
 import { yesFlag } from "../../spec/confirmation-flag";
-import { booleanFlag, specFlagsOf } from "../../spec/input-coercion";
+import { booleanFlag, specFlagsOf, stringArrayFlag } from "../../spec/input-coercion";
 import { Flags } from "../../spec/metadata";
 
 export const uninstallOptionsFromInput = (
@@ -28,7 +28,6 @@ export const uninstallOptionsFromInput = (
     readonly _reportFallbackDir?: unknown;
     readonly _listDiscoveredApps?: unknown;
     readonly _cleanupDiscoveredApps?: unknown;
-    readonly _cgroupsDelegatePath?: unknown;
     readonly _shellProfilePath?: unknown;
     readonly _elevate?: unknown;
     readonly _readText?: unknown;
@@ -36,12 +35,14 @@ export const uninstallOptionsFromInput = (
     readonly _terminateRuntimeBinProcesses?: unknown;
   };
   const purge = booleanFlag(flags, "purge");
+  const undo = stringArrayFlag(flags, "undo");
   const hasInjectedDiscovery = typeof extra._listDiscoveredApps === "function";
   return {
     dryRun: booleanFlag(flags, "dry-run"),
     yes: booleanFlag(flags, "yes"),
     keepData: booleanFlag(flags, "keep-data") && !purge,
     purge,
+    ...(undo.length === 0 ? {} : { undo }),
     ...(hasInjectedDiscovery
       ? {
           listDiscoveredApps: extra._listDiscoveredApps as NonNullable<
@@ -80,9 +81,6 @@ export const uninstallOptionsFromInput = (
         }
       : {}),
     ...(typeof extra._reportFallbackDir === "string" ? { reportFallbackDir: extra._reportFallbackDir } : {}),
-    ...(typeof extra._cgroupsDelegatePath === "string"
-      ? { cgroupsDelegatePath: extra._cgroupsDelegatePath }
-      : {}),
     ...(typeof extra._shellProfilePath === "string" ? { shellProfilePath: extra._shellProfilePath } : {}),
     ...(typeof extra._elevate === "function"
       ? { elevate: extra._elevate as NonNullable<UninstallOptions["elevate"]> }
@@ -125,6 +123,11 @@ export const metaUninstallSpec: LandoCommandSpec<UninstallResult, unknown, Priva
       description:
         "Remove Lando-owned apps, the managed VM, runtime tools, and data roots after confirmation.",
       default: false,
+    }),
+    undo: Flags.string({
+      description:
+        "With --purge, also undo this recorded host change, such as provider-lando:enable-linger (repeatable; `all` for every one).",
+      multiple: true,
     }),
   },
   run: (input) => uninstall(uninstallOptionsFromInput(input)),

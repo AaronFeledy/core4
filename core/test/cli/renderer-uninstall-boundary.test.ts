@@ -13,7 +13,6 @@ import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 const isolatedOptions = (root: string) => ({
   userDataRoot: join(root, "data"),
   userCacheRoot: join(root, "cache"),
-  cgroupsDelegatePath: join(root, "delegate.conf"),
   shellProfilePath: join(root, ".profile"),
 });
 

@@ -76,20 +76,17 @@ const makeRoots = () => {
     root,
     userDataRoot,
     userCacheRoot,
-    cgroupsDelegatePath: join(root, "delegate.conf"),
     shellProfilePath: join(root, ".profile"),
   };
 };
 
 const sandboxCliExtras = (root: string) => ({
   _userConfRoot: join(root, "conf"),
-  _cgroupsDelegatePath: join(root, "delegate.conf"),
   _shellProfilePath: join(root, ".profile"),
 });
 
 const sandboxUninstallIo = (root: string) => ({
   userConfRoot: join(root, "conf"),
-  cgroupsDelegatePath: join(root, "delegate.conf"),
   shellProfilePath: join(root, ".profile"),
   listDiscoveredApps: async () => [],
 });
@@ -217,20 +214,23 @@ describe("meta:uninstall", () => {
       keepData: false,
       purge: true,
     });
+    expect(uninstallOptionsFromInput({ flags: { purge: true } })).not.toHaveProperty("undo");
+    expect(
+      uninstallOptionsFromInput({ flags: { purge: true, undo: ["provider-lando:enable-linger", "all"] } })
+        .undo,
+    ).toEqual(["provider-lando:enable-linger", "all"]);
     const readText = (path: string) => `text:${path}`;
     const writeText = async () => {};
     const terminateRuntimeBinProcesses = async () => {};
     expect(
       uninstallOptionsFromInput({
         flags: { yes: true },
-        _cgroupsDelegatePath: "/tmp/sandbox/delegate.conf",
         _shellProfilePath: "/tmp/sandbox/.profile",
         _readText: readText,
         _writeText: writeText,
         _terminateRuntimeBinProcesses: terminateRuntimeBinProcesses,
       }),
     ).toMatchObject({
-      cgroupsDelegatePath: "/tmp/sandbox/delegate.conf",
       shellProfilePath: "/tmp/sandbox/.profile",
       readText,
       writeText,
@@ -265,7 +265,8 @@ describe("meta:uninstall", () => {
       expect(output).toContain("global app state");
       expect(output).toContain("caches");
       expect(output).toContain("installed binary");
-      expect(output).toContain("cgroups delegation drop-in");
+      // Host-global changes such as the cgroups drop-in are their plugins' steps, not built-ins.
+      expect(result.steps.some((step) => step.id === "cgroups-delegate")).toBe(false);
       expect(output).toContain("shell entries");
       expect(output).toContain("user data root");
       expect(output).toContain("user cache root");
@@ -625,7 +626,6 @@ describe("meta:uninstall", () => {
         flags: { "dry-run": true },
         _userDataRoot: String.raw`C:\Users\me\AppData\Local\lando`,
         _userCacheRoot: String.raw`C:\Users\me\AppData\Local\lando-cache`,
-        _cgroupsDelegatePath: String.raw`C:\Users\me\AppData\Local\lando\delegate.conf`,
         _shellProfilePath: String.raw`C:\Users\me\AppData\Local\lando\.profile`,
         _exists: () => true,
       }),
@@ -1418,7 +1418,6 @@ describe("meta:uninstall", () => {
           _userDataRoot: userDataRoot,
           _userCacheRoot: userCacheRoot,
           _userConfRoot: join(root, "conf"),
-          _cgroupsDelegatePath: join(root, "delegate.conf"),
           _listDiscoveredApps: async () => [],
           _exists: (path: string) => (path === root || path.startsWith(`${root}/`)) && existsSync(path),
         }),

@@ -782,7 +782,7 @@ Flags:
 | `--name` | Base name for the generated scratch id. |
 | `--no-hostname-suffix` | Keep every planned route hostname unchanged. |
 | `--no-interactive` | Never prompt; recipe prompts must be satisfied by defaults or --answer. |
-| `--no-local-overrides` | Remove local and user Landofile overrides from a fully isolated fork. |
+| `--no-local-overrides` | Ignore local and user Landofile layers when forking an app. |
 | `--option` | Alias for --answer in key=value form (repeatable). |
 | `--run-post-init` | Run recipe post-init hooks after materialization. |
 | `--share-global-storage` | Join the shared cross-app network and expose the global app's storage scope. |
@@ -1521,6 +1521,7 @@ Flags:
 | `--dry-run` | Print the uninstall plan without changing the system. |
 | `--keep-data` | Remove the managed CLI while preserving app data, the managed VM, and runtime tools. |
 | `--purge` | Remove Lando-owned apps, the managed VM, runtime tools, and data roots after confirmation. |
+| `--undo` | With --purge, also undo this recorded host change, such as provider-lando:enable-linger (repeatable; `all` for every one). |
 | `--yes, -y` | Confirm destructive uninstall execution after reviewing the plan. |
 
 ## `lando meta:update`

@@ -1,0 +1,4 @@
+services:
+  local-layer:
+    type: compose
+    image: alpine

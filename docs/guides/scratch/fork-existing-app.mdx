@@ -60,7 +60,13 @@ that would select different plugins, without importing them to check.
 
 ## Choose a copy or a shared tree
 
-By default a fork uses `--isolate=full`: Lando copies your project into the scratch's own directory under the user data root and mounts that copy. Edits inside the fork stay in the copy, and edits to your project after startup don't reach the fork. The copy skips `.git/`, `node_modules/`, `vendor/`, `.lando/cache/`, and `.DS_Store`; see [Control a full fork copy](./mount-and-share-flags.mdx#control-a-full-fork-copy) for more exclusions.
+By default a fork uses `--isolate=full`: Lando copies your project, loads the Landofile from that copy, and mounts the copy. Edits inside the fork stay in the copy, and edits to your project after startup don't reach the fork. See [Control a full fork copy](./mount-and-share-flags.mdx#control-a-full-fork-copy) for which files Lando copies.
+
+A full fork evaluates the Landofile in the copy, so packages it imports that exist only in excluded directories such as `node_modules` don't carry over.
+
+Pass `--no-local-overrides` to ignore the local and user Landofile layers in
+any fork mode. Lando skips both `.yml` and `.ts` forms without changing the
+source files. In full isolation it also leaves those files out of the copy.
 
 To skip the copy, share the directory you run the command from:
 
@@ -104,6 +110,31 @@ To materialize a recipe instead of forking the app, use [Start a scratch app fro
 - [List scratch apps](./list-and-info.mdx)
 
 <Guide>
+  <Scenario id="fork-omits-local-overrides" render={false} reason="Check that YAML and TypeScript overrides do not affect full or cwd forks">
+    <Step name="fork-without-overrides">
+      <UseFixture name="fork-project-layers" />
+      <Run command="lando scratch --fork --source . --detach --no-local-overrides --exclude=.lando.yml --format=json" capture={{ name: "fullId", json: "handle.id" }} />
+      <Verify command="lando scratch:info {{capture:fullId}} --format=json" expect={{ stdout: { regex: "\"port\":\\s*8000", not: { regex: "local-layer|user-layer" } } }} />
+      <Run command="lando scratch --fork --detach --isolate=cwd --no-local-overrides --format=json" capture={{ name: "cwdId", json: "handle.id" }} />
+      <Verify command="lando scratch:info {{capture:cwdId}} --format=json" expect={{ stdout: { regex: "\"port\":\\s*8000", not: { regex: "local-layer|user-layer" } } }} />
+      <Verify file="fork-project-layers/.lando.local.yml" expect={{ regex: "local-layer" }} />
+      <Verify file="fork-project-layers/.lando.user.ts" expect={{ regex: "user-layer" }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando scratch:destroy {{capture:fullId}}" />
+      <Run command="lando scratch:destroy {{capture:cwdId}}" />
+    </Step>
+  </Scenario>
+  <Scenario id="fork-rejects-missing-copied-include" render={false} reason="Check that a required include cannot be loaded from the source after exclusion">
+    <Step name="exclude-a-required-fragment">
+      <UseFixture name="fork-project-layers" />
+      <Run command="lando scratch --fork --name missing-fragment --detach --no-local-overrides --exclude=config/ --format=json" expectExit={1} />
+      <Verify errorTag="ScratchAppError" expect={{ regex: "\"operation\":\\s*\"materialize\"[\\s\\S]*\"_tag\":\\s*\"LandofileIncludeError\"" }} />
+      <Verify command="lando scratch:list --format=json" expect={{ stdout: { regex: "\"result\":\\s*\\[\\s*\\]" } }} />
+      <Verify file="fork-project-layers/config/web.yml" expect={{ regex: "http:8000" }} />
+    </Step>
+  </Scenario>
   <Scenario id="fork-from-source-path" render={false} reason="Check that an explicit source selects the app from outside its tree">
     <Step name="fork-the-site">
       <UseFixture name="fork-source-workspace" />
@@ -163,7 +194,7 @@ To materialize a recipe instead of forking the app, use [Start a scratch app fro
 const target = join(context.testDir, "source app");
 const replacement = join(context.testDir, "replacement");
 const copyWitness = join(context.testDir, "copy-witness.txt");
-const planWitness = join(context.testDir, "copied-plan.txt");
+const planWitness = join(context.testDir, "planned-roots.txt");
 const marker = join(context.testDir, "imports.txt");
 const name = "@example/fork-local";
 yield* Effect.promise(async () => {
@@ -185,11 +216,10 @@ yield* Effect.promise(async () => {
       'import { appendFileSync, realpathSync } from "node:fs";\nimport { Effect, Schema } from "effect";\n' +
       "appendFileSync(" + JSON.stringify(marker) + ", " + JSON.stringify(label + "\n") + ");\n" +
       "const id = " + JSON.stringify(type) + ";\n" +
-      "const source = realpathSync.native(" + JSON.stringify(app) + ");\n" +
       "const planWitness = " + JSON.stringify(planWitness) + ";\n" +
       'export const serviceTypes = new Map([[id, { id, name: id, base: "lando", schema: Schema.Unknown, ' +
       'resolve: ({ service, appRoot }) => Effect.sync(() => {\n' +
-      '  if (realpathSync.native(appRoot) !== source) appendFileSync(planWitness, appRoot + "\\n");\n' +
+      '  appendFileSync(planWitness, realpathSync.native(appRoot) + "\\n");\n' +
       '  return { base: "lando", normalizedConfig: service, features: [] };\n' +
       '}) }]]);\n');
     const entry = JSON.stringify({ [name]: { name, version: manifest.version, path } });
@@ -250,6 +280,9 @@ yield* Effect.gen(function* () {
   const cleanup = yield* context.runCli(["lando", "scratch:destroy", id, "--yes"]).pipe(Effect.orDie);
   expect(cleanup.exitCode).toBe(0);
 })));
+expect((yield* Effect.promise(() => Bun.file(planWitness).text())).trim().split("\\n"))
+  .toEqual([expect.stringContaining("source app")]);
+yield* Effect.promise(() => Bun.file(planWitness).delete());
 
 const changed = yield* fork("source app/nested");
 expect(changed.exitCode).toBe(1);
