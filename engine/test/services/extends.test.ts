@@ -120,6 +120,8 @@ describe("composeExtendedServiceType", () => {
       identity: {
         defaultUser: "mysql",
         homes: { mysql: "/var/lib/mysql", root: "/root" },
+        projectUser: { name: "mysql", uid: 999, gid: 999 },
+        projectUserDefault: { launcherImage: "mariadb:10.11" },
       },
     });
     const child = makeType("drupal-mariadb", { extends: "mariadb" });
@@ -130,6 +132,8 @@ describe("composeExtendedServiceType", () => {
     expect(composed.identity).toEqual({
       defaultUser: "mysql",
       homes: { mysql: "/var/lib/mysql", root: "/root" },
+      projectUser: { name: "mysql", uid: 999, gid: 999 },
+      projectUserDefault: { launcherImage: "mariadb:10.11" },
     });
   });
 
@@ -152,32 +156,46 @@ describe("composeExtendedServiceType", () => {
     });
   });
 
-  test("merges identity with child defaultUser and child-precedence homes when both declare it", async () => {
-    const parent = makeType("mariadb", {
-      identity: {
-        defaultUser: "mysql",
-        homes: { mysql: "/var/lib/mysql", root: "/root" },
-        preparedHomes: ["mysql"],
-      },
-    });
-    const child = makeType("drupal-mariadb", {
-      extends: "mariadb",
-      identity: {
+  test.each([
+    {},
+    { projectUser: { name: "drupal", uid: 120, gid: 121 } },
+    {
+      projectUser: { name: "drupal", uid: 120, gid: 121 },
+      projectUserDefault: { launcherImage: "drupal/mariadb:10.11" },
+    },
+  ] satisfies ReadonlyArray<Pick<ServiceImageIdentity, "projectUser" | "projectUserDefault">>)(
+    "merges homes while taking only the child identity's project-user policy (%j)",
+    async (projectUserPolicy) => {
+      const parent = makeType("mariadb", {
+        identity: {
+          defaultUser: "mysql",
+          homes: { mysql: "/var/lib/mysql", root: "/root" },
+          projectUser: { name: "mysql", uid: 999, gid: 999 },
+          projectUserDefault: { launcherImage: "mariadb:10.11" },
+          preparedHomes: ["mysql"],
+        },
+      });
+      const child = makeType("drupal-mariadb", {
+        extends: "mariadb",
+        identity: {
+          defaultUser: "drupal",
+          homes: { mysql: "/home/mysql", drupal: "/home/drupal" },
+          ...projectUserPolicy,
+          preparedHomes: ["mysql", "drupal"],
+        },
+      });
+      const lookup = (id: string): ServiceType | undefined => (id === "mariadb" ? parent : undefined);
+
+      const composed = await Effect.runPromise(composeExtendedServiceType(child, lookup));
+
+      expect(composed.identity).toEqual({
         defaultUser: "drupal",
-        homes: { mysql: "/home/mysql", drupal: "/home/drupal" },
+        homes: { mysql: "/home/mysql", root: "/root", drupal: "/home/drupal" },
+        ...projectUserPolicy,
         preparedHomes: ["mysql", "drupal"],
-      },
-    });
-    const lookup = (id: string): ServiceType | undefined => (id === "mariadb" ? parent : undefined);
-
-    const composed = await Effect.runPromise(composeExtendedServiceType(child, lookup));
-
-    expect(composed.identity).toEqual({
-      defaultUser: "drupal",
-      homes: { mysql: "/home/mysql", root: "/root", drupal: "/home/drupal" },
-      preparedHomes: ["mysql", "drupal"],
-    });
-  });
+      });
+    },
+  );
 
   test("omits the identity key when neither side declares it", async () => {
     const parent = makeType("mariadb");

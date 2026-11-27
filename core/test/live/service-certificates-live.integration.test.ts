@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
-import { chmod, mkdtemp, readFile, readdir, realpath, rm, stat } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, realpath, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { serviceContainerName } from "@lando/container-runtime/plan";
@@ -116,8 +116,6 @@ describe.serial("generated service certificates and router-less teardown", () =>
       const routeFile = join(paths.globalAppRoot, "proxy-traefik", "dynamic", `routes-${ownerKey}.yml`);
       let destroyed = false;
       try {
-        // mkdtemp creates 0700; nginx reads the bind-mounted app root as an unprivileged user.
-        await chmod(root, 0o755);
         await Bun.write(join(root, "index.html"), name);
         await Bun.write(
           join(root, ".lando.yml"),

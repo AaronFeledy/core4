@@ -33,7 +33,12 @@ const catalog = [...serviceTypes].flatMap(([id, type]) => {
   return [{ id, type, identity: type.identity, images: [...new Set(images)] }];
 });
 
-type PasswdEntry = { readonly name: string; readonly uid: number; readonly home: string };
+type PasswdEntry = {
+  readonly name: string;
+  readonly uid: number;
+  readonly gid: number;
+  readonly home: string;
+};
 type HomeHeader = { readonly uid: number; readonly mode: number; readonly type: string };
 type ImageFacts = {
   readonly user: string;
@@ -110,8 +115,8 @@ const inspectImage = async (image: string, identity: ServiceImageIdentity): Prom
       .split("\n")
       .filter(Boolean)
       .map((line) => {
-        const [name = "", , uid = "", , , home = ""] = line.split(":");
-        return { name, uid: Number(uid), home };
+        const [name = "", , uid = "", gid = "", , home = ""] = line.split(":");
+        return { name, uid: Number(uid), gid: Number(gid), home };
       });
     const homes = new Map<string, HomeHeader>();
     const claims = catalog.filter((entry) => entry.images.includes(image)).map((entry) => entry.identity);
@@ -238,6 +243,13 @@ for (const entry of catalog) {
             expect(uidFor(facts.user), `${context}; defaultUser=${entry.identity.defaultUser}`).toBe(
               uidFor(entry.identity.defaultUser),
             );
+            const projectUser = entry.identity.projectUser;
+            if (projectUser !== undefined) {
+              expect(
+                facts.passwd.find((account) => account.name === projectUser.name),
+                `${context}; project user and primary group must match /etc/passwd`,
+              ).toMatchObject(projectUser);
+            }
             if (entry.id === "varnish" || entry.id === "varnish:7") {
               expect(facts.passwd.find((row) => row.name === "varnish")?.home, context).toBe("/nonexistent");
               expect(entry.identity.homes.varnish, context).toBeUndefined();

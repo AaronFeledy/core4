@@ -177,6 +177,18 @@ const dockerLatestFeatureChecks = [
       "honors healthcheck start_interval",
     ),
   },
+  {
+    id: "nginx-private-checkout",
+    label: "Stock nginx serves private checkout files on native rootful Docker Engine",
+    command: [
+      "env",
+      "LANDO_TEST_NGINX_PRIVATE=docker",
+      ...bunTest(
+        "core/test/live/nginx-route-cli-live.integration.test.ts",
+        "serves private checkout files through a local Docker publication",
+      ),
+    ],
+  },
 ] as const satisfies readonly ProviderAcceptanceCheckPlan[];
 
 export const DOCKER_LATEST_ASSERTED_CHECK_IDS: readonly string[] = dockerLatestFeatureChecks.map(

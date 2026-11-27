@@ -3,6 +3,9 @@ services:
   web:
     type: nginx
     primary: true
+    # This lint-only fixture does not serve files from the checkout.
+    appMount: false
+    webroot: /usr/share/nginx/html
     routes:
       - hostname: url-tooling.lndo.site
         scheme: both

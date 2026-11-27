@@ -29,7 +29,7 @@ test("labels only the retained home target as home in summary and TSV", () => {
 });
 
 test.each([
-  ["custom-image", undefined, "image comes from your Landofile"],
+  ["custom-image", undefined, "the service uses a custom image"],
   ["no-identity", undefined, "node doesn't declare image users"],
   ["undeclared-user", "alice", "node doesn't know where alice's home is"],
 ] as const)("explains unknown home once for %s on every human surface", (reason, user, explanation) => {

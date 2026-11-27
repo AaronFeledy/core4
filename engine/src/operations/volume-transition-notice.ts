@@ -36,7 +36,7 @@ const unknownReason = (
 ): string => {
   switch (home.reason) {
     case "custom-image":
-      return "its image now comes from your Landofile";
+      return "the service uses a custom image";
     case "no-identity":
       return `${service.type} doesn't declare image users`;
     case "undeclared-user":
