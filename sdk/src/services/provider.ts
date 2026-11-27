@@ -202,7 +202,8 @@ export interface ApplyOptions {
   /**
    * Continue a green `service_healthy` edge before actually starting or replacing its consumer.
    * Never called for kept consumers, non-green gates, or dependencies outside this apply.
-   * Await it under the caller's apply context; a returned error blocks only a required edge.
+   * Await it under the caller's apply context. A returned rejection blocks only a required edge;
+   * it does not mean the probe failed and does not describe the resulting state of either container.
    */
   readonly continueHealthyDependency?: (input: {
     readonly consumer: ServiceName;

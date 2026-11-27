@@ -69,13 +69,13 @@ Changing the name does not move any data. If Lando creates an empty database on 
 
 ## Start services that wait on the database
 
-A service that requires a catalog database with `condition: service_healthy` starts after Lando has applied that database's `creds`. Its first connection at boot can use the configured user, password, and database, as `client` does in the example above. This holds on a first start and when a start after a `creds` edit replaces the waiting service.
+A service that requires a Lando-managed catalog database with `condition: service_healthy` waits for two checks. The usual readiness probe runs first. Then Lando verifies or applies the database's `creds` before it starts or replaces the waiting service. Its first connection at boot can use the configured user, password, and database, as `client` does in the example above.
 
-If Lando can't verify or apply the credentials, it doesn't start the waiting service. With `required: false`, the service may still wait for the database and credential checks, but a failure doesn't block its start.
+If credential preparation fails for a required dependency, the error names the database and the service that was waiting. That check stops Lando from starting or replacing the waiting service at this point. It doesn't undo any work already done by the command. With `required: false`, a credential refusal doesn't block the waiting service.
 
-If this happens on the first launch, correct the database or its settings in the Landofile, then retry `lando start`. If the database is still running from a previous successful start, you can [preview a repair](#preview-and-apply-a-repair-if-start-cant-authenticate) before retrying.
+If the error says a write may have taken effect, inspect the database before you try again. Fix the issue named in the error, then retry the same command with the same service selection. Don't delete the database volume to retry.
 
-Lando doesn't restart a waiting service that's already running and isn't being replaced. A database with no service waiting on its health still starts with a warning when its credentials can't be applied.
+Lando doesn't restart a waiting service that's already running and isn't being replaced. If no required edge blocks the command, it can finish with a warning even when Lando couldn't verify or apply the database credentials.
 
 ## Check credentials for a custom image or launcher
 
@@ -85,7 +85,7 @@ When Lando starts or replaces a typed database service it can't manage, or its c
 
 If you get `LANDO_DATABASE_ADMIN_SEED_UNAVAILABLE`, Lando couldn't read or create its private administrator seed. For MySQL, MariaDB, MongoDB, and SQL Server, Lando skips adopting `lando_admin` and still tries the previous or desired administrator credentials. Check ownership and permissions on `db-admin/key.v1` in your Lando data directory, or restore the original seed from backup. Don't replace an existing seed.
 
-If you get `LANDO_DATABASE_CREDENTIAL_CONVERGENCE_FAILED`, the database credentials haven't caught up. Start can still succeed when no service being started requires that database to be healthy. This can happen if you restored a volume from another machine or changed the administrator password outside Lando. `lando db:creds:apply` needs a running database from a previous successful start. Preview the repair and check the listed changes before applying them:
+If you get `LANDO_DATABASE_CREDENTIAL_CONVERGENCE_FAILED`, Lando couldn't verify or apply the credentials. This can happen if you restored a volume from another machine or changed the administrator password outside Lando. `lando db:creds:apply` needs a running catalog database already recorded for this app. The desired and applied database must agree on the provider, image, launcher, and owned storage. A failed start does not establish those prerequisites. If they hold, preview the repair and check the listed changes before applying them:
 
 ```sh
 lando db:creds:apply --service db --format=json

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { databaseAdminSeedPath, makeLandoPaths } from "@lando/paths";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
-import { FailureRoleAnnotation, mergeFailure } from "@lando/sdk/command-result";
+import { FailureRoleAnnotation, mergeFailure, taggedErrorJson } from "@lando/sdk/command-result";
 import { ProviderInternalError, StateStoreError } from "@lando/sdk/errors";
 import { type AppPlan, PortNumber, PortablePath, ServiceName, type ServicePlan } from "@lando/sdk/schema";
 import {
@@ -39,6 +39,7 @@ const activation = (
     readonly password?: string;
     readonly redaction?: ReturnType<typeof makeRedactionService>;
     readonly built?: boolean;
+    readonly inspectContainerId?: () => string;
   } = {},
 ) => {
   const store = `${family}-data`;
@@ -110,7 +111,7 @@ const activation = (
           appRoot: target.root,
           providerId: target.provider,
           service: db.name,
-          containerId: "native-db",
+          containerId: options.inspectContainerId?.() ?? "native-db",
           status: "running" as const,
           publications: { status: "unknown" as const },
         };
@@ -226,6 +227,7 @@ const activation = (
   const gated = (
     options: {
       readonly containerId?: string;
+      readonly secondContainerId?: string;
       readonly coordinationKey?: string;
       readonly desiredPlan?: AppPlan;
       readonly previousPlan?: AppPlan;
@@ -249,11 +251,12 @@ const activation = (
                 },
           stateStore,
           body: () =>
-            Effect.forEach(["client-one", "client-two"], (name) =>
+            Effect.forEach(["client-one", "client-two"], (name, index) =>
               worker.continueHealthyDependency({
                 consumer: ServiceName.make(name),
                 dependency: db.name,
-                containerId: options.containerId ?? "native-db",
+                containerId:
+                  (index === 1 ? options.secondContainerId : undefined) ?? options.containerId ?? "native-db",
                 createdVolumes: [],
               }),
             ),
@@ -332,7 +335,14 @@ test.each(["continuation", "exec", "volume-binding", "paths", "redaction"] as co
         ? withPaths
         : withPaths.pipe(Effect.provideService(RedactionService, makeRedactionService())),
     );
-    expect(outcome).toMatchObject({ _tag: "Failure", failure: { _tag: "ProviderCapabilityError" } });
+    expect(outcome).toMatchObject({
+      _tag: "Failure",
+      failure: {
+        _tag: "ProviderCapabilityError",
+        operation: "database-credential-convergence",
+        details: { service: client, dependency: fixture.db.name },
+      },
+    });
     expect(applied).toBe(false);
   },
 );
@@ -360,9 +370,12 @@ test.each([false, true])(
   },
 );
 
-test("does no inline credential I/O for an author-owned database", async () => {
+test("does not make credential gate decisions for an author-owned database", async () => {
   const { runGated, calls } = activation("postgres", { authorOwned: true });
-  expect(await runGated()).toEqual({ attempts: [undefined, undefined], changes: [] });
+  expect(await runGated({ secondContainerId: "other-native-db" })).toEqual({
+    attempts: [undefined, undefined],
+    changes: [],
+  });
   expect(calls).toEqual({ inspect: 0, volume: 0, exec: 0 });
 });
 
@@ -883,15 +896,42 @@ test("does not retry a refusal to target a reserved SQL Server database", async 
 });
 
 test("does not retry when the provider loses the response to a database write", async () => {
-  const { run, calls, warnings } = activation("mssql");
+  const { runGated, calls, warnings, db } = activation("mssql");
   const state = { databaseExists: false, loseWriteResponse: true };
-  expect(await run("created", mssqlExec(state))).toEqual([]);
+  const { attempts } = await runGated({ execStream: mssqlExec(state) });
 
   expect(state.databaseExists).toBe(true);
   expect(calls.inspect).toBe(3);
-  expect((await Effect.runPromise(warnings.list)).map(({ code }) => code)).toContain(
-    "LANDO_DATABASE_CREDENTIAL_CONVERGENCE_FAILED",
+  expect(attempts.map(taggedErrorJson)).toMatchObject(
+    ["client-one", "client-two"].map((service) => ({
+      _tag: "ServiceStartError",
+      service,
+      operation: "database-credential-convergence",
+      details: { dependency: db.name, reason: "apply", mutation: "possible", completed: [] },
+    })),
   );
+  expect(await Effect.runPromise(warnings.list)).toMatchObject([
+    { code: "LANDO_DATABASE_ADMIN_SEED_UNAVAILABLE" },
+    {
+      code: "LANDO_DATABASE_CREDENTIAL_CONVERGENCE_FAILED",
+      context: { service: db.name, reason: "apply", mutation: "possible" },
+    },
+  ]);
+});
+
+test("reports possible changes when the database target changes after a write", async () => {
+  const state = { databaseExists: false };
+  const { runGated, db } = activation("mssql", {
+    inspectContainerId: () => (state.databaseExists ? "replacement-db" : "native-db"),
+  });
+
+  const { attempts } = await runGated({ execStream: mssqlExec(state) });
+
+  expect(state.databaseExists).toBe(true);
+  expect(taggedErrorJson(attempts[0])).toMatchObject({
+    _tag: "ServiceStartError",
+    details: { dependency: db.name, reason: "target-changed", mutation: "possible" },
+  });
 });
 
 test("rechecks the retained SQL Server managed login once sa has authenticated", async () => {

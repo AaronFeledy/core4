@@ -9,34 +9,17 @@ import {
   ProviderInternalError,
   SqlCredentialAdminAuthError,
   SqlCredentialApplyError,
-  type SqlCredentialMember,
   SqlCredentialTargetError,
 } from "@lando/sdk/errors";
 import { MessageInfoEvent } from "@lando/sdk/events";
 import { runProbeDetailed } from "@lando/sdk/probe";
 import type { DatabaseConnection, VolumeCreationFact } from "@lando/sdk/schema";
 import { EventService } from "@lando/sdk/services";
-import { DateTime, Duration, Effect, Option, Ref, Result } from "effect";
+import { DateTime, Duration, Effect, Option, Ref, Result, absurd } from "effect";
 import { prepareReconciliation } from "../operations/database-convergence/reconcile.ts";
+import type { CredentialAttempt, CredentialFailure } from "./activation-credential-policy.ts";
 import { warning } from "./activation-credential-warnings.ts";
 import { settleOrdinaryFailure } from "./failure-compensation.ts";
-
-type CredentialChange = {
-  readonly service: string;
-  readonly family: DatabaseConnection["family"];
-  readonly changedMembers: readonly SqlCredentialMember[];
-};
-
-export type CredentialFailure = {
-  readonly reason: string;
-  readonly detail: string;
-  readonly guidance?: string;
-};
-
-export type CredentialAttempt =
-  | { readonly kind: "verified"; readonly change?: CredentialChange }
-  | { readonly kind: "failed"; readonly failure: CredentialFailure }
-  | { readonly kind: "unproven-build" };
 
 export const credentialBudgetMs = (family: DatabaseConnection["family"]) =>
   family === "postgres" ? 12_000 : 32_000;
@@ -56,12 +39,12 @@ export const boundCredentialAttempt = Effect.fnUntraced(function* <E, R>(input: 
         ? {
             reason: "timeout-after-mutation",
             detail: "The credential budget expired after a database write may have been dispatched.",
-            guidance:
-              "Inspect the database for partial changes before retrying. Do not repeat changes blindly.",
+            mutation: "possible",
           }
         : {
             reason: "timeout",
             detail: "The activation credential budget expired before any database write.",
+            mutation: "none",
           },
     );
   if (input.budgetMs <= 0) return expired(false);
@@ -83,16 +66,42 @@ export const boundCredentialAttempt = Effect.fnUntraced(function* <E, R>(input: 
         error instanceof SqlCredentialTargetError ||
         error instanceof SqlCredentialAdminAuthError
       ) {
-        return redaction.forProfile("secrets").pipe(
-          Effect.map((profile) =>
-            failed({
-              reason: error instanceof SqlCredentialApplyError ? error.phase : error.reason,
-              detail: profile.redactString(error.message),
-              ...(error instanceof SqlCredentialAdminAuthError
-                ? {}
-                : { guidance: profile.redactString(error.remediation) }),
-            }),
-          ),
+        return Effect.all([redaction.forProfile("secrets"), Ref.get(mutationDispatched)]).pipe(
+          Effect.map(([profile, dispatched]) => {
+            const detail = profile.redactString(error.message);
+            switch (error._tag) {
+              case "SqlCredentialApplyError":
+                return failed({
+                  reason: error.phase,
+                  detail,
+                  mutation: error.mutation,
+                  completed: error.completed,
+                  ...(error.exitCode === undefined ? {} : { exitCode: error.exitCode }),
+                  guidance: "Check database authentication and administrator privileges.",
+                });
+              case "SqlCredentialAdminAuthError":
+                return failed({
+                  reason: error.reason,
+                  detail,
+                  guidance:
+                    "Restore the previous working credentials or ask a database administrator to verify an authorized login.",
+                });
+              case "SqlCredentialTargetError":
+                return failed({
+                  reason: error.reason,
+                  detail,
+                  mutation: dispatched ? "possible" : "none",
+                  guidance:
+                    error.reason === "not-running"
+                      ? "Check why the database stopped or failed to start."
+                      : error.reason === "unsafe-name"
+                        ? "Correct the database or login name in the Landofile."
+                        : "Check the catalog service, applied placement, and owned database storage.",
+                });
+              default:
+                return absurd<never>(error);
+            }
+          }),
         );
       }
       return Effect.failCause(
@@ -104,7 +113,8 @@ export const boundCredentialAttempt = Effect.fnUntraced(function* <E, R>(input: 
                 providerId: input.providerId,
                 operation: "database-credential-convergence",
                 message: "The database credential operation failed unexpectedly.",
-                remediation: "Inspect the database for partial changes before retrying the same command.",
+                remediation:
+                  "Inspect the database for partial changes, then retry the same command with the same selection.",
               }),
           ),
           () => "The database credential operation failed unexpectedly.",
