@@ -939,7 +939,7 @@ If GitHub loses a runner before it starts any steps and the only other failures 
 
 ## Effect upgrade checks
 
-Approve the Effect update on Renovate's Dependency Dashboard. The update PR changes only the root workspace catalog in `package.json` and `bun.lock`. Run these commands from the repository root on that branch:
+Approve the Effect update on Renovate's Dependency Dashboard. The pin lives in the root workspace catalog in `package.json`; the PR also updates `bun.lock`. Run from the repository root on the update branch:
 
 ```bash
 bun run bootstrap
@@ -951,9 +951,9 @@ bun run dev:guides docs/guides/agent-native/mcp.mdx --once
 bun run dev:guides docs/guides/plugins/authoring-new-plugin.mdx --once
 ```
 
-Bootstrap regenerates the compiled decoders. Run the two guides separately because guide scenarios are not in the test file inventory. Use `git grep -n -F '<previous-version>'` with the previous Effect version to check for stale pins. The preset is a local check, not CI evidence. The lockfile change triggers the full PR checks.
+Bootstrap regenerates the compiled decoders. The preset does not run guide scenarios or replace PR checks. The lockfile change selects the `runtime` CI profile.
 
-Read the Effect release notes for RPC, MCP, Stream, Layer, TestClock, and Schema changes. Check [#2804](https://github.com/AaronFeledy/core4/issues/2804) ([Effect-TS/effect#11015](https://github.com/Effect-TS/effect/issues/11015)) and [#1835](https://github.com/AaronFeledy/core4/issues/1835) ([Effect-TS/effect#11016](https://github.com/Effect-TS/effect/issues/11016)) for workarounds the release makes unnecessary.
+Check for stale pins with `git grep -n -F '<previous-version>'`, substituting the previous Effect version. Review the release notes for RPC, MCP, Stream, Layer, TestClock, and Schema changes. Check whether the release removes the need for workarounds tracked in [#2804](https://github.com/AaronFeledy/core4/issues/2804) ([Effect-TS/effect#11015](https://github.com/Effect-TS/effect/issues/11015)) and [#1835](https://github.com/AaronFeledy/core4/issues/1835) ([Effect-TS/effect#11016](https://github.com/Effect-TS/effect/issues/11016)).
 
 ## Bun upgrade smoke checks
 

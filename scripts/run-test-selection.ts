@@ -34,16 +34,14 @@ export const runTestSelection = async (
 ): Promise<number> => {
   const selections: readonly TestSelection[] = options.selections ?? TEST_SELECTIONS;
   const selection = selections.find((entry) => entry.id === id);
-  const presets: readonly ContributorTestPreset[] = options.presets ?? TEST_PRESETS;
-  const target = selection ?? presets.find((entry) => entry.id === id);
+  const target = selection ?? (options.presets ?? TEST_PRESETS).find((entry) => entry.id === id);
   if (target === undefined) throw new TestSelectionError("unknown", id);
   if (selection?.runner === "go") throw new TestSelectionError("runner", id);
   const root = options.root ?? TEST_ROOT;
   const files = resolveTestSelection(target, await collectTestFiles(root));
   if (files.length === 0) throw new TestSelectionError("empty", id);
   console.error(`[test:selection] ${id}: ${files.length} files`);
-  // CI trees preserve Bun's file order for live suites (#2231); presets run exactly
-  // the files validated by the ownership gate, including when they use tree selectors.
+  // Live suites depend on Bun's directory walk order (#2231); presets run exact files.
   const targets =
     selection?.paths.flatMap((selector) =>
       selector.endsWith("/")

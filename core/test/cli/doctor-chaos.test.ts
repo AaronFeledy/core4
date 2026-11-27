@@ -560,7 +560,7 @@ describe("doctor chaos: plugin-contributed checks", () => {
     };
     const layers = layersFor(statusRegistry(TestRuntimeProvider.getStatus));
 
-    // When the Deferred, not elapsed time, decides completion order
+    // When
     const options = { env: {} };
     const report = await Effect.runPromise(
       collectDoctorReport({

@@ -19,12 +19,11 @@ import {
   withAppMutationLock,
 } from "../../src/operations/app-mutation-lock.ts";
 
-const printChildResult = `
-  console.log(JSON.stringify(Result.match(result, {
+// Serialize the fixture's protocol, not Effect's Result JSON.
+const childResultOutput = `console.log(JSON.stringify(Result.match(result, {
     onSuccess: (value) => ({ _tag: "Success", value }),
     onFailure: (failure) => ({ _tag: "Failure", failure }),
-  })));
-`;
+  })));`;
 
 const fixture = async () => {
   const directory = await realpath(await mkdtemp(join(tmpdir(), "lando-global-mutation-")));
@@ -294,7 +293,7 @@ test("shared policy excludes a separate process using different data and global 
  const base=Layer.mergeAll(PrivateFileAccessService.layer,Layer.succeed(PathsService,paths),Layer.succeed(GlobalAppService,{id:"global",paths:Effect.succeed({root}),root:Effect.succeed(root),providerId:Effect.succeed(ProviderId.make("docker"))}));
  const layer=Layer.effect(StateStore,Effect.map(PrivateFileAccessService,access=>makeStateStore({privateFileAccess:access,roots:paths.roots}))).pipe(Layer.provideMerge(base));
  const result=await Effect.runPromise(withGlobalMutation(Effect.succeed("must not enter")).pipe(Effect.result,Effect.provide(layer)));
- ${printChildResult}
+ ${childResultOutput}
  `,
   );
   try {
@@ -354,7 +353,7 @@ test.each(["shared-policy", "shared-runtime"] as const)(
         if(owner){await Bun.write(${JSON.stringify(ready)},"ready");while(!await Bun.file(${JSON.stringify(release)}).exists())await Bun.sleep(5)}
         return "owned";
       })).pipe(Effect.result,Effect.provide(layer)));
-      ${printChildResult}
+      ${childResultOutput}
     `,
     );
     const spawn = (mode: string) =>

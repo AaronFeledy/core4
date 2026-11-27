@@ -74,14 +74,14 @@ export const checkWorkflowBindings = async (
           });
       }
       for (const preset of presets) {
+        const ids = [preset.id, `"${preset.id}"`, `'${preset.id}'`];
+        // Even a disabled step must not declare a contributor preset.
         if (
           steps.some(({ run }) =>
-            [preset.id, `"${preset.id}"`, `'${preset.id}'`].some(
-              (id) =>
-                invokes(run, ["bun", "run", "test:selection", id]) ||
-                invokes(run, ["bun", "test:selection", id]) ||
-                invokes(run, ["bun", "run", "scripts/run-test-selection.ts", id]) ||
-                invokes(run, ["bun", "scripts/run-test-selection.ts", id]),
+            ids.some((id) =>
+              ["test:selection", "scripts/run-test-selection.ts"].some(
+                (script) => invokes(run, ["bun", "run", script, id]) || invokes(run, ["bun", script, id]),
+              ),
             ),
           )
         )
