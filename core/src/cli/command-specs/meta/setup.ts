@@ -89,10 +89,10 @@ const refuseRootOwnedLandoFiles = Effect.fnUntraced(function* () {
   );
 });
 
-// Stages that still decide their host changes when they run, so a dry run cannot list them yet.
+// The CA stage still decides its host change when it runs, so a dry run cannot list it yet.
 const DRY_RUN_NOTICES = [
   "The network trust probe was skipped.",
-  "Trusting the local CA in the system store and installing the router's port helper are not previewed yet; setup asks about them when it reaches them.",
+  "Trusting the local CA in the system store is not previewed yet; setup asks about it when it reaches it.",
 ];
 
 export const setupSpec: LandoCommandSpec<
@@ -209,7 +209,7 @@ export const setupSpec: LandoCommandSpec<
         network,
         privilege: Option.getOrUndefined(hostPrivilege),
         recorder,
-      });
+      }).pipe(withHostProvider);
       return {
         dryRun: true,
         providerId: provider.id,
@@ -247,7 +247,7 @@ export const setupSpec: LandoCommandSpec<
       network,
       privilege,
       recorder,
-    });
+    }).pipe(withHostProvider);
     const hostChanges = yield* approveSetupHostChanges({ plan, input, interaction, privilege, recorder });
 
     yield* runProviderSetupStep({
@@ -271,7 +271,10 @@ export const setupSpec: LandoCommandSpec<
     const trustStores = yield* runCaSetupStep(input, privilegeOptions, recorder, selectedProviderId).pipe(
       withHostProvider,
     );
-    yield* runProxySetupStep(input, recorder, selectedProviderId).pipe(withHostProvider, withRunPrivilege);
+    yield* runProxySetupStep(input, recorder, hostChanges.applier, selectedProviderId).pipe(
+      withHostProvider,
+      withRunPrivilege,
+    );
     yield* runShellServiceSetupStep(input, recorder, selectedProviderId).pipe(withHostProvider);
 
     if (userDataRoot !== undefined) {

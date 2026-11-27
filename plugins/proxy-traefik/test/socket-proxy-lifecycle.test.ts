@@ -1,11 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import type {
-  PrivilegeService,
-  ProcessResult,
-  ProcessRunner,
-  ProcessSpawnOptions,
-} from "@lando/sdk/services";
-import { makeTestCertificateAuthority, makeTestPrivilegeService } from "@lando/sdk/test";
+import type { ProcessResult, ProcessRunner, ProcessSpawnOptions } from "@lando/sdk/services";
+import { makeTestCertificateAuthority } from "@lando/sdk/test";
 import { type Context, Effect } from "effect";
 import { defaultAcquisitionFingerprint } from "../src/port-acquisition.ts";
 import { makeTraefikRouterService } from "../src/proxy.ts";
@@ -52,25 +47,6 @@ const makeRunner = (
   };
 };
 
-const makePrivilege = (
-  result: ProcessResult = ok(),
-): {
-  readonly service: Context.Service.Shape<typeof PrivilegeService>;
-  readonly calls: () => ReadonlyArray<ReadonlyArray<string>>;
-} => {
-  const calls: Array<ReadonlyArray<string>> = [];
-  return {
-    service: makeTestPrivilegeService({
-      elevate: (command) =>
-        Effect.sync(() => {
-          calls.push([...command]);
-          return result;
-        }),
-    }),
-    calls: () => [...calls],
-  };
-};
-
 const makeLifecycleHarness = (input: {
   readonly mode: "socket-helper" | "occupied-hop";
   readonly helperInstalled: boolean;
@@ -78,7 +54,6 @@ const makeLifecycleHarness = (input: {
 }) => {
   const files = new Map<string, string>();
   const runner = makeRunner();
-  const privilege = makePrivilege();
   const paths = { platform: "linux" as const, globalAppRoot: "/lando/global" };
   if (input.helperInstalled) {
     const owner = input.helperOwner ?? "/lando";
@@ -106,7 +81,6 @@ const makeLifecycleHarness = (input: {
     readText: (path) =>
       files.has(path) ? Effect.succeed(files.get(path) ?? "") : Effect.fail(new Error(path)),
     processRunner: runner.service,
-    privilege: privilege.service,
     probeForward: () => Effect.succeed({ kind: "success" }),
   };
   const service = makeTraefikRouterService({
@@ -135,23 +109,14 @@ const makeLifecycleHarness = (input: {
     },
     socketProxy,
   });
-  return { service, runner, privilege, files, paths };
+  return { service, runner, files, paths };
 };
 
-const stopInvocations = (
-  runner: ReturnType<typeof makeRunner>,
-  privilege: ReturnType<typeof makePrivilege>,
-) =>
-  [
-    ...runner
-      .calls()
-      .flatMap((call) => socketProxyControlCommands([call.cmd, ...call.args]))
-      .filter((command) => command[0] === "stop"),
-    ...privilege
-      .calls()
-      .flatMap(socketProxyControlCommands)
-      .filter((command) => command[0] === "stop"),
-  ] as const;
+const stopInvocations = (runner: ReturnType<typeof makeRunner>) =>
+  runner
+    .calls()
+    .flatMap((call) => socketProxyControlCommands([call.cmd, ...call.args]))
+    .filter((command) => command[0] === "stop");
 
 describe("socket proxy lifecycle stop", () => {
   test("stop clears sockets only in socket-helper mode when the helper is installed", async () => {
@@ -162,7 +127,7 @@ describe("socket proxy lifecycle stop", () => {
     await Effect.runPromise(harness.service.stop);
 
     // Then: systemctl stop is issued for the helper sockets and acquisition state is cleared.
-    expect(stopInvocations(harness.runner, harness.privilege)).toHaveLength(1);
+    expect(stopInvocations(harness.runner)).toHaveLength(1);
     expect(harness.files.has(acquisitionStateFile(harness.paths))).toBe(false);
   });
 
@@ -174,7 +139,7 @@ describe("socket proxy lifecycle stop", () => {
     await Effect.runPromise(harness.service.stop);
 
     // Then: no socket stop is issued.
-    expect(stopInvocations(harness.runner, harness.privilege)).toEqual([]);
+    expect(stopInvocations(harness.runner)).toEqual([]);
   });
 
   test("stop never controls a helper now owned by another data root", async () => {
@@ -185,6 +150,5 @@ describe("socket proxy lifecycle stop", () => {
     });
     await Effect.runPromise(harness.service.stop);
     expect(harness.runner.calls()).toEqual([]);
-    expect(harness.privilege.calls()).toEqual([]);
   });
 });

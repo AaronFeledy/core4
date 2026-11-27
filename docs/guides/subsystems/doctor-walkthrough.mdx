@@ -97,6 +97,13 @@ not run service probes or scan app endpoints. `lando start` runs those checks
 against the app's selected provider; rebuild also runs service readiness gates.
 `--fix` does not turn an uninspected check into a pass.
 
+A fix that changes your system, such as installing the router's port helper,
+asks first. Doctor finishes every check before it asks, so the question and
+`sudo`'s password prompt never appear inside the progress list. Doctor has no
+`--yes`: it asks only in a terminal. Without one it changes nothing and names
+`lando doctor --fix` in a terminal or `lando setup --yes`, which makes the same
+changes.
+
 For [the SSH sidecar](./ssh-sidecar.mdx), runtime-volume delivery is checked inside the sidecar on the provider that runs the global app. Doctor uses the readiness command from that service's applied plan. When repairing host-relay delivery, `--fix` also checks the host-facing socket. A live repair does not change the result saved by setup.
 
 On macOS and Windows, an absent API endpoint and a managed machine inspected as stopped establish idle. Doctor reports `idle (starts on demand)` and passes `selected-provider` and `runtime-service` without asking you to run setup. It skips container exec probes, container event history, router and SSH sidecar readiness, host-proxy reachability, and app listeners on that idle provider. Host SSH and GPG agent checks, host-proxy directory privacy, and saved-state checks still run. Neither doctor nor `--fix` starts an idle runtime.

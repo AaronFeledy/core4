@@ -3,26 +3,23 @@
  * credentials a run would need, then (for a real run) decide consent, open the run's one
  * administrator session, and hand stages an applier. Nothing here changes the host.
  */
-import { makeHostChangeApplier } from "@lando/engine/host-changes/apply";
+import { resolveProxyDefaultDomain } from "@lando/engine/config/proxy-default-domain";
+import { resolveRouterConfigForApp } from "@lando/engine/config/router-config";
 import { planNeedsPrivilege, validateHostChangePlan } from "@lando/engine/host-changes/plan";
-import { MessageWarnEvent } from "@lando/sdk/events";
-import type { HostChange, HostChangeId, PrivilegeCredentialStatus } from "@lando/sdk/schema";
+import { unavailableRouterReason } from "@lando/engine/subsystems/proxy/api";
+import type { HostChange, PrivilegeCredentialStatus } from "@lando/sdk/schema";
 import {
-  EventService,
   type HostChangeProposal,
   type InteractionServiceShape,
   type PrivilegeService,
-  type PrivilegeSession,
-  ProcessRunner,
   type ProviderSetupInspectOptions,
+  RouterService,
   type RuntimeProviderShape,
 } from "@lando/sdk/services";
-import { type Context, DateTime, Effect, Option } from "effect";
+import { type Context, Effect, Option } from "effect";
 
-import { CliInvocation } from "../../../runtime/invocation-context";
-import { resolveSecretsRedactor } from "../../commands/secrets-redactor";
 import type { ResolvedSetupNetworkTrust } from "../../commands/setup-network-trust";
-import { decideHostChangeConsent } from "../../host-changes/consent";
+import { approveHostChanges, askingInteraction } from "../../host-changes/approve";
 import {
   contributedSetupFlagNamesForProvider,
   contributedSetupFlagsForProvider,
@@ -95,11 +92,30 @@ const providerProposals = Effect.fnUntraced(function* ({
     .pipe(Effect.tapError((cause) => recorder.recordFailure("provider", cause)));
 });
 
+/** The router's helper, planned read-only with the configured ports; an unavailable router plans nothing. */
+const routerProposals = Effect.fnUntraced(function* (
+  input: unknown,
+  recorder: SetupReadinessRecorder,
+): Effect.fn.Return<ReadonlyArray<HostChangeProposal>, unknown> {
+  if (inputBooleanFlag(input, "skip-proxy")) return [];
+  const router = yield* Effect.serviceOption(RouterService);
+  if (Option.isNone(router) || router.value.planHostChanges === undefined) return [];
+  if (unavailableRouterReason(router.value) !== undefined) return [];
+  const defaultDomain = yield* resolveProxyDefaultDomain;
+  const { router: ports, routerPin } = yield* resolveRouterConfigForApp();
+  return yield* router.value
+    .planHostChanges({ defaultDomain, router: ports, routerPin })
+    .pipe(Effect.tapError((cause) => recorder.recordFailure("proxy", cause)));
+});
+
 export const planSetupHostChanges = Effect.fn("SetupCommand.planHostChanges")(function* (
   plan: SetupHostChangePlanInput,
 ) {
   const inspectOptions = inspectOptionsFor(plan.input, plan.selectedProviderId, plan.network);
-  const proposed = yield* providerProposals({ ...plan, inspectOptions });
+  const proposed = [
+    ...(yield* providerProposals({ ...plan, inspectOptions })),
+    ...(yield* routerProposals(plan.input, plan.recorder)),
+  ];
   const declaredFlags = new Set(contributedSetupFlagNamesForProvider(plan.selectedProviderId));
   const proposals = yield* validateHostChangePlan(proposed, { setupFlags: declaredFlags }).pipe(
     Effect.tapError((cause) => plan.recorder.recordFailure("provider", cause)),
@@ -117,26 +133,12 @@ export const planSetupHostChanges = Effect.fn("SetupCommand.planHostChanges")(fu
   return { proposals, changes, elevation, inspectOptions, optInFlags } satisfies SetupHostChangePlan;
 });
 
-const publishWarnings = Effect.fnUntraced(function* (warnings: ReadonlyArray<string>) {
-  const events = yield* Effect.serviceOption(EventService);
-  if (Option.isNone(events)) return;
-  for (const body of warnings) {
-    yield* events.value
-      .publish(MessageWarnEvent.make({ body, timestamp: yield* DateTime.now }))
-      .pipe(Effect.ignore);
-  }
-});
-
-const sessionPurpose = (changes: ReadonlyArray<HostChange>): string =>
-  changes.map((change) => change.summary.charAt(0).toLowerCase() + change.summary.slice(1)).join(", ");
-
 /** Whether this run can ask in a terminal; the dry run asks the same of the run it previews. */
 export const setupCanAsk = Effect.fnUntraced(function* (
   input: unknown,
   interaction: InteractionServiceShape | undefined,
 ) {
-  if (interaction === undefined || inputBooleanFlag(input, "no-interactive")) return false;
-  return yield* interaction.isInteractive;
+  return (yield* askingInteraction(interaction, inputBooleanFlag(input, "no-interactive"))) !== undefined;
 });
 
 export interface SetupHostChangeApproval {
@@ -158,29 +160,12 @@ export const approveSetupHostChanges = Effect.fn("SetupCommand.approveHostChange
   privilege,
   recorder,
 }: SetupHostChangeApproval) {
-  const canAsk = yield* setupCanAsk(input, interaction);
-  const consent = yield* decideHostChangeConsent(plan.changes, {
+  return yield* approveHostChanges({
+    command: "setup",
+    proposals: plan.proposals,
     yes: inputBooleanFlag(input, "yes"),
     optInFlags: plan.optInFlags,
-    interaction: canAsk ? interaction : undefined,
+    interaction: yield* askingInteraction(interaction, inputBooleanFlag(input, "no-interactive")),
+    privilege,
   }).pipe(Effect.tapError((cause) => recorder.recordFailure("provider", cause)));
-  yield* publishWarnings(consent.warnings);
-  const approvedPrivileged = plan.changes.filter(
-    (change) => consent.approved.has(change.id) && change.steps.some((step) => step.privileged),
-  );
-  let session: PrivilegeSession | undefined;
-  if (approvedPrivileged.length > 0 && privilege !== undefined) {
-    session = yield* privilege
-      .openSession(sessionPurpose(approvedPrivileged))
-      .pipe(Effect.tapError((cause) => recorder.recordFailure("provider", cause)));
-  }
-  const runner = yield* Effect.serviceOption(ProcessRunner);
-  const { redact } = yield* resolveSecretsRedactor({ sourceEnv: (yield* CliInvocation).env });
-  return makeHostChangeApplier({
-    proposals: plan.proposals,
-    approved: consent.approved satisfies ReadonlySet<HostChangeId>,
-    ...(session === undefined ? {} : { session }),
-    ...(Option.isNone(runner) ? {} : { runner: runner.value }),
-    redact,
-  });
 });

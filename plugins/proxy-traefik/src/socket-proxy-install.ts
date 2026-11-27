@@ -1,5 +1,4 @@
-import type { PrivilegeError } from "@lando/sdk/errors";
-import type { PrivilegeService, ProcessResult, ProcessRunner } from "@lando/sdk/services";
+import type { HostChangeStepRunner, ProcessResult, ProcessRunner } from "@lando/sdk/services";
 import { type Context, Effect } from "effect";
 
 import {
@@ -39,9 +38,9 @@ export interface DiscoverProxydInput {
   readonly processRunner: Context.Service.Shape<typeof ProcessRunner>;
 }
 
+/** What the elevated install script reported. */
 export type SocketProxyInstallOutcome =
   | { readonly kind: "installed" }
-  | { readonly kind: "already-installed" }
   | { readonly kind: "foreign" }
   | {
       readonly kind: "needs-helper";
@@ -49,10 +48,7 @@ export type SocketProxyInstallOutcome =
       readonly exitCode: number;
       readonly stderr: string;
     }
-  | { readonly kind: "elevation-refused"; readonly exitCode: number; readonly stderr: string }
-  /** Lando could not obtain administrator access; nothing was changed. */
-  | { readonly kind: "privilege-unavailable"; readonly message: string; readonly remediation: string }
-  | { readonly kind: "proxyd-missing" };
+  | { readonly kind: "elevation-refused"; readonly exitCode: number; readonly stderr: string };
 
 export type SocketProxyStartOutcome =
   | { readonly kind: "started"; readonly http: ForwardOutcome; readonly https: ForwardOutcome }
@@ -61,17 +57,17 @@ export type SocketProxyStartOutcome =
 export interface InstallSocketProxyInput extends HostPathAccess {
   readonly user: string;
   readonly processRunner: Context.Service.Shape<typeof ProcessRunner>;
-  readonly privilege: Context.Service.Shape<typeof PrivilegeService>;
   readonly serviceType?: SocketProxyServiceType;
   readonly httpTarget: number;
   readonly httpsTarget: number;
   /** Replace a classified foreign helper (missing-root / confirmed unattributed) after digest pin. */
   readonly replaceForeign?: boolean;
+  /** Rewrite this data root's helper even when its hops already match, to repair its grant. */
+  readonly rewriteMatching?: boolean;
 }
 
 export interface StartSocketsInput extends HostPathAccess {
   readonly processRunner: Context.Service.Shape<typeof ProcessRunner>;
-  readonly privilege: Context.Service.Shape<typeof PrivilegeService>;
   readonly probeForward?: (
     host: string,
     port: number,
@@ -140,7 +136,7 @@ export const readAnyHelperHopTargets = Effect.fnUntraced(function* (access: Host
   return { httpTarget, httpsTarget };
 });
 
-const hopsMatchTargets = Effect.fnUntraced(function* (
+export const hopsMatchTargets = Effect.fnUntraced(function* (
   access: HostPathAccess,
   httpTarget: number,
   httpsTarget: number,
@@ -150,7 +146,7 @@ const hopsMatchTargets = Effect.fnUntraced(function* (
   return hopTargetPattern(httpTarget).test(httpUnit) && hopTargetPattern(httpsTarget).test(httpsUnit);
 });
 
-const SOCKET_PROXY_INSTALL_PURPOSE = "install the helper that serves ports 80 and 443";
+export const SOCKET_PROXY_INSTALL_STEP = "install";
 
 const mapElevatedInstall = (elevated: ProcessResult): SocketProxyInstallOutcome => {
   if (elevated.exitCode === 0) return { kind: "installed" };
@@ -174,14 +170,21 @@ const mapElevatedInstall = (elevated: ProcessResult): SocketProxyInstallOutcome 
   return { kind: "elevation-refused", exitCode: elevated.exitCode, stderr: elevated.stderr };
 };
 
-export const installSocketProxy = Effect.fn("SocketProxy.installSocketProxy")(function* (
+/** What installing the helper with these hops would do, decided read-only. */
+export type SocketProxyInstallInspection =
+  | { readonly kind: "already-installed" }
+  | { readonly kind: "foreign" }
+  | { readonly kind: "proxyd-missing" }
+  | { readonly kind: "script"; readonly script: string };
+
+export const inspectSocketProxyInstall = Effect.fn("SocketProxy.inspectSocketProxyInstall")(function* (
   input: InstallSocketProxyInput,
-): Effect.fn.Return<SocketProxyInstallOutcome> {
+): Effect.fn.Return<SocketProxyInstallInspection> {
   const inspection = yield* inspectSocketProxy(input);
   const ownership = inspection.ownership;
   if (input.replaceForeign !== true) {
     if (ownership.kind === "foreign" || ownership.kind === "unmarked") return { kind: "foreign" };
-    if (yield* isSocketProxyInstalled(input)) {
+    if (input.rewriteMatching !== true && (yield* isSocketProxyInstalled(input))) {
       if (yield* hopsMatchTargets(input, input.httpTarget, input.httpsTarget)) {
         return { kind: "already-installed" };
       }
@@ -204,7 +207,6 @@ export const installSocketProxy = Effect.fn("SocketProxy.installSocketProxy")(fu
     Effect.catchTag("ProxydBinaryNotFound", () => Effect.succeed(undefined)),
   );
   if (binary === undefined) return { kind: "proxyd-missing" };
-  const priorDigests = inspection.digests;
   const script = buildInstallScript({
     user: input.user,
     userDataRoot: inspection.currentRoot,
@@ -212,27 +214,18 @@ export const installSocketProxy = Effect.fn("SocketProxy.installSocketProxy")(fu
     serviceType: input.serviceType ?? "notify",
     httpTarget: input.httpTarget,
     httpsTarget: input.httpsTarget,
-    priorDigests,
+    priorDigests: inspection.digests,
     replaceForeign: input.replaceForeign === true,
     ...(ownership.kind === "foreign" && ownership.ownerRoot !== undefined
       ? { priorOwnerRoot: ownership.ownerRoot }
       : {}),
   });
-  return yield* Effect.scoped(
-    input.privilege
-      .openSession(SOCKET_PROXY_INSTALL_PURPOSE)
-      .pipe(Effect.flatMap((session) => session.elevate(["/bin/sh", "-c", script]))),
-  ).pipe(
-    Effect.map(mapElevatedInstall),
-    Effect.catch((error: PrivilegeError) =>
-      Effect.succeed<SocketProxyInstallOutcome>({
-        kind: "privilege-unavailable",
-        message: error.message,
-        remediation: error.remediation,
-      }),
-    ),
-  );
+  return { kind: "script", script };
 });
+
+/** The install script runs as root through the run's administrator session, once. */
+export const runSocketProxyInstall = (steps: HostChangeStepRunner) =>
+  steps.run(SOCKET_PROXY_INSTALL_STEP).pipe(Effect.map(mapElevatedInstall));
 
 const controlSockets = Effect.fn("SocketProxy.controlSockets")(function* (
   verb: "start" | "stop",
@@ -265,19 +258,11 @@ const controlSockets = Effect.fn("SocketProxy.controlSockets")(function* (
     ...checks,
     `systemctl ${verb} ${units.map(shQuote).join(" ")}`,
   ].join("\n");
-  const unelevated = yield* input.processRunner
+  // Only through the helper's polkit grant: starting or stopping it as root is an approved host
+  // change, never a fallback here.
+  const result = yield* input.processRunner
     .run({ cmd: "/bin/sh", args: ["-c", script] })
     .pipe(Effect.catch((error) => Effect.succeed(failedResult(1, error.message))));
-  const result =
-    unelevated.exitCode === 0
-      ? unelevated
-      : yield* input.privilege
-          .elevate(["/bin/sh", "-c", script])
-          .pipe(
-            Effect.catch((error: PrivilegeError) =>
-              Effect.succeed(failedResult(1, `${error.message} ${error.remediation}`)),
-            ),
-          );
   if (result.exitCode !== 0) {
     return { kind: "failed", exitCode: result.exitCode, stderr: result.stderr };
   }

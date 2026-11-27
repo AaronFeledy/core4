@@ -18,6 +18,7 @@ import { deprecationFindings, doctorDeprecations } from "./doctor-deprecations";
 import { filesystemWatchDoctor } from "./doctor-filesystem-watch";
 import { DefaultGlobalAppDoctorLayer, globalAppDoctor } from "./doctor-global-app";
 import type { HostDnsResolver } from "./doctor-host-dns";
+import type { DoctorSectionRun } from "./doctor-host-fix";
 import { legacySnapshotCatalogsDoctor } from "./doctor-legacy-snapshot-catalogs";
 import { listenerDoctorChecks } from "./doctor-listeners";
 import { DefaultMcpDoctorLayer, mcpDoctor } from "./doctor-mcp";
@@ -46,8 +47,8 @@ interface DoctorSectionBase {
 
 export type DoctorSectionSpec<R> = DoctorSectionBase &
   (
-    | { readonly run: Effect.Effect<DoctorSectionResult, unknown, R>; readonly isolate?: undefined }
-    | { readonly run: Effect.Effect<DoctorSectionResult, never, R>; readonly isolate: false }
+    | { readonly run: Effect.Effect<DoctorSectionRun, unknown, R>; readonly isolate?: undefined }
+    | { readonly run: Effect.Effect<DoctorSectionRun, never, R>; readonly isolate: false }
   );
 
 export type DoctorSection =

@@ -3,9 +3,17 @@ import { resolveProxyDefaultDomain } from "@lando/engine/config/proxy-default-do
 import { resolveRouterConfigForApp } from "@lando/engine/config/router-config";
 import { unavailableRouterReason } from "@lando/engine/subsystems/proxy/api";
 import { PortNumber, ROUTER_LAST_RESORT_HTTPS_PORT, ROUTER_LAST_RESORT_HTTP_PORT } from "@lando/sdk/schema";
-import { FileSystem, PathsService, type RouterService } from "@lando/sdk/services";
-import { Effect, Result, Schema } from "effect";
+import {
+  FileSystem,
+  InteractionService,
+  PathsService,
+  PrivilegeService,
+  type RouterService,
+} from "@lando/sdk/services";
+import { Effect, Option, Result, Schema } from "effect";
+import { approveHostChanges, askingInteraction } from "../host-changes/approve";
 import type { DoctorFinding, DoctorSolution } from "./doctor-contract";
+import { type DoctorDeferredFix, deferDoctorHostFix } from "./doctor-host-fix";
 import {
   PROXY_SPEC,
   type SubsystemSpec,
@@ -114,23 +122,31 @@ const occupiedHopCheck = (context: Record<string, string>, snapshot: Acquisition
   };
 };
 
+/** The router's finding, and under `--fix` the fix doctor runs once its section progress is done. */
+export interface ProxyCheck {
+  readonly finding: DoctorFinding;
+  readonly fix?: DoctorDeferredFix;
+}
+
 export const buildProxyCheck = Effect.fnUntraced(function* (
   proxy: typeof RouterService.Service,
   fix: boolean,
-): Effect.fn.Return<DoctorFinding, never> {
+): Effect.fn.Return<ProxyCheck, never> {
   const unavailable = unavailableRouterReason(proxy);
   if (unavailable !== undefined)
     // Setup cannot select a router either, so the selection failure is the only actionable fix.
-    return yield* buildDegradedCheck(
-      {
-        ...PROXY_SPEC,
-        recovery: "manual",
-        manualRemediation: `${unavailable.message} ${unavailable.remediation}`,
-        manualCommand: null,
-      },
-      { subsystem: "router", subsystemId: proxy.id, ready: "false", routerId: unavailable.proxyId },
-      fix,
-    );
+    return {
+      finding: yield* buildDegradedCheck(
+        {
+          ...PROXY_SPEC,
+          recovery: "manual",
+          manualRemediation: `${unavailable.message} ${unavailable.remediation}`,
+          manualCommand: null,
+        },
+        { subsystem: "router", subsystemId: proxy.id, ready: "false", routerId: unavailable.proxyId },
+        fix,
+      ),
+    };
   const status = yield* Effect.result(proxy.status);
   const state = Result.isSuccess(status) ? status.success.state : undefined;
   const snapshot = yield* readAcquisitionSnapshot();
@@ -146,28 +162,56 @@ export const buildProxyCheck = Effect.fnUntraced(function* (
       ? { httpPort: String(snapshot.httpPort), httpsPort: String(snapshot.httpsPort) }
       : {}),
   };
-  if (running && snapshot?.mode === "occupied-hop") return occupiedHopCheck(context, snapshot);
+  if (running && snapshot?.mode === "occupied-hop") return { finding: occupiedHopCheck(context, snapshot) };
   const needsHelper = acquisitionMode === "needs-helper";
-  if (running && !needsHelper) return passCheck(PROXY_SPEC, context);
-  return yield* buildDegradedCheck(
-    specForMode(snapshot),
-    context,
-    fix,
-    () =>
-      Effect.gen(function* () {
-        const defaultDomain = yield* resolveProxyDefaultDomain;
-        const { router, routerPin } = yield* resolveRouterConfigForApp();
-        yield* Effect.scoped(proxy.setup({ defaultDomain, router, routerPin }));
-        const after = yield* readAcquisitionSnapshot();
-        if (after?.mode === "needs-helper" || after?.mode === "occupied-hop") {
-          return yield* Effect.fail(new Error("Router is still serving on high ports after setup."));
-        }
-      }),
-    Result.isFailure(status) ? status.failure : undefined,
-    () =>
-      Effect.gen(function* () {
-        const after = yield* readAcquisitionSnapshot();
-        return yield* liveProxyStateContext(proxy, after?.mode);
-      }),
-  );
+  if (running && !needsHelper) return { finding: passCheck(PROXY_SPEC, context) };
+  const spec = specForMode(snapshot);
+  const settle = (withFix: boolean) =>
+    buildDegradedCheck(
+      spec,
+      context,
+      withFix,
+      () =>
+        Effect.gen(function* () {
+          const defaultDomain = yield* resolveProxyDefaultDomain;
+          const { router, routerPin } = yield* resolveRouterConfigForApp();
+          const config = { defaultDomain, router, routerPin };
+          yield* Effect.scoped(
+            Effect.gen(function* () {
+              // Doctor has no `--yes`: the helper is installed only after a terminal answer.
+              const run = yield* approveHostChanges({
+                command: "doctor",
+                proposals: yield* proxy.planHostChanges?.(config) ?? Effect.succeed([]),
+                yes: false,
+                optInFlags: new Set(),
+                interaction: yield* askingInteraction(
+                  Option.getOrUndefined(yield* Effect.serviceOption(InteractionService)),
+                  false,
+                ),
+                privilege: Option.getOrUndefined(yield* Effect.serviceOption(PrivilegeService)),
+              });
+              yield* proxy.setup(config, { intent: "configure", hostChanges: run.applier });
+            }),
+          );
+          const after = yield* readAcquisitionSnapshot();
+          if (after?.mode === "needs-helper" || after?.mode === "occupied-hop") {
+            return yield* Effect.fail(new Error("Router is still serving on high ports after setup."));
+          }
+        }),
+      Result.isFailure(status) ? status.failure : undefined,
+      () =>
+        Effect.gen(function* () {
+          const after = yield* readAcquisitionSnapshot();
+          return yield* liveProxyStateContext(proxy, after?.mode);
+        }),
+    );
+  if (!fix || spec.recovery !== "automatic") return { finding: yield* settle(fix) };
+  // Installing the helper asks first and may need sudo, so doctor runs it after its progress tree.
+  return {
+    finding: yield* settle(false),
+    fix: yield* deferDoctorHostFix(
+      spec.name,
+      Effect.map(settle(true), (settled) => [settled]),
+    ),
+  };
 });
