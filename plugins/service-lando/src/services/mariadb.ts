@@ -53,17 +53,20 @@ export const MARIADB_LISTENER = {
   when: "All MariaDB services",
 } as const;
 const GUARD_SCRIPT = `series() { sed -n '1s/^[^0-9]*\\([0-9][0-9]*\\)\\.\\([0-9][0-9]*\\)\\..*/\\1.\\2/p'; }
+series_gt() { [ "\${1%.*}" -gt "\${2%.*}" ] || { [ "\${1%.*}" -eq "\${2%.*}" ] && [ "\${1#*.}" -gt "\${2#*.}" ]; }; }
 running=$(mariadbd --version 2>/dev/null | series)
+data=
 for info in "${DATA_TARGET}/mariadb_upgrade_info" "${DATA_TARGET}/mysql_upgrade_info"; do
   [ -n "$running" ] && [ -f "$info" ] || continue
-  data=$(series < "$info")
-  [ -n "$data" ] || continue
-  if [ "\${data%.*}" -gt "\${running%.*}" ] || { [ "\${data%.*}" -eq "\${running%.*}" ] && [ "\${data#*.}" -gt "\${running#*.}" ]; }; then
-    printf "${DATA_VERSION_REFUSAL_MARKER} data=%s image=%s: MariaDB %s can't open data written by MariaDB %s.\\n" \\
-      "$data" "$running" "$running" "$data" >&2
-    exit 1
-  fi
+  observed=$(series < "$info")
+  [ -n "$observed" ] || continue
+  if [ -z "$data" ] || series_gt "$observed" "$data"; then data=$observed; fi
 done
+if [ -n "$data" ] && series_gt "$data" "$running"; then
+  printf "${DATA_VERSION_REFUSAL_MARKER} data=%s image=%s: MariaDB %s can't open data written by MariaDB %s.\\n" \\
+    "$data" "$running" "$running" "$data" >&2
+  exit 1
+fi
 exec docker-entrypoint.sh "$@"`;
 export const MARIADB_FEATURE_ID = "service-lando.mariadb";
 export const MARIADB_CONFIG_TARGET = PortablePath.make("/etc/mysql/conf.d/99-lando.cnf");
