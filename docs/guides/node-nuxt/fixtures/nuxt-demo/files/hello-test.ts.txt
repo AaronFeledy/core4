@@ -1,0 +1,10 @@
+import { describe, expect, it } from 'vitest'
+import { $fetch, setup } from '@nuxt/test-utils/e2e'
+
+describe('hello route', async () => {
+  await setup({ server: true })
+
+  it('answers with the Nitro message', async () => {
+    expect(await $fetch('/api/hello')).toEqual({ message: 'Hello from Nitro' })
+  })
+})

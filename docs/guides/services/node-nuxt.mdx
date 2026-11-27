@@ -1,0 +1,210 @@
+---
+id: node-nuxt
+provider: test
+timeout: 90000
+tags: [docs, node, nuxt, vue, nitro, vitest, service]
+---
+
+# Run a Nuxt app on Node
+
+Add a `node:22` service, scaffold Nuxt with its own CLI, and let its dev server answer your `lndo.site` URL. Nothing runs on your host except Lando.
+
+Run every command on this page from the app directory on your host, and save each file in your editor. Use a new, empty directory. The scaffold overwrites matching files.
+
+## Start Node
+
+```sh
+mkdir nuxt-demo
+cd nuxt-demo
+```
+
+Save this as `.lando.yml`:
+
+```yaml
+name: nuxt-demo
+services:
+  web:
+    type: "node:22"
+    primary: true
+    port: 3000
+```
+
+```sh
+lando start
+lando exec web -- node --version
+```
+
+The Node service adds `lando npm` and `lando npx`. Run from the app directory, they work in `/app` inside `web`, which is your app directory. `web` starts idle, so its URL serves nothing yet.
+
+## Scaffold Nuxt
+
+`--force` lets the CLI write into a directory that already holds `.lando.yml`, and your Landofile stays put. The pinned `create-nuxt` release is the one this page ran; bump it when you want a newer scaffold.
+
+```sh
+lando npx --yes create-nuxt@4.0.3 . --force --template minimal --packageManager npm --no-gitInit
+lando npm ls --depth=0
+```
+
+`lando npm ls` should list `nuxt`, `vue`, and `vue-router`. Commit the generated `package.json` and `package-lock.json`. `node_modules` lives in a Lando volume, apart from any packages you install on the host.
+
+## Let Nuxt answer the Lando URL
+
+Replace `nuxt.config.ts` with:
+
+```ts
+export default defineNuxtConfig({
+  compatibilityDate: '2025-07-15',
+  devServer: { host: '0.0.0.0' },
+  vite: {
+    server: { allowedHosts: ['web.nuxt-demo.lndo.site'] },
+  },
+})
+```
+
+`devServer.host` makes the dev server listen on every interface, so Lando's proxy can reach it from outside the container. Nuxt already defaults to port `3000`, which matches the Landofile. `allowedHosts` names the one hostname the proxy sends. Vite blocks any other `Host` header, so list the hostname from `lando info` without the scheme or port if you rename the app. Don't set `allowedHosts: true`.
+
+Then add a server route, which Nitro serves under `/api`. Create `server/api/hello.get.ts`:
+
+```ts
+export default defineEventHandler(() => ({ message: 'Hello from Nitro' }))
+```
+
+## Serve it on `lando start`
+
+Make the dev server the service's command, and have `lando start` wait until the route answers:
+
+```sh
+lando app:config:set services.web.command '["npm","run","dev"]' --type json
+lando app:config:set services.web.readiness '{"kind":"http","url":"http://localhost:3000/api/hello","intervalSeconds":2,"retries":30}' --type json
+lando start
+lando info
+```
+
+Open the `web` URL from `lando info`, and add `/api/hello` to see the JSON. If a fallback port such as `:8443` shows in the URL, keep it. The `readiness` probe is why `lando start` reports `web` as ready only after Nuxt has built and answered, not when the process begins.
+
+Prefer a foreground server? Leave `command:` out and run `lando npm run dev`. Stop it with Ctrl-C. Use one method at a time, because both need port `3000`.
+
+## Fix a "Blocked request" error
+
+If the browser or `curl` shows `Blocked request. This host ("...") is not allowed`, the hostname isn't in `allowedHosts`. This request sends one that isn't:
+
+```sh
+lando exec web -- curl -s -H 'Host: evil.example.test' http://localhost:3000/
+```
+
+Add the hostname you opened to `vite.server.allowedHosts` in `nuxt.config.ts`, save, and reload.
+
+## Test the route with Vitest
+
+[`@nuxt/test-utils`](https://nuxt.com/docs/getting-started/testing) builds the app and runs it for the test. Install it with Vitest:
+
+```sh
+lando npm install -D vitest @nuxt/test-utils
+```
+
+Save this as `test/hello.test.ts`:
+
+```ts
+import { describe, expect, it } from 'vitest'
+import { $fetch, setup } from '@nuxt/test-utils/e2e'
+
+describe('hello route', async () => {
+  await setup({ server: true })
+
+  it('answers with the Nitro message', async () => {
+    expect(await $fetch('/api/hello')).toEqual({ message: 'Hello from Nitro' })
+  })
+})
+```
+
+```sh
+lando npx vitest run
+```
+
+The run should report one passing test. It starts its own server, so it doesn't touch the dev server on port `3000`.
+
+## Check the production build
+
+```sh
+lando npm run build
+lando exec web -- sh -c 'PORT=3100 node .output/server/index.mjs & sleep 3; curl -s http://localhost:3100/api/hello; kill $!'
+```
+
+The build writes `.output`, and the second command runs that server on port `3100` for three seconds, because the dev server holds `3000`. You should see the same `Hello from Nitro` JSON. This checks the built server, not a deployment. Pick a [Nitro preset](https://nitro.build/deploy) for your host.
+
+<Guide>
+  <Scenario id="reader-path" render={false} reason="Plan the starter Landofile without a provider">
+    <Step name="scaffold">
+      <UseFixture name="nuxt-demo" />
+    </Step>
+    <Step name="confirm-config">
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"web\":\\s*\\{[^}]*\"type\":\\s*\"node:22\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"port\":\\s*3000" } }} />
+      <Verify command="lando help npm --format=json" expect={{ stdout: { regex: "\"source\":\"tooling\"[\\s\\S]*\"targets\":\\[\\{\"kind\":\"service\",\"name\":\"web\"\\}\\][\\s\\S]*\"program\":\"npm\"" } }} />
+      <Verify command="lando help npx --format=json" expect={{ stdout: { regex: "\"source\":\"tooling\"[\\s\\S]*\"targets\":\\[\\{\"kind\":\"service\",\"name\":\"web\"\\}\\][\\s\\S]*\"program\":\"npx\"" } }} />
+    </Step>
+  </Scenario>
+
+  <Scenario id="scaffold-and-serve" layer="e2e" tags={["@smoke"]} timeout={900000} render={false} reason="Scaffold Nuxt live, serve it through the router, test it, and run the production build">
+    <Step name="scaffold">
+      <UseFixture name="nuxt-demo" />
+      <Run command="lando start" />
+      <Verify command="lando exec web -- node --version" expect={{ stdout: { regex: "^v22[.]" } }} />
+      <Run command="lando npx --yes create-nuxt@4.0.3 . --force --template minimal --packageManager npm --no-gitInit" />
+      <Verify command="lando npm ls --depth=0" expect={{ stdout: { regex: "^(?=[\\s\\S]*nuxt@)(?=[\\s\\S]*vue-router@)(?=[\\s\\S]*[+`]-- vue@)" } }} />
+    </Step>
+    <Hidden reason="Copy the page's config, route, and test from fixture files">
+      <Step name="files">
+        <Run command="lando exec web -- mkdir -p /app/server/api /app/test" />
+        <Run command="lando exec web -- cp /app/files/nuxt.config.ts.txt /app/nuxt.config.ts" />
+        <Run command="lando exec web -- cp /app/files/hello.get.ts.txt /app/server/api/hello.get.ts" />
+        <Run command="lando exec web -- cp /app/files/hello-test.ts.txt /app/test/hello.test.ts" />
+      </Step>
+    </Hidden>
+    <Step name="serve">
+      <Run command={`lando app:config:set services.web.command '["npm","run","dev"]' --type json`} />
+      <Run command={`lando app:config:set services.web.readiness '{"kind":"http","url":"http://localhost:3000/api/hello","intervalSeconds":2,"retries":30}' --type json`} />
+      <Run command="lando start" />
+    </Step>
+    <Hidden reason="Prove the routed URL answers through the proxy">
+      <Step name="route">
+        <Verify command="lando start --format=json" expect={{ stdout: { regex: "\"service\":\\s*\"web\",\\s*\"url\":\\s*\"[^\"]+\",\\s*\"verdict\":\\s*\"ready\"" } }} />
+      </Step>
+    </Hidden>
+    <Step name="request">
+      <Fetch url="{{route:web}}/api/hello" expect={{ status: 200, body: { regex: "Hello from Nitro" } }} />
+      <Fetch url="{{route:web}}/" expect={{ status: 200, body: { regex: "Welcome to Nuxt" } }} />
+    </Step>
+    <Step name="blocked-host">
+      <Verify command="lando exec web -- curl -s -H 'Host: evil.example.test' http://localhost:3000/" expect={{ stdout: { regex: "Blocked request[.] This host [(]\"evil[.]example[.]test\"[)] is not allowed" } }} />
+    </Step>
+    <Step name="vitest">
+      <Run command="lando npm install -D vitest @nuxt/test-utils" />
+      <Verify command="lando npx vitest run" expect={{ stdout: { regex: "Tests\\b[^\\n]*1 passed" } }} />
+    </Step>
+    <Step name="production">
+      <Run command="lando npm run build" />
+      <Verify command="lando exec web -- sh -c 'PORT=3100 node .output/server/index.mjs & sleep 3; curl -s http://localhost:3100/api/hello; kill $!'" expect={{ stdout: { regex: "Hello from Nitro" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes" />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Tear down
+
+`lando destroy -y` removes the app's containers and networks, and keeps your source files and volumes. Add `--volumes` to delete the volumes too, including the `node_modules` volume.
+
+```sh
+lando destroy -y
+```
+
+## Next
+
+- [Run TypeScript on a Node service](./node-typescript.mdx) for typecheck and unit-test tooling
+- [Make start wait for your app](./wait-for-your-app.mdx) for more `readiness:` options
+- [Run a TanStack Start app on Postgres](./node-tanstack-start.mdx) for a Node app with a database
+- [Add Node](./node.mdx) for versions and the `PORT` variable

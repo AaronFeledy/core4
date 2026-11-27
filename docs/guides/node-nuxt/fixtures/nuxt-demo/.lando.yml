@@ -1,0 +1,6 @@
+name: nuxt-demo
+services:
+  web:
+    type: "node:22"
+    primary: true
+    port: 3000
