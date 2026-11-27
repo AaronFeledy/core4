@@ -109,6 +109,9 @@ const makeContext = (
   setListenerAuthority: (authority) => {
     draft.listenerAuthority = authority;
   },
+  setDataVersion: (contract) => {
+    draft.dataVersion = contract;
+  },
   setCerts: (certs) => {
     draft.certs = { ...certs };
   },

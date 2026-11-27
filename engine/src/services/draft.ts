@@ -56,6 +56,7 @@ export const DRAFT_OPTIONAL_PASS_THROUGH_KEYS = [
   "readiness",
   "readinessSource",
   "listenerAuthority",
+  "dataVersion",
   "certs",
   "provenance",
 ] as const satisfies ReadonlyArray<keyof ServicePlan>;
@@ -150,6 +151,7 @@ export interface DraftServicePlan {
   readiness?: ServicePlan["readiness"];
   readinessSource?: ServicePlan["readinessSource"];
   listenerAuthority?: ListenerAuthority;
+  dataVersion?: ServicePlan["dataVersion"];
   certs?: ServicePlan["certs"];
   hostAliases: Array<ServicePlan["hostAliases"][number]>;
   provenance?: ServicePlan["provenance"];
