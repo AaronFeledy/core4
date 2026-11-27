@@ -2,6 +2,22 @@ import { expect } from "bun:test";
 import { Schema } from "effect";
 import { startPipe } from "./real-pipe-client";
 
+export async function framingRecovery(command: readonly string[], cwd: string) {
+  await using pipe = startPipe(command, cwd);
+  await pipe.initialize();
+  await pipe.sendRaw("  \r\n");
+  await pipe.sendRaw('{"jsonrpc":"2.0","id":1,"method":"ping",}\n');
+  await pipe.send({ jsonrpc: "2.0", id: "after", method: "ping" });
+  expect(await pipe.response("after")).toEqual({ jsonrpc: "2.0", id: "after", result: {} });
+  await pipe.waitFor(() => pipe.messages.some((message) => message.id === null));
+  await pipe.closeInput();
+  expect(await pipe.finish()).toBe(0);
+  expect(pipe.messages.filter((message) => message.id === null)).toEqual([
+    { jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } },
+  ]);
+  expect(pipe.diagnostics.at(-1)).toEqual({ event: "serverExit", exit: "Success" });
+}
+
 export async function successfulCall(pipe: ReturnType<typeof startPipe>, id: string) {
   await pipe.send({ jsonrpc: "2.0", id, method: "tools/call", params: { name: "app:info" } });
   const message = await pipe.response(id);

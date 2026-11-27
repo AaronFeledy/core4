@@ -36,11 +36,22 @@ a Lando command-result envelope for startup or shutdown.
 Lando negotiates MCP protocol versions `2025-06-18`, `2025-03-26`, and
 `2024-11-05`. An `initialize` that offers `2025-06-18` gets `2025-06-18` back.
 Write one complete JSON-RPC object followed by a newline for every request or
-notification. An inbound frame over 1 MiB ends the session.
+notification. `\r\n` line endings work too.
 
 ```json
 {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"my-agent","version":"1.0.0"}}}
 ```
+
+Lando ignores empty lines and lines containing only spaces, tabs, or carriage
+returns. If a line's text is not valid JSON, Lando replies with one parse error
+with `id: null`. Calls already running and requests on later lines continue.
+
+```json
+{"jsonrpc":"2.0","id":null,"error":{"code":-32700,"message":"Parse error"}}
+```
+
+A line over 1 MiB or one left unfinished for 5 seconds after its first byte
+ends the session.
 
 ## Call a tool and read its result
 
@@ -883,6 +894,48 @@ if (exitCode !== 0) throw new Error(stderr);
     </Step>
   </Scenario>
 
+  <Scenario id="stdio-framing-recovery" render={false} reason="Stdio parse recovery regression">
+    <Step name="recover-from-malformed-json">
+      <Run
+        runtime="library"
+code={`const { Fiber, Layer } = yield* Effect.promise(() => import("effect"));
+const { McpRuntimeConfig, McpService } = yield* Effect.promise(() => import("../../../../../mcp/src/service.ts"));
+const { startStdioClient, testAppGenerations } = yield* Effect.promise(() => import("../../../../../mcp/src/testing.ts"));
+const { serviceLayer: mcpServiceLayer } = yield* Effect.promise(() => import("../../../../../core/src/mcp-command-executor.ts"));
+const { RedactionService, makeRedactionService } = yield* Effect.promise(() => import("@lando/redaction/service"));
+const serviceLayer = mcpServiceLayer.pipe(Layer.provide(Layer.mergeAll(
+  Layer.succeed(McpRuntimeConfig, {
+    cwd: context.testDir,
+    env: {},
+    commandEntries: [],
+    defaultAllowlist: [],
+    apps: testAppGenerations(),
+  }),
+  Layer.succeed(RedactionService, makeRedactionService()),
+)));
+yield* Effect.gen(function* () {
+  const service = yield* McpService;
+  const client = yield* startStdioClient(service.serve({ transport: "stdio" }));
+  const encoder = new TextEncoder();
+  yield* client.raw(encoder.encode(" \t\r\n"));
+  yield* client.raw(encoder.encode('{"jsonrpc":"2.0","id":90,"method":"ping",}\n'));
+  const ping = yield* client.request("ping");
+  let message = yield* client.next;
+  while (message.id !== null) message = yield* client.next;
+  yield* client.close;
+  yield* Fiber.join(client.fiber);
+  expect(ping.result).toEqual({});
+  expect((yield* client.messages).filter((frame) => frame.error !== undefined)).toEqual([
+    { jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } },
+  ]);
+}).pipe(Effect.scoped, Effect.provide(serviceLayer), Effect.timeout("5 seconds"));`}
+        displayCode={`await child.stdin.write(" \\t\\r\\n");
+await child.stdin.write('{"jsonrpc":"2.0","id":90,"method":"ping",}\\n');
+await child.stdin.write('{"jsonrpc":"2.0","id":91,"method":"ping"}\\n');`}
+      />
+    </Step>
+  </Scenario>
+
 Serve mode rejects a TTY because an MCP client must own both protocol pipes.
 It also rejects unavailable descriptors and character devices, and it rejects
 command-result machine output. Use `lando mcp --list --format=json` instead
@@ -946,8 +999,7 @@ resource still returns resolved configuration. Umbrella and write-capable ids:
 `app:config:validate` are not MCP tools, even through explicit allow
 configuration.
 
-Protocol input and output stay bounded. An inbound frame, including one
-still being read, is capped at 1 MiB. At most 256 unresolved tool calls are
+At most 256 unresolved tool calls are
 retained; request 257 gets a tool result with `isError: true` whose text is
 the same failure envelope as `structuredContent`, with
 `error._tag: "McpTransportError"` and `error.message: "Server busy"`.

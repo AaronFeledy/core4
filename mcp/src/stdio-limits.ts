@@ -11,10 +11,14 @@ export const MAX_OUTSTANDING_REQUESTS = 256;
 export const MAX_OUTBOUND_QUEUED_BYTES = 8_388_608;
 export const OUTBOUND_WRITE_DEADLINE = Duration.seconds(5);
 
-export const stdioTransportError = (message: string, cause?: unknown): McpTransportError =>
+export const stdioTransportError = (
+  message: string,
+  { cause, remediation }: { readonly cause?: unknown; readonly remediation?: string } = {},
+): McpTransportError =>
   new McpTransportError({
     message,
-    remediation: "Restart the MCP client with healthy piped stdin/stdout and retry the request.",
+    remediation:
+      remediation ?? "Restart the MCP client with healthy piped stdin/stdout and retry the request.",
     ...(cause === undefined ? {} : { cause }),
   });
 
