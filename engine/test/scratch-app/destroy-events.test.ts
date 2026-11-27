@@ -174,6 +174,23 @@ test.each(["provider", "route"] as const)(
   },
 );
 
+test("a destroy that fails after its provider phase keeps the applied receipt for the retry", async () => {
+  // Given a scratch known only by its applied receipt, whose first route withdrawal fails.
+  await withDestroyFixture({ skipDesiredPlan: true, appliedPlan: true, routeFail: "once" }, async (f) => {
+    // When destroy fails partway and is retried.
+    await expect(runDestroy(f)).rejects.toThrow();
+    const receiptAfterFailure = f.receipt();
+    await runDestroy(f);
+    // Then the receipt outlives the failure, so the retry still tears down the recovered plan.
+    expect(receiptAfterFailure).toMatchObject({ id: f.id });
+    expect(f.calls.filter((call) => call === "destroy:true")).toHaveLength(2);
+    expect(f.calls.filter((call) => call === "forget")).toHaveLength(1);
+    expect(f.calls.lastIndexOf("routes")).toBeLessThan(f.calls.indexOf("forget"));
+    expect(f.receipt()).toBeUndefined();
+    expect(f.entries.size).toBe(0);
+  });
+});
+
 test("pending-cleanup write failure preserves the original provider failure", async () => {
   // Given a provider teardown failure and an unavailable registry writer.
   await withDestroyFixture({ fail: true, registryFail: true }, async (f) => {
@@ -329,6 +346,26 @@ test("GC recovers the applied plan when the desired cache misses an old frame", 
       plan: f.plan,
       retainedArtifacts: { snapshots: "none" },
     });
+  });
+});
+
+test("GC reaps a scratch whose only trace is its provider ownership inventory", async () => {
+  // Given an inventory under a scratch's managed root that no registry entry, workspace, or plan
+  // knows, beside a source app inventory that recorded a scratch before scratches had their own root.
+  await withDestroyFixture({ ownershipOnly: true }, async (f) => {
+    const gc = (prune: boolean) =>
+      Effect.runPromise(
+        Effect.flatMap(ScratchAppService, (s) => s.gc({ prune })).pipe(Effect.provide(f.layer)),
+      );
+    // When GC prunes, then looks again.
+    const pruned = await gc(true);
+    const after = await gc(false);
+    // Then only the managed root's scratch is a candidate, its reap releases the inventory, and
+    // nothing is left to find.
+    expect(pruned).toMatchObject({ candidates: [f.id], reaped: [f.id], errors: [] });
+    expect(f.calls).toContain(`cleanup:${f.id}:releaseCaches=true`);
+    expect(f.events.find((event) => event._tag === "post-destroy")).toMatchObject({ evidence: "inventory" });
+    expect(after.candidates).toEqual([]);
   });
 });
 

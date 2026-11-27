@@ -10,6 +10,7 @@ import { resolveConnectionClientTask } from "../planner/connection-client-task.t
 import { toolingSourcePathForPlan } from "../planner/effective-tooling.ts";
 import { invocationAuthorityForPlan, sitesUnder } from "../planner/invocation-authority.ts";
 
+import { EventInvocationSignal } from "./event-invocation.ts";
 import { runBracketedInvocations } from "./tooling-bracket.ts";
 import { prepareToolingInvocation } from "./tooling-prepare.ts";
 
@@ -31,6 +32,7 @@ export interface EventToolingInvocation {
  */
 export const runEventToolingCommand = Effect.fnUntraced(function* (input: EventToolingInvocation) {
   const { plan, name, task } = input;
+  const signal = yield* EventInvocationSignal;
   const client = yield* resolveConnectionClientTask({
     plan,
     name,
@@ -46,6 +48,7 @@ export const runEventToolingCommand = Effect.fnUntraced(function* (input: EventT
       ? {}
       : { expectedInputRevision: input.expectedInputRevision }),
     cwd: String(plan.root),
+    ...(signal === undefined ? {} : { signal }),
     source: {
       path: toolingSourcePathForPlan(plan, name),
       task: name,
@@ -60,6 +63,7 @@ export const runEventToolingCommand = Effect.fnUntraced(function* (input: EventT
         invocations: compiled.invocations,
         requiresProvider: requiresProvider(compiled.normalized),
         redactionTokens: compiled.redactionTokens,
+        ...(signal === undefined ? {} : { signal }),
       }),
     ),
   );

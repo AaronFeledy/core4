@@ -1,5 +1,6 @@
 import { mapFailures } from "@lando/sdk/command-result";
 import { ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
+import { planAppIdentity } from "@lando/sdk/schema";
 import type { AppSelector, ProviderError } from "@lando/sdk/services";
 import { Effect, Redacted, Schema } from "effect";
 import type { EngineHttpApi, EngineHttpRequest, ProviderErrorContext } from "./engine-api.ts";
@@ -81,7 +82,8 @@ export const readAppEnvironment = Effect.fn("RuntimeProvider.readAppEnvironment"
   for (const container of containers) {
     const labels = container.Labels;
     if (labels?.[APP_LABEL] !== target.app) continue;
-    if (target.plan !== undefined && labels[APP_ROOT_LABEL] !== target.plan.root) continue;
+    if (target.plan !== undefined && labels[APP_ROOT_LABEL] !== planAppIdentity(target.plan).appRoot)
+      continue;
     const service = labels[SERVICE_LABEL];
     const requested = service === undefined || !Object.hasOwn(names, service) ? undefined : names[service];
     if (requested === undefined || requested.length === 0) continue;

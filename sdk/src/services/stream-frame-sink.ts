@@ -64,14 +64,51 @@ export const createCollectingStreamFrameSink = () => {
   return { sink, finish, result: () => ({ ...channels }) };
 };
 
+interface ExecStreamCompletion<E> {
+  readonly signal?: AbortSignal | undefined;
+  readonly failure: () => E;
+}
+
+/** Resolve an observed status after a clean command stream drain. */
+export const requireObservedExit = <E>(
+  exitCode: number | undefined,
+  completion: ExecStreamCompletion<E>,
+): Effect.Effect<number, E> => {
+  if (exitCode !== undefined) return Effect.succeed(exitCode);
+  return completion.signal?.aborted === true ? Effect.interrupt : Effect.fail(completion.failure());
+};
+
+/** Drain output without taking ownership of the caller's scope or byte sink. */
+export const drainExecStream = Effect.fnUntraced(function* <E, R, E2>(
+  stream: Stream.Stream<ExecChunk, E, R>,
+  write: (chunk: Exclude<ExecChunk, { readonly exitCode: number }>) => Effect.Effect<void>,
+  completion: ExecStreamCompletion<E2>,
+): Effect.fn.Return<number, E | E2, R> {
+  let exitCode: number | undefined;
+  yield* Stream.runForEach(stream, (chunk) => {
+    if ("exitCode" in chunk) {
+      exitCode = chunk.exitCode;
+      return Effect.void;
+    }
+    return write(chunk);
+  });
+  return yield* requireObservedExit(exitCode, completion);
+});
+
 /**
  * Drains an exec stream. With a live sink, frames are emitted and stdout/stderr are omitted
- * so memory stays constant. Without a sink, channels are collected for the result.
+ * so memory stays constant. Without a sink, channels are collected for the result. A clean
+ * drain without a status fails using the caller's completion policy.
  */
-export const collectExecStream = Effect.fnUntraced(function* <E, R>(
+export const collectExecStream = Effect.fnUntraced(function* <E, R, E2>(
   stream: Stream.Stream<ExecChunk, E, R>,
   sink: Option.Option<StreamFrameSinkShape>,
-): Effect.fn.Return<{ readonly exitCode: number; readonly stdout?: string; readonly stderr?: string }, E, R> {
+  completion: ExecStreamCompletion<E2>,
+): Effect.fn.Return<
+  { readonly exitCode: number; readonly stdout?: string; readonly stderr?: string },
+  E | E2,
+  R
+> {
   const output = Option.match(sink, {
     onNone: createCollectingStreamFrameSink,
     onSome: (provided) => ({
@@ -80,21 +117,14 @@ export const collectExecStream = Effect.fnUntraced(function* <E, R>(
       result: () => ({}),
     }),
   });
-  let exitCode = 0;
-  yield* stream.pipe(
-    Stream.runForEach((chunk) => {
-      if ("exitCode" in chunk) {
-        exitCode = chunk.exitCode;
-        return Effect.void;
-      }
-      // Live frames keep the provider bytes so a redirected archive stays intact.
-      return chunk.chunk.length === 0
+  const exitCode = yield* drainExecStream(
+    stream,
+    (chunk) =>
+      chunk.chunk.length === 0
         ? Effect.void
-        : output.sink.emit({ _tag: chunk.kind, chunk: chunk.chunk, kind: "bytes" });
-    }),
-    Effect.scoped,
-    Effect.ensuring(output.finish()),
-  );
+        : output.sink.emit({ _tag: chunk.kind, chunk: chunk.chunk, kind: "bytes" }),
+    completion,
+  ).pipe(Effect.scoped, Effect.ensuring(output.finish()));
   return {
     exitCode,
     ...output.result(),

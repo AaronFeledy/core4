@@ -261,6 +261,42 @@ describe("physical volume lifecycle coordination", () => {
     expect(result.failure.remediation).toContain("lando doctor");
   });
 
+  test("points at scratch:destroy when a scratch app's managed root owns the volume", async () => {
+    // Given a store whose physical volume belongs to a scratch app in this data root.
+    const store = await liveStore();
+    const dataRoot = AbsolutePath.make("/data");
+    const scoped: AppPlan = { ...plan, identity: { ...plan.identity, dataRoot } };
+    const ownerRoot = AbsolutePath.make(join(dataRoot, "scratch", "scratch-shop-a1b2c3", "root"));
+    const provider = {
+      id: "test",
+      locateVolume: (ref: { readonly store: string }) =>
+        Effect.succeed({
+          coordinationKey: coordinationKey(ref.store),
+          nativeName: `app_${ref.store}`,
+          identity: {
+            coordinationKey: coordinationKey(ref.store),
+            nativeName: `app_${ref.store}`,
+            generation: "one",
+            ownerRoot,
+            origin: "created" as const,
+          },
+        }),
+    };
+
+    // When lifecycle coordination observes that owner.
+    const result = await Effect.runPromise(
+      withPlanVolumeCoordination({ plan: scoped, provider, stateStore: store, body: () => Effect.void }).pipe(
+        Effect.result,
+      ),
+    );
+
+    // Then recovery names the scratch command, not a destroy of the scratch's internal root.
+    if (result._tag !== "Failure") throw new TypeError("expected ownership refusal");
+    expect(result.failure.message).toContain("belongs to scratch app scratch-shop-a1b2c3");
+    expect(result.failure.remediation).toContain("lando scratch:destroy scratch-shop-a1b2c3");
+    expect(result.failure.remediation).not.toContain("--root");
+  });
+
   test.each([false, true])(
     "startup accepts an unlabeled volume only with a verified receipt (%s)",
     async (recorded) => {
