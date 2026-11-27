@@ -224,6 +224,14 @@ The audit maintains one bot-owned issue titled `Dependency audit findings`. New 
 
 Only the trusted audit reporting job receives `issues: write`. Serialized runs prevent competing issue creation. `bun run audit:fix` remains a local command and is never applied automatically in CI.
 
+### Review stock image updates
+
+The `stock-artifact-age-canary` workflow runs weekly. Dispatch it from the default branch if you need a fresh report, then open the run summary. It reports stock images older than 90 days and images whose age it could not determine. The report is advisory: age is not a security verdict, and a registry failure is not evidence that an image is current. The canary does not change pins, pull images into an app, or run on pull requests.
+
+The report covers bundled service defaults and catalog versions, including the stock PHP Apache, FPM, and CLI base images. It does not inspect custom or derived app images. For a digest pin, such as Tomcat, it checks the image at that digest rather than the mutable tag.
+
+For a stock image bump, confirm the new reference exists for each supported container architecture, then start an isolated app and exercise the service over its normal protocol. For a stateful service, write data on the old image, rebuild with the new one, and verify that the same data is readable. Record the versions, provider, and result in the PR. A passing plan test proves the selected reference, not that the image starts or can open existing data.
+
 ## Tell a skipped gate from a failed one
 
 Some maintainers run this repository through a workspace-local looper harness whose loop includes a `Drift Audit` step. That step is not a repository gate. It belongs to the harness, is configured per workspace by a gitignored `.local/looper/looper.yaml` (the repository `.gitignore` ignores `.local/`), and is owned by the maintainer running the loop. Nothing in this repository defines, schedules, or can fix it. Do not edit that automation from this repository. The scheduled dependency audit is unrelated to that harness step.

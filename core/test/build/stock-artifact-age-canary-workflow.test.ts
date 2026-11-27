@@ -36,7 +36,7 @@ test("generated canary workflow matches the checked-in YAML", async () => {
   expect(() => Schema.decodeUnknownSync(Workflow)(Bun.YAML.parse(committed))).not.toThrow();
 });
 
-test("canary runs weekly off the PR CI path and never fails the job for stale tags", () => {
+test("canary runs weekly or on demand with read-only credentials", () => {
   const raw = Bun.YAML.parse(renderStockArtifactAgeCanaryWorkflow());
   const workflow = Schema.decodeUnknownSync(Workflow)(raw);
   const triggers = Schema.decodeUnknownSync(
@@ -54,9 +54,17 @@ test("canary runs weekly off the PR CI path and never fails the job for stale ta
     with: { "persist-credentials": false },
   });
   expect(workflow.jobs.report.steps[1]?.uses).toBe(pinnedActionRef("oven-sh/setup-bun"));
-  expect(
-    workflow.jobs.report.steps.some((step) => step.run === "bun run scripts/stock-artifact-age-canary.ts"),
-  ).toBe(true);
   expect(renderStockArtifactAgeCanaryWorkflow()).not.toContain("continue-on-error");
-  expect(renderStockArtifactAgeCanaryWorkflow()).not.toContain("pull_request");
+});
+
+test("prepares the generated service catalogs before running the canary", () => {
+  const workflow = Schema.decodeUnknownSync(Workflow)(Bun.YAML.parse(renderStockArtifactAgeCanaryWorkflow()));
+  const commands = workflow.jobs.report.steps.flatMap(({ run }) => run?.trim().split("\n") ?? []);
+  const report = commands.indexOf("bun run scripts/stock-artifact-age-canary.ts");
+  expect(report).not.toBe(-1);
+  for (const generator of ["bun run codegen:node-releases", "bun run codegen:tomcat-catalog"]) {
+    const position = commands.indexOf(generator);
+    expect(position).not.toBe(-1);
+    expect(position).toBeLessThan(report);
+  }
 });

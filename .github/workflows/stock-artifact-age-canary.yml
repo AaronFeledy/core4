@@ -24,5 +24,9 @@ jobs:
         with:
           bun-version-file: .bun-version
       - run: bun install --frozen-lockfile --ignore-scripts
-      - name: Report stale stock service image tags
+      - name: Generate stock service catalogs
+        run: |
+          bun run codegen:node-releases
+          bun run codegen:tomcat-catalog
+      - name: Report stock service image ages
         run: bun run scripts/stock-artifact-age-canary.ts
