@@ -20,10 +20,10 @@ import {
   servicePortEndpoints,
 } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
+import { ELASTICSEARCH_DEFAULT_IMAGE } from "./default-images.ts";
 
-const DEFAULT_IMAGE = "docker.elastic.co/elasticsearch/elasticsearch:8.19.25";
 const VERSIONS = ["8"] as const;
-const ARTIFACTS = { "8": DEFAULT_IMAGE } as const;
+const ARTIFACTS = { "8": ELASTICSEARCH_DEFAULT_IMAGE } as const;
 export const DEFAULT_PORT = 9200;
 export const DEFAULT_TRANSPORT_PORT = 9300;
 export const ELASTICSEARCH_LISTENER = {
@@ -73,7 +73,7 @@ const applyElasticsearchFeature = (ctx: ServiceFeatureContext): void => {
   const port = selectPort(service);
   const transport = transportPort(service);
 
-  ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
+  ctx.setArtifact({ kind: "ref", ref: service.image ?? ELASTICSEARCH_DEFAULT_IMAGE });
   ctx.addEnv("discovery.type", "single-node");
   ctx.addEnv("xpack.security.enabled", "false");
   ctx.addEnv("http.port", String(port));

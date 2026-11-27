@@ -20,6 +20,7 @@ import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { tcpProbe } from "./_tcp-probe.ts";
 import { resolveWebroot } from "./_webroot.ts";
 import { CADDY_CONFIG_PATH, caddyLauncherCommand, renderCaddyfile } from "./caddy-config.ts";
+import { NGINX_DEFAULT_IMAGE } from "./default-images.ts";
 import { landoErrorPagesBuildStep, nginxErrorPageConfigLines } from "./http-errors.ts";
 import { nginxHiddenPathConfigLines } from "./http-hidden-paths.ts";
 import { nginxDefaultSiteRemovalBuildStep, nginxLauncherCommand } from "./nginx-config.ts";
@@ -28,7 +29,7 @@ export const SUPPORTED_STATIC_SERVERS = ["nginx", "caddy"] as const;
 export type SupportedStaticServer = (typeof SUPPORTED_STATIC_SERVERS)[number];
 
 export const STATIC_SERVER_IMAGES: Record<SupportedStaticServer, string> = {
-  nginx: "nginx:1.30-alpine",
+  nginx: NGINX_DEFAULT_IMAGE,
   caddy: "caddy:2-alpine",
 };
 

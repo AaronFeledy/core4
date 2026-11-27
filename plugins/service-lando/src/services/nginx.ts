@@ -25,6 +25,7 @@ import { launcherAuthority, primaryPortSelector, servicePortEndpoints } from "./
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { tcpProbe } from "./_tcp-probe.ts";
 import { resolveWebroot } from "./_webroot.ts";
+import { NGINX_DEFAULT_IMAGE } from "./default-images.ts";
 import { landoErrorPagesBuildStep, nginxErrorPageConfigLines } from "./http-errors.ts";
 import { nginxHiddenPathConfigLines } from "./http-hidden-paths.ts";
 import { nginxDefaultSiteRemovalBuildStep, nginxLauncherCommand } from "./nginx-config.ts";
@@ -32,7 +33,6 @@ import { PHP_FPM_PORT, phpListenPort } from "./php-via.ts";
 import { defaultNginxStaticCommand } from "./static.ts";
 import { uploadDirRegex } from "./upload-dirs.ts";
 
-const DEFAULT_IMAGE = "nginx:1.30-alpine";
 export const NGINX_LISTENER = {
   port: 80,
   daemon: "nginx",
@@ -154,7 +154,7 @@ const applyNginxFeature = (ctx: ServiceFeatureContext): void => {
   const webroot = resolveWebroot("nginx", service.webroot, service.appMount);
   const backend = service.backend?.trim() ?? "";
 
-  ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
+  ctx.setArtifact({ kind: "ref", ref: service.image ?? NGINX_DEFAULT_IMAGE });
   applyAuthoredProcessFields(ctx, ["user"]);
   ctx.setHealthcheck(tcpProbe(port, 10));
 
