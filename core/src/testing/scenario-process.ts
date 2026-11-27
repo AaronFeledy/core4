@@ -56,17 +56,26 @@ const sourceEnvKeys = [
   "LANDO_SYSTEM_PLUGIN_ROOT",
 ] as const;
 
-export const scenarioChild = (launcher: readonly string[], cwd: string, env: ChildEnvironment) => ({
+export const scenarioChild = (
+  launcher: readonly string[],
+  {
+    cwd,
+    env,
+    mode,
+  }: { readonly cwd: string; readonly env: ChildEnvironment; readonly mode: "host-only" | "compiled" },
+) => ({
   cmd: [...launcher],
   cwd,
-  env: { ...env, PWD: cwd, BUN_BE_BUN: undefined, LANDO_DISALLOW_BUN_BE_BUN_REENTRY: undefined },
+  env: {
+    // Source children inherit OS process basics, not endpoint or configuration hints.
+    ...(mode === "host-only" ? Object.fromEntries(sourceEnvKeys.map((key) => [key, env[key]])) : env),
+    PWD: cwd,
+    BUN_BE_BUN: undefined,
+    LANDO_DISALLOW_BUN_BE_BUN_REENTRY: undefined,
+  },
   stdout: "pipe" as const,
   stderr: "pipe" as const,
 });
-
-// Inherit only OS process basics, not Docker/Podman endpoint or user configuration hints.
-export const sourceChildEnvironment = (env: ChildEnvironment): ChildEnvironment =>
-  Object.fromEntries(sourceEnvKeys.map((key) => [key, env[key]]));
 
 const capture = (stream: ReadableStream<Uint8Array>) => {
   const reader = stream.getReader();

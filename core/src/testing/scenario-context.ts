@@ -60,7 +60,6 @@ import {
   ScenarioProcessError,
   errorTagFromStderr,
   scenarioChild,
-  sourceChildEnvironment,
   startScenarioProcess,
 } from "./scenario-process";
 import { makeScenarioProvider } from "./scenario-provider.ts";
@@ -778,7 +777,7 @@ const createE2eRunCli =
 
       const cwd = getWorkingDirectory();
       const proc = Bun.spawn({
-        ...scenarioChild([binary, ...args], cwd, env),
+        ...scenarioChild([binary, ...args], { cwd, env, mode: "compiled" }),
         signal,
         ...(options?.timeoutMs === undefined ? {} : { timeout: options.timeoutMs, killSignal: "SIGKILL" }),
       });
@@ -977,11 +976,11 @@ const makeScenarioContext = (
         ];
       }
       return yield* startScenarioProcess(
-        scenarioChild(
-          [...launcher, ...args],
-          getWorkingDirectory(),
-          runnerKind === "e2e" ? env : sourceChildEnvironment(env),
-        ),
+        scenarioChild([...launcher, ...args], {
+          cwd: getWorkingDirectory(),
+          env,
+          mode: runnerKind === "e2e" ? "compiled" : "host-only",
+        }),
         {
           command: args,
           ...startOptions,
