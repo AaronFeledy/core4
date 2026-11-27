@@ -519,6 +519,8 @@ For generated connection clients, private tooling metadata records the winning t
 
 The applied service's `serviceTypeId`, not its normalized `type` or the current desired declaration, selects the composed factory. The loaded declaration's ID must match exactly. Missing or unavailable applied declaration identity fails with `PlanReplanRequiredError`; observation and teardown remain supported. Only normal application records new applied identity, not plan-cache refresh or inference from task winners. This identity survives service-record persistence and partial application but does not change physical container-create fingerprints.
 
+A newer-format record fails the generated client before tooling preparation, even when it reads no public route fact. Direct invocation preserves `AppliedStateVersionError` and its upgrade remediation. An event `task:` or canonical `command:` step wraps it in `LandofileEventStepFailedError`, with an `applied-state-newer` issue at the authored invocation site, no exit code, and the tagged cause subject to §8.7.
+
 Reserved tooling names `run`, `scratch`, and `scratch:*` produce `landofile.tooling` issues in lint and planning; planning aggregates them in one `LandofileValidationError` (§7.8). Service types MUST NOT use `topLevelAlias` while the unsupported tooling-task key list (`UNSUPPORTED_TOOLING_TASK_KEYS` in `@lando/landofile`) rejects it (§8.5).
 
 #### 6.11.4 App-scoped features (`AppFeature`)

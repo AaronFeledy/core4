@@ -31,7 +31,7 @@ export {
 import type { CommandTrace, CommandWarning, DeprecationUse } from "@lando/sdk/schema";
 import { CommandResultEnvelope } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
-import { internalErrorRemediation, taggedErrorJson } from "./diagnostic.ts";
+import { internalErrorRemediation } from "./diagnostic.ts";
 
 export {
   causeRemediation,
@@ -42,18 +42,19 @@ export {
 export {
   type ToolingDiagnostic,
   boundedDiagnosticSummary,
+  projectCommandDiagnostic,
+  projectEventStepRefusal,
   projectToolingDiagnostic,
 } from "./tooling-diagnostic.ts";
 
 import { JsonProjectionError } from "../errors/command.ts";
-import { ToolingCompileError } from "../errors/tooling.ts";
 import { emitYamlDocument } from "../yaml/document.ts";
 import { encodeStreamFrame } from "./frames.ts";
 import { commandResultEnvelopePolicy, resultFramePolicy } from "./output-policies.ts";
 import { applyProjectResultKeys } from "./project-result.ts";
 import { encodeRedactedJson } from "./redacted-json.ts";
 import type { StructuralRedactionNode } from "./structural-redaction.ts";
-import { projectToolingDiagnostic } from "./tooling-diagnostic.ts";
+import { projectCommandDiagnostic } from "./tooling-diagnostic.ts";
 
 export {
   type EncodeStreamChunkFrameOptions,
@@ -120,12 +121,6 @@ const isJsonProjectionError = (error: unknown): error is JsonProjectionError =>
 const encodeCommandEnvelope = Effect.fnUntraced(function* (
   options: EncodeCommandResultOptions,
 ): Effect.fn.Return<unknown, unknown> {
-  const projectError = (error: unknown) => {
-    const diagnostic = taggedErrorJson(error);
-    return Schema.is(Schema.Struct(ToolingCompileError.fields))(diagnostic)
-      ? projectToolingDiagnostic(diagnostic, options.redactor)
-      : diagnostic;
-  };
   const base = {
     apiVersion: "v4" as const,
     command: options.command,
@@ -165,14 +160,14 @@ const encodeCommandEnvelope = Effect.fnUntraced(function* (
               }
             : {}),
           error: {
-            ...projectError(options.outcome.error),
+            ...projectCommandDiagnostic(options.outcome.error, options.redactor),
             ...(options.outcome.failureContext === undefined
               ? {}
               : { context: options.outcome.failureContext }),
             ...(options.outcome.additionalErrors.length
               ? {
                   additionalErrors: options.outcome.additionalErrors.map(({ role, error }) => ({
-                    ...projectError(error),
+                    ...projectCommandDiagnostic(error, options.redactor, role),
                     role,
                   })),
                 }

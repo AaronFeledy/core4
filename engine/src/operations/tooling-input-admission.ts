@@ -91,6 +91,7 @@ export const admitToolingTask = Effect.fnUntraced(function* (input: {
   readonly input?: ToolingInvocationInput;
   readonly expectedInputRevision?: ToolingInputRevision;
   readonly sites?: readonly ParsedPendingSite[];
+  readonly placementSites?: readonly ParsedPendingSite[];
 }) {
   if (input.task.disabled === true) {
     yield* protectSuppliedValues(input.input);
@@ -108,7 +109,7 @@ export const admitToolingTask = Effect.fnUntraced(function* (input: {
   const issues = [
     ...toolingInvocationIssues(input.task, sites),
     ...dynamicToolingReferenceIssues(input.task, sites),
-    ...serviceUrlPlacementIssues(sites),
+    ...serviceUrlPlacementIssues(input.placementSites ?? sites),
   ];
   const [first, ...rest] = issues;
   const checked =

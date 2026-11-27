@@ -33,7 +33,7 @@ const ROUTE_FACTS: ReadonlySet<string> = new Set(PUBLIC_ROUTE_FACTS);
 export const isPublicRouteFact = (member: string | undefined): member is PublicRouteFact =>
   member !== undefined && ROUTE_FACTS.has(member);
 
-const staticName = (segment: PathSegment | undefined): string | undefined => {
+export const staticServicePathName = (segment: PathSegment | undefined): string | undefined => {
   switch (segment?.type) {
     case undefined:
       return undefined;
@@ -53,7 +53,7 @@ const staticName = (segment: PathSegment | undefined): string | undefined => {
 };
 
 /** `(services.web).url` and `(services).web.url` read the same path as `services.web.url`. */
-const flattenedServicesPath = (node: ExpressionNode): readonly PathSegment[] | undefined => {
+export const flattenedServicesPath = (node: ExpressionNode): readonly PathSegment[] | undefined => {
   switch (node.kind) {
     case "Path":
       return node.head === "services" ? node.segments : undefined;
@@ -80,10 +80,10 @@ type Classified =
 const classifySegments = (segments: readonly PathSegment[]): Classified => {
   const [first, second, ...rest] = segments;
   if (first === undefined || second === undefined) return { kind: "refused", refusal: "whole-service" };
-  const member = staticName(second);
+  const member = staticServicePathName(second);
   if (member === undefined) return { kind: "refused", refusal: "computed-member" };
   if (!isPublicRouteFact(member)) return { kind: "other" };
-  const service = staticName(first);
+  const service = staticServicePathName(first);
   return service === undefined
     ? { kind: "refused", refusal: "computed-service", fact: member }
     : { kind: "route", service, fact: member, rest };

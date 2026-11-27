@@ -1,9 +1,16 @@
 import { describe, expect, test } from "bun:test";
 import { authoredInvocationSites, compileInvocationSites } from "@lando/landofile/compiled-sites";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
-import { AppliedStateVersionError } from "@lando/sdk/errors";
+import { AppliedStateVersionError, ProviderUnavailableError } from "@lando/sdk/errors";
 import type { ExpressionContext } from "@lando/sdk/expressions";
-import { type AppPlan, type RoutePlan, ServiceName, type ToolingTaskShape } from "@lando/sdk/schema";
+import {
+  type AppPlan,
+  PortNumber,
+  PortablePath,
+  type RoutePlan,
+  ServiceName,
+  type ToolingTaskShape,
+} from "@lando/sdk/schema";
 import {
   ProcessRunner,
   RouterService,
@@ -13,6 +20,7 @@ import {
 } from "@lando/sdk/services";
 import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect, Layer } from "effect";
+import { resolveInvocationServiceUrls } from "../../src/operations/invocation-service-urls.ts";
 import { prepareToolingInvocation } from "../../src/operations/tooling-prepare.ts";
 import { serviceCredsScopeForPlan } from "../../src/planner/landofile-scopes.ts";
 import * as BunProcessRunner from "../../src/services/process-runner.ts";
@@ -44,10 +52,11 @@ const run = async (
   task: ToolingTaskShape,
   options: {
     readonly applied?: AppPlan | undefined;
-    readonly appliedFailure?: AppliedStateVersionError;
+    readonly appliedFailure?: AppliedStateVersionError | ProviderUnavailableError;
     readonly desired?: AppPlan;
     readonly router?: typeof RouterService.Service | undefined;
     readonly context?: ExpressionContext;
+    readonly argv?: readonly string[];
   } = {},
 ) => {
   const calls: Calls = { applied: 0, authorities: 0, routes: [] };
@@ -117,7 +126,7 @@ const run = async (
         name: "probe",
         lookupKey: "probe",
         task,
-        input: { _tag: "RawArgv", argv: [] },
+        input: { _tag: "RawArgv", argv: options.argv ?? [] },
         source: { path: "/app/.lando.yml", task: "probe" },
       },
       sites,
@@ -235,6 +244,23 @@ describe("tooling invocation service URLs", () => {
     expect(calls).toMatchObject({ applied: 0, authorities: 0 });
   });
 
+  test("selects a container port by a computed service name without reading applied routes", async () => {
+    const { result, calls } = await run(
+      hostTask({ cmd: ["echo", "{{ (services[vars.target]).port }}"], vars: { target: "web" } }),
+      {
+        desired: {
+          ...desired,
+          services: { ...desired.services, [web.name]: { ...web, plannedPort: PortNumber.make(4321) } },
+        },
+      },
+    );
+    expect(result).toMatchObject({
+      _tag: "Success",
+      success: { invocations: [{ commands: [["echo", "4321"]] }] },
+    });
+    expect(calls).toMatchObject({ applied: 0, authorities: 0 });
+  });
+
   test("never evaluates, preflights, or resolves the definition of a var the caller overrides", async () => {
     // Given a literal var and a dynamic var whose sh and env both read a URL
     const task = hostTask({
@@ -256,6 +282,23 @@ describe("tooling invocation service URLs", () => {
       success: { invocations: [{ commands: [["echo", "https://caller.test", "caller.test"]] }] },
     });
     expect(calls).toMatchObject({ applied: 0, authorities: 0 });
+  });
+
+  test("admits placement using a caller-supplied var whose default reads a route", async () => {
+    const task = hostTask({
+      cmd: ["echo", "ok"],
+      dir: PortablePath.make("{{ vars.cwd }}"),
+      vars: { cwd: "{{ default(flags.fallback, services.web.url) }}" },
+      flags: { fallback: {} },
+    });
+    const { result } = await run(task, {
+      context: { vars: { cwd: "/caller" } },
+      argv: ["--fallback", "/authored"],
+    });
+    expect(result).toMatchObject({
+      _tag: "Success",
+      success: { invocations: [{ cwd: "/caller", commands: [["echo", "ok"]] }] },
+    });
   });
 
   test("judges a service by the applied plan when the Landofile no longer declares it", async () => {
@@ -285,7 +328,8 @@ describe("tooling invocation service URLs", () => {
     expect(calls.routes).toEqual([routes]);
   });
 
-  test("reports unreadable applied state as such, with its cause", async () => {
+  test("reports newer applied state with the provider's remediation and cause", async () => {
+    const remediation = "Upgrade Lando.";
     // When
     const { result } = await run(hostTask({ cmd: ["echo", "{{ services.web.url }}"] }), {
       appliedFailure: new AppliedStateVersionError({
@@ -296,7 +340,7 @@ describe("tooling invocation service URLs", () => {
         supportedVersion: 1,
         scope: "app",
         message: "Applied state was written by a newer Lando.",
-        remediation: "Upgrade Lando.",
+        remediation,
       }),
     });
     // Then
@@ -304,9 +348,49 @@ describe("tooling invocation service URLs", () => {
       _tag: "Failure",
       failure: {
         _tag: "ToolingCompileError",
-        message: expect.stringContaining("tooling.probe.cmd[1]: "),
-        issues: [{ reason: "applied-state-unreadable", path: ["tooling", "probe", "cmd", 1] }],
+        remediation,
+        cause: { _tag: "AppliedStateVersionError", storedVersion: 99, supportedVersion: 1 },
+        issues: [
+          {
+            reason: "applied-state-newer",
+            path: ["tooling", "probe", "cmd", 1],
+            suggestion: remediation,
+          },
+        ],
       },
+    });
+  });
+
+  test("keeps recovery guidance for a damaged applied record", async () => {
+    const remediation = "Restore the saved state from backup.";
+    const { result, calls } = await run(hostTask({ cmd: ["echo", "{{ services.web.url }}"] }), {
+      appliedFailure: new ProviderUnavailableError({
+        providerId: "lando",
+        operation: "applied-state.read",
+        message: "The applied record is damaged.",
+        remediation,
+      }),
+    });
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: { remediation, issues: [{ reason: "applied-state-unreadable", suggestion: remediation }] },
+    });
+    expect(calls.authorities).toBe(0);
+  });
+
+  test("reports a missing provider registry separately from damaged state", async () => {
+    const sites = authoredInvocationSites({ cmd: "echo {{ services.web.url }}" }, "/app/.lando.yml");
+    const result = await Effect.runPromise(
+      resolveInvocationServiceUrls({
+        plan: desired,
+        tool: "probe",
+        sites,
+        effectivePath: (site) => site.path,
+      }).pipe(Effect.result),
+    );
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: { issues: [{ reason: "runtime-unavailable" }] },
     });
   });
 

@@ -3,7 +3,11 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect } from "effect";
-import { compileInvocationSites, instantiateInvocation } from "../src/compiled-sites.ts";
+import {
+  authoredInvocationSites,
+  compileInvocationSites,
+  instantiateInvocation,
+} from "../src/compiled-sites.ts";
 import { loadAuthoredDocuments } from "../src/root-compile.ts";
 import { loadLandofileLayers } from "../src/service.ts";
 import { makeTestLandofilePorts, makeTestLandofileStateStore } from "./support.ts";
@@ -96,4 +100,32 @@ test("preserves noncanonical authored expression text in runtime errors", async 
     _tag: "Failure",
     failure: { _tag: "ConfigExpressionError", expression, filePath: file },
   });
+});
+
+test("captures only a computed service read's literal suffix for each service", async () => {
+  const unused = "x".repeat(65536);
+  const value = "{{ services[vars.target].creds.user }}";
+  const sites = await Effect.runPromise(
+    compileInvocationSites(authoredInvocationSites(value, "/app/.lando.yml"), {
+      services: {
+        primary: { creds: { user: "app", password: unused }, url: unused },
+        secondary: { creds: { user: "other", password: unused }, url: unused },
+      },
+    }),
+  );
+  const result = await Effect.runPromise(
+    instantiateInvocation({ value, sites, context: { vars: { target: "secondary" } } }),
+  );
+  expect(result).toBe("other");
+});
+
+test("bounds a computed service capture across all possible targets", async () => {
+  const value = "{{ services[vars.target].creds.user }}";
+  const user = "x".repeat(33000);
+  const result = await Effect.runPromise(
+    compileInvocationSites(authoredInvocationSites(value, "/app/.lando.yml"), {
+      services: { primary: { creds: { user } }, secondary: { creds: { user } } },
+    }).pipe(Effect.result),
+  );
+  expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "ConfigExpressionError" } });
 });

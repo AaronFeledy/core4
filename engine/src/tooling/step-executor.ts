@@ -3,7 +3,7 @@ import type { ToolingStepConditionError } from "@lando/sdk/errors";
 import type { ExpressionContext } from "@lando/sdk/expressions";
 import type { ToolingVarLiteral } from "@lando/sdk/schema";
 import { Cause, Effect, Exit } from "effect";
-import { isEventBoundaryError, isServiceUrlRefusal } from "./event-errors.ts";
+import { isEventBoundaryError, isInvocationRefusal } from "./event-errors.ts";
 
 import type {
   ToolingStepIteration,
@@ -103,7 +103,7 @@ const executeResolved = <E, A>(
           const [reason] = cause.reasons;
           if (cause.reasons.length !== 1 || reason === undefined || !Cause.isFailReason(reason))
             return Effect.failCause(cause);
-          return isEventBoundaryError(reason.error) || isServiceUrlRefusal(reason.error)
+          return isEventBoundaryError(reason.error) || isInvocationRefusal(reason.error)
             ? Effect.failCause(cause)
             : Effect.void;
         }),

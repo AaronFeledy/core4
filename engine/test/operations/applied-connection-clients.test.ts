@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { AppliedStateVersionError } from "@lando/sdk/errors";
 import { appliedClientFixture } from "./applied-client-fixture.ts";
 
 test("generated client uses applied user, database, port and freshly resolved reference", async () => {
@@ -27,6 +28,36 @@ test("event task uses applied connection facts before instantiation", async () =
     command: ["psql", "-p", "5433", "-U", "APPLIED-user", "-d", "APPLIED-db"],
     env: { PGPASSWORD: "first-applied-value" },
   });
+});
+
+test("a generated client refused by newer applied state retains the upgrade advice in an event", async () => {
+  const remediation = "Use Lando 4.15.0 or newer.";
+  const f = appliedClientFixture({
+    ignoreEventError: true,
+    appliedFailure: new AppliedStateVersionError({
+      providerId: "test",
+      operation: "applied-state.read",
+      path: "/state/applied.json",
+      storedVersion: 99,
+      supportedVersion: 14,
+      scope: "app",
+      message: "A newer Lando wrote the database connection facts.",
+      remediation,
+    }),
+  });
+  const result = await f.event();
+  expect(f.calls).toEqual([]);
+  expect(result).toMatchObject({
+    _tag: "Failure",
+    failure: {
+      _tag: "LandofileEventStepFailedError",
+      outputTail: "",
+      remediation,
+      issues: [{ reason: "applied-state-newer", path: ["events", "pre-start", 0, "task"] }],
+      cause: { _tag: "AppliedStateVersionError", storedVersion: 99, supportedVersion: 14 },
+    },
+  });
+  expect(result._tag === "Failure" && result.failure).not.toHaveProperty("exitCode");
 });
 
 test("authored whole-task override does not acquire applied client authority", async () => {

@@ -3,8 +3,8 @@ import {
   type InvocationSite,
   serviceUrlReads,
 } from "@lando/landofile/compiled-sites";
-import { mapFailures } from "@lando/sdk/command-result";
-import { ToolingCompileError } from "@lando/sdk/errors";
+import { causeRemediation, mapFailures } from "@lando/sdk/command-result";
+import { AppliedStateVersionError, ToolingCompileError } from "@lando/sdk/errors";
 import {
   type AppPlan,
   type LandofileEventName,
@@ -19,7 +19,7 @@ import { routerEnabled } from "../config/router-config.ts";
 import { authorizedRouteFacts } from "../lifecycle/route-url-bindings.ts";
 import { readOwnAppliedPlan } from "../planner/connection-client-task.ts";
 import { unavailableRouterReason } from "../subsystems/proxy/api.ts";
-import type { ServiceUrlFailureReason } from "../tooling/event-errors.ts";
+import { type ServiceUrlFailureReason, markInvocationRefusal } from "../tooling/event-errors.ts";
 import { type RouteFacts, primaryConcreteRoute } from "./connection-url.ts";
 import { activeEventNames } from "./event-invocation.ts";
 import { publishRouteFactDrift } from "./route-fact-drift.ts";
@@ -45,9 +45,10 @@ export const SERVICE_URL_REFUSED_EVENTS: ReadonlySet<string> = new Set<Landofile
 export const serviceUrlFailureText = (
   reason: ServiceUrlFailureReason,
   read: { readonly service: string; readonly fact: PublicRouteFact },
-  event?: string,
+  details: { readonly event?: string | undefined; readonly cause?: unknown } = {},
 ): { readonly message: string; readonly suggestion: string } => {
   const { service, fact } = read;
+  const { event, cause } = details;
   const expression = `services.${service}.${fact}`;
   switch (reason) {
     case "event-phase":
@@ -73,7 +74,20 @@ export const serviceUrlFailureText = (
     case "applied-state-unreadable":
       return {
         message: `${expression} is unavailable: Lando could not read the app's applied state.`,
-        suggestion: "Run `lando start` to rewrite the app's applied state, then retry.",
+        suggestion: causeRemediation(cause) ?? "Restore readable applied state before retrying.",
+      };
+    case "runtime-unavailable":
+      return {
+        message: `${expression} is unavailable: the runtime provider registry is not available.`,
+        suggestion: "Run the command with the app bootstrap layer and a configured runtime provider.",
+      };
+    case "applied-state-newer":
+      return {
+        message: `${expression} is unavailable: a newer Lando wrote the app's applied state.`,
+        suggestion:
+          cause instanceof AppliedStateVersionError
+            ? cause.remediation
+            : "Use the Lando build that wrote the applied state or upgrade Lando.",
       };
     case "no-applied-route":
       return {
@@ -135,7 +149,7 @@ export const resolveInvocationServiceUrls = Effect.fnUntraced(function* (input: 
       for (const { site, fact } of reads.get(service) ?? []) {
         if (located.has(site)) continue;
         located.add(site);
-        const text = serviceUrlFailureText(reason, { service, fact }, extra.event);
+        const text = serviceUrlFailureText(reason, { service, fact }, extra);
         issues.push({
           rule: "landofile.tooling",
           reason,
@@ -151,24 +165,33 @@ export const resolveInvocationServiceUrls = Effect.fnUntraced(function* (input: 
     const text = serviceUrlFailureText(
       reason,
       { service, fact: reads.get(service)?.[0]?.fact ?? "url" },
-      extra.event,
+      extra,
     );
-    return new ToolingCompileError({
-      tool: input.tool,
-      message:
-        first === undefined ? text.message : `${formatValidationIssuePath(first.path)}: ${first.message}`,
-      remediation: text.suggestion,
-      issues,
-      ...(extra.cause === undefined ? {} : { cause: extra.cause }),
-    });
+    return markInvocationRefusal(
+      new ToolingCompileError({
+        tool: input.tool,
+        message:
+          first === undefined ? text.message : `${formatValidationIssuePath(first.path)}: ${first.message}`,
+        remediation: text.suggestion,
+        issues,
+        ...(extra.cause === undefined ? {} : { cause: extra.cause }),
+      }),
+    );
   };
   const event = (yield* activeEventNames).find((name) => SERVICE_URL_REFUSED_EVENTS.has(name));
   if (event !== undefined) return yield* fail("event-phase", all, { event });
   const registry = yield* Effect.serviceOption(RuntimeProviderRegistry);
-  if (Option.isNone(registry)) return yield* fail("applied-state-unreadable", all);
-  const unreadable = (cause: unknown) => fail("applied-state-unreadable", all, { cause });
-  const applied = yield* readOwnAppliedPlan(registry.value, input.plan, unreadable).pipe(
-    mapFailures((cause) => (cause instanceof ToolingCompileError ? cause : unreadable(cause))),
+  if (Option.isNone(registry)) return yield* fail("runtime-unavailable", all);
+  const applied = yield* readOwnAppliedPlan(registry.value, input.plan, (cause) => cause).pipe(
+    mapFailures((cause) =>
+      fail(
+        cause instanceof AppliedStateVersionError ? "applied-state-newer" : "applied-state-unreadable",
+        all,
+        {
+          cause,
+        },
+      ),
+    ),
   );
   if (applied === undefined) {
     const unknown = all.filter((service) => !Object.hasOwn(input.plan.services, service));

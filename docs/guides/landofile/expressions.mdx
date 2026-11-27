@@ -338,29 +338,33 @@ These fields accept the expression:
 | Landofile `events` steps | `cmd`, `defer`, `env` values, and `if` |
 | `hostEvents` steps in `config.yml` | `cmd` |
 
-Name the service every time. The `{{ service.url }}`, `{{ service.hostname }}`, `{{ service.origin }}`, `{{ service.publicPort }}`, and `{{ service.scheme }}` shorthands only work in a service's `environment`, and Lando refuses them in tooling and events. The fields that decide where a command runs (`service`, `user`, and `dir`) can't read the URL, directly or through a var. Neither can `for` selectors, the `task` and `command` ids of an event step or the inputs it passes to a Lando command, or include conditions. The service name must be written out for a URL, so `services[vars.name].url` and a read of a whole `services.web` entry are refused too. Other facts, such as `services[vars.name].port`, can still use a computed name. `lando app:config:lint` reports each of these as an error at its Landofile path.
+Write the service name literally for a public route fact. The `{{ service.url }}`, `{{ service.hostname }}`, `{{ service.origin }}`, `{{ service.publicPort }}`, and `{{ service.scheme }}` shorthands only work in a service's `environment`. Tooling and events also reject `services[vars.name].url`, a computed fact name, and a read of a whole `services.web` entry. In Landofile tooling and project events, a computed service name can select a named non-route fact, such as `{{ services[vars.name].port }}` for the selected service's container port.
+
+The fields that decide where a command runs (`service`, `user`, and `dir`) can't read a route fact directly or through a var's default. If the caller supplies that var, Lando uses the supplied value without checking its default for placement. `lando app:config:lint` still checks the authored default. `for` selectors, event `task` and `command` IDs, inputs passed to a Lando command, and include conditions can't read a route fact either.
 
 ### Pick an event that has a URL
 
 A URL exists only while the app is serving. Steps in `post-start`, `post-restart`, and `post-rebuild` read the new address. Steps in `pre-stop`, `pre-restart`, `pre-rebuild`, and `pre-destroy` read the address the app is about to leave.
 
-`pre-init`, `post-init`, and `pre-start` run before start applies the app's routes, and `post-stop` and `post-destroy` run once the app is no longer serving, so a step there that reads the URL fails when the event runs. That includes a `task:` or `command:` step whose target reads it. Lint reports it ahead of time as an error with reason `event-phase`. See [Landofile events](./events.mdx) for what a failed step does to each command.
+`pre-init`, `post-init`, and `pre-start` run before start applies the app's routes, and `post-stop` and `post-destroy` run once the app is no longer serving, so a step there that reads the URL fails when the event runs. That includes a `task:` or `command:` step whose target reads it. Lint reports direct project-event reads ahead of time with reason `event-phase`. See [Landofile events](./events.mdx) for what a failed step does to each command.
 
 ### When a URL can't be resolved
 
-A tooling task resolves every URL it reads before any of its vars or commands run. If one is missing, the task exits `1` with `ToolingCompileError`, and `--format=json` lists the affected reading sites under `error.issues` with one of these `reason` values. A reason about the whole app, such as `app-not-started`, lists every site that reads a URL.
+A tooling task resolves every URL it reads before any of its vars or commands run. If one is missing, the task exits `1` with `ToolingCompileError`, and `--format=json` lists the affected reading sites under `error.issues` with one of these `reason` values. An app-wide refusal locates every reading site, subject to the diagnostic limit.
 
-An event resolves each step's URLs as that step runs, so earlier steps may already have run. The refused step fails the event with `LandofileEventStepFailedError`, which carries the same `issues` and no `exitCode`, because the step never started. `ignoreError` doesn't skip it.
+An event resolves each step's URLs as that step runs, so earlier steps may already have run. A refused event step has no `exitCode`. `ignoreError` doesn't skip it. `post-start`, `post-stop`, and `post-destroy` warn after the operation succeeds; other failing hooks return `LandofileEventStepFailedError`. For a failed command, `error.cause` can contain `AppliedStateVersionError` when it fits the diagnostic limit.
 
 | Reason | Meaning | Fix |
 | --- | --- | --- |
-| `app-not-started` | The app has never been started. | Run `lando start`. |
+| `app-not-started` | There is no applied plan for this app. | Run `lando start`. |
 | `unknown-service` | No service has that name. | Name a service from the Landofile. |
-| `applied-state-unreadable` | Lando couldn't read what the last start applied. | Run `lando start`. |
+| `applied-state-newer` | A newer Lando wrote what the last start applied. | Leave the file in place and run the build that wrote it, or a newer Lando. |
+| `applied-state-unreadable` | Lando couldn't read what the last start applied. | Follow the reported remediation before retrying. |
+| `runtime-unavailable` | The invocation has no runtime provider registry. | Run the command with the app bootstrap layer and a configured runtime provider. |
 | `no-applied-route` | The last start applied no route with a concrete hostname for the service, or the service was added since. | Add a non-wildcard route, then `lando start`. |
 | `routing-disabled` | The router is off for this app. | Enable it, then `lando start`. |
 | `router-unsupported` | The selected router can't report its addresses. | Run `lando setup`, then `lando start`. |
-| `authority-unavailable` | The router hasn't recorded its port. | Run `lando start`. |
+| `authority-unavailable` | Lando could not read a recorded router address for the route. | Run `lando start`. |
 | `event-phase` | The step runs in an event when the app isn't serving. | Move it to an event listed above. |
 
 `lando app:config:lint` catches what the Landofile alone can show. For tooling and event reads it reports errors, so `valid` is false, with reasons `unknown-service`, `no-route` (the service declares only wildcard routes or an empty `routes` list, or declares no routes and has no HTTP listener to give it a default route), and `event-phase`. Routing that is turned off is only a warning, reason `routing-disabled`, because turning it off is a deliberate choice. Lint skips a read of a service it couldn't resolve. A URL in a service `environment` is stricter: a service without a concrete route, or a disabled router, is an error there. Global apps don't support public URL bindings.
@@ -793,6 +797,31 @@ expect(config.exitCode, config.stdout).toBe(0);
 expect(JSON.parse(config.stdout).result.landofile.services.web.extra_hosts).toEqual({ "peer.test": "192.0.2.{{ app.name | length }}" });
 const plan = yield* context.runCli("lando app:cache:refresh --format=json");
 expect(plan.exitCode, plan.stdout).toBe(0);
+}`} />
+    </Step>
+  </Scenario>
+  <Scenario id="computed-service-port" render={false} reason="Exercise a computed service name in Landofile tooling.">
+    <Step name="resolve-computed-port">
+      <Run runtime="library" displayCode="lando show-port --format=json" code={`{
+yield* Effect.promise(() => Bun.write(join(context.testDir, ".lando.yml"), [
+  "name: computed-port",
+  "services:",
+  "  web:",
+  "    image: nginx:alpine",
+  "    port: 4321",
+  "tooling:",
+  "  show-port:",
+  "    service: ':host'",
+  "    vars:",
+  "      target: web",
+  "    cmd: [echo, '{{ services[vars.target].port }}']",
+].join("\n")));
+const lint = yield* context.runCli("lando app:config:lint --format=json");
+expect(lint.exitCode, lint.stdout).toBe(0);
+expect(JSON.parse(lint.stdout).result.valid).toBe(true);
+const result = yield* context.runCli("lando show-port --format=json");
+expect(result.exitCode, result.stdout).toBe(0);
+expect(JSON.parse(result.stdout).result.stdout).toBe("4321\n");
 }`} />
     </Step>
   </Scenario>

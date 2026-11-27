@@ -1,8 +1,8 @@
 import {
+  AppliedStateVersionError,
   LandofileEventInvocationDepthError,
   LandofileEventLifecycleReentryError,
   LandofileEventStepFailedError,
-  ToolingCompileError,
 } from "@lando/sdk/errors";
 
 export type EventBoundaryError = LandofileEventInvocationDepthError | LandofileEventLifecycleReentryError;
@@ -14,27 +14,34 @@ export const isEventBoundaryError = (error: unknown): error is EventBoundaryErro
 export const isEventRuntimeError = (error: unknown): error is EventRuntimeError =>
   isEventBoundaryError(error) || error instanceof LandofileEventStepFailedError;
 
-/** Stable `reason` values on the located issues of a refused `services.<name>.url` read. */
-const SERVICE_URL_FAILURE_REASONS = [
-  "event-phase",
-  "unknown-service",
-  "app-not-started",
-  "applied-state-unreadable",
-  "no-applied-route",
-  "routing-disabled",
-  "router-unsupported",
-  "authority-unavailable",
-] as const;
-export type ServiceUrlFailureReason = (typeof SERVICE_URL_FAILURE_REASONS)[number];
+/** Stable reasons on located issues for refused public route-fact reads. */
+export type ServiceUrlFailureReason =
+  | "event-phase"
+  | "unknown-service"
+  | "app-not-started"
+  | "applied-state-newer"
+  | "applied-state-unreadable"
+  | "runtime-unavailable"
+  | "no-applied-route"
+  | "routing-disabled"
+  | "router-unsupported"
+  | "authority-unavailable";
 
-const serviceUrlReasons: ReadonlySet<string> = new Set(SERVICE_URL_FAILURE_REASONS);
+// Classify at the refusal site. Bounded/redacted diagnostics may not retain any evidence of it.
+const invocationRefusals = new WeakSet<object>();
+
+export const markInvocationRefusal = <A extends object>(error: A): A => {
+  invocationRefusals.add(error);
+  return error;
+};
 
 /**
- * A step refused because a public service URL it reads cannot be resolved. `ignoreError` covers a
- * step that ran and failed, never one whose command Lando could not build, so this escapes it.
+ * A step refused because its public route facts or newer applied state cannot be read. `ignoreError`
+ * covers a step that ran and failed, never one whose command Lando could not build.
  */
-export const isServiceUrlRefusal = (error: unknown): boolean =>
-  (error instanceof ToolingCompileError || error instanceof LandofileEventStepFailedError) &&
-  (error.issues ?? []).some(
-    (issue) => issue.rule === "landofile.tooling" && serviceUrlReasons.has(issue.reason ?? ""),
-  );
+export const isInvocationRefusal = (error: unknown): boolean =>
+  error instanceof AppliedStateVersionError ||
+  (typeof error === "object" && error !== null && invocationRefusals.has(error));
+
+export const preserveInvocationRefusal = <A extends object>(original: unknown, projected: A): A =>
+  isInvocationRefusal(original) ? markInvocationRefusal(projected) : projected;

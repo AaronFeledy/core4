@@ -55,7 +55,7 @@ export const serviceUrlLintIssues = (input: {
         },
       ];
       const known = (reason: "event-phase" | "unknown-service" | "routing-disabled", event?: string) => {
-        const text = serviceUrlFailureText(reason, { service, fact }, event);
+        const text = serviceUrlFailureText(reason, { service, fact }, { event });
         return finding(reason, text.message, text.suggestion);
       };
       if (root === "events" && SERVICE_URL_REFUSED_EVENTS.has(String(name)))

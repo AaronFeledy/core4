@@ -114,6 +114,7 @@ const stepFailure = (
       label: eventStepLabel(options.event, leaf.source, leaf.authoredIndex),
       index: leaf.authoredIndex,
       kind: leaf.kind,
+      source: leaf.source,
       ...(leaf.kind === "cmd" && leaf.service !== undefined ? { service: leaf.service } : {}),
       hostShell: leafTargetsHost(leaf),
     },

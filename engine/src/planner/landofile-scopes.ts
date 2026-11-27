@@ -2,6 +2,8 @@ import {
   compiledValueError,
   consumeSites,
   isPublicRouteFact,
+  isServiceUrlInvocationPath,
+  serviceUrlReads,
   siteExpression,
 } from "@lando/landofile/compiled-sites";
 import { provenanceOf } from "@lando/landofile/provenance";
@@ -14,6 +16,7 @@ import { pathHasPrefix, pathsOverlap } from "@lando/landofile/validation";
 import { mapFailures } from "@lando/sdk/command-result";
 import { ConfigExpressionError } from "@lando/sdk/errors";
 import { type ExpressionContext, expressionScopeMemberPaths } from "@lando/sdk/expressions";
+import { executableExpressionPath } from "@lando/sdk/landofile/execution-sites";
 import {
   type AppPlan,
   type CompilationContext,
@@ -174,7 +177,13 @@ export const referencedServices = (
   for (const site of sites) {
     if (!pathHasPrefix(site.path, pathPrefix)) continue;
     const members = expressionScopeMemberPaths(site.template, "services");
-    if (!members.analyzable)
+    const [root] = site.path;
+    const invocation =
+      root === "hostEvents"
+        ? isServiceUrlInvocationPath(site.path)
+        : (root === "tooling" || root === "toolingDefaults" || root === "events") &&
+          executableExpressionPath(site.path);
+    if (!members.analyzable && !(invocation && serviceUrlReads(site.template).refusal === undefined))
       return Result.fail(
         new ConfigExpressionError({
           message: "A services.<name> reference must name the service literally.",

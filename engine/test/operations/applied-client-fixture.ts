@@ -1,4 +1,5 @@
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
+import type { AppliedStateVersionError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
@@ -59,6 +60,8 @@ export const appliedClientFixture = (
   input: {
     readonly authored?: ToolingTaskShape;
     readonly applied?: "missing" | "historical" | "family" | "root" | "id" | "provider";
+    readonly appliedFailure?: AppliedStateVersionError;
+    readonly ignoreEventError?: boolean;
     readonly missingDesired?: boolean;
     readonly appliedServiceTypeId?: string | null;
     readonly desiredServiceTypeId?: string;
@@ -120,9 +123,13 @@ export const appliedClientFixture = (
   const generated = clientFactory(service.name, desired);
   const desiredPlan =
     input.inherited?.plan ??
-    attachEffectiveTooling(withProjectEvents(base, { "pre-start": [{ task: "psql" }] }), generated, {
-      connectionClients: { psql: service.name },
-    });
+    attachEffectiveTooling(
+      withProjectEvents(base, {
+        "pre-start": [{ task: "psql", ignoreError: input.ignoreEventError === true }],
+      }),
+      generated,
+      { connectionClients: { psql: service.name } },
+    );
   const plan =
     input.desiredServiceTypeId === undefined
       ? desiredPlan
@@ -230,7 +237,10 @@ export const appliedClientFixture = (
         list: Effect.succeed([base.provider]),
         capabilities: Effect.succeed(provider.capabilities),
         appliedPlansFor: () => Effect.succeed(input.applied === "missing" ? [] : [applied]),
-        readAppliedPlanStrict: () => Effect.succeed(input.applied === "missing" ? undefined : applied),
+        readAppliedPlanStrict: () =>
+          "appliedFailure" in input
+            ? Effect.fail(input.appliedFailure)
+            : Effect.succeed(input.applied === "missing" ? undefined : applied),
         resolveAppliedPlan: () => Effect.succeed(applied),
         select: () =>
           Effect.sync(() => {

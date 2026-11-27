@@ -9,7 +9,12 @@ import { isPlainRecord } from "@lando/sdk/landofile";
 import { LandofileSourceValue, type ParsedPendingSite, SecretRef } from "@lando/sdk/schema";
 import { Schema } from "effect";
 import { templateSource } from "./expression-source.ts";
-import { serviceUrlReadPath } from "./service-url-reads.ts";
+import {
+  flattenedServicesPath,
+  isPublicRouteFact,
+  serviceUrlReadPath,
+  staticServicePathName,
+} from "./service-url-reads.ts";
 
 const STATIC_SCOPES = new Set([
   "env",
@@ -37,6 +42,32 @@ export const captureTemplate = (site: ParsedPendingSite, context: ExpressionCont
   };
   const segments = (parts: readonly PathSegment[]): readonly PathSegment[] =>
     parts.map((part) => (part.type === "dynamic" ? { ...part, expr: node(part.expr) } : part));
+  const readStatic = (value: unknown, parts: readonly PathSegment[]): unknown => {
+    let captured = value;
+    for (const part of parts) {
+      switch (part.type) {
+        case "prop":
+        case "key": {
+          const key = part.type === "prop" ? part.name : part.key;
+          captured = isPlainRecord(captured) ? captured[key] : undefined;
+          break;
+        }
+        case "index":
+          captured = Array.isArray(captured) ? captured[part.index] : undefined;
+          break;
+        case "dynamic":
+          return fail();
+        default:
+          return part satisfies never;
+      }
+    }
+    return captured;
+  };
+  const capturedPath = (key: string, tail: readonly PathSegment[]): ExpressionNode => ({
+    kind: "Path",
+    head: "services",
+    segments: [{ type: "prop", name: "__invocationCaptures" }, { type: "key", key }, ...segments(tail)],
+  });
   const node = (value: ExpressionNode): ExpressionNode => {
     // A public route fact comes from the applied routes when the command runs, never from a capture.
     const read = serviceUrlReadPath(value);
@@ -50,6 +81,22 @@ export const captureTemplate = (site: ParsedPendingSite, context: ExpressionCont
           ...segments(read.rest),
         ],
       };
+    const [selector, member, ...rest] = flattenedServicesPath(value) ?? [];
+    if (selector?.type === "dynamic" && staticServicePathName(selector) === undefined) {
+      const name = staticServicePathName(member);
+      if (name === undefined || isPublicRouteFact(name)) return fail();
+      // Capture the static suffix, keyed by service, without retaining any service object.
+      const end = rest.findIndex((part) => part.type === "dynamic");
+      const count = end < 0 ? rest.length : end;
+      const suffix: readonly PathSegment[] = [{ type: "key", key: name }, ...rest.slice(0, count)];
+      const key = JSON.stringify(["service-fact", suffix]);
+      const facts = Object.entries(context.services ?? {}).flatMap(([service, record]) => {
+        const fact = readStatic(record, suffix);
+        return fact === undefined ? [] : [[service, fact] as const];
+      });
+      captures[key] = Schema.decodeUnknownSync(LandofileSourceValue)(Object.fromEntries(facts));
+      return capturedPath(key, [selector, ...rest.slice(count)]);
+    }
     switch (value.kind) {
       case "Literal":
         return value;
@@ -70,34 +117,11 @@ export const captureTemplate = (site: ParsedPendingSite, context: ExpressionCont
                 Schema.decodeUnknownSync(SecretRef)({ _tag: "SecretRef", reference: name }),
             };
         }
-        for (const part of value.segments.slice(0, count)) {
-          switch (part.type) {
-            case "prop":
-              captured = isPlainRecord(captured) ? captured[part.name] : undefined;
-              break;
-            case "key":
-              captured = isPlainRecord(captured) ? captured[part.key] : undefined;
-              break;
-            case "index":
-              captured = Array.isArray(captured) ? captured[part.index] : undefined;
-              break;
-            case "dynamic":
-              return fail();
-            default:
-              return part satisfies never;
-          }
-        }
-        const key = JSON.stringify([value.head, value.segments.slice(0, count)]);
+        const path = value.segments.slice(0, count);
+        captured = readStatic(captured, path);
+        const key = JSON.stringify([value.head, path]);
         if (captured !== undefined) captures[key] = Schema.decodeUnknownSync(LandofileSourceValue)(captured);
-        return {
-          kind: "Path",
-          head: "services",
-          segments: [
-            { type: "prop", name: "__invocationCaptures" },
-            { type: "key", key },
-            ...segments(value.segments.slice(count)),
-          ],
-        };
+        return capturedPath(key, value.segments.slice(count));
       }
       case "Access":
         return { ...value, target: node(value.target), segments: segments(value.segments) };
