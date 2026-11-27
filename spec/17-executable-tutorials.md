@@ -71,7 +71,7 @@ Prop schemas live in `@lando/sdk/docs/components`; implementations and AST helpe
 
 A CLI `command` on `<Run>` or `<Verify>` is one POSIX shell command line, and it executes as the argument vector a POSIX shell would produce for it, without invoking a shell. Single quotes are literal; double quotes honor backslash escapes of `$`, backtick, `"`, `\`, and newline; an unquoted backslash escapes the next character and a backslash-newline is removed; a quoted empty string is an argument. Text a shell would interpret instead of passing through (command separators including an unquoted newline, operators, redirections, `$` and backtick substitution, globs, brace and history expansion, and a word-initial `~` or `#`) MUST be quoted or escaped, and a command MUST NOT be empty or begin with a `NAME=value` environment assignment. A command without exactly one such reading fails generation and lint with `guide.command.syntax` at the component's source line. The check applies after interpolation (§19.5) to both the execution and the display projection, and its diagnostic names the reason and offending character, never the command or a bound value. The compiler carries the parsed argument vector on the resolved execution projection, and every runner executes that vector.
 
-`<Verify event>` matches the events published by the scenario's most recent CLI invocation, whether a `<Run command>` or a `<Verify command>`. Only in-process scenario invocations publish to the scenario, so a `<Verify event>` in an `e2e` scenario fails generation and lint with `guide.event.e2e`.
+`<Verify event>` matches the events published by the scenario's most recent foreground CLI invocation, whether a `<Run command>` or a `<Verify command>`. Child invocations do not publish lifecycle events to the scenario. A `<Verify event>` in an `e2e` scenario fails generation and lint with `guide.event.e2e`.
 
 `<Fetch>` is valid only in a scenario whose effective layer is `e2e`; other layers fail generation and lint with `guide.fetch.requires-e2e`. The method is `GET` (default) or `HEAD`, with optional request headers. `expect.status` MUST be one integer from 200 to 599 or a nonempty list of such codes. `expect.headers` optionally applies `MatcherSchema` by case-insensitive response header name, and `expect.body` optionally matches the response body as text. Redirects MUST NOT be followed.
 
@@ -93,7 +93,11 @@ The e2e scenario uses the roots supplied by its runner, whether caller-owned or 
 
 The default scenario layer dispatches the real CLI in process against the scenario's own in-memory provider registry, supplied to every provider-level runtime consumer. Each invocation MUST pass an explicit cwd, environment, renderer IO, exit-status sink, service substitutions, and event observer without patching process globals. A nested `lando` that host tooling runs resolves through `PATH` in source mode, not to the in-process CLI, so a scenario whose `:host` tooling or script calls `lando` MUST use the e2e layer, where the compiled CLI runs nested calls as itself (§8.2.4). Each in-process scenario MUST own separate Lando data, cache, configuration, and system-plugin roots, and fixture lookup MUST resolve from a captured repository root. Lifecycle commands take their real code paths: an apply persists the applied plan through the applied-state store that real providers use, later commands resolve applied state and teardown evidence from that record, and destroy removes it. Provider observation reports only containers the scenario created. Container execution, routing, and post-start URL scanning use in-memory test doubles. Every event an invocation publishes is recorded, redacted, on the context and on that invocation's result. The harness MUST NOT synthesize command results or events, including static-site fetches; assertions requiring real container output belong in an e2e scenario with cleanup and app destruction.
 
-A scenario MAY start a CLI invocation as a background run. The run uses the same argument vector, roots, and environment as a foreground invocation on the scenario's layer. The scenario waits on a readiness condition over the run's output or a workspace file with a bounded timeout, delivers at most one signal, and then awaits the result: exit status or terminating signal, stdout, and stderr. Readiness waits are event-driven; fixed sleeps are forbidden. The scenario `Scope` terminates and reaps any background run the scenario did not finish. A platform that cannot deliver the requested signal fails with a tagged error rather than skipping. Background runs are available to case scenarios (§19.7); no MDX component exposes them.
+A scenario MAY use `ScenarioContext.startCli` to start a CLI child. The child uses the same argument vector, current working directory, and Lando roots as a foreground command. The `e2e` runner uses the selected compiled binary and runner environment with embedded-Bun reentry controls removed. The default layer uses the source entry, the scenario's isolated Lando roots, and an allowlist of OS process variables, excluding ambient provider endpoints and configuration. Roots isolate Lando state, not access to the host. Default-layer dialogues MUST be host-only. Provider-backed dialogues belong on `e2e`. Neither child has the scenario's injected provider or contributes lifecycle events.
+
+A child MAY keep a writable stdin pipe; otherwise stdin is closed at spawn. The handle writes and flushes input and can send EOF. Both output streams drain concurrently into bounded captures. A scenario can wait for a matching stdout line with an event-driven, bounded wait that fails when stdout closes before a match. The result is repeatable and includes stdout, stderr, exit status, and the terminating signal when available. The owning `Scope` terminates and reaps any unfinished child. Workspace-file readiness and delivery of one caller-selected signal (with a tagged refusal on platforms that cannot deliver it) remain outstanding (#2524).
+
+Background runs are available to case scenarios (§19.7) on either layer and to library `<Run>` code on the default layer. No MDX component exposes a line dialogue.
 
 ### 19.5 Display vs. execute
 
@@ -107,11 +111,11 @@ An empty string is a valid bound value. Display values MUST be short literals su
 
 ### 19.6 Transcripts
 
-Each scenario variant captures stdout, stderr, exit status, lifecycle events, inspected artifacts, and cleanup status as a `Transcript` of `TranscriptFrame` values under `dist/transcripts/`.
+Each scenario variant captures stdout, stderr, exit status, in-process lifecycle events, inspected artifacts, and cleanup status as a `Transcript` of `TranscriptFrame` values under `dist/transcripts/`. A background run contributes at most one run frame, including when reaped by its scope; visibility is captured at spawn. Stdin and terminating signals are not recorded in the frame.
 
 | Surface | Contract |
 |---|---|
-| Internal transcript | Contains all sanitized frames, including hidden, test-only, fixture, event, and cleanup frames; consumed by CI and diagnostics. |
+| Internal transcript | Contains sanitized recorded frames, including those from test-only scenarios; consumed by CI and diagnostics. Actions inside a hidden block may suppress recording entirely. |
 | Public transcript | Generated statically from the resolved scenario at codegen time; contains only visible frames from rendered reader scenarios; consumed by docs and recipe README generation. Not execution evidence. |
 
 A public `<Fetch>` frame renders only the request line (method and authored URL without query or fragment) and the expected HTTP status or statuses. It MUST NOT render headers or response content.
@@ -197,6 +201,8 @@ A scaffold README MUST exist for every declared legal variant cell, including ce
 Embedding guides (§16) MAY target runtime operations and `App` handles instead of the binary. Rendered docs MUST show the corresponding host TypeScript. Command-shaped library operations MAY use `@lando/core/cli`; lifecycle guides SHOULD prefer `App` handles.
 
 Each MDX scenario runs in exactly one mode: CLI or shell commands, or library `<Run runtime="library">`. Mixing modes within one scenario is an error, and an `e2e` MDX scenario is CLI only. CLI and library forms MAY coexist on one page as separate scenarios when the reader workflow needs both. Library `code` and `displayCode` are opaque to guide interpolation (§19.5). Case scenarios (§19.7) are TypeScript against `ScenarioContext` and are not bound by this mode rule; an `e2e` case scenario still reaches the product only through the compiled binary.
+
+Library code on the default layer MAY drive the CLI through `ScenarioContext.runCli` or `ScenarioContext.startCli` (§19.4).
 
 ### 19.15 Acceptance criteria
 

@@ -246,6 +246,14 @@ harness. Commands never change the host process directory or replace its streams
 For a static-site fetch, use an e2e scenario with `<Cleanup />` and
 `lando destroy -y`.
 
+For a command that needs real pipes, call `context.startCli(command, { stdin: "pipe" })`
+from default-layer library code. Write a request, wait for its response with
+`stdoutLine`, then call `closeInput` and await `result`. The scenario scope reaps
+an unfinished child. The source child gets a scrubbed environment and isolated
+Lando roots, but those roots isolate state, not access to the host. It does not
+use the in-memory provider or record lifecycle events. Keep source dialogues
+host-only and use the compiled e2e runner for provider-backed dialogues.
+
 `<Verify event="post-start" />` passes when the most recent CLI command in
 the scenario published that event, so put it right after the command:
 
