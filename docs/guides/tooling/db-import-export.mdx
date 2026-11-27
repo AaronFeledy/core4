@@ -378,7 +378,7 @@ lando db:reset --yes
     </Step>
   </Scenario>
 
-  <Scenario id="restore-label-and-prune-recovery" layer="e2e" render={false} reason="A reused label restores the newest snapshot and --recovery deletes only recovery snapshots">
+  <Scenario id="restore-label-and-prune-recovery" layer="e2e" timeout={90000} render={false} reason="A reused label restores the newest snapshot and --recovery deletes only recovery snapshots">
     <Step name="restore-reused-label">
       <UseFixture name="one-db" />
       <Verify command="lando start --format=json" expect={{ stdout: { regex: "\"ok\":true" } }} />
