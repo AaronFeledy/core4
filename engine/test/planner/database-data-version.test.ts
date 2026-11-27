@@ -91,9 +91,8 @@ test("classifies actual database startup diagnostics and reads MySQL upgrade his
     })?.finding,
   ).toEqual({ direction: "upgrade", evidence: "server", dataVersion: "16", imageVersion: "17" });
   const lines = ['{"s":"F","msg":"UPGRADE PROBLEM: Invalid featureCompatibilityVersion document"}'];
-  expect(classifyDataVersionRefusal(mongo, { exitCode: 62, lines })?.finding).toEqual({
-    direction: "incompatible",
-    evidence: "server",
-  });
+  const refusal = classifyDataVersionRefusal(mongo, { exitCode: 62, lines });
+  expect(refusal?.finding).toEqual({ direction: "incompatible", evidence: "server" });
+  expect(refusal?.hint).toContain("setFeatureCompatibilityVersion");
   expect(classifyDataVersionRefusal(mongo, { exitCode: 1, lines })).toBeUndefined();
 });

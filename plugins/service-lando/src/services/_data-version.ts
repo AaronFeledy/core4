@@ -68,7 +68,7 @@ const contracts = {
         direction: "incompatible",
         pattern: "Invalid featureCompatibilityVersion",
         exitCodes: [62],
-        hint: "Use MongoDB's supported upgrade sequence: start the old version, set featureCompatibilityVersion to that version, then upgrade through each required intermediate series (for example, from 7.0 through 8.0 before a later 8.x). Set featureCompatibilityVersion again as required before moving on.",
+        hint: "Use MongoDB's supported upgrade sequence: start the old version and use the setFeatureCompatibilityVersion command to set FCV to that version. Upgrade through each required intermediate series (for example, from 7.0 through 8.0 before a later 8.x) and set FCV as required before moving on.",
       },
     ],
   },
