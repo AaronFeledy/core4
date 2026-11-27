@@ -45,9 +45,45 @@ On Linux providers that support [project-user mapping](./file-ownership.mdx), th
 
 Run `lando info --format=json` from your app directory and check `projectUser` for the `web` service. When it names `nginx`, user commands such as `lando exec` use that account by default too. Lando doesn't persist `/var/cache/nginx` as a home. If the provider can't map the worker, `projectUserExplanation` tells you why; the service may not be able to read private files.
 
+An existing container keeps its applied command identity until you run `lando start` to apply the new plan. If that switches your default commands from root to `nginx`, see [Recover an old nginx root home](./home-and-host.mdx#recover-an-old-nginx-root-home) before removing any volumes.
+
 On an engine that renumbers image accounts, the default worker keeps its container identity if your host UID or GID is `0`. Lando never renumbers the worker to either zero ID.
 
 Set `projectUser: false` on the service to opt out. If you supply your own `command:` or `entrypoint:`, Lando doesn't assume your launcher uses the stock worker. If you supply a different image or a replacement build, it doesn't assume that image has the stock account or IDs.
+
+## Mount your project read-only
+
+`type: nginx` mounts your project read-write by default, regardless of whether it serves static files or sends PHP requests to a backend. On a provider that maps the project user, commands in the nginx service can write to the mounted files that your host user can write. [The `static` and `static:nginx` types](./static.mdx) mount the project read-only by default.
+
+To make only the nginx service's project mount read-only, add `appMount` to its block in `.lando.yml`. Keep `target: /app` to leave the mount and relative webroot in their usual places:
+
+```yaml
+services:
+  web:
+    type: nginx
+    appMount:
+      target: /app
+      readOnly: true
+```
+
+From the app directory, run `lando app:config:lint`, then `lando start` to apply the change. In `lando info --format=json`, check that the `web` service's `/app` mount has `readOnly: true`. This doesn't make mounts on other services read-only. Configure those on the services that use them.
+
+  <Scenario id="read-only-app-mount" render={false} reason="Check that the documented nginx appMount block plans a read-only mount at the same target">
+    <Step name="plan-default-mount">
+      <UseFixture name="nginx-demo" />
+      <Run command="lando app:cache:refresh" />
+      <Verify command="lando info --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"bind\",\\s*\"target\":\\s*\"/app\"[^}]*\"readOnly\":\\s*false" } }} />
+    </Step>
+    <Step name="plan-read-only-mount">
+      <Run command={`lando app:config:set services.web.appMount '{"target":"/app","readOnly":true}' --type json`} />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+      <Run command="lando app:cache:refresh" />
+      <Verify command="lando info --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"bind\",\\s*\"target\":\\s*\"/app\"[^}]*\"readOnly\":\\s*true" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
 
 ## Pair nginx with PHP
 

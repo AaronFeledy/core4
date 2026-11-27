@@ -35,7 +35,7 @@ The `app` service gets a persistent home because `node:22` ships a known image a
 
 ## Check what Lando keeps
 
-`lando info` shows the plan, so it answers the question before the app has ever started. Run it from the app directory:
+`lando info` shows the home configuration from the last applied plan for a service. If the service has never been applied, it shows the planned home instead. Run it from the app directory:
 
 ```sh
 lando info
@@ -74,7 +74,7 @@ The php image ships `/var/www` owned by root. Lando creates it for `www-data` in
 
 The store belongs to that one service in that one app folder, and to the user it was planned for. Its name is `<container>--home--<user>-<8-hex digest>`, where `<container>` is built from the folder's **data name** (the name this folder's data was first created under, usually the current app name) and the service key, as `lando-<data slug>--<service>`. Running containers use the current app name in their own names; home and other data stores keep the data-name form so a rename does not orphan them. The readable user part contains lowercase words joined by hyphens, capped at 32 characters; the digest distinguishes the original user names. Only an explicit `home.path` on a service with no known user gets `<container>--home--default`. Planning the app again reuses the volume instead of stacking a second copy.
 
-Changing the effective home user, through `projectUser:`, `user:`, or a provider change, changes the home store. The new user gets a fresh, empty volume, and the previous user's volume stays in place with its contents, so switching back finds everything where it was. Nothing is copied between them.
+Changing the effective home user, through `projectUser:`, `user:`, or a provider change, can change or remove the automatic home mount. If the new user has a known home, Lando selects that user's volume. The previous user's volume stays in place with its contents. Nothing is copied between them.
 
 ### Read a volume transition notice
 
@@ -106,6 +106,14 @@ Run `lando app:config:lint`, then `lando start` and `lando info --format=json` f
 To get rid of it instead, `lando destroy --volumes` removes the app's volumes, old homes included.
 
 A home can hold SSH keys, registry tokens, and shell history, so Lando keeps it out of data commands: database snapshots and exports cover only the database's own data, never a home volume.
+
+### Recover an old nginx root home
+
+On a provider that maps the nginx worker, the first `lando start` that applies the new mapping to an existing stock `nginx`, `static`, or `static:nginx` service can switch its default commands from root to `nginx`. Until you apply the new plan, `lando info` and commands still use the old applied configuration. After applying, `lando exec web -- id` reports `nginx` for a service named `web` with the mapping.
+
+If the old service had a generated `/root` volume, the new plan no longer mounts it. Lando keeps the volume and its contents, and the start warning includes the complete volume name and a `storage:` entry with `target: /root`. `--user root` runs a command as root but doesn't bring back a detached mount.
+
+To recover the files, add the warning's `storage:` entry to the existing service in `.lando.yml`, keeping any other storage entries. Don't run `lando destroy --volumes` to make the change. From the app directory, run `lando start`, then check with `lando exec web --user root -- ls -la /root`, replacing `web` with your service name. You can keep the volume mounted without opting out of the `nginx` command default.
 
 ## When Lando doesn't know where home is
 
