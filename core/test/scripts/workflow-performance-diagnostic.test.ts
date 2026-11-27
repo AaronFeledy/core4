@@ -10,10 +10,12 @@ const setupStdout = (input: { readonly ok: boolean; readonly fileSyncStatus?: st
     ...(input.ok
       ? {
           result: {
+            dryRun: false,
             providerId: "lando",
             installDir: "/opt/lando",
             fileSyncStatus: input.fileSyncStatus,
             networkCaInjectionConfigured: false,
+            hostChanges: [],
           },
         }
       : { error: { _tag: "SetupStepFailedError", message: "setup failed" } }),

@@ -11,8 +11,8 @@ import type {
   ProcessSpawnOptions,
 } from "@lando/sdk/services";
 import { Downloader } from "@lando/sdk/services";
+import { makeTestPrivilegeService } from "@lando/sdk/test";
 import { Cause, type Context, Effect, Exit, Stream } from "effect";
-
 import { makeMkcertCertificateAuthority } from "../src/ca.ts";
 import { MKCERT_TOOL_MANIFEST } from "../src/provision.ts";
 import type { WindowsTrustPaths } from "../src/windows-trust.ts";
@@ -207,15 +207,14 @@ export const makeFakePrivilege = (
   const purposes: string[] = [];
   return {
     purposes: () => [...purposes],
-    service: {
-      ensureCredentials: (purpose) =>
-        Effect.sync(() => void purposes.push(purpose)).pipe(Effect.andThen(credentials)),
+    service: makeTestPrivilegeService({
       elevate: (command) =>
         Effect.sync(() => {
           calls.push([...command]);
           return result;
         }),
-    },
+      open: (purpose) => Effect.sync(() => void purposes.push(purpose)).pipe(Effect.andThen(credentials)),
+    }),
     calls: () => [...calls],
   };
 };

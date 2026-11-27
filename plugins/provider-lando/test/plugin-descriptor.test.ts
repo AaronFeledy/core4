@@ -95,7 +95,7 @@ describe("provider-lando plugin descriptor", () => {
     // Then: it exposes the same available provider and setup entry points as makeRuntimeProvider.
     expect(provider.id).toBe("lando");
     expect(available).toBe(true);
-    expect(typeof provider.planSetup).toBe("function");
+    expect(typeof provider.planHostChanges).toBe("function");
     expect(typeof provider.setup).toBe("function");
   });
 });

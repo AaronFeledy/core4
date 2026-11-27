@@ -18,7 +18,11 @@ import {
   RuntimeProviderRegistry,
 } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
-import { TestRouterService, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
+import {
+  TestRouterService,
+  makeTestPrivilegeService,
+  makeTestRuntimeProviderRegistry,
+} from "@lando/sdk/test";
 import { Effect, Layer, Schema } from "effect";
 
 import { withCwd, withEnvVar } from "../_support/temp-cwd.ts";
@@ -67,10 +71,11 @@ const testProviderLayers = () => {
     // Stub elevation so scratch identity, cwd, and tooling tests cannot change host services.
     Layer.succeed(
       PrivilegeService,
-      PrivilegeService.of({
-        ensureCredentials: () => Effect.void,
-        elevate: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
-      }),
+      PrivilegeService.of(
+        makeTestPrivilegeService({
+          elevate: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
+        }),
+      ),
     ),
     Layer.succeed(RouterService, RouterService.of({ ...TestRouterService, id: "traefik" })),
 

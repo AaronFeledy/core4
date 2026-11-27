@@ -7,16 +7,26 @@ import { formatSummary } from "@lando/renderer/summary";
 import { TrustStoreChange } from "@lando/sdk/schema";
 import { Schema } from "effect";
 
+import { renderHostChangePlan } from "../../host-changes/render";
 import { type RenderContext, isDecoratedContext, summaryPaintOptions } from "../../renderer-boundary";
+import { SetupResultSchema } from "./setup-inputs";
 import { buildSetupSummary, caInjectionNote, fileSyncStatusLine, trustStoreLine } from "./setup-summary";
 
 const isTrustStores = Schema.is(Schema.Array(TrustStoreChange));
+const isSetupResult = Schema.is(SetupResultSchema);
 
 export const renderSetupResult = (
   result: unknown,
   _input?: unknown,
   ctx?: RenderContext,
 ): string | undefined => {
+  if (isSetupResult(result) && result.dryRun) {
+    return [
+      `lando setup --dry-run: provider ${result.providerId} (${result.selectionSource}). Nothing was changed.`,
+      ...renderHostChangePlan(result.changes, result.elevation),
+      ...result.notices,
+    ].join("\n");
+  }
   if (
     typeof result !== "object" ||
     result === null ||

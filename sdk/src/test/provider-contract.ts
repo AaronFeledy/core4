@@ -38,6 +38,7 @@ import {
   requireContract,
   utf8,
 } from "./_shared.ts";
+import { checkHostChangeProposals } from "./provider-host-changes.ts";
 import { checkProviderStartupDns } from "./provider-startup-dns.ts";
 
 export const CONTRACT_MATRIX_PLATFORMS: ReadonlyArray<HostPlatform> = ["darwin", "linux", "win32", "wsl"];
@@ -554,16 +555,9 @@ export const runProviderContract = Effect.fnUntraced(function* (
 
   yield* checkProviderStartupDns(provider, testAppPlan);
 
-  yield* requireContract(
-    typeof provider.planSetup === "function",
-    "planSetup is callable",
-    provider.planSetup,
-  );
-  const setupPlan = yield* provider
-    .planSetup({ force: false })
-    .pipe(mapFailures(mapProviderFailure("planSetup returns a setup plan")));
+  yield* checkHostChangeProposals(provider);
   yield* requireContract(typeof provider.setup === "function", "setup is callable", provider.setup);
-  const setupEffect = provider.setup(setupPlan, { force: false });
+  const setupEffect = provider.setup({ force: false });
   yield* requireContract(Effect.isEffect(setupEffect), "setup returns an Effect", setupEffect);
 
   yield* requireContract(

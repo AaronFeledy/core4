@@ -1,6 +1,6 @@
 import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
 import type { ConfigError, LandoRuntimeBootstrapError } from "@lando/sdk/errors";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Result } from "effect";
 import type { CliInvocationContext } from "../runtime/invocation-context";
 import { makeLandoRuntime } from "../runtime/layer";
 import type { BuiltInCommandEntry } from "./built-in-command-registry";
@@ -54,7 +54,7 @@ export const runBuiltInCommand = (
   }
 
   return runWithProcessAbortSignal(
-    (signal) => {
+    async (signal) => {
       const input = compiledCommandInputFromArgv(entry.spec.id, tokens.argv, {
         tokens,
         signal,
@@ -62,15 +62,34 @@ export const runBuiltInCommand = (
       });
       if (entry.spec.id === "meta:mcp") return runMetaMcp(tokens, signal, context);
 
+      const nativeScratch =
+        entry.spec.id === "apps:scratch:start" && hostProxy === undefined && "source" in input.flags
+          ? (await import("./native-scratch-start")).prepareNativeScratchStart(
+              input,
+              context?.cwd ?? process.cwd(),
+            )
+          : undefined;
+      if (nativeScratch !== undefined && Result.isFailure(nativeScratch)) {
+        return runCompiledCommand(Effect.fail(nativeScratch.failure), Layer.empty, () => undefined, {
+          ...(context === undefined ? {} : { context }),
+          signal,
+        });
+      }
       const runtime = makeLandoRuntime(
         cliRuntimeOptions(
-          { bootstrap: entry.spec.bootstrap, plugins: { policy: "discovery" } },
+          {
+            bootstrap: entry.spec.bootstrap,
+            plugins: {
+              policy: "discovery",
+              ...(nativeScratch === undefined ? {} : { layers: nativeScratch.success.layers }),
+            },
+          },
           context?.env,
         ),
       ) as Layer.Layer<unknown, ConfigError | LandoRuntimeBootstrapError>;
       return runCompiledCommand(
         hostProxy === undefined
-          ? entry.spec.run(input)
+          ? (nativeScratch?.success.operation ?? entry.spec.run(input))
           : withHostProxyCall(entry.spec.run(input), hostProxy, entry.spec.id),
         runtime,
         // Hooks only receive the value produced by this same spec's run.

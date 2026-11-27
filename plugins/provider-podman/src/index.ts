@@ -849,9 +849,6 @@ const assembleRuntimeProvider = (
         options.appliedPlanState === undefined
           ? Effect.succeed([])
           : listAppliedPlans(options.appliedPlanState).pipe(Effect.map(({ plans }) => plans)),
-      planSetup: Effect.fn("RuntimeProvider.planSetup")(() =>
-        Effect.succeed({ providerId: ProviderId.make("podman"), changes: [] }),
-      ),
       setup: Effect.fn("RuntimeProvider.setup")(() => Effect.void),
       getStatus: podmanApi.ping.pipe(
         Effect.as({ state: "running" as const, message: "ready" }),

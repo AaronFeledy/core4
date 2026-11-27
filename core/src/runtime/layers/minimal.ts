@@ -29,7 +29,7 @@ import { PrivateFileAccessService } from "@lando/state-store/private-file-access
 import * as StateStoreLayer from "@lando/state-store/service";
 import * as TelemetryLayer from "@lando/telemetry/service";
 import { Context, Layer } from "effect";
-import { finishCommandProgress } from "../../cli/command-progress.ts";
+import { suspendCommandProgress } from "../../cli/command-progress.ts";
 import { makeProcessShellReplIO } from "../../cli/host-shell-terminal.ts";
 import { hostHasPromptTerminal } from "../../cli/prompt-terminal.ts";
 import * as InteractionServiceLayer from "../../interaction/service.ts";
@@ -87,7 +87,7 @@ export const makeMinimalBootstrapLayer = (inputs: BootstrapLayerInputs) => {
       Layer.provide(Layer.mergeAll(privateFileAccessLayer, BunProcessRunner.layer)),
     ),
     HostPrivilegeService.layer({
-      prepareTerminal: finishCommandProgress(),
+      handoff: { suspend: suspendCommandProgress },
       hasTerminal: hostHasPromptTerminal,
     }).pipe(Layer.provide(BunProcessRunner.layer)),
     secretStoreLayer,

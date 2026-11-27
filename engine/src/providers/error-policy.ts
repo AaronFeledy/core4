@@ -17,6 +17,7 @@ export const withProviderErrorRedaction = (
   const {
     appliedPlans,
     cleanupOwnedResources,
+    planHostChanges,
     ensureReady,
     occupiedPublishPorts,
     matchingPublishPorts,
@@ -44,8 +45,10 @@ export const withProviderErrorRedaction = (
           cleanupOwnedResources: (root, options) =>
             effect(cleanupOwnedResources.call(runtime, root, options)),
         }),
-    planSetup: (options) => effect(runtime.planSetup(options)),
-    setup: (plan, options) => effect(runtime.setup(plan, options)),
+    ...(planHostChanges === undefined
+      ? {}
+      : { planHostChanges: (options) => effect(planHostChanges.call(runtime, options)) }),
+    setup: (options) => effect(runtime.setup(options)),
     ...(ensureReady === undefined ? {} : { ensureReady: effect(ensureReady) }),
     getStatus: effect(runtime.getStatus),
     getVersions: effect(runtime.getVersions),

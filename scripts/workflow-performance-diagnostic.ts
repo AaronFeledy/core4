@@ -40,7 +40,7 @@ export const setupFileSyncStatusFromStdout = (stdout: string): FileSyncStatus | 
     if (Result.isFailure(envelope) || envelope.success.command !== "meta:setup" || !envelope.success.ok)
       continue;
     const result = Schema.decodeUnknownResult(SetupResultSchema)(envelope.success.result);
-    if (Result.isSuccess(result)) return result.success.fileSyncStatus;
+    if (Result.isSuccess(result) && !result.success.dryRun) return result.success.fileSyncStatus;
   }
   return undefined;
 };

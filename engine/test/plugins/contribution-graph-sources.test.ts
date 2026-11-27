@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, symlink, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 
 import { makeLandoPaths } from "@lando/paths";
 import { definePlugin } from "@lando/sdk/plugins";
@@ -15,6 +16,7 @@ import {
   mergeLoadedPluginSources,
   pluginCommandCandidates,
 } from "../../src/plugins/contribution-graph.ts";
+import { PluginManifestResolution, resolvePluginManifests } from "../../src/plugins/manifest-resolution.ts";
 import { systemPluginsFromModules } from "../../src/plugins/plugin-discovery.ts";
 
 const loaded = (source: LoadedPluginContribution["source"], version: string): LoadedPluginContribution => {
@@ -62,6 +64,134 @@ describe("plugin contribution source merge", () => {
       );
       // Then
       expect(plugins).toMatchObject([{ source: "app", manifest }]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("rejects a rebound plugin package link even when the manifest and registry path match", async () => {
+    const root = await mkdtemp(join(tmpdir(), "lando-graph-rebound-"));
+    try {
+      const manifest = { name: "@example/linked", version: "1.0.0", api: 4 };
+      const first = join(root, "first");
+      const second = join(root, "second");
+      const path = join(root, "plugin-link");
+      for (const target of [first, second]) {
+        await mkdir(target);
+        await writeFile(join(target, "package.json"), JSON.stringify({ landoPlugin: manifest }));
+      }
+      await symlink(first, path, "junction");
+      const cwd = join(root, "invocation");
+      const source = join(root, "source");
+      for (const app of [cwd, source]) {
+        const registry = join(app, ".lando", "plugins");
+        await mkdir(registry, { recursive: true });
+        await writeFile(join(app, ".lando.yml"), "name: comparison\n");
+        await writeFile(
+          join(registry, "registry.json"),
+          JSON.stringify({ [manifest.name]: { name: manifest.name, version: manifest.version, path } }),
+        );
+      }
+      const layer = PluginContributionGraph.layer<never>(
+        {
+          cwd,
+          layers: [],
+          manifests: [],
+          externalImports: true,
+          discovery: { bundled: false, system: false, user: false, app: true, disable: [] },
+        },
+        [],
+      ).pipe(Layer.provide(Layer.succeed(PathsService, makeLandoPaths())));
+      const matches = await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const graph = yield* PluginContributionGraph;
+            if (graph.matchesAppPluginSelection === undefined)
+              throw new Error("Expected app plugin discovery.");
+            expect(yield* graph.matchesAppPluginSelection(source)).toBe(true);
+            yield* Effect.promise(async () => {
+              await unlink(path);
+              await symlink(second, path, "junction");
+            });
+            return yield* graph.matchesAppPluginSelection(source);
+          }).pipe(Effect.provide(layer)),
+        ),
+      );
+      expect(matches).toBe(false);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("imports the pinned linked package with absolute module paths under its authored alias", async () => {
+    const root = await realpath(await mkdtemp(join(tmpdir(), "lando-graph-linked-")));
+    try {
+      const first = join(root, "first");
+      const replacement = join(root, "replacement");
+      const path = join(root, "plugin-link");
+      const registry = join(root, ".lando", "plugins");
+      const manifest = {
+        name: "@example/linked",
+        version: "1.0.0",
+        api: 4,
+        entry: join(path, "index.ts"),
+        subscribers: [
+          {
+            id: "observe",
+            selectors: [{ event: "test:linked" }],
+            module: pathToFileURL(join(path, "observe.ts")).href,
+          },
+        ],
+      };
+      for (const directory of [first, replacement, registry]) await mkdir(directory, { recursive: true });
+      for (const directory of [first, replacement]) {
+        await writeFile(join(directory, "package.json"), JSON.stringify({ landoPlugin: manifest }));
+        await writeFile(join(directory, "index.ts"), `export const value = ${JSON.stringify(directory)};`);
+        await writeFile(join(directory, "observe.ts"), "export default () => {};");
+      }
+      await symlink(first, path, "junction");
+      await writeFile(
+        join(registry, "registry.json"),
+        JSON.stringify({
+          [manifest.name]: { name: manifest.name, version: manifest.version, path },
+        }),
+      );
+      const selected = await Effect.runPromise(
+        resolvePluginManifests({
+          bundled: [],
+          directories: [{ source: "app", path: registry }],
+        }),
+      );
+
+      await unlink(path);
+      await symlink(replacement, path, "junction");
+      const layer = PluginContributionGraph.layer<never>(
+        {
+          cwd: root,
+          layers: [],
+          manifests: [],
+          externalImports: true,
+          discovery: { bundled: false, system: false, user: false, app: true, disable: [] },
+        },
+        [],
+      ).pipe(
+        Layer.provide(
+          Layer.merge(
+            Layer.succeed(PathsService, makeLandoPaths()),
+            Layer.succeed(PluginManifestResolution, selected),
+          ),
+        ),
+      );
+      const plugins = await Effect.runPromise(
+        Effect.map(PluginContributionGraph, (graph) => graph.plugins).pipe(Effect.provide(layer)),
+      );
+      expect(plugins).toMatchObject([
+        {
+          module: { value: first },
+          implementation: { realpath: first },
+          manifest: { subscribers: [{ module: pathToFileURL(join(first, "observe.ts")).href }] },
+        },
+      ]);
     } finally {
       await rm(root, { recursive: true, force: true });
     }

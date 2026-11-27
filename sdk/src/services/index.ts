@@ -16,6 +16,7 @@ export * from "./file-sync.ts";
 export * from "./file-system.ts";
 export * from "./global-app.ts";
 export * from "./host-assets.ts";
+export * from "./host-change.ts";
 export * from "./interaction.ts";
 export * from "./landofile.ts";
 export * from "./managed-file.ts";

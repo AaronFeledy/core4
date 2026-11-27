@@ -13,8 +13,9 @@ import * as RendererOutput from "@lando/renderer/output";
 import type { RendererContribution } from "@lando/sdk/renderer";
 import type { Redactor } from "@lando/sdk/secrets";
 import type { EventService, LandoEvent } from "@lando/sdk/services";
-import { Effect, Exit, Layer, Scope } from "effect";
-import { FinishCommandProgress } from "./command-progress";
+import { Effect, type Layer } from "effect";
+import { FinishCommandProgress, SuspendCommandProgress } from "./command-progress";
+import { startCommandProgressConsumer } from "./command-progress-handoff";
 import type { CommandWarningsShape } from "./command-warnings";
 import { interruptOnAbort } from "./interrupt-on-abort";
 import type { OutputRouting } from "./output-routing";
@@ -53,6 +54,7 @@ export interface EventConsumerOptions {
   readonly landoRenderer: RendererContribution;
   readonly signal: AbortSignal | undefined;
   readonly commandWarnings: CommandWarningsShape;
+  readonly observeProgressWith: (observe: (event: LandoEvent) => void) => void;
   /** The frame route's redactor and event-frame encoder. */
   readonly frameRedactor: Effect.Effect<Redactor, never, RedactionService>;
   readonly encodeEventFrame: (event: LandoEvent, redactor: Redactor) => Effect.Effect<string>;
@@ -95,12 +97,11 @@ export const withEventConsumer = <A, E, R>(
         options.landoRenderer,
       );
       if (layer === undefined) return yield* execute(Effect.void);
-      const consumerScope = yield* Scope.fork(yield* Effect.scope, "sequential");
-      const consumerContext = yield* Layer.buildWithScope(layer, consumerScope);
-      const finish = yield* Effect.cached(Scope.close(consumerScope, Exit.void));
+      const progress = yield* startCommandProgressConsumer(layer);
+      options.observeProgressWith(progress.observe);
       return yield* execute(Effect.void).pipe(
-        Effect.provide(consumerContext),
-        Effect.provideService(FinishCommandProgress, finish),
+        Effect.provideService(FinishCommandProgress, progress.finish),
+        Effect.provideService(SuspendCommandProgress, progress.suspension),
       );
     }),
   );

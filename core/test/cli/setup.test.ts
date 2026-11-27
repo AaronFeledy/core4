@@ -49,14 +49,15 @@ import {
   AppId,
   type AppPlan,
   GlobalConfig,
+  HostChangeId,
   ProviderId,
-  type ProviderSetupPlan,
   appIdentityKey,
 } from "@lando/sdk/schema";
-import { FileSystem, PathsService } from "@lando/sdk/services";
+import { FileSystem, type HostChangeProposal, PathsService } from "@lando/sdk/services";
 import {
   TestFileSyncEngine,
   makeTestCertificateAuthority,
+  makeTestPrivilegeService,
   makeTestRouterService,
   makeTestRuntimeProviderRegistry,
   makeTestSshService,
@@ -75,6 +76,7 @@ import {
   maybeSelectSetupProvider,
   setupSpec,
 } from "../../src/cli/command-specs/meta/setup.ts";
+import type { SetupResult } from "../../src/cli/command-specs/meta/setup-inputs.ts";
 import { systemRuntimeUnavailableError } from "../../src/cli/command-specs/meta/setup-provider-selection.ts";
 import { caInjectionNote } from "../../src/cli/command-specs/meta/setup-summary.ts";
 import {
@@ -165,6 +167,35 @@ const buildSetupLayersWithPrivilege = (
   );
 
 /** The test process env with the shell profile setup writes pointed at `profile`. */
+const applied = (result: SetupResult): Extract<SetupResult, { readonly dryRun: false }> => {
+  if (result.dryRun) throw new Error("expected setup to apply, not plan");
+  return result;
+};
+
+const uidmapProposal = (): HostChangeProposal => ({
+  change: {
+    id: HostChangeId.make("provider-lando:install-uidmap"),
+    owner: "@lando/provider-lando",
+    stage: "provider",
+    summary: "Install the uidmap package",
+    reason: "Rootless Podman needs uidmap helpers.",
+    consent: "standard",
+    persistent: false,
+    requirement: "required",
+    steps: [
+      {
+        id: "install",
+        summary: "Install uidmap",
+        argv: ["/usr/bin/apt-get", "install", "uidmap"],
+        privileged: true,
+        when: "always",
+      },
+    ],
+    undo: { _tag: "manual", detail: "uidmap is a shared package." },
+  },
+  apply: (steps) => steps.run("install").pipe(Effect.as({ changed: true })),
+});
+
 const profileEnv = (profile: string) => ({ ...process.env, LANDO_SHELL_PROFILE: profile });
 
 const coreRoot = resolve(import.meta.dirname, "../..");
@@ -253,10 +284,12 @@ describe("meta:setup command", () => {
 
   test("publishes CA injection as a boolean condition and no certificate count", () => {
     const machineResult = {
+      dryRun: false as const,
       providerId: "lando",
       installDir: "/opt/lando",
       fileSyncStatus: "satisfied" as const,
       networkCaInjectionConfigured: true,
+      hostChanges: [],
     };
 
     const decoded = Schema.decodeUnknownSync(SetupResultSchema)(machineResult);
@@ -264,20 +297,16 @@ describe("meta:setup command", () => {
 
     expect(encoded).toEqual(machineResult);
     expect(Object.keys(encoded).sort()).toEqual([
+      "dryRun",
       "fileSyncStatus",
+      "hostChanges",
       "installDir",
       "networkCaInjectionConfigured",
       "providerId",
     ]);
     expect(() =>
       Schema.decodeUnknownSync(SetupResultSchema)(
-        {
-          providerId: "lando",
-          installDir: "/opt/lando",
-          fileSyncStatus: "satisfied",
-          networkCaInjectionConfigured: true,
-          injectedCaCount: 2,
-        },
+        { ...machineResult, injectedCaCount: 2 },
         { onExcessProperty: "error" },
       ),
     ).toThrow();
@@ -336,19 +365,7 @@ describe("meta:setup command", () => {
     const provider = {
       ...TestRuntimeProvider,
       id: "lando",
-      planSetup: () =>
-        Effect.succeed({
-          providerId: ProviderId.make("lando"),
-          changes: [
-            {
-              _tag: "install-uidmap" as const,
-              platform: "linux" as const,
-              distribution: "ubuntu" as const,
-              version: "26.04" as const,
-              reason: "Rootless Podman needs uidmap helpers.",
-            },
-          ],
-        }),
+      planHostChanges: () => Effect.succeed([uidmapProposal()]),
       setup: () =>
         Effect.sync(() => {
           applyCalls += 1;
@@ -377,19 +394,7 @@ describe("meta:setup command", () => {
     const provider = {
       ...TestRuntimeProvider,
       id: "lando",
-      planSetup: () =>
-        Effect.succeed({
-          providerId: ProviderId.make("lando"),
-          changes: [
-            {
-              _tag: "install-uidmap" as const,
-              platform: "linux" as const,
-              distribution: "ubuntu",
-              version: "26.04",
-              reason: "Rootless Podman needs uidmap helpers.",
-            },
-          ],
-        }),
+      planHostChanges: () => Effect.succeed([uidmapProposal()]),
       setup: () =>
         Effect.sync(() => {
           applyCalls += 1;
@@ -405,13 +410,13 @@ describe("meta:setup command", () => {
       message: "this run cannot ask for a password",
       remediation: "Run `sudo -v`, or set `SUDO_ASKPASS`.",
     });
-    const privilege = {
-      ensureCredentials: (purpose: string) =>
+    const privilege = makeTestPrivilegeService({
+      elevate: () => Effect.die("no privileged command may run"),
+      open: (purpose: string) =>
         Effect.sync(() => void order.push(`credentials: ${purpose}`)).pipe(
           Effect.andThen(Effect.fail(denied)),
         ),
-      elevate: () => Effect.die("no privileged command may run"),
-    };
+    });
 
     // When
     const exit = await Effect.runPromiseExit(
@@ -489,10 +494,7 @@ describe("meta:setup command", () => {
     const provider = {
       ...TestRuntimeProvider,
       id: "lando",
-      setup: (
-        _plan: ProviderSetupPlan,
-        options: { readonly force: boolean; readonly runtimeBundleUrl?: string },
-      ) =>
+      setup: (options: { readonly force: boolean; readonly runtimeBundleUrl?: string }) =>
         Effect.sync(() => {
           setupOptions.push(options);
         }),
@@ -535,10 +537,7 @@ describe("meta:setup command", () => {
     const provider = {
       ...TestRuntimeProvider,
       id: "lando",
-      setup: (
-        _plan: ProviderSetupPlan,
-        options: { readonly setupFlags?: Readonly<Record<string, unknown>> },
-      ) =>
+      setup: (options: { readonly setupFlags?: Readonly<Record<string, unknown>> }) =>
         Effect.sync(() => {
           setupOptions.push(options);
         }),
@@ -709,7 +708,7 @@ describe("meta:setup command", () => {
     );
 
     // Then
-    expect(result.trustStores).toEqual(trustStores);
+    expect(applied(result).trustStores).toEqual(trustStores);
     expect(Schema.is(SetupResultSchema)(result)).toBe(true);
     expect(
       setupSpec
@@ -1477,6 +1476,8 @@ describe("meta:setup command", () => {
   test("switch report suggests only supported command flags", () => {
     const output =
       setupSpec.render?.({
+        dryRun: false,
+        hostChanges: [],
         providerId: "docker",
         installDir: "/opt/lando",
         fileSyncStatus: "satisfied",
@@ -1619,23 +1620,22 @@ describe("meta:setup command", () => {
   });
 
   test.skipIf(process.platform === "win32")(
-    "threads PrivilegeService into provider and CA setup and writes the shell profile as the user",
+    "threads host changes into provider setup, one run-scoped PrivilegeService into CA setup, and writes the shell profile as the user",
     async () => {
       const elevated: ReadonlyArray<string>[] = [];
-      const privilege = {
-        ensureCredentials: () => Effect.void,
+      const privilege = makeTestPrivilegeService({
         elevate: (command: ReadonlyArray<string>) =>
           Effect.sync(() => {
             elevated.push([...command]);
             return { exitCode: 0, stdout: "", stderr: "" };
           }),
-      };
+      });
       const providerSetupOptions: unknown[] = [];
       const caSetupOptions: unknown[] = [];
       const provider = {
         ...TestRuntimeProvider,
         id: "lando",
-        setup: (_plan: ProviderSetupPlan, options: unknown) =>
+        setup: (options: unknown) =>
           Effect.sync(() => {
             providerSetupOptions.push(options);
           }),
@@ -1670,8 +1670,15 @@ describe("meta:setup command", () => {
           ),
         );
 
-        expect(providerSetupOptions).toEqual([expect.objectContaining({ privilege })]);
-        expect(caSetupOptions).toEqual([expect.objectContaining({ privilege })]);
+        // The provider applies planned host changes through the run's applier; the CA, which
+        // still elevates on its own, shares the run's one administrator session.
+        expect(Reflect.get(Object(providerSetupOptions[0]), "privilege")).toBeUndefined();
+        expect(
+          typeof Reflect.get(Object(Reflect.get(Object(providerSetupOptions[0]), "hostChanges")), "apply"),
+        ).toBe("function");
+        const caPrivilege = Reflect.get(Object(caSetupOptions[0]), "privilege");
+        expect(caPrivilege).toBeDefined();
+        expect(caPrivilege).not.toBe(privilege);
         // The profile is the user's file: written without elevation, owned by the user.
         expect(elevated).toEqual([]);
         const content = await readFile(profile, "utf-8");
@@ -1691,14 +1698,13 @@ describe("meta:setup command", () => {
     const home = await mkdtemp(join(tmpdir(), "lando-setup-profile-skip-"));
     const profile = join(home, ".profile");
     const elevated: ReadonlyArray<string>[] = [];
-    const privilege = {
-      ensureCredentials: () => Effect.void,
+    const privilege = makeTestPrivilegeService({
       elevate: (command: ReadonlyArray<string>) =>
         Effect.sync(() => {
           elevated.push([...command]);
           return { exitCode: 0, stdout: "", stderr: "" };
         }),
-    };
+    });
     const provider = {
       ...TestRuntimeProvider,
       id: "lando",
@@ -1748,14 +1754,13 @@ describe("meta:setup command", () => {
           select: () => Effect.succeed(provider),
         });
         let elevations = 0;
-        const privilege = {
-          ensureCredentials: () => Effect.void,
+        const privilege = makeTestPrivilegeService({
           elevate: () =>
             Effect.sync(() => {
               elevations += 1;
               return { exitCode: 0, stdout: "", stderr: "" };
             }),
-        };
+        });
 
         // When setup attempts shell profile integration.
         const exit = await Effect.runPromiseExit(
@@ -1816,7 +1821,7 @@ describe("meta:setup command", () => {
           bindMountPerformance: "slow" as const,
           fileSyncTargets: "prepared-volume" as const,
         },
-        setup: (_plan: ProviderSetupPlan, options: { readonly network?: unknown }) =>
+        setup: (options: { readonly network?: unknown }) =>
           Effect.sync(() => {
             observedProviderNetworks.push(options.network);
             calls.push("provider");
@@ -1989,7 +1994,7 @@ describe("meta:setup command", () => {
         ),
       );
 
-      expect(result.fileSyncStatus).toBe("unavailable");
+      expect(applied(result).fileSyncStatus).toBe("unavailable");
       expect(setupSpec.render?.(result)).toContain(
         "file-sync: unavailable (ordinary mounts remain available)",
       );
@@ -2082,7 +2087,7 @@ describe("meta:setup command", () => {
         ),
       );
 
-      expect(result.networkCaInjectionConfigured).toBe(true);
+      expect(applied(result).networkCaInjectionConfigured).toBe(true);
       const rendered = setupSpec.render?.(result) ?? "";
       expect(rendered).toBe(`${setupCompleteOutput(TestRuntimeProvider.id)}\n${caInjectionNote}`);
       // Assert the rendered production note, not a test-local copy of the same string.
@@ -2109,7 +2114,7 @@ describe("meta:setup command", () => {
         ),
       );
 
-      expect(result.networkCaInjectionConfigured).toBe(true);
+      expect(applied(result).networkCaInjectionConfigured).toBe(true);
       expect(setupSpec.render?.(result)).toBe(
         `${setupCompleteOutput(TestRuntimeProvider.id)}\n${caInjectionNote}`,
       );
@@ -2133,7 +2138,7 @@ describe("meta:setup command", () => {
         ),
       );
 
-      expect(result.networkCaInjectionConfigured).toBe(false);
+      expect(applied(result).networkCaInjectionConfigured).toBe(false);
       expect(setupSpec.render?.(result)).toBe(setupCompleteOutput(TestRuntimeProvider.id));
     } finally {
       await rm(tempRoot, { recursive: true, force: true });
@@ -2147,7 +2152,7 @@ describe("meta:setup command", () => {
         .pipe(Effect.provide(buildSetupLayers(testRuntimeProviderRegistry))),
     );
 
-    expect(result.networkCaInjectionConfigured).toBe(false);
+    expect(applied(result).networkCaInjectionConfigured).toBe(false);
     expect(setupSpec.render?.(result)).toBe(setupCompleteOutput(TestRuntimeProvider.id));
   });
 

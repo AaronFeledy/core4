@@ -3,7 +3,7 @@ import { FileNotFoundError } from "@lando/sdk/errors";
 import type { PluginStateBucketSpec, PluginStateStore } from "@lando/sdk/plugins";
 import { AbsolutePath, ServiceName, type StartedService } from "@lando/sdk/schema";
 import type { StateBucket } from "@lando/sdk/services";
-import { makeTestCertificateAuthority } from "@lando/sdk/test";
+import { makeTestCertificateAuthority, makeTestPrivilegeService } from "@lando/sdk/test";
 import { Deferred, Effect, Fiber, Semaphore } from "effect";
 import type { SchemeProbe } from "../src/port-acquisition.ts";
 import { makeTraefikRouterService } from "../src/proxy.ts";
@@ -160,10 +160,9 @@ const makeHarness = () => {
         throw new Error("unused");
       },
     },
-    privilege: {
-      ensureCredentials: () => Effect.void,
+    privilege: makeTestPrivilegeService({
       elevate: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
-    },
+    }),
     classifyOverride: highPortOverride,
   };
   const makeRouter = () =>

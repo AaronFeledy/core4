@@ -614,9 +614,11 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
       }),
   });
 
+  const elevated = Effect.succeed({ exitCode: 0, stdout: "", stderr: "" });
   const privilegeService = PrivilegeService.of({
-    ensureCredentials: () => Effect.void,
-    elevate: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
+    credentialStatus: Effect.succeed({ state: "root" }),
+    openSession: () => Effect.succeed({ transport: "direct", elevate: () => elevated }),
+    elevate: () => elevated,
   });
 
   const secretStoreService = SecretStore.of({
@@ -776,7 +778,7 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
         const summary: ScratchSummary = {
           id,
           app: appRefForScratch(id, paths.root),
-          source: input.source,
+          source: input.source.kind === "fork" ? { kind: "fork" } : input.source,
           mode: canonicalScratchIsolationMode(input),
           created: "2026-06-01T00:00:00.000Z",
           status: input.detached ? "detached" : "attached",

@@ -13,7 +13,11 @@ import {
   RuntimeProvider,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
-import { makeTestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
+import {
+  makeTestPrivilegeService,
+  makeTestRuntimeProvider,
+  makeTestRuntimeProviderRegistry,
+} from "@lando/sdk/test";
 import { Context, Effect, Fiber, Layer, Schema } from "effect";
 import { serviceLayer } from "../../src/mcp-command-executor";
 import { resources } from "../../src/mcp-resources";
@@ -72,7 +76,7 @@ const withResourceSession = async <A, E>(
           ),
           Layer.succeed(
             PrivilegeService,
-            PrivilegeService.of({ ensureCredentials: () => Effect.void, elevate: rejectMutation }),
+            PrivilegeService.of(makeTestPrivilegeService({ elevate: rejectMutation })),
           ),
         ],
       },

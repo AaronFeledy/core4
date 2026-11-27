@@ -10,9 +10,6 @@ import {
   ProviderCapabilityError,
   ProviderConfigError,
   ProviderInternalError,
-  ProviderSetupConsentDeniedError,
-  ProviderSetupPrivilegeUnavailableError,
-  ProviderSetupProvisioningError,
   ProviderSetupUnsupportedHostError,
   ProviderUnavailableError,
   SecretNotFoundError,
@@ -133,24 +130,6 @@ const cases = {
   ArtifactTransferError: errorCase(
     ArtifactTransferError,
     new ArtifactTransferError({ ...errorFields, artifactRef: canary }),
-  ),
-  ProviderSetupConsentDeniedError: errorCase(
-    ProviderSetupConsentDeniedError,
-    new ProviderSetupConsentDeniedError({ ...setupFields, change: "install-uidmap" }),
-  ),
-  ProviderSetupPrivilegeUnavailableError: errorCase(
-    ProviderSetupPrivilegeUnavailableError,
-    new ProviderSetupPrivilegeUnavailableError({ ...setupFields, change: "provision-subuid" }),
-  ),
-  ProviderSetupProvisioningError: errorCase(
-    ProviderSetupProvisioningError,
-    new ProviderSetupProvisioningError({
-      ...setupFields,
-      change: "provision-subgid",
-      stage: "install",
-      exitCode: 7,
-      stderr: canary,
-    }),
   ),
   ProviderSetupUnsupportedHostError: errorCase(
     ProviderSetupUnsupportedHostError,

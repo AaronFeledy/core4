@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
-import { ProviderId } from "@lando/sdk/schema";
+import type { RuntimeProviderShape } from "@lando/sdk/services";
 import { Cause, Effect, Exit } from "effect";
 
 import { makeRuntimeProvider } from "../src/index.ts";
@@ -47,15 +47,18 @@ const managedProvider = (userDataRoot: string, platform: "linux" | "darwin", dow
     }),
   );
 
-describe("provider-lando planSetup managed socket path gate", () => {
+const planHostChanges = (provider: RuntimeProviderShape) =>
+  provider.planHostChanges === undefined ? Effect.succeed([]) : provider.planHostChanges({ force: false });
+
+describe("provider-lando host-change planning managed socket path gate", () => {
   test("accepts a short Linux managed data root", async () => {
     const userDataRoot = await mkdtemp(join(tmpdir(), "lando-socket-ok-"));
     try {
       const provider = await managedProvider(userDataRoot, "linux");
 
-      const plan = await Effect.runPromise(provider.planSetup({ force: false }));
+      const proposals = await Effect.runPromise(planHostChanges(provider));
 
-      expect(plan.providerId).toBe(ProviderId.make("lando"));
+      expect(proposals.every(({ change }) => change.owner === "@lando/provider-lando")).toBe(true);
     } finally {
       await rm(userDataRoot, { recursive: true, force: true });
     }
@@ -67,7 +70,7 @@ describe("provider-lando planSetup managed socket path gate", () => {
     const downloads: string[] = [];
     const provider = await managedProvider(userDataRoot, "linux", downloads);
 
-    const exit = await Effect.runPromiseExit(provider.planSetup({ force: false }));
+    const exit = await Effect.runPromiseExit(planHostChanges(provider));
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isSuccess(exit)) return;
@@ -90,8 +93,8 @@ describe("provider-lando planSetup managed socket path gate", () => {
     const userDataRoot = `/${"d".repeat(managedSocketMaxDataRootBytes + 1)}`;
     const provider = await managedProvider(userDataRoot, "darwin");
 
-    const plan = await Effect.runPromise(provider.planSetup({ force: false }));
+    const proposals = await Effect.runPromise(planHostChanges(provider));
 
-    expect(plan).toEqual({ providerId: ProviderId.make("lando"), changes: [] });
+    expect(proposals).toEqual([]);
   });
 });
