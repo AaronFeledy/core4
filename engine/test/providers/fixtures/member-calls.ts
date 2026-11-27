@@ -1,5 +1,5 @@
 import { PortablePath, ProviderId, type VolumeSnapshotRef } from "@lando/sdk/schema";
-import type { ProviderError, RuntimeProviderShape } from "@lando/sdk/services";
+import type { HostChangeApplyError, ProviderError, RuntimeProviderShape } from "@lando/sdk/services";
 import { Effect, type Scope, Stream } from "effect";
 import type { ProviderErrorMember } from "../../../src/providers/output-policy.ts";
 import { plan, target } from "./error-registry.ts";
@@ -21,14 +21,16 @@ const snapshot: VolumeSnapshotRef = {
   format: "native",
 };
 const destination = PortablePath.make("/data");
-type Invoke = (provider: RuntimeProviderShape) => Effect.Effect<unknown, ProviderError, Scope.Scope>;
+type Invoke = (
+  provider: RuntimeProviderShape,
+) => Effect.Effect<unknown, ProviderError | HostChangeApplyError, Scope.Scope>;
 
 export const memberCalls = {
   isAvailable: (p) => p.isAvailable,
   appliedPlans: (p) => required(p.appliedPlans),
   cleanupOwnedResources: (p) => required(p.cleanupOwnedResources)(plan.root, { volumes: false }),
-  planSetup: (p) => p.planSetup({ force: false }),
-  setup: (p) => p.setup({ providerId: plan.provider, changes: [] }, { force: false }),
+  planHostChanges: (p) => required(p.planHostChanges)({ force: false }),
+  setup: (p) => p.setup({ force: false }),
   ensureReady: (p) => required(p.ensureReady),
   getStatus: (p) => p.getStatus,
   getVersions: (p) => p.getVersions,
@@ -96,6 +98,8 @@ export const memberCalls = {
   adoptDataRoot: (p) => required(p.adoptDataRoot)(plan, () => Effect.succeed(undefined)),
   inspectResourceNames: (p) => required(p.inspectResourceNames)({ kind: "volume", limit: 1 }),
   observeVolume: (p) => required(p.observeVolume)(target, destination),
+  observeBoundVolume: (p) =>
+    required(p.observeBoundVolume)({ ...target, expectedContainerId: "native-id" }, destination),
   adoptVolume: (p) => required(p.adoptVolume)(target, destination),
   removeVolume: (p) => p.removeVolume(volume, "generation"),
   copyToService: (p) => p.copyToService(target, { sourcePath: plan.root, targetPath: destination }),

@@ -292,48 +292,46 @@ export const makeResourceOwnershipStore = (providerId: string, state?: PluginSta
     prepare,
     retire,
     recordAdoption,
-    summary: (root: AbsolutePath) =>
-      load(root).pipe(
-        Effect.map((inventory): ResourceOwnership | undefined =>
-          inventory === undefined ||
-          (inventory.resources.length === 0 &&
-            !inventory.adoptions?.some((batch) => batch.receipts.length > 0))
-            ? undefined
-            : {
-                appRoot: inventory.appRoot,
-                ownerKey: inventory.ownerKey,
-                providerId: inventory.providerId,
-                appIds: [
-                  ...new Set([
-                    ...inventory.appIds,
-                    ...(inventory.adoptions ?? []).flatMap((batch) =>
-                      batch.receipts.map((receipt) => receipt.appId),
-                    ),
-                  ]),
-                ],
-                members: [
-                  ...inventory.resources.map((resource) => ({
-                    kind: resource.kind,
-                    nativeName: resource.nativeName,
-                    appId: resource.appId,
-                    ...(resource.kind === "container" ? { service: resource.service } : {}),
-                  })),
-                  ...(inventory.adoptions ?? []).flatMap((batch) =>
-                    batch.receipts.map((receipt) => ({
-                      kind: receipt.kind,
-                      nativeName: receipt.nativeName,
-                      appId: receipt.appId,
-                      dataRoot: receipt.dataRoot,
-                      ...(receipt.kind === "volume"
-                        ? receipt.volumeInstance === undefined
-                          ? {}
-                          : { volumeInstance: receipt.volumeInstance }
-                        : { nativeId: receipt.nativeId }),
-                    })),
-                  ),
-                ],
-              },
-        ),
-      ),
+    summary: (root: AbsolutePath) => load(root).pipe(Effect.map(resourceOwnershipSummary)),
   };
 };
+
+/** The public summary of one inventory; an inventory with no members has none. */
+export const resourceOwnershipSummary = (
+  inventory: ResourceInventory | undefined,
+): ResourceOwnership | undefined =>
+  inventory === undefined ||
+  (inventory.resources.length === 0 && !inventory.adoptions?.some((batch) => batch.receipts.length > 0))
+    ? undefined
+    : {
+        appRoot: inventory.appRoot,
+        ownerKey: inventory.ownerKey,
+        providerId: inventory.providerId,
+        appIds: [
+          ...new Set([
+            ...inventory.appIds,
+            ...(inventory.adoptions ?? []).flatMap((batch) => batch.receipts.map((receipt) => receipt.appId)),
+          ]),
+        ],
+        members: [
+          ...inventory.resources.map((resource) => ({
+            kind: resource.kind,
+            nativeName: resource.nativeName,
+            appId: resource.appId,
+            ...(resource.kind === "container" ? { service: resource.service } : {}),
+          })),
+          ...(inventory.adoptions ?? []).flatMap((batch) =>
+            batch.receipts.map((receipt) => ({
+              kind: receipt.kind,
+              nativeName: receipt.nativeName,
+              appId: receipt.appId,
+              dataRoot: receipt.dataRoot,
+              ...(receipt.kind === "volume"
+                ? receipt.volumeInstance === undefined
+                  ? {}
+                  : { volumeInstance: receipt.volumeInstance }
+                : { nativeId: receipt.nativeId }),
+            })),
+          ),
+        ],
+      };

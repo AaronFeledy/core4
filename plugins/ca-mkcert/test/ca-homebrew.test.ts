@@ -2,24 +2,28 @@ import { describe, expect, test } from "bun:test";
 import { chmod, mkdir, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { ProcessExecError } from "@lando/sdk/errors";
-import type { ProcessResult } from "@lando/sdk/services";
+import type { HostChangeApplier, ProcessResult } from "@lando/sdk/services";
 import { TEST_CERTIFICATES } from "@lando/sdk/test";
 import { Effect } from "effect";
 
+import { INSTALL_TRUST_REMEDIATION as INSTALL } from "../src/system-trust.ts";
 import {
   type CaHarness,
+  DEBIAN_REFRESH,
+  type Elevation,
   MKCERT_BIN,
+  approveCaChanges,
+  debianHost,
   makeCa,
   makeCaHarness,
   makeFakeMkcertRunner,
-  makeFakePrivilege,
+  makeFakeSession,
   okResult,
   patchHostArtifact,
 } from "./_fixtures.ts";
 
 const { rootA, rootB } = TEST_CERTIFICATES;
 
-const INSTALL = "Run `lando setup` without `--skip-install-ca`.";
 const LACKS_ROOT = "The bundle does not include the local CA.";
 
 interface Homebrew {
@@ -43,13 +47,16 @@ const withHomebrew = async (
     readonly env?: (homebrew: Homebrew) => Readonly<Record<string, string>>;
     /** System bundle before setup; it holds the root unless a test says otherwise, and is absent when null. */
     readonly system?: string | null;
-    /** System bundle after `mkcert -install`; unchanged when undefined. */
-    readonly systemAfterInstall?: string;
+    /** System bundle after the store refresh that trusting the root runs; unchanged when undefined. */
+    readonly systemAfterTrust?: string;
   },
   body: (input: {
     readonly homebrew: Homebrew;
     readonly runner: Runner;
     readonly ca: ReturnType<typeof makeCa>["ca"];
+    /** The authority's planned changes, all approved, as `lando setup --yes` hands them over. */
+    readonly approved: () => Promise<HostChangeApplier>;
+    readonly elevations: () => ReadonlyArray<Elevation>;
   }) => Promise<void>,
 ) => {
   const harness: CaHarness = await makeCaHarness();
@@ -69,20 +76,23 @@ const withHomebrew = async (
       await writeFile(homebrew.systemBundle, options.system ?? `${rootB}\n${rootA}`);
     await mkdir(harness.caRoot, { recursive: true });
     await writeFile(join(harness.caRoot, "rootCA.pem"), rootA);
-    const { postinstall, brewSpawnError, systemAfterInstall } = options;
+    const { postinstall, brewSpawnError, systemAfterTrust } = options;
     const runner = makeFakeMkcertRunner({
       caRoot: harness.caRoot,
       ...(postinstall === undefined ? {} : { brewPostinstall: () => postinstall(homebrew) }),
       ...(brewSpawnError === undefined ? {} : { brewSpawnError }),
-      ...(systemAfterInstall === undefined
-        ? {}
-        : { afterInstall: () => writeFile(homebrew.systemBundle, systemAfterInstall) }),
     });
     const { ca } = makeCa(harness, runner, {
       env: options.env?.(homebrew) ?? { HOMEBREW_PREFIX: prefix, PATH: "" },
       linuxSystemBundles: [homebrew.systemBundle],
+      exists: debianHost,
     });
-    await body({ homebrew, runner, ca });
+    const { session, elevations } = makeFakeSession(async ([command]) => {
+      if (command === DEBIAN_REFRESH && systemAfterTrust !== undefined)
+        await writeFile(homebrew.systemBundle, systemAfterTrust);
+      return okResult();
+    });
+    await body({ homebrew, runner, ca, approved: () => approveCaChanges(ca, session), elevations });
   } finally {
     restore();
     await harness.cleanup();
@@ -185,18 +195,16 @@ describe("mkcert CertificateAuthority and Homebrew's CA bundle", () => {
     },
     { name: "Homebrew is not installed", bundle: rootB, formula: true, env: () => ({ PATH: "" }), ids: 1 },
   ])(
-    "setup runs neither mkcert -install nor brew when the system trusts the root and $name",
+    "setup plans and runs no system-store change, and no brew, when the system trusts the root and $name",
     async ({ bundle, formula, env, ids }) => {
       await withHomebrew({ bundle, formula, ...(env === undefined ? {} : { env }) }, async (input) => {
-        const privilege = makeFakePrivilege();
-        const result = await Effect.runPromise(
-          input.ca.setup({ force: false, privilege: privilege.service }),
-        );
+        const hostChanges = await input.approved();
+        const result = await Effect.runPromise(input.ca.setup({ force: false, hostChanges }));
         expect(result.trustStores.map(({ id, state, changed }) => ({ id, state, changed }))).toEqual(
           ["system", "homebrew"].slice(0, ids).map((id) => ({ id, state: "trusted", changed: false })),
         );
         expect(writingCalls(input.runner)).toEqual([]);
-        expect(privilege.calls()).toEqual([]);
+        expect(input.elevations()).toEqual([]);
       });
     },
   );
@@ -243,23 +251,24 @@ describe("mkcert CertificateAuthority and Homebrew's CA bundle", () => {
 
   test("setup with skipTrustInstall reports a stale bundle and writes nothing", async () => {
     await withHomebrew({ bundle: rootB, postinstall: rebuildWith(rootA) }, async (input) => {
-      const privilege = makeFakePrivilege();
+      const hostChanges = await input.approved();
       const result = await Effect.runPromise(
-        input.ca.setup({ force: false, skipTrustInstall: true, privilege: privilege.service }),
+        input.ca.setup({ force: false, skipTrustInstall: true, hostChanges }),
       );
       expect(result.trustStores).toEqual([
         { ...trustedSystem(input.homebrew), changed: false },
         { ...brewStore(input.homebrew), ...untrusted(INSTALL), changed: false },
       ]);
       expect(writingCalls(input.runner)).toEqual([]);
-      expect(privilege.calls()).toEqual([]);
+      expect(input.elevations()).toEqual([]);
     });
   });
 
-  test("setup reports both stores untrusted, and rebuilds nothing, when mkcert leaves the system store without the root", async () => {
+  test("setup reports both stores untrusted, and rebuilds nothing, when the store refresh leaves the system store without the root", async () => {
     await withHomebrew({ bundle: rootB, system: rootB, postinstall: rebuildWith(rootA) }, async (input) => {
-      // When: mkcert -install exits 0 but the system bundle never gains the root
-      const result = await Effect.runPromise(input.ca.setup({ force: false }));
+      // When: the approved change exits 0 but the system bundle never gains the root
+      const hostChanges = await input.approved();
+      const result = await Effect.runPromise(input.ca.setup({ force: false, hostChanges }));
       // Then: setup still succeeds
       expect(result.trustStores).toEqual([
         {
@@ -275,16 +284,17 @@ describe("mkcert CertificateAuthority and Homebrew's CA bundle", () => {
     });
   });
 
-  test("setup reports the system store changed once mkcert -install trusts the root", async () => {
+  test("setup reports the system store changed once the approved change trusts the root", async () => {
     await withHomebrew(
       {
         bundle: rootB,
         system: rootB,
-        systemAfterInstall: `${rootB}\n${rootA}`,
+        systemAfterTrust: `${rootB}\n${rootA}`,
         postinstall: rebuildWith(rootA),
       },
       async (input) => {
-        const result = await Effect.runPromise(input.ca.setup({ force: false }));
+        const hostChanges = await input.approved();
+        const result = await Effect.runPromise(input.ca.setup({ force: false, hostChanges }));
         expect(result.trustStores.map(({ id, state, changed }) => ({ id, state, changed }))).toEqual([
           { id: "system", state: "trusted" as const, changed: true },
           { id: "homebrew", state: "trusted" as const, changed: true },
@@ -295,11 +305,12 @@ describe("mkcert CertificateAuthority and Homebrew's CA bundle", () => {
 
   test("setup does not report a store it could not inspect before as changed", async () => {
     await withHomebrew(
-      { bundle: `${rootB}\n${rootA}`, system: null, systemAfterInstall: `${rootB}\n${rootA}` },
+      { bundle: `${rootB}\n${rootA}`, system: null, systemAfterTrust: `${rootB}\n${rootA}` },
       async (input) => {
         // Given: no system bundle is readable before setup, so the system row starts unknown
-        // When: mkcert -install leaves one that holds the root
-        const result = await Effect.runPromise(input.ca.setup({ force: false }));
+        // When: the approved change leaves one that holds the root
+        const hostChanges = await input.approved();
+        const result = await Effect.runPromise(input.ca.setup({ force: false, hostChanges }));
         // Then
         expect(result.trustStores.map(({ id, state, changed }) => ({ id, state, changed }))).toEqual([
           { id: "system", state: "trusted" as const, changed: false },

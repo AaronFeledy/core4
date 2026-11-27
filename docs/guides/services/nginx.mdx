@@ -7,7 +7,7 @@ tags: [docs, nginx, service, webserver]
 
 # Add nginx
 
-Add `type: nginx` under `services` in `.lando.yml`. Lando pulls `nginx:1.26-alpine` and listens on `80`. Your repository is mounted at `/app` and served as the document root:
+Add `type: nginx` under `services` in `.lando.yml`. Lando pulls `nginx:1.30-alpine` and listens on `80`. Your repository is mounted at `/app` and served as the document root:
 
 ```yaml
 name: nginx-demo
@@ -38,6 +38,52 @@ Lando derives an HTTPS hostname from the nginx service's HTTP endpoint, such as 
 Redirects nginx sends on its own, such as adding the trailing slash to a directory URL, are relative. The browser stays on the HTTPS URL and port it used.
 
 Hidden paths, meaning any path segment that starts with `.` such as `/.git/config` or `/.env`, get Lando's 403 page, so your repository's dotfiles stay private even though the app root is the default webroot. `/.well-known/` stays served.
+
+## Serve files only you can read
+
+On Linux providers that support [project-user mapping](./file-ownership.mdx), the stock nginx launcher maps its `nginx` workers to your host user. The workers can read files you own in a private checkout without changing the files' owner or permissions. The master still starts as root and the listener port stays the same. This also applies when nginx serves files in front of PHP-FPM.
+
+Run `lando info --format=json` from your app directory and check `projectUser` for the `web` service. When it names `nginx`, user commands such as `lando exec` use that account by default too. Lando doesn't persist `/var/cache/nginx` as a home. If the provider can't map the worker, `projectUserExplanation` tells you why; the service may not be able to read private files.
+
+An existing container keeps its applied command identity until you run `lando start` to apply the new plan. If that switches your default commands from root to `nginx`, see [Recover an old nginx root home](./home-and-host.mdx#recover-an-old-nginx-root-home) before removing any volumes.
+
+On an engine that renumbers image accounts, the default worker keeps its container identity if your host UID or GID is `0`. Lando never renumbers the worker to either zero ID.
+
+Set `projectUser: false` on the service to opt out. If you supply your own `command:` or `entrypoint:`, Lando doesn't assume your launcher uses the stock worker. If you supply a different image or a replacement build, it doesn't assume that image has the stock account or IDs.
+
+## Mount your project read-only
+
+`type: nginx` mounts your project read-write by default, regardless of whether it serves static files or sends PHP requests to a backend. When Lando maps the `nginx` worker to your host user, both the worker and commands run with `lando exec` as that account can write wherever your host user can write on the mount. This is filesystem access, not permission to upload files over HTTP. [The `static` and `static:nginx` types](./static.mdx) mount the project read-only by default.
+
+To make only the nginx service's project mount read-only, add `appMount` to its block in `.lando.yml`. Keep `target: /app` to leave the mount and relative webroot in their usual places:
+
+```yaml
+services:
+  web:
+    type: nginx
+    appMount:
+      target: /app
+      readOnly: true
+```
+
+From the app directory, run `lando app:config:lint`, then `lando start` to apply the change. In `lando info --format=json`, check that the `web` service's `/app` mount has `readOnly: true`. This doesn't make mounts on other services read-only. Configure those on the services that use them.
+
+  <Scenario id="read-only-app-mount" render={false} reason="Check that the documented nginx appMount block plans a read-only mount at the same target">
+    <Step name="plan-default-mount">
+      <UseFixture name="nginx-demo" />
+      <Run command="lando app:cache:refresh" />
+      <Verify command="lando info --format=json" expect={{ stdout: { regex: "\\{(?=[^{}]*\"type\":\\s*\"bind\")(?=[^{}]*\"target\":\\s*\"/app\")[^{}]*\"readOnly\":\\s*false\\b" } }} />
+    </Step>
+    <Step name="plan-read-only-mount">
+      <Run command={`lando app:config:set services.web.appMount '{"target":"/app","readOnly":true}' --type json`} />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+      <Run command="lando app:cache:refresh" />
+      <Verify command="lando info --format=json" expect={{ stdout: { regex: "\\{(?=[^{}]*\"type\":\\s*\"bind\")(?=[^{}]*\"target\":\\s*\"/app\")[^{}]*\"readOnly\":\\s*true\\b" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
 
 ## Pair nginx with PHP
 
@@ -145,7 +191,7 @@ services:
 
 ## Run as a non-root user
 
-Set `user: nginx` to run nginx as the image's own `nginx` account, with or without a PHP backend. Lando writes its whole nginx configuration to `/tmp/lando-nginx.conf`, points the PID file and temp directories at `/tmp` too, and starts the daemon with `nginx -c /tmp/lando-nginx.conf`, so nothing gets written into the image's root-owned config tree at start:
+Set `user: nginx` only if you want to run the master itself as the image's `nginx` account, with or without a PHP backend. This isn't needed for the default worker mapping. Lando writes its whole nginx configuration to `/tmp/lando-nginx.conf`, points the PID file and temp directories at `/tmp` too, and starts the daemon with `nginx -c /tmp/lando-nginx.conf`, so nothing gets written into the image's root-owned config tree at start:
 
 ```yaml
 services:
@@ -166,7 +212,7 @@ If startup fails with this override, Lando includes a hint naming the required
 
 ## Pin a version
 
-Set `image:` when `nginx:1.26-alpine` isn't the version you want:
+Set `image:` when `nginx:1.30-alpine` isn't the version you want:
 
 ```yaml
 services:

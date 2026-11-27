@@ -7,27 +7,20 @@
  * install dir used when the caller did not supply one.
  */
 import { fileURLToPath } from "node:url";
+import { SetupProviderSwitchResultSchema } from "@lando/engine/operations/setup-provider-switch";
 import {
-  type SetupProviderSwitchResult,
-  SetupProviderSwitchResultSchema,
-} from "@lando/engine/operations/setup-provider-switch";
-import { ProviderId, TrustStoreChange } from "@lando/sdk/schema";
+  HostChangeOutcome,
+  HostChangePlanEntry,
+  PrivilegeCredentialStatus,
+  ProviderId,
+  TrustStoreChange,
+} from "@lando/sdk/schema";
 import { Schema } from "effect";
 
 import type { SetupNetworkTrustProbe } from "../../commands/setup-network-trust";
 
-export type FileSyncStatus = "deferred" | "installed" | "satisfied" | "unavailable";
-
-export interface SetupResult {
-  readonly providerId: string;
-  readonly installDir: string;
-  readonly fileSyncStatus: FileSyncStatus;
-  readonly networkCaInjectionConfigured: boolean;
-  readonly providerSwitch?: SetupProviderSwitchResult;
-  readonly trustStores?: ReadonlyArray<TrustStoreChange>;
-}
-
-export const SetupResultSchema = Schema.Struct({
+const SetupAppliedResultSchema = Schema.Struct({
+  dryRun: Schema.Literal(false),
   providerSwitch: Schema.optionalKey(SetupProviderSwitchResultSchema),
   providerId: Schema.String,
   installDir: Schema.String,
@@ -40,7 +33,36 @@ export const SetupResultSchema = Schema.Struct({
     description:
       "Every host trust store the certificate authority manages, as setup left it. Present whenever setup ran a certificate authority; after a trust-installing run each store that does not trust the local CA is also reported as a CA_TRUST_INCOMPLETE warning.",
   }),
+  hostChanges: Schema.Array(HostChangeOutcome).annotate({
+    description:
+      "One row per host change setup planned: applied, already satisfied, declined, skipped, or stale.",
+  }),
 });
+export type SetupAppliedResult = typeof SetupAppliedResultSchema.Type;
+export type FileSyncStatus = SetupAppliedResult["fileSyncStatus"];
+
+const SetupPlanResultSchema = Schema.Struct({
+  dryRun: Schema.Literal(true),
+  providerId: Schema.String,
+  selectionSource: Schema.Literals(["flag", "landofile", "env", "config", "default", "prompt"]).annotate({
+    description:
+      "Where the provider choice came from. A dry run never prompts, so it reports the default instead.",
+  }),
+  elevation: PrivilegeCredentialStatus.annotate({
+    description:
+      "How a real run would get administrator access. Named for what it reports, not secret material, so redaction keeps its detail.",
+  }),
+  changes: Schema.Array(HostChangePlanEntry).annotate({
+    description:
+      "Every host change a real run with the same flags would plan, with the approval that run would reach without asking. Nothing was changed.",
+  }),
+  notices: Schema.Array(Schema.String),
+});
+export type SetupPlanResult = typeof SetupPlanResultSchema.Type;
+
+/** `dryRun` tells a plan (`lando setup --dry-run`, nothing changed) from a finished setup. */
+export const SetupResultSchema = Schema.Union([SetupAppliedResultSchema, SetupPlanResultSchema]);
+export type SetupResult = typeof SetupResultSchema.Type;
 
 export const sourceInstallDir = (): string =>
   fileURLToPath(new URL("../../../../../", import.meta.url)).replace(/[\\/]$/u, "");

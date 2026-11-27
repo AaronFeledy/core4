@@ -25,6 +25,12 @@ const providers = CI_PLATFORMS.map(({ id }) => ({
   job: `provider-integration-${id}${id === "linux-x64" ? "-runner" : ""}`,
 }));
 const live = [{ workflow: "ci.yml", job: "provider-integration-linux-x64-runner" }] as const;
+const mssqlActivation = "core/test/live/mssql-activation-live.integration.test.ts";
+const setupElevationTerminal = [
+  "core/test/live/setup-elevation-pty-live.integration.test.ts",
+  "core/test/live/root-ownership-repair-pty-live.integration.test.ts",
+];
+const separatelySelectedLiveTests = [mssqlActivation, ...setupElevationTerminal];
 const helperJobs = [
   "ci.yml",
   "nightly.yml",
@@ -149,8 +155,23 @@ export const TEST_SELECTIONS = [
     id: "providers-core-live",
     usesInheritedLivePodmanRoots: true,
     paths: ["core/test/live/"],
+    ignore: separatelySelectedLiveTests,
     jobs: live,
     needs: "Live provider socket and compiled CLI; shared-engine-data-roots uses the explicit Podman socket",
+  },
+  {
+    id: "providers-mssql-activation",
+    usesInheritedLivePodmanRoots: true,
+    paths: [mssqlActivation],
+    jobs: live,
+    needs: "Linux x64, live Podman socket, and compiled CLI",
+  },
+  {
+    id: "setup-elevation-terminal",
+    paths: setupElevationTerminal,
+    jobs: live,
+    needs:
+      "LANDO_TEST_PODMAN_SOCKET that builds images with egress (apt, mkcert download) and a compiled CLI",
   },
   {
     id: "providers-lando",
@@ -295,6 +316,7 @@ export const TEST_SELECTIONS = [
   {
     id: "nightly-provider-e2e",
     paths: ["core/test/live/", "plugins/service-lando/test/service-identity.live.integration.test.ts"],
+    ignore: separatelySelectedLiveTests,
     jobs: [{ workflow: "nightly.yml", job: "provider-lando-e2e-linux-x64" }],
     needs: "Live managed Podman and compiled CLI",
   },

@@ -1,0 +1,25 @@
+name: db-creds-apply-pg
+services:
+  db:
+    type: postgres
+    creds:
+      database: credential_demo
+      password: pg-fixture-pass-one
+  client:
+    type: compose
+    image: docker.io/library/postgres:16
+    appMount: false
+    home: false
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGUSER: "{{ services.db.creds.user }}"
+      PGPASSWORD: "{{ services.db.creds.password }}"
+      PGCONNECT_TIMEOUT: "5"
+    entrypoint: [/bin/sh, -c]
+    command:
+      - |
+        psql -X -w -h db -d credential_demo -tAc 'SELECT 2616;' >/tmp/boot-select 2>&1
+        printf 'boot-select status=%s\n' "$?" >>/tmp/boot-select
+        exec sleep infinity

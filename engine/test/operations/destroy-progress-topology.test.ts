@@ -13,6 +13,7 @@ import {
 import type { FileSyncEngineShape } from "@lando/sdk/services";
 import { type StateStoreShape, physicalVolumeLockKey } from "@lando/sdk/services";
 import { startChildTaskId } from "@lando/sdk/task-progress";
+import { makeTestRuntimeProvider } from "@lando/sdk/test";
 import { DateTime, Effect, Exit, Fiber, Schema, Stream } from "effect";
 import { destroyAppForTarget } from "../../src/operations/destroy.ts";
 import { withProjectEvents } from "../../src/planner/effective-events.ts";
@@ -31,6 +32,7 @@ import {
   makeHarness,
   plan,
   runDestroyTarget,
+  web,
 } from "./destroy-progress-topology-support.ts";
 
 const availableFileSync = (): FileSyncEngineShape => ({
@@ -653,6 +655,29 @@ describe("destroy progress topology", () => {
 
   test("holds the physical-volume lock while destroying volumes", async () => {
     // Given: a provider volume with durable physical identity.
+    const volumeProvider = makeTestRuntimeProvider();
+    const store = { app: plan.id, store: "database", scope: "service" } as const;
+    await Effect.runPromise(
+      Effect.scoped(
+        volumeProvider.apply(
+          {
+            ...plan,
+            services: {
+              [web.name]: {
+                ...web,
+                mounts: [
+                  { type: "volume", store: store.store, target: PortablePath.make("/data"), readOnly: false },
+                ],
+              },
+            },
+          },
+          { reconcile: false },
+        ),
+      ),
+    );
+    const locator = await Effect.runPromise(volumeProvider.locateVolume(store));
+    expect(locator.presence).toBe("present");
+    const volumeLockKey = physicalVolumeLockKey(locator.coordinationKey);
     const baseStateStore = makeTestStateStore().service;
     const lockKeys: string[] = [];
     let lockHeld = false;
@@ -662,25 +687,19 @@ describe("destroy progress topology", () => {
         Effect.acquireUseRelease(
           Effect.sync(() => {
             lockKeys.push(key);
-            lockHeld = true;
+            if (key === volumeLockKey) lockHeld = true;
           }),
           () => body,
           () =>
             Effect.sync(() => {
-              lockHeld = false;
+              if (key === volumeLockKey) lockHeld = false;
             }),
         ),
     };
     let destroyObservedLock = false;
     const harness = makeHarness({
       stateStore,
-      volumes: [
-        {
-          ref: { app: plan.id, store: "database", scope: "service" },
-          instanceId: "volume-instance-1",
-          provenance: "known",
-        },
-      ],
+      volumeProvider,
       destroyEffect: Effect.sync(() => {
         destroyObservedLock = lockHeld;
       }),
@@ -691,7 +710,7 @@ describe("destroy progress topology", () => {
 
     // Then: provider mutation occurs while holding the shared physical-volume lock.
     expect(destroyObservedLock).toBe(true);
-    expect(lockKeys).toEqual([physicalVolumeLockKey(JSON.stringify(["endpoint:test", "database"]))]);
+    expect(lockKeys).toEqual([volumeLockKey]);
     expect(lockHeld).toBe(false);
   });
 

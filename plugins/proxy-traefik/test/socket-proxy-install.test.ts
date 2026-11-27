@@ -8,7 +8,7 @@ import type {
   ProcessRunner,
   ProcessSpawnOptions,
 } from "@lando/sdk/services";
-import { makeTestCertificateAuthority } from "@lando/sdk/test";
+import { makeTestCertificateAuthority, makeTestPrivilegeService } from "@lando/sdk/test";
 import { Cause, type Context, Effect, Exit, Schema } from "effect";
 import {
   DEFAULT_BACKEND_HTTPS_TRY_LIST,
@@ -26,19 +26,22 @@ import {
   socketProxyUnitHeader,
 } from "../src/socket-proxy-helper.ts";
 import {
+  type InstallSocketProxyInput,
   POLKIT_RULE_PATH,
   PROXYD_CANDIDATES,
   ProxydBinaryNotFound,
   SOCKET_UNIT_PATHS,
   discoverProxydBinary,
-  installSocketProxy,
+  inspectSocketProxyInstall,
   isSocketProxyInstalled,
   renderPolkitRule,
+  runSocketProxyInstall,
   startSockets,
 } from "../src/socket-proxy-install.ts";
 import { resolveNeedsHelper } from "../src/socket-proxy-setup.ts";
 import { buildInstallScript } from "../src/socket-proxy-units.ts";
 import { makeAckStore } from "./observe-routes-fixture.ts";
+import { approvedRouterHelper } from "./socket-helper-approval.ts";
 
 const ok = (stdout = ""): ProcessResult => ({ exitCode: 0, stdout, stderr: "" });
 const fail = (exitCode = 1, stderr = "denied"): ProcessResult => ({ exitCode, stdout: "", stderr });
@@ -88,13 +91,13 @@ const makePrivilege = (
 } => {
   const calls: Array<ReadonlyArray<string>> = [];
   return {
-    service: {
+    service: makeTestPrivilegeService({
       elevate: (command) =>
         Effect.sync(() => {
           calls.push([...command]);
           return typeof result === "function" ? result(command) : result;
         }),
-    },
+    }),
     calls: () => [...calls],
   };
 };
@@ -109,6 +112,18 @@ const hostFiles = (present: Readonly<Record<string, string>> = {}) => {
 };
 
 const markedUnit = `${socketProxyUnitHeader("/lando")}\n[Unit]\n`;
+
+/** Inspect, then run the install script through `privilege` the way the approved host change does. */
+const installSocketProxy = (
+  input: InstallSocketProxyInput & { readonly privilege: Context.Service.Shape<typeof PrivilegeService> },
+) =>
+  Effect.gen(function* () {
+    const inspection = yield* inspectSocketProxyInstall(input);
+    if (inspection.kind !== "script") return inspection;
+    return yield* runSocketProxyInstall({
+      run: () => input.privilege.elevate(["/bin/sh", "-c", inspection.script]),
+    });
+  });
 const [packagedProxyd] = PROXYD_CANDIDATES;
 
 describe("discoverProxydBinary", () => {
@@ -359,9 +374,7 @@ describe("installSocketProxy", () => {
           user: "lando-dev",
           userDataRoot: "/lando",
           hasHostSystemd: () => true,
-          autoApprove: true,
           processRunner: runner.service,
-          privilege: privilege.service,
         },
         { httpTarget: 48080, httpsTarget: 48443 },
       ),
@@ -558,10 +571,9 @@ describe("installSocketProxy", () => {
 });
 
 describe("startSockets", () => {
-  test("tries unelevated systemctl start before an elevated retry", async () => {
-    // Given: unelevated start fails and elevated start succeeds.
+  test("starts only through the helper's polkit grant and never elevates", async () => {
+    // Given: the unprivileged start is refused (the grant is missing or broken).
     const runner = makeRunner(() => fail(1, "auth"));
-    const privilege = makePrivilege(ok());
     const forwards: number[] = [];
 
     // When: sockets are started.
@@ -575,7 +587,6 @@ describe("startSockets", () => {
           [POLKIT_RULE_PATH]: `${socketProxyPolkitHeader("/lando")}\npolkit.addRule(function () {});\n`,
         }),
         processRunner: runner.service,
-        privilege: privilege.service,
         probeForward: (_host, port) =>
           Effect.sync(() => {
             forwards.push(port);
@@ -584,18 +595,15 @@ describe("startSockets", () => {
       }),
     );
 
-    // Then: unelevated systemctl ran first, then one elevate, then forward probes.
-    expect(outcome.kind).toBe("started");
-    const first = runner.calls()[0];
-    expect(first?.cmd).toBe("/bin/sh");
-    expect(first?.args?.[1]).toContain("flock -x 9");
-    expect(first?.args?.[1]).toContain(
+    // Then: the one checked, unprivileged start ran, and its failure is the outcome.
+    expect(outcome).toEqual({ kind: "failed", exitCode: 1, stderr: "auth" });
+    expect(runner.calls()).toHaveLength(1);
+    expect(runner.calls()[0]?.cmd).toBe("/bin/sh");
+    expect(runner.calls()[0]?.args?.[1]).toContain("flock -x 9");
+    expect(runner.calls()[0]?.args?.[1]).toContain(
       "systemctl start 'lando-proxy-http.socket' 'lando-proxy-https.socket'",
     );
-    expect(privilege.calls()).toHaveLength(1);
-    expect(privilege.calls()[0]?.join(" ")).toContain("systemctl");
-    expect(privilege.calls()[0]?.join(" ")).toContain("start");
-    expect(forwards).toEqual([80, 443]);
+    expect(forwards).toEqual([]);
   });
 });
 
@@ -627,12 +635,10 @@ describe("setup classification after helper install", () => {
         user: "lando-dev",
         userDataRoot: "/lando",
         hasHostSystemd: () => true,
-        autoApprove: true,
         exists: (path) => Effect.succeed(path === packagedProxyd),
         readText: () => Effect.fail(new Error("missing")),
         processRunner: makeRunner((input) => (input.cmd === "systemctl" ? ok() : fail(1, "not found")))
           .service,
-        privilege: privilege.service,
         classifyOverride: {
           http: { bind: { kind: "EACCES", code: "EACCES" }, forward: { kind: "failure" } },
           https: { bind: { kind: "EACCES", code: "EACCES" }, forward: { kind: "failure" } },
@@ -641,8 +647,12 @@ describe("setup classification after helper install", () => {
       },
     });
 
-    // When: setup classifies, installs the helper, and re-probes.
-    await Effect.runPromise(Effect.scoped(service.setup({ defaultDomain: "lndo.site" })));
+    // When: setup classifies, installs the approved helper, and re-probes.
+    const config = { defaultDomain: "lndo.site" };
+    const hostChanges = await Effect.runPromise(
+      approvedRouterHelper(service, config, privilege.service.elevate),
+    );
+    await Effect.runPromise(Effect.scoped(service.setup(config, { intent: "configure", hostChanges })));
 
     // Then: persisted mode is socket-helper on privileged public ports with high-port hops.
     const raw = files.get(acquisitionStateFile({ platform: "linux", globalAppRoot: "/lando/global" }));
@@ -663,6 +673,7 @@ describe("setup classification after helper install", () => {
   test("records occupied-hop when elevate exits nonzero and does not throw", async () => {
     // Given: preferred ports EACCES and elevation is refused (helper fail continues try-list).
     const files = new Map<string, string>();
+    const refused = makePrivilege(fail(1, "refused"));
     const service = makeTraefikRouterService({
       stateStore: makeAckStore([]),
       probeForward: () => Effect.succeed({ kind: "success" }),
@@ -686,11 +697,9 @@ describe("setup classification after helper install", () => {
         user: "lando-dev",
         userDataRoot: "/lando",
         hasHostSystemd: () => true,
-        autoApprove: true,
         exists: (path) => Effect.succeed(path === packagedProxyd),
         readText: () => Effect.fail(new Error("missing")),
         processRunner: makeRunner(() => fail(1, "not found")).service,
-        privilege: makePrivilege(fail(1, "refused")).service,
         classifyOverride: {
           http: { bind: { kind: "EACCES", code: "EACCES" }, forward: { kind: "failure" } },
           https: { bind: { kind: "EACCES", code: "EACCES" }, forward: { kind: "failure" } },
@@ -698,8 +707,12 @@ describe("setup classification after helper install", () => {
       },
     });
 
-    // When: setup attempts helper install.
-    await Effect.runPromise(Effect.scoped(service.setup({ defaultDomain: "lndo.site" })));
+    // When: setup attempts the approved helper install.
+    const config = { defaultDomain: "lndo.site" };
+    const hostChanges = await Effect.runPromise(
+      approvedRouterHelper(service, config, refused.service.elevate),
+    );
+    await Effect.runPromise(Effect.scoped(service.setup(config, { intent: "configure", hostChanges })));
 
     // Then: try-list continues to occupied-hop and setup still succeeds.
     const raw = files.get(acquisitionStateFile({ platform: "linux", globalAppRoot: "/lando/global" }));

@@ -49,7 +49,7 @@ import { RedactionService } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import * as RendererOutput from "@lando/renderer/output";
 import * as RendererRuntime from "@lando/renderer/runtime";
-import { ServiceExecError } from "@lando/sdk/errors";
+import { ScratchAppError, ServiceExecError } from "@lando/sdk/errors";
 import { StreamFrameSink, type StreamFrameSinkFrame } from "@lando/sdk/services";
 import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
@@ -176,7 +176,6 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
       artifactPull: options.artifactPull ?? capabilities.artifactPull,
     },
     isAvailable: Effect.succeed(true),
-    planSetup: () => Effect.succeed({ providerId, changes: [] }),
     setup: () => Effect.void,
     getStatus: Effect.succeed({ state: "running" as const, message: "ready" }),
     getVersions: Effect.succeed({ provider: "0.0.0" }),
@@ -530,7 +529,10 @@ describe("scratchRun", () => {
 
       expect(recorded.destroyCalls).toHaveLength(1);
       expect(recorded.destroyCalls[0]?.app).toBe(String(plan.id));
-      expect(stopCalls).toEqual([{ app: String(plan.id), volumes: false }]);
+      expect(stopCalls).toEqual([
+        { app: String(plan.id), volumes: false },
+        { app: String(plan.id), volumes: true },
+      ]);
 
       const toolboxService = plan.services[Object.keys(plan.services)[0] as keyof typeof plan.services];
       const appBind = toolboxService === undefined ? undefined : serviceAppMount(toolboxService);
@@ -672,6 +674,64 @@ describe("scratchRun", () => {
         scratchList().pipe(Effect.provide(layer), Effect.provide(testSupportLayer())),
       );
       expect(summaries).toEqual([]);
+    });
+  });
+
+  test("--keep does not detach when exec emits output but never reports its exit", async () => {
+    await withTempProject(async () => {
+      const recorded: Recorded = { appliedPlans: [], destroyCalls: [], execCalls: [] };
+      const privateArg = "private-scratch-argv";
+      const partialOutput = "partial command output";
+      const layer = makeHarnessLayer(recorded, {
+        execStream: () => Stream.make({ kind: "stdout", chunk: new TextEncoder().encode(partialOutput) }),
+      });
+      const failure = await Effect.runPromise(
+        scratchRun({ command: ["echo", privateArg], mount: true, keep: true, answers: {} }).pipe(
+          Effect.provide(layer),
+          Effect.provide(testSupportLayer()),
+          Effect.flip,
+        ),
+      );
+
+      if (!(failure instanceof ScratchAppError) || !(failure.cause instanceof ServiceExecError))
+        throw new TypeError("expected scratch failure with its exec cause");
+      expect(failure.remediation).toBe(failure.cause.remediation);
+      expect(JSON.stringify(failure)).not.toContain(privateArg);
+      expect(JSON.stringify(failure)).not.toContain(partialOutput);
+      expect(recorded.execCalls).toHaveLength(1);
+      expect(recorded.destroyCalls).toHaveLength(1);
+      const summaries = await Effect.runPromise(
+        scratchList().pipe(Effect.provide(layer), Effect.provide(testSupportLayer())),
+      );
+      expect(summaries).toEqual([]);
+    });
+  });
+
+  test("a stopped scratch reports scratch recovery rather than the provider's app-start advice", async () => {
+    await withTempProject(async () => {
+      const recorded: Recorded = { appliedPlans: [], destroyCalls: [], execCalls: [] };
+      const providerError = new ServiceExecError({
+        providerId,
+        operation: "exec",
+        service: "toolbox",
+        message: "The service is not running.",
+        remediation: "Run `lando start` and retry.",
+      });
+      const layer = makeHarnessLayer(recorded, { execStream: () => Stream.fail(providerError) });
+
+      const failure = await Effect.runPromise(
+        scratchRun({ command: ["true"], mount: true, keep: false, answers: {} }).pipe(
+          Effect.provide(layer),
+          Effect.provide(testSupportLayer()),
+          Effect.flip,
+        ),
+      );
+
+      if (!(failure instanceof ScratchAppError)) throw new TypeError("expected scratch execution failure");
+      expect(failure.remediation).toContain("lando run --");
+      expect(failure.remediation).not.toContain("lando start");
+      expect(failure.cause).toBe(providerError);
+      expect(recorded.destroyCalls).toHaveLength(1);
     });
   });
 

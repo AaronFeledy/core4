@@ -54,6 +54,83 @@ test("the in-memory provider conforms to lifecycle and data-plane contracts", as
   );
 });
 
+test("the provider contract rejects a runtime that advertises but ignores the continuation", async () => {
+  const provider = makeTestRuntimeProvider();
+  const error = await Effect.runPromise(
+    Effect.flip(
+      runProviderContract({
+        ...provider,
+        apply: (plan, { continueHealthyDependency: _ignored, ...options }) => provider.apply(plan, options),
+      }),
+    ),
+  );
+  expect(error).toMatchObject({
+    _tag: "ContractFailure",
+    assertion: "required healthy dependency continuation blocks apply",
+  });
+});
+
+test("the in-memory provider runs the continuation with the dependency running and consumer absent", async () => {
+  const provider = makeTestRuntimeProvider();
+  const web = plan.services[target.service];
+  if (web === undefined) throw new TypeError("fixture requires web");
+  const db = ServiceName.make("db");
+  const readiness = Schema.decodeUnknownSync(HealthcheckPlan)({
+    kind: "command",
+    command: ["true"],
+    intervalSeconds: 0,
+    timeoutSeconds: 1,
+    retries: 1,
+  });
+  const dependentPlan = {
+    ...plan,
+    services: {
+      [web.name]: {
+        ...web,
+        dependsOn: [{ service: db, condition: "service_healthy", required: true }],
+      },
+      [db]: { ...web, primary: false, name: db, readiness },
+    },
+  } as const;
+  const error = await Effect.runPromise(
+    Effect.scoped(
+      Effect.flip(
+        provider.apply(dependentPlan, {
+          reconcile: false,
+          executeReadinessAttempt: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
+          continueHealthyDependency: ({ consumer, dependency, containerId }) =>
+            Effect.gen(function* () {
+              expect(
+                yield* Effect.result(provider.inspect({ app: plan.id, service: consumer })),
+              ).toMatchObject({
+                _tag: "Failure",
+                failure: { _tag: "ServiceNotFoundError" },
+              });
+              expect(
+                yield* Effect.result(provider.inspect({ app: plan.id, service: dependency })),
+              ).toMatchObject({
+                _tag: "Success",
+                success: { status: "running", containerId },
+              });
+              return new ServiceStartError({
+                providerId: provider.id,
+                service: consumer,
+                operation: "test-continuation",
+                message: "Dependency could not be prepared.",
+                remediation: "Correct the dependency and retry.",
+              });
+            }),
+        }),
+      ),
+    ),
+  );
+  expect(error).toMatchObject({
+    _tag: "ServiceStartError",
+    service: target.service,
+    operation: "test-continuation",
+  });
+});
+
 test("exec collects the exact stream bytes, including its trailing newline", async () => {
   const provider = makeTestRuntimeProvider();
   const result = await Effect.runPromise(

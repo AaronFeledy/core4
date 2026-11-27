@@ -15,6 +15,10 @@ import {
   pendingOperations,
 } from "../../engine/src/global-app/reconciliation.ts";
 import {
+  HOST_CHANGE_RECEIPTS_VERSION,
+  hostChangeReceiptTransitions,
+} from "../../engine/src/host-changes/receipts.ts";
+import {
   PENDING_START_VERSION,
   PendingStart,
   pendingStartTransitions,
@@ -56,6 +60,7 @@ import {
 } from "../../plugins/provider-lando/src/windows-sync-helper-receipt.ts";
 import { SqliteSnapshotInfo } from "../../plugins/sql/src/sqlite-snapshot.ts";
 import { SNAPSHOT_INFO_VERSION, SnapshotInfo } from "../../sdk/src/schema/data-transfer.ts";
+import { HostChangeReceipts } from "../../sdk/src/schema/host-change.ts";
 import { VolumeInitializationRecord } from "../../sdk/src/schema/volume-initialization.ts";
 import {
   VOLUME_INITIALIZATION_VERSION,
@@ -159,6 +164,13 @@ export const INTERNAL_PERSISTED_STORES = [
     version: UPDATE_MANIFEST_STATE_VERSION,
     source: { file: "engine/src/update/manifest.ts", schema: "UpdateManifestStateSchema" },
     lifecycle: "none",
+  },
+  {
+    id: "host-change-receipts",
+    schema: HostChangeReceipts,
+    version: HOST_CHANGE_RECEIPTS_VERSION,
+    source: { file: "engine/src/host-changes/receipts.ts", schema: "HostChangeReceipts" },
+    lifecycle: hostChangeReceiptTransitions,
   },
   {
     id: "scratch-registry",

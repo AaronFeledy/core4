@@ -123,6 +123,7 @@ const makeFileSystemFake = () => {
         files.set(path, String(content));
         return Effect.void;
       },
+      append: (path: string) => unsupported("append", path),
       writeAtomic: (path: string, content: string | Uint8Array) => {
         calls.push({ operation: "writeAtomic", path });
         files.set(path, String(content));

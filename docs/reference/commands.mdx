@@ -675,7 +675,7 @@ Arguments:
 
 | Argument | Description |
 | --- | --- |
-| `id` | Scratch app id. |
+| `id` | Scratch app id or the --name it was started with. |
 
 Flags:
 
@@ -707,7 +707,7 @@ Arguments:
 
 | Argument | Description |
 | --- | --- |
-| `id` | Scratch app id. |
+| `id` | Scratch app id or the --name it was started with. |
 
 ## `lando apps:scratch:list`
 
@@ -725,7 +725,7 @@ Arguments:
 
 | Argument | Description |
 | --- | --- |
-| `id` | Scratch app id. |
+| `id` | Scratch app id or the --name it was started with. |
 
 Flags:
 
@@ -772,7 +772,7 @@ Flags:
 | `--answers` | Path to a JSON answers file. |
 | `--detach` | Return after acquiring the scratch app. |
 | `--exclude` | Exclude a path pattern from a fully isolated fork (repeatable). |
-| `--fork` | Use the current app as the scratch source. |
+| `--fork` | Fork an existing app. |
 | `--from` | Recipe reference to materialize as a scratch app. |
 | `--hostname` | Keep this exact planned route hostname unchanged (repeatable). |
 | `--interactive` | Force interactive prompting even when stdin or stderr is not a terminal. |
@@ -782,15 +782,16 @@ Flags:
 | `--name` | Base name for the generated scratch id. |
 | `--no-hostname-suffix` | Keep every planned route hostname unchanged. |
 | `--no-interactive` | Never prompt; recipe prompts must be satisfied by defaults or --answer. |
-| `--no-local-overrides` | Remove local and user Landofile overrides from a fully isolated fork. |
+| `--no-local-overrides` | Ignore local and user Landofile layers when forking an app. |
 | `--option` | Alias for --answer in key=value form (repeatable). |
 | `--run-post-init` | Run recipe post-init hooks after materialization. |
 | `--share-global-storage` | Join the shared cross-app network and expose the global app's storage scope. |
+| `--source` | Directory to discover the app to fork from. Requires --fork; defaults to the current directory. |
 | `--yes, -y` | Accept every recipe prompt's default without asking. |
 
 ## `lando apps:scratch:stop`
 
-Stop a scratch Lando app.
+Stop and destroy a scratch Lando app.
 
 Aliases: `lando scratch:stop`
 
@@ -798,7 +799,7 @@ Arguments:
 
 | Argument | Description |
 | --- | --- |
-| `id` | Scratch app id. |
+| `id` | Scratch app id or the --name it was started with. |
 
 Flags:
 
@@ -1014,7 +1015,7 @@ Flags:
 | `--fix` | Re-run the setup step of each degraded subsystem whose recovery is safe to automate. |
 | `--limit` | Return at most this many checks (1 to 1000). |
 | `--provider` | Report what would be selected if `--provider=…` were used (e.g. lando, docker, podman). |
-| `--section` | Run only the selected diagnostic sections (repeatable); always report global config. (one of `global-config`, `provider`, `app-listeners`, `database-credentials`, `certificate-authority`, `network-trust`, `subsystems`, `global-app`, `mcp`, `accelerated-starts`, `state-compatibility`, `missing-app-roots`, `orphaned-volume-snapshots`, `legacy-snapshot-catalogs`, `filesystem-watch`, `debugger-host`, `app-version-constraints`, `deprecations`, `app-config`) |
+| `--section` | Run only the selected diagnostic sections (repeatable); always report global config. (one of `global-config`, `provider`, `app-listeners`, `database-credentials`, `certificate-authority`, `network-trust`, `subsystems`, `global-app`, `mcp`, `accelerated-starts`, `lando-roots`, `state-compatibility`, `missing-app-roots`, `orphaned-volume-snapshots`, `legacy-snapshot-catalogs`, `filesystem-watch`, `debugger-host`, `app-version-constraints`, `deprecations`, `app-config`) |
 | `--status` | Include checks with this status (repeatable). (one of `pass`, `warn`, `fail`) |
 
 ## `lando meta:events:follow`
@@ -1454,6 +1455,8 @@ Flags:
 
 | Flag | Description |
 | --- | --- |
+| `--dry-run` | Show the host changes setup would make and the administrator access it would need, without changing anything. |
+| `--enable-linger` | Approve enabling systemd lingering when no systemd user manager runs for you; setup cannot finish without it when your session has no runtime directory. It stays enabled across logout and reboot; --yes does not approve it. |
 | `--no-interactive` | Do not prompt; fail or use documented non-interactive setup defaults. |
 | `--provider` | Choose a provider (e.g. lando, docker, podman). Overrides Landofile/env/config selection. |
 | `--runtime-bundle-sha256` | Pinned SHA-256 paired with --runtime-bundle-url for verifying a local bundle. |
@@ -1518,6 +1521,7 @@ Flags:
 | `--dry-run` | Print the uninstall plan without changing the system. |
 | `--keep-data` | Remove the managed CLI while preserving app data, the managed VM, and runtime tools. |
 | `--purge` | Remove Lando-owned apps, the managed VM, runtime tools, and data roots after confirmation. |
+| `--undo` | With --purge, also undo this recorded host change, such as provider-lando:enable-linger (repeatable; `all` for every one). |
 | `--yes, -y` | Confirm destructive uninstall execution after reviewing the plan. |
 
 ## `lando meta:update`

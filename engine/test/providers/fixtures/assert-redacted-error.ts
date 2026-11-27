@@ -1,9 +1,12 @@
 import { expect } from "bun:test";
-import type { ProviderError } from "@lando/sdk/services";
+import type { HostChangeApplyError, ProviderError } from "@lando/sdk/services";
 import { Effect, Result } from "effect";
 import { canary } from "./error-registry.ts";
 
-export const assertRedactedError = async (error: ProviderError, original: ProviderError) => {
+export const assertRedactedError = async (
+  error: ProviderError | HostChangeApplyError,
+  original: ProviderError,
+) => {
   expect(error._tag).toBe(original._tag);
   expect(error).toBeInstanceOf(original.constructor);
   expect(error.message).toBe(original.message.replaceAll(canary, "[redacted]"));

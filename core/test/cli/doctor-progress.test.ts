@@ -73,6 +73,7 @@ const DEFAULT_SECTIONS: ReadonlyArray<DoctorSectionId> = [
   "global-app",
   "mcp",
   "accelerated-starts",
+  "lando-roots",
   "state-compatibility",
   "missing-app-roots",
   "orphaned-volume-snapshots",
@@ -511,5 +512,53 @@ describe("restored doctor progress outcomes", () => {
       failed: true,
       remediation: "lando doctor",
     });
+  });
+
+  test("a fix that asks runs after the progress tree closes, and its findings replace the section's", async () => {
+    // Given a section that found a problem whose fix asks before it changes the host.
+    const recorder = recordingEvents();
+    const finding = (status: "pass" | "warn", context: Record<string, string>) => ({
+      name: "router",
+      status,
+      severity: status === "pass" ? ("info" as const) : ("warn" as const),
+      context,
+      solutions: [],
+    });
+    const section = independentSection({
+      id: "subsystems",
+      run: Effect.succeed({
+        checks: [finding("warn", { ready: "false" }), { ...finding("pass", {}), name: "ssh" }],
+        fixes: [
+          {
+            check: "router",
+            run: Effect.gen(function* () {
+              const events = yield* EventService;
+              yield* events
+                .publish({ _tag: "message.info", body: "asking", timestamp: "2026-11-26T00:00:00.000Z" })
+                .pipe(Effect.ignore);
+              return [finding("pass", { fixOutcome: "recovered" })];
+            }).pipe(Effect.provide(recorder.layer)),
+          },
+        ],
+      }),
+    });
+
+    // When doctor collects its report.
+    const report = await Effect.runPromise(
+      collectDoctorReport({
+        options: { env: {}, fix: true },
+        contexts: {},
+        table: [section],
+      }).pipe(Effect.provide(recorder.layer)),
+    );
+
+    // Then the question came after the tree closed, and the report holds the fix's outcome in place.
+    const tags = recorder.events.map((event) => event._tag);
+    expect(tags.indexOf("message.info")).toBeGreaterThan(tags.indexOf("task.tree.complete"));
+    expect(report.checks.map((check) => [check.name, check.status])).toEqual([
+      ["router", "pass"],
+      ["ssh", "pass"],
+    ]);
+    expect(report.checks[0]?.context.fixOutcome).toBe("recovered");
   });
 });

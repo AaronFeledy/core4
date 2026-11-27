@@ -39,6 +39,7 @@ export * from "./network-service-fixtures.ts";
  * - templateEngines: static template-engine map keyed by contributed engine id.
  */
 export { type PluginContractInput, TestPluginManifest, runPluginContract } from "./plugin-contract.ts";
+export { type TestPrivilegeServiceOptions, makeTestPrivilegeService } from "./privilege-service.ts";
 export {
   type ContractMatrixCell,
   type ContractMatrixCellResult,

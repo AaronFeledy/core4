@@ -2,12 +2,16 @@ import { Context, type Effect, type Redacted } from "effect";
 
 import type { CaError } from "../errors/index.ts";
 import type { CertificateSpec, TrustStoreChange, TrustStoreStatus } from "../schema/index.ts";
-import type { PrivilegeService } from "./process.ts";
+import type { HostChangeApplier, HostChangeApplyError, HostChangeProposal } from "./host-change.ts";
 
 export interface CaSetupOptions {
   readonly force: boolean;
   readonly skipTrustInstall?: boolean;
-  readonly privilege?: Context.Service.Shape<typeof PrivilegeService>;
+  /**
+   * The run's approved host changes. The authority changes a store that needs administrator rights
+   * only through a change it planned and the run approved; without one it leaves that store alone.
+   */
+  readonly hostChanges?: HostChangeApplier;
 }
 
 export type { CertificateSpec } from "../schema/index.ts";
@@ -50,7 +54,13 @@ export class CertificateAuthority extends Context.Service<
   CertificateAuthority,
   {
     readonly id: string;
-    readonly setup: (options: CaSetupOptions) => Effect.Effect<CaSetupReport, CaError>;
+    /**
+     * Inspect the host read-only and propose the host changes trusting the root needs, such as
+     * adding it to the system store. Never downloads a tool, creates a root, prompts, or writes a
+     * store. Absent means the authority needs none.
+     */
+    readonly planHostChanges?: Effect.Effect<ReadonlyArray<HostChangeProposal>, CaError>;
+    readonly setup: (options: CaSetupOptions) => Effect.Effect<CaSetupReport, CaError | HostChangeApplyError>;
     /**
      * The current signing root. Fails with remediation when the authority is not
      * set up or has no root yet. Must not create a root, install host trust,

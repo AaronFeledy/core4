@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { makeTestPrivilegeService } from "@lando/sdk/test";
 import { Effect, Schema } from "effect";
 import { resolveTraefikPublication } from "../src/global-services/traefik.ts";
 import { defaultAcquisitionFingerprint } from "../src/port-acquisition.ts";
@@ -157,11 +158,11 @@ test("round-trips an already active owned helper without installing or starting 
           throw new Error("unused stream");
         },
       },
-      privilege: {
+      privilege: makeTestPrivilegeService({
         elevate: () => {
           throw new Error("active helper must not elevate");
         },
-      },
+      }),
       classifyOverride: {
         http: {
           bind: { kind: "EADDRINUSE" as const, code: "EADDRINUSE" as const },

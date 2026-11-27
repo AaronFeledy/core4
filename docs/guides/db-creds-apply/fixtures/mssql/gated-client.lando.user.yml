@@ -1,0 +1,19 @@
+services:
+  client:
+    type: compose
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    appMount: false
+    home: false
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DB_NAME: "{{ services.db.creds.database }}"
+      SQLCMDPASSWORD: "{{ services.db.creds.rootPassword }}"
+    entrypoint: [/bin/sh, -c]
+    command:
+      - |
+        /opt/mssql-tools18/bin/sqlcmd -S db,1433 -U sa -C -b -r1 -l 5 -h -1 \
+          -d "$DB_NAME" -Q 'SET NOCOUNT ON; SELECT DB_NAME();' >/tmp/boot-select 2>&1
+        printf 'boot-select status=%s\n' "$?" >>/tmp/boot-select
+        exec sleep infinity

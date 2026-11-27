@@ -81,7 +81,7 @@ lando setup
 
 Setup saves your choice for later commands. If you already have a saved provider or an environment override, setup keeps that selection instead of showing the provider menu. See [Switch providers](./guides/setup/provider-selection.mdx#switch-providers) when you need to change it.
 
-`lando setup --yes` consents to automatic prerequisite installation, including uidmap on Ubuntu and Debian. It does not switch providers. Alpha setup can still fail if host prerequisites or the managed runtime cannot start; follow the reported diagnosis rather than assuming setup completed.
+`lando setup --yes` consents to automatic prerequisite installation, including uidmap on Ubuntu and Debian, subordinate ID ranges, and cgroups delegation, and to trusting the local CA in the system store and installing the router's port helper. It does not switch providers or enable lingering; setup asks about lingering separately, and `--enable-linger` approves it in automation. Setup asks for administrator access through `sudo` itself, once per run; see [When setup needs administrator access](./guides/install/path-and-setup.mdx#when-setup-needs-administrator-access). Alpha setup can still fail if host prerequisites or the managed runtime cannot start; follow the reported diagnosis rather than assuming setup completed.
 
 ### Verify setup
 
@@ -95,7 +95,7 @@ Review any reported issues before starting an app. If doctor offers a fix, use `
 
 ### Fix Linux host prerequisites
 
-Use these steps only when setup identifies the corresponding missing prerequisite. They change host configuration and may need administrator privileges. After fixing the reported problem, rerun `lando setup`, then `lando doctor`.
+On Ubuntu and Debian, setup makes these changes itself after you approve them. Use these steps only when setup identifies a missing prerequisite it cannot fix, or when you declined. They change host configuration and need administrator privileges. After fixing the reported problem, rerun `lando setup`, then `lando doctor`.
 
 **uidmap (Fedora/RHEL and unrecognized distros):**
 
@@ -120,7 +120,16 @@ sudo systemctl daemon-reload
 lando setup
 ```
 
-**Missing private runtime directory base:** setup reports `Rootless Podman requires a private runtime directory base for your session.` The managed runtime needs `/run/user/<uid>` to exist, be owned by you, and have mode 0700 (no group or other bits), or an `XDG_RUNTIME_DIR` with the same properties. Logging out and back in usually recreates `/run/user/<uid>`. If your session manager does not, create a directory you own and export it:
+**No systemd user manager (headless servers, SSH without a login session, CI runners):** rerun `lando setup` in a terminal and approve enabling lingering, pass `--enable-linger`, or run:
+
+```bash
+loginctl enable-linger $USER
+lando setup
+```
+
+Lingering keeps your user manager running after logout and reboot. It also creates `/run/user/<uid>`. When your session has no runtime directory, setup requires lingering: it stops with `HostChangeConsentRequiredError` (or `HostChangeDeclinedError` when you answer no) before it downloads anything, and names these options. Logging in through a session with pam_systemd, such as a desktop or SSH login, also creates the directory.
+
+**Missing private runtime directory base:** on a host without systemd, setup reports `Rootless Podman requires a private runtime directory base for your session.` The managed runtime needs `/run/user/<uid>` to exist, be owned by you, and have mode 0700 (no group or other bits), or an `XDG_RUNTIME_DIR` with the same properties. Logging out and back in usually recreates `/run/user/<uid>`. If your session manager does not, create a directory you own and export it:
 
 ```bash
 install -d -m 0700 "$HOME/.lando-runtime"

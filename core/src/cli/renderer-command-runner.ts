@@ -9,7 +9,7 @@
 
 import { resolveProxyDefaultDomain } from "@lando/engine/config/proxy-default-domain";
 import { GlobalConfigSnapshot } from "@lando/engine/services/config";
-import { EventPublicationObserver } from "@lando/engine/services/event-service";
+import { EventCommitObserver, EventPublicationObserver } from "@lando/engine/services/event-service";
 import type { RedactionService } from "@lando/redaction/service";
 import type { RendererIO } from "@lando/renderer/io";
 import * as RendererOutput from "@lando/renderer/output";
@@ -176,6 +176,7 @@ export const runCommandInScope = <A, E, R, RE>(
           })
         : executeCommand(finishFrames),
     );
+  let observeProgress: ((event: LandoEvent) => void) | undefined;
   const executeWithEventConsumer = withEventConsumer(executeWithLiveSink, {
     routing,
     rendererMode: options.rendererMode,
@@ -183,6 +184,9 @@ export const runCommandInScope = <A, E, R, RE>(
     landoRenderer: scope.landoRenderer,
     signal: options.signal,
     commandWarnings,
+    observeProgressWith: (observe) => {
+      observeProgress = observe;
+    },
     frameRedactor: scope.frameRedactor,
     encodeEventFrame: scope.encodeEventFrame,
   });
@@ -199,6 +203,7 @@ export const runCommandInScope = <A, E, R, RE>(
       );
       return yield* withCommandEventService(executeWithEventConsumer).pipe(Effect.provide(runtimeContext));
     }).pipe(
+      Effect.provideService(EventCommitObserver, (event) => observeProgress?.(event)),
       Effect.provideService(EventPublicationObserver, (event) =>
         Effect.andThen(
           observeScenarioEvent === undefined ? Effect.void : Effect.sync(() => observeScenarioEvent(event)),

@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { HostMaintenanceContribution } from "@lando/sdk/plugins";
-import { type HostUninstallStep, UninstallStepResult } from "@lando/sdk/schema";
+import { HostChangeId, type HostUninstallStep, UninstallStepResult } from "@lando/sdk/schema";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Effect, Layer, Result, Schema } from "effect";
 import { uninstall } from "../../src/operations/uninstall.ts";
@@ -103,6 +103,68 @@ describe("host uninstall contributions", () => {
     }
   });
 
+  test("a recorded change is listed under the id --undo takes, and --keep-data keeps it even when named", async () => {
+    // Given a maintainer step that undoes a recorded, separately approved change.
+    const receiptId = HostChangeId.make("test-ca:trust-system-store");
+    const change = {
+      id: receiptId,
+      owner: "@lando/test",
+      stage: "ca",
+      summary: "Remove the anchor",
+      reason: "Undo what setup recorded.",
+      consent: "separate",
+      persistent: false,
+      requirement: "recommended",
+      steps: [
+        { id: "rm", summary: "rm", argv: ["/usr/bin/rm", "-f", "/etc/x"], privileged: true, when: "always" },
+      ],
+      undo: { _tag: "none", detail: "Nothing." },
+    } as const;
+    const maintainer = {
+      id: "test-ca",
+      pluginId: "@lando/test",
+      uninstall: {
+        plan: () =>
+          Effect.succeed([
+            ownedStep("anchor", {
+              receiptId,
+              change,
+              preserveOnKeepData: true,
+              detail: "Remove the anchor.",
+            }),
+          ]),
+        execute: () => Effect.succeed({ outcome: "completed" as const }),
+      },
+    };
+    const receipts = [
+      {
+        id: receiptId,
+        owner: "@lando/test",
+        summary: "Trust the CA",
+        phase: "applied",
+        startedAt: "2026-11-26T00:00:00.000Z",
+        undo: { _tag: "steps", consent: "separate", summary: "Remove the anchor", steps: change.steps },
+      } as const,
+    ];
+    const plan = (mode: "keep-data" | "purge") =>
+      Effect.runPromise(
+        planHostUninstallContributions(
+          { maintainers: [maintainer] },
+          { platform: "linux", userDataRoot: "/tmp/data", mode, receipts, undo: ["all"] },
+        ),
+      );
+
+    // When it is planned with --undo all under each mode.
+    const [kept] = (await plan("keep-data")).steps;
+    const [undone] = (await plan("purge")).steps;
+
+    // Then both list it as the receipt's id; only --purge undoes it.
+    expect(kept).toMatchObject({ id: "test-ca:trust-system-store", status: "skipped" });
+    expect(kept?.detail).toContain("`--purge --undo test-ca:trust-system-store`");
+    expect(undone).toMatchObject({ id: "test-ca:trust-system-store", status: "owned" });
+    expect(undone?.detail).toContain("`--undo` named `test-ca:trust-system-store`");
+  });
+
   test("executes owned contributions without generic remove of the step target", async () => {
     const roots = makeUninstallRoots("lando-uninstall-contrib-exec-");
     const marker = join(roots.root, "marker");
@@ -150,23 +212,43 @@ describe("host uninstall contributions", () => {
     }
   });
 
-  test("passes elevate capability into contribution execute", async () => {
-    const roots = makeUninstallRoots("lando-uninstall-contrib-elevate-");
+  test("runs a step's declared change through the uninstall's session, and nothing else", async () => {
+    const roots = makeUninstallRoots("lando-uninstall-contrib-run-");
     const elevated: Array<ReadonlyArray<string>> = [];
     try {
       mkdirSync(roots.userDataRoot, { recursive: true });
+      const change = {
+        id: HostChangeId.make("test:remove-units"),
+        owner: "@lando/test",
+        stage: "proxy",
+        summary: "Remove the units",
+        reason: "Tests.",
+        consent: "standard",
+        persistent: false,
+        requirement: "recommended",
+        steps: [
+          {
+            id: "remove",
+            summary: "remove",
+            argv: ["/bin/true", "remove"],
+            privileged: true,
+            when: "always",
+          },
+        ],
+        undo: { _tag: "none", detail: "none" },
+      } as const;
       const maintainer: HostMaintenanceContribution = {
         id: "fake-helper",
         uninstall: {
-          plan: () => Effect.succeed([ownedStep("unit-files")]),
-          execute: ({ elevate }) =>
+          plan: () => Effect.succeed([ownedStep("unit-files", { change })]),
+          execute: ({ run }) =>
             Effect.gen(function* () {
-              if (elevate === undefined) return { outcome: "failed" as const, error: "missing elevate" };
-              const result = yield* elevate(["/bin/true"]);
-              elevated.push(["/bin/true"]);
-              return result.exitCode === 0
+              if (run === undefined) return { outcome: "failed" as const, error: "missing runner" };
+              const undeclared = yield* Effect.result(run.run("other"));
+              const declared = yield* Effect.result(run.run("remove"));
+              return undeclared._tag === "Failure" && declared._tag === "Success"
                 ? { outcome: "completed" as const }
-                : { outcome: "failed" as const, error: result.stderr };
+                : { outcome: "failed" as const, error: "the runner ran an undeclared step" };
             }),
         },
       };
@@ -184,7 +266,7 @@ describe("host uninstall contributions", () => {
         ),
       );
       expect(result.failed).toBe(false);
-      expect(elevated.length).toBeGreaterThan(0);
+      expect(elevated).toEqual([["/bin/true", "remove"]]);
     } finally {
       rmSync(roots.root, { recursive: true, force: true });
     }
@@ -307,7 +389,7 @@ describe("host uninstall contributions", () => {
         Effect.result(
           planHostUninstallContributions(
             { maintainers: [{ ...maintainer, pluginId: "@lando/test" }] },
-            { platform: "linux", userDataRoot: roots.userDataRoot, mode: "purge" },
+            { platform: "linux", userDataRoot: roots.userDataRoot, mode: "purge", receipts: [], undo: [] },
           ),
         ),
       );

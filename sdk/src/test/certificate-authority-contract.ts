@@ -1,7 +1,7 @@
 import { Clock, Effect, Redacted, Schema } from "effect";
 import { certificatePairIsCurrent } from "../certificates/index.ts";
 import { mapFailures } from "../command-result/failure.ts";
-import { TrustStoreChange, TrustStoreStatus } from "../schema/index.ts";
+import { HostChange, TrustStoreChange, TrustStoreStatus } from "../schema/index.ts";
 import type {
   CaSetupOptions,
   CaSetupReport,
@@ -26,6 +26,23 @@ export const runCaContract = Effect.fnUntraced(function* (
   ca: CertificateAuthorityShape,
 ): Effect.fn.Return<void, ContractFailure> {
   yield* requireCaContract(typeof ca.id === "string" && ca.id.length > 0, "id is a non-empty string", ca.id);
+
+  if (ca.planHostChanges !== undefined) {
+    const proposals = yield* ca.planHostChanges.pipe(
+      mapFailures((d) => caContractFailure("planHostChanges resolves", d)),
+    );
+    const changes = proposals.map(({ change }) => change);
+    yield* requireCaContract(
+      changes.every(Schema.is(HostChange)),
+      "planHostChanges proposes changes that match their schema",
+      changes,
+    );
+    yield* requireCaContract(
+      changes.every(({ stage }) => stage === "ca"),
+      "planHostChanges proposes only changes for the ca stage",
+      changes,
+    );
+  }
 
   const setup = yield* ca
     .setup({ force: false })

@@ -4,6 +4,7 @@ import type { AppPlan, ServiceContainerChange, ServicePlan } from "@lando/sdk/sc
 import { type ApplyOptions, EnvironmentValueResolver } from "@lando/sdk/services";
 import { Effect, Result } from "effect";
 import { applyActivation } from "../lifecycle/activation-apply.ts";
+import { settleOrdinaryFailure } from "../lifecycle/failure-compensation.ts";
 import { prepareServiceCertificates } from "../lifecycle/service-certificates.ts";
 import type { PreparedRuntimeProvider } from "../providers/prepared.ts";
 import {
@@ -61,6 +62,7 @@ export const applyGlobalServiceGroups = Effect.fn("GlobalServices.applyGroups")(
     readonly replacement?: AppPlan;
     readonly options: Pick<ApplyOptions, "complete" | "reconcile" | "signal">;
     readonly recordedPlan?: AppPlan;
+    readonly previousPlan?: AppPlan;
     readonly recordedDisabledIds?: ReadonlyArray<string>;
     readonly bindings?: ReadonlyArray<ReadonlyArray<string>>;
     readonly removals?: ReadonlyArray<GlobalSiblingRemoval>;
@@ -91,7 +93,7 @@ export const applyGlobalServiceGroups = Effect.fn("GlobalServices.applyGroups")(
         const removals = (apply.removals ?? []).filter((removal) =>
           removal.binding.some((id) => names.has(id)),
         );
-        const result = yield* Effect.result(
+        const result = yield* settleOrdinaryFailure(
           Effect.gen(function* () {
             const { plan: builtPlan, certificates } = yield* prepareServiceCertificates(
               yield* build({
@@ -119,7 +121,8 @@ export const applyGlobalServiceGroups = Effect.fn("GlobalServices.applyGroups")(
               applyActivation({
                 provider: apply.provider,
                 plan: runtimePlan,
-                previousPlan: apply.recordedPlan === undefined ? undefined : recordedPlan,
+                credentialPlan: plan,
+                previousPlan: apply.previousPlan,
                 certificates,
                 ...apply.options,
                 environment: session,

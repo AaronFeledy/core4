@@ -431,6 +431,10 @@
       "digest": "d306fb1338120c1b776d46fbd6f9793723b396c6793b63837ef1e52a61bc6f11"
     },
     {
+      "fixture": "docs/guides/db-creds-apply/fixtures/postgres-gated-client",
+      "digest": "f6d9870805d317c012a271bd57a98088e886374da2fad8d5142216b8be1f36be"
+    },
+    {
       "fixture": "docs/guides/db-creds-apply/fixtures/postgres",
       "digest": "d68f755a2c071a29b065bb988e0771682befd5825eceb4c55c3a2671a98206ae"
     },
@@ -625,7 +629,7 @@
     },
     {
       "fixture": "docs/guides/expressions/fixtures/expressions-url-tooling",
-      "digest": "9d02b0782b6517d38b5ea7a54b95630b5515ffb538ad289a31111b98e10963cf"
+      "digest": "047ff5871a4591d255a743c11c2ca9cb87cf0e7f3b2fa7760b11578d9a9e3963"
     },
     {
       "fixture": "docs/guides/external-access/fixtures/external-access-demo",
@@ -710,6 +714,22 @@
     {
       "fixture": "docs/guides/flags-and-args/fixtures/shared-flag-names",
       "digest": "704c9f0a578b4efe0b4f5b89ea2c456d2b70260ea4b340cb6deb3ea32696fab0"
+    },
+    {
+      "fixture": "docs/guides/fork-existing-app/fixtures/fork-from-another-app",
+      "digest": "7b779dca3557b385fd2248947bab61bbb533285109a7448a5b1972768671fffd"
+    },
+    {
+      "fixture": "docs/guides/fork-existing-app/fixtures/fork-from-another-app/source app",
+      "digest": "c6c92dd1b0fd56562771781bee776087f1749d29ae36d72a6be888c76b5a11eb"
+    },
+    {
+      "fixture": "docs/guides/fork-existing-app/fixtures/fork-project-layers",
+      "digest": "168e991053ceb23324b7b6efd8faa22649c4dcd430ad8bd8b55e1150261a3734"
+    },
+    {
+      "fixture": "docs/guides/fork-existing-app/fixtures/fork-source-workspace/site",
+      "digest": "8e042833441ed465136cb08fe3c2815a99e0ccfe93e3615e35bdad0d025eedfe"
     },
     {
       "fixture": "docs/guides/frankenphp/fixtures/frankenphp-demo",

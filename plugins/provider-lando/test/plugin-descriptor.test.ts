@@ -33,14 +33,21 @@ describe("provider-lando plugin descriptor", () => {
     expect(definePlugin(plugin)).toBe(plugin);
   });
 
-  test("contributes managed runtime host teardown", () => {
+  test("contributes managed runtime host teardown and the uninstall steps for its host changes", () => {
     // Given: provider-lando's exported plugin descriptor.
 
     // When: host maintenance contributions are inspected.
-    const maintainerIds = plugin.hostMaintainers?.map((maintainer) => maintainer.id);
+    const maintainers = plugin.hostMaintainers?.map((maintainer) => [
+      maintainer.id,
+      maintainer.teardown !== undefined,
+      maintainer.uninstall !== undefined,
+    ]);
 
-    // Then: the managed runtime service has one stable teardown contribution.
-    expect(maintainerIds).toEqual(["lando-runtime-service"]);
+    // Then: one teardown for the runtime service, one uninstall maintainer for setup's host changes.
+    expect(maintainers).toEqual([
+      ["lando-runtime-service", true, false],
+      ["provider-lando", false, true],
+    ]);
   });
 
   test("contributes WSL mount, managed socket path, container cgroup, and runtime currency doctor checks", () => {
@@ -95,7 +102,7 @@ describe("provider-lando plugin descriptor", () => {
     // Then: it exposes the same available provider and setup entry points as makeRuntimeProvider.
     expect(provider.id).toBe("lando");
     expect(available).toBe(true);
-    expect(typeof provider.planSetup).toBe("function");
+    expect(typeof provider.planHostChanges).toBe("function");
     expect(typeof provider.setup).toBe("function");
   });
 });

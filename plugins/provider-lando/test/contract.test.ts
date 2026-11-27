@@ -7,8 +7,10 @@ import type {
 } from "@lando/container-runtime/engine-api";
 import { installSupervisedExecFixture } from "@lando/container-runtime/testing/exec-supervision";
 import { installNonCompensatingExecUmask } from "@lando/container-runtime/testing/exec-umask";
+import { missingContainerStream } from "@lando/container-runtime/testing/missing-container";
 import {
   type VolumeArchiveSnapshot,
+  inspectNamedVolumeBinds,
   makeVolumeArchiveFakeState,
   volumeArchiveFakeReadsStdin,
   volumeArchiveFakeStart,
@@ -269,7 +271,8 @@ const makeFakeApi = () => {
           return { status: 201, body: JSON.stringify({ Id: execId }) };
         }
         if (request.path.endsWith("/start")) {
-          const name = decodeURIComponent(request.path.slice("/containers/".length, -"/start".length));
+          const key = decodeURIComponent(request.path.slice("/containers/".length, -"/start".length));
+          const name = existing.has(key) ? key : key.replace(/-id$/u, "");
           existing.add(name);
           running.add(name);
           return { status: 204, body: "" };
@@ -305,6 +308,7 @@ const makeFakeApi = () => {
             body: JSON.stringify({
               Id: `${name}-id`,
               Config: configs.get(name),
+              Mounts: inspectNamedVolumeBinds(configs.get(name), createdVolumes),
               State: { Running: running.has(name), Status: running.has(name) ? "running" : "stopped" },
             }),
           };
@@ -342,6 +346,10 @@ const makeFakeApi = () => {
         return Stream.fromIterable([attachFrame(1, "exec-ok\n")]);
       }
       if (request.path.includes("/logs?")) {
+        const name = decodeURIComponent(
+          request.path.slice("/containers/".length, request.path.indexOf("/logs?")),
+        );
+        if (!existing.has(name)) return missingContainerStream("lando", request, name);
         return Stream.fromIterable([
           attachFrame(1, "2026-05-17T12:00:00.000Z ready\n"),
           attachFrame(1, "2026-05-17T12:00:00.000Z lando-contract-split-"),
@@ -1035,9 +1043,7 @@ describe("provider-lando RuntimeProvider contract", () => {
         }
       }
     }
-
-    const plan = await Effect.runPromise(provider.planSetup({ force: false }));
-    const setupExit = await Effect.runPromiseExit(provider.setup(plan, { force: false }).pipe(Effect.scoped));
+    const setupExit = await Effect.runPromiseExit(provider.setup({ force: false }).pipe(Effect.scoped));
     expect(Exit.isFailure(setupExit)).toBe(true);
     if (Exit.isFailure(setupExit)) {
       const failure = Cause.findErrorOption(setupExit.cause);

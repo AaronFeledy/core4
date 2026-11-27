@@ -121,7 +121,8 @@ test("bundled mkcert issues certs when the production runtime prepares a plan, n
 
     // Then: selection, issued files, CA material, and service plan metadata are production-shaped.
     expect(result.authorityId).toBe("mkcert");
-    expect(await readFile(setupMarker, "utf8")).toBe("trust installed\n");
+    // Trust is a planned host change; setup handed no approval, so mkcert never touched a store.
+    expect(await exists(setupMarker)).toBe(false);
     expect(result.issuedWhilePlanning).toBe(0);
     // Setup needs one throwaway issuance to create the root; preparation needs the service leaf.
     expect(issuances).toHaveLength(2);

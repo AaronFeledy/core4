@@ -17,6 +17,7 @@ export const withProviderErrorRedaction = (
   const {
     appliedPlans,
     cleanupOwnedResources,
+    planHostChanges,
     ensureReady,
     occupiedPublishPorts,
     matchingPublishPorts,
@@ -33,6 +34,7 @@ export const withProviderErrorRedaction = (
     adoptDataRoot,
     inspectResourceNames,
     observeVolume,
+    observeBoundVolume,
     adoptVolume,
   } = runtime;
   const adapters = {
@@ -44,8 +46,10 @@ export const withProviderErrorRedaction = (
           cleanupOwnedResources: (root, options) =>
             effect(cleanupOwnedResources.call(runtime, root, options)),
         }),
-    planSetup: (options) => effect(runtime.planSetup(options)),
-    setup: (plan, options) => effect(runtime.setup(plan, options)),
+    ...(planHostChanges === undefined
+      ? {}
+      : { planHostChanges: (options) => effect(planHostChanges.call(runtime, options)) }),
+    setup: (options) => effect(runtime.setup(options)),
     ...(ensureReady === undefined ? {} : { ensureReady: effect(ensureReady) }),
     getStatus: effect(runtime.getStatus),
     getVersions: effect(runtime.getVersions),
@@ -123,6 +127,12 @@ export const withProviderErrorRedaction = (
     ...(observeVolume === undefined
       ? {}
       : { observeVolume: (target, destination) => effect(observeVolume.call(runtime, target, destination)) }),
+    ...(observeBoundVolume === undefined
+      ? {}
+      : {
+          observeBoundVolume: (target, destination) =>
+            effect(observeBoundVolume.call(runtime, target, destination)),
+        }),
     ...(adoptVolume === undefined
       ? {}
       : { adoptVolume: (target, destination) => effect(adoptVolume.call(runtime, target, destination)) }),

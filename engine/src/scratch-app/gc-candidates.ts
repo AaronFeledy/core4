@@ -11,15 +11,18 @@ export const ownerPidIsDead = (entry: ScratchRegistryEntry): boolean => {
   }
 };
 
+/**
+ * `traceIds` are scratch ids found in host state outside the registry: provider labels, build
+ * output, and provider ownership inventories. Each is a candidate unless the registry still holds it.
+ */
 export const scratchGcCandidates = (
   entries: readonly ScratchRegistryEntry[],
   directoryIds: readonly string[],
-  providerIds: readonly string[],
-  buildDirectoryIds: readonly string[],
+  traceIds: readonly string[],
 ): { readonly inspected: number; readonly candidates: readonly string[] } => {
   const byId = new Map(entries.map((entry) => [entry.id, entry]));
   const dirIds = new Set(directoryIds);
-  const allIds = [...new Set([...byId.keys(), ...dirIds, ...providerIds, ...buildDirectoryIds])].sort();
+  const allIds = [...new Set([...byId.keys(), ...dirIds, ...traceIds])].sort();
   const candidates = allIds.filter((id) => {
     const entry = byId.get(id);
     if (entry === undefined) return true;

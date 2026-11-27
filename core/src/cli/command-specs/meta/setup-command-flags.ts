@@ -16,6 +16,11 @@ import { contributedSetupInputFlags } from "./setup-inputs";
 
 export const SETUP_BUILTIN_FLAGS = {
   yes: yesFlag("Consent to confirmation prompts and privileged host changes. Does not switch providers."),
+  "dry-run": Flags.boolean({
+    description:
+      "Show the host changes setup would make and the administrator access it would need, without changing anything.",
+    default: false,
+  }),
   "no-interactive": Flags.boolean({
     description: "Do not prompt; fail or use documented non-interactive setup defaults.",
     default: false,
@@ -59,7 +64,7 @@ export const SETUP_COMMAND_FLAGS = {
   ...SETUP_PLUGIN_FLAGS.flags,
 } as const;
 
-const contributedSetupFlagNamesForProvider = (providerId: string): ReadonlyArray<string> =>
+export const contributedSetupFlagNamesForProvider = (providerId: string): ReadonlyArray<string> =>
   BUNDLED_SETUP_FLAG_CONTRIBUTIONS.filter((contribution) => contribution.providers.includes(providerId)).map(
     (contribution) => contribution.flag.name,
   );

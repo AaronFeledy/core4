@@ -55,7 +55,7 @@ Doctor should name the provider you selected. Setup fails with remediation if th
 --provider > LANDO_PROVIDER > user-config defaultProviderId > interactive prompt > capability default (lando)
 ```
 
-Setup prompts for a provider only when nothing else chose one. `--yes` consents to confirmation and privileged host changes. It does not switch providers, and it skips the prompt. `--no-interactive` and `--skip-provider` skip the prompt too.
+Setup prompts for a provider only when nothing else chose one. `--yes` consents to confirmation and privileged host changes. It does not switch providers, and it skips the prompt. `--no-interactive` and `--skip-provider` skip the prompt too, but `--no-interactive` approves no privileged host change on its own.
 
 ## What persists
 

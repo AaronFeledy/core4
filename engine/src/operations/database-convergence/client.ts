@@ -1,6 +1,6 @@
-import { mapDefectCause, mapFailures, mapStreamFailures } from "@lando/sdk/command-result";
+import { mapDefectCause, mapStreamFailures, withDeadline } from "@lando/sdk/command-result";
 import { classifyDatabaseClientResult } from "@lando/sdk/database-creds";
-import { SqlCredentialApplyError, type SqlCredentialMember } from "@lando/sdk/errors";
+import type { SqlCredentialApplyError, SqlCredentialMember } from "@lando/sdk/errors";
 import type { RuntimeProviderShape } from "@lando/sdk/services";
 import { Effect, Stream } from "effect";
 import type { AdapterContext, ClientRequest, ClientResult, CredentialStep } from "./types.ts";
@@ -58,48 +58,49 @@ export const credentialClient = (options: {
               yield new TextEncoder().encode(input);
             },
           };
-    yield* provider
-      .execStream(target, {
-        command: request.argv,
-        ...(request.env === undefined ? {} : { env: { LANG: "C.UTF-8", LC_ALL: "C.UTF-8", ...request.env } }),
-        ...(stdinStream === undefined ? {} : { stdinStream }),
-      })
-      .pipe(
-        mapStreamFailures((error) =>
-          failure(
-            "The provider could not execute the database client.",
-            undefined,
-            error._tag === "ServiceExecError" ||
-              error._tag === "ProviderInternalError" ||
-              error._tag === "ProviderUnavailableError"
-              ? "transient"
-              : undefined,
+    const settled = yield* withDeadline(
+      provider
+        .execStream(target, {
+          command: request.argv,
+          ...(request.env === undefined
+            ? {}
+            : { env: { LANG: "C.UTF-8", LC_ALL: "C.UTF-8", ...request.env } }),
+          ...(stdinStream === undefined ? {} : { stdinStream }),
+        })
+        .pipe(
+          mapStreamFailures((error) =>
+            failure(
+              "The provider could not execute the database client.",
+              undefined,
+              error._tag === "ServiceExecError" ||
+                error._tag === "ProviderInternalError" ||
+                error._tag === "ProviderUnavailableError"
+                ? "transient"
+                : undefined,
+            ),
           ),
+          Stream.runForEach((chunk) => {
+            if (exitCode !== undefined)
+              return Effect.fail(failure("Unexpected output after the database client exited."));
+            if ("exitCode" in chunk) exitCode = chunk.exitCode;
+            else {
+              length += chunk.chunk.byteLength;
+              if (length > maxOutputBytes)
+                return Effect.fail(failure("The database client exceeded its output bound."));
+              if (chunk.kind === "stderr") stderr += err.decode(chunk.chunk, { stream: true });
+              else stdout += out.decode(chunk.chunk, { stream: true });
+            }
+            return Effect.void;
+          }),
+          Effect.catchCause((cause) =>
+            Effect.failCause(mapDefectCause(cause, () => "The database client failed unexpectedly.")),
+          ),
+          Effect.scoped,
         ),
-        Stream.runForEach((chunk) => {
-          if (exitCode !== undefined)
-            return Effect.fail(failure("Unexpected output after the database client exited."));
-          if ("exitCode" in chunk) exitCode = chunk.exitCode;
-          else {
-            length += chunk.chunk.byteLength;
-            if (length > maxOutputBytes)
-              return Effect.fail(failure("The database client exceeded its output bound."));
-            if (chunk.kind === "stderr") stderr += err.decode(chunk.chunk, { stream: true });
-            else stdout += out.decode(chunk.chunk, { stream: true });
-          }
-          return Effect.void;
-        }),
-        Effect.timeout("15 seconds"),
-        mapFailures((cause) =>
-          cause instanceof SqlCredentialApplyError
-            ? cause
-            : failure("The database client timed out.", undefined, "transient"),
-        ),
-        Effect.catchCause((cause) =>
-          Effect.failCause(mapDefectCause(cause, () => "The database client failed unexpectedly.")),
-        ),
-        Effect.scoped,
-      );
+      "15 seconds",
+    );
+    if (settled._tag === "TimedOut")
+      return yield* failure("The database client timed out.", undefined, "transient");
     if (exitCode === undefined)
       return yield* failure(
         "The provider did not report a database client exit status.",

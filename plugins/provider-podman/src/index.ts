@@ -849,9 +849,6 @@ const assembleRuntimeProvider = (
         options.appliedPlanState === undefined
           ? Effect.succeed([])
           : listAppliedPlans(options.appliedPlanState).pipe(Effect.map(({ plans }) => plans)),
-      planSetup: Effect.fn("RuntimeProvider.planSetup")(() =>
-        Effect.succeed({ providerId: ProviderId.make("podman"), changes: [] }),
-      ),
       setup: Effect.fn("RuntimeProvider.setup")(() => Effect.void),
       getStatus: podmanApi.ping.pipe(
         Effect.as({ state: "running" as const, message: "ready" }),
@@ -886,6 +883,7 @@ const assembleRuntimeProvider = (
         if (plan.identity?.dataRoot === undefined) return;
         yield* planState.ownership.adopt(plan, yield* appliedPlans.resolveMutationPlan(plan.id), witness);
       }),
+      healthyDependencyContinuation: true,
       apply: Effect.fn("RuntimeProvider.apply")(function* (plan, applyOptions) {
         yield* validateHealthcheckExecution(plan, applyOptions.executeReadinessAttempt);
         const previous = yield* appliedPlans.resolveMutationPlan(plan.id);
@@ -909,6 +907,7 @@ const assembleRuntimeProvider = (
             : { resolveServiceEnvironment: applyOptions.resolveServiceEnvironment }),
           reconcile: applyOptions.reconcile,
           onVolumeCreated: applyOptions.onVolumeCreated,
+          continueHealthyDependency: applyOptions.continueHealthyDependency,
           completionPlan: applyOptions.completionPlan ?? applyOptions.recordedPlan ?? plan,
           ...(options.eventService === undefined ? {} : { eventService: options.eventService }),
         }).pipe(

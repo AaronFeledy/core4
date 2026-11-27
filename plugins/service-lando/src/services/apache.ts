@@ -42,7 +42,7 @@ import {
 } from "./apache-native-tls.ts";
 import { apacheHiddenPathDirectives } from "./http-hidden-paths.ts";
 
-const DEFAULT_IMAGE = "httpd:2.4-alpine";
+export const DEFAULT_IMAGE = "httpd:2.4-alpine";
 export const APACHE_LISTENER = {
   port: 80,
   daemon: "Apache",

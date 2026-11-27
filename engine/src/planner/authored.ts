@@ -241,12 +241,15 @@ export const planServiceDrafts = Effect.fn("AppPlanner.planServices")(function* 
         pinnedArtifactTag: resolvedArtifactTag,
       }),
       // App-feature drafts carry original declarations, not synthesized publications.
-      draft: toAppFeatureDraft(
-        name,
-        { ...servicePlan, endpoints: composition.endpointContributions },
-        resolution,
-        composition.featureIds,
-      ),
+      draft: {
+        ...toAppFeatureDraft(
+          name,
+          { ...servicePlan, endpoints: composition.endpointContributions },
+          resolution,
+          composition.featureIds,
+        ),
+        launcherProjectUser: composition.launcherProjectUser,
+      },
       logSources,
       plannedPort,
       routes,

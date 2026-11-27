@@ -8,6 +8,7 @@ import {
   type RecordedClonedService,
   viewOf,
 } from "./app-feature-types.ts";
+import { writeServiceCommand } from "./draft.ts";
 
 type WriteLedger = Map<string, unknown>;
 const sameMutationValue = (a: unknown, b: unknown): boolean =>
@@ -91,9 +92,9 @@ const makeMutators = (
     recordWrite(ledger, { feature, serviceName: draft.serviceName, field: "entrypoint", value: entrypoint });
     draft.entrypoint = Array.isArray(entrypoint) ? [...entrypoint] : entrypoint;
   },
-  setCommand: (command) => {
+  setCommand: (command, options) => {
     recordWrite(ledger, { feature, serviceName: draft.serviceName, field: "command", value: command });
-    draft.command = Array.isArray(command) ? [...command] : command;
+    writeServiceCommand(draft, command, options);
   },
   setInit: (init) => {
     recordWrite(ledger, { feature, serviceName: draft.serviceName, field: "init", value: init });

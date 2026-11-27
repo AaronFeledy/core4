@@ -172,8 +172,10 @@ export const globalStart = Effect.fn("GlobalStart.start")(
               close,
             })
           : undefined;
-        const { provider, replacement } =
-          retained ?? (yield* prepareGlobalReplacement(loaded.plan, selectedProvider));
+        const { provider, replacement, prior } =
+          retained === undefined
+            ? yield* prepareGlobalReplacement(loaded.plan, selectedProvider)
+            : { ...retained, prior: retained.recordedPlan };
         const selected = new Set(
           retained?.selectedIds ?? initiallySelected.map((service) => String(service.name)),
         );
@@ -186,6 +188,7 @@ export const globalStart = Effect.fn("GlobalStart.start")(
           {
             provider,
             services,
+            ...(prior === undefined ? {} : { previousPlan: prior }),
             beforeApply: verifyAdmission,
             ...(replacement === undefined ? {} : { replacement }),
             ...(options.preparedOverlays === undefined ? {} : { preparedOverlays: options.preparedOverlays }),

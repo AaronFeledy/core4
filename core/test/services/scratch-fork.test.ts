@@ -1,9 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, realpath, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readlink, realpath, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import {
   AppPlacementError,
+  LandofileParseError,
   ProviderUnavailableError,
   ProxyApplyError,
   RouteProviderMismatchError,
@@ -16,6 +17,7 @@ import {
   type AppRouteOwner,
   type ProviderCapabilities,
   ProviderId,
+  ServiceName,
   appIdentityKey,
   landoAppNetworkName,
   planAppIdentity,
@@ -24,7 +26,9 @@ import {
 import {
   AppPlanner,
   BuildOrchestrator,
+  EventService,
   GlobalAppService,
+  type LandoEvent,
   LandofileService,
   PathsService,
   RouterService,
@@ -59,13 +63,14 @@ import { TestRuntimeProvider, makeTestRouterService, makeTestRuntimeProviderRegi
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import * as StateStoreLayer from "@lando/state-store/service";
 import { makeStateStore } from "@lando/state-store/service";
-import { Cause, DateTime, Effect, Exit, Layer, Stream } from "effect";
+import { Cause, DateTime, Deferred, Effect, Exit, Fiber, Layer, Option, Stream } from "effect";
 
 const stateStoreLayer = StateStoreLayer.layer.pipe(Layer.provide(BunProcessRunner.layer));
 
 import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
 import * as TestLandofileServiceLayer from "../_support/landofile-layer.ts";
 import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
+import { withEnvVar } from "../_support/temp-cwd.ts";
 
 const providerId = ProviderId.make("lando");
 
@@ -238,6 +243,8 @@ const makeScratchForkLayer = (
   options: {
     readonly failSecondRegistryUpsert?: boolean;
     readonly onCapabilities?: () => void;
+    readonly onProviderList?: () => void;
+    readonly onTransferEvent?: (event: LandoEvent) => Effect.Effect<void>;
     readonly routes?: RouteRecorder;
     readonly applyRoutes?: Effect.Effect<void>;
     readonly router?: RouterServiceShape;
@@ -245,6 +252,7 @@ const makeScratchForkLayer = (
     readonly globalPlan?: AppPlan;
     readonly setupRouter?: Effect.Effect<void, AppPlacementError>;
     readonly requiredGlobalServices?: ReadonlyArray<string>;
+    readonly sources?: LandofileRuntimeInputs["ports"]["sources"];
   } = {},
 ) => {
   let appliedGlobalPlan: AppPlan | undefined;
@@ -358,7 +366,10 @@ const makeScratchForkLayer = (
           const plan = options.globalPlan ?? appliedGlobalPlan;
           return plan?.root === root ? [plan] : [];
         }),
-      list: Effect.succeed([providerId]),
+      list: Effect.sync(() => {
+        options.onProviderList?.();
+        return [providerId];
+      }),
       capabilities: Effect.sync(() => {
         options.onCapabilities?.();
         return capabilities;
@@ -392,12 +403,25 @@ const makeScratchForkLayer = (
       }),
     );
   })();
+  const { onTransferEvent } = options;
+  const dataMoverEvents =
+    onTransferEvent === undefined
+      ? LandoEventService.layer
+      : Layer.effect(
+          EventService,
+          Effect.map(EventService, (events) =>
+            EventService.of({
+              ...events,
+              publish: (event) => events.publish(event).pipe(Effect.andThen(onTransferEvent(event))),
+            }),
+          ),
+        ).pipe(Layer.provide(LandoEventService.layer));
   const dataMoverLive = BunDataMover.layer.pipe(
     Layer.provide(registryLive),
     Layer.provide(
       Layer.mergeAll(
         stateStoreLayer,
-        LandoEventService.layer,
+        dataMoverEvents,
         redactionLive,
         Layer.succeed(PathsService, makeLandoPaths()),
         Layer.succeed(RuntimeProvider, provider),
@@ -484,35 +508,49 @@ const makeScratchForkLayer = (
 
   return Layer.mergeAll(
     scratchDeps,
-    ScratchAppServiceLayer.layerWith(landofileRuntimeInputs).pipe(Layer.provide(scratchDeps)),
+    ScratchAppServiceLayer.layerWith({
+      ...landofileRuntimeInputs,
+      ports: { ...landofileRuntimeInputs.ports, sources: options.sources ?? {} },
+    }).pipe(Layer.provide(scratchDeps)),
     Layer.succeed(RuntimeCwd, cwd),
   );
 };
 
 describe("ScratchAppServiceLayer.layer fork acquire", () => {
-  test("rejects an unsatisfied source constraint before provider capabilities or planning", async () => {
-    await withTempProject(['lando: "<0.0.0"', forkLandofile].join("\n"), async (dir) => {
-      let capabilitiesCalls = 0;
-      const outcome = await Effect.runPromise(
-        Effect.flatMap(ScratchAppService, (service) =>
-          Effect.scoped(service.acquire({ source: { kind: "fork" }, detached: true })),
-        ).pipe(
-          Effect.provide(
-            makeScratchForkLayer(dir, [], [], {
-              onCapabilities: () => {
-                capabilitiesCalls += 1;
-              },
-            }),
+  test.each([
+    ["implicit source", { kind: "fork" } as const],
+    ["explicit source", { kind: "fork", path: "." } as const],
+  ])(
+    "rejects an unsatisfied version constraint for the %s before provider capabilities",
+    async (_label, source) => {
+      await withTempProject(['lando: "<0.0.0"', forkLandofile].join("\n"), async (dir) => {
+        let capabilitiesCalls = 0;
+        const { outcome, scratches } = await Effect.runPromise(
+          Effect.gen(function* () {
+            const service = yield* ScratchAppService;
+            const outcome = yield* service
+              .acquire({ source, detached: true, keepOnFailure: true })
+              .pipe(Effect.result);
+            return { outcome, scratches: yield* service.list() };
+          }).pipe(
+            Effect.scoped,
+            Effect.provide(
+              makeScratchForkLayer(dir, [], [], {
+                onCapabilities: () => {
+                  capabilitiesCalls += 1;
+                },
+              }),
+            ),
           ),
-          Effect.result,
-        ),
-      );
+        );
 
-      expect(outcome._tag).toBe("Failure");
-      if (outcome._tag === "Failure") expect(outcome.failure._tag).toBe("LandofileVersionConstraintError");
-      expect(capabilitiesCalls).toBe(0);
-    });
-  });
+        expect(outcome._tag).toBe("Failure");
+        if (outcome._tag === "Failure") expect(outcome.failure._tag).toBe("LandofileVersionConstraintError");
+        expect(capabilitiesCalls).toBe(0);
+        expect(scratches).toEqual([]);
+      });
+    },
+  );
 
   test("re-plans the current app under a fresh scratch identity and applies the fork plan", async () => {
     await withTempProject(forkLandofile, async (dir) => {
@@ -825,7 +863,7 @@ describe("ScratchAppServiceLayer.layer fork acquire", () => {
       expect(Exit.hasInterrupts(exit)).toBe(true);
       expect(applied).toHaveLength(1);
       // Reaping stops with volumes kept, then destroys with volumes removed.
-      expect(destroyed.map((call) => call.volumes)).toEqual(keepOnFailure ? [] : [false, true]);
+      expect(destroyed.map((call) => call.volumes)).toEqual(keepOnFailure ? [] : [false, true, false]);
       expect(routes.removed).toHaveLength(keepOnFailure ? 0 : 1);
     });
   });
@@ -911,7 +949,7 @@ describe("ScratchAppServiceLayer.layer fork acquire", () => {
         // is retained.
         expect(hostRoutes.removed).toEqual(keepOnFailure || reapFails ? [] : hostRoutes.applied);
         expect(destroyed.map((call) => call.volumes)).toEqual(
-          keepOnFailure || reapFails ? [] : [false, true],
+          keepOnFailure || reapFails ? [] : [false, true, false],
         );
         expect(await readFile(join(dir, ".lando.yml"), "utf8")).toBe(routedForkLandofile);
       });
@@ -1036,35 +1074,55 @@ describe("ScratchAppServiceLayer.layer fork acquire", () => {
     });
   });
 
-  test("isolate=full copies the source app root and plans under the scratch root", async () => {
-    await withTempProject(forkLandofile, async (dir) => {
+  test("isolate=full copies the explicit source app when invoked inside another app", async () => {
+    await withTempProject(undefined, async (workspace) => {
+      const dir = join(workspace, "source-app");
+      const other = join(workspace, "other-app");
+      const sourceSubdir = join(dir, "src");
+      await mkdir(other);
+      await mkdir(sourceSubdir, { recursive: true });
+      await writeFile(join(dir, ".lando.yml"), forkLandofile);
+      await writeFile(join(other, ".lando.yml"), forkLandofile.replace("name: forkme", "name: other"));
+      await writeFile(join(other, "marker.txt"), "invocation-app-content");
       await writeFile(join(dir, "marker.txt"), "source-content");
       await mkdir(join(dir, "node_modules", "package"), { recursive: true });
       await mkdir(join(dir, "coverage"), { recursive: true });
       await writeFile(join(dir, "node_modules", "package", "index.js"), "module");
       await writeFile(join(dir, "coverage", "report.txt"), "coverage");
-      await writeFile(join(dir, ".lando.local.yml"), "name: forkme\n");
-      await writeFile(join(dir, ".lando.user.yml"), "name: forkme\n");
+      const local = "services:\n  appserver:\n    environment:\n      LOCAL_LAYER: local\n";
+      const user = `export default { services: { appserver: { environment: { USER_LAYER: "user" } } } };`;
+      const conflictingLocal = "export default false;";
+      await writeFile(join(dir, ".lando.local.yml"), local);
+      await writeFile(join(dir, ".lando.local.ts"), conflictingLocal);
+      await writeFile(join(dir, ".lando.user.ts"), user);
       const appliedPlans: AppPlan[] = [];
-      const handle = await Effect.runPromise(
-        Effect.flatMap(ScratchAppService, (service) =>
-          Effect.scoped(
+      const { handle, listing } = await Effect.runPromise(
+        Effect.gen(function* () {
+          const service = yield* ScratchAppService;
+          const handle = yield* Effect.scoped(
             service.acquire({
-              source: { kind: "fork" },
+              source: { kind: "fork", path: "../source-app/src" },
               detached: true,
               isolate: "full",
               excludes: ["coverage/"],
               noLocalOverrides: true,
             }),
-          ),
-        ).pipe(Effect.provide(makeScratchForkLayer(dir, appliedPlans))),
+          );
+          return { handle, listing: yield* service.list() };
+        }).pipe(Effect.provide(makeScratchForkLayer(other, appliedPlans))),
       );
 
       expect(appliedPlans).toHaveLength(1);
       const appliedPlan = appliedPlans.at(0);
       if (appliedPlan === undefined) throw new Error("scratch fork acquire did not apply a plan");
+      const environment = appliedPlan.services[ServiceName.make("appserver")]?.environment;
+      expect(environment).toBeDefined();
+      expect(environment).not.toHaveProperty("LOCAL_LAYER");
+      expect(environment).not.toHaveProperty("USER_LAYER");
       expect(String(appliedPlan.root)).not.toBe(dir);
       expect(String(appliedPlan.root)).toContain(join("scratch", handle.id, "root"));
+      expect(handle.id).toMatch(/^scratch-forkme-/u);
+      expect(listing.map(({ source }) => source)).toEqual([{ kind: "fork" }]);
       expect(await readFile(join(String(appliedPlan.root), "marker.txt"), "utf8")).toBe("source-content");
       expect(await readFile(join(String(appliedPlan.root), ".lando.yml"), "utf8")).toContain("forkme");
       expect(await readFile(join(dir, "marker.txt"), "utf8")).toBe("source-content");
@@ -1072,14 +1130,491 @@ describe("ScratchAppServiceLayer.layer fork acquire", () => {
       expect(await pathExists(join(String(appliedPlan.root), "node_modules", "package"))).toBe(false);
       expect(await pathExists(join(String(appliedPlan.root), "coverage"))).toBe(false);
       expect(await pathExists(join(String(appliedPlan.root), ".lando.local.yml"))).toBe(false);
-      expect(await pathExists(join(String(appliedPlan.root), ".lando.user.yml"))).toBe(false);
+      expect(await pathExists(join(String(appliedPlan.root), ".lando.local.ts"))).toBe(false);
+      expect(await pathExists(join(String(appliedPlan.root), ".lando.user.ts"))).toBe(false);
       expect(await pathExists(join(dir, "node_modules", "package", "index.js"))).toBe(true);
       expect(await pathExists(join(dir, "coverage", "report.txt"))).toBe(true);
-      expect(await pathExists(join(dir, ".lando.local.yml"))).toBe(true);
-      expect(await pathExists(join(dir, ".lando.user.yml"))).toBe(true);
+      expect(await readFile(join(dir, ".lando.local.yml"), "utf8")).toBe(local);
+      expect(await readFile(join(dir, ".lando.local.ts"), "utf8")).toBe(conflictingLocal);
+      expect(await readFile(join(dir, ".lando.user.ts"), "utf8")).toBe(user);
       expect(appliedPlan.name).toBe(handle.id);
     });
   });
+
+  test.each(["cold", "pinned"])(
+    "full forks compile TypeScript at the copied root and keep a %s remote pin off the source write path",
+    async (scenario) => {
+      await withTempProject(undefined, async (dir) => {
+        const source = `import marker from "./marker";
+        export default (ctx) => ({
+          runtime: 4,
+          router: { enabled: false },
+          includes: ["./local.yml", { source: "github:acme/shared", path: "fragment.yml" }],
+          services: { appserver: {
+            type: "compose", image: "alpine", primary: true, home: false,
+            environment: { COMPILED_AT: ctx.cwd, MODULE: marker }
+          } }
+        });`;
+        const fragment = "services:\n  appserver:\n    environment:\n      INCLUDED: pinned-content\n";
+        const commit = "a".repeat(40);
+        const checksum = new Bun.CryptoHasher("sha256").update(fragment).digest("hex");
+        const lockfile = `includes:\n  - source: github:acme/shared/fragment.yml\n    resolved: ${commit}\n    checksum: ${checksum}\n`;
+        await writeFile(join(dir, ".lando.ts"), source);
+        await writeFile(join(dir, ".lando.base.yml"), 'name: "{{ env.SCRATCH_COMPOSED_NAME }}"\n');
+        await writeFile(join(dir, "marker.ts"), "export default 'marker-module';");
+        await writeFile(
+          join(dir, "local.yml"),
+          "services:\n  appserver:\n    environment:\n      LOCAL: copied\n",
+        );
+        if (scenario === "pinned") await writeFile(join(dir, ".lando.lock.yml"), lockfile);
+        const fetched: Array<string | undefined> = [];
+        const applied: AppPlan[] = [];
+        const handle = await withEnvVar("SCRATCH_COMPOSED_NAME", "composed-name", () =>
+          Effect.runPromise(
+            Effect.flatMap(ScratchAppService, (scratch) =>
+              scratch.acquire({
+                source: { kind: "fork" },
+                detached: true,
+                excludes: [".lando.ts", ".lando.base.yml", ".lando.lock.yml"],
+              }),
+            ).pipe(
+              Effect.scoped,
+              Effect.provide(
+                makeScratchForkLayer(dir, applied, [], {
+                  onTransferEvent: (event) =>
+                    Effect.sync(() => {
+                      if (event._tag === "pre-data-transfer") expect(fetched).toEqual([]);
+                    }),
+                  sources: {
+                    git: {
+                      fetch: async ({ dest, ref }) => {
+                        fetched.push(ref);
+                        await Bun.write(join(dest, "fragment.yml"), fragment);
+                        return { commit };
+                      },
+                    },
+                  },
+                }),
+              ),
+            ),
+          ),
+        );
+        expect(handle.id).toMatch(/^scratch-composed-name-/u);
+        expect(applied[0]?.services[ServiceName.make("appserver")]?.environment).toMatchObject({
+          COMPILED_AT: await realpath(handle.app.root),
+          INCLUDED: "pinned-content",
+          LOCAL: "copied",
+          MODULE: "marker-module",
+        });
+        expect(fetched).toEqual([scenario === "cold" ? undefined : commit]);
+        expect(await readFile(join(handle.app.root, ".lando.ts"), "utf8")).toBe(source);
+        const copiedLock = await readFile(join(handle.app.root, ".lando.lock.yml"), "utf8");
+        expect(copiedLock).toContain(`resolved: ${commit}`);
+        if (scenario === "pinned") {
+          expect(copiedLock).toBe(lockfile);
+          expect(await readFile(join(dir, ".lando.lock.yml"), "utf8")).toBe(lockfile);
+        } else {
+          expect(await pathExists(join(dir, ".lando.lock.yml"))).toBe(false);
+        }
+      });
+    },
+  );
+
+  test("an unnamed fork uses the source name without validating source-only service values", async () => {
+    await withTempProject(undefined, async (dir) => {
+      await writeFile(
+        join(dir, ".lando.ts"),
+        `export default (ctx) => ({
+        name: ctx.cwd === ${JSON.stringify(dir)} ? "source-name" : "copied-name",
+        router: { enabled: false },
+        services: ctx.cwd === ${JSON.stringify(dir)} ? false : {
+          appserver: { type: "compose", image: "alpine", primary: true, home: false,
+            environment: { COPY_ONLY: "yes" } }
+        }
+      });`,
+      );
+      const applied: AppPlan[] = [];
+      const handle = await Effect.runPromise(
+        Effect.flatMap(ScratchAppService, (scratch) =>
+          scratch.acquire({ source: { kind: "fork" }, detached: true }),
+        ).pipe(Effect.scoped, Effect.provide(makeScratchForkLayer(dir, applied))),
+      );
+      expect(handle.id).toMatch(/^scratch-source-name-/u);
+      expect(applied[0]?.services[ServiceName.make("appserver")]?.environment.COPY_ONLY).toBe("yes");
+    });
+  });
+
+  test.skipIf(process.platform === "win32")(
+    "a copied symlinked TS Landofile imports relative to its physical target",
+    async () => {
+      await withTempProject(undefined, async (dir) => {
+        const subdir = join(dir, "config");
+        await mkdir(subdir);
+        await writeFile(join(subdir, "marker.ts"), 'export default "copied-module";');
+        await writeFile(
+          join(subdir, "landofile.ts"),
+          `
+          import marker from "./marker";
+          import { basename } from "node:path";
+          import { defineLandofile } from "@lando/sdk";
+          import { Effect } from "effect";
+          export default () => Effect.succeed(defineLandofile({
+            name: "symlinked",
+            router: { enabled: false },
+            services: { appserver: { type: "compose", image: "alpine", primary: true,
+              home: false, environment: { MODULE: basename(marker) } } }
+          }));
+        `,
+        );
+        const target = join("config", "landofile.ts");
+        await symlink(target, join(dir, ".lando.ts"));
+        const applied: AppPlan[] = [];
+        const handle = await Effect.runPromise(
+          Effect.flatMap(ScratchAppService, (scratch) =>
+            scratch.acquire({ source: { kind: "fork" }, detached: true }),
+          ).pipe(Effect.scoped, Effect.provide(makeScratchForkLayer(dir, applied))),
+        );
+        expect(handle.id).toMatch(/^scratch-symlinked-/u);
+        expect(await readlink(join(handle.app.root, ".lando.ts"))).toBe(target);
+        expect(applied[0]?.services[ServiceName.make("appserver")]?.environment.MODULE).toBe("copied-module");
+      });
+    },
+  );
+
+  test("a named full fork loads a contained TSX helper", async () => {
+    await withTempProject(undefined, async (dir) => {
+      await Bun.write(
+        join(dir, "helper.tsx"),
+        `/** @jsxRuntime classic */
+        /** @jsx labelFor */
+        const labelFor = (tag) => \`tsx-\${tag}\`;
+        export const label = <helper />;`,
+      );
+      await Bun.write(
+        join(dir, ".lando.ts"),
+        `
+        import { label } from "./helper.tsx";
+        export default { router: { enabled: false }, services: {
+          appserver: { type: "compose", image: "alpine", primary: true, home: false,
+            environment: { MODULE: label } }
+        } };
+      `,
+      );
+      const applied: AppPlan[] = [];
+      await Effect.runPromise(
+        Effect.flatMap(ScratchAppService, (scratch) =>
+          scratch.acquire({ source: { kind: "fork" }, name: "tsx", detached: true }),
+        ).pipe(Effect.scoped, Effect.provide(makeScratchForkLayer(dir, applied))),
+      );
+      expect(applied[0]?.services[ServiceName.make("appserver")]?.environment.MODULE).toBe("tsx-helper");
+    });
+  });
+
+  test("a full fork reports an excluded Landofile package and rolls back before reaching the provider", async () => {
+    await withTempProject(undefined, async (dir) => {
+      const packageName = "lando-test-synthetic-fork-dependency";
+      const packageDir = join(dir, "node_modules", packageName);
+      await mkdir(packageDir, { recursive: true });
+      await writeFile(
+        join(packageDir, "package.json"),
+        JSON.stringify({ name: packageName, type: "module", exports: "./index.js" }),
+      );
+      const entry = join(packageDir, "index.js");
+      await writeFile(entry, 'export default "source-package";');
+      await writeFile(
+        join(dir, ".lando.ts"),
+        `import marker from "${packageName}";
+        export default { name: marker, services: {
+          appserver: { type: "compose", image: "alpine", primary: true, home: false }
+        } };`,
+      );
+      expect(await realpath(Bun.resolveSync(packageName, dir))).toBe(entry);
+
+      const applied: AppPlan[] = [];
+      const destroyed: DestroyCall[] = [];
+      const unexpectedProviderCall = () => {
+        throw new Error("Materialization failure must not reach the provider");
+      };
+      const { outcome, listing } = await Effect.runPromise(
+        Effect.gen(function* () {
+          const scratch = yield* ScratchAppService;
+          const outcome = yield* scratch
+            .acquire({ source: { kind: "fork" }, name: "excluded-package", detached: true })
+            .pipe(Effect.result);
+          return { outcome, listing: yield* scratch.list() };
+        }).pipe(
+          Effect.scoped,
+          Effect.provide(
+            makeScratchForkLayer(dir, applied, destroyed, {
+              onCapabilities: unexpectedProviderCall,
+              onProviderList: unexpectedProviderCall,
+            }),
+          ),
+        ),
+      );
+      if (outcome._tag !== "Failure" || !(outcome.failure instanceof ScratchAppError))
+        throw new Error("Expected a scratch materialization failure", { cause: outcome });
+      const failure = outcome.failure;
+      const cause = failure.cause;
+      expect(failure.operation).toBe("materialize");
+      if (!(cause instanceof LandofileParseError))
+        throw new Error("Expected an import resolution error, not a containment violation", { cause });
+      expect(failure.remediation).toContain("node_modules");
+      expect(cause.message).toContain(packageName);
+      expect(await pathExists(dirname(dirname(cause.filePath)))).toBe(false);
+      expect(await pathExists(entry)).toBe(true);
+      expect({ applied, destroyed, listing }).toEqual({ applied: [], destroyed: [], listing: [] });
+    });
+  });
+
+  test.each(["#source-marker", "@lando/sdk/unregistered-for-fork"])(
+    "a copied TS Landofile refuses project alias %s when it resolves back to the source tree",
+    async (alias) => {
+      await withTempProject(undefined, async (dir) => {
+        const sourceModule = join(dir, "marker.ts");
+        await writeFile(sourceModule, 'export default "not-from-the-copy";');
+        await writeFile(
+          join(dir, "tsconfig.json"),
+          JSON.stringify({
+            compilerOptions: { paths: { [alias]: [sourceModule.replaceAll("\\", "/")] } },
+          }),
+        );
+        await writeFile(
+          join(dir, ".lando.ts"),
+          `
+        import marker from ${JSON.stringify(alias)};
+        export default { name: "aliased", router: { enabled: false }, services: {
+          appserver: { type: "compose", image: "alpine", primary: true, home: false,
+            environment: { MODULE: marker } }
+        } };
+      `,
+        );
+        const applied: AppPlan[] = [];
+        const outcome = await Effect.runPromise(
+          Effect.flatMap(ScratchAppService, (scratch) =>
+            scratch.acquire({ source: { kind: "fork" }, name: "review", detached: true }),
+          ).pipe(Effect.scoped, Effect.result, Effect.provide(makeScratchForkLayer(dir, applied))),
+        );
+        expect(outcome).toMatchObject({
+          _tag: "Failure",
+          failure: {
+            operation: "materialize",
+            cause: { _tag: "LandofileSandboxError", violation: expect.stringContaining("outside") },
+          },
+        });
+        expect(applied).toEqual([]);
+      });
+    },
+  );
+
+  test.each(["pre-data-transfer", "post-data-transfer"] as const)(
+    "fork interruption cleans up while a %s subscriber is still blocked",
+    async (tag) => {
+      await withTempProject(forkLandofile, async (dir) => {
+        const entered = Deferred.makeUnsafe<void>();
+        const release = Deferred.makeUnsafe<void>();
+        const applied: AppPlan[] = [];
+        const { interrupted, scratches } = await Effect.runPromise(
+          Effect.gen(function* () {
+            const scratch = yield* ScratchAppService;
+            const acquisition = yield* Effect.forkScoped(
+              scratch.acquire({ source: { kind: "fork" }, detached: true }),
+            );
+            yield* Deferred.await(entered).pipe(Effect.timeout("2 seconds"));
+            const cancel = yield* Effect.forkScoped(Fiber.interrupt(acquisition));
+            const interrupted = yield* Fiber.await(cancel).pipe(Effect.timeoutOption("2 seconds"));
+            yield* Deferred.succeed(release, undefined);
+            yield* Fiber.await(acquisition);
+            return { interrupted: Option.isSome(interrupted), scratches: yield* scratch.list() };
+          }).pipe(
+            Effect.scoped,
+            Effect.provide(
+              makeScratchForkLayer(dir, applied, [], {
+                onTransferEvent: (event) =>
+                  event._tag === tag && (event._tag !== "post-data-transfer" || event.outcome === "success")
+                    ? Deferred.succeed(entered, undefined).pipe(Effect.andThen(Deferred.await(release)))
+                    : Effect.void,
+              }),
+            ),
+          ),
+        );
+        expect({ interrupted, scratches, applied }).toEqual({
+          interrupted: true,
+          scratches: [],
+          applied: [],
+        });
+      });
+    },
+  );
+
+  test("a source lockfile removed during transfer is still required in the copy", async () => {
+    await withTempProject(forkLandofile, async (dir) => {
+      const lock = join(dir, ".lando.lock.yml");
+      await writeFile(lock, "includes:\n");
+      const applied: AppPlan[] = [];
+      const { outcome, scratches } = await Effect.runPromise(
+        Effect.gen(function* () {
+          const scratch = yield* ScratchAppService;
+          const outcome = yield* scratch
+            .acquire({
+              source: { kind: "fork" },
+              name: "review",
+              detached: true,
+            })
+            .pipe(Effect.result);
+          return { outcome, scratches: yield* scratch.list() };
+        }).pipe(
+          Effect.scoped,
+          Effect.provide(
+            makeScratchForkLayer(dir, applied, [], {
+              onTransferEvent: (event) =>
+                event._tag === "pre-data-transfer" ? Effect.promise(() => rm(lock)) : Effect.void,
+            }),
+          ),
+        ),
+      );
+      expect(outcome).toMatchObject({
+        _tag: "Failure",
+        failure: { operation: "materialize", message: expect.stringContaining(".lando.lock.yml") },
+      });
+      expect({ scratches, applied }).toEqual({ scratches: [], applied: [] });
+    });
+  });
+
+  test("an unnamed fork retains the copied root when both source naming and copied compilation fail", async () => {
+    await withTempProject(undefined, async (dir) => {
+      const source = `export default () => { throw new Error("invalid programmatic Landofile"); };`;
+      await writeFile(join(dir, ".lando.ts"), source);
+      const { outcome, listing } = await Effect.runPromise(
+        Effect.gen(function* () {
+          const scratch = yield* ScratchAppService;
+          const outcome = yield* scratch
+            .acquire({
+              source: { kind: "fork" },
+              detached: true,
+              keepOnFailure: true,
+            })
+            .pipe(Effect.result);
+          return { outcome, listing: yield* scratch.list() };
+        }).pipe(Effect.scoped, Effect.provide(makeScratchForkLayer(dir, []))),
+      );
+      expect(listing).toHaveLength(1);
+      const retained = listing[0];
+      if (retained === undefined) throw new Error("Expected a retained fork");
+      expect(retained.id).toMatch(/^scratch-app-/u);
+      expect(outcome).toMatchObject({
+        _tag: "Failure",
+        failure: {
+          _tag: "ScratchAppError",
+          scratchId: retained.id,
+          cause: { _tag: "LandofileParseError", filePath: join(retained.app.root, ".lando.ts") },
+        },
+      });
+      expect(await readFile(join(retained.app.root, ".lando.ts"), "utf8")).toBe(source);
+    });
+  });
+
+  test("a named fork skips source evaluation and refuses a reserved copied name before provider action", async () => {
+    await withTempProject(undefined, async (dir) => {
+      const evaluationKey = `scratch-test:source-evaluated:${dir}`;
+      const evaluatedSource = Symbol.for(evaluationKey);
+      const source = `export default (ctx) => {
+        if (ctx.cwd === ${JSON.stringify(dir)}) globalThis[Symbol.for(${JSON.stringify(evaluationKey)})] = true;
+        return { name: "global", services: {
+          appserver: { type: "compose", image: "alpine", primary: true, home: false }
+        } };
+      };`;
+      await writeFile(join(dir, ".lando.ts"), source);
+      const applied: AppPlan[] = [];
+      const destroyCalls: DestroyCall[] = [];
+      const routes: RouteRecorder = { applied: [], removed: [] };
+      let capabilitiesCalls = 0;
+      let providerListCalls = 0;
+      try {
+        const { outcome, listing } = await Effect.runPromise(
+          Effect.gen(function* () {
+            const scratch = yield* ScratchAppService;
+            const outcome = yield* scratch
+              .acquire({
+                source: { kind: "fork" },
+                name: "review",
+                detached: true,
+              })
+              .pipe(Effect.result);
+            return { outcome, listing: yield* scratch.list() };
+          }).pipe(
+            Effect.scoped,
+            Effect.provide(
+              makeScratchForkLayer(dir, applied, destroyCalls, {
+                onCapabilities: () => {
+                  capabilitiesCalls += 1;
+                },
+                onProviderList: () => {
+                  providerListCalls += 1;
+                },
+                routes,
+              }),
+            ),
+          ),
+        );
+        expect(outcome).toMatchObject({
+          _tag: "Failure",
+          failure: {
+            _tag: "ScratchAppError",
+            operation: "materialize",
+            cause: { _tag: "AppIdReservedError" },
+          },
+        });
+        expect({ capabilitiesCalls, providerListCalls, applied, destroyCalls, listing, routes }).toEqual({
+          capabilitiesCalls: 0,
+          providerListCalls: 0,
+          applied: [],
+          destroyCalls: [],
+          listing: [],
+          routes: { applied: [], removed: [] },
+        });
+        expect(Reflect.has(globalThis, evaluatedSource)).toBe(false);
+        expect(await readFile(join(dir, ".lando.ts"), "utf8")).toBe(source);
+      } finally {
+        Reflect.deleteProperty(globalThis, evaluatedSource);
+      }
+    });
+  });
+
+  test.each(["explicit", "implicit"])(
+    "an %s fork with only omitted layers refuses the selected source",
+    async (kind) => {
+      await withTempProject(forkLandofile, async (dir) => {
+        const child = join(dir, "local-only");
+        await mkdir(child);
+        await writeFile(join(child, ".lando.local.yml"), "name: child\n");
+        const applied: AppPlan[] = [];
+        const outcome = await Effect.runPromise(
+          Effect.flatMap(ScratchAppService, (scratch) =>
+            scratch.acquire({
+              source: { kind: "fork", ...(kind === "explicit" ? { path: "local-only" } : {}) },
+              noLocalOverrides: true,
+              isolate: "cwd",
+              detached: true,
+            }),
+          ).pipe(
+            Effect.scoped,
+            Effect.result,
+            Effect.provide(makeScratchForkLayer(kind === "explicit" ? dir : child, applied)),
+          ),
+        );
+        expect(outcome).toMatchObject({
+          _tag: "Failure",
+          failure: {
+            _tag: "ScratchAppError",
+            remediation: expect.stringContaining("--no-local-overrides"),
+            cause: { _tag: "LandofileNotFoundError", cwd: child },
+          },
+        });
+        expect(applied).toEqual([]);
+      });
+    },
+  );
 
   test("isolate=none (default) binds the source tree while owning a managed root", async () => {
     await withTempProject(forkLandofile, async (dir) => {
@@ -1113,7 +1648,9 @@ describe("ScratchAppServiceLayer.layer fork acquire", () => {
       expect(result.destroyed).toEqual(result.keepHandle);
       expect(destroyCalls).toEqual([
         { app: result.handle.id, volumes: false, removeState: false },
-        { app: result.handle.id, volumes: true, removeState: true },
+        { app: result.handle.id, volumes: true, removeState: false },
+        { app: result.handle.id, volumes: false, removeState: true },
+        { app: result.keepHandle.id, volumes: false, removeState: false },
         { app: result.keepHandle.id, volumes: false, removeState: false },
         { app: result.keepHandle.id, volumes: false, removeState: true },
       ]);
@@ -1139,7 +1676,8 @@ describe("ScratchAppServiceLayer.layer fork acquire", () => {
       expect(appliedPlans).toHaveLength(1);
       expect(destroyCalls).toEqual([
         { app: String(appliedPlans.at(0)?.id), volumes: false, removeState: false },
-        { app: String(appliedPlans.at(0)?.id), volumes: true, removeState: true },
+        { app: String(appliedPlans.at(0)?.id), volumes: true, removeState: false },
+        { app: String(appliedPlans.at(0)?.id), volumes: false, removeState: true },
       ]);
     });
   });

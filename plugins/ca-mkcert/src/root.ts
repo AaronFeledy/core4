@@ -108,5 +108,5 @@ export const makeMkcertRoot = (
     );
   });
 
-  return { caRoot, currentRoot, ensureRoot };
+  return { caRoot, currentRoot, ensureRoot, readRoot };
 };

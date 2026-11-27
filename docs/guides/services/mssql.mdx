@@ -25,11 +25,11 @@ lando start
 lando sqlcmd -d master -Q "SELECT name, state_desc FROM sys.databases"
 ```
 
-Lando runs the catalog image's stock entrypoint. After the provider starts SQL Server, Lando applies `creds` and creates the configured database if it confirms the database is absent. In the query results, look for your database with state `ONLINE`. The default name is the app's data name (the name the folder's data was first created under).
+Lando runs the catalog image's stock entrypoint. During `lando start`, Lando applies `creds` and creates the configured database if it confirms the database is absent. In the query results, look for your database with state `ONLINE`. The default name is the app's data name (the name the folder's data was first created under).
 
 An image outside the catalog, or an override of the build or startup process, is responsible for its own database initialization. The catalog healthcheck probes `master`: a successful query or a login rejection for `sa` means the server is up. It does not prove the application database exists or the password works.
 
-On first start, services waiting on SQL Server with `condition: service_healthy` can start before the configured database exists; it is in place when `lando start` finishes without a credential convergence warning ([tracking issue](https://github.com/AaronFeledy/core4/issues/2616)).
+A service that requires this SQL Server with `condition: service_healthy` starts after Lando has created the configured database and applied `creds`, so it can connect to that database at boot. If Lando can't do that, it doesn't start the waiting service. With `required: false`, the service may still wait for the database and credential checks, but a failure doesn't block its start. When no service requires the database to be healthy, a failure to apply `creds` is a warning and start can still finish. See [Start services that wait on the database](../tooling/db-creds-apply.mdx#start-services-that-wait-on-the-database).
 
 <Guide>
   <Scenario id="happy-path" render>

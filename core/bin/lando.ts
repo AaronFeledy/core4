@@ -20,6 +20,7 @@ import { runWithProcessSignalReraise } from "../src/cli/process-signals";
 import { cliUserArgv } from "../src/cli/user-argv";
 import { derivedCodegenMessage, isModuleResolveError, missingDerivedCodegen } from "./derived-codegen.ts";
 import { preservedSymlinksMessage } from "./preserve-symlinks.ts";
+import { sudoInvocationMessage, systemSudoInvocationHost } from "./sudo-invocation.ts";
 
 ensureHostProxyNoProxy("127.0.0.1");
 ensureHostProxyNoProxy("localhost");
@@ -43,6 +44,25 @@ const main = async (): Promise<void> => {
     : preservedSymlinksMessage(process.env, process.execArgv);
   if (preservedSymlinks !== undefined) {
     await writeLine("stderr", preservedSymlinks);
+    process.exit(1);
+  }
+  if (argv[0] === "__internal:repair-root-ownership") {
+    await installProcessLifecycle();
+    const { runRepairCli } = await import("@lando/engine/host/root-ownership-repair-cli");
+    const { guardedWrite } = await import("@lando/renderer/native-stdio");
+    process.exitCode = runRepairCli(argv.slice(1), (line) => {
+      guardedWrite("stdout", process.stdout, line);
+    });
+    return;
+  }
+  const sudoInvocation = sudoInvocationMessage(
+    systemSudoInvocationHost(() => {
+      const roots = resolveLandoRoots();
+      return [roots.userDataRoot, roots.userConfRoot, roots.userCacheRoot];
+    }),
+  );
+  if (sudoInvocation !== undefined) {
+    await writeLine("stderr", sudoInvocation);
     process.exit(1);
   }
   await installProcessLifecycle();

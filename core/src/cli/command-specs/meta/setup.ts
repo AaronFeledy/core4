@@ -17,6 +17,7 @@ import { AppPlacementError } from "@lando/sdk/errors";
 import {
   ConfigService,
   type Downloader,
+  type FileSystem,
   GlobalAppService,
   InteractionService,
   type PathsService,
@@ -28,14 +29,15 @@ import {
  *
  * Provider precedence is flag, environment, configuration, interactive choice, default.
  */
-import { Effect } from "effect";
+import { Effect, Option } from "effect";
 import type * as HttpClient from "effect/http/HttpClient";
 import { CliInvocation } from "../../../runtime/invocation-context";
 import { validateSetupNetworkTrust } from "../../commands/setup-network-trust";
-
 import type { LandoCommandSpec } from "../../spec/command-base";
 import { runCaSetupStep } from "./setup-ca-step";
 import { SETUP_COMMAND_FLAGS } from "./setup-command-flags";
+import { planSetupDryRun } from "./setup-dry-run";
+import { approveSetupHostChanges, planSetupHostChanges } from "./setup-host-changes";
 import {
   type SetupResult,
   SetupResultSchema,
@@ -45,6 +47,8 @@ import {
   inputProviderFlag,
   sourceInstallDir,
 } from "./setup-inputs";
+import { applyLandoRootsRepair, planLandoRootsRepair } from "./setup-lando-roots";
+import { makeRunPrivilege } from "./setup-privilege";
 import {
   SYSTEM_RUNTIME_PROVIDERS,
   maybeSelectSetupProvider,
@@ -57,7 +61,7 @@ import { SetupStepFailedError, makeSetupReadinessRecorder, runFileSyncSetupStep 
 
 export { SetupResultSchema } from "./setup-inputs";
 export { maybeSelectSetupProvider } from "./setup-provider-selection";
-export { SetupStepFailedError, ShellProfileIntegrationError } from "./setup-steps";
+export { RootOwnedLandoFilesError, SetupStepFailedError, ShellProfileIntegrationError } from "./setup-steps";
 
 export const setupSpec: LandoCommandSpec<
   SetupResult,
@@ -69,6 +73,7 @@ export const setupSpec: LandoCommandSpec<
   | HttpClient.HttpClient
   | Downloader
   | InteractionService
+  | FileSystem
 > = {
   resultSchema: SetupResultSchema,
   id: "meta:setup",
@@ -107,15 +112,20 @@ export const setupSpec: LandoCommandSpec<
     const userDataRootRaw = globalConfig.userDataRoot;
     const userDataRoot =
       typeof userDataRootRaw === "string" && userDataRootRaw.length > 0 ? userDataRootRaw : undefined;
+    // A dry run writes nothing, not even the readiness record.
+    const dryRun = inputBooleanFlag(input, "dry-run");
+    const rootRepair = yield* planLandoRootsRepair();
     const redaction = yield* Effect.serviceOption(RedactionService);
     const recorder = makeSetupReadinessRecorder(
-      userDataRoot,
+      dryRun ? undefined : userDataRoot,
       resolution.providerId,
       redaction._tag === "Some" ? redaction.value : undefined,
       (yield* CliInvocation).env,
+      rootRepair !== undefined,
     );
-    yield* recorder.start;
-    yield* Effect.addFinalizer(recorder.finish);
+    // With root-owned roots, the readiness record waits until setup has given them back.
+    const startRecorder = Effect.andThen(recorder.start, Effect.addFinalizer(recorder.finish));
+    if (!dryRun && rootRepair === undefined) yield* startRecorder;
 
     const interactionOption = yield* Effect.serviceOption(InteractionService);
     const interaction = interactionOption._tag === "Some" ? interactionOption.value : undefined;
@@ -123,7 +133,7 @@ export const setupSpec: LandoCommandSpec<
     const selection = yield* maybeSelectSetupProvider({
       resolution,
       yes: inputBooleanFlag(input, "yes"),
-      nonInteractive: inputBooleanFlag(input, "no-interactive"),
+      nonInteractive: dryRun || inputBooleanFlag(input, "no-interactive"),
       skipProvider: inputBooleanFlag(input, "skip-provider"),
       ...(interaction === undefined ? {} : { interaction }),
     });
@@ -154,12 +164,29 @@ export const setupSpec: LandoCommandSpec<
     }
     const withHostProvider = Effect.provideService(HostProviderOverride, selectedProvider);
     const provider = yield* registry.select(setupProviderPlan(selectedProvider));
-    const networkProbe = inputNetworkProbe(input);
-    const privilege = yield* Effect.serviceOption(PrivilegeService);
-    const privilegeOptions = privilege._tag === "Some" ? { privilege: privilege.value } : {};
-
+    const hostPrivilege = yield* Effect.serviceOption(PrivilegeService);
     const selectedProviderId = String(selectedProvider);
-    const network = yield* validateSetupNetworkTrust(globalConfig, networkProbe).pipe(
+
+    if (dryRun) {
+      return yield* planSetupDryRun({
+        input,
+        globalConfig,
+        provider,
+        selectedProvider,
+        selectionSource: selection.source,
+        privilege: Option.getOrUndefined(hostPrivilege),
+        recorder,
+        rootRepair: rootRepair?.proposal,
+        interaction,
+      });
+    }
+
+    const privilege =
+      hostPrivilege._tag === "Some" ? yield* makeRunPrivilege(hostPrivilege.value) : undefined;
+    const withRunPrivilege = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+      privilege === undefined ? effect : Effect.provideService(effect, PrivilegeService, privilege);
+
+    const network = yield* validateSetupNetworkTrust(globalConfig, inputNetworkProbe(input)).pipe(
       Effect.tapError((cause) => recorder.recordFailure("network", cause)),
     );
 
@@ -169,13 +196,28 @@ export const setupSpec: LandoCommandSpec<
       Effect.tapError((cause) => recorder.recordFailure("provider", cause)),
     );
 
+    const plan = yield* planSetupHostChanges({
+      input,
+      provider,
+      selectedProviderId,
+      network,
+      privilege,
+      recorder,
+      rootRepair: rootRepair?.proposal,
+    }).pipe(withHostProvider);
+    const hostChanges = yield* approveSetupHostChanges({ plan, input, interaction, privilege, recorder });
+    if (rootRepair !== undefined) {
+      yield* applyLandoRootsRepair(hostChanges.applier, rootRepair);
+      yield* startRecorder;
+    }
+
     yield* runProviderSetupStep({
       input,
       provider,
       selectedProviderId,
       network,
-      privilegeOptions,
-      interaction,
+      inspectOptions: plan.inspectOptions,
+      hostChanges: hostChanges.applier,
       recorder,
     });
 
@@ -187,14 +229,23 @@ export const setupSpec: LandoCommandSpec<
         Effect.tapError((cause) => recorder.recordFailure("provider", cause)),
       );
     }
-    const trustStores = yield* runCaSetupStep(input, privilegeOptions, recorder, selectedProviderId).pipe(
+    const caHostChanges = {
+      applier: hostChanges.applier,
+      trustApproved: plan.proposals.some(
+        ({ change }) => change.stage === "ca" && hostChanges.applier.approved(change.id) !== undefined,
+      ),
+    };
+    const trustStores = yield* runCaSetupStep(input, caHostChanges, recorder, selectedProviderId).pipe(
       withHostProvider,
     );
-    yield* runProxySetupStep(input, recorder, selectedProviderId).pipe(withHostProvider);
+    yield* runProxySetupStep(input, recorder, hostChanges.applier, selectedProviderId).pipe(
+      withHostProvider,
+      withRunPrivilege,
+    );
     yield* runShellServiceSetupStep(input, recorder, selectedProviderId).pipe(withHostProvider);
 
-    if (privilege._tag === "Some" && userDataRoot !== undefined) {
-      yield* runShellProfileSetupStep(input, privilege.value, userDataRoot, recorder);
+    if (userDataRoot !== undefined) {
+      yield* runShellProfileSetupStep(input, userDataRoot, recorder);
     }
 
     const fileSyncStatus = yield* runFileSyncSetupStep({
@@ -226,13 +277,15 @@ export const setupSpec: LandoCommandSpec<
     const networkCaInjectionConfigured = network.ca.injectIntoServices && network.ca.loadedCerts.length > 0;
 
     return {
+      dryRun: false,
       providerId: provider.id,
       installDir: inputInstallDir(input) ?? sourceInstallDir(),
       fileSyncStatus,
       networkCaInjectionConfigured,
       ...(providerSwitch === undefined ? {} : { providerSwitch }),
       ...(trustStores === undefined ? {} : { trustStores }),
-    };
+      hostChanges: hostChanges.outcomes(),
+    } satisfies SetupResult;
   }, Effect.scoped),
   render: renderSetupResult,
 };

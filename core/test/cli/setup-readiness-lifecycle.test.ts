@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { TestRuntimeProvider, makeTestDownloader, makeTestInteractionService } from "@lando/core/testing";
 import { GlobalConfigSources } from "@lando/engine/services/config";
+import * as BunFileSystem from "@lando/engine/services/file-system";
 import { layerWith } from "@lando/http-client/live";
 import { makeLandoPaths } from "@lando/paths";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
@@ -53,6 +54,7 @@ test.each(["provider", "ca", "selection-failure", "selection-defect"] as const)(
     };
     const layers = Layer.mergeAll(
       Layer.succeed(PathsService, makeLandoPaths()),
+      BunFileSystem.layer,
       Layer.succeed(ConfigService, {
         load: Effect.succeed(config),
         get: (key) => Effect.succeed(config[key]),

@@ -1,45 +1,94 @@
 import { RedactionService } from "@lando/redaction/service";
-import {
-  SqlCredentialAdminAuthError,
-  SqlCredentialApplyError,
-  SqlCredentialTargetError,
-} from "@lando/sdk/errors";
-import { MessageInfoEvent } from "@lando/sdk/events";
-import { runProbe } from "@lando/sdk/probe";
-import type { AppPlan } from "@lando/sdk/schema";
+import { ProviderCapabilityError } from "@lando/sdk/errors";
+import { type AppPlan, type ServiceName, planDataId } from "@lando/sdk/schema";
 import {
   type ApplyResult,
   type EnvironmentValueResolverSession,
-  EventService,
   PathsService,
   type RuntimeProviderShape,
+  StateStore,
 } from "@lando/sdk/services";
-import { Cause, DateTime, Duration, Effect, Option, Ref, type Result } from "effect";
+import { Clock, Effect, Option, Ref, Result, Semaphore } from "effect";
 import { catalogDatabase } from "../operations/database-convergence/catalog.ts";
-import { prepareReconciliation } from "../operations/database-convergence/reconcile.ts";
-import { connectionChanged } from "../operations/database-credentials.ts";
+import {
+  attemptActivationCredential,
+  boundCredentialAttempt,
+  credentialBudgetMs,
+} from "./activation-credential-attempt.ts";
+import {
+  type CredentialAttempt,
+  type DatabaseTarget,
+  type HealthyContinuation,
+  activationDatabaseTargets,
+  credentialFailureDetail,
+  credentialGateError,
+  credentialGateFailure,
+  credentialRecovery,
+  credentialWorkAfterApply,
+} from "./activation-credential-policy.ts";
 import { observeUnmanagedCredentials, warning } from "./activation-credential-warnings.ts";
+import { settleOrdinaryFailure } from "./failure-compensation.ts";
+import { coordinatedServiceVolume } from "./volume-coordination.ts";
 
-export const convergeActivationCredentials = Effect.fn("Activation.convergeCredentials")(function* (input: {
+type CredentialPhase =
+  | { readonly kind: "inline"; readonly containerId: string }
+  | { readonly kind: "residual" | "observe-only" };
+
+export const makeActivationCredentialWorker = Effect.fn("Activation.makeCredentialWorker")(function* (input: {
   readonly plan: AppPlan;
   readonly previousPlan?: AppPlan | undefined;
+  readonly desiredPlan?: AppPlan | undefined;
+  readonly complete?: boolean;
   readonly provider: RuntimeProviderShape;
-  readonly applied: ApplyResult;
   readonly session: EnvironmentValueResolverSession;
 }) {
-  const { plan, previousPlan, provider, applied, session } = input;
-  const candidates = Object.values(plan.services).flatMap((service) => {
-    const outcome = applied.services?.[service.name];
-    const desired = service.connection;
-    if (outcome === undefined || desired === undefined) return [];
-    const previous = previousPlan?.services[service.name];
-    if (outcome.action === "kept" && !connectionChanged(previous, service)) return [];
-    return [{ service, desired, previous: previous?.connection }];
-  });
-  if (candidates.length === 0) return [];
+  const { plan, previousPlan, provider, session } = input;
+  const retained = [input.desiredPlan, input.complete === true ? undefined : previousPlan].flatMap((view) =>
+    view?.provider === plan.provider && planDataId(view) === planDataId(plan)
+      ? Object.values(view.services).filter((service) => plan.services[service.name] === undefined)
+      : [],
+  );
+  const targets = activationDatabaseTargets(plan, retained);
+  if (targets.size === 0) return undefined;
   const paths = yield* Effect.serviceOption(PathsService);
   const redaction = yield* Effect.serviceOption(RedactionService);
-  if (Option.isNone(paths) || Option.isNone(redaction)) return [];
+  const store = yield* StateStore;
+  const unsupported =
+    provider.healthyDependencyContinuation !== true
+      ? "healthyDependencyContinuation"
+      : !provider.capabilities.serviceExec
+        ? "serviceExec"
+        : provider.observeBoundVolume === undefined
+          ? "observeBoundVolume"
+          : undefined;
+  const missing =
+    unsupported ??
+    (Option.isNone(paths) || Option.isNone(redaction) ? "credentialConvergenceContext" : undefined);
+  if (missing !== undefined) {
+    for (const consumer of Object.values(plan.services)) {
+      for (const edge of consumer.dependsOn) {
+        if (!edge.required || edge.condition !== "service_healthy") continue;
+        const target = targets.get(edge.service);
+        if (target === undefined || !target.isCatalogCandidate()) continue;
+        return yield* new ProviderCapabilityError({
+          providerId: provider.id,
+          operation: "database-credential-convergence",
+          capability: missing,
+          requiredValue: true,
+          actualValue: false,
+          details: { service: consumer.name, dependency: target.service.name },
+          message: `Cannot start ${consumer.name}: preparing credentials for database ${target.service.name} requires ${missing}.`,
+          remediation:
+            missing === "credentialConvergenceContext"
+              ? "Supply PathsService and RedactionService in the activation context, then retry the same command with the same selection."
+              : "Use a runtime and provider that support database credential convergence, then retry the same command with the same selection.",
+        });
+      }
+    }
+  }
+  if (Option.isNone(paths) || Option.isNone(redaction)) return undefined;
+  const adminSeedRoot = paths.value.roots.userDataRoot;
+  const redactor = redaction.value;
   const seedWarningEmitted = yield* Ref.make(false);
   const onAdminSeedUnavailable = Ref.getAndSet(seedWarningEmitted, true).pipe(
     Effect.flatMap((emitted) =>
@@ -54,40 +103,34 @@ export const convergeActivationCredentials = Effect.fn("Activation.convergeCrede
           }),
     ),
   );
-  const needsStartupTime = (family: (typeof candidates)[number]["desired"]["family"]) =>
-    family !== "postgres";
-  const settled = yield* Ref.make(new Set<string>());
-  const changes = yield* Ref.make(
-    new Map<
-      string,
-      {
-        service: string;
-        family: (typeof candidates)[number]["desired"]["family"];
-        changedMembers: readonly ("user" | "password" | "rootPassword" | "database")[];
-      }
-    >(),
+
+  let budgetMs = 0;
+  for (const { connection } of targets.values()) {
+    budgetMs = Math.max(budgetMs, credentialBudgetMs(connection.family));
+  }
+  const remaining = yield* Ref.make(budgetMs);
+  const early = yield* Ref.make(
+    new Map<ServiceName, { readonly containerId: string; readonly result: CredentialAttempt | undefined }>(),
   );
-  const recovery = (service: string) =>
-    plan.extensions["@lando/core/scratch"] !== undefined
-      ? `Inspect the scratch database with lando scratch logs ${plan.id} before retrying the scratch launch. Do not delete its volume.`
-      : plan.id === "global"
-        ? `Check the database, then run lando global:restart --service ${service}.`
-        : `Check the database, then run lando restart --service ${service} or preview repair with lando db:creds:apply --service ${service}.`;
-  const reportFailure = (service: string, family: string, detail: string, guidance?: string) =>
-    warning({
-      code: "LANDO_DATABASE_CREDENTIAL_CONVERGENCE_FAILED",
-      message: `Could not converge database credentials for ${service}. ${detail}`,
-      remediation: guidance === undefined ? recovery(service) : `${guidance} ${recovery(service)}`,
-      context: { service, family },
-    });
-  yield* Effect.forEach(
-    candidates,
-    ({ service, desired, previous }) =>
-      Effect.gen(function* () {
-        const catalog = yield* catalogDatabase({ plan, service }).pipe(
-          Effect.catch(() => Effect.succeed(undefined)),
-        );
+  // New early attempts share one active-work budget; intervening provider work does not spend it.
+  const earlySlot = yield* Semaphore.make(1);
+  const attempt = Effect.fnUntraced(function* (
+    { service, connection: desired }: DatabaseTarget,
+    createdVolumes: ApplyResult["createdVolumes"],
+    phase: CredentialPhase,
+  ) {
+    return yield* boundCredentialAttempt({
+      providerId: provider.id,
+      budgetMs: Math.min(yield* Ref.get(remaining), credentialBudgetMs(desired.family)),
+      work: Effect.fnUntraced(function* (mutationEvidence) {
+        const catalog =
+          phase.kind === "observe-only"
+            ? undefined
+            : yield* settleOrdinaryFailure(catalogDatabase({ plan, service, retained })).pipe(
+                Effect.map((result) => (Result.isSuccess(result) ? result.success : undefined)),
+              );
         if (catalog === undefined) {
+          if (phase.kind === "inline") return { kind: "unproven-build" } satisfies CredentialAttempt;
           yield* observeUnmanagedCredentials({
             plan,
             provider,
@@ -95,144 +138,113 @@ export const convergeActivationCredentials = Effect.fn("Activation.convergeCrede
             ...(previousPlan === undefined ? {} : { previousPlan }),
             services: [{ name: service.name, state: "running" }],
           });
-          return;
+          return undefined;
         }
-        const prepare = prepareReconciliation({
+        const previous = previousPlan?.services[service.name]?.connection;
+        const admission =
+          phase.kind === "inline"
+            ? {
+                applying: {
+                  containerId: phase.containerId,
+                  volume: yield* coordinatedServiceVolume(plan, catalog.store),
+                },
+              }
+            : {};
+        return yield* attemptActivationCredential({
           plan,
           provider,
+          session,
           service,
           desired,
-          session,
-          adminSeedRoot: paths.value.roots.userDataRoot,
-          onAdminSeedUnavailable,
+          retained,
+          mutationEvidence,
           ...(previous?.family === desired.family ? { previous } : {}),
+          ...admission,
+          ...(createdVolumes === undefined ? {} : { createdVolumes }),
+          adminSeedRoot,
+          onAdminSeedUnavailable,
         });
-        const last = yield* Ref.make<
-          Result.Result<Effect.Success<typeof prepare>, Effect.Error<typeof prepare>> | undefined
-        >(undefined);
-        yield* runProbe(
-          {
-            id: `database-credentials:${service.name}`,
-            policy: {
-              maxAttempts: needsStartupTime(desired.family) ? 60 : 15,
-              delay: Duration.millis(250),
-              timeout: Duration.seconds(needsStartupTime(desired.family) ? 24 : 8),
-            },
-            classify: {
-              success: () => "green",
-              failure: (error) => {
-                return (error instanceof SqlCredentialAdminAuthError &&
-                  (error.reason === "admin-password-required" || error.reason === "rejected")) ||
-                  (error instanceof SqlCredentialTargetError && error.reason === "not-running") ||
-                  (error instanceof SqlCredentialApplyError &&
-                    error.phase === "preflight" &&
-                    error.mutation === "none" &&
-                    error.retryable === true)
-                  ? "red"
-                  : "green";
-              },
-            },
-          },
-          Effect.result(prepare).pipe(
-            Effect.tap((result) => Ref.set(last, result)),
-            Effect.flatMap(Effect.fromResult),
-          ),
-        );
-        const result = yield* Ref.get(last);
-        if (result === undefined) {
-          yield* reportFailure(service.name, desired.family, "The server did not become available.");
-          return;
-        }
-        const ready = yield* Effect.fromResult(result);
-        const updated = yield* ready.apply;
-        if (updated.outcome !== "applied" || updated.changedMembers.length === 0) return;
-        const { nativeName, generation, ownerRoot } = ready.volume;
-        const fresh =
-          applied.createdVolumes?.some(
-            (fact) =>
-              fact.nativeName === nativeName &&
-              fact.generation === generation &&
-              fact.ownerRoot === ownerRoot,
-          ) === true;
-        if (fresh) return;
-        if (updated.databaseCreation !== undefined) {
-          const { otherDatabases, omittedCount } = updated.databaseCreation;
-          const inventory =
-            otherDatabases.length === 0
-              ? "No other user databases were found."
-              : `Other user databases: ${otherDatabases.join(", ")}${omittedCount > 0 ? ` (at least ${omittedCount} more omitted)` : ""}.`;
-          const profile = yield* redaction.value.forProfile("secrets");
-          yield* warning({
-            code: "LANDO_DATABASE_CREATED_ON_EXISTING_STORAGE",
-            message: profile.redactString(
-              `Created the empty database ${desired.creds.database} for ${service.name} on existing storage. ${inventory}`,
+      }),
+    }).pipe(Effect.provideService(StateStore, store), Effect.provideService(RedactionService, redactor));
+  });
+  const continueHealthyDependency: HealthyContinuation = (dependency) =>
+    earlySlot.withPermit(
+      Effect.gen(function* () {
+        const entry = (yield* Ref.get(early)).get(dependency.dependency);
+        let result: CredentialAttempt | undefined;
+        if (entry === undefined) {
+          const target = targets.get(dependency.dependency);
+          if (target === undefined || !target.isCatalogCandidate()) return undefined;
+          const start = yield* Clock.monotonicTimeNanos;
+          result = yield* attempt(target, dependency.createdVolumes, {
+            kind: "inline",
+            containerId: dependency.containerId,
+          }).pipe(
+            Effect.ensuring(
+              Effect.flatMap(Clock.monotonicTimeNanos, (end) =>
+                Ref.update(remaining, (ms) => Math.max(0, ms - Number(end - start) / 1_000_000)),
+              ),
             ),
-            remediation:
-              "Set creds.database back to the previous database name to use its data, or restore a backup into the new database.",
-            context: { service: service.name, family: desired.family, database: desired.creds.database },
+          );
+          yield* Ref.update(early, (map) =>
+            new Map(map).set(dependency.dependency, {
+              containerId: dependency.containerId,
+              result,
+            }),
+          );
+        } else {
+          if (entry.containerId !== dependency.containerId)
+            return credentialGateError(provider.id, dependency, {
+              reason: "target-changed",
+              detail: "The database container changed during this activation.",
+            });
+          result = entry.result;
+        }
+        const failure = credentialGateFailure(result);
+        return failure === undefined ? undefined : credentialGateError(provider.id, dependency, failure);
+      }),
+    );
+
+  const finish = Effect.fnUntraced(function* (applied: ApplyResult) {
+    const attempted = yield* Ref.get(early);
+    const results = yield* Effect.forEach(
+      targets.values(),
+      Effect.fnUntraced(function* (target) {
+        const { service, connection } = target;
+        const done = attempted.get(service.name)?.result;
+        const work = credentialWorkAfterApply(target, {
+          action: applied.services?.[service.name]?.action,
+          previous: previousPlan?.services[service.name],
+          attempted: done,
+        });
+        const result =
+          work === "skip"
+            ? done
+            : yield* attempt(target, applied.createdVolumes, {
+                kind: work === "observe" ? "observe-only" : "residual",
+              });
+        if (result?.kind === "failed") {
+          const { reason, mutation, completed } = result.failure;
+          yield* warning({
+            code: "LANDO_DATABASE_CREDENTIAL_CONVERGENCE_FAILED",
+            message: `Could not verify or apply database credentials for ${service.name}. ${credentialFailureDetail(result.failure)}`,
+            remediation: credentialRecovery(result.failure),
+            context: {
+              service: service.name,
+              family: connection.family,
+              reason,
+              ...(mutation === undefined ? {} : { mutation }),
+              ...(completed === undefined || completed.length === 0
+                ? {}
+                : { completed: completed.join(",") }),
+            },
           });
         }
-        yield* Ref.update(changes, (map) =>
-          new Map(map).set(service.name, {
-            service: service.name,
-            family: desired.family,
-            changedMembers: updated.changedMembers,
-          }),
-        );
-        const events = yield* Effect.serviceOption(EventService);
-        if (Option.isSome(events))
-          yield* events.value
-            .publish(
-              MessageInfoEvent.make({
-                body: `Applied changed database credentials to \`${service.name}\`: ${updated.changedMembers.join(", ")}`,
-                timestamp: yield* DateTime.now,
-              }),
-            )
-            .pipe(Effect.catch(() => Effect.void));
-      }).pipe(
-        Effect.provideService(RedactionService, redaction.value),
-        Effect.catchCause((cause) => {
-          if (Cause.hasInterrupts(cause)) return Effect.interrupt;
-          const error = Option.getOrUndefined(Cause.findErrorOption(cause));
-          if (
-            error instanceof SqlCredentialApplyError ||
-            error instanceof SqlCredentialTargetError ||
-            error instanceof SqlCredentialAdminAuthError
-          ) {
-            return redaction.value
-              .forProfile("secrets")
-              .pipe(
-                Effect.flatMap((profile) =>
-                  reportFailure(
-                    service.name,
-                    desired.family,
-                    profile.redactString(error.message),
-                    error instanceof SqlCredentialApplyError
-                      ? profile.redactString(error.remediation)
-                      : undefined,
-                  ),
-                ),
-              );
-          }
-          return reportFailure(service.name, desired.family, "The requested changes could not be verified.");
-        }),
-        Effect.tap(() => Ref.update(settled, (names) => new Set(names).add(service.name))),
-      ),
-    { concurrency: "unbounded", discard: true },
-  ).pipe(
-    Effect.timeoutOption(
-      Duration.seconds(candidates.some(({ desired }) => needsStartupTime(desired.family)) ? 32 : 12),
-    ),
-  );
-  const done = yield* Ref.get(settled);
-  for (const { service, desired } of candidates)
-    if (!done.has(service.name)) {
-      yield* reportFailure(
-        service.name,
-        desired.family,
-        "The activation credential budget expired. Inspect the database before retrying.",
-      );
-    }
-  const verified = yield* Ref.get(changes);
-  return [...verified.values()];
+        return result?.kind === "verified" ? result.change : undefined;
+      }),
+      { concurrency: "unbounded" },
+    );
+    return results.filter((change) => change !== undefined);
+  });
+  return { continueHealthyDependency, finish };
 });

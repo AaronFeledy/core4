@@ -19,6 +19,7 @@ import type {
   ServicePlan,
 } from "../schema/index.ts";
 import type {
+  LauncherCommandOptions,
   ServiceAppMountIntent,
   ServiceBuildStepIntent,
   ServiceFeatureContext,
@@ -84,7 +85,7 @@ export interface AppFeatureServiceMutators {
   setReadiness(readiness: Parameters<ServiceFeatureContext["setReadiness"]>[0]): void;
   setCerts(certs: Parameters<ServiceFeatureContext["setCerts"]>[0]): void;
   setEntrypoint(entrypoint: Parameters<ServiceFeatureContext["setEntrypoint"]>[0]): void;
-  setCommand(command: Parameters<ServiceFeatureContext["setCommand"]>[0]): void;
+  setCommand(command: CommandSpec, options?: Pick<LauncherCommandOptions, "projectUser">): void;
   setInit(init: boolean): void;
   setArtifact(artifact: Parameters<ServiceFeatureContext["setArtifact"]>[0]): void;
   setUser(user: string): void;

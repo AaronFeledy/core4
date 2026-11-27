@@ -24,6 +24,10 @@ export const layer = Layer.effect(
     // instead of a placeholder that no planned `caId` can match.
     return CertificateAuthority.of({
       id: resolver.selectedId ?? "unresolved",
+      planHostChanges: Effect.flatMap(
+        resolve,
+        (authority) => authority.planHostChanges ?? Effect.succeed([]),
+      ),
       setup: (options) => Effect.flatMap(resolve, (authority) => authority.setup(options)),
       root: Effect.flatMap(resolve, (authority) => authority.root),
       trustStores: Effect.flatMap(resolve, (authority) => authority.trustStores),

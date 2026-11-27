@@ -87,7 +87,7 @@ export const runtimeProviderService: Context.Service.Shape<typeof RuntimeProvide
   platform: "linux",
   capabilities: providerCapabilities,
   isAvailable: Effect.succeed(false),
-  planSetup: () => Effect.fail(unsupportedProviderOperation("planSetup")),
+  planHostChanges: () => Effect.fail(unsupportedProviderOperation("planHostChanges")),
   setup: () => Effect.fail(unsupportedProviderOperation("setup")),
   getStatus: Effect.fail(unsupportedProviderOperation("getStatus")),
   getVersions: Effect.fail(unsupportedProviderOperation("getVersions")),

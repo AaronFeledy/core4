@@ -1,23 +1,33 @@
 import { existsSync, lstatSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
-import { homedir, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { makeLandoPaths, normalizeHostPlatform } from "@lando/paths";
+import { createStandaloneRedactor } from "@lando/redaction";
 
-import { causeMessage } from "@lando/sdk/errors";
+import { type HostChangeFailedError, type PrivilegeError, causeMessage } from "@lando/sdk/errors";
 import {
+  type HostChangeReceipt,
   type HostUninstallOutcomeStatus,
   type HostUninstallStepStatus,
   UninstallPlanStep as UninstallPlanStepSchema,
   UninstallStepResult,
 } from "@lando/sdk/schema";
-import { PrivilegeService } from "@lando/sdk/services";
+import { PrivilegeService, ProcessRunner } from "@lando/sdk/services";
 import { type PrivateFileAccess, PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { makeStateStore } from "@lando/state-store/service";
 import { type Context, DateTime, Effect, Option, Result, Schema } from "effect";
 import { writeFileAtomicViaRename } from "../cache/atomic";
 import { resolveUserCacheRoot } from "../cache/paths";
 import { resolveUserDataRoot } from "../config/roots";
+import { defaultPosixShellProfilePath } from "../host/shell-profile";
+import { hostChangeStepRunner } from "../host-changes/apply.ts";
+import { privilegePurpose } from "../host-changes/plan.ts";
+import {
+  type HostChangeReceiptStore,
+  hostChangeReceiptsFile,
+  makeHostChangeReceiptStore,
+} from "../host-changes/receipts.ts";
 import { inspectOwnedExecutable } from "../install/owned-executable";
 import { decodeInstallRecord } from "../install/record";
 import {
@@ -42,6 +52,16 @@ import {
   executeHostUninstallContribution,
   planHostUninstallContributions,
 } from "./uninstall-contributions";
+import {
+  type UninstallUndoNeedsPurgeError,
+  type UninstallUndoUnavailableError,
+  type UninstallUndoUnknownError,
+  type UnreadableReceipts,
+  planUnlistedReceiptSteps,
+  stepNeedsPrivilege,
+  unreadableReceiptsStep,
+  validateUndoSelection,
+} from "./uninstall-host-changes.ts";
 import { defaultRemoveRuntimeDir, defaultTerminateRuntimeBinProcesses } from "./uninstall-runtime-dir";
 import {
   UninstallRuntimeDirError,
@@ -120,7 +140,10 @@ export interface UninstallOptions {
     userCacheRoot: string,
   ) => Promise<string> | Promise<void>;
   readonly reportFallbackDir?: string;
-  readonly cgroupsDelegatePath?: string;
+  /** Recorded host changes whose `separate` undo should run; `all` names every one. */
+  readonly undo?: ReadonlyArray<string>;
+  /** Test override; production reads the receipts under the user data root. */
+  readonly hostChangeReceipts?: HostChangeReceiptStore;
   readonly shellProfilePath?: string;
   /** Test override; production uses PrivilegeService.elevate when present. */
   readonly elevate?: (
@@ -257,49 +280,6 @@ const defaultWriteText = (path: string, content: string): void => {
   writeFileSync(path, content, "utf8");
 };
 
-// Lockstep with plugins/provider-lando/src/prerequisite-provision.ts DELEGATE_CONF_CONTENT.
-// Engine must not import @lando/provider-lando.
-export const CGROUPS_DELEGATE_CONF_CONTENT = `[Service]
-Delegate=cpu cpuset io memory pids
-`;
-
-export const DEFAULT_CGROUPS_DELEGATE_PATH = "/etc/systemd/system/user@.service.d/delegate.conf";
-
-// Lockstep with core/src/cli/commands/shellenv.ts: same delimiters, and the same
-// LANDO_SHELL_PROFILE override setup uses when writing the block.
-// Engine must not import @lando/core.
-export const LANDO_SHELLENV_BEGIN = "# >>> LANDO4 shellenv >>>";
-export const LANDO_SHELLENV_END = "# <<< LANDO4 shellenv <<<";
-
-export const defaultPosixShellProfilePath = (env: NodeJS.ProcessEnv = process.env): string => {
-  const override = env.LANDO_SHELL_PROFILE;
-  if (override !== undefined && override !== "") return override;
-  const home = env.HOME ?? env.USERPROFILE ?? homedir();
-  const shell = env.SHELL?.split(/[\\/]/u).at(-1) ?? "";
-  if (shell === "zsh") return join(home, ".zshrc");
-  if (shell === "bash") return join(home, ".bashrc");
-  return join(home, ".profile");
-};
-
-export const stripLandoShellenvBlock = (
-  content: string,
-): { readonly content: string; readonly stripped: boolean } => {
-  let result = content;
-  let stripped = false;
-  while (true) {
-    const begin = result.indexOf(LANDO_SHELLENV_BEGIN);
-    if (begin === -1) break;
-    const end = result.indexOf(LANDO_SHELLENV_END, begin + LANDO_SHELLENV_BEGIN.length);
-    if (end === -1) break;
-    let cutEnd = end + LANDO_SHELLENV_END.length;
-    if (result.startsWith("\r\n", cutEnd)) cutEnd += 2;
-    else if (result.startsWith("\n", cutEnd)) cutEnd += 1;
-    result = `${result.slice(0, begin)}${result.slice(cutEnd)}`;
-    stripped = true;
-  }
-  return { content: result, stripped };
-};
-
 const tryReadText = (path: string, readText: (path: string) => string): string | undefined => {
   try {
     return readText(path);
@@ -400,27 +380,6 @@ const managedProviderMachineStep = (
         detail: "No managed provider machine is recorded in setup state.",
       };
   }
-};
-
-const cgroupsDelegateStep = (path: string, exists: (path: string) => boolean): UninstallPlanStep => {
-  const base = {
-    id: "cgroups-delegate",
-    label: "cgroups delegation drop-in",
-    target: path,
-    destructive: false,
-  };
-  if (!exists(path)) {
-    return {
-      ...base,
-      status: "skipped",
-      detail: "No Lando-managed cgroups delegation drop-in is present.",
-    };
-  }
-  return {
-    ...base,
-    status: "manual",
-    detail: `This system-wide drop-in is not recorded as owned by this installation. If no other installation or program needs it, run \`sudo rm -- '${path.replaceAll("'", "'\\''")}'\` and then \`sudo systemctl daemon-reload\`.`,
-  };
 };
 
 const shellEntriesStep = (
@@ -582,8 +541,17 @@ export const buildUninstallPlan = async (
   mode?: UninstallMode,
   platform: ReturnType<typeof normalizeHostPlatform> = normalizeHostPlatform(),
   hostMaintenanceRegistry: Option.Option<HostMaintenanceRegistryShape> = Option.none(),
+  receipts: ReadonlyArray<HostChangeReceipt> = [],
+  unreadableReceipts?: UnreadableReceipts,
 ): Promise<ReadonlyArray<UninstallPlanStep>> => {
-  const built = await buildUninstallPlanWithContributions(options, mode, platform, hostMaintenanceRegistry);
+  const built = await buildUninstallPlanWithContributions(
+    options,
+    mode,
+    platform,
+    hostMaintenanceRegistry,
+    receipts,
+    unreadableReceipts,
+  );
   return built.steps;
 };
 
@@ -592,6 +560,8 @@ const buildUninstallPlanWithContributions = async (
   mode?: UninstallMode,
   platform: ReturnType<typeof normalizeHostPlatform> = normalizeHostPlatform(),
   hostMaintenanceRegistry: Option.Option<HostMaintenanceRegistryShape> = Option.none(),
+  receipts: ReadonlyArray<HostChangeReceipt> = [],
+  unreadableReceipts?: UnreadableReceipts,
 ): Promise<UninstallPlanBuild> => {
   const userDataRoot = options.userDataRoot ?? resolveUserDataRoot();
   const userCacheRoot = options.userCacheRoot ?? resolveUserCacheRoot();
@@ -606,7 +576,6 @@ const buildUninstallPlanWithContributions = async (
   const managedProviderRuntime = join(userDataRoot, "providers", "provider-lando");
   const hostProxySessions = paths.hostProxyRunRoot;
   const readText = options.readText ?? defaultReadText;
-  const cgroupsDelegatePath = options.cgroupsDelegatePath ?? DEFAULT_CGROUPS_DELEGATE_PATH;
   const shellSteps = uninstallShellProfiles(options).map((path) =>
     shellEntriesStep(path, exists, readText, { mode, userDataRoot }),
   );
@@ -721,7 +690,6 @@ const buildUninstallPlanWithContributions = async (
       detail: "Terminate owned host-proxy workers and remove only app-scoped host-proxy sockets and shims.",
     },
     binaryStep,
-    ...(platform === "linux" || platform === "wsl" ? [cgroupsDelegateStep(cgroupsDelegatePath, exists)] : []),
     platform === "win32"
       ? {
           ...shellStep,
@@ -778,6 +746,8 @@ const buildUninstallPlanWithContributions = async (
         platform,
         userDataRoot,
         ...(mode === undefined ? {} : { mode }),
+        receipts,
+        undo: options.undo ?? [],
       }),
     ),
   );
@@ -785,10 +755,24 @@ const buildUninstallPlanWithContributions = async (
     throw contributionPlan.failure;
   }
   const { steps: contributedSteps, bindings } = contributionPlan.success;
+  const receiptSteps = [
+    ...planUnlistedReceiptSteps(receipts, {
+      mode,
+      listed: new Set(contributedSteps.map(({ id }) => id)),
+    }),
+    ...(unreadableReceipts === undefined ? [] : [unreadableReceiptsStep(unreadableReceipts)]),
+  ];
 
+  // Host maintainers undo recorded host changes after the runtime stops (lingering must outlive
+  // it) and before the data root that holds their receipts goes.
   const globalStateIndex = steps.findIndex((step) => step.id === "global-app-state");
   const insertAt = globalStateIndex === -1 ? steps.length : globalStateIndex;
-  const merged = [...steps.slice(0, insertAt), ...contributedSteps, ...steps.slice(insertAt)];
+  const merged = [
+    ...steps.slice(0, insertAt),
+    ...contributedSteps,
+    ...receiptSteps,
+    ...steps.slice(insertAt),
+  ];
   const withMode = mode === undefined ? merged : merged.map((step) => stepWithMode(step, mode));
   return {
     steps: withMode,
@@ -835,11 +819,22 @@ const binDirHoldsPreservedEntry = (binDir: string): boolean => {
   return names.some((name) => !MANAGED_BIN_ENTRY_NAMES.has(name));
 };
 
+/** What the uninstall entry resolved before execution: receipts, and the plan it already built. */
+interface UninstallExecution {
+  readonly receipts: ReadonlyArray<HostChangeReceipt>;
+  readonly receiptStore?: HostChangeReceiptStore;
+  readonly runner?: Context.Service.Shape<typeof ProcessRunner>;
+  readonly planBuild?: UninstallPlanBuild;
+}
+
+const undoRedactor = createStandaloneRedactor("secrets");
+
 const executeUninstall = async (
   options: UninstallOptions,
   mode: UninstallMode,
   hostMaintenanceRegistry: Option.Option<HostMaintenanceRegistryShape>,
-  elevateEffect?: ElevateCapability,
+  elevateEffect: ElevateCapability | undefined,
+  execution: UninstallExecution,
 ): Promise<UninstallResult> => {
   const userDataRoot = options.userDataRoot ?? resolveUserDataRoot();
   const userCacheRoot = options.userCacheRoot ?? resolveUserCacheRoot();
@@ -859,7 +854,15 @@ const executeUninstall = async (
 
   let planBuild: UninstallPlanBuild;
   try {
-    planBuild = await buildUninstallPlanWithContributions(options, mode, platform, hostMaintenanceRegistry);
+    planBuild =
+      execution.planBuild ??
+      (await buildUninstallPlanWithContributions(
+        options,
+        mode,
+        platform,
+        hostMaintenanceRegistry,
+        execution.receipts,
+      ));
   } catch (cause) {
     if (cause instanceof UninstallContributionConflictError) {
       const step = conflictResultStep(cause);
@@ -901,11 +904,21 @@ const executeUninstall = async (
         continue;
       }
       try {
+        const change = contribution.localStep.change;
+        const run =
+          change === undefined
+            ? undefined
+            : hostChangeStepRunner(change, {
+                ...(elevateEffect === undefined ? {} : { elevate: elevateEffect }),
+                ...(execution.runner === undefined ? {} : { runner: execution.runner }),
+                redact: (text) => undoRedactor.redactString(text),
+              });
         const result = await Effect.runPromise(
           executeHostUninstallContribution(contribution, {
             platform,
             userDataRoot,
-            ...(elevateEffect === undefined ? {} : { elevate: elevateEffect }),
+            ...(run === undefined ? {} : { run }),
+            ...(execution.receiptStore === undefined ? {} : { receipts: execution.receiptStore }),
           }),
         );
         if (contributionBlocksUserDataRoot(step.status, result.outcome)) {
@@ -1040,9 +1053,9 @@ const executeUninstall = async (
           ...step,
           outcome: "failed",
           detail:
-            "Preserve the data root because a host-maintainer contribution failed or lost ownership; inspect the uninstall report and rerun after fixing the failure.",
+            "Preserve the data root because a host-maintainer contribution or a recorded host-change undo failed or lost ownership; inspect the uninstall report and rerun after fixing the failure.",
           error:
-            "Host-maintainer contribution did not complete; data root preserved for inspection and resume.",
+            "A host-maintainer contribution or host-change undo did not complete; data root preserved for inspection and resume.",
         });
         continue;
       }
@@ -1180,11 +1193,30 @@ const toElevateCapability = (
   return undefined;
 };
 
+/** What the owned contributed steps that run a command as root undo, as one readable clause. */
+const privilegedPurpose = (build: UninstallPlanBuild): string | undefined => {
+  const summaries = build.steps.flatMap((step) => {
+    const binding = build.contributionBindings.get(step.id);
+    if (step.status !== "owned" || binding === undefined || !stepNeedsPrivilege(binding.localStep)) return [];
+    return [binding.localStep.change?.summary ?? `undo ${step.label}`];
+  });
+  return summaries.length === 0 ? undefined : privilegePurpose(summaries);
+};
+
 export const uninstall = Effect.fn("AppOperation.uninstall")(function* (
   options: UninstallOptions = {},
-): Effect.fn.Return<UninstallResult, never, PrivateFileAccessService> {
+): Effect.fn.Return<
+  UninstallResult,
+  | UninstallUndoNeedsPurgeError
+  | UninstallUndoUnavailableError
+  | UninstallUndoUnknownError
+  | PrivilegeError
+  | HostChangeFailedError,
+  PrivateFileAccessService
+> {
   const hostMaintenanceRegistry = yield* Effect.serviceOption(HostMaintenanceRegistry);
   const privilege = yield* Effect.serviceOption(PrivilegeService);
+  const runner = Option.getOrUndefined(yield* Effect.serviceOption(ProcessRunner));
   const privateFileAccess = yield* PrivateFileAccessService;
   const elevateEffect = toElevateCapability(options, privilege);
   const elevate =
@@ -1205,14 +1237,65 @@ export const uninstall = Effect.fn("AppOperation.uninstall")(function* (
   const requestedMode: UninstallMode | undefined =
     options.purge === true ? "purge" : options.keepData === true ? "keep-data" : undefined;
   const mode = requestedMode ?? "keep-data";
-  if (!dryRun && yes)
-    return yield* Effect.promise(() =>
-      executeUninstall(resolvedOptions, mode, hostMaintenanceRegistry, elevateEffect),
+  const platform = normalizeHostPlatform();
+  const receiptStore =
+    options.hostChangeReceipts ??
+    makeHostChangeReceiptStore(
+      makeStateStore({
+        privateFileAccess,
+        roots: makeLandoPaths({ userDataRoot: options.userDataRoot ?? resolveUserDataRoot() }).roots,
+        writer: CORE_VERSION,
+      }),
     );
+  // Every check that can refuse runs before anything changes. Unreadable receipts degrade the
+  // plan to no recorded undo; they never stop the uninstall that would remove them.
+  const listed = yield* Effect.result(receiptStore.list);
+  const receipts = Result.isSuccess(listed) ? listed.success : [];
+  const unreadableReceipts: UnreadableReceipts | undefined = Result.isFailure(listed)
+    ? {
+        file: hostChangeReceiptsFile(options.userDataRoot ?? resolveUserDataRoot()),
+        reason: undoRedactor.redactString(listed.failure.message),
+      }
+    : undefined;
+  yield* validateUndoSelection(receipts, options.undo ?? [], mode, unreadableReceipts);
+
+  if (!dryRun && yes) {
+    return yield* Effect.scoped(
+      Effect.gen(function* () {
+        const planBuild = yield* Effect.promise(() =>
+          buildUninstallPlanWithContributions(
+            resolvedOptions,
+            mode,
+            platform,
+            hostMaintenanceRegistry,
+            receipts,
+            unreadableReceipts,
+          ).catch((cause: unknown) => {
+            if (cause instanceof UninstallContributionConflictError) return undefined;
+            throw cause;
+          }),
+        );
+        // One administrator session for every privileged step, opened before the first one runs.
+        let sessionElevate = elevateEffect;
+        const purpose = planBuild === undefined ? undefined : privilegedPurpose(planBuild);
+        if (purpose !== undefined && options.elevate === undefined && Option.isSome(privilege)) {
+          sessionElevate = (yield* privilege.value.openSession(purpose)).elevate;
+        }
+        return yield* Effect.promise(() =>
+          executeUninstall(resolvedOptions, mode, hostMaintenanceRegistry, sessionElevate, {
+            receipts,
+            receiptStore,
+            ...(runner === undefined ? {} : { runner }),
+            ...(planBuild === undefined ? {} : { planBuild }),
+          }),
+        );
+      }),
+    );
+  }
 
   try {
     const steps = yield* Effect.promise(() =>
-      buildUninstallPlan(options, mode, normalizeHostPlatform(), hostMaintenanceRegistry),
+      buildUninstallPlan(options, mode, platform, hostMaintenanceRegistry, receipts, unreadableReceipts),
     );
     return {
       dryRun,

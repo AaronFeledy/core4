@@ -4,14 +4,17 @@ import { uninstall } from "@lando/engine/operations/uninstall";
 import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
 import { makeHostMaintenanceRegistryLayer } from "@lando/engine/runtime/host-maintenance";
 import * as HostPrivilegeService from "@lando/engine/services/privilege";
+import * as BunProcessRunner from "@lando/engine/services/process-runner";
 import type { RedactionService } from "@lando/redaction/service";
 import type { ConfigError, LandoRuntimeBootstrapError } from "@lando/sdk/errors";
 import type { ConfigService } from "@lando/sdk/services";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Layer } from "effect";
+import * as InteractionServiceLayer from "../../interaction/service.ts";
 import { type CliInvocationContext, processInvocationContext } from "../../runtime/invocation-context";
 import { makeLandoGenerationRuntime, makeLandoRuntime } from "../../runtime/layer";
 import type { BuiltInCommandCatalog } from "../built-in-command-catalog-service";
+import { suspendCommandProgress } from "../command-progress";
 import { shellenvSpec } from "../command-specs/meta/shellenv";
 import { uninstallOptionsFromInput } from "../command-specs/meta/uninstall";
 import { dispatchMcpCommand, mcpFlagsFromParsed } from "../commands/meta/mcp";
@@ -31,6 +34,7 @@ import {
   setActiveCommandId,
 } from "../compiled-runtime";
 import type { CommandTokens } from "../invocation";
+import { hostHasPromptTerminal } from "../prompt-terminal";
 
 export const runMetaUninstall = async (
   tokens: CommandTokens,
@@ -47,7 +51,12 @@ export const runMetaUninstall = async (
     uninstall(uninstallOptionsFromInput(input, prepare)),
     Layer.mergeAll(
       PrivateFileAccessService.layer,
-      HostPrivilegeService.layer,
+      // sudo may ask once, before the first step, only in a terminal run.
+      InteractionServiceLayer.layer,
+      HostPrivilegeService.layer({
+        handoff: { suspend: suspendCommandProgress },
+        hasTerminal: hostHasPromptTerminal,
+      }).pipe(Layer.provide(BunProcessRunner.layer)),
       makeHostMaintenanceRegistryLayer(modules),
     ),
     (value, renderContext) => renderUninstallResult(value, renderContext, context.setExitCode),

@@ -6,7 +6,7 @@ import type {
   ProcessRunner,
   ProcessSpawnOptions,
 } from "@lando/sdk/services";
-import { makeTestCertificateAuthority } from "@lando/sdk/test";
+import { makeTestCertificateAuthority, makeTestPrivilegeService } from "@lando/sdk/test";
 import { type Context, Effect, Schema } from "effect";
 import { AcquisitionState } from "../src/port-acquisition-state.ts";
 import { makeTraefikRouterService } from "../src/proxy.ts";
@@ -17,6 +17,7 @@ import { socketProxyControlCommands } from "./_support/socket-proxy-commands.ts"
 import { makeApplyRuntime } from "./apply-runtime-fixture.ts";
 import { makeAckStore } from "./observe-routes-fixture.ts";
 import { routeOwner } from "./route-owner-fixture.ts";
+import { approvedRouterHelper } from "./socket-helper-approval.ts";
 
 const ok = (stdout = ""): ProcessResult => ({ exitCode: 0, stdout, stderr: "" });
 const fail = (exitCode = 1, stderr = "denied"): ProcessResult => ({ exitCode, stdout: "", stderr });
@@ -59,13 +60,13 @@ const makePrivilege = (
 } => {
   const calls: Array<ReadonlyArray<string>> = [];
   return {
-    service: {
+    service: makeTestPrivilegeService({
       elevate: (command) =>
         Effect.sync(() => {
           calls.push([...command]);
           return result;
         }),
-    },
+    }),
     calls: () => [...calls],
   };
 };
@@ -142,7 +143,6 @@ describe("acquisition authority ports", () => {
         exists: () => Effect.succeed(false),
         readText: () => Effect.fail(new Error("missing")),
         processRunner: makeRunner().service,
-        privilege: makePrivilege().service,
         classifyOverride: {
           http: { bind: { kind: "EADDRINUSE", code: "EADDRINUSE" }, forward: { kind: "success" } },
           https: { bind: { kind: "EADDRINUSE", code: "EADDRINUSE" }, forward: { kind: "success" } },
@@ -187,7 +187,6 @@ describe("acquisition authority ports", () => {
         exists: () => Effect.succeed(false),
         readText: () => Effect.fail(new Error("missing")),
         processRunner: makeRunner().service,
-        privilege: makePrivilege().service,
         classifyOverride: {
           http: { bind: { kind: "EADDRINUSE", code: "EADDRINUSE" }, forward: { kind: "success" } },
           https: { bind: { kind: "EADDRINUSE", code: "EADDRINUSE" }, forward: { kind: "success" } },
@@ -236,12 +235,10 @@ describe("acquisition authority ports", () => {
         user: "lando-dev",
         userDataRoot: USER_DATA_ROOT,
         hasHostSystemd: () => true,
-        autoApprove: true,
         exists: (path) => Effect.succeed(path === first),
         readText: () => Effect.fail(new Error("missing")),
         processRunner: makeRunner((input) => (input.cmd === "systemctl" ? ok() : fail(1, "not found")))
           .service,
-        privilege: makePrivilege().service,
         classifyOverride: {
           http: { bind: { kind: "EACCES", code: "EACCES" }, forward: { kind: "failure" } },
           https: { bind: { kind: "EACCES", code: "EACCES" }, forward: { kind: "failure" } },
@@ -250,8 +247,12 @@ describe("acquisition authority ports", () => {
       },
     });
 
-    // When: setup installs the helper and routes are applied.
-    await Effect.runPromise(Effect.scoped(service.setup({ defaultDomain: "lndo.site" })));
+    // When: setup installs the approved helper and routes are applied.
+    const config = { defaultDomain: "lndo.site" };
+    const hostChanges = await Effect.runPromise(
+      approvedRouterHelper(service, config, makePrivilege().service.elevate),
+    );
+    await Effect.runPromise(Effect.scoped(service.setup(config, { intent: "configure", hostChanges })));
     await Effect.runPromise(service.applyRoutes(routes, app));
     const status = await Effect.runPromise(service.status);
 
@@ -297,12 +298,10 @@ describe("stale socketsActive restart", () => {
         user: "lando-dev",
         userDataRoot: USER_DATA_ROOT,
         hasHostSystemd: () => true,
-        autoApprove: true,
         exists: (path) => Effect.succeed(store.files.has(path) || path === first),
         readText: (path) =>
           store.files.has(path) ? Effect.succeed(store.files.get(path) ?? "") : Effect.fail(new Error(path)),
         processRunner: runner.service,
-        privilege: privilege.service,
         classifyOverride: {
           http: { bind: { kind: "EACCES", code: "EACCES" }, forward: { kind: "failure" } },
           https: { bind: { kind: "EACCES", code: "EACCES" }, forward: { kind: "failure" } },
@@ -311,8 +310,12 @@ describe("stale socketsActive restart", () => {
       },
     });
 
-    // When: setup re-classifies the stale helper state.
-    await Effect.runPromise(Effect.scoped(service.setup({ defaultDomain: "lndo.site" })));
+    // When: setup re-classifies the stale helper state and applies the approved helper plan.
+    const config = { defaultDomain: "lndo.site" };
+    const hostChanges = await Effect.runPromise(
+      approvedRouterHelper(service, config, privilege.service.elevate),
+    );
+    await Effect.runPromise(Effect.scoped(service.setup(config, { intent: "configure", hostChanges })));
 
     // Then: startSockets ran and persisted mode is socket-helper.
     const started =

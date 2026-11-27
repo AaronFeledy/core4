@@ -79,18 +79,31 @@ sudo systemctl daemon-reload
 
 Review who owns those units before you run them. If you would rather hand the helper to this install than remove it, run `lando setup` instead; see [Use the Traefik proxy](../subsystems/proxy-traefik.mdx).
 
-## Review systemd cgroup delegation
+## Undo the host changes setup made
 
-Lando leaves `/etc/systemd/system/user@.service.d/delegate.conf` in place. Setup does not record which installation wrote that system-wide drop-in. If no other installation or program needs it, remove it on the host and reload systemd:
+`lando setup` records each system change it makes, such as enabling lingering, adding subordinate user and group IDs, writing the systemd cgroup delegation drop-in, or trusting the local CA in the system store. The uninstall plan lists each recorded change as a step named after it, the name `--undo` takes, such as `provider-lando:enable-linger` or `ca-mkcert:trust-system-store`, with the exact commands that undo it. A recorded change Lando never undoes, such as installing the shared uidmap package, is listed too, with why it stays and how to remove it yourself. Lando offers to undo a change only while your system still shows exactly what setup recorded: the lingering flag for your account, the drop-in file with the content setup wrote, the exact subordinate ID line, or the local CA certificate setup added to the system store. If something changed it since, the step tells you what differs and leaves it alone.
+
+`--keep-data`, the default, leaves every change in place, including the local CA in the system store, because the apps it keeps still use them. `--undo` works only with `--purge`; without it, uninstall stops with `UninstallUndoNeedsPurgeError` before it changes anything. `--purge` also leaves these changes in place by default, because another Lando installation or your own tools may rely on them now: the step is manual and names the commands. To let Lando undo one, name it with `--undo`, or pass `--undo all`:
+
+```sh
+lando uninstall --purge --undo provider-lando:enable-linger --dry-run
+lando uninstall --purge --undo provider-lando:enable-linger --yes
+```
+
+Uninstall asks for administrator access once, before the first step, when a step it will run needs it. Without a terminal it stops with `PrivilegeCredentialsRequiredError` before it changes anything; see [When setup needs administrator access](../install/path-and-setup.mdx#when-setup-needs-administrator-access). An `--undo` name Lando has no record of stops with `UninstallUndoUnknownError`, which lists the names it can undo. If Lando cannot read its record of these changes, for example because the file is damaged, uninstall still runs: the plan says which file it could not read and why, it undoes nothing it recorded, `--undo` stops with `UninstallUndoUnavailableError`, and `--purge` removes the file with the rest of the data root. If an undo command fails, Lando keeps its record and the data root, so you can fix the problem and run the same command again.
+
+Changes made before Lando kept these records are not listed this way. If `/etc/systemd/system/user@.service.d/delegate.conf` exists without a record, uninstall leaves it and tells you how to remove it:
 
 ```sh
 sudo rm -- /etc/systemd/system/user@.service.d/delegate.conf
 sudo systemctl daemon-reload
 ```
 
+If lingering was enabled without a record and nothing else needs a user manager running while you are logged out, disable it with `loginctl disable-linger $USER`.
+
 ## Remove the local CA
 
-Uninstall leaves the local CA that `lando setup` created in place and trusted, in both `--keep-data` and `--purge`. Every Lando installation on this machine shares that CA, and so does `mkcert` if you use it directly, so uninstalling one installation can't tell whether anything else still needs it.
+Uninstall leaves the local CA that `lando setup` created in place and trusted, in both `--keep-data` and `--purge`. Every Lando installation on this machine shares that CA, and so does `mkcert` if you use it directly, so uninstalling one installation can't tell whether anything else still needs it. The one exception is the system-store entry setup itself wrote: `--purge --undo ca-mkcert:trust-system-store` removes it while it still holds the certificate setup recorded. Every other Lando installation on this machine then needs `lando setup` again to trust the CA.
 
 The plan lists the CA as a manual step in both modes, with what you need to remove it from the trust stores Lando knows about: its fingerprint, the directory that holds it and its private key, and one command for each of those stores on this machine that may hold it. That covers the system trust store (on Windows and under WSL, both your user store and, if the CA was added for all users, the machine store), browser certificate databases, Homebrew's CA bundle, and the Java keystore older Lando setups wrote when `JAVA_HOME` is set. If you added the CA anywhere else by hand, such as a browser's own certificate settings, remove it there too. The commands use your operating system's tools, not Lando, so they still work after `--purge` removes Lando. Preview them with:
 

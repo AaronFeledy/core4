@@ -1,40 +1,49 @@
 /**
  * The uninstall step for the mkcert local CA. Every Lando data root on a host shares one mkcert
  * `CAROOT`, and so does mkcert itself, so Lando cannot prove the CA is its own and never removes it.
- * The step names the exact trust entries mkcert v1.4.4 and Lando's setup created for this CA in the stores
- * Lando knows about, and the OS commands that remove them; none of them needs Lando's mkcert binary, which
+ * The step names the exact trust entries mkcert v1.4.4 and Lando's setup created for this CA (mkcert's
+ * serial-named anchor and Lando's fixed `lando-local-ca` one) in the stores Lando knows about, and the OS commands that remove them; none of them needs Lando's mkcert binary, which
  * purge deletes. Planning only reads
  * files: the uninstall contract offers no subprocesses.
+ *
+ * The one entry Lando can prove it made is the system-store anchor its setup wrote, recorded as
+ * `ca-mkcert:trust-system-store`. Uninstall offers to remove it (with `--purge --undo`) only while
+ * the installed anchor's SHA-256 equals the digest setup recorded; otherwise the step is manual and
+ * names the exact commands. `--keep-data` leaves it, since the apps it keeps still serve HTTPS.
  */
-import { X509Certificate } from "node:crypto";
+import { X509Certificate, createHash } from "node:crypto";
 import { type Dirent, existsSync, readFileSync, readdirSync } from "node:fs";
 import { join, posix, win32 } from "node:path";
 import { isErrnoCode } from "@lando/sdk/errors";
 import type { HostMaintenanceContribution } from "@lando/sdk/plugins";
-import type { HostPlatform, HostUninstallStep } from "@lando/sdk/schema";
+import {
+  type HostChangeReceipt,
+  type HostChangeStep,
+  type HostPlatform,
+  type HostUninstallOutcome,
+  type HostUninstallStep,
+  receiptUndoChange,
+} from "@lando/sdk/schema";
+import type { HostChangeStepRunner } from "@lando/sdk/services";
 import { Effect } from "effect";
 
 import { type HostEnv, locateBundles } from "./homebrew-trust.ts";
 import { discoverNssDatabases } from "./nss-databases.ts";
+import {
+  LANDO_ANCHOR_NAME,
+  LINUX_ANCHOR_STORES,
+  MACOS_STAGED_ROOT,
+  MACOS_SYSTEM_KEYCHAIN,
+} from "./system-trust.ts";
 import { javaKeystoreCommand } from "./uninstall-java.ts";
 
 export const LOCAL_CA_MAINTAINER_ID = "local-ca";
 export const LOCAL_CA_TRUST_STEP_ID = "trust";
+const LOCAL_CA_ANCHOR_STEP_ID = "trust-system-store";
+const TRUST_SYSTEM_STORE_ID = "ca-mkcert:trust-system-store";
 
 const ROOT_FILE = "rootCA.pem";
 const WSL_INTEROP = "/proc/sys/fs/binfmt_misc/WSLInterop";
-
-/** Where mkcert's Linux `-install` writes its anchor, and the command that rebuilds that store, in mkcert's order. */
-export const LINUX_ANCHOR_STORES: ReadonlyArray<{
-  readonly dir: string;
-  readonly ext: string;
-  readonly refresh: string;
-}> = [
-  { dir: "/etc/pki/ca-trust/source/anchors", ext: ".pem", refresh: "update-ca-trust extract" },
-  { dir: "/usr/local/share/ca-certificates", ext: ".crt", refresh: "update-ca-certificates" },
-  { dir: "/etc/ca-certificates/trust-source/anchors", ext: ".crt", refresh: "trust extract-compat" },
-  { dir: "/usr/share/pki/trust/anchors", ext: ".pem", refresh: "update-ca-certificates" },
-];
 
 export interface LocalCaHostAccess {
   readonly env: HostEnv;
@@ -84,7 +93,7 @@ export const localCaIdentity = (pem: string): LocalCaIdentity => {
   };
 };
 
-const quote = (value: string): string =>
+export const quote = (value: string): string =>
   /^[\w@%+=:,./-]+$/u.test(value) ? value : `'${value.replaceAll("'", `'\\''`)}'`;
 
 const run = (command: string): string => `Run \`${command}\`.`;
@@ -121,7 +130,8 @@ const systemStoreCommands = (
     case "darwin":
       return [
         run(`sudo security remove-trusted-cert -d ${quote(posix.join(caroot, ROOT_FILE))}`),
-        run(`sudo security delete-certificate -Z ${ca.sha1} /Library/Keychains/System.keychain`),
+        run(`sudo security delete-certificate -Z ${ca.sha1} ${quote(MACOS_SYSTEM_KEYCHAIN)}`),
+        ...(access.exists(MACOS_STAGED_ROOT) ? [run(`sudo rm -f ${quote(MACOS_STAGED_ROOT)}`)] : []),
       ];
     case "win32":
       return [
@@ -130,15 +140,18 @@ const systemStoreCommands = (
       ];
     case "linux":
     case "wsl": {
-      const fileName = ca.nickname.replaceAll(" ", "_");
-      const anchors = LINUX_ANCHOR_STORES.map((store) => ({
-        ...store,
-        file: posix.join(store.dir, `${fileName}${store.ext}`),
-      })).filter(({ file }) => access.exists(file));
+      // mkcert's `-install` names the anchor after the CA's serial; Lando's setup uses a fixed name.
+      const mkcertName = ca.nickname.replaceAll(" ", "_");
+      const anchors = LINUX_ANCHOR_STORES.flatMap((store) =>
+        [mkcertName, LANDO_ANCHOR_NAME].map((name) => ({
+          refresh: store.refresh.map(quote).join(" "),
+          file: posix.join(store.dir, `${name}${store.ext}`),
+        })),
+      ).filter(({ file }) => access.exists(file));
       const linux =
         anchors.length === 0
-          ? ["No mkcert anchor file for this CA is in the system trust store."]
-          : anchors.map(({ file, refresh }) => run(`sudo rm -f ${file} && sudo ${refresh}`));
+          ? ["No anchor file for this CA is in the system trust store."]
+          : anchors.map(({ file, refresh }) => run(`sudo rm -f ${quote(file)} && sudo ${refresh}`));
       const windows =
         platform === "wsl" || access.exists(WSL_INTEROP)
           ? [
@@ -217,6 +230,100 @@ const planTrustStep = Effect.fnUntraced(function* (host: Host) {
   return step({ target: caroot, status: "manual", detail });
 });
 
+/** Where setup put the trusted copy: the Linux anchor or the staged macOS copy. */
+const recordedAnchor = (receipt: HostChangeReceipt): string | undefined =>
+  receipt.facts?.anchor ?? receipt.facts?.staged;
+
+const commandsText = (steps: ReadonlyArray<HostChangeStep>): string =>
+  steps.map(({ argv }) => `\`sudo ${argv.map(quote).join(" ")}\``).join(", then ");
+
+type AnchorProof =
+  | { readonly kind: "matches" }
+  | { readonly kind: "gone"; readonly detail: string }
+  | { readonly kind: "differs"; readonly detail: string };
+
+const proveAnchor = (access: LocalCaHostAccess, receipt: HostChangeReceipt): AnchorProof => {
+  const anchor = recordedAnchor(receipt);
+  const digest = receipt.facts?.sha256;
+  if (anchor === undefined || digest === undefined) {
+    return { kind: "differs", detail: "Lando's record does not name the anchor file and its digest." };
+  }
+  const text = access.readText(anchor);
+  if (text === undefined) return { kind: "gone", detail: `${anchor} is already gone.` };
+  return createHash("sha256").update(text).digest("hex") === digest
+    ? { kind: "matches" }
+    : {
+        kind: "differs",
+        detail: `${anchor} is not the certificate Lando's setup wrote, so Lando leaves it alone.`,
+      };
+};
+
+/** The system-store entry setup recorded, undone only while it is still exactly what setup wrote. */
+const planAnchorStep = (access: LocalCaHostAccess, receipt: HostChangeReceipt): HostUninstallStep => {
+  const base = {
+    id: LOCAL_CA_ANCHOR_STEP_ID,
+    label: "local CA in the system trust store",
+    target: recordedAnchor(receipt) ?? receipt.summary,
+    destructive: true,
+    receiptId: receipt.id,
+    // The apps --keep-data leaves in place still serve HTTPS that this anchor makes trusted.
+    preserveOnKeepData: true,
+  };
+  const change = receiptUndoChange(receipt, "ca");
+  if (change === undefined) {
+    const detail = receipt.undo._tag === "steps" ? receipt.undo.summary : receipt.undo.detail;
+    return { ...base, status: "manual", detail };
+  }
+  const proof = proveAnchor(access, receipt);
+  switch (proof.kind) {
+    case "gone":
+      return { ...base, status: "skipped", detail: proof.detail };
+    case "differs":
+      return {
+        ...base,
+        status: "manual",
+        detail: `${proof.detail} If you want it gone, run ${commandsText(change.steps)}.`,
+      };
+    case "matches":
+      return {
+        ...base,
+        status: "owned",
+        detail: `${change.summary}. Every Lando installation on this machine shares this CA, so each other one needs \`lando setup\` again afterwards.`,
+        change,
+      };
+  }
+};
+
+const runAnchorUndo = Effect.fnUntraced(function* (
+  access: LocalCaHostAccess,
+  receipt: HostChangeReceipt,
+  step: HostUninstallStep,
+  run: HostChangeStepRunner | undefined,
+): Effect.fn.Return<HostUninstallOutcome> {
+  if (step.change === undefined) return { outcome: "manual", detail: step.detail };
+  const proof = yield* Effect.sync(() => proveAnchor(access, receipt));
+  if (proof.kind === "gone") return { outcome: "skipped", detail: proof.detail };
+  if (proof.kind === "differs") return { outcome: "manual", detail: proof.detail };
+  if (run === undefined) {
+    return {
+      outcome: "manual",
+      detail: `Lando has no administrator session; run ${commandsText(step.change.steps)}.`,
+    };
+  }
+  for (const declared of step.change.steps) {
+    const ran = yield* Effect.result(run.run(declared.id));
+    if (ran._tag === "Failure")
+      return { outcome: "failed", error: `${ran.failure.message} ${ran.failure.remediation}` };
+    if (ran.success.exitCode !== 0) {
+      return {
+        outcome: "failed",
+        error: `\`${declared.argv.join(" ")}\` exited ${ran.success.exitCode}: ${ran.success.stderr.trim()}`,
+      };
+    }
+  }
+  return { outcome: "completed", detail: step.change.summary };
+});
+
 const listDirs = (path: string): ReadonlyArray<string> => {
   let entries: Dirent[];
   try {
@@ -249,14 +356,23 @@ export const makeLocalCaHostMaintainer = (
   return {
     id: LOCAL_CA_MAINTAINER_ID,
     uninstall: {
-      plan: ({ platform }) => Effect.map(planTrustStep({ platform, access: host }), (planned) => [planned]),
-      // Engine executes only owned steps; this step is always manual or skipped.
-      execute: ({ step: planned }) =>
-        Effect.succeed(
+      plan: ({ platform, receipts }) =>
+        Effect.map(planTrustStep({ platform, access: host }), (planned) => {
+          const receipt = receipts.find(({ id }) => id === TRUST_SYSTEM_STORE_ID);
+          return receipt === undefined ? [planned] : [planAnchorStep(host, receipt), planned];
+        }),
+      // The CA-wide trust step is always manual or skipped; only the recorded anchor runs.
+      execute: ({ step: planned, receipts, run }) => {
+        const receipt = receipts.find(({ id }) => id === planned.receiptId);
+        if (planned.id === LOCAL_CA_ANCHOR_STEP_ID && receipt !== undefined) {
+          return runAnchorUndo(host, receipt, planned, run);
+        }
+        return Effect.succeed(
           planned.status === "skipped"
             ? { outcome: "skipped", detail: planned.detail }
             : { outcome: "manual", detail: planned.detail },
-        ),
+        );
+      },
     },
   };
 };

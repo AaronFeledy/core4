@@ -320,9 +320,11 @@ describe("resolved provider operations", () => {
             }),
         },
       });
-      if (!ops.observeVolume) throw new Error("Expected volume observation adapter");
+      if (!ops.observeBoundVolume) throw new Error("Expected bound volume observation adapter");
       const destination = PortablePath.make("/var/lib/mysql");
-      const result = await Effect.runPromise(ops.observeVolume(target, destination));
+      const result = await Effect.runPromise(
+        ops.observeBoundVolume({ ...target, expectedContainerId: "observed-id" }, destination),
+      );
       expect(result.ref.store).toBe("actual-native-volume");
       expect(result.ref.app).toBe(AppId.make(dataName ?? app));
       expect(calls).toEqual([

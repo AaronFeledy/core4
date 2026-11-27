@@ -150,7 +150,6 @@ export const makeDynamicToolingVarResolver = (input: {
       const decoder = new TextDecoder();
       return parts.map((part) => decoder.decode(part, { stream: true })).join("") + decoder.decode();
     };
-    if (input.options.signal?.aborted) return yield* Effect.interrupt;
     if (bytes > 65536) return yield* Effect.fail(overflowError());
     if (result.exitCode !== 0) {
       const diagnostic = sensitive

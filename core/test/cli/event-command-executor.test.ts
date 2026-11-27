@@ -21,6 +21,7 @@ import {
   EnvironmentValueResolver,
   EventService,
   type EventServiceShape,
+  InteractionService,
   type LandoEvent,
   ProcessRunner,
   type ProcessSpawnOptions,
@@ -624,6 +625,52 @@ describe("EventCommandExecutorLayer.layer", () => {
     expect(observed).toEqual([{ runtimeCwd: "/workspace/demo", processCwd }]);
     expect(process.cwd()).toBe(processCwd);
   });
+
+  test.each([
+    [{}, false],
+    [{ interactive: true }, true],
+  ] as const)(
+    "a dispatched command with flags %j sees the host terminal as interactive=%j",
+    async (flags, expected) => {
+      // Given a host whose own InteractionService has real terminals and would prompt.
+      const harness = makeHarness();
+      const confirmModes: unknown[] = [];
+      const hostInteraction = InteractionService.of({
+        id: "host",
+        isInteractive: Effect.succeed(true),
+        prompt: () => Effect.die("unused"),
+        promptAll: () => Effect.die("unused"),
+        confirm: (spec) =>
+          Effect.sync(() => {
+            confirmModes.push(spec.mode);
+            return true;
+          }),
+        select: () => Effect.die("unused"),
+        secret: () => Effect.die("unused"),
+      });
+      const observed: boolean[] = [];
+      const spec = testSpec(() =>
+        Effect.gen(function* () {
+          const interaction = yield* InteractionService;
+          observed.push(yield* interaction.isInteractive);
+          yield* Effect.scoped(interaction.confirm({ message: "Continue?" }));
+        }),
+      );
+      const executor = makeEventCommandExecutor(
+        Context.add(harness.context, InteractionService, hostInteraction),
+        [entryFor(spec, { flags: { interactive: Flags.boolean({ description: "Prompt." }) } })],
+      );
+
+      // When
+      await Effect.runPromise(
+        executor.run({ command: "meta:test:event-command", flags, args: {}, argv: [], cwd: process.cwd() }),
+      );
+
+      // Then a non-interactive dispatch never reports or uses the host's terminal.
+      expect(observed).toEqual([expected]);
+      expect(confirmModes).toEqual([expected ? undefined : "non-interactive"]);
+    },
+  );
 
   test("runs nested app commands inside the resolved app root", async () => {
     // Given

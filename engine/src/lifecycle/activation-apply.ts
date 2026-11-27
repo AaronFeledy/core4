@@ -6,7 +6,7 @@ import {
 } from "@lando/sdk/services";
 import { Effect, Option } from "effect";
 import type { PreparedRuntimeProvider } from "../providers/prepared.ts";
-import { convergeActivationCredentials } from "./activation-credentials.ts";
+import { makeActivationCredentialWorker } from "./activation-credentials.ts";
 import { HostMountPoints, prepareHostMountPoints } from "./host-mount-points.ts";
 import { type PreparedRouteUrls, lowerRouteUrls } from "./route-url-bindings.ts";
 import { recordRouteUrlEvidence } from "./route-url-evidence.ts";
@@ -33,6 +33,8 @@ export interface ActivationApply<E, R> {
   readonly beforeApply?: Effect.Effect<void, E, R>;
   readonly environment?: EnvironmentValueResolverSession;
   readonly previousPlan?: AppPlan | undefined;
+  /** Full desired mount intent when completion uses an observation/recording view. */
+  readonly credentialPlan?: AppPlan;
 }
 
 export const applyActivation = Effect.fn("Activation.apply")(
@@ -46,6 +48,14 @@ export const applyActivation = Effect.fn("Activation.apply")(
           record === undefined ? undefined : recordRouteUrlEvidence(record, stamped, request.routeUrls);
         const session = request.environment ?? (yield* (yield* EnvironmentValueResolver).openSession());
         const stateStore = yield* StateStore;
+        const credentials = yield* makeActivationCredentialWorker({
+          plan,
+          provider: request.provider,
+          previousPlan: request.previousPlan,
+          desiredPlan: request.credentialPlan ?? request.completionPlan,
+          complete: request.complete === true,
+          session,
+        });
         const applied = yield* withPlanVolumeCoordination({
           plan,
           provider: request.provider,
@@ -68,17 +78,14 @@ export const applyActivation = Effect.fn("Activation.apply")(
               ...(request.completionPlan === undefined ? {} : { completionPlan: request.completionPlan }),
               ...(request.signal === undefined ? {} : { signal: request.signal }),
               resolveServiceEnvironment: (service) => session.resolveEnvironment(service.environment),
+              ...(credentials === undefined || request.provider.healthyDependencyContinuation !== true
+                ? {}
+                : { continueHealthyDependency: credentials.continueHealthyDependency }),
               onVolumeCreated,
             });
           }),
         });
-        const credentialChanges = yield* convergeActivationCredentials({
-          plan,
-          provider: request.provider,
-          previousPlan: request.previousPlan,
-          applied,
-          session,
-        });
+        const credentialChanges = yield* credentials?.finish(applied) ?? Effect.succeed([]);
         return { ...applied, ...(credentialChanges.length === 0 ? {} : { credentialChanges }) };
       }),
     ),

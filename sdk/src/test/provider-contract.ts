@@ -38,6 +38,8 @@ import {
   requireContract,
   utf8,
 } from "./_shared.ts";
+import { checkHealthyDependencyContinuation } from "./provider-healthy-continuation.ts";
+import { checkHostChangeProposals } from "./provider-host-changes.ts";
 import { checkProviderStartupDns } from "./provider-startup-dns.ts";
 
 export const CONTRACT_MATRIX_PLATFORMS: ReadonlyArray<HostPlatform> = ["darwin", "linux", "win32", "wsl"];
@@ -47,7 +49,8 @@ export const CONTRACT_MATRIX_PLATFORMS: ReadonlyArray<HostPlatform> = ["darwin",
  * lifecycle method types, fixture apply/inspect/bring-down round-trips, provider
  * identity, status, version fields, capability completeness, ApplyResult
  * shape, re-apply idempotency, list shape, both bring-down dispositions for the
- * whole app and for one observed container, and volume-preserving removal.
+ * whole app and for one observed container, volume-preserving removal, and no
+ * logs for a planned service whose container was removed.
  * Supply a digest-qualified fixture reference to also verify artifact pull integrity.
  */
 export const runProviderContract = Effect.fnUntraced(function* (
@@ -533,18 +536,30 @@ export const runProviderContract = Effect.fnUntraced(function* (
     .bringDown({ app: TEST_APP_ID }, { containers: "remove", volumes: true })
     .pipe(mapFailures(mapProviderFailure("bringDown remove succeeds for the contract fixture")));
 
-  yield* checkProviderStartupDns(provider, testAppPlan);
-
-  yield* requireContract(
-    typeof provider.planSetup === "function",
-    "planSetup is callable",
-    provider.planSetup,
+  const removedLogs = yield* Effect.timeoutOrElse(
+    provider
+      .logs({ app: TEST_APP_ID, service: TEST_SERVICE_NAME, plan: testAppPlan }, { follow: true })
+      .pipe(
+        Stream.runCollect,
+        mapFailures(mapProviderFailure("logs resolve for a planned service without a container")),
+      ),
+    {
+      duration: Duration.seconds(5),
+      orElse: () => Effect.fail(contractFailure("logs end for a planned service without a container")),
+    },
   );
-  const setupPlan = yield* provider
-    .planSetup({ force: false })
-    .pipe(mapFailures(mapProviderFailure("planSetup returns a setup plan")));
+  yield* requireContract(
+    removedLogs.length === 0,
+    "logs stream no lines for a planned service without a container",
+    Array.from(removedLogs),
+  );
+
+  yield* checkProviderStartupDns(provider, testAppPlan);
+  yield* checkHealthyDependencyContinuation(provider, testAppPlan);
+
+  yield* checkHostChangeProposals(provider);
   yield* requireContract(typeof provider.setup === "function", "setup is callable", provider.setup);
-  const setupEffect = provider.setup(setupPlan, { force: false });
+  const setupEffect = provider.setup({ force: false });
   yield* requireContract(Effect.isEffect(setupEffect), "setup returns an Effect", setupEffect);
 
   yield* requireContract(

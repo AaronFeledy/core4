@@ -1,6 +1,6 @@
 import { mapFailures } from "@lando/sdk/command-result";
 import { ProviderUnavailableError, StateStoreError } from "@lando/sdk/errors";
-import type { AppPlan, DataStorePlan, VolumeLocator } from "@lando/sdk/schema";
+import { type AppPlan, type DataStorePlan, type VolumeLocator, planDataId } from "@lando/sdk/schema";
 import {
   type ProviderError,
   type RuntimeProviderShape,
@@ -82,6 +82,15 @@ export const verifyActiveVolumeCoordination = (
   provider: Pick<RuntimeProviderShape, "id" | "locateVolume">,
 ): Effect.Effect<void, ProviderError> =>
   ActiveLocatedVolumes.pipe(Effect.flatMap((volumes) => verifyLocatedVolumes(volumes, provider)));
+
+export const coordinatedServiceVolume = (plan: AppPlan, store: string) =>
+  ActiveLocatedVolumes.pipe(
+    Effect.map((volumes) => {
+      const app = planDataId(plan);
+      return volumes.find(({ ref }) => ref.app === app && ref.scope === "service" && ref.store === store)
+        ?.locator;
+    }),
+  );
 
 export const withPlanVolumeCoordination = Effect.fn("Lifecycle.withPlanVolumeCoordination")(function* <
   A,

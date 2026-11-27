@@ -1,9 +1,10 @@
 /**
- * `meta:setup` certificate-authority step: resolves the authority, runs its
- * `setup`, and reports each host trust store it manages. A trust-installing run
- * turns every store left without the local CA into a `CA_TRUST_INCOMPLETE`
- * warning; readiness stays satisfied because the authority still issues
- * certificates.
+ * `meta:setup` certificate-authority step: resolves the authority, plans its
+ * host changes with the rest of setup's plan, runs its `setup` with the run's
+ * approved changes, and reports each host trust store it manages. A
+ * trust-installing run turns every store left without the local CA into a
+ * `CA_TRUST_INCOMPLETE` warning; readiness stays satisfied because the
+ * authority still issues certificates.
  */
 
 import {
@@ -13,15 +14,22 @@ import {
 import { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
 import { MessageInfoEvent, MessageWarnEvent } from "@lando/sdk/events";
 import type { CommandWarning, TrustStoreChange } from "@lando/sdk/schema";
-import { CertificateAuthority, EventService, type PrivilegeService } from "@lando/sdk/services";
-import { type Context, DateTime, Effect } from "effect";
+import {
+  CertificateAuthority,
+  EventService,
+  type HostChangeApplier,
+  type HostChangeProposal,
+} from "@lando/sdk/services";
+import { DateTime, Effect, Option, Result } from "effect";
 import { inputBooleanFlag } from "./setup-inputs";
 import { recordAbsentHostIntegration } from "./setup-service-steps";
 import type { SetupReadinessRecorder } from "./setup-steps";
 
-type SetupPrivilegeOptions = {
-  readonly privilege?: Context.Service.Shape<typeof PrivilegeService>;
-};
+/** The approved host changes, and whether they include trusting the local CA. */
+export interface CaSetupHostChanges {
+  readonly applier: HostChangeApplier;
+  readonly trustApproved: boolean;
+}
 
 const SKIP_CA_TRUST_EVIDENCE = "Certificate authority trust installation skipped by --skip-install-ca.";
 
@@ -52,9 +60,27 @@ const trustSummary = (stores: ReadonlyArray<TrustStoreChange>): string =>
     )
     .join(" ");
 
+/**
+ * The authority's planned host changes. An authority that cannot be resolved plans none; the CA
+ * step reports why when it runs.
+ */
+export const planCaHostChanges = Effect.fn("SetupCommand.planCaHostChanges")(function* (
+  input: unknown,
+  recorder: SetupReadinessRecorder,
+): Effect.fn.Return<ReadonlyArray<HostChangeProposal>, unknown> {
+  if (inputBooleanFlag(input, "skip-install-ca")) return [];
+  const resolver = yield* Effect.serviceOption(CertificateAuthorityResolver);
+  const ca =
+    resolver._tag === "Some"
+      ? Result.getOrUndefined(yield* Effect.result(resolver.value.resolve))
+      : Option.getOrUndefined(yield* Effect.serviceOption(CertificateAuthority));
+  if (ca?.planHostChanges === undefined) return [];
+  return yield* ca.planHostChanges.pipe(Effect.tapError((cause) => recorder.recordFailure("ca", cause)));
+});
+
 export const runCaSetupStep = Effect.fn("SetupCommand.runCaSetupStep")(function* (
   input: unknown,
-  privilegeOptions: SetupPrivilegeOptions,
+  hostChanges: CaSetupHostChanges,
   recorder: SetupReadinessRecorder,
   selectedProviderId = "lando",
   platform: NodeJS.Platform = process.platform,
@@ -107,7 +133,7 @@ export const runCaSetupStep = Effect.fn("SetupCommand.runCaSetupStep")(function*
   // Narration is best-effort: a renderer failure must not fail the step it describes.
   const narrate = (event: MessageInfoEvent | MessageWarnEvent) =>
     events._tag === "Some" ? events.value.publish(event).pipe(Effect.ignore) : Effect.void;
-  if (platform === "win32" && !skipTrustInstall) {
+  if (platform === "win32" && !skipTrustInstall && hostChanges.trustApproved) {
     yield* narrate(
       MessageInfoEvent.make({
         body: "Installing local certificate trust.\nWindows may open a Security Warning. Approve it to continue.\n--yes cannot answer Windows security prompts.",
@@ -118,7 +144,7 @@ export const runCaSetupStep = Effect.fn("SetupCommand.runCaSetupStep")(function*
   const { trustStores } = yield* ca
     .setup({
       force: false,
-      ...privilegeOptions,
+      hostChanges: hostChanges.applier,
       ...(skipTrustInstall ? { skipTrustInstall: true } : {}),
     })
     .pipe(Effect.tapError((cause) => recorder.recordFailure("ca", cause)));

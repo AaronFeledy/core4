@@ -1,60 +1,48 @@
 import { existsSync, readFileSync } from "node:fs";
-import { dirname } from "node:path";
 
-import { redactString, standaloneSecretsRedactor } from "@lando/container-runtime/redact";
-import {
-  ProviderSetupPrivilegeUnavailableError,
-  ProviderSetupProvisioningError,
-  ProviderSetupUnsupportedHostError,
-} from "@lando/sdk/errors";
-import { type HostPlatform, ProviderId, type ProviderSetupPlan, hostPlatformFamily } from "@lando/sdk/schema";
-import type { PrivilegeService } from "@lando/sdk/services";
+import { ProviderSetupUnsupportedHostError } from "@lando/sdk/errors";
+import type { RetryPolicy } from "@lando/sdk/probe";
+import { type HostPlatform, ProviderId, hostPlatformFamily } from "@lando/sdk/schema";
+import type { HostChangeProposal } from "@lando/sdk/services";
 import { Effect } from "effect";
-
+import {
+  manualUidmapRemediation,
+  nextSubordinateStart,
+  subordinateRangeChange,
+  uidmapChange,
+} from "./prerequisite-changes.ts";
 import {
   type RootlessProbes,
   cgroupsV2DelegationRemediation,
   parseSubordinateIdFile,
   validateSubordinateIdRanges,
 } from "./rootless-preflight.ts";
+import { type UserManagerHost, resolveProcessUserName, unitLacksDelegation } from "./user-manager.ts";
+import { DELEGATE_CONF_PATH, delegationChange, lingerChange } from "./user-manager-changes.ts";
 import { hasHostSystemd } from "./user-systemd-session.ts";
 
-const hostSecretsRedactor = () => standaloneSecretsRedactor({ ...process.env });
-
 const PROVIDER_ID = ProviderId.make("lando");
-const APT_GET_UPDATE = ["/usr/bin/apt-get", "update"] as const;
-const APT_GET_INSTALL_UIDMAP = [
-  "/usr/bin/apt-get",
-  "install",
-  "--yes",
-  "--no-install-recommends",
-  "uidmap",
-] as const;
 const DEFAULT_SUBID_START = 100000;
 const DEFAULT_SUBID_COUNT = 65536;
-const DELEGATE_CONF_PATH = "/etc/systemd/system/user@.service.d/delegate.conf";
-const DELEGATE_CONF_CONTENT = `[Service]
-Delegate=cpu cpuset io memory pids
-`;
 
 export interface LinuxHostRelease {
   readonly id: string;
   readonly versionId: string;
 }
 
-interface PrerequisiteInspection {
+export interface PrerequisiteInspection {
   readonly platform: HostPlatform;
   readonly host: LinuxHostRelease | undefined;
   readonly probes: RootlessProbes;
   readonly user: string | undefined;
   readonly hasSystemd?: boolean;
-}
-
-interface PrerequisiteApply {
-  readonly probes: RootlessProbes;
-  readonly privilege: typeof PrivilegeService.Service | undefined;
-  readonly user: string | undefined;
-  readonly hasSystemd?: boolean;
+  /** Present on hosts where Lando can plan lingering for a missing systemd user manager. */
+  readonly userManager?: UserManagerHost;
+  /** Reads a host file such as `/etc/subuid`; undefined when it does not exist. */
+  readonly readHostFile?: (path: string) => string | undefined;
+  readonly pathExists?: (path: string) => boolean;
+  /** Bounds the wait for the user manager after lingering is enabled. */
+  readonly managerWaitPolicy?: RetryPolicy;
 }
 
 const parseReleaseValue = (raw: string): string => raw.trim().replace(/^['"]|['"]$/gu, "");
@@ -72,333 +60,132 @@ export const parseLinuxHostRelease = (raw: string): LinuxHostRelease | undefined
   return id === undefined || versionId === undefined ? undefined : { id, versionId };
 };
 
-export const readLinuxHostRelease = (): LinuxHostRelease | undefined => {
+const readTextFile = (path: string): string | undefined => {
   try {
-    return parseLinuxHostRelease(readFileSync("/etc/os-release", "utf8"));
+    return readFileSync(path, "utf8");
   } catch {
     return undefined;
   }
 };
 
-const manualUidmapRemediation =
-  "Install newuidmap and newgidmap using the host's trusted package manager (`sudo apt-get install uidmap` or `sudo dnf install shadow-utils`), then rerun `lando setup`.";
+export const readLinuxHostRelease = (): LinuxHostRelease | undefined => {
+  const text = readTextFile("/etc/os-release");
+  return text === undefined ? undefined : parseLinuxHostRelease(text);
+};
 
-export const inspectPrerequisiteSetupPlan = (
+const unsupported = (
   input: PrerequisiteInspection,
-): Effect.Effect<ProviderSetupPlan, ProviderSetupUnsupportedHostError> => {
-  const changes: Array<ProviderSetupPlan["changes"][number]> = [];
-  const probeResults = input.probes.probe();
-  const user = input.user ?? process.env.USER ?? "";
+  fields: { prerequisite: string; message: string; remediation: string },
+) =>
+  new ProviderSetupUnsupportedHostError({
+    providerId: PROVIDER_ID,
+    ...fields,
+    ...(input.host === undefined ? {} : { host: input.host }),
+  });
 
-  // Check uidmap tools
+/**
+ * Inspect the host read-only and propose the changes the managed runtime needs: uidmap on
+ * Ubuntu and Debian, missing subordinate ranges, the cgroups delegation drop-in, and lingering
+ * when no systemd user manager runs. Anything else missing fails closed with a manual remedy.
+ */
+export const planPrerequisiteHostChanges = Effect.fnUntraced(function* (
+  input: PrerequisiteInspection,
+): Effect.fn.Return<ReadonlyArray<HostChangeProposal>, ProviderSetupUnsupportedHostError> {
+  const proposals: HostChangeProposal[] = [];
+  const probeResults = input.probes.probe();
+  const readHostFile = input.readHostFile ?? readTextFile;
+  const pathExists = input.pathExists ?? input.userManager?.pathExists ?? existsSync;
+  const hasSystemd = input.hasSystemd ?? hasHostSystemd();
+  const user = input.userManager?.account()?.user ?? input.user ?? resolveProcessUserName() ?? "";
+
   if (!probeResults.hasUidmapTools) {
-    // Auto-provision on Ubuntu and Debian (use apt-get)
+    const host = input.host;
     if (
-      hostPlatformFamily(input.platform) === "linux" &&
-      input.host !== undefined &&
-      (input.host.id === "ubuntu" || input.host.id === "debian")
+      hostPlatformFamily(input.platform) !== "linux" ||
+      host === undefined ||
+      (host.id !== "ubuntu" && host.id !== "debian")
     ) {
-      changes.push({
-        _tag: "install-uidmap",
-        platform: "linux",
-        distribution: input.host.id,
-        version: input.host.versionId,
-        reason: "Rootless Podman requires newuidmap and newgidmap before the managed runtime can start.",
-      });
-    } else {
-      // Unsupported distribution - fail with manual remediation
-      return Effect.fail(
-        new ProviderSetupUnsupportedHostError({
-          providerId: PROVIDER_ID,
+      return yield* Effect.fail(
+        unsupported(input, {
           prerequisite: "uidmap-tools",
           message:
-            input.host === undefined
+            host === undefined
               ? "Automatic uidmap provisioning requires a recognized Linux distribution."
-              : `Automatic uidmap provisioning is not supported on ${input.host.id}.`,
+              : `Automatic uidmap provisioning is not supported on ${host.id}.`,
           remediation: manualUidmapRemediation,
-          ...(input.host === undefined ? {} : { host: input.host }),
         }),
       );
     }
+    proposals.push(uidmapChange(host, input.probes));
   }
 
-  // Check subuid/subgid - only add when completely missing
   if (!probeResults.subidConfigured && user.length > 0) {
-    const subuid = existsSync("/etc/subuid")
-      ? validateSubordinateIdRanges(parseSubordinateIdFile(readFileSync("/etc/subuid", "utf8")), user)
-      : { kind: "missing" as const };
-    const subgid = existsSync("/etc/subgid")
-      ? validateSubordinateIdRanges(parseSubordinateIdFile(readFileSync("/etc/subgid", "utf8")), user)
-      : { kind: "missing" as const };
-
-    if (subuid.kind === "missing") {
-      changes.push({
-        _tag: "provision-subuid",
+    for (const kind of ["uid", "gid"] as const) {
+      const text = readHostFile(kind === "uid" ? "/etc/subuid" : "/etc/subgid");
+      const verdict =
+        text === undefined ? "missing" : validateSubordinateIdRanges(parseSubordinateIdFile(text), user).kind;
+      if (verdict !== "missing") continue;
+      const range = {
+        kind,
         user,
-        start: DEFAULT_SUBID_START,
+        start: nextSubordinateStart(text, DEFAULT_SUBID_START),
         count: DEFAULT_SUBID_COUNT,
-        reason: "Rootless Podman requires subordinate UID ranges for your user.",
-      });
-    }
-
-    if (subgid.kind === "missing") {
-      changes.push({
-        _tag: "provision-subgid",
-        user,
-        start: DEFAULT_SUBID_START,
-        count: DEFAULT_SUBID_COUNT,
-        reason: "Rootless Podman requires subordinate GID ranges for your user.",
-      });
+      };
+      proposals.push(subordinateRangeChange(range, readHostFile));
     }
   }
 
-  // Check cgroups delegation - only create drop-in when absent
-  if (!probeResults.cgroupsV2Delegated) {
-    const hasSystemd = input.hasSystemd ?? hasHostSystemd();
+  // No user manager: plan lingering and the drop-in only when the unit is confirmed to lack
+  // delegation. The running-manager checks below do not apply. Without a usable runtime
+  // directory the runtime cannot start at all, so lingering (and the drop-in it needs) is
+  // required, and a run that does not approve it stops here, before any download.
+  const account = input.userManager?.account();
+  const lingerRequirement = probeResults.hasXdgRuntimeDir ? "recommended" : "required";
+  if (
+    input.userManager !== undefined &&
+    account !== undefined &&
+    hasSystemd &&
+    !input.userManager.managerRunning(account.uid)
+  ) {
+    const unit = yield* input.userManager.showUnit(account.uid);
+    if (unitLacksDelegation(unit)) {
+      // systemd reads drop-ins when it loads the unit, and `systemctl show` just loaded it: a
+      // drop-in that exists yet delegates nothing will not apply when lingering starts the manager.
+      if (pathExists(DELEGATE_CONF_PATH)) {
+        return yield* Effect.fail(
+          unsupported(input, {
+            prerequisite: "cgroups-delegation",
+            message: `${DELEGATE_CONF_PATH} exists, but systemd does not delegate the cpu, memory, and pids controllers to user@${account.uid}.service.`,
+            remediation: `Make sure ${DELEGATE_CONF_PATH} contains \`Delegate=cpu cpuset io memory pids\` under \`[Service]\`, run \`sudo systemctl daemon-reload\`, then rerun \`lando setup\`. Alternatively, run \`lando setup --provider=docker\`.`,
+          }),
+        );
+      }
+      proposals.push(delegationChange(false, pathExists, lingerRequirement));
+    }
+    proposals.push(lingerChange(account, input.userManager, input.managerWaitPolicy, lingerRequirement));
+  } else if (!probeResults.cgroupsV2Delegated) {
     if (!hasSystemd) {
-      return Effect.fail(
-        new ProviderSetupUnsupportedHostError({
-          providerId: PROVIDER_ID,
+      return yield* Effect.fail(
+        unsupported(input, {
           prerequisite: "cgroups-delegation",
           message:
             "Rootless Podman requires cgroups v2 controller delegation, but this host is not running systemd.",
           remediation: cgroupsV2DelegationRemediation({ hasSystemd: false }),
-          ...(input.host === undefined ? {} : { host: input.host }),
         }),
       );
     }
-    if (!existsSync(DELEGATE_CONF_PATH)) {
-      changes.push({
-        _tag: "provision-cgroups-delegation",
-        path: DELEGATE_CONF_PATH,
-        reason: "Rootless Podman requires cgroups v2 controller delegation for your user session.",
-      });
-    } else {
-      // Drop-in exists but delegation isn't active - user needs to log out/back in
-      return Effect.fail(
-        new ProviderSetupUnsupportedHostError({
-          providerId: PROVIDER_ID,
+    if (pathExists(DELEGATE_CONF_PATH)) {
+      // The drop-in exists but this session is not delegated: only a new login applies it.
+      return yield* Effect.fail(
+        unsupported(input, {
           prerequisite: "cgroups-delegation",
           message: "The cgroups delegation drop-in exists but your session is not delegated.",
           remediation:
             "Log out of your current session, log back in, then rerun `lando setup`. (The systemd delegation drop-in only applies to new user sessions.) Alternatively, run `lando setup --provider=docker`.",
-          ...(input.host === undefined ? {} : { host: input.host }),
         }),
       );
     }
+    proposals.push(delegationChange(true, pathExists));
   }
-
-  return Effect.succeed({ providerId: PROVIDER_ID, changes: changes as ProviderSetupPlan["changes"] });
-};
-
-// Backward compatibility alias
-export const inspectUidmapSetupPlan = inspectPrerequisiteSetupPlan;
-
-const provisioningFailure = (
-  stage: "update" | "install",
-  result: { readonly exitCode: number; readonly stderr: string },
-): ProviderSetupProvisioningError =>
-  new ProviderSetupProvisioningError({
-    providerId: PROVIDER_ID,
-    change: "install-uidmap",
-    stage,
-    message: `Failed to ${stage === "update" ? "refresh apt-get package metadata" : "install uidmap"}.`,
-    remediation:
-      "Resolve the apt-get failure, then rerun `lando setup --yes`; or install uidmap tools manually.",
-    exitCode: result.exitCode,
-    stderr: redactString(result.stderr, hostSecretsRedactor()),
-  });
-
-const findNextAvailableRange = (path: string, requestedStart: number): number => {
-  if (!existsSync(path)) return requestedStart;
-
-  const entries = parseSubordinateIdFile(readFileSync(path, "utf8"));
-  if (entries.length === 0) return requestedStart;
-
-  // Find the highest allocated range end
-  const maxEnd = entries.reduce((max, entry) => Math.max(max, entry.start + entry.count), 0);
-
-  // Start after the highest allocated range, or use requested start if higher
-  return Math.max(requestedStart, maxEnd);
-};
-
-export const applyApprovedPrerequisitePlan = Effect.fn("ProviderLando.applyApprovedPrerequisitePlan")(
-  function* (
-    plan: ProviderSetupPlan,
-    input: PrerequisiteApply,
-  ): Effect.fn.Return<void, ProviderSetupPrivilegeUnavailableError | ProviderSetupProvisioningError> {
-    const user = input.user ?? process.env.USER ?? "";
-
-    for (const change of plan.changes) {
-      if (input.privilege === undefined) {
-        return yield* Effect.fail(
-          new ProviderSetupPrivilegeUnavailableError({
-            providerId: PROVIDER_ID,
-            change: change._tag,
-            message: "The privilege service is unavailable, so Lando cannot provision prerequisites.",
-            remediation:
-              change._tag === "install-uidmap"
-                ? manualUidmapRemediation
-                : "Manually configure the prerequisite, then rerun `lando setup`.",
-          }),
-        );
-      }
-
-      switch (change._tag) {
-        case "install-uidmap": {
-          const update = yield* input.privilege.elevate(APT_GET_UPDATE);
-          if (update.exitCode !== 0) return yield* Effect.fail(provisioningFailure("update", update));
-          const install = yield* input.privilege.elevate(APT_GET_INSTALL_UIDMAP);
-          if (install.exitCode !== 0) return yield* Effect.fail(provisioningFailure("install", install));
-          if (!input.probes.probe().hasUidmapTools) {
-            return yield* Effect.fail(
-              new ProviderSetupProvisioningError({
-                providerId: PROVIDER_ID,
-                change: change._tag,
-                stage: "verify",
-                message: "uidmap installation completed, but newuidmap/newgidmap remain unavailable.",
-                remediation:
-                  "Verify /usr/bin/newuidmap and /usr/bin/newgidmap are executable, then rerun `lando setup`.",
-              }),
-            );
-          }
-          break;
-        }
-
-        case "provision-subuid":
-        case "provision-subgid": {
-          const isSubuid = change._tag === "provision-subuid";
-          const path = isSubuid ? "/etc/subuid" : "/etc/subgid";
-          const { start, count } = change as { start: number; count: number };
-
-          // Find a non-conflicting range
-          const actualStart = findNextAvailableRange(path, start);
-
-          // Use usermod to add the range
-          const usermodCmd = [
-            "/usr/sbin/usermod",
-            isSubuid ? "--add-subuids" : "--add-subgids",
-            `${actualStart}-${actualStart + count - 1}`,
-            user,
-          ] as const;
-
-          const result = yield* input.privilege.elevate(usermodCmd);
-
-          if (result.exitCode !== 0) {
-            return yield* Effect.fail(
-              new ProviderSetupProvisioningError({
-                providerId: PROVIDER_ID,
-                change: change._tag,
-                stage: "provision",
-                message: `Failed to provision ${isSubuid ? "subordinate UID" : "subordinate GID"} range.`,
-                remediation: `Manually add a range for your user to ${path}, e.g. \`sudo usermod ${isSubuid ? "--add-subuids" : "--add-subgids"} 100000-165535 $USER\`, then rerun \`lando setup\`.`,
-                exitCode: result.exitCode,
-                stderr: redactString(result.stderr, hostSecretsRedactor()),
-              }),
-            );
-          }
-          break;
-        }
-
-        case "provision-cgroups-delegation": {
-          const { path } = change as { path: string };
-          const hasSystemd = input.hasSystemd ?? hasHostSystemd();
-          if (!hasSystemd) {
-            return yield* Effect.fail(
-              new ProviderSetupProvisioningError({
-                providerId: PROVIDER_ID,
-                change: change._tag,
-                stage: "install",
-                message:
-                  "Cannot enable systemd user cgroup delegation because this host is not running systemd.",
-                remediation: cgroupsV2DelegationRemediation({ hasSystemd: false }),
-              }),
-            );
-          }
-
-          try {
-            // Create the drop-in directory if it doesn't exist
-            const dir = dirname(path);
-            const mkdirCmd = ["/usr/bin/mkdir", "-p", dir] as const;
-            const mkdirResult = yield* input.privilege.elevate(mkdirCmd);
-            if (mkdirResult.exitCode !== 0) {
-              return yield* Effect.fail(
-                new ProviderSetupProvisioningError({
-                  providerId: PROVIDER_ID,
-                  change: change._tag,
-                  stage: "install",
-                  message: "Failed to create systemd user@.service.d directory.",
-                  remediation:
-                    "Manually create the directory and delegation config, then rerun `lando setup`.",
-                  exitCode: mkdirResult.exitCode,
-                  stderr: redactString(mkdirResult.stderr, hostSecretsRedactor()),
-                }),
-              );
-            }
-
-            // Write the delegation config using sh -c with echo
-            const writeCmd = ["/bin/sh", "-c", `echo '${DELEGATE_CONF_CONTENT}' > ${path}`] as const;
-            const writeResult = yield* input.privilege.elevate(writeCmd);
-            if (writeResult.exitCode !== 0) {
-              return yield* Effect.fail(
-                new ProviderSetupProvisioningError({
-                  providerId: PROVIDER_ID,
-                  change: change._tag,
-                  stage: "install",
-                  message: "Failed to write cgroups delegation drop-in.",
-                  remediation:
-                    "Manually create /etc/systemd/system/user@.service.d/delegate.conf with `Delegate=cpu cpuset io memory pids`, run `sudo systemctl daemon-reload`, then rerun `lando setup`.",
-                  exitCode: writeResult.exitCode,
-                  stderr: redactString(writeResult.stderr, hostSecretsRedactor()),
-                }),
-              );
-            }
-
-            // Reload systemd to pick up the new drop-in
-            const reloadCmd = ["/usr/bin/systemctl", "daemon-reload"] as const;
-            const reload = yield* input.privilege.elevate(reloadCmd);
-            if (reload.exitCode !== 0) {
-              return yield* Effect.fail(
-                new ProviderSetupProvisioningError({
-                  providerId: PROVIDER_ID,
-                  change: change._tag,
-                  stage: "reload",
-                  message:
-                    "Created cgroups delegation drop-in, but systemd daemon-reload failed. The delegation will not take effect until you log out and back in.",
-                  remediation:
-                    "Run `sudo systemctl daemon-reload`, then log out of your current session and log back in. After logging back in, rerun `lando setup`.",
-                }),
-              );
-            }
-
-            // Daemon reload succeeded, but delegation only applies to new sessions
-            return yield* Effect.fail(
-              new ProviderSetupProvisioningError({
-                providerId: PROVIDER_ID,
-                change: change._tag,
-                stage: "reload",
-                message:
-                  "Created cgroups delegation drop-in successfully. Log out of your current session and log back in for the delegation to take effect.",
-                remediation: "Log out, log back in, then rerun `lando setup`.",
-              }),
-            );
-          } catch (_error) {
-            return yield* Effect.fail(
-              new ProviderSetupProvisioningError({
-                providerId: PROVIDER_ID,
-                change: change._tag,
-                stage: "install",
-                message: "Failed to create cgroups delegation drop-in.",
-                remediation:
-                  "Manually create /etc/systemd/system/user@.service.d/delegate.conf with `Delegate=cpu cpuset io memory pids`, run `sudo systemctl daemon-reload`, then rerun `lando setup`.",
-              }),
-            );
-          }
-        }
-      }
-    }
-  },
-);
-
-// Backward compatibility alias
-export const applyApprovedProviderSetupPlan = applyApprovedPrerequisitePlan;
+  return proposals;
+});

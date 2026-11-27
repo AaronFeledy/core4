@@ -667,9 +667,6 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CT
           : listAppliedPlans(options.appliedPlanState, options.appliedPlanStateDir).pipe(
               Effect.map(({ plans }) => plans),
             ),
-      planSetup: Effect.fn("RuntimeProvider.planSetup")(() =>
-        Effect.succeed({ providerId: ProviderId.make(PROVIDER_ID), changes: [] }),
-      ),
       setup: Effect.fn("RuntimeProvider.setup")(() => Effect.void),
       getStatus: dockerApi.info.pipe(
         Effect.as({ state: "running" as const, message: "ready" }),
@@ -710,6 +707,7 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CT
         if (plan.identity?.dataRoot === undefined) return;
         yield* planState.ownership.adopt(plan, yield* appliedPlans.resolveMutationPlan(plan.id), witness);
       }),
+      healthyDependencyContinuation: true,
       apply: Effect.fn("RuntimeProvider.apply")(function* (plan, applyOptions) {
         yield* validateHealthcheckExecution(plan, applyOptions.executeReadinessAttempt);
         const previous = yield* appliedPlans.resolveMutationPlan(plan.id);
@@ -736,6 +734,7 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CT
             : { resolveServiceEnvironment: applyOptions.resolveServiceEnvironment }),
           reconcile: applyOptions.reconcile,
           onVolumeCreated: applyOptions.onVolumeCreated,
+          continueHealthyDependency: applyOptions.continueHealthyDependency,
           completionPlan: applyOptions.completionPlan ?? applyOptions.recordedPlan ?? plan,
           ...(options.eventService === undefined ? {} : { eventService: options.eventService }),
         }).pipe(

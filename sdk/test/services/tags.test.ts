@@ -82,6 +82,7 @@ const EXPECTED_TAGS = [
       "read",
       "readText",
       "write",
+      "append",
       "writeAtomic",
       "exists",
       "stat",
@@ -94,7 +95,11 @@ const EXPECTED_TAGS = [
     ],
   },
   { tag: ProcessRunner, key: "@lando/core/ProcessRunner", methods: ["run", "stream"] },
-  { tag: PrivilegeService, key: "@lando/core/PrivilegeService", methods: ["elevate"] },
+  {
+    tag: PrivilegeService,
+    key: "@lando/core/PrivilegeService",
+    methods: ["credentialStatus", "openSession", "elevate"],
+  },
   {
     tag: ShellRunner,
     key: "@lando/core/ShellRunner",
@@ -165,6 +170,7 @@ describe("Effect service tags", () => {
         "read",
         "readText",
         "write",
+        "append",
         "writeAtomic",
         "exists",
         "stat",
@@ -176,7 +182,7 @@ describe("Effect service tags", () => {
         "writeFile",
       ],
       ["run", "stream"],
-      ["elevate"],
+      ["credentialStatus", "openSession", "elevate"],
       ["exec", "run", "runScript", "interactive"],
     ];
 
@@ -226,6 +232,7 @@ describe("Effect service tags", () => {
       read: (_path: string) => Stream.empty,
       readText: (_path: string) => Effect.succeed(""),
       write: (_path: string, _content: string | Uint8Array) => Effect.void,
+      append: (_path: string, _content: string | Uint8Array) => Effect.void,
       writeAtomic: (_path: string, _content: string | Uint8Array) => Effect.void,
       exists: (_path: string) => Effect.succeed(false),
       stat: (_path: string) => Effect.succeed({ size: 0, mtimeMs: 0, isFile: true, isDirectory: false }),

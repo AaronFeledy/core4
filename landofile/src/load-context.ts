@@ -11,6 +11,7 @@ import { hostExpressionEnvironment } from "./recipe-expressions.ts";
 export interface LandofileLoadContext {
   readonly recorder?: LoadFailureRecorder;
   readonly validCanonicalFile?: string;
+  readonly contained?: boolean;
   readonly pendingSites?: ParsedPendingSite[];
   readonly compilationContext?: CompilationContext;
   /**

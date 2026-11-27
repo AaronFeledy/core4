@@ -1,8 +1,14 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { HostPlatform, HostUninstallStep } from "@lando/sdk/schema";
+import {
+  HostChangeId,
+  type HostChangeReceipt,
+  type HostPlatform,
+  type HostUninstallStep,
+} from "@lando/sdk/schema";
 import { TEST_CERTIFICATES } from "@lando/sdk/test";
 import { Effect } from "effect";
 
@@ -54,7 +60,7 @@ describe("local CA uninstall step", () => {
     const maintainer = makeLocalCaHostMaintainer({ exists: () => false, listDirs: () => [], ...access });
     expect(maintainer.id).toBe(LOCAL_CA_MAINTAINER_ID);
     const steps = await Effect.runPromise(
-      maintainer.uninstall?.plan({ platform, userDataRoot: dir }) ?? Effect.die("no uninstall"),
+      maintainer.uninstall?.plan({ platform, userDataRoot: dir, receipts: [] }) ?? Effect.die("no uninstall"),
     );
     expect(steps).toHaveLength(1);
     return steps[0] as HostUninstallStep;
@@ -64,6 +70,16 @@ describe("local CA uninstall step", () => {
     const step = await plan("linux", { env: { CAROOT: caroot } });
     expect(step).toMatchObject({ id: "trust", status: "skipped", target: caroot });
     expect(step.preserveOnKeepData).toBeUndefined();
+  });
+
+  test("linux names the anchor setup wrote under Lando's fixed name", async () => {
+    await writeFile(join(caroot, "rootCA.pem"), TEST_CERTIFICATES.rootA);
+    const anchor = "/etc/pki/ca-trust/source/anchors/lando-local-ca.pem";
+    const step = await plan("linux", {
+      env: { CAROOT: caroot, PATH: "" },
+      exists: (path) => path === anchor,
+    });
+    expect(step.detail).toContain(`\`sudo rm -f ${anchor} && sudo /usr/bin/update-ca-trust extract\``);
   });
 
   test("linux names the anchor files, NSS databases and Homebrew bundles that exist", async () => {
@@ -92,9 +108,10 @@ describe("local CA uninstall step", () => {
     expect(step.preserveOnKeepData).toBeUndefined();
     expect(step.detail).toContain(SHA256);
     expect(step.detail).toContain(
-      "`sudo rm -f /usr/local/share/ca-certificates/mkcert_development_CA_4096.crt && sudo update-ca-certificates`",
+      "`sudo rm -f /usr/local/share/ca-certificates/mkcert_development_CA_4096.crt && sudo /usr/sbin/update-ca-certificates`",
     );
     expect(step.detail).not.toContain("/etc/pki/ca-trust/source/anchors");
+    expect(step.detail).not.toContain("ca-certificates/lando-local-ca.crt");
     expect(step.detail).toContain(`\`certutil -D -d sql:${home}/.pki/nssdb -n '${NICKNAME}'\``);
     expect(step.detail).toContain(`\`certutil -D -d sql:${firefox}/abc.default -n '${NICKNAME}'\``);
     expect(step.detail).not.toContain("no-db");
@@ -200,9 +217,102 @@ describe("local CA uninstall step", () => {
     const maintainer = makeLocalCaHostMaintainer({ env: { CAROOT: caroot } });
     const step = await plan("win32", { env: { CAROOT: caroot } });
     const outcome = await Effect.runPromise(
-      maintainer.uninstall?.execute({ platform: "win32", userDataRoot: dir, step }) ??
+      maintainer.uninstall?.execute({ platform: "win32", userDataRoot: dir, receipts: [], step }) ??
         Effect.die("no uninstall"),
     );
     expect(outcome).toEqual({ outcome: "manual", detail: step.detail });
+  });
+
+  describe("the anchor setup recorded", () => {
+    const anchor = "/usr/local/share/ca-certificates/lando-local-ca.crt";
+    const digest = createHash("sha256").update(TEST_CERTIFICATES.rootA).digest("hex");
+    const receipt: HostChangeReceipt = {
+      id: HostChangeId.make("ca-mkcert:trust-system-store"),
+      owner: "@lando/ca-mkcert",
+      summary: "Trust Lando's local CA in the system store",
+      phase: "applied",
+      startedAt: "2026-11-26T00:00:00.000Z",
+      facts: { anchor, sha256: digest },
+      undo: {
+        _tag: "steps",
+        consent: "separate",
+        summary: "Remove Lando's local CA from the system store",
+        steps: [
+          {
+            id: "remove-anchor",
+            summary: "remove",
+            argv: ["/usr/bin/rm", "-f", "--", anchor],
+            privileged: true,
+            when: "always",
+          },
+          {
+            id: "refresh",
+            summary: "refresh",
+            argv: ["/usr/sbin/update-ca-certificates"],
+            privileged: true,
+            when: "always",
+          },
+        ],
+      },
+    };
+    const planWith = async (installed: string | undefined) => {
+      await writeFile(join(caroot, "rootCA.pem"), TEST_CERTIFICATES.rootA);
+      const maintainer = makeLocalCaHostMaintainer({
+        env: { CAROOT: caroot, PATH: "" },
+        exists: (path) => path === anchor && installed !== undefined,
+        readText: (path) =>
+          path === anchor ? installed : path.endsWith("rootCA.pem") ? TEST_CERTIFICATES.rootA : undefined,
+        listDirs: () => [],
+      });
+      const input = { platform: "linux", userDataRoot: dir, receipts: [receipt] } as const;
+      const steps = await Effect.runPromise(maintainer.uninstall?.plan(input) ?? Effect.die("no uninstall"));
+      return { maintainer, input, steps };
+    };
+
+    test("is undone with --undo only while the installed anchor is the certificate setup recorded", async () => {
+      const { maintainer, input, steps } = await planWith(TEST_CERTIFICATES.rootA);
+      const [step] = steps;
+      if (step === undefined) throw new Error("expected the anchor step");
+      const ran: string[] = [];
+
+      const outcome = await Effect.runPromise(
+        maintainer.uninstall?.execute({
+          ...input,
+          step,
+          run: {
+            run: (id) =>
+              Effect.sync(() => {
+                ran.push(id);
+                return { exitCode: 0, stdout: "", stderr: "" };
+              }),
+          },
+        }) ?? Effect.die("no uninstall"),
+      );
+
+      expect(steps.map(({ id, status }) => [id, status])).toEqual([
+        ["trust-system-store", "owned"],
+        ["trust", "manual"],
+      ]);
+      expect(step).toMatchObject({
+        receiptId: receipt.id,
+        // The apps --keep-data leaves in place still serve HTTPS through this trust.
+        preserveOnKeepData: true,
+        change: { consent: "separate" },
+      });
+      expect(step.detail).toContain("lando setup");
+      expect(ran).toEqual(["remove-anchor", "refresh"]);
+      expect(outcome.outcome).toBe("completed");
+    });
+
+    test.each([
+      ["an anchor that holds another certificate", TEST_CERTIFICATES.rootB, "manual"],
+      ["an anchor already removed", undefined, "skipped"],
+    ] as const)("leaves %s alone", async (_name, installed, status) => {
+      const { steps } = await planWith(installed);
+
+      expect(steps[0]).toMatchObject({ id: "trust-system-store", status });
+      expect(steps[0]?.change).toBeUndefined();
+      if (status === "manual") expect(steps[0]?.detail).toContain(`\`sudo /usr/bin/rm -f -- ${anchor}\``);
+    });
   });
 });

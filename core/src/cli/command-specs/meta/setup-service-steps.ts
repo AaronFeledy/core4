@@ -10,16 +10,22 @@
 import { resolveProxyDefaultDomain } from "@lando/engine/config/proxy-default-domain";
 import { resolveRouterConfigForApp } from "@lando/engine/config/router-config";
 import {
+  defaultPosixShellProfilePath,
+  installShellProfileBlock,
+  landoShellenvBlock,
+} from "@lando/engine/host/shell-profile";
+import {
   SSH_SIDECAR_READINESS_POLICY,
   awaitRuntimeSshAgent,
 } from "@lando/engine/subsystems/ssh-agent/session";
+import { mapFailures } from "@lando/sdk/command-result";
 import { SshAgentUnavailableError } from "@lando/sdk/errors";
 import { MessageWarnEvent } from "@lando/sdk/events";
-import { EventService, type PrivilegeService, RouterService, SshService } from "@lando/sdk/services";
-import { type Context, DateTime, Duration, Effect, Result } from "effect";
+import { EventService, type HostChangeApplier, RouterService, SshService } from "@lando/sdk/services";
+import { DateTime, Duration, Effect, Result } from "effect";
 import { CliInvocation } from "../../../runtime/invocation-context";
 import { resolveSecretsRedactor } from "../../commands/secrets-redactor";
-import { ShellenvInstallRecordError, installShellProfileIntegration } from "../../commands/shellenv";
+import { ShellenvInstallRecordError, renderPosixShellenv } from "../../commands/shellenv";
 import { inputBooleanFlag } from "./setup-inputs";
 import { SYSTEM_RUNTIME_PROVIDERS } from "./setup-provider-selection";
 import { type SetupReadinessRecorder, ShellProfileIntegrationError } from "./setup-steps";
@@ -43,6 +49,7 @@ export const recordAbsentHostIntegration = (
 export const runProxySetupStep = Effect.fn("SetupCommand.runProxySetupStep")(function* (
   input: unknown,
   recorder: SetupReadinessRecorder,
+  hostChanges: HostChangeApplier,
   selectedProviderId = "lando",
 ) {
   if (inputBooleanFlag(input, "skip-proxy")) {
@@ -57,11 +64,10 @@ export const runProxySetupStep = Effect.fn("SetupCommand.runProxySetupStep")(fun
   if (proxy._tag === "Some") {
     const defaultDomain = yield* resolveProxyDefaultDomain;
     const { router, routerPin } = yield* resolveRouterConfigForApp();
-    const autoApprove = inputBooleanFlag(input, "yes") || inputBooleanFlag(input, "no-interactive");
     yield* Effect.scoped(
       proxy.value.setup(
         { defaultDomain, router, routerPin },
-        { intent: "configure", autoApprove, reacquirePorts: true },
+        { intent: "configure", hostChanges, reacquirePorts: true },
       ),
     ).pipe(Effect.tapError((cause) => recorder.recordFailure("proxy", cause)));
     yield* recorder.record({ id: "proxy", status: "satisfied", evidence: "Router setup completed." });
@@ -141,12 +147,15 @@ export const runShellServiceSetupStep = Effect.fn("SetupCommand.runShellServiceS
 });
 
 const SHELL_PROFILE_REMEDIATION =
-  "Fix shell profile write permissions, then rerun `lando setup` or `lando shellenv` to finish PATH integration.";
+  "Fix the install record, then rerun `lando setup` or `lando shellenv` to finish PATH integration.";
 
-/** Add Lando to the user's shell profile PATH; Windows and non-interactive runs leave the profile alone. */
+/**
+ * Add Lando's PATH block to the user's shell profile, as the invoking user. Windows and
+ * non-interactive runs leave the profile alone. A profile the user cannot write is reported,
+ * never taken over.
+ */
 export const runShellProfileSetupStep = Effect.fn("SetupCommand.runShellProfileSetupStep")(function* (
   input: unknown,
-  privilege: Context.Service.Shape<typeof PrivilegeService>,
   userDataRoot: string,
   recorder: SetupReadinessRecorder,
 ) {
@@ -157,28 +166,29 @@ export const runShellProfileSetupStep = Effect.fn("SetupCommand.runShellProfileS
   ) {
     return;
   }
-  const shellProfile = yield* Effect.try({
-    try: () => installShellProfileIntegration(userDataRoot, privilege),
+  const profilePath = defaultPosixShellProfilePath((yield* CliInvocation).env);
+  const block = yield* Effect.try({
+    try: () => landoShellenvBlock(renderPosixShellenv(userDataRoot)),
     catch: (cause) => {
       if (!(cause instanceof ShellenvInstallRecordError)) throw cause;
       return new ShellProfileIntegrationError({
         message: "Shell profile integration failed.",
+        path: cause.file,
         stderr: cause.message,
         remediation: SHELL_PROFILE_REMEDIATION,
       });
     },
-  }).pipe(
-    Effect.flatten,
+  }).pipe(Effect.tapError((cause) => recorder.recordFailure("shell", cause.stderr)));
+  yield* installShellProfileBlock(profilePath, block).pipe(
+    mapFailures(
+      (cause) =>
+        new ShellProfileIntegrationError({
+          message: `Lando could not add its PATH block to ${profilePath}.`,
+          path: profilePath,
+          stderr: cause.message,
+          remediation: `Make ${profilePath} writable by your user, or set LANDO_SHELL_PROFILE to a file you own, then rerun \`lando setup\`. Lando never edits your profile as root.`,
+        }),
+    ),
     Effect.tapError((cause) => recorder.recordFailure("shell", cause.stderr)),
   );
-  if (shellProfile.exitCode !== 0) {
-    yield* recorder.recordFailure("shell", shellProfile.stderr);
-    return yield* Effect.fail(
-      new ShellProfileIntegrationError({
-        message: "Shell profile integration failed.",
-        stderr: shellProfile.stderr,
-        remediation: SHELL_PROFILE_REMEDIATION,
-      }),
-    );
-  }
 });

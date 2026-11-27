@@ -1,18 +1,16 @@
 import { beforeAll, describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
-import { copyFile, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve, win32 } from "node:path";
 import { installRecordOwnsDestination } from "@lando/engine/install/record";
 import { makeLandoPaths } from "@lando/paths";
 
 import {
-  defaultPosixShellProfilePath,
   defaultShellenvShell,
   renderPosixShellenv,
   renderPowerShellShellenv,
   renderShellenv,
-  shellProfileInstallCommand,
   shellenvBinDir,
   shellenvCurrentExecutablePath,
 } from "../../src/cli/commands/shellenv.ts";
@@ -553,70 +551,6 @@ describe("record-backed shellenv", () => {
             remediation: expect.any(String),
           }),
         );
-    }
-  });
-});
-
-const restoreEnv = (key: string, value: string | undefined): void => {
-  if (value === undefined) Reflect.deleteProperty(process.env, key);
-  else process.env[key] = value;
-};
-
-describe("shell profile install path", () => {
-  test("appends one LANDO4 block while preserving the generic LANDO block", async () => {
-    // Given an existing Lando 3 profile block.
-    const root = await mkdtemp(join(tmpdir(), "lando4-shellenv-"));
-    const profile = join(root, "profile");
-    const original = "# >>> LANDO shellenv >>>\nexport PATH=/lando3:$PATH\n# <<< LANDO shellenv <<<\n";
-    try {
-      await writeFile(profile, original);
-      const command = [...shellProfileInstallCommand(root, profile)];
-      // When installation is requested twice.
-      expect((await runCommand(command)).exitCode).toBe(0);
-      expect((await runCommand(command)).exitCode).toBe(0);
-      const installed = await readFile(profile, "utf8");
-      // Then the original bytes precede a distinct, single v4 block.
-      expect(installed).toStartWith(`${original}\n# >>> LANDO4 shellenv >>>\n`);
-      expect(installed).toEndWith("# <<< LANDO4 shellenv <<<\n");
-      expect(installed.match(/# >>> LANDO4 shellenv >>>/gu)).toHaveLength(1);
-    } finally {
-      await rm(root, { recursive: true, force: true });
-    }
-  });
-  test("writes LANDO_SHELL_PROFILE when that env is set", () => {
-    expect(
-      defaultPosixShellProfilePath({
-        LANDO_SHELL_PROFILE: "/tmp/custom-lando.rc",
-        HOME: "/home/me",
-        SHELL: "/bin/bash",
-      }),
-    ).toBe("/tmp/custom-lando.rc");
-
-    const previous = process.env.LANDO_SHELL_PROFILE;
-    try {
-      process.env.LANDO_SHELL_PROFILE = "/tmp/custom-lando.rc";
-      expect(shellProfileInstallCommand("/tmp/lando-data").join("\n")).toContain("/tmp/custom-lando.rc");
-    } finally {
-      restoreEnv("LANDO_SHELL_PROFILE", previous);
-    }
-  });
-
-  test("falls back to the default POSIX profile when LANDO_SHELL_PROFILE is unset", () => {
-    expect(defaultPosixShellProfilePath({ HOME: "/home/me", SHELL: "/bin/bash" })).toBe("/home/me/.bashrc");
-
-    const previous = process.env.LANDO_SHELL_PROFILE;
-    const previousHome = process.env.HOME;
-    const previousShell = process.env.SHELL;
-    try {
-      Reflect.deleteProperty(process.env, "LANDO_SHELL_PROFILE");
-      process.env.HOME = "/home/me";
-      process.env.SHELL = "/bin/bash";
-      expect(defaultPosixShellProfilePath()).toBe("/home/me/.bashrc");
-      expect(shellProfileInstallCommand("/tmp/lando-data").join("\n")).toContain("/home/me/.bashrc");
-    } finally {
-      restoreEnv("LANDO_SHELL_PROFILE", previous);
-      restoreEnv("HOME", previousHome);
-      restoreEnv("SHELL", previousShell);
     }
   });
 });

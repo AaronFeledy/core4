@@ -1,9 +1,10 @@
 /**
  * Every trust store the mkcert authority manages, in one stable order: the system store, each Linux
  * browser (NSS) database, each Homebrew CA bundle, then the Windows store under WSL. `inspect` only
- * reads. `repair` runs after `mkcert -install` has written the system store (or was skipped because
- * the store already trusted the root, whose row it then reuses): it re-reads that store, adds the root to browser databases that lack it, rebuilds Homebrew bundles, and re-reads the
- * Windows store, which Lando never writes.
+ * reads. `repair` runs after setup applied the approved system-store change (or skipped it because
+ * the store already trusted the root, whose row it then reuses): it re-reads that store, adds the
+ * root to browser databases that lack it, rebuilds Homebrew bundles, and re-reads the Windows
+ * store, which Lando never writes from WSL.
  */
 import type { TrustStoreChange, TrustStoreStatus } from "@lando/sdk/schema";
 import type { ProcessRunner } from "@lando/sdk/services";
@@ -68,14 +69,16 @@ export const makeTrustStores = ({
 
   return {
     snapshot,
+    /** A fresh read of the system store alone. */
+    inspectSystem: system.inspect,
     /** Every managed store. Reads only. */
     inspect: (caroot: string, root: string) => Effect.map(snapshot(caroot, root), ({ rows }) => rows),
     /**
-     * The stores after setup's repairs; `before` is the snapshot taken before `mkcert -install`. A
-     * system store that already trusted the root was not installed into, so its row is reused.
+     * The stores after setup's repairs; `before` is the snapshot taken before the system-store
+     * change. A system store that already trusted the root was not changed, so its row is reused.
      */
     repair: Effect.fnUntraced(function* (caroot: string, root: string, before: TrustStoresSnapshot) {
-      // mkcert can exit 0 without the system store trusting the root; that is reported, not fatal.
+      // A change can succeed without the system store trusting the root; that is reported, not fatal.
       const systemRow =
         before.system.state === "trusted" ? before.system : yield* system.inspect(caroot, root);
       const nssRows = yield* nss.install(caroot, root, before.nss);

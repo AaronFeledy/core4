@@ -17,6 +17,12 @@ export class EventDeliveryMetrics extends Context.Service<
     Layer.succeed(this, this.of(service));
 }
 
+/** A synchronous tap for consumers that coordinate subscription changes with delivery. */
+export const EventCommitObserver = Context.Reference<((event: LandoEvent) => void) | undefined>(
+  "@lando/engine/EventCommitObserver",
+  { defaultValue: () => undefined },
+);
+
 export interface EventDeliveryState {
   readonly subscribers: Set<PubSub.PubSub<LandoEvent>>;
   readonly queueSubscribers: Set<Queue.Queue<LandoEvent>>;
@@ -85,7 +91,7 @@ export const makeEventDelivery = (state: EventDeliveryState) => {
     safe: LandoEvent,
     hasManifest: boolean,
   ): Effect.Effect<void, EventError> =>
-    Effect.suspend(() => {
+    Effect.flatMap(EventCommitObserver, (observe) => {
       const hasDelivery =
         hasManifest ||
         state.subscribers.size > 0 ||
@@ -108,6 +114,7 @@ export const makeEventDelivery = (state: EventDeliveryState) => {
           Object.freeze([...retained.slice(Math.max(0, retained.length - state.historyCap + 1)), safe]),
         );
       }
+      observe?.(safe);
       if (!hasDelivery) return Effect.void;
       state.instrumentation.onPubSubPublish?.();
       let rejectedDeliveries = 0;

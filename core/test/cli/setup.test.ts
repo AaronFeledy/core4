@@ -1,5 +1,6 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -22,6 +23,7 @@ import { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-
 import { hostProviderId } from "@lando/engine/providers/host-provider";
 import * as LandoConfigService from "@lando/engine/services/config";
 import { GlobalConfigSources } from "@lando/engine/services/config";
+import * as BunFileSystem from "@lando/engine/services/file-system";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport";
 import { layerWith as httpClientLayerWith } from "@lando/http-client/live";
 import { NetworkTrust, type ResolvedNetworkTrust } from "@lando/http-client/network-trust";
@@ -37,6 +39,7 @@ import {
   HttpTrustError,
   InteractionCancelledError,
   InteractionUnavailableError,
+  PrivilegeCredentialsRequiredError,
   ProviderUnavailableError,
   ProxySetupError,
   SshError,
@@ -46,14 +49,15 @@ import {
   AppId,
   type AppPlan,
   GlobalConfig,
+  HostChangeId,
   ProviderId,
-  type ProviderSetupPlan,
   appIdentityKey,
 } from "@lando/sdk/schema";
-import { PathsService } from "@lando/sdk/services";
+import { type CaSetupOptions, FileSystem, type HostChangeProposal, PathsService } from "@lando/sdk/services";
 import {
   TestFileSyncEngine,
   makeTestCertificateAuthority,
+  makeTestPrivilegeService,
   makeTestRouterService,
   makeTestRuntimeProviderRegistry,
   makeTestSshService,
@@ -65,11 +69,14 @@ import * as HttpClientRequest from "effect/http/HttpClientRequest";
 import * as HttpClientResponse from "effect/http/HttpClientResponse";
 import { buildBugReport, renderPlainBugReport } from "../../src/cli/bug-report.ts";
 import {
+  RootOwnedLandoFilesError,
   SetupResultSchema,
   SetupStepFailedError,
+  ShellProfileIntegrationError,
   maybeSelectSetupProvider,
   setupSpec,
 } from "../../src/cli/command-specs/meta/setup.ts";
+import type { SetupResult } from "../../src/cli/command-specs/meta/setup-inputs.ts";
 import { systemRuntimeUnavailableError } from "../../src/cli/command-specs/meta/setup-provider-selection.ts";
 import { caInjectionNote } from "../../src/cli/command-specs/meta/setup-summary.ts";
 import {
@@ -83,6 +90,7 @@ import { validateUnknownCliFlags } from "../../src/cli/flag-value-validation.ts"
 import { COMMAND_REGISTRY_MANIFEST } from "../../src/cli/generated/command-registry-manifest.ts";
 import { compiledCommandInputFromArgv } from "../../src/cli/run.ts";
 import { resolveTopLevelAliases } from "../../src/cli/spec/command-spec.ts";
+import { CliInvocation, processInvocationDefaults } from "../../src/runtime/invocation-context.ts";
 import { compileCliTo } from "../_support/compiled-cli.ts";
 import { buildRuntimeTarGz, nativeInitBridgeFixture } from "../_support/runtime-bundle.ts";
 import { withEnvVar } from "../_support/temp-cwd.ts";
@@ -117,6 +125,7 @@ const buildSetupLayers = (
     Layer.succeed(GlobalConfigSources, { env: { ...process.env }, sources: { user: false, env: true } }),
     Layer.succeed(RuntimeProviderRegistry, registry),
     Layer.succeed(PathsService, makeLandoPaths()),
+    BunFileSystem.layer,
     Layer.succeed(ConfigService, ConfigService.of(makeConfigService(configOverrides))),
     Layer.succeed(Downloader, Downloader.of(testDownloader.service)),
     Layer.succeed(InteractionService, InteractionService.of(testInteraction.service)),
@@ -156,6 +165,38 @@ const buildSetupLayersWithPrivilege = (
     buildSetupLayers(registry, configOverrides),
     Layer.succeed(PrivilegeService, PrivilegeService.of(privilege)),
   );
+
+/** The test process env with the shell profile setup writes pointed at `profile`. */
+const applied = (result: SetupResult): Extract<SetupResult, { readonly dryRun: false }> => {
+  if (result.dryRun) throw new Error("expected setup to apply, not plan");
+  return result;
+};
+
+const uidmapProposal = (): HostChangeProposal => ({
+  change: {
+    id: HostChangeId.make("provider-lando:install-uidmap"),
+    owner: "@lando/provider-lando",
+    stage: "provider",
+    summary: "Install the uidmap package",
+    reason: "Rootless Podman needs uidmap helpers.",
+    consent: "standard",
+    persistent: false,
+    requirement: "required",
+    steps: [
+      {
+        id: "install",
+        summary: "Install uidmap",
+        argv: ["/usr/bin/apt-get", "install", "uidmap"],
+        privileged: true,
+        when: "always",
+      },
+    ],
+    undo: { _tag: "manual", detail: "uidmap is a shared package." },
+  },
+  apply: (steps) => steps.run("install").pipe(Effect.as({ changed: true })),
+});
+
+const profileEnv = (profile: string) => ({ ...process.env, LANDO_SHELL_PROFILE: profile });
 
 const coreRoot = resolve(import.meta.dirname, "../..");
 const sourceCliPath = resolve(coreRoot, "bin/lando.ts");
@@ -243,10 +284,12 @@ describe("meta:setup command", () => {
 
   test("publishes CA injection as a boolean condition and no certificate count", () => {
     const machineResult = {
+      dryRun: false as const,
       providerId: "lando",
       installDir: "/opt/lando",
       fileSyncStatus: "satisfied" as const,
       networkCaInjectionConfigured: true,
+      hostChanges: [],
     };
 
     const decoded = Schema.decodeUnknownSync(SetupResultSchema)(machineResult);
@@ -254,20 +297,16 @@ describe("meta:setup command", () => {
 
     expect(encoded).toEqual(machineResult);
     expect(Object.keys(encoded).sort()).toEqual([
+      "dryRun",
       "fileSyncStatus",
+      "hostChanges",
       "installDir",
       "networkCaInjectionConfigured",
       "providerId",
     ]);
     expect(() =>
       Schema.decodeUnknownSync(SetupResultSchema)(
-        {
-          providerId: "lando",
-          installDir: "/opt/lando",
-          fileSyncStatus: "satisfied",
-          networkCaInjectionConfigured: true,
-          injectedCaCount: 2,
-        },
+        { ...machineResult, injectedCaCount: 2 },
         { onExcessProperty: "error" },
       ),
     ).toThrow();
@@ -326,19 +365,7 @@ describe("meta:setup command", () => {
     const provider = {
       ...TestRuntimeProvider,
       id: "lando",
-      planSetup: () =>
-        Effect.succeed({
-          providerId: ProviderId.make("lando"),
-          changes: [
-            {
-              _tag: "install-uidmap" as const,
-              platform: "linux" as const,
-              distribution: "ubuntu" as const,
-              version: "26.04" as const,
-              reason: "Rootless Podman needs uidmap helpers.",
-            },
-          ],
-        }),
+      planHostChanges: () => Effect.succeed([uidmapProposal()]),
       setup: () =>
         Effect.sync(() => {
           applyCalls += 1;
@@ -360,15 +387,288 @@ describe("meta:setup command", () => {
     expect(applyCalls).toBe(0);
   });
 
+  test("rejects missing administrator credentials after consent and before any host change", async () => {
+    // Given: an approved privileged plan in a run that cannot ask for a password.
+    let applyCalls = 0;
+    const order: string[] = [];
+    const provider = {
+      ...TestRuntimeProvider,
+      id: "lando",
+      planHostChanges: () => Effect.succeed([uidmapProposal()]),
+      setup: () =>
+        Effect.sync(() => {
+          applyCalls += 1;
+        }),
+    };
+    const registry = makeTestRuntimeProviderRegistry({
+      list: Effect.succeed([ProviderId.make("lando")]),
+      capabilities: Effect.succeed(provider.capabilities),
+      select: () => Effect.succeed(provider),
+    });
+    const denied = new PrivilegeCredentialsRequiredError({
+      purpose: "install the uidmap package",
+      message: "this run cannot ask for a password",
+      remediation: "Run `sudo -v`, or set `SUDO_ASKPASS`.",
+    });
+    const privilege = makeTestPrivilegeService({
+      elevate: () => Effect.die("no privileged command may run"),
+      open: (purpose: string) =>
+        Effect.sync(() => void order.push(`credentials: ${purpose}`)).pipe(
+          Effect.andThen(Effect.fail(denied)),
+        ),
+    });
+
+    // When
+    const exit = await Effect.runPromiseExit(
+      setupSpec
+        .run({ installDir: "/opt/lando", flags: { yes: true, "no-interactive": true } })
+        .pipe(Effect.provide(buildSetupLayersWithPrivilege(registry, privilege))),
+    );
+
+    // Then: the same tagged error is the failure, and the provider applied nothing.
+    const failure = Exit.isFailure(exit) ? Cause.findErrorOption(exit.cause) : undefined;
+    expect(failure?._tag === "Some" ? failure.value : undefined).toBe(denied);
+    expect(order).toEqual(["credentials: install the uidmap package"]);
+    expect(applyCalls).toBe(0);
+  });
+
+  test("refuses to run when Lando's roots hold root-owned files, naming a per-path fix", async () => {
+    const userDataRoot = await mkdtemp(join(tmpdir(), "lando-setup-root-owned-"));
+    const uid = process.getuid?.() ?? 1000;
+    const fileSystem = FileSystem.of({
+      ...Effect.runSync(
+        Effect.gen(function* () {
+          return yield* FileSystem;
+        }).pipe(Effect.provide(BunFileSystem.layer)),
+      ),
+      lstat: (path) =>
+        Effect.succeed({
+          size: 0,
+          mtimeMs: 0,
+          isFile: false,
+          isDirectory: true,
+          uid: path === join(userDataRoot, "setup") ? 0 : uid,
+        }),
+      readDir: (path) => Effect.succeed(path === userDataRoot ? ["setup"] : []),
+    });
+    let applyCalls = 0;
+    const provider = {
+      ...TestRuntimeProvider,
+      id: "lando",
+      setup: () => Effect.sync(() => void applyCalls++),
+    };
+    const registry = makeTestRuntimeProviderRegistry({
+      list: Effect.succeed([ProviderId.make("lando")]),
+      capabilities: Effect.succeed(provider.capabilities),
+      select: () => Effect.succeed(provider),
+    });
+    try {
+      const exit = await Effect.runPromiseExit(
+        setupSpec.run({ installDir: "/opt/lando" }).pipe(
+          // Closer than the shared layers, so these win.
+          Effect.provideService(PathsService, makeLandoPaths({ userDataRoot })),
+          Effect.provideService(FileSystem, fileSystem),
+          Effect.provide(buildSetupLayers(registry, { userDataRoot })),
+        ),
+      );
+
+      const failure = Exit.isFailure(exit) ? Cause.findErrorOption(exit.cause) : undefined;
+      const error = failure?._tag === "Some" ? failure.value : undefined;
+      expect(error).toBeInstanceOf(RootOwnedLandoFilesError);
+      if (!(error instanceof RootOwnedLandoFilesError)) return;
+      expect(error.paths).toEqual([join(userDataRoot, "setup")]);
+      // One command per top-most root-owned path, as its last line.
+      const gid = process.getgid?.() ?? 1000;
+      expect(error.remediation.split("\n").slice(1)).toEqual([
+        `sudo chown -R ${uid}:${gid} '${join(userDataRoot, "setup")}'`,
+      ]);
+      expect(applyCalls).toBe(0);
+      expect(existsSync(setupReadinessPath(userDataRoot))).toBe(false);
+    } finally {
+      await rm(userDataRoot, { recursive: true, force: true });
+    }
+  });
+
+  describe.skipIf(process.platform !== "linux" || process.getuid?.() === 0)(
+    "giving root-owned files back",
+    () => {
+      /**
+       * A real data root under a directory the user owns, where `setup` reports root ownership until
+       * the walker (run through the session) "gives it back", optionally leaving one path behind.
+       */
+      const fixture = async (
+        options: {
+          readonly leftover?: boolean;
+          /** A root-owned hard link beside the repairable directory. */
+          readonly hardLink?: boolean;
+          readonly report?: (userDataRoot: string) => string;
+        } = {},
+      ) => {
+        const base = await mkdtemp(join(tmpdir(), "lando-setup-repair-"));
+        const userDataRoot = join(base, "data");
+        await mkdir(join(userDataRoot, "setup"), { recursive: true });
+        const rootOwned = new Set([join(userDataRoot, "setup")]);
+        const hardLink = join(userDataRoot, "linked");
+        if (options.hardLink === true) await writeFile(hardLink, "");
+        const real = Effect.runSync(
+          Effect.gen(function* () {
+            return yield* FileSystem;
+          }).pipe(Effect.provide(BunFileSystem.layer)),
+        );
+        const fileSystem = FileSystem.of({
+          ...real,
+          lstat: (path) =>
+            Effect.map(real.lstat(path), (stat) => {
+              if (options.hardLink === true && path === hardLink) return { ...stat, uid: 0, nlink: 2 };
+              if (rootOwned.has(path)) return { ...stat, uid: 0 };
+              // The host's temp directory may be group-writable, which the walker would refuse.
+              return base.startsWith(`${path}/`) ? { ...stat, mode: (stat.mode ?? 0) & ~0o022 } : stat;
+            }),
+        });
+        const order: string[] = [];
+        const elevated: ReadonlyArray<string>[] = [];
+        const privilege = makeTestPrivilegeService({
+          elevate: (argv) =>
+            Effect.sync(() => {
+              elevated.push([...argv]);
+              order.push("repair");
+              if (!options.leftover) rootOwned.clear();
+              const report = options.report?.(userDataRoot) ?? '{"changed":1,"skipped":[],"incomplete":[]}';
+              return { exitCode: 0, stdout: `${report}\n`, stderr: "" };
+            }),
+        });
+        const provider = {
+          ...TestRuntimeProvider,
+          id: "lando",
+          setup: () => Effect.sync(() => void order.push("provider")),
+        };
+        const registry = makeTestRuntimeProviderRegistry({
+          list: Effect.succeed([ProviderId.make("lando")]),
+          capabilities: Effect.succeed(provider.capabilities),
+          select: () => Effect.succeed(provider),
+        });
+        const run = (flags: Readonly<Record<string, unknown>>) =>
+          Effect.runPromiseExit(
+            setupSpec
+              .run({
+                installDir: "/opt/lando",
+                flags: {
+                  "skip-proxy": true,
+                  "skip-install-ca": true,
+                  "skip-shell-integration": true,
+                  ...flags,
+                },
+              })
+              .pipe(
+                Effect.provideService(PathsService, makeLandoPaths({ userDataRoot })),
+                Effect.provideService(FileSystem, fileSystem),
+                Effect.provide(buildSetupLayersWithPrivilege(registry, privilege, { userDataRoot })),
+              ),
+          );
+        return { base, userDataRoot, hardLink, run, order, elevated };
+      };
+
+      test("a hard link stops setup at planning with only its own command, before asking or changing anything", async () => {
+        const { base, hardLink, run, order, elevated } = await fixture({ hardLink: true });
+        try {
+          for (const flags of [{ "dry-run": true }, { yes: true, "no-interactive": true }]) {
+            const exit = await run(flags);
+
+            const failure = Exit.isFailure(exit) ? Cause.findErrorOption(exit.cause) : undefined;
+            const error = failure?._tag === "Some" ? failure.value : undefined;
+            expect(error).toBeInstanceOf(RootOwnedLandoFilesError);
+            if (!(error instanceof RootOwnedLandoFilesError)) return;
+            expect(error.paths).toEqual([hardLink]);
+            expect(error.remediation).toContain(`\`rm -f '${hardLink}'\``);
+            expect(error.remediation).not.toContain("chown");
+          }
+          expect(order).toEqual([]);
+          expect(elevated).toEqual([]);
+        } finally {
+          await rm(base, { recursive: true, force: true });
+        }
+      });
+
+      test("what the walker leaves on purpose stops setup with its command before later stages", async () => {
+        const left = (root: string) => join(root, "setup", "linked");
+        const { base, userDataRoot, run, order } = await fixture({
+          report: (root) =>
+            `{"changed":1,"skipped":[{"path":"${left(root)}","reason":"hard-link"}],"incomplete":[]}`,
+        });
+        try {
+          const exit = await run({ yes: true, "no-interactive": true });
+
+          const failure = Exit.isFailure(exit) ? Cause.findErrorOption(exit.cause) : undefined;
+          const error = failure?._tag === "Some" ? failure.value : undefined;
+          expect(error).toBeInstanceOf(RootOwnedLandoFilesError);
+          if (!(error instanceof RootOwnedLandoFilesError)) return;
+          expect(error.paths).toEqual([left(userDataRoot)]);
+          expect(error.message).toContain("Lando gave back what it safely could");
+          expect(error.remediation).toContain(`\`rm -f '${left(userDataRoot)}'\``);
+          expect(order).toEqual(["repair"]);
+        } finally {
+          await rm(base, { recursive: true, force: true });
+        }
+      });
+
+      test("the dry run lists the repair first, with the exact walker command", async () => {
+        const { base, userDataRoot, run, elevated } = await fixture();
+        try {
+          const exit = await run({ "dry-run": true });
+
+          if (!Exit.isSuccess(exit) || !exit.value.dryRun) throw new Error("expected a plan");
+          const [first] = exit.value.changes;
+          expect(String(first?.change.id)).toBe("core:repair-root-ownership");
+          expect(first?.change.steps[0]?.argv).toContain("__internal:repair-root-ownership");
+          expect(first?.change.steps[0]?.argv).toContain(join(userDataRoot, "setup"));
+          expect(elevated).toEqual([]);
+        } finally {
+          await rm(base, { recursive: true, force: true });
+        }
+      });
+
+      test("--yes gives them back before anything writes the roots, then runs the rest of setup", async () => {
+        const { base, userDataRoot, run, order, elevated } = await fixture();
+        try {
+          const exit = await run({ yes: true, "no-interactive": true });
+
+          if (!Exit.isSuccess(exit)) throw new Error(`expected setup to finish: ${Cause.pretty(exit.cause)}`);
+          expect(order).toEqual(["repair", "provider"]);
+          expect(elevated[0]).toContain("__internal:repair-root-ownership");
+          expect(
+            applied(exit.value).hostChanges.map(({ id, outcome }) => [String(id), outcome]),
+          ).toContainEqual(["core:repair-root-ownership", "applied"]);
+          expect(existsSync(setupReadinessPath(userDataRoot))).toBe(true);
+        } finally {
+          await rm(base, { recursive: true, force: true });
+        }
+      });
+
+      test("files still root-owned after the repair stop setup with their commands", async () => {
+        const { base, userDataRoot, run, order } = await fixture({ leftover: true });
+        try {
+          const exit = await run({ yes: true, "no-interactive": true });
+
+          const failure = Exit.isFailure(exit) ? Cause.findErrorOption(exit.cause) : undefined;
+          const error = failure?._tag === "Some" ? failure.value : undefined;
+          expect(error).toBeInstanceOf(RootOwnedLandoFilesError);
+          if (!(error instanceof RootOwnedLandoFilesError)) return;
+          expect(error.paths).toEqual([join(userDataRoot, "setup")]);
+          expect(error.message).toContain("Lando gave back what it safely could");
+          expect(order).toEqual(["repair"]);
+        } finally {
+          await rm(base, { recursive: true, force: true });
+        }
+      });
+    },
+  );
+
   test("passes runtime-bundle-url through to provider setup", async () => {
     const setupOptions: Array<{ readonly force: boolean; readonly runtimeBundleUrl?: string }> = [];
     const provider = {
       ...TestRuntimeProvider,
       id: "lando",
-      setup: (
-        _plan: ProviderSetupPlan,
-        options: { readonly force: boolean; readonly runtimeBundleUrl?: string },
-      ) =>
+      setup: (options: { readonly force: boolean; readonly runtimeBundleUrl?: string }) =>
         Effect.sync(() => {
           setupOptions.push(options);
         }),
@@ -411,10 +711,7 @@ describe("meta:setup command", () => {
     const provider = {
       ...TestRuntimeProvider,
       id: "lando",
-      setup: (
-        _plan: ProviderSetupPlan,
-        options: { readonly setupFlags?: Readonly<Record<string, unknown>> },
-      ) =>
+      setup: (options: { readonly setupFlags?: Readonly<Record<string, unknown>> }) =>
         Effect.sync(() => {
           setupOptions.push(options);
         }),
@@ -585,7 +882,7 @@ describe("meta:setup command", () => {
     );
 
     // Then
-    expect(result.trustStores).toEqual(trustStores);
+    expect(applied(result).trustStores).toEqual(trustStores);
     expect(Schema.is(SetupResultSchema)(result)).toBe(true);
     expect(
       setupSpec
@@ -739,19 +1036,12 @@ describe("meta:setup command", () => {
               ),
             ),
             Effect.provideService(EventService, events),
-            Effect.provideService(PrivilegeService, {
-              elevate: () =>
-                Effect.sync(() => {
-                  calls.push("shell-profile");
-                  return { exitCode: 0, stdout: "", stderr: "" };
-                }),
-            }),
           ),
         );
         const readiness = await Effect.runPromise(readSetupReadiness(userDataRoot));
         // Then setup succeeds, retains actionable redacted evidence, and runs later steps.
         expect(Exit.isSuccess(exit)).toBe(true);
-        expect(calls).toEqual(process.platform === "win32" ? ["file-sync"] : ["shell-profile", "file-sync"]);
+        expect(calls).toEqual(["file-sync"]);
         expect(readiness?.status).toBe("failed");
         const shell = readiness?.steps.find((step) => step.id === "shell");
         expect(shell?.status).toBe("unavailable");
@@ -1126,9 +1416,8 @@ describe("meta:setup command", () => {
       ]);
       expect(JSON.stringify(readiness)).toContain("[redacted]");
       expect(JSON.stringify(readiness)).not.toContain("super-secret");
-      expect(readiness.steps.find((step) => step.id === "proxy")?.remediation).toContain("lando setup");
-      expect(readiness.steps.find((step) => step.id === "proxy")?.remediation).toContain(
-        `On ${process.platform}`,
+      expect(readiness.steps.find((step) => step.id === "proxy")?.remediation).toStartWith(
+        "Rerun `lando setup` once the proxy is reachable.",
       );
     } finally {
       await rm(userDataRoot, { recursive: true, force: true });
@@ -1361,6 +1650,8 @@ describe("meta:setup command", () => {
   test("switch report suggests only supported command flags", () => {
     const output =
       setupSpec.render?.({
+        dryRun: false,
+        hostChanges: [],
         providerId: "docker",
         installDir: "/opt/lando",
         fileSyncStatus: "satisfied",
@@ -1502,68 +1793,90 @@ describe("meta:setup command", () => {
     }
   });
 
-  test("threads PrivilegeService into provider and CA setup and uses it for shell profile integration", async () => {
-    const elevated: ReadonlyArray<string>[] = [];
-    const privilege = {
-      elevate: (command: ReadonlyArray<string>) =>
-        Effect.sync(() => {
-          elevated.push([...command]);
-          return { exitCode: 0, stdout: "", stderr: "" };
-        }),
-    };
-    const providerSetupOptions: unknown[] = [];
-    const caSetupOptions: unknown[] = [];
-    const provider = {
-      ...TestRuntimeProvider,
-      id: "lando",
-      setup: (_plan: ProviderSetupPlan, options: unknown) =>
-        Effect.sync(() => {
-          providerSetupOptions.push(options);
-        }),
-    };
-    const registry = makeTestRuntimeProviderRegistry({
-      list: Effect.succeed([ProviderId.make("lando")]),
-      capabilities: Effect.succeed(provider.capabilities),
-      select: () => Effect.succeed(provider),
-    });
-    const ca = CertificateAuthority.of({
-      ...makeTestCertificateAuthority(),
-      setup: (options: unknown) =>
-        Effect.sync(() => {
-          caSetupOptions.push(options);
-          return { trustStores: [] };
-        }),
-    });
-
-    await Effect.runPromise(
-      setupSpec.run({ installDir: "/opt/lando" }).pipe(
-        Effect.provide(
-          Layer.mergeAll(
-            buildSetupLayersWithPrivilege(registry, privilege, {
-              userDataRoot: AbsolutePath.make("/tmp/Lando User's Data"),
-            }),
-            Layer.succeed(CertificateAuthority, ca),
+  test.skipIf(process.platform === "win32")(
+    "threads one run's host changes into provider and CA setup, and writes the shell profile as the user",
+    async () => {
+      const elevated: ReadonlyArray<string>[] = [];
+      const privilege = makeTestPrivilegeService({
+        elevate: (command: ReadonlyArray<string>) =>
+          Effect.sync(() => {
+            elevated.push([...command]);
+            return { exitCode: 0, stdout: "", stderr: "" };
+          }),
+      });
+      const providerSetupOptions: unknown[] = [];
+      const caSetupOptions: unknown[] = [];
+      const provider = {
+        ...TestRuntimeProvider,
+        id: "lando",
+        setup: (options: unknown) =>
+          Effect.sync(() => {
+            providerSetupOptions.push(options);
+          }),
+      };
+      const registry = makeTestRuntimeProviderRegistry({
+        list: Effect.succeed([ProviderId.make("lando")]),
+        capabilities: Effect.succeed(provider.capabilities),
+        select: () => Effect.succeed(provider),
+      });
+      const ca = CertificateAuthority.of({
+        ...makeTestCertificateAuthority(),
+        setup: (options: unknown) =>
+          Effect.sync(() => {
+            caSetupOptions.push(options);
+            return { trustStores: [] };
+          }),
+      });
+      const home = await mkdtemp(join(tmpdir(), "lando-setup-profile-"));
+      const profile = join(home, "new-dir", ".zshrc");
+      try {
+        await Effect.runPromise(
+          setupSpec.run({ installDir: "/opt/lando" }).pipe(
+            Effect.provide(
+              Layer.mergeAll(
+                buildSetupLayersWithPrivilege(registry, privilege, {
+                  userDataRoot: AbsolutePath.make("/tmp/Lando User's Data"),
+                }),
+                Layer.succeed(CertificateAuthority, ca),
+              ),
+            ),
+            Effect.provideService(CliInvocation, { ...processInvocationDefaults, env: profileEnv(profile) }),
           ),
-        ),
-      ),
-    );
+        );
 
-    expect(providerSetupOptions).toEqual([expect.objectContaining({ privilege })]);
-    expect(caSetupOptions).toEqual([expect.objectContaining({ privilege })]);
-    expect(elevated).toHaveLength(1);
-    expect(elevated[0]?.join(" ")).toContain("LANDO4 shellenv");
-    expect(elevated[0]?.join(" ")).toContain("/tmp/Lando User");
-  });
+        // The provider and the CA apply planned host changes through the run's one applier; no
+        // stage elevates on its own.
+        const providerChanges = Reflect.get(Object(providerSetupOptions[0]), "hostChanges");
+        expect(Reflect.get(Object(providerSetupOptions[0]), "privilege")).toBeUndefined();
+        expect(Reflect.get(Object(caSetupOptions[0]), "privilege")).toBeUndefined();
+        expect(typeof Reflect.get(Object(providerChanges), "apply")).toBe("function");
+        expect(Reflect.get(Object(caSetupOptions[0]), "hostChanges")).toBe(providerChanges);
+        // The profile is the user's file: written without elevation, owned by the user.
+        expect(elevated).toEqual([]);
+        const content = await readFile(profile, "utf-8");
+        expect(content).toContain("LANDO4 shellenv");
+        expect(content).toContain("/tmp/Lando User");
+        expect((await stat(profile)).uid).toBe(process.getuid?.() ?? 0);
+      } finally {
+        await rm(home, { recursive: true, force: true });
+      }
+    },
+  );
 
-  test("skip-shell-integration avoids shell profile writes while still allowing CA trust options", async () => {
+  test.each([
+    ["skip-shell-integration", { "skip-shell-integration": true }],
+    ["unattended setup", { "no-interactive": true }],
+  ] as const)("%s skips shell profile writes and elevates nothing", async (_name, flags) => {
+    const home = await mkdtemp(join(tmpdir(), "lando-setup-profile-skip-"));
+    const profile = join(home, ".profile");
     const elevated: ReadonlyArray<string>[] = [];
-    const privilege = {
+    const privilege = makeTestPrivilegeService({
       elevate: (command: ReadonlyArray<string>) =>
         Effect.sync(() => {
           elevated.push([...command]);
           return { exitCode: 0, stdout: "", stderr: "" };
         }),
-    };
+    });
     const provider = {
       ...TestRuntimeProvider,
       id: "lando",
@@ -1576,82 +1889,59 @@ describe("meta:setup command", () => {
     });
 
     await Effect.runPromise(
-      setupSpec.run({ installDir: "/opt/lando", flags: { "skip-shell-integration": true } }).pipe(
+      setupSpec.run({ installDir: "/opt/lando", flags }).pipe(
         Effect.provide(
           buildSetupLayersWithPrivilege(registry, privilege, {
             userDataRoot: AbsolutePath.make("/tmp/lando-data"),
           }),
         ),
+        Effect.provideService(CliInvocation, { ...processInvocationDefaults, env: profileEnv(profile) }),
       ),
     );
 
     expect(elevated).toEqual([]);
+    expect(existsSync(profile)).toBe(false);
+    await rm(home, { recursive: true, force: true });
   });
 
-  test("unattended setup skips shell profile writes", async () => {
-    const elevated: ReadonlyArray<string>[] = [];
-    const privilege = {
-      elevate: (command: ReadonlyArray<string>) =>
-        Effect.sync(() => {
-          elevated.push(command);
-          return { exitCode: 0, stdout: "", stderr: "" };
-        }),
-    };
-    const provider = { ...TestRuntimeProvider, id: "lando" };
-    const registry = makeTestRuntimeProviderRegistry({
-      list: Effect.succeed([ProviderId.make("lando")]),
-      capabilities: Effect.succeed(provider.capabilities),
-      select: () => Effect.succeed(provider),
-    });
-
-    await Effect.runPromise(
-      setupSpec.run({ installDir: "/opt/lando", flags: { "no-interactive": true } }).pipe(
-        Effect.provide(
-          buildSetupLayersWithPrivilege(registry, privilege, {
-            userDataRoot: AbsolutePath.make("/tmp/lando-data"),
-          }),
-        ),
-      ),
-    );
-
-    expect(elevated).toEqual([]);
-  });
-
-  test.each(["nonzero exit", "invalid install record"])(
-    "fails setup when shell profile integration has %s",
+  test
+    .skipIf(process.platform === "win32" || process.getuid?.() === 0)
+    .each(["unwritable profile", "invalid install record"])(
+    "fails setup when shell profile integration hits an %s",
     async (reason) => {
       const userDataRoot = await mkdtemp(join(tmpdir(), "lando-setup-readiness-profile-fail-"));
+      const locked = join(userDataRoot, "locked-profile");
       try {
-        // Given either an elevation failure or a corrupt install record.
-        const detail = reason === "nonzero exit" ? "sudo denied" : "Install record is not valid JSON.";
+        // Given either a profile the user cannot write or a corrupt install record.
+        await writeFile(locked, "keep\n", { mode: 0o444 });
+        const detail = reason === "unwritable profile" ? locked : "Install record is not valid JSON.";
         if (reason === "invalid install record") {
           await mkdir(join(userDataRoot, "install"));
           await writeFile(join(userDataRoot, "install", "record.json"), "{");
         }
-        const provider = {
-          ...TestRuntimeProvider,
-          id: "lando",
-          setup: () => Effect.void,
-        };
+        const provider = { ...TestRuntimeProvider, id: "lando", setup: () => Effect.void };
         const registry = makeTestRuntimeProviderRegistry({
           list: Effect.succeed([ProviderId.make("lando")]),
           capabilities: Effect.succeed(provider.capabilities),
           select: () => Effect.succeed(provider),
         });
         let elevations = 0;
-        const privilege = {
+        const privilege = makeTestPrivilegeService({
           elevate: () =>
             Effect.sync(() => {
               elevations += 1;
-              return { exitCode: 1, stdout: "", stderr: "sudo denied" };
+              return { exitCode: 0, stdout: "", stderr: "" };
             }),
-        };
+        });
 
         // When setup attempts shell profile integration.
         const exit = await Effect.runPromiseExit(
           setupSpec
             .run({ installDir: "/opt/lando" })
-            .pipe(Effect.provide(buildSetupLayersWithPrivilege(registry, privilege, { userDataRoot }))),
+            .pipe(
+              Effect.provide(buildSetupLayersWithPrivilege(registry, privilege, { userDataRoot })),
+              Effect.provideService(CliInvocation, { ...processInvocationDefaults, env: profileEnv(locked) }),
+            ),
         );
 
         const readiness = JSON.parse(await readFile(setupReadinessPath(userDataRoot), "utf-8")) as {
@@ -1662,23 +1952,21 @@ describe("meta:setup command", () => {
             readonly remediation?: string;
           }>;
         };
-        // Then it reports a typed failure with readiness evidence and never elevates a corrupt record.
+        // Then it reports a typed failure naming the path, never elevates, and never writes the file.
         const shellSteps = readiness.steps.filter((step) => step.id === "shell");
-        expect(elevations).toBe(reason === "nonzero exit" ? 1 : 0);
+        expect(elevations).toBe(0);
+        expect(await readFile(locked, "utf-8")).toBe("keep\n");
         expect(Exit.isFailure(exit)).toBe(true);
         if (!Exit.isFailure(exit)) throw new Error("expected shell profile integration failure");
         const failure = Cause.findErrorOption(exit.cause);
-        expect(failure._tag).toBe("Some");
-        expect(failure._tag === "Some" ? (failure.value as { readonly _tag?: string })._tag : undefined).toBe(
-          "ShellProfileIntegrationError",
-        );
+        const error = failure._tag === "Some" ? failure.value : undefined;
+        expect(error).toBeInstanceOf(ShellProfileIntegrationError);
+        if (reason === "unwritable profile") {
+          expect(error instanceof ShellProfileIntegrationError ? error.path : undefined).toBe(locked);
+        }
         expect(shellSteps).toHaveLength(1);
         expect(shellSteps[0]).toEqual(
-          expect.objectContaining({
-            status: "failed",
-            evidence: expect.stringContaining(detail),
-            remediation: expect.stringContaining(detail),
-          }),
+          expect.objectContaining({ status: "failed", evidence: expect.stringContaining(detail) }),
         );
       } finally {
         await rm(userDataRoot, { recursive: true, force: true });
@@ -1705,7 +1993,7 @@ describe("meta:setup command", () => {
           bindMountPerformance: "slow" as const,
           fileSyncTargets: "prepared-volume" as const,
         },
-        setup: (_plan: ProviderSetupPlan, options: { readonly network?: unknown }) =>
+        setup: (options: { readonly network?: unknown }) =>
           Effect.sync(() => {
             observedProviderNetworks.push(options.network);
             calls.push("provider");
@@ -1878,7 +2166,7 @@ describe("meta:setup command", () => {
         ),
       );
 
-      expect(result.fileSyncStatus).toBe("unavailable");
+      expect(applied(result).fileSyncStatus).toBe("unavailable");
       expect(setupSpec.render?.(result)).toContain(
         "file-sync: unavailable (ordinary mounts remain available)",
       );
@@ -1971,7 +2259,7 @@ describe("meta:setup command", () => {
         ),
       );
 
-      expect(result.networkCaInjectionConfigured).toBe(true);
+      expect(applied(result).networkCaInjectionConfigured).toBe(true);
       const rendered = setupSpec.render?.(result) ?? "";
       expect(rendered).toBe(`${setupCompleteOutput(TestRuntimeProvider.id)}\n${caInjectionNote}`);
       // Assert the rendered production note, not a test-local copy of the same string.
@@ -1998,7 +2286,7 @@ describe("meta:setup command", () => {
         ),
       );
 
-      expect(result.networkCaInjectionConfigured).toBe(true);
+      expect(applied(result).networkCaInjectionConfigured).toBe(true);
       expect(setupSpec.render?.(result)).toBe(
         `${setupCompleteOutput(TestRuntimeProvider.id)}\n${caInjectionNote}`,
       );
@@ -2022,7 +2310,7 @@ describe("meta:setup command", () => {
         ),
       );
 
-      expect(result.networkCaInjectionConfigured).toBe(false);
+      expect(applied(result).networkCaInjectionConfigured).toBe(false);
       expect(setupSpec.render?.(result)).toBe(setupCompleteOutput(TestRuntimeProvider.id));
     } finally {
       await rm(tempRoot, { recursive: true, force: true });
@@ -2036,7 +2324,7 @@ describe("meta:setup command", () => {
         .pipe(Effect.provide(buildSetupLayers(testRuntimeProviderRegistry))),
     );
 
-    expect(result.networkCaInjectionConfigured).toBe(false);
+    expect(applied(result).networkCaInjectionConfigured).toBe(false);
     expect(setupSpec.render?.(result)).toBe(setupCompleteOutput(TestRuntimeProvider.id));
   });
 
@@ -2561,7 +2849,7 @@ describe("meta:setup command", () => {
 
   test("honors setup skip flags for provider, CA trust install, proxy, shell, and file sync", async () => {
     const calls: string[] = [];
-    const caSetupOptions: Array<{ readonly force: boolean; readonly skipTrustInstall?: boolean }> = [];
+    const caSetupOptions: CaSetupOptions[] = [];
     const provider = {
       ...TestRuntimeProvider,
       id: "lando",
@@ -2577,7 +2865,7 @@ describe("meta:setup command", () => {
     };
     const ca = {
       ...makeTestCertificateAuthority(),
-      setup: (opts: { readonly force: boolean; readonly skipTrustInstall?: boolean }) =>
+      setup: (opts: CaSetupOptions) =>
         Effect.sync(() => {
           caSetupOptions.push(opts);
           calls.push("ca");
@@ -2627,7 +2915,9 @@ describe("meta:setup command", () => {
     );
 
     expect(calls).toEqual(["ca"]);
-    expect(caSetupOptions).toEqual([{ force: false, skipTrustInstall: true }]);
+    expect(caSetupOptions.map(({ force, skipTrustInstall }) => ({ force, skipTrustInstall }))).toEqual([
+      { force: false, skipTrustInstall: true },
+    ]);
   });
 
   test("invokes the selected runtime provider setup and renders the install dir", async () => {
@@ -3331,6 +3621,7 @@ describe("meta:setup command", () => {
                 Layer.mergeAll(
                   Layer.succeed(GlobalConfigSources, { env: {}, sources: { user: false, env: false } }),
                   Layer.succeed(PathsService, makeLandoPaths()),
+                  BunFileSystem.layer,
                   Layer.succeed(RuntimeProviderRegistry, registry),
                   Layer.succeed(
                     ConfigService,

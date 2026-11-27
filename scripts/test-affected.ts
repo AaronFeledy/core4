@@ -11,6 +11,7 @@ import { loadWorkspacePackages, resolveFile, resolveWorkspaceSpecifier } from ".
 import { scanLiterals } from "./boundary/literals.ts";
 import { scanModuleEdgesFromSource } from "./module-edge-scan.ts";
 import { modelPreloads } from "./test-affected-preload.ts";
+import { withRunnerOwnedTestRoots } from "./test-preload-roots.ts";
 import { collectShardedTestFiles } from "./test-shards.ts";
 
 const ROOT = resolve(import.meta.dirname, "..");
@@ -497,18 +498,21 @@ const main = async (): Promise<void> => {
   if (!args.run) return;
   if (result.selected.length === 0)
     throw new Error("--run selected zero test files; no test process started");
-  const child = Bun.spawn([...affectedTestCommand(result.selected)], {
-    cwd: ROOT,
-    stdout: "inherit",
-    stderr: "inherit",
+  process.exitCode = await withRunnerOwnedTestRoots({ env: process.env, live: false }, async (env) => {
+    const child = Bun.spawn([...affectedTestCommand(result.selected)], {
+      cwd: ROOT,
+      env,
+      stdout: "inherit",
+      stderr: "inherit",
+    });
+    const cancel = (): void => child.kill();
+    process.once("SIGINT", cancel);
+    process.once("SIGTERM", cancel);
+    const code = await child.exited;
+    process.off("SIGINT", cancel);
+    process.off("SIGTERM", cancel);
+    return code;
   });
-  const cancel = (): void => child.kill();
-  process.once("SIGINT", cancel);
-  process.once("SIGTERM", cancel);
-  const code = await child.exited;
-  process.off("SIGINT", cancel);
-  process.off("SIGTERM", cancel);
-  process.exitCode = code;
 };
 
 if (import.meta.main) await main();

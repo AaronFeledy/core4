@@ -196,55 +196,12 @@ const ProviderSetupErrorBase = {
   remediation: Remediation,
 };
 
-export class ProviderSetupConsentDeniedError extends Schema.TaggedError<ProviderSetupConsentDeniedError>()(
-  "ProviderSetupConsentDeniedError",
-  {
-    ...ProviderSetupErrorBase,
-    change: Schema.Literals([
-      "install-uidmap",
-      "provision-subuid",
-      "provision-subgid",
-      "provision-cgroups-delegation",
-    ]),
-  },
-) {}
-
 export class ProviderSetupUnsupportedHostError extends Schema.TaggedError<ProviderSetupUnsupportedHostError>()(
   "ProviderSetupUnsupportedHostError",
   {
     ...ProviderSetupErrorBase,
     prerequisite: Schema.String,
     host: Schema.optional(Schema.Struct({ id: Schema.String, versionId: Schema.String })),
-  },
-) {}
-
-export class ProviderSetupPrivilegeUnavailableError extends Schema.TaggedError<ProviderSetupPrivilegeUnavailableError>()(
-  "ProviderSetupPrivilegeUnavailableError",
-  {
-    ...ProviderSetupErrorBase,
-    change: Schema.Literals([
-      "install-uidmap",
-      "provision-subuid",
-      "provision-subgid",
-      "provision-cgroups-delegation",
-    ]),
-  },
-) {}
-
-export class ProviderSetupProvisioningError extends Schema.TaggedError<ProviderSetupProvisioningError>()(
-  "ProviderSetupProvisioningError",
-  {
-    ...ProviderSetupErrorBase,
-    change: Schema.Literals([
-      "install-uidmap",
-      "provision-subuid",
-      "provision-subgid",
-      "provision-cgroups-delegation",
-    ]),
-    stage: Schema.Literals(["update", "install", "verify", "provision", "reload"]),
-    exitCode: Schema.optional(Schema.Number),
-    stderr: Schema.optional(Schema.String),
-    cause: Schema.optional(Schema.Unknown),
   },
 ) {}
 

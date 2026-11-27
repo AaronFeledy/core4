@@ -37,7 +37,15 @@ export const runSetup = async (
     {
       context,
       runtime: makeLandoRuntime(
-        cliRuntimeOptions({ bootstrap: "provider", plugins: { policy: "discovery" } }, context.env),
+        cliRuntimeOptions(
+          {
+            bootstrap: "provider",
+            plugins: { policy: "discovery" },
+            // `--no-interactive` makes the whole invocation non-interactive, including elevation.
+            ...(input.flags["no-interactive"] === true ? { interaction: "non-interactive" as const } : {}),
+          },
+          context.env,
+        ),
       ),
       rendererMode: activeRendererMode,
       resultFormat: activeResultFormat,

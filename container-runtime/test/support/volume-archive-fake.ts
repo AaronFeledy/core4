@@ -1,6 +1,23 @@
 import { tarPayloadMember } from "@lando/sdk/test";
+import { Schema } from "effect";
 
 import { classifyVolumeArchiveCommand } from "../../src/volume-archive.ts";
+
+const createVolumeBinds = Schema.decodeUnknownOption(
+  Schema.Struct({ HostConfig: Schema.Struct({ Binds: Schema.Array(Schema.String) }) }),
+);
+
+export const inspectNamedVolumeBinds = (create: unknown, volumes: ReadonlyMap<string, unknown>) => {
+  const body = createVolumeBinds(create);
+  return body._tag === "None"
+    ? []
+    : body.value.HostConfig.Binds.flatMap((bind) => {
+        const [name, destination] = bind.split(":");
+        return name === undefined || destination === undefined || !volumes.has(name)
+          ? []
+          : [{ Type: "volume", Name: name, Destination: destination }];
+      });
+};
 
 /**
  * In-memory model of the data-plane volume archive helpers for provider contract

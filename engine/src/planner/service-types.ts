@@ -225,6 +225,9 @@ export const resolvedServiceCacheInput = (entry: ResolvedService) => ({
   })),
   metadata: entry.resolution.metadata ?? {},
   configSourceInputs: entry.configSourceInputs,
+  ...(entry.serviceType.identity?.projectUserDefault === undefined
+    ? {}
+    : { launcherScopedIdentity: entry.serviceType.identity }),
   ...(entry.resolvedArtifactTag === undefined ? {} : { resolvedArtifactTag: entry.resolvedArtifactTag }),
 });
 

@@ -102,6 +102,7 @@ test("repair commands remain available under invalid config and notification pro
       "certificate-authority",
       "debugger-host",
       "global-app",
+      "lando-roots",
       "legacy-snapshot-catalogs",
       "missing-app-roots",
       "network-trust",

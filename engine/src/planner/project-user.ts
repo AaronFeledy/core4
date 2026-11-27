@@ -39,9 +39,13 @@ export interface ResolveProjectUserInput {
   readonly authored: ServiceConfig["projectUser"];
   /** Authored process `user:`; features and defaults do not participate. */
   readonly authoredUser: string | undefined;
+  /** The final command opted in and still uses the stock image's entrypoint. */
+  readonly stockLauncher: boolean;
+  /** Composed process user, used to check launcher-scoped defaults. */
+  readonly processUser: string | undefined;
   /** Whether the finalized mounts include the app-source bind. */
   readonly appSourceMounted: boolean;
-  /** The service type's image identities, absent for a Landofile-supplied image. */
+  /** Catalog identities applicable to the effective image. */
   readonly identity: ServiceImageIdentity | undefined;
   /** Invoking host ids, needed when the engine realizes the mapping by renumbering. */
   readonly host?: { readonly uid: string; readonly gid: string } | undefined;
@@ -89,6 +93,11 @@ const configuredNumericUser = (user: string | undefined): ServiceProjectUser | u
   const pair = NUMERIC_PAIR.exec(user);
   return pair === null ? undefined : numericIdentity(pair[1] ?? "", pair[2] ?? "");
 };
+
+type NumericIds = Pick<ServiceProjectUser, "uid" | "gid">;
+
+const sameNumericIds = (actual: NumericIds | undefined, expected: NumericIds): boolean =>
+  actual?.uid === expected.uid && actual.gid === expected.gid;
 
 const invalidAuthoring = (
   input: ResolveProjectUserInput,
@@ -144,10 +153,26 @@ const mappingRefusal = (
  */
 const resolveImageRenumber = (
   input: ResolveProjectUserInput,
-  candidate: ServiceProjectUser,
-  explicit: boolean,
   namedNumeric: ServiceProjectUser | undefined,
 ): CapabilityError | ResolvedProjectUser => {
+  const explicit = input.authored !== undefined;
+  const declared = input.identity?.projectUser;
+  const launcherPolicy = !explicit && input.identity?.projectUserDefault !== undefined;
+  const launcherNumeric = launcherPolicy ? namedNumeric : undefined;
+  const processUser = input.processUser;
+  if (
+    launcherNumeric !== undefined &&
+    (!input.stockLauncher ||
+      !sameNumericIds(declared, launcherNumeric) ||
+      (processUser !== undefined &&
+        processUser !== input.authoredUser &&
+        !sameNumericIds(configuredNumericUser(processUser), launcherNumeric)))
+  )
+    return explanation(
+      "provider-unsupported",
+      false,
+      "This engine cannot renumber the configured numeric process user on this launcher.",
+    );
   const host = hostIdentity(input.host);
   if (host === undefined)
     return explicit
@@ -161,13 +186,28 @@ const resolveImageRenumber = (
           false,
           "Lando could not read this host's user ids, so the project user is not renumbered.",
         );
-  if (host.uid === 0 || host.gid === 0)
+  if (host.uid === 0 || host.gid === 0) {
+    const rootId = host.uid === 0 ? "uid" : "gid";
+    if (launcherPolicy && launcherNumeric === undefined)
+      return explanation(
+        "provider-unsupported",
+        false,
+        `Lando is running with host ${rootId} 0, so the default worker keeps its container identity.`,
+      );
     return mappingRefusal(
       input,
-      `Service ${input.serviceName} cannot map its project user because Lando is running with host ${host.uid === 0 ? "uid" : "gid"} 0.`,
+      `Service ${input.serviceName} cannot map its project user because Lando is running with host ${rootId} 0.`,
       "Run Lando as your own user instead of with sudo; root cannot be renumbered to a non-root project user.",
     );
-  const declared = input.identity?.projectUser;
+  }
+  // The image build can move a named account, but it cannot change an
+  // authored numeric process user that will still run with its original ids.
+  if (launcherNumeric !== undefined && !sameNumericIds(host, launcherNumeric))
+    return explanation(
+      "provider-unsupported",
+      false,
+      "This engine cannot map a numeric process user that does not already use the host ids.",
+    );
   if (input.identity !== undefined) {
     if (declared === undefined)
       return explicit
@@ -181,14 +221,15 @@ const resolveImageRenumber = (
             false,
             `Service type ${input.serviceTypeLabel} declares no project user to renumber on this engine.`,
           );
-    const declaresCandidate =
-      namedNumeric === undefined ||
-      (namedNumeric.uid === declared.uid && namedNumeric.gid === declared.gid) ||
-      (namedNumeric.uid === host.uid && namedNumeric.gid === host.gid);
-    if (explicit && !declaresCandidate)
+    if (
+      explicit &&
+      namedNumeric !== undefined &&
+      !sameNumericIds(declared, namedNumeric) &&
+      !sameNumericIds(host, namedNumeric)
+    )
       return mappingRefusal(
         input,
-        `Service ${input.serviceName} cannot map the numeric project user ${namedNumeric?.name ?? candidate.name} on this engine; it renumbers the catalog account ${declared.name} to the host user.`,
+        `Service ${input.serviceName} cannot map the numeric project user ${namedNumeric.name} on this engine; it renumbers the catalog account ${declared.name} to the host user.`,
         `Set services.${input.serviceName}.projectUser to "${declared.name}" or "${declared.uid}:${declared.gid}", or to false to keep the container identity.`,
       );
     return {
@@ -198,12 +239,9 @@ const resolveImageRenumber = (
           : { name: declared.name, uid: host.uid, gid: host.gid },
     };
   }
-  const configured = configuredNumericUser(input.authoredUser);
   if (
     namedNumeric === undefined ||
-    configured === undefined ||
-    namedNumeric.uid !== configured.uid ||
-    namedNumeric.gid !== configured.gid
+    (explicit && !sameNumericIds(configuredNumericUser(input.authoredUser), namedNumeric))
   )
     return explicit
       ? mappingRefusal(
@@ -224,8 +262,9 @@ const resolveImageRenumber = (
  * type's image identity, and the provider facts.
  *
  * Explicit authoring is fail-closed: an unsupported provider or an invalid
- * value fails planning. An implicit catalog default never fails; the caller
- * gets an explanation instead so today's behavior is kept.
+ * value fails planning. An unavailable implicit mapping gets an explanation,
+ * unless an eligible image renumber refuses host root. A launcher-scoped
+ * catalog fallback keeps the container identity on host root instead.
  */
 export const resolveProjectUser = (
   input: ResolveProjectUserInput,
@@ -233,11 +272,12 @@ export const resolveProjectUser = (
   const explicit = input.authored !== undefined;
   // Explicit grammar is validated before applicability so an invalid value
   // never passes because this service happens to have no app-source mount.
+  const explicitNumeric =
+    typeof input.authored === "string" ? configuredNumericUser(input.authored) : undefined;
   let explicitCandidate: ServiceProjectUser | undefined;
   if (typeof input.authored === "string") {
-    const pair = NUMERIC_PAIR.exec(input.authored);
-    if (pair !== null) {
-      explicitCandidate = numericIdentity(pair[1] ?? "", pair[2] ?? "");
+    if (explicitNumeric !== undefined) {
+      explicitCandidate = explicitNumeric;
       if (isRootIdentity(explicitCandidate))
         return invalidAuthoring(
           input,
@@ -283,7 +323,7 @@ export const resolveProjectUser = (
   let numericCandidate: ServiceProjectUser | undefined;
   if (typeof input.authored === "string") {
     candidate = explicitCandidate;
-    numericCandidate = NUMERIC_PAIR.test(input.authored) ? explicitCandidate : undefined;
+    numericCandidate = explicitNumeric;
   } else {
     const declared = input.identity?.projectUser;
     const authored = input.authoredUser;
@@ -293,11 +333,16 @@ export const resolveProjectUser = (
         false,
         "The service runs as root, and root processes keep their own identity.",
       );
-    const pair = authored === undefined ? null : NUMERIC_PAIR.exec(authored);
-    if (pair !== null) {
-      candidate = numericIdentity(pair[1] ?? "", pair[2] ?? "");
-      numericCandidate = candidate;
-    } else {
+    numericCandidate = configuredNumericUser(authored);
+    const processUser = input.processUser;
+    if (numericCandidate !== undefined) {
+      candidate = numericCandidate;
+    } else if (
+      input.identity?.projectUserDefault === undefined ||
+      (input.stockLauncher &&
+        (authored === undefined || authored === declared?.name) &&
+        (processUser === undefined || processUser === declared?.name))
+    ) {
       candidate = declared;
     }
   }
@@ -310,7 +355,7 @@ export const resolveProjectUser = (
     );
   if (input.capabilities.projectUserMapping === "userns-keep-id") return { projectUser: candidate };
   if (input.capabilities.projectUserMapping === "image-renumber")
-    return resolveImageRenumber(input, candidate, explicit, numericCandidate);
+    return resolveImageRenumber(input, numericCandidate);
   return unsupported(input, explicit);
 };
 

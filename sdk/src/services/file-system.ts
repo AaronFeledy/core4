@@ -10,6 +10,14 @@ export interface FileStat {
   readonly isFile: boolean;
   readonly isDirectory: boolean;
   readonly isSymbolicLink?: boolean;
+  /** Owning user id where the host reports one (POSIX). */
+  readonly uid?: number;
+  /** Owning group id where the host reports one (POSIX). */
+  readonly gid?: number;
+  /** Permission and type bits where the host reports them (POSIX `st_mode`). */
+  readonly mode?: number;
+  /** Hard-link count where the host reports one (POSIX `st_nlink`). */
+  readonly nlink?: number;
 }
 
 export class FileSystem extends Context.Service<
@@ -18,6 +26,8 @@ export class FileSystem extends Context.Service<
     readonly read: (path: string) => Stream.Stream<Uint8Array, FileSystemError>;
     readonly readText: (path: string) => Effect.Effect<string, FileSystemError>;
     readonly write: (path: string, content: string | Uint8Array) => Effect.Effect<void, FileSystemError>;
+    /** Append with `O_APPEND`, creating the file (not its parents) when missing. */
+    readonly append: (path: string, content: string | Uint8Array) => Effect.Effect<void, FileSystemError>;
     readonly writeAtomic: (
       path: string,
       content: string | Uint8Array,
