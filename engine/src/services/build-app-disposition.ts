@@ -97,8 +97,10 @@ export const appStepDisposition = (
     case "ran": {
       const { result, attempt } = outcome;
       const failure = result.providerFailure;
-      if (failure === undefined && (result.exitCode === undefined || result.exitCode === 0))
+      if (result.exitCode === 0)
         return { outcome: "succeeded", summary: `Built ${subject}`, durationMs: result.durationMs };
+      const { command: _, ...stepReference } = step;
+      const unobserved = result.failureOrigin === "unobserved-exit";
       const kind = buildAppKind(input.plan);
       const baseRemediation =
         kind === "scratch"
@@ -109,18 +111,22 @@ export const appStepDisposition = (
         summary: `${subject} failed`,
         durationMs: result.durationMs,
         failure: new BuildStepFailedError({
-          step,
+          step: unobserved ? stepReference : step,
           transcriptPath: attempt.transcriptPath,
           ...(result.exitCode === undefined ? {} : { exitCode: result.exitCode }),
           ...(result.outputTail === undefined ? {} : { outputTail: result.outputTail }),
           ...(failure === undefined ? {} : { cause: failure }),
           message:
             failure === undefined
-              ? appStepExitMessage(step, result.exitCode ?? 0)
+              ? appStepExitMessage(step, result.exitCode)
               : appStepProviderFailureMessage(step, failure.message),
           remediation: buildFailureRemediation(
             failure?.remediation ?? baseRemediation,
-            buildRemediationSuffix(kind, String(step.service), undefined),
+            buildRemediationSuffix(
+              kind,
+              String(step.service),
+              unobserved ? attempt.transcriptPath : undefined,
+            ),
           ),
         }),
       };

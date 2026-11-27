@@ -34,7 +34,7 @@ import { type EventRuntimeError, isEventRuntimeError } from "../tooling/event-er
 import { EventStepCompileError, compileEventStepProgram } from "../tooling/step-compiler.ts";
 import type { ToolingCommandStepLeaf } from "../tooling/step-program.ts";
 import { runToolingStepProgram } from "../tooling/step-runner.ts";
-import { runCanonicalCommand, withinEventInvocation } from "./event-invocation.ts";
+import { EventInvocationSignal, runCanonicalCommand, withinEventInvocation } from "./event-invocation.ts";
 import { eventStepFailure } from "./event-step-failure.ts";
 import { eventStepFile, eventStepLabel } from "./event-step-identity.ts";
 import { type EventRedactionSources, makeEventStepRunners } from "./event-step-runtime.ts";
@@ -156,7 +156,9 @@ export const runAppEvent = Effect.fn("AppOperation.runEvent")(function* (
   plan: AppPlan,
   event: LandofileEventName,
   payload?: ExpressionContext["event"],
+  requestSignal?: AbortSignal,
 ): Effect.fn.Return<void, EventRuntimeError> {
+  const signal = requestSignal ?? (yield* EventInvocationSignal);
   const redactionOption = yield* Effect.serviceOption(RedactionService);
   const planValues = yield* registerPlanRedaction(plan);
   const inspectRedactor = Option.isSome(redactionOption)
@@ -291,6 +293,7 @@ export const runAppEvent = Effect.fn("AppOperation.runEvent")(function* (
         makeEventStepRunners({
           plan,
           event,
+          ...(signal === undefined ? {} : { signal }),
           events: eventsOption.value,
           privateFileAccess: privateFileAccess.value,
           environmentResolver,
@@ -298,7 +301,7 @@ export const runAppEvent = Effect.fn("AppOperation.runEvent")(function* (
           ...(Option.isSome(shellRunner) ? { hostRunner: shellRunner.value } : {}),
           redactor,
           redactorFor,
-          runCanonical: (leaf, redactionTokens) => runCanonicalCommand(plan, leaf, redactionTokens),
+          runCanonical: (leaf, redactionTokens) => runCanonicalCommand(plan, leaf, redactionTokens, signal),
         }),
         // Event steps have no defaults expansion, so a site's authored path is its effective path.
         (sites) =>

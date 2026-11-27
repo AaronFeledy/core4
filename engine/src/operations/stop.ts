@@ -381,21 +381,28 @@ const resolutionAppId = (root: AbsolutePath, resolution: TeardownResolution): st
 
 const stopResolution = (
   scope: StopScope,
-  resolution: TeardownResolution,
+  evidence: TeardownResolution,
 ): Effect.Effect<StopAppResult, StopAppError, StopAppServices> => {
   const body = Effect.gen(function* () {
-    const app = resolutionAppId(scope.root, resolution);
+    const app = resolutionAppId(scope.root, evidence);
     const pending = yield* journalPending(scope.root, app);
     const selected = requestedStopServices(scope.options) !== undefined;
+    // Without an applied plan only observed containers can still run, so a selected stop treats
+    // retained volumes and ownership records like an app that never started.
+    const unrecorded =
+      evidence.kind === "orphans" && evidence.groups.some((group) => group.services.length > 0);
     if (selected) {
       const refusal = selectedStopRefusal({
         journal: pending,
         rootExists: scope.rootExists,
-        record:
-          resolution.kind === "applied" ? "applied" : resolution.kind === "absent" ? "none" : "unrecorded",
+        record: evidence.kind === "applied" ? "applied" : unrecorded ? "unrecorded" : "none",
       });
       if (refusal !== undefined) return yield* Effect.fail(refusal);
     }
+    const resolution: TeardownResolution =
+      selected && evidence.kind !== "applied"
+        ? { kind: "absent", root: evidence.root, landofilePresent: evidence.landofilePresent }
+        : evidence;
     switch (resolution.kind) {
       case "applied": {
         const target = resolution.target;

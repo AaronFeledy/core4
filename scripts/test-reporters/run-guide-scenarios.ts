@@ -1,7 +1,8 @@
 #!/usr/bin/env bun
 import { availableParallelism } from "node:os";
 import { join } from "node:path";
-import { type TrackTestChild, runWithLiveTestRoots } from "../live-test-roots.ts";
+import { MissingLiveTestBinaryError, type TrackTestChild, runWithLiveTestRoots } from "../live-test-roots.ts";
+import { withRunnerOwnedTestRoots } from "../test-preload-roots.ts";
 import { rewriteScenarioSourceMappedOutput } from "./scenario-source-mapper.ts";
 
 export const LIVE_OUTPUT_ENV = "LANDO_GUIDE_SCENARIO_LIVE_OUTPUT";
@@ -144,12 +145,17 @@ const runTests = async (
 
 const main = async (): Promise<never> => {
   const cwd = process.cwd();
-  const env = Object.freeze({ ...process.env });
   const args = await expandSmokeE2e(Bun.argv.slice(2), cwd);
-  const exitCode = await runWithLiveTestRoots(
-    { live: env.LANDO_GUIDE_E2E === "1", cwd, env },
-    (childEnv, track) => runTests(args, childEnv, track),
-  );
+  const live = process.env.LANDO_GUIDE_E2E === "1";
+  let exitCode = 1;
+  try {
+    exitCode = await withRunnerOwnedTestRoots({ env: process.env, live }, (env) =>
+      runWithLiveTestRoots({ live, cwd, env }, (childEnv, track) => runTests(args, childEnv, track)),
+    );
+  } catch (error) {
+    if (!(error instanceof MissingLiveTestBinaryError)) throw error;
+    console.error(error.message);
+  }
   // Bun's empty-write callback can precede flushing; end both streams before exiting.
   await Promise.all(
     [process.stdout, process.stderr].map((stream) => new Promise<void>((resolve) => stream.end(resolve))),

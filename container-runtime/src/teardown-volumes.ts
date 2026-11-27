@@ -1,6 +1,7 @@
 import { mapFailures } from "@lando/sdk/command-result";
 import { ProviderUnavailableError, StateStoreError } from "@lando/sdk/errors";
 import {
+  type AbsolutePath,
   type AppId,
   type OwnedResourcesCleanupResult,
   type PhysicalVolumeLockTier,
@@ -22,6 +23,7 @@ import { NativeVolumeSchema, volumeCoordinationKey } from "./native-volume-ident
 import type { VolumeSelectorClass } from "./podman/volume-prune.ts";
 import { redactDetails, redactorFor, withApiReason } from "./redact.ts";
 import { removeAllStaleVolumeHolders } from "./stale-data-helpers.ts";
+import { retireDeletedVolumeReceipt } from "./teardown-volume-receipts.ts";
 import { hasSharedCacheOwnership } from "./volume-ownership.ts";
 
 export interface TeardownVolumeRuntime {
@@ -36,6 +38,7 @@ export interface VolumeDeletion {
   readonly name: string;
   readonly volumeClass: VolumeSelectorClass;
   readonly shared: boolean;
+  readonly ownerRoot: AbsolutePath;
   readonly tier?: PhysicalVolumeLockTier | undefined;
   readonly matches: (labels: Readonly<Record<string, string>>) => boolean;
 }
@@ -193,14 +196,16 @@ export const deleteVolumeSnapshot = Effect.fnUntraced(function* (
         (candidate) =>
           deleteCandidate(runtime, candidate).pipe(
             Effect.tap((outcome) =>
-              Effect.sync(() => {
+              Effect.gen(function* () {
                 switch (outcome) {
                   case "removed":
                     volumesRemoved[candidate.volumeClass] += 1;
                     retired.add(candidate.name);
+                    yield* retireDeletedVolumeReceipt(state.value, candidate);
                     break;
                   case "absent":
                     retired.add(candidate.name);
+                    yield* retireDeletedVolumeReceipt(state.value, candidate);
                     break;
                   case "changed":
                     skipped.push(skippedVolume(candidate, "volume changed after enumeration"));

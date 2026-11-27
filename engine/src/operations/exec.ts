@@ -27,6 +27,7 @@ import { appliedAppPlan, selectCommandIdentity } from "../services/execution-ide
 import { HostExecutionDefaults } from "../services/host-execution-context.ts";
 import { registerPlanRedaction } from "../services/plan-redaction.ts";
 import { resolveContainerCwd } from "../subsystems/host-proxy/cwd-remap.ts";
+import { execExitUnobserved } from "./exec-stream-drain.ts";
 import { publishNodePackageManagerWarning } from "./node-package-manager-warning.ts";
 import { availableServiceList, unknownPlanServiceError } from "./unknown-service.ts";
 
@@ -161,7 +162,10 @@ export const execServiceCommand = Effect.fn("AppOperation.execServiceCommand")(f
     ...(inheritStdin(options) ? { stdin: "inherit", stdinStream: options.stdinStream } : {}),
     ...(options.signal === undefined ? {} : { signal: options.signal }),
   };
-  return yield* collectExecStream(provider.execStream(target, spec), sink);
+  return yield* collectExecStream(provider.execStream(target, spec), sink, {
+    signal: options.signal,
+    failure: () => execExitUnobserved(provider.id, target.service),
+  });
 }, Effect.scoped);
 
 export const execApp = Effect.fn("AppOperation.exec")(function* (

@@ -57,6 +57,12 @@ export const httpResponseDetails = (response: {
   body: response.body,
 });
 
+/** The HTTP status in failure details, as written by `httpResponseDetails` or a failed stream request. */
+export const httpStatusOf = (details: unknown): number | undefined => {
+  if (typeof details !== "object" || details === null || !("status" in details)) return undefined;
+  return typeof details.status === "number" ? details.status : undefined;
+};
+
 export const redactResponseDetails = (
   response: {
     readonly status: number;

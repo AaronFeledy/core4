@@ -13,6 +13,7 @@ import { globalDisable, globalEnable } from "@lando/engine/operations/global-pol
 import { rebuildApp } from "@lando/engine/operations/rebuild";
 import { restartApp } from "@lando/engine/operations/restart";
 import { startApp } from "@lando/engine/operations/start";
+import { RuntimeCwd } from "@lando/engine/runtime/cwd";
 import { ScratchRegistry } from "@lando/engine/scratch-app/registry";
 import { ScratchResourceScanner } from "@lando/engine/scratch-app/scanner";
 import * as Scratch from "@lando/engine/scratch-app/service";
@@ -20,14 +21,7 @@ import { EventDispatchControl, layerRuntime as realEventLayer } from "@lando/eng
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { PreServiceStartEvent } from "@lando/sdk/events";
-import {
-  AbsolutePath,
-  AppId,
-  type AppPlan,
-  LoadScopedLandofile,
-  ProviderId,
-  ServiceName,
-} from "@lando/sdk/schema";
+import { AbsolutePath, AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
 import {
   AppPlanner,
   BuildOrchestrator,
@@ -184,6 +178,7 @@ const scratchLayerFor = async (
     readonly order: string[];
   },
 ) => {
+  await writeFile(join(f.plan.root, ".lando.yml"), "name: source\nruntime: 4\nservices: {}\n");
   const planner = await Effect.runPromise(AppPlanner.pipe(Effect.provide(f.layer)));
   const registry = await Effect.runPromise(RuntimeProviderRegistry.pipe(Effect.provide(f.layer)));
   const events = await Effect.runPromise(EventService.pipe(Effect.provide(f.layer)));
@@ -204,19 +199,7 @@ const scratchLayerFor = async (
               }),
       }),
     ),
-    Layer.succeed(
-      LandofileService,
-      LandofileService.of({
-        discover: Effect.succeed(
-          LoadScopedLandofile.make({
-            stage: "load-scoped",
-            document: { name: "source", runtime: 4, services: {} },
-            pendingSites: [],
-            context: { appRoot: f.plan.root, env: {} },
-          }),
-        ),
-      }),
-    ),
+    Layer.succeed(RuntimeCwd, f.plan.root),
     Layer.succeed(
       RuntimeProviderRegistry,
       makeTestRuntimeProviderRegistry({

@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 import { runWithLiveTestRoots } from "./live-test-roots.ts";
+import { withRunnerOwnedTestRoots } from "./test-preload-roots.ts";
 import { TEST_ROOT, collectTestFiles, resolveTestSelection } from "./test-selection-files.ts";
 import { TEST_SELECTIONS, type TestSelection } from "./test-selections.ts";
 
@@ -40,9 +41,9 @@ export const runTestSelection = async (
       ? [`./${selector.slice(0, -1)}`]
       : resolveTestSelection({ ...selection, paths: [selector] }, files).map((path) => `./${path}`),
   );
-  return runWithLiveTestRoots(
-    { live: selection.usesInheritedLivePodmanRoots === true, cwd: root, env: process.env },
-    (env, track) => {
+  const live = selection.usesInheritedLivePodmanRoots === true;
+  return withRunnerOwnedTestRoots({ env: process.env, live }, (runnerEnv) =>
+    runWithLiveTestRoots({ live, cwd: root, env: runnerEnv }, (env, track) => {
       const child = Bun.spawn(
         [
           process.execPath,
@@ -56,7 +57,7 @@ export const runTestSelection = async (
       );
       track(child);
       return child.exited;
-    },
+    }),
   );
 };
 

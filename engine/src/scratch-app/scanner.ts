@@ -10,10 +10,7 @@ import { PathsService, RuntimeProviderRegistry, type RuntimeProviderShape } from
 import { Context, Effect, Layer, Option } from "effect";
 import { currentDataRoot } from "../operations/data-root-scope.ts";
 import { runtimeOnline } from "../providers/runtime-observation.ts";
-
-const CANONICAL_SCRATCH_ID = /^scratch-[a-z0-9]+(?:-[a-z0-9]+)*-[0-9a-f]{6}$/u;
-
-export const isCanonicalScratchId = (id: string): boolean => CANONICAL_SCRATCH_ID.test(id);
+import { isCanonicalScratchId } from "./identity.ts";
 
 const scratchIdFromLabels = (
   labels: Readonly<Record<string, string>> | undefined,

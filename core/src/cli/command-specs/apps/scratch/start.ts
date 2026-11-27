@@ -18,8 +18,13 @@ export const appsScratchStartSpec: LandoCommandSpec<ScratchStartResult> = {
   aliases: ["scratch:start", "scratch"],
   bootstrap: "scratch",
   flags: {
-    fork: Flags.boolean({ description: "Use the current app as the scratch source.", default: false }),
+    fork: Flags.boolean({ description: "Fork an existing app.", default: false }),
     from: Flags.string({ description: "Recipe reference to materialize as a scratch app." }),
+    source: Flags.string({
+      helpValue: "path",
+      description:
+        "Directory to discover the app to fork from. Requires --fork; defaults to the current directory.",
+    }),
     detach: Flags.boolean({ description: "Return after acquiring the scratch app.", default: false }),
     name: Flags.string({ description: "Base name for the generated scratch id." }),
     answer: Flags.string({ description: "Recipe answer in key=value form (repeatable).", multiple: true }),
@@ -64,7 +69,7 @@ export const appsScratchStartSpec: LandoCommandSpec<ScratchStartResult> = {
     }),
     "no-local-overrides": Flags.boolean({
       default: false,
-      description: "Remove local and user Landofile overrides from a fully isolated fork.",
+      description: "Ignore local and user Landofile layers when forking an app.",
     }),
     "no-hostname-suffix": Flags.boolean({
       default: false,

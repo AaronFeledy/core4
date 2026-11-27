@@ -6,7 +6,7 @@ import { launcherAuthority, primaryPortSelector, servicePortEndpoints } from "./
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { tcpProbe } from "./_tcp-probe.ts";
 
-const DEFAULT_IMAGE = "memcached:1.6";
+export const DEFAULT_IMAGE = "memcached:1.6";
 export const MEMCACHED_LISTENER = {
   port: 11211,
   daemon: "Memcached",

@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
+import { AbsolutePath, AppId, AppPlan, ProviderId, ServiceName, planAppIdentity } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
 import {
   AppPlanSanitizer,
@@ -11,13 +11,17 @@ import {
   EventService,
   PathsService,
 } from "@lando/sdk/services";
+import { makePluginStateStore } from "@lando/state-store/plugin";
+import { makeStateStore } from "@lando/state-store/service";
 import { Effect, Layer, Schema, Stream } from "effect";
 import { dataHelperImage } from "../src/data-plane.ts";
 import {
   bindResolvedProviderOps,
   forgetAppliedPlanUnlessKept,
   hasResourceOwnershipRecords,
+  listResourceOwnershipRecords,
   makeProviderPlanState,
+  makeResourceOwnershipStore,
   noPlanErrorFactory,
   notImplementedError,
   providerHostInputs,
@@ -61,6 +65,49 @@ test.each(["missing", "lock-only", "record"] as const)(
     }
   },
 );
+test("recorded ownership lists the decoded summary of every inventory and fails on an unreadable one", async () => {
+  // Given one provider's inventories for a user app and a scratch app's managed root.
+  const root = await mkdtemp(join(tmpdir(), "lando-listed-ownership-"));
+  const access = { enforce: async () => undefined, verify: async () => undefined };
+  const state = makePluginStateStore(
+    makeStateStore({ privateFileAccess: access }),
+    AbsolutePath.make(root),
+    access,
+  );
+  try {
+    const store = makeResourceOwnershipStore("lando", state);
+    const stores = [{ name: "data", kind: "data", scope: "app" } as const];
+    const scratchId = AppId.make("scratch-demo-abcdef");
+    const scratchRoot = AbsolutePath.make("/data/scratch/scratch-demo-abcdef/root");
+    const scratchPlan: AppPlan = {
+      ...plan,
+      id: scratchId,
+      name: scratchId,
+      slug: scratchId,
+      root: scratchRoot,
+      identity: planAppIdentity({ root: scratchRoot }),
+      stores,
+    };
+    expect(await Effect.runPromise(listResourceOwnershipRecords("lando", root, state))).toEqual([]);
+    await Effect.runPromise(Effect.all([store.prepare({ ...plan, stores }), store.prepare(scratchPlan)]));
+
+    // When the provider's records are listed.
+    const listed = await Effect.runPromise(listResourceOwnershipRecords("lando", root, state));
+
+    // Then each inventory appears once, exactly as its own summary reads it.
+    const expected = await Effect.runPromise(
+      Effect.all([store.summary(plan.root), store.summary(scratchRoot)]),
+    );
+    expect(expected).not.toContain(undefined);
+    expect(new Set<unknown>(listed)).toEqual(new Set<unknown>(expected));
+    await Bun.write(join(root, "resource-ownership", "corrupt.json"), "{");
+    const corrupt = await Effect.runPromise(Effect.flip(listResourceOwnershipRecords("lando", root, state)));
+    expect(corrupt).toMatchObject({ _tag: "ProviderUnavailableError", operation: "resource-ownership" });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 const stateOptions = {
   ctx,
   providerId: ProviderId.make("lando"),

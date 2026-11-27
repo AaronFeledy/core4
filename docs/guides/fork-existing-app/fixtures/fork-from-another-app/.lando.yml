@@ -1,0 +1,9 @@
+name: fork-caller-guide
+router:
+  enabled: false
+services:
+  caller:
+    type: compose
+    image: docker.io/library/busybox:1.37
+    home: false
+    command: [sleep, "600"]
