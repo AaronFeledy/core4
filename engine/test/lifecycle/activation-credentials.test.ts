@@ -402,10 +402,26 @@ test.each(["desired", "retained"] as const)(
   },
 );
 
-test.each(["standalone", "optional", "required"] as const)(
-  "an unproven custom database build stays read-only for %s activation",
-  async (edge) => {
+test.each([
+  ["standalone", "missing"],
+  ["optional", "missing"],
+  ["required", "missing"],
+  ["standalone", "unreadable"],
+  ["optional", "unreadable"],
+  ["required", "unreadable"],
+] as const)(
+  "a custom database build stays read-only for %s activation (receipt: %s)",
+  async (edge, receipt) => {
     const fixture = activation("postgres", { built: true });
+    const store: StateStoreShape = {
+      ...fixture.stateStore,
+      open: (spec) =>
+        receipt === "unreadable" && spec.key === "artifact-build-results.bin"
+          ? Effect.fail(
+              new StateStoreError({ reason: "io", operation: "read", remediation: "Check permissions." }),
+            )
+          : fixture.stateStore.open(spec),
+    };
     const client = ServiceName.make("client");
     const target: AppPlan =
       edge === "standalone"
@@ -472,6 +488,7 @@ test.each(["standalone", "optional", "required"] as const)(
             openSession: () => Effect.die("unexpected session"),
           }),
         ),
+        store,
       ),
     );
     const warnings = await Effect.runPromise(fixture.warnings.list);
@@ -546,7 +563,7 @@ test.each([false, true])(
           if (Exit.isFailure(settled)) throw new TypeError("Deadline unexpectedly failed");
           expect(settled.value.attempts[0]).toMatchObject({
             _tag: "ServiceStartError",
-            details: { reason: "timeout" },
+            details: { reason: "timeout", mutation: "none", completed: [] },
           });
         }
       }).pipe(Effect.provide(TestClock.layer())),
@@ -584,7 +601,7 @@ test("preserves and sanitizes mixed database exec failure causes instead of retu
 test.each(["Die", "Interrupt"] as const)(
   "propagates provenance cleanup %s with sanitized state failure reasons",
   async (tag) => {
-    const { gated, stateStore } = activation("postgres", { built: true });
+    const { gated, stateStore, calls } = activation("postgres", { built: true });
     const canary = "sensitive provenance payload";
     const read = new StateStoreError({ reason: "io", operation: canary, remediation: canary });
     const exit = await Effect.runPromiseExit(
@@ -613,6 +630,7 @@ test.each(["Die", "Interrupt"] as const)(
       { tag, role: tag === "Die" ? "cleanup" : undefined },
     ]);
     expect(Cause.pretty(exit.cause)).not.toContain(canary);
+    expect(calls.exec).toBe(0);
   },
 );
 
@@ -773,6 +791,7 @@ const mssqlExec =
     managed?: { ready: boolean; catalogReads: number };
     loseWriteResponse?: boolean;
     writeResponse?: ReturnType<RuntimeProviderShape["execStream"]>;
+    verificationResponse?: ReturnType<RuntimeProviderShape["execStream"]>;
   }): RuntimeProviderShape["execStream"] =>
   (_target, options) =>
     Stream.unwrap(
@@ -799,6 +818,13 @@ const mssqlExec =
           );
         }
         const admin = sa || (options.command.includes("lando_admin") && state.managed?.ready === true);
+        if (
+          state.databaseExists &&
+          sa &&
+          input.includes("IS_SRVROLEMEMBER") &&
+          state.verificationResponse !== undefined
+        )
+          return state.verificationResponse;
         if (sa && input.includes("CREATE DATABASE [appdb]")) {
           state.databaseExists = true;
           if (state.writeResponse !== undefined) return state.writeResponse;
@@ -826,44 +852,52 @@ const mssqlExec =
       }),
     );
 
-test("activation expiry after dispatch reports an uncertain database write", async () => {
-  const { gated } = activation("mssql");
-  await Effect.runPromise(
-    Effect.gen(function* () {
-      const preflight = yield* Deferred.make<void>();
-      const wrote = yield* Deferred.make<void>();
-      const state = {
-        databaseExists: false,
-        writeResponse: Stream.unwrap(Deferred.succeed(wrote, undefined).pipe(Effect.as(Stream.never))),
-      };
-      const exec = mssqlExec(state);
-      let delayed = 0;
-      const attempt = yield* Effect.forkChild(
-        gated({
-          execStream: (target, command) => {
-            if (delayed++ >= 2) return exec(target, command);
-            return Stream.unwrap(
-              Deferred.succeed(preflight, undefined).pipe(
-                Effect.andThen(Effect.sleep("10 seconds")),
-                Effect.as(exec(target, command)),
-              ),
-            );
+test.each([false, true])(
+  "activation expiry reports write evidence (acknowledged: %s)",
+  async (acknowledged) => {
+    const { gated } = activation("mssql");
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const preflight = yield* Deferred.make<void>();
+        const wrote = yield* Deferred.make<void>();
+        const pending = Stream.unwrap(Deferred.succeed(wrote, undefined).pipe(Effect.as(Stream.never)));
+        const state = {
+          databaseExists: false,
+          ...(acknowledged ? { verificationResponse: pending } : { writeResponse: pending }),
+        };
+        const exec = mssqlExec(state);
+        let delayed = 0;
+        const attempt = yield* Effect.forkChild(
+          gated({
+            execStream: (target, command) => {
+              if (delayed++ >= 2) return exec(target, command);
+              return Stream.unwrap(
+                Deferred.succeed(preflight, undefined).pipe(
+                  Effect.andThen(Effect.sleep("10 seconds")),
+                  Effect.as(exec(target, command)),
+                ),
+              );
+            },
+          }),
+        );
+        yield* Deferred.await(preflight);
+        yield* TestClock.adjust("20 seconds");
+        yield* Deferred.await(wrote);
+        yield* TestClock.adjust("12 seconds");
+        const { attempts } = yield* Fiber.join(attempt);
+        expect(state.databaseExists).toBe(true);
+        expect(taggedErrorJson(attempts[0])).toMatchObject({
+          _tag: "ServiceStartError",
+          details: {
+            reason: "timeout-after-mutation",
+            mutation: acknowledged ? "partial" : "possible",
+            completed: acknowledged ? ["database"] : [],
           },
-        }),
-      );
-      yield* Deferred.await(preflight);
-      yield* TestClock.adjust("20 seconds");
-      yield* Deferred.await(wrote);
-      yield* TestClock.adjust("12 seconds");
-      const { attempts } = yield* Fiber.join(attempt);
-      expect(state.databaseExists).toBe(true);
-      expect(attempts[0]).toMatchObject({
-        _tag: "ServiceStartError",
-        details: { reason: "timeout-after-mutation" },
-      });
-    }).pipe(Effect.provide(TestClock.layer())),
-  );
-});
+        });
+      }).pipe(Effect.provide(TestClock.layer())),
+    );
+  },
+);
 
 test("converges after a transient preflight exec failure", async () => {
   const { run, warnings } = activation("mssql");
@@ -919,9 +953,9 @@ test("does not retry when the provider loses the response to a database write", 
   ]);
 });
 
-test("reports possible changes when the database target changes after a write", async () => {
+test("reports acknowledged changes when the database target changes after a write", async () => {
   const state = { databaseExists: false };
-  const { runGated, db } = activation("mssql", {
+  const { runGated, db, warnings } = activation("mssql", {
     inspectContainerId: () => (state.databaseExists ? "replacement-db" : "native-db"),
   });
 
@@ -930,8 +964,15 @@ test("reports possible changes when the database target changes after a write", 
   expect(state.databaseExists).toBe(true);
   expect(taggedErrorJson(attempts[0])).toMatchObject({
     _tag: "ServiceStartError",
-    details: { dependency: db.name, reason: "target-changed", mutation: "possible" },
+    details: { dependency: db.name, reason: "target-changed", mutation: "partial", completed: ["database"] },
   });
+  expect(await Effect.runPromise(warnings.list)).toMatchObject([
+    { code: "LANDO_DATABASE_ADMIN_SEED_UNAVAILABLE" },
+    {
+      code: "LANDO_DATABASE_CREDENTIAL_CONVERGENCE_FAILED",
+      context: { service: db.name, reason: "target-changed", mutation: "partial", completed: "database" },
+    },
+  ]);
 });
 
 test("rechecks the retained SQL Server managed login once sa has authenticated", async () => {

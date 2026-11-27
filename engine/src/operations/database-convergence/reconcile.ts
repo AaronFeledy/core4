@@ -21,15 +21,19 @@ import { containerAddress } from "./container-address.ts";
 import { matchedBatch } from "./matched-probe.ts";
 import { mongodb } from "./mongodb.ts";
 import { mssql } from "./mssql.ts";
+import {
+  type CredentialMutationEvidence,
+  credentialMembers,
+  makeCredentialMutationEvidence,
+} from "./mutation-evidence.ts";
 import { mysqlFamily } from "./mysql-family.ts";
 import { postgres } from "./postgres.ts";
 import { type ActivatedDatabaseTarget, observeTarget, targetError } from "./target.ts";
 import type { AdapterContext, CredentialStep } from "./types.ts";
 
 const adapters = { postgres, mysql: mysqlFamily, mariadb: mysqlFamily, mongodb, mssql };
-const members = ["user", "password", "database", "rootPassword"] as const;
 const changed = (delta: readonly CredentialStep[]) =>
-  members.filter((member) => delta.some((step) => step.members.includes(member)));
+  credentialMembers.filter((member) => delta.some((step) => step.members.includes(member)));
 
 export const prepareReconciliation = Effect.fn("DatabaseConvergence.prepare")(function* (input: {
   readonly plan: AppPlan;
@@ -43,7 +47,7 @@ export const prepareReconciliation = Effect.fn("DatabaseConvergence.prepare")(fu
   readonly onAdminSeedUnavailable?: Effect.Effect<void>;
   readonly applying?: ActivatedDatabaseTarget;
   readonly retained?: readonly ServicePlan[];
-  readonly onMutationDispatch?: Effect.Effect<void>;
+  readonly mutationEvidence?: CredentialMutationEvidence;
 }) {
   const {
     plan,
@@ -101,22 +105,25 @@ export const prepareReconciliation = Effect.fn("DatabaseConvergence.prepare")(fu
   }
   const observed = yield* observeTarget(input);
   let phase: SqlCredentialApplyError["phase"] = "preflight";
-  let possibleWrite = false;
-  const completed = new Set<(typeof members)[number]>();
-  const failure: AdapterContext["failure"] = (message, exitCode, kind) =>
-    new SqlCredentialApplyError({
+  const evidence = input.mutationEvidence ?? makeCredentialMutationEvidence();
+  const failure: AdapterContext["failure"] = (message, exitCode, kind) => {
+    const snapshot = evidence.snapshot();
+    return new SqlCredentialApplyError({
       service: service.name,
       family,
       phase,
       message,
-      mutation: completed.size > 0 ? "partial" : possibleWrite ? "possible" : "none",
-      ...(kind === "transient" && phase === "preflight" && !possibleWrite ? { retryable: true } : {}),
-      completed: members.filter((member) => completed.has(member)),
+      ...snapshot,
+      ...(kind === "transient" && phase === "preflight" && snapshot.mutation === "none"
+        ? { retryable: true }
+        : {}),
       ...(exitCode === undefined ? {} : { exitCode }),
-      remediation: possibleWrite
-        ? "Preview the database state before retrying; do not reset the volume."
-        : "Check database authentication and administrator privileges before retrying.",
+      remediation:
+        snapshot.mutation !== "none"
+          ? "Preview the database state before retrying; do not reset the volume."
+          : "Check database authentication and administrator privileges before retrying.",
     });
+  };
   const resolve = Effect.fnUntraced(function* (value: typeof creds.rootPassword, required: boolean) {
     if (value === undefined) return undefined;
     const result = yield* settleOrdinaryFailure(
@@ -322,9 +329,7 @@ export const prepareReconciliation = Effect.fn("DatabaseConvergence.prepare")(fu
           const confirmedAdoption = yield* managedAccess.adoption(admin, managed);
           if (!Equal.equals(adoption, confirmedAdoption)) return yield* stale;
           yield* sameObservation();
-          yield* input.onMutationDispatch ?? Effect.void;
-          possibleWrite = true;
-          const result = yield* run(confirmedAdoption);
+          const result = yield* evidence.run(run(confirmedAdoption));
           if (result.exitCode !== 0 || !(yield* managedAccess.prove(managed))) {
             return yield* failure(
               "Could not establish the Lando-owned database administrator.",
@@ -334,12 +339,9 @@ export const prepareReconciliation = Effect.fn("DatabaseConvergence.prepare")(fu
         }
         for (const step of delta) {
           yield* sameObservation();
-          yield* input.onMutationDispatch ?? Effect.void;
-          possibleWrite = true;
-          const response = yield* run(step.request);
+          const response = yield* evidence.run(run(step.request), step.members);
           if (response.exitCode !== 0)
             return yield* failure("The database declined a credential change.", response.exitCode);
-          for (const member of step.members) completed.add(member);
         }
         phase = "verify";
         yield* sameObservation();

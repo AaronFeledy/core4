@@ -1,5 +1,4 @@
 import { RedactionService } from "@lando/redaction/service";
-import { mapFailures } from "@lando/sdk/command-result";
 import { ProviderCapabilityError } from "@lando/sdk/errors";
 import { type AppPlan, type ServiceName, planDataId } from "@lando/sdk/schema";
 import {
@@ -9,9 +8,8 @@ import {
   type RuntimeProviderShape,
   StateStore,
 } from "@lando/sdk/services";
-import { Clock, Effect, Option, Ref, Semaphore } from "effect";
+import { Clock, Effect, Option, Ref, Result, Semaphore } from "effect";
 import { catalogDatabase } from "../operations/database-convergence/catalog.ts";
-import { targetError } from "../operations/database-convergence/target.ts";
 import {
   attemptActivationCredential,
   boundCredentialAttempt,
@@ -22,13 +20,14 @@ import {
   type DatabaseTarget,
   type HealthyContinuation,
   activationDatabaseTargets,
+  credentialFailureDetail,
   credentialGateError,
   credentialGateFailure,
   credentialRecovery,
   credentialWorkAfterApply,
-  unprovenBuildDetail,
 } from "./activation-credential-policy.ts";
 import { observeUnmanagedCredentials, warning } from "./activation-credential-warnings.ts";
+import { settleOrdinaryFailure } from "./failure-compensation.ts";
 import { coordinatedServiceVolume } from "./volume-coordination.ts";
 
 type CredentialPhase =
@@ -123,12 +122,12 @@ export const makeActivationCredentialWorker = Effect.fn("Activation.makeCredenti
     return yield* boundCredentialAttempt({
       providerId: provider.id,
       budgetMs: Math.min(yield* Ref.get(remaining), credentialBudgetMs(desired.family)),
-      work: Effect.fnUntraced(function* (onMutationDispatch) {
+      work: Effect.fnUntraced(function* (mutationEvidence) {
         const catalog =
           phase.kind === "observe-only"
             ? undefined
-            : yield* catalogDatabase({ plan, service, retained }).pipe(
-                mapFailures(() => targetError("unsupported-target", unprovenBuildDetail, service.name)),
+            : yield* settleOrdinaryFailure(catalogDatabase({ plan, service, retained })).pipe(
+                Effect.map((result) => (Result.isSuccess(result) ? result.success : undefined)),
               );
         if (catalog === undefined) {
           if (phase.kind === "inline") return { kind: "unproven-build" } satisfies CredentialAttempt;
@@ -158,7 +157,7 @@ export const makeActivationCredentialWorker = Effect.fn("Activation.makeCredenti
           service,
           desired,
           retained,
-          onMutationDispatch,
+          mutationEvidence,
           ...(previous?.family === desired.family ? { previous } : {}),
           ...admission,
           ...(createdVolumes === undefined ? {} : { createdVolumes }),
@@ -225,16 +224,19 @@ export const makeActivationCredentialWorker = Effect.fn("Activation.makeCredenti
                 kind: work === "observe" ? "observe-only" : "residual",
               });
         if (result?.kind === "failed") {
-          const { detail, reason, mutation } = result.failure;
+          const { reason, mutation, completed } = result.failure;
           yield* warning({
             code: "LANDO_DATABASE_CREDENTIAL_CONVERGENCE_FAILED",
-            message: `Could not verify or apply database credentials for ${service.name}. ${detail}`,
+            message: `Could not verify or apply database credentials for ${service.name}. ${credentialFailureDetail(result.failure)}`,
             remediation: credentialRecovery(result.failure),
             context: {
               service: service.name,
               family: connection.family,
               reason,
               ...(mutation === undefined ? {} : { mutation }),
+              ...(completed === undefined || completed.length === 0
+                ? {}
+                : { completed: completed.join(",") }),
             },
           });
         }

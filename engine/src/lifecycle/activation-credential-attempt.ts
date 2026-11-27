@@ -15,7 +15,11 @@ import { MessageInfoEvent } from "@lando/sdk/events";
 import { runProbeDetailed } from "@lando/sdk/probe";
 import type { DatabaseConnection, VolumeCreationFact } from "@lando/sdk/schema";
 import { EventService } from "@lando/sdk/services";
-import { DateTime, Duration, Effect, Option, Ref, Result, absurd } from "effect";
+import { DateTime, Duration, Effect, Option, Result, absurd } from "effect";
+import {
+  type CredentialMutationEvidence,
+  makeCredentialMutationEvidence,
+} from "../operations/database-convergence/mutation-evidence.ts";
 import { prepareReconciliation } from "../operations/database-convergence/reconcile.ts";
 import type { CredentialAttempt, CredentialFailure } from "./activation-credential-policy.ts";
 import { warning } from "./activation-credential-warnings.ts";
@@ -28,36 +32,27 @@ const failed = (failure: CredentialFailure): CredentialAttempt => ({ kind: "fail
 export const boundCredentialAttempt = Effect.fnUntraced(function* <E, R>(input: {
   readonly providerId: string;
   readonly budgetMs: number;
-  readonly work: (
-    onMutationDispatch: Effect.Effect<void>,
-  ) => Effect.Effect<CredentialAttempt | undefined, E, R>;
+  readonly work: (evidence: CredentialMutationEvidence) => Effect.Effect<CredentialAttempt | undefined, E, R>;
 }) {
-  const mutationDispatched = yield* Ref.make(false);
-  const expired = (possibleWrite: boolean) =>
+  const evidence = makeCredentialMutationEvidence();
+  const expired = (snapshot: ReturnType<CredentialMutationEvidence["snapshot"]>) =>
     failed(
-      possibleWrite
+      snapshot.mutation !== "none"
         ? {
             reason: "timeout-after-mutation",
             detail: "The credential budget expired after a database write may have been dispatched.",
-            mutation: "possible",
+            ...snapshot,
           }
         : {
             reason: "timeout",
             detail: "The activation credential budget expired before any database write.",
-            mutation: "none",
+            ...snapshot,
           },
     );
-  if (input.budgetMs <= 0) return expired(false);
+  if (input.budgetMs <= 0) return expired(evidence.snapshot());
   const redaction = yield* RedactionService;
-  return yield* withDeadline(
-    input.work(Ref.set(mutationDispatched, true)),
-    Duration.millis(input.budgetMs),
-  ).pipe(
-    Effect.flatMap((settled) =>
-      settled._tag === "Completed"
-        ? Effect.succeed(settled.value)
-        : Ref.get(mutationDispatched).pipe(Effect.map(expired)),
-    ),
+  return yield* withDeadline(input.work(evidence), Duration.millis(input.budgetMs)).pipe(
+    Effect.map((settled) => (settled._tag === "Completed" ? settled.value : expired(evidence.snapshot()))),
     Effect.catchCause((cause) => {
       const reason = unscopedFailureReason(cause);
       const error = reason?._tag === "Fail" ? reason.error : undefined;
@@ -66,16 +61,15 @@ export const boundCredentialAttempt = Effect.fnUntraced(function* <E, R>(input: 
         error instanceof SqlCredentialTargetError ||
         error instanceof SqlCredentialAdminAuthError
       ) {
-        return Effect.all([redaction.forProfile("secrets"), Ref.get(mutationDispatched)]).pipe(
-          Effect.map(([profile, dispatched]) => {
+        return redaction.forProfile("secrets").pipe(
+          Effect.map((profile) => {
             const detail = profile.redactString(error.message);
             switch (error._tag) {
               case "SqlCredentialApplyError":
                 return failed({
                   reason: error.phase,
                   detail,
-                  mutation: error.mutation,
-                  completed: error.completed,
+                  ...evidence.snapshot(),
                   ...(error.exitCode === undefined ? {} : { exitCode: error.exitCode }),
                   guidance: "Check database authentication and administrator privileges.",
                 });
@@ -90,7 +84,7 @@ export const boundCredentialAttempt = Effect.fnUntraced(function* <E, R>(input: 
                 return failed({
                   reason: error.reason,
                   detail,
-                  mutation: dispatched ? "possible" : "none",
+                  ...evidence.snapshot(),
                   guidance:
                     error.reason === "not-running"
                       ? "Check why the database stopped or failed to start."

@@ -80,8 +80,6 @@ export const credentialWorkAfterApply = (
   return target.isCatalogCandidate() ? "converge" : "observe";
 };
 
-export const unprovenBuildDetail = "The database image's catalog provenance could not be verified.";
-
 export const credentialGateFailure = (
   result: CredentialAttempt | undefined,
 ): CredentialFailure | undefined => {
@@ -89,7 +87,7 @@ export const credentialGateFailure = (
     case "unproven-build":
       return {
         reason: "unsupported-target",
-        detail: unprovenBuildDetail,
+        detail: "The database image's catalog provenance could not be verified.",
         guidance: "Use the bundled catalog image.",
       };
     case "failed":
@@ -113,11 +111,7 @@ export const credentialGateError = (
   { consumer, dependency }: HealthyDependency,
   failure: CredentialFailure,
 ) => {
-  const { reason, detail, mutation, completed, exitCode } = failure;
-  const changes =
-    completed === undefined || completed.length === 0
-      ? ""
-      : ` The database acknowledged changes to: ${completed.join(", ")}.`;
+  const { reason, mutation, completed, exitCode } = failure;
   return new ServiceStartError({
     providerId,
     operation: "database-credential-convergence",
@@ -129,7 +123,12 @@ export const credentialGateError = (
       ...(completed === undefined ? {} : { completed }),
       ...(exitCode === undefined ? {} : { exitCode }),
     },
-    message: `Cannot start ${consumer}: Lando could not prepare credentials for database ${dependency}. ${detail}${changes}`,
+    message: `Cannot start ${consumer}: Lando could not prepare credentials for database ${dependency}. ${credentialFailureDetail(failure)}`,
     remediation: credentialRecovery(failure),
   });
 };
+
+export const credentialFailureDetail = ({ detail, completed }: CredentialFailure) =>
+  completed === undefined || completed.length === 0
+    ? detail
+    : `${detail} The database acknowledged changes to: ${completed.join(", ")}.`;
