@@ -158,7 +158,10 @@ export const attemptActivationCredential = Effect.fn("Activation.attemptCredenti
   );
   const result = last?.value;
   if (result === undefined)
-    return failed({ reason: "unavailable", detail: "Credential preflight did not return a completed result." });
+    return failed({
+      reason: "unavailable",
+      detail: "Credential preflight did not return a completed result.",
+    });
   const ready = yield* Effect.fromResult(result);
   const updated = yield* ready.apply;
   const { nativeName, generation, ownerRoot } = ready.volume;
