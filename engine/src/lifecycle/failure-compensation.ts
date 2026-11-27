@@ -1,8 +1,22 @@
-import { mergeFailure } from "@lando/sdk/command-result";
+import { mergeFailure, unscopedFailureReason } from "@lando/sdk/command-result";
 import type { FailureRole } from "@lando/sdk/schema";
-import { Cause, Effect, Exit } from "effect";
+import { Cause, Effect, Exit, Result } from "effect";
 
 export { mergeFailure };
+
+/** Reify only ordinary failures; preserve exceptional reasons and their roles. */
+export const settleOrdinaryFailure = <A, E, R>(
+  effect: Effect.Effect<A, E, R>,
+): Effect.Effect<Result.Result<A, E>, E, R> =>
+  effect.pipe(
+    Effect.map(Result.succeed),
+    Effect.catchCause((cause) => {
+      const reason = unscopedFailureReason(cause);
+      return reason !== undefined && Cause.isFailReason(reason)
+        ? Effect.succeed(Result.fail(reason.error))
+        : Effect.failCause(cause);
+    }),
+  );
 
 export const mapFailureErrors =
   <E, E2>(map: (error: E) => E2) =>

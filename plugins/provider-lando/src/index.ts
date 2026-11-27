@@ -866,6 +866,7 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
       case "inspect":
       case "locateVolume":
       case "observeVolume":
+      case "observeBoundVolume":
       case "adoptVolume":
       case "removeVolumeSnapshot":
       case "listVolumeSnapshots":
@@ -1839,6 +1840,7 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
             witness,
           );
         }),
+        healthyDependencyContinuation: true,
         apply: Effect.fn("RuntimeProvider.apply")(function* (plan, applyOptions) {
           yield* validateHealthcheckExecution(plan, applyOptions.executeReadinessAttempt);
           const previous = yield* appliedPlans.resolveMutationPlan(plan.id);
@@ -1877,6 +1879,7 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
                 : { resolveServiceEnvironment: applyOptions.resolveServiceEnvironment }),
               reconcile: applyOptions.reconcile,
               onVolumeCreated: applyOptions.onVolumeCreated,
+              continueHealthyDependency: applyOptions.continueHealthyDependency,
               completionPlan: applyOptions.completionPlan ?? applyOptions.recordedPlan ?? plan,
             }).pipe(
               Effect.tap(() => planState.removeOrphanedNetworks(physicalPlan, previousPhysicalPlan)),

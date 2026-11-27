@@ -9,19 +9,16 @@ import { ServiceNotReadyError } from "@lando/sdk/errors";
 import type { AppPlan, DatabaseConnection, ServiceName } from "@lando/sdk/schema";
 import type { RuntimeProviderShape, ServiceRuntimeInfo } from "@lando/sdk/services";
 import { Cause, DateTime, Duration, Effect, Option, Stream } from "effect";
-import { databaseCredentialRemediation } from "./database-credentials.ts";
+import { databaseCredentialGuide } from "./database-credentials.ts";
 
 /** A classified login rejection adds credential recovery advice; an unproven state adds none. */
 const credentialRemediation = (
   connection: DatabaseConnection | undefined,
   state: DatabaseClientCheckState | undefined,
-  target: ReadinessTarget,
 ): string => {
   if (connection === undefined || state === undefined) return "";
   if (state !== "rejected" && state !== "database-missing") return "";
-  if (target.plan.extensions["@lando/core/scratch"] !== undefined || target.plan.id === "global")
-    return " Check that the database credentials and database name match the running service before retrying.";
-  return ` ${databaseCredentialRemediation(connection.family, state, target.service)}`;
+  return ` Check that the database credentials and database name match the running service, then retry the same command with the same selection. See ${databaseCredentialGuide(connection.family)}.`;
 };
 
 /**
@@ -120,6 +117,7 @@ export const failReadiness = Effect.fn("ServiceReadiness.fail")(function* (
   );
   const name = String(target.service);
   const commands = readinessCommands(target);
+  const credentials = credentialRemediation(service?.connection, logEvidence?.credentialState);
   const diagnostic =
     listener !== undefined && service !== undefined ? listenerDiagnostic(listener, service) : undefined;
   const action = diagnostic?.action ?? (diagnose ? listenerAuthorityAction(service) : undefined);
@@ -136,7 +134,7 @@ export const failReadiness = Effect.fn("ServiceReadiness.fail")(function* (
     remediation:
       evidence.reason === "inspect-failed"
         ? "Run `lando doctor` to diagnose and restore the provider, then retry start."
-        : `${action === undefined ? "" : `${redactor.redactString(action)}\n`}${diagnostic?.authority === undefined ? "" : `${redactor.redactString(diagnostic.authority)}\n`}Run \`${commands.logs}\` to diagnose the service and fix it.${commands.retry === undefined ? "" : ` Then retry \`${commands.retry}\`.`}${healthcheckRemediation}${credentialRemediation(service?.connection, logEvidence?.credentialState, target)}`,
+        : `${action === undefined ? "" : `${redactor.redactString(action)}\n`}${diagnostic?.authority === undefined ? "" : `${redactor.redactString(diagnostic.authority)}\n`}Run \`${commands.logs}\` to diagnose the service and fix it.${commands.retry === undefined || credentials.length > 0 ? "" : ` Then retry \`${commands.retry}\`.`}${healthcheckRemediation}${credentials}`,
     ...(listener === undefined ? {} : { listener }),
     ...(evidence.runtime?.exitCode === undefined ? {} : { exitCode: evidence.runtime.exitCode }),
     ...(evidence.runtime === undefined ? {} : { state: redactor.redactString(evidence.runtime.status) }),

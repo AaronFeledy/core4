@@ -1,5 +1,5 @@
 import { type AppliedStateVersionError, ProviderUnavailableError } from "@lando/sdk/errors";
-import type { AppId, AppPlan, ServiceName } from "@lando/sdk/schema";
+import type { AppId, AppPlan, PortablePath, ServiceName } from "@lando/sdk/schema";
 import { planDataId } from "@lando/sdk/schema";
 import type {
   AppSelector,
@@ -85,6 +85,7 @@ export type ResolvedProviderOps = Pick<
   | "listVolumes"
   | "locateVolume"
   | "observeVolume"
+  | "observeBoundVolume"
   | "adoptVolume"
   | "removeVolume"
   | "copyToService"
@@ -111,7 +112,10 @@ export const makeResolvedProviderOps = (input: ResolvedProviderOpsInput): Resolv
     delegate: (plan: AppPlan) => Effect.Effect<A, E, R>,
   ): Effect.Effect<A, ProviderError | E, R> => {
     const observational =
-      operation === "inspect" || operation === "waitForExit" || operation === "observeVolume";
+      operation === "inspect" ||
+      operation === "waitForExit" ||
+      operation === "observeVolume" ||
+      operation === "observeBoundVolume";
     const supplied = target.plan;
     const read =
       supplied === undefined || observational || input.beforeMutation === undefined
@@ -151,6 +155,31 @@ export const makeResolvedProviderOps = (input: ResolvedProviderOpsInput): Resolv
       : resolveTarget(owner, operation, (plan) => Effect.succeed({ ...spec, owner: { ...owner, plan } }));
   };
 
+  const observeVolume = (
+    target: ServiceSelector,
+    destination: PortablePath,
+    expectedContainerId?: string,
+  ) => {
+    const operation = expectedContainerId === undefined ? "observeVolume" : "observeBoundVolume";
+    return resolveTarget(
+      target,
+      operation,
+      Effect.fnUntraced(function* (plan) {
+        const runtime = yield* input.service.inspect(plan, target);
+        if (
+          !runtime.containerId ||
+          (expectedContainerId !== undefined && runtime.containerId !== expectedContainerId)
+        )
+          return yield* unavailable(operation);
+        const dataPlane = yield* requireDataPlane(operation);
+        return yield* dataPlane.observeVolume({
+          app: planDataId(plan),
+          containerId: runtime.containerId,
+          destination,
+        });
+      }),
+    );
+  };
   return {
     readAppEnvironment: input.readAppEnvironment,
     restart: Effect.fn("RuntimeProvider.restart")(function* (target) {
@@ -187,21 +216,13 @@ export const makeResolvedProviderOps = (input: ResolvedProviderOpsInput): Resolv
           before("locateVolume").pipe(Effect.flatMap(() => dataPlane.locateVolume(ref))),
         ),
       ),
-    observeVolume: (target, destination) =>
-      resolveTarget(
-        target,
-        "observeVolume",
-        Effect.fn("RuntimeProvider.observeVolume")(function* (plan) {
-          const runtime = yield* input.service.inspect(plan, target);
-          if (!runtime.containerId) return yield* Effect.fail(unavailable("observeVolume"));
-          const dataPlane = yield* requireDataPlane("observeVolume");
-          return yield* dataPlane.observeVolume({
-            app: planDataId(plan),
-            containerId: runtime.containerId,
-            destination,
-          });
+    observeVolume: (target, destination) => observeVolume(target, destination),
+    ...(input.dataPlane === undefined
+      ? {}
+      : {
+          observeBoundVolume: (target, destination) =>
+            observeVolume(target, destination, target.expectedContainerId),
         }),
-      ),
     adoptVolume: (target, destination) =>
       resolveTarget(
         target,

@@ -98,6 +98,8 @@ export const memberCalls = {
   adoptDataRoot: (p) => required(p.adoptDataRoot)(plan, () => Effect.succeed(undefined)),
   inspectResourceNames: (p) => required(p.inspectResourceNames)({ kind: "volume", limit: 1 }),
   observeVolume: (p) => required(p.observeVolume)(target, destination),
+  observeBoundVolume: (p) =>
+    required(p.observeBoundVolume)({ ...target, expectedContainerId: "native-id" }, destination),
   adoptVolume: (p) => required(p.adoptVolume)(target, destination),
   removeVolume: (p) => p.removeVolume(volume, "generation"),
   copyToService: (p) => p.copyToService(target, { sourcePath: plan.root, targetPath: destination }),

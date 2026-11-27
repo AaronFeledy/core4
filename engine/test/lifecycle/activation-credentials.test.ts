@@ -4,14 +4,28 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { databaseAdminSeedPath, makeLandoPaths } from "@lando/paths";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
-import { ProviderInternalError } from "@lando/sdk/errors";
-import { type AppPlan, PortNumber, PortablePath, type ServicePlan } from "@lando/sdk/schema";
-import { PathsService, type RuntimeProviderShape, StateStore } from "@lando/sdk/services";
+import { FailureRoleAnnotation, mergeFailure } from "@lando/sdk/command-result";
+import { ProviderInternalError, StateStoreError } from "@lando/sdk/errors";
+import { type AppPlan, PortNumber, PortablePath, ServiceName, type ServicePlan } from "@lando/sdk/schema";
+import {
+  type CommandSpec,
+  EnvironmentValueResolver,
+  PathsService,
+  type RuntimeProviderShape,
+  StateStore,
+  type StateStoreShape,
+} from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
-import { Effect, Stream } from "effect";
+import { Cause, Context, Deferred, Effect, Exit, Fiber, Stream } from "effect";
+import { TestClock } from "effect/testing";
 import { CommandWarnings, makeCommandWarnings } from "../../src/landofile/command-warnings.ts";
-import { convergeActivationCredentials } from "../../src/lifecycle/activation-credentials.ts";
+import { applyActivation } from "../../src/lifecycle/activation-apply.ts";
+import { makeActivationCredentialWorker } from "../../src/lifecycle/activation-credentials.ts";
+import { HostMountPoints } from "../../src/lifecycle/host-mount-points.ts";
+import { prepareServiceCertificates } from "../../src/lifecycle/service-certificates.ts";
+import { withPlanVolumeCoordination } from "../../src/lifecycle/volume-coordination.ts";
+import { prepareProvider } from "../../src/providers/prepared.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 import { plan, web } from "../operations/start-progress-topology-support.ts";
 
@@ -24,6 +38,7 @@ const activation = (
     readonly database?: string;
     readonly password?: string;
     readonly redaction?: ReturnType<typeof makeRedactionService>;
+    readonly built?: boolean;
   } = {},
 ) => {
   const store = `${family}-data`;
@@ -49,7 +64,8 @@ const activation = (
     serviceTypeId: family,
     artifact: {
       kind: "ref",
-      ref: catalog.image,
+      ref: options.built ? "local/custom-database:fixture" : catalog.image,
+      ...(options.built ? { origin: "build" as const } : {}),
     },
     mounts: [
       {
@@ -76,6 +92,13 @@ const activation = (
     services: { [db.name]: db },
   };
   const calls = { inspect: 0, volume: 0, exec: 0 };
+  const physical = {
+    nativeName: store,
+    ownerRoot: target.root,
+    generation: "fixture-generation",
+    coordinationKey: "fixture-volume-key",
+    origin: "created" as const,
+  };
   const provider: RuntimeProviderShape = {
     ...TestRuntimeProvider,
     capabilities: { ...TestRuntimeProvider.capabilities, serviceExec: true },
@@ -92,19 +115,20 @@ const activation = (
           publications: { status: "unknown" as const },
         };
       }),
-    observeVolume: () =>
+    observeBoundVolume: () =>
       Effect.sync(() => {
         calls.volume++;
         return {
           ref: { app: target.id, store },
-          identity: {
-            nativeName: store,
-            ownerRoot: target.root,
-            generation: "fixture-generation",
-            coordinationKey: "fixture-volume-key",
-            origin: "created" as const,
-          },
+          identity: physical,
         };
+      }),
+    observeVolume: () => Effect.die("Unbound volume observation is not a credential capability"),
+    locateVolume: () =>
+      Effect.succeed({
+        nativeName: store,
+        coordinationKey: physical.coordinationKey,
+        identity: physical,
       }),
     execStream: () => {
       calls.exec++;
@@ -126,63 +150,487 @@ const activation = (
           userConfRoot: join(options.userDataRoot, "conf"),
           systemPluginRoot: join(options.userDataRoot, "plugins"),
         });
+  const stateStore = makeTestStateStore().service;
+  const withServices = <A, E, R>(effect: Effect.Effect<A, E, R>, suppliedStore = stateStore) =>
+    effect.pipe(
+      Effect.provideService(PathsService, paths),
+      Effect.provideService(RedactionService, options.redaction ?? makeRedactionService()),
+      Effect.provideService(StateStore, suppliedStore),
+      Effect.provideService(CommandWarnings, warnings),
+      (effect) =>
+        options.privateFileAccess ? Effect.provide(effect, PrivateFileAccessService.layer) : effect,
+    );
+  const makeWorker = (
+    previousPlan: AppPlan | undefined,
+    execStream = provider.execStream,
+    desiredPlan?: AppPlan,
+  ) =>
+    makeActivationCredentialWorker({
+      plan: target,
+      previousPlan,
+      desiredPlan,
+      provider: { ...provider, execStream },
+      session: {
+        resolveEnvironment: (env) =>
+          Effect.succeed(
+            Object.fromEntries(
+              Object.entries(env).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
+            ),
+          ),
+      },
+    });
   const run = (
     action: "kept" | "started" | "created" | "replaced",
     execStream = provider.execStream,
     fresh = false,
-    previousPassword?: string,
-  ) =>
-    Effect.runPromise(
-      convergeActivationCredentials({
-        plan: target,
-        previousPlan:
-          previousPassword === undefined || db.connection === undefined
-            ? target
-            : {
-                ...target,
-                services: {
-                  [db.name]: {
-                    ...db,
-                    connection: {
-                      ...db.connection,
-                      creds: { ...db.connection.creds, password: previousPassword },
-                    },
+    previousPassword?: string | null,
+  ) => {
+    const previousPlan =
+      previousPassword === null
+        ? undefined
+        : previousPassword === undefined || db.connection === undefined
+          ? target
+          : {
+              ...target,
+              services: {
+                [db.name]: {
+                  ...db,
+                  connection: {
+                    ...db.connection,
+                    creds: { ...db.connection.creds, password: previousPassword },
                   },
                 },
               },
-        provider: { ...provider, execStream },
-        applied: {
-          changed: action !== "kept",
-          services: { [db.name]: { action } },
-          ...(fresh
-            ? {
-                createdVolumes: [
-                  { nativeName: store, ownerRoot: target.root, generation: "fixture-generation" },
-                ],
-              }
-            : {}),
+            };
+    return Effect.runPromise(
+      withServices(
+        makeWorker(previousPlan, execStream).pipe(
+          Effect.flatMap(
+            (worker) =>
+              worker?.finish({
+                changed: action !== "kept",
+                services: { [db.name]: { action } },
+                ...(fresh
+                  ? {
+                      createdVolumes: [
+                        { nativeName: store, ownerRoot: target.root, generation: "fixture-generation" },
+                      ],
+                    }
+                  : {}),
+              }) ?? Effect.succeed([]),
+          ),
+        ),
+      ),
+    );
+  };
+  const gated = (
+    options: {
+      readonly containerId?: string;
+      readonly coordinationKey?: string;
+      readonly desiredPlan?: AppPlan;
+      readonly previousPlan?: AppPlan;
+      readonly store?: StateStoreShape;
+      readonly execStream?: RuntimeProviderShape["execStream"];
+    } = {},
+  ) =>
+    withServices(
+      Effect.gen(function* () {
+        const worker = yield* makeWorker(options.previousPlan, options.execStream, options.desiredPlan);
+        if (worker === undefined) throw new TypeError("Expected the activation credential worker");
+        const attempts = yield* withPlanVolumeCoordination({
+          plan: target,
+          provider:
+            options.coordinationKey === undefined
+              ? provider
+              : {
+                  ...provider,
+                  locateVolume: () =>
+                    Effect.succeed({ nativeName: store, coordinationKey: options.coordinationKey ?? "" }),
+                },
+          stateStore,
+          body: () =>
+            Effect.forEach(["client-one", "client-two"], (name) =>
+              worker.continueHealthyDependency({
+                consumer: ServiceName.make(name),
+                dependency: db.name,
+                containerId: options.containerId ?? "native-db",
+                createdVolumes: [],
+              }),
+            ),
+        });
+        const changes = yield* worker.finish({
+          changed: false,
+          services: { [db.name]: { action: "kept" } },
+        });
+        return { attempts, changes };
+      }),
+      options.store,
+    );
+  const runGated = (options?: Parameters<typeof gated>[0]) => Effect.runPromise(gated(options));
+  return { run, runGated, gated, calls, warnings, db, target, provider, withServices, stateStore };
+};
+
+test("initializes a kept standalone catalog database after an unrecorded failed first apply", async () => {
+  const { run, calls } = activation("postgres");
+  await run("kept", undefined, false, null);
+  expect(calls.exec).toBe(1);
+});
+
+test.each(["continuation", "exec", "volume-binding", "paths", "redaction"] as const)(
+  "refuses unsafe database-gated apply without %s",
+  async (missing) => {
+    const fixture = activation("postgres");
+    const client = ServiceName.make("client");
+    const target: AppPlan = {
+      ...fixture.target,
+      services: {
+        ...fixture.target.services,
+        [client]: {
+          ...web,
+          name: client,
+          dependsOn: [{ service: fixture.db.name, condition: "service_healthy", required: true }],
         },
-        session: {
-          resolveEnvironment: (env) =>
-            Effect.succeed(
-              Object.fromEntries(
-                Object.entries(env).filter(
-                  (entry): entry is [string, string] => typeof entry[1] === "string",
-                ),
+      },
+    };
+    const { observeBoundVolume, healthyDependencyContinuation, ...unbound } = fixture.provider;
+    let applied = false;
+    const provider = await Effect.runPromise(
+      prepareProvider({
+        ...unbound,
+        ...(missing === "continuation" || healthyDependencyContinuation === undefined
+          ? {}
+          : { healthyDependencyContinuation }),
+        ...(missing === "volume-binding" || observeBoundVolume === undefined ? {} : { observeBoundVolume }),
+        capabilities: { ...fixture.provider.capabilities, serviceExec: missing !== "exec" },
+        apply: () =>
+          Effect.sync(() => {
+            applied = true;
+            return { changed: true };
+          }),
+      }),
+    );
+    const { certificates } = await Effect.runPromise(prepareServiceCertificates(target));
+    const checked = Effect.result(
+      applyActivation({
+        plan: target,
+        provider,
+        certificates,
+        reconcile: false,
+        environment: { resolveEnvironment: () => Effect.succeed({}) },
+      }),
+    ).pipe(
+      Effect.provide(HostMountPoints.layer),
+      Effect.provideService(StateStore, fixture.stateStore),
+      Effect.provideService(EnvironmentValueResolver, {
+        openSession: () => Effect.die("unexpected session"),
+      }),
+    );
+    const withPaths =
+      missing === "paths" ? checked : checked.pipe(Effect.provideService(PathsService, makeLandoPaths()));
+    const outcome = await Effect.runPromise(
+      missing === "redaction"
+        ? withPaths
+        : withPaths.pipe(Effect.provideService(RedactionService, makeRedactionService())),
+    );
+    expect(outcome).toMatchObject({ _tag: "Failure", failure: { _tag: "ProviderCapabilityError" } });
+    expect(applied).toBe(false);
+  },
+);
+
+test("proves a kept database once for two consumers on a cold retry with no applied plan", async () => {
+  const { runGated, calls } = activation("postgres");
+  expect(await runGated()).toEqual({ attempts: [undefined, undefined], changes: [] });
+  expect(calls).toEqual({ inspect: 1, volume: 1, exec: 1 });
+});
+
+test.each([false, true])(
+  "retained storage does not suggest explicit repair after administrator authorization fails (recorded: %s)",
+  async (recorded) => {
+    const { runGated, target } = activation("mssql");
+    const { attempts } = await runGated({
+      ...(recorded ? { previousPlan: target } : {}),
+      execStream: () =>
+        Stream.make({ kind: "stdout", chunk: new TextEncoder().encode("0\n0\n") }, { exitCode: 0 }),
+    });
+    expect(attempts[0]).toMatchObject({
+      _tag: "ServiceStartError",
+      details: { reason: "insufficient-privilege" },
+    });
+    expect(attempts[0]?.remediation).not.toContain("db:creds:apply");
+  },
+);
+
+test("does no inline credential I/O for an author-owned database", async () => {
+  const { runGated, calls } = activation("postgres", { authorOwned: true });
+  expect(await runGated()).toEqual({ attempts: [undefined, undefined], changes: [] });
+  expect(calls).toEqual({ inspect: 0, volume: 0, exec: 0 });
+});
+
+test.each(["desired", "retained"] as const)(
+  "selected convergence does not touch storage shared by a %s sibling",
+  async (view) => {
+    const { target, db, runGated, calls } = activation("postgres");
+    const sibling = ServiceName.make("sibling");
+    const shared = {
+      ...target,
+      services: { ...target.services, [sibling]: { ...web, name: sibling, mounts: db.mounts } },
+    };
+    const unmounted = {
+      ...target,
+      services: { ...target.services, [sibling]: { ...web, name: sibling, mounts: [] } },
+    };
+    expect(
+      await runGated({
+        desiredPlan: view === "desired" ? shared : unmounted,
+        previousPlan: view === "retained" ? shared : unmounted,
+      }),
+    ).toEqual({ attempts: [undefined, undefined], changes: [] });
+    expect(calls).toEqual({ inspect: 0, volume: 0, exec: 0 });
+  },
+);
+
+test.each(["standalone", "optional", "required"] as const)(
+  "an unproven custom database build stays read-only for %s activation",
+  async (edge) => {
+    const fixture = activation("postgres", { built: true });
+    const client = ServiceName.make("client");
+    const target: AppPlan =
+      edge === "standalone"
+        ? fixture.target
+        : {
+            ...fixture.target,
+            services: {
+              ...fixture.target.services,
+              [client]: {
+                ...web,
+                name: client,
+                dependsOn: [
+                  { service: fixture.db.name, condition: "service_healthy", required: edge === "required" },
+                ],
+              },
+            },
+          };
+    const commands: CommandSpec[] = [];
+    const result = await Effect.runPromise(
+      fixture.withServices(
+        Effect.gen(function* () {
+          const provider = yield* prepareProvider({
+            ...fixture.provider,
+            execStream: (_target, command) => {
+              commands.push(command);
+              return Stream.make(
+                { kind: "stderr", chunk: new TextEncoder().encode('FATAL: database "appdb" does not exist') },
+                { exitCode: 2 },
+              );
+            },
+            apply: (_plan, options) =>
+              Effect.gen(function* () {
+                if (edge !== "standalone") {
+                  if (options.continueHealthyDependency === undefined)
+                    return yield* Effect.die("Expected a healthy dependency continuation");
+                  const refusal = yield* options.continueHealthyDependency({
+                    consumer: client,
+                    dependency: fixture.db.name,
+                    containerId: "native-db",
+                    createdVolumes: [],
+                  });
+                  if (refusal !== undefined && edge === "required") return yield* refusal;
+                }
+                return {
+                  changed: true,
+                  services: { [fixture.db.name]: { action: edge === "standalone" ? "started" : "kept" } },
+                };
+              }),
+          });
+          const { certificates } = yield* prepareServiceCertificates(target);
+          return yield* Effect.result(
+            applyActivation({
+              plan: target,
+              previousPlan: target,
+              provider,
+              certificates,
+              reconcile: false,
+              environment: { resolveEnvironment: () => Effect.succeed({ PGPASSWORD: "FixturePassword1!" }) },
+            }),
+          );
+        }).pipe(
+          Effect.provide(HostMountPoints.layer),
+          Effect.provideService(EnvironmentValueResolver, {
+            openSession: () => Effect.die("unexpected session"),
+          }),
+        ),
+      ),
+    );
+    const warnings = await Effect.runPromise(fixture.warnings.list);
+    expect(fixture.calls).toEqual({ inspect: 0, volume: 0, exec: 0 });
+    if (edge === "required") {
+      expect(result).toMatchObject({
+        _tag: "Failure",
+        failure: { _tag: "ServiceStartError", service: client, details: { reason: "unsupported-target" } },
+      });
+      expect(commands).toEqual([]);
+      expect(warnings).toEqual([]);
+    } else {
+      expect(result).toMatchObject({ _tag: "Success", success: { changed: true } });
+      expect(
+        commands.map(({ command, stdin, stdinStream }) => [
+          command.some((arg) => arg.includes("psql ") && arg.endsWith('"SELECT 1"')),
+          command.at(-1),
+          stdin,
+          stdinStream,
+        ]),
+      ).toEqual([[true, "appdb", undefined, undefined]]);
+      expect(warnings).toMatchObject([
+        { code: "LANDO_DATABASE_MISSING", context: { service: fixture.db.name, login: "app" } },
+      ]);
+    }
+  },
+);
+
+test.each([false, true])(
+  "the activation deadline joins catalog provenance cleanup (defect: %s)",
+  async (cleanupDefect) => {
+    const fixture = activation("postgres", { built: true });
+    const canary = "sensitive deadline cleanup payload";
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const started = yield* Deferred.make<void>();
+        const cleaning = yield* Deferred.make<void>();
+        const finish = yield* Deferred.make<void>();
+        const store: StateStoreShape = {
+          ...fixture.stateStore,
+          open: (spec) =>
+            spec.key === "artifact-build-results.bin"
+              ? Deferred.succeed(started, undefined).pipe(
+                  Effect.andThen(Effect.never),
+                  Effect.ensuring(
+                    Deferred.succeed(cleaning, undefined).pipe(
+                      Effect.andThen(Deferred.await(finish)),
+                      Effect.andThen(cleanupDefect ? Effect.die(canary) : Effect.void),
+                    ),
+                  ),
+                )
+              : fixture.stateStore.open(spec),
+        };
+        const attempt = yield* Effect.forkChild(fixture.gated({ store }));
+        yield* Deferred.await(started);
+        yield* TestClock.adjust("12 seconds");
+        yield* Deferred.await(cleaning);
+        const pending = attempt.pollUnsafe() === undefined;
+        yield* Deferred.succeed(finish, undefined);
+        const settled = yield* Fiber.await(attempt);
+        expect(pending).toBe(true);
+        if (cleanupDefect) {
+          if (Exit.isSuccess(settled)) throw new TypeError("Deadline discarded the cleanup failure");
+          expect(
+            settled.cause.reasons.map((reason) => ({
+              tag: reason._tag,
+              role: Context.getOrUndefined(Cause.reasonAnnotations(reason), FailureRoleAnnotation),
+            })),
+          ).toEqual([{ tag: "Die", role: "cleanup" }]);
+          expect(Cause.pretty(settled.cause)).not.toContain(canary);
+        } else {
+          if (Exit.isFailure(settled)) throw new TypeError("Deadline unexpectedly failed");
+          expect(settled.value.attempts[0]).toMatchObject({
+            _tag: "ServiceStartError",
+            details: { reason: "timeout" },
+          });
+        }
+      }).pipe(Effect.provide(TestClock.layer())),
+    );
+  },
+);
+
+test("preserves and sanitizes mixed database exec failure causes instead of returning a gate verdict", async () => {
+  const { gated } = activation("postgres");
+  const canary = "sensitive provider payload";
+  const error = new ProviderInternalError({
+    providerId: plan.provider,
+    operation: "exec",
+    message: canary,
+    remediation: canary,
+  });
+  const exit = await Effect.runPromiseExit(
+    gated({
+      execStream: () => Stream.failCause(mergeFailure(Cause.fail(error), Cause.die(canary), "cleanup")),
+    }),
+  );
+  if (Exit.isSuccess(exit)) throw new TypeError("Expected the exceptional cause");
+  expect(
+    exit.cause.reasons.map((reason) => ({
+      tag: reason._tag,
+      role: Context.getOrUndefined(Cause.reasonAnnotations(reason), FailureRoleAnnotation),
+    })),
+  ).toEqual([
+    { tag: "Fail", role: undefined },
+    { tag: "Die", role: "cleanup" },
+  ]);
+  expect(Cause.pretty(exit.cause)).not.toContain(canary);
+});
+
+test.each(["Die", "Interrupt"] as const)(
+  "propagates provenance cleanup %s with sanitized state failure reasons",
+  async (tag) => {
+    const { gated, stateStore } = activation("postgres", { built: true });
+    const canary = "sensitive provenance payload";
+    const read = new StateStoreError({ reason: "io", operation: canary, remediation: canary });
+    const exit = await Effect.runPromiseExit(
+      gated({
+        store: {
+          ...stateStore,
+          open: () =>
+            Effect.failCause(
+              mergeFailure(
+                Cause.fail(read),
+                tag === "Die" ? Cause.die(canary) : Cause.interrupt(42),
+                "cleanup",
               ),
             ),
         },
-      }).pipe(
-        Effect.provideService(PathsService, paths),
-        Effect.provideService(RedactionService, options.redaction ?? makeRedactionService()),
-        Effect.provideService(StateStore, makeTestStateStore().service),
-        Effect.provideService(CommandWarnings, warnings),
-        (effect) =>
-          options.privateFileAccess ? Effect.provide(effect, PrivateFileAccessService.layer) : effect,
-      ),
+      }),
     );
-  return { run, calls, warnings };
-};
+    if (Exit.isSuccess(exit)) throw new TypeError("Expected provenance cleanup failure");
+    expect(
+      exit.cause.reasons.map((reason) => ({
+        tag: reason._tag,
+        role: Context.getOrUndefined(Cause.reasonAnnotations(reason), FailureRoleAnnotation),
+      })),
+    ).toEqual([
+      { tag: "Fail", role: undefined },
+      { tag, role: tag === "Die" ? "cleanup" : undefined },
+    ]);
+    expect(Cause.pretty(exit.cause)).not.toContain(canary);
+  },
+);
+
+test.each([
+  {
+    containerId: "swapped-db",
+  },
+  {
+    coordinationKey: "other-held-volume",
+  },
+])("refuses inline credential exec on mismatched admission %o", async (options) => {
+  const { runGated, calls, warnings, db } = activation("postgres");
+  const { attempts } = await runGated(options);
+  expect(attempts).toMatchObject([
+    {
+      _tag: "ServiceStartError",
+      service: "client-one",
+      details: { dependency: db.name, reason: "target-changed" },
+    },
+    {
+      _tag: "ServiceStartError",
+      service: "client-two",
+      details: { dependency: db.name, reason: "target-changed" },
+    },
+  ]);
+  for (const attempt of attempts) expect(attempt?.remediation).not.toContain("db:creds:apply");
+  expect(calls.exec).toBe(0);
+  expect((await Effect.runPromise(warnings.list)).map(({ code }) => code)).toEqual([
+    "LANDO_DATABASE_CREDENTIAL_CONVERGENCE_FAILED",
+  ]);
+});
 
 test.each([
   { action: "kept", expected: { inspect: 0, volume: 0, exec: 0 } },
@@ -311,6 +759,7 @@ const mssqlExec =
     databaseExists: boolean;
     managed?: { ready: boolean; catalogReads: number };
     loseWriteResponse?: boolean;
+    writeResponse?: ReturnType<RuntimeProviderShape["execStream"]>;
   }): RuntimeProviderShape["execStream"] =>
   (_target, options) =>
     Stream.unwrap(
@@ -339,6 +788,7 @@ const mssqlExec =
         const admin = sa || (options.command.includes("lando_admin") && state.managed?.ready === true);
         if (sa && input.includes("CREATE DATABASE [appdb]")) {
           state.databaseExists = true;
+          if (state.writeResponse !== undefined) return state.writeResponse;
           if (state.loseWriteResponse) return Stream.fail(execUnavailable);
         }
         const stdout = managedProof
@@ -362,6 +812,45 @@ const mssqlExec =
         );
       }),
     );
+
+test("activation expiry after dispatch reports an uncertain database write", async () => {
+  const { gated } = activation("mssql");
+  await Effect.runPromise(
+    Effect.gen(function* () {
+      const preflight = yield* Deferred.make<void>();
+      const wrote = yield* Deferred.make<void>();
+      const state = {
+        databaseExists: false,
+        writeResponse: Stream.unwrap(Deferred.succeed(wrote, undefined).pipe(Effect.as(Stream.never))),
+      };
+      const exec = mssqlExec(state);
+      let delayed = 0;
+      const attempt = yield* Effect.forkChild(
+        gated({
+          execStream: (target, command) => {
+            if (delayed++ >= 2) return exec(target, command);
+            return Stream.unwrap(
+              Deferred.succeed(preflight, undefined).pipe(
+                Effect.andThen(Effect.sleep("10 seconds")),
+                Effect.as(exec(target, command)),
+              ),
+            );
+          },
+        }),
+      );
+      yield* Deferred.await(preflight);
+      yield* TestClock.adjust("20 seconds");
+      yield* Deferred.await(wrote);
+      yield* TestClock.adjust("12 seconds");
+      const { attempts } = yield* Fiber.join(attempt);
+      expect(state.databaseExists).toBe(true);
+      expect(attempts[0]).toMatchObject({
+        _tag: "ServiceStartError",
+        details: { reason: "timeout-after-mutation" },
+      });
+    }).pipe(Effect.provide(TestClock.layer())),
+  );
+});
 
 test("converges after a transient preflight exec failure", async () => {
   const { run, warnings } = activation("mssql");

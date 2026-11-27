@@ -1,11 +1,18 @@
 import { isProviderError, redactProviderError } from "@lando/redaction/provider-error";
 import { createStandaloneRedactor } from "@lando/redaction/service";
-import { FailureRoleAnnotation, mapDefectCause, mapFailures, raceJoined } from "@lando/sdk/command-result";
-import { ServiceExecError } from "@lando/sdk/errors";
+import {
+  FailureRoleAnnotation,
+  mapDefectCause,
+  mapFailures,
+  raceJoined,
+  unscopedFailureReason,
+} from "@lando/sdk/command-result";
+import { ServiceExecError, type ServiceStartError } from "@lando/sdk/errors";
 import {
   type AppPlan,
   type HealthcheckPlan,
   type ServiceDependencyCondition,
+  type ServiceName,
   type ServicePlan,
   effectiveReadiness,
   probeTargetError,
@@ -46,6 +53,11 @@ interface ScheduledStart {
   readonly changed: boolean;
   readonly terminalExit?: DependencyExit;
   readonly dependencyUnavailable?: { readonly reason: DependencyUnavailableReason };
+  readonly continuationFailure?: {
+    readonly dependency: ServiceName;
+    readonly error: ServiceStartError;
+  };
+  readonly continuationCause?: Cause.Cause<ProviderError>;
 }
 
 /**
@@ -74,6 +86,7 @@ export interface BlockedService {
   readonly lastError?: string;
   readonly dependencyExit?: DependencyExit;
   readonly dependencyUnavailable?: { readonly reason: DependencyUnavailableReason };
+  readonly continuationError?: ServiceStartError;
 }
 
 export type ServiceStartResult =
@@ -88,7 +101,10 @@ export interface ServiceStartHandlers<E, R> {
   readonly redactor?: Redactor;
   readonly redactProbeError?: (error: unknown) => string;
   /** Brings one service up. Only optional-only start failures are tolerated. */
-  readonly startService: (service: ServicePlan) => Effect.Effect<ScheduledStart, E, R>;
+  readonly startService: (
+    service: ServicePlan,
+    greenDependencies: readonly ServicePlan["dependsOn"][number][],
+  ) => Effect.Effect<ScheduledStart, E, R>;
   /** Runs one healthcheck attempt at its declared execution target. */
   readonly execHealthcheck: (
     service: ServicePlan,
@@ -338,16 +354,13 @@ export const runServiceStartSchedule = Effect.fn("RuntimeProvider.startSchedule"
     }),
   );
   const blocked: Array<BlockedService> = [];
-  const gateOutcomes = new Map<string, Omit<GateProbeResult, "ok">>();
+  const gateOutcomes = new Map<string, GateProbeResult>();
   const startFailures = new Map<string, Omit<GateProbeResult, "ok">>();
   let changed = false;
 
-  const recordGateOutcome = (
-    nodeId: string,
-    { ok, ...evidence }: GateProbeResult,
-  ): "succeeded" | "failed" => {
-    gateOutcomes.set(nodeId, evidence);
-    return ok ? "succeeded" : "failed";
+  const recordGateOutcome = (nodeId: string, result: GateProbeResult): "succeeded" | "failed" => {
+    gateOutcomes.set(nodeId, result);
+    return result.ok ? "succeeded" : "failed";
   };
 
   const settled = yield* runDependencySchedule(graph, {
@@ -364,7 +377,7 @@ export const runServiceStartSchedule = Effect.fn("RuntimeProvider.startSchedule"
         if (value._tag === "service") {
           const unmet = nodeById.get(unmetGate);
           const dependency = unmet?._tag === "gate" ? String(unmet.service.name) : unmetGate;
-          const outcome = gateOutcomes.get(unmetGate) ?? {};
+          const { ok: _ok, ...outcome } = gateOutcomes.get(unmetGate) ?? {};
           blocked.push({
             service: String(value.service.name),
             unmetGate:
@@ -376,9 +389,36 @@ export const runServiceStartSchedule = Effect.fn("RuntimeProvider.startSchedule"
         return Effect.succeed("blocked" as const);
       }
       if (value._tag === "service") {
-        const start = handlers.startService(value.service).pipe(
-          Effect.map((result) => {
+        const greenDependencies = value.service.dependsOn.filter(
+          (edge) =>
+            edge.condition === "service_healthy" &&
+            gateOutcomes.get(gateNodeId(edge.service, edge.condition))?.ok === true,
+        );
+        const start = handlers.startService(value.service, greenDependencies);
+        const started = optionalOnlyServices.has(node.id)
+          ? start.pipe(
+              Effect.catchCause((cause) =>
+                unscopedFailureReason(cause)?._tag === "Fail"
+                  ? Effect.succeed(undefined)
+                  : Effect.failCause(cause),
+              ),
+            )
+          : start;
+        return started.pipe(
+          Effect.flatMap((result) => {
+            if (result === undefined) return Effect.succeed("failed" as const);
+            if (result.continuationCause !== undefined) return Effect.failCause(result.continuationCause);
             changed = changed || result.changed;
+            if (result.continuationFailure !== undefined) {
+              const { dependency, error } = result.continuationFailure;
+              blocked.push({
+                service: value.service.name,
+                dependency,
+                unmetGate: gateId(dependency, "service_healthy"),
+                continuationError: error,
+              });
+              return Effect.succeed("failed" as const);
+            }
             if (result.terminalExit !== undefined || result.dependencyUnavailable !== undefined) {
               startFailures.set(node.id, {
                 ...(result.terminalExit === undefined ? {} : { dependencyExit: result.terminalExit }),
@@ -386,14 +426,11 @@ export const runServiceStartSchedule = Effect.fn("RuntimeProvider.startSchedule"
                   ? {}
                   : { dependencyUnavailable: result.dependencyUnavailable }),
               });
-              return "failed" as const;
+              return Effect.succeed("failed" as const);
             }
-            return "succeeded" as const;
+            return Effect.succeed("succeeded" as const);
           }),
         );
-        return optionalOnlyServices.has(node.id)
-          ? start.pipe(Effect.catch(() => Effect.succeed("failed" as const)))
-          : start;
       }
       switch (value.condition) {
         case "service_started":

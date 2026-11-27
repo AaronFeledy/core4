@@ -55,6 +55,7 @@ import type {
   ServiceName,
   ServicePlan,
   ServiceRunObservation,
+  VolumeCreationFact,
   VolumeFilter,
   VolumeIdentity,
   VolumeInfo,
@@ -198,6 +199,17 @@ export interface ApplyOptions {
     serviceName: ServiceName,
     probe: HealthcheckPlan,
   ) => Effect.Effect<ProcessResult, ProviderError>;
+  /**
+   * Continue a green `service_healthy` edge before actually starting or replacing its consumer.
+   * Never called for kept consumers, non-green gates, or dependencies outside this apply.
+   * Await it under the caller's apply context; a returned error blocks only a required edge.
+   */
+  readonly continueHealthyDependency?: (input: {
+    readonly consumer: ServiceName;
+    readonly dependency: ServiceName;
+    readonly containerId: string;
+    readonly createdVolumes: readonly VolumeCreationFact[];
+  }) => Effect.Effect<ServiceStartError | undefined, ProviderError>;
   readonly resolveServiceEnvironment?: (
     service: ServicePlan,
   ) => Effect.Effect<Readonly<Record<string, string>>, ProviderError>;
@@ -506,6 +518,8 @@ export class RuntimeProvider extends Context.Service<
     /** Engine endpoint this provider talks to. Pull checks are keyed by it, not by provider id alone. */
     readonly runtimeIdentity?: string;
     readonly capabilities: ProviderCapabilities;
+    /** Apply honors the healthy-dependency continuation contract. Omission means unsupported. */
+    readonly healthyDependencyContinuation?: true;
 
     readonly isAvailable: Effect.Effect<boolean, ProviderUnavailableError>;
     readonly appliedPlans?: Effect.Effect<ReadonlyArray<AppPlan>, ProviderError>;
@@ -704,6 +718,14 @@ export class RuntimeProvider extends Context.Service<
     ) => Effect.Effect<ReadonlyArray<string>, ProviderError>;
     readonly observeVolume?: (
       target: ServiceSelector,
+      destination: PortablePath,
+    ) => Effect.Effect<VolumeInfo, ProviderError>;
+    /**
+     * Observe the mount on exactly the expected native container. Fail if that is no longer
+     * the selected service's container; never fall back to unbound observation.
+     */
+    readonly observeBoundVolume?: (
+      target: ServiceSelector & { readonly expectedContainerId: string },
       destination: PortablePath,
     ) => Effect.Effect<VolumeInfo, ProviderError>;
     readonly adoptVolume?: (

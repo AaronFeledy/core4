@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { makeLandoPaths } from "@lando/paths";
+import { mergeFailure } from "@lando/sdk/command-result";
 import { GlobalAppError, ServiceStartError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -461,10 +462,16 @@ describe("global service groups", () => {
     ["apply", "interruption"],
     ["build", "defect"],
     ["apply", "defect"],
+    ["apply", "failure-and-interruption"],
   ] as const)("%s %s propagates without attempting later groups", async (stage, kind) => {
     // Given a first group that interrupts or defects at the selected stage.
     const plan = planWith([service("first"), service("second")]);
-    const fatal = kind === "interruption" ? Effect.interrupt : Effect.die(new Error("group defect"));
+    const fatal =
+      kind === "failure-and-interruption"
+        ? Effect.failCause(mergeFailure(Cause.fail(failure("first")), Cause.interrupt(42), "cleanup"))
+        : kind === "interruption"
+          ? Effect.interrupt
+          : Effect.die(new Error("group defect"));
     const attempts: string[][] = [];
     const provider: RuntimeProviderShape = {
       ...TestRuntimeProvider,
@@ -488,7 +495,11 @@ describe("global service groups", () => {
     // Then the fatal cause retains its class and later groups are not started.
     expect(
       Exit.isFailure(exit) &&
-        (kind === "interruption" ? Cause.hasInterruptsOnly(exit.cause) : Cause.hasDies(exit.cause)),
+        (kind === "failure-and-interruption"
+          ? Cause.hasInterrupts(exit.cause) && Cause.hasFails(exit.cause)
+          : kind === "interruption"
+            ? Cause.hasInterruptsOnly(exit.cause)
+            : Cause.hasDies(exit.cause)),
     ).toBe(true);
     expect(attempts).toEqual([["first"]]);
   });

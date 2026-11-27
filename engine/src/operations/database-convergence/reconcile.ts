@@ -14,6 +14,7 @@ import { deriveDatabaseAdminPassword } from "@lando/state-store/database-admin-s
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { withPhysicalVolumeLock } from "@lando/state-store/volume-lock";
 import { Effect, Equal, Option, Redacted, Result } from "effect";
+import { settleOrdinaryFailure } from "../../lifecycle/failure-compensation.ts";
 import { chooseAdmin, validPassword } from "./admin.ts";
 import { credentialClient } from "./client.ts";
 import { containerAddress } from "./container-address.ts";
@@ -22,7 +23,7 @@ import { mongodb } from "./mongodb.ts";
 import { mssql } from "./mssql.ts";
 import { mysqlFamily } from "./mysql-family.ts";
 import { postgres } from "./postgres.ts";
-import { observeTarget, targetError } from "./target.ts";
+import { type ActivatedDatabaseTarget, observeTarget, targetError } from "./target.ts";
 import type { AdapterContext, CredentialStep } from "./types.ts";
 
 const adapters = { postgres, mysql: mysqlFamily, mariadb: mysqlFamily, mongodb, mssql };
@@ -40,6 +41,9 @@ export const prepareReconciliation = Effect.fn("DatabaseConvergence.prepare")(fu
   readonly fallback?: Pick<DatabaseCredentialConvergenceRequest, "adminUser" | "readPassword">;
   readonly adminSeedRoot: string;
   readonly onAdminSeedUnavailable?: Effect.Effect<void>;
+  readonly applying?: ActivatedDatabaseTarget;
+  readonly retained?: readonly ServicePlan[];
+  readonly onMutationDispatch?: Effect.Effect<void>;
 }) {
   const {
     plan,
@@ -115,7 +119,11 @@ export const prepareReconciliation = Effect.fn("DatabaseConvergence.prepare")(fu
     });
   const resolve = Effect.fnUntraced(function* (value: typeof creds.rootPassword, required: boolean) {
     if (value === undefined) return undefined;
-    const result = yield* Effect.result(session.resolveEnvironment({ value }));
+    const result = yield* settleOrdinaryFailure(
+      session
+        .resolveEnvironment({ value })
+        .pipe(mapFailures(() => failure("A database credential could not be resolved."))),
+    );
     if (
       Result.isSuccess(result) &&
       result.success.value !== undefined &&
@@ -140,13 +148,18 @@ export const prepareReconciliation = Effect.fn("DatabaseConvergence.prepare")(fu
     const access = yield* Effect.serviceOption(PrivateFileAccessService);
     const derived = Option.isNone(access)
       ? Option.none()
-      : yield* deriveDatabaseAdminPassword({
-          userDataRoot: input.adminSeedRoot,
-          family,
-          generation: observed.physical.generation,
-          register: redaction.registerValues,
-          ...(fallback === undefined ? {} : { mode: "read" as const }),
-        }).pipe(Effect.provideService(PrivateFileAccessService, access.value), Effect.option);
+      : yield* settleOrdinaryFailure(
+          deriveDatabaseAdminPassword({
+            userDataRoot: input.adminSeedRoot,
+            family,
+            generation: observed.physical.generation,
+            register: redaction.registerValues,
+            ...(fallback === undefined ? {} : { mode: "read" as const }),
+          }).pipe(
+            Effect.provideService(PrivateFileAccessService, access.value),
+            mapFailures(() => failure("The private database administrator seed could not be read.")),
+          ),
+        ).pipe(Effect.map(Result.getSuccess));
     if (Option.isSome(derived)) managedPassword = Redacted.value(derived.value);
     else yield* input.onAdminSeedUnavailable ?? Effect.void;
   }
@@ -309,6 +322,7 @@ export const prepareReconciliation = Effect.fn("DatabaseConvergence.prepare")(fu
           const confirmedAdoption = yield* managedAccess.adoption(admin, managed);
           if (!Equal.equals(adoption, confirmedAdoption)) return yield* stale;
           yield* sameObservation();
+          yield* input.onMutationDispatch ?? Effect.void;
           possibleWrite = true;
           const result = yield* run(confirmedAdoption);
           if (result.exitCode !== 0 || !(yield* managedAccess.prove(managed))) {
@@ -320,6 +334,7 @@ export const prepareReconciliation = Effect.fn("DatabaseConvergence.prepare")(fu
         }
         for (const step of delta) {
           yield* sameObservation();
+          yield* input.onMutationDispatch ?? Effect.void;
           possibleWrite = true;
           const response = yield* run(step.request);
           if (response.exitCode !== 0)

@@ -431,6 +431,10 @@
       "digest": "d306fb1338120c1b776d46fbd6f9793723b396c6793b63837ef1e52a61bc6f11"
     },
     {
+      "fixture": "docs/guides/db-creds-apply/fixtures/postgres-gated-client",
+      "digest": "f6d9870805d317c012a271bd57a98088e886374da2fad8d5142216b8be1f36be"
+    },
+    {
       "fixture": "docs/guides/db-creds-apply/fixtures/postgres",
       "digest": "d68f755a2c071a29b065bb988e0771682befd5825eceb4c55c3a2671a98206ae"
     },

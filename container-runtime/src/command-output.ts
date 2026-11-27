@@ -4,6 +4,7 @@ import {
   annotateFailureRole,
   commandFailureCause,
   failureDefectCause,
+  mapDefectCause,
   mapFailureCause,
   mergeFailure,
 } from "@lando/sdk/command-result";
@@ -25,6 +26,8 @@ interface CommandOutputOptions<E> {
   readonly authoritativeTokens?: Iterable<string> | undefined;
   readonly stdout?: "forward" | "discard";
   readonly stdoutLimit?: number;
+  /** Propagate defects with their payload discarded instead of projecting them as command failures. */
+  readonly preserveDefects?: boolean;
   /**
    * The invocation's live sink for a user-visible command: stderr chunks are
    * emitted as they arrive, still feeding the failure tail. Stdout stays the
@@ -129,7 +132,10 @@ export const commandOutputStream = <E, R, E2>(
         const sanitize = (cause: Cause.Cause<unknown>, includeCompletion = true): Cause.Cause<E2> => {
           let cleanupOnly = true;
           let mappedFailure = false;
-          const safe = mapFailureCause(commandFailureCause(cause), (error, role) => {
+          const safeCause = options.preserveDefects
+            ? mapDefectCause(cause, () => "Command output failed unexpectedly.")
+            : commandFailureCause(cause);
+          const safe = mapFailureCause(safeCause, (error, role) => {
             mappedFailure = true;
             if (role !== "cleanup") cleanupOnly = false;
             if (owned.has(error as E2)) return error as E2;

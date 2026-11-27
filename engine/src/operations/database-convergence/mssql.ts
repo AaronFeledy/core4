@@ -27,17 +27,17 @@ const envFor = (password: string): Record<string, string> => ({
   MSSQL_SA_PASSWORD: password,
 });
 
-const baseArgv = (port: number, user: string): string[] => [
+const baseArgv = (port: number, login: { readonly user: string; readonly database?: string }): string[] => [
   SQLCMD,
   "-S",
   `127.0.0.1,${port}`,
   "-U",
-  user,
+  login.user,
   "-C",
   "-b",
   "-r1",
   "-d",
-  "master",
+  login.database ?? "master",
   "-l",
   CONNECT_TIMEOUT,
   "-t",
@@ -48,8 +48,13 @@ const baseArgv = (port: number, user: string): string[] => [
   "-W",
 ];
 
-const sqlRequest = (context: AdapterContext, password: string, sql: string, user = "sa"): ClientRequest => ({
-  argv: baseArgv(context.port, user),
+const sqlRequest = (
+  context: AdapterContext,
+  password: string,
+  sql: string,
+  login: Parameters<typeof baseArgv>[1] = { user: "sa" },
+): ClientRequest => ({
+  argv: baseArgv(context.port, login),
   env: envFor(password),
   stdin: `${sql.trimEnd()}\nGO\n`,
 });
@@ -105,8 +110,9 @@ export const mssql = (context: AdapterContext): CredentialAdapter => {
     adminCredential: AdminCredential,
   ): Effect.fn.Return<readonly CredentialStep[], ReturnType<AdapterContext["failure"]>> {
     const { desired } = context;
+    const adminLogin = { user: adminCredential.user };
     const runAdmin = (sql: string) =>
-      context.run(sqlRequest(context, adminCredential.password, sql, adminCredential.user));
+      context.run(sqlRequest(context, adminCredential.password, sql, adminLogin));
     if (!isSafeSqlcmdValue(desired.database)) {
       return yield* Effect.fail(context.failure("The desired database name cannot be represented safely."));
     }
@@ -161,7 +167,7 @@ export const mssql = (context: AdapterContext): CredentialAdapter => {
             context,
             adminCredential.password,
             `CREATE DATABASE ${ident(desired.database)};`,
-            adminCredential.user,
+            adminLogin,
           ),
         ),
       );
@@ -178,7 +184,10 @@ export const mssql = (context: AdapterContext): CredentialAdapter => {
     }
 
     const login = yield* context.run(
-      sqlRequest(context, password, "SET NOCOUNT ON;\nSELECT ORIGINAL_LOGIN();"),
+      sqlRequest(context, password, "SET NOCOUNT ON;\nSELECT ORIGINAL_LOGIN();", {
+        user: "sa",
+        ...(dbLine.length === 0 ? {} : { database: desired.database }),
+      }),
     );
     if (login.state === "rejected") {
       // One sa mutation is reported under both password and rootPassword aliases.
@@ -189,11 +198,15 @@ export const mssql = (context: AdapterContext): CredentialAdapter => {
             context,
             adminCredential.password,
             `ALTER LOGIN ${ident("sa")} WITH PASSWORD = ${lit(password)};`,
-            adminCredential.user,
+            adminLogin,
           ),
         ),
       );
-    } else if (login.state !== "accepted" || login.exitCode !== 0) {
+    } else if (
+      login.state !== "accepted" ||
+      login.exitCode !== 0 ||
+      firstTrimmedLine(login.stdout).toLowerCase() !== "sa"
+    ) {
       return yield* Effect.fail(
         context.failure("Could not prove the desired sa password against SQL Server.", login.exitCode),
       );
@@ -208,7 +221,7 @@ export const mssql = (context: AdapterContext): CredentialAdapter => {
         context,
         candidate.password,
         "SET NOCOUNT ON; SELECT CASE WHEN ORIGINAL_LOGIN() = N'lando_admin' AND IS_SRVROLEMEMBER(N'sysadmin') = 1 THEN 1 ELSE 0 END;",
-        candidate.user,
+        { user: candidate.user },
       ),
     );
     return result.exitCode === 0 && firstTrimmedLine(result.stdout) === "1";
@@ -238,7 +251,7 @@ export const mssql = (context: AdapterContext): CredentialAdapter => {
         context,
         candidate.password,
         "SET NOCOUNT ON; SELECT TOP (17) name FROM sys.databases WHERE database_id > 4 ORDER BY name;",
-        candidate.user,
+        { user: candidate.user },
       ),
     );
     if (result.exitCode !== 0)

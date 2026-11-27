@@ -587,6 +587,7 @@ export const makeTestRuntimeProvider = (): RuntimeProviderShape => {
     version: "0.0.0-test",
     platform: "linux",
     capabilities: testCapabilities,
+    healthyDependencyContinuation: true,
 
     isAvailable: Effect.succeed(true),
     setup: (_options) => Effect.void,

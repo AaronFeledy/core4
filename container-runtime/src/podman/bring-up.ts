@@ -5,6 +5,7 @@ import {
   mapDefectCause,
   mapFailures,
   mergeFailure,
+  unscopedFailureReason,
   withDeadline,
 } from "@lando/sdk/command-result";
 import {
@@ -185,6 +186,11 @@ interface StartResult {
   readonly changed: boolean;
   readonly startedIdentity?: string;
   readonly dependencyUnavailable?: { readonly reason: DependencyUnavailableReason };
+  readonly continuationFailure?: {
+    readonly dependency: ServiceName;
+    readonly error: ServiceStartError;
+  };
+  readonly continuationCause?: Cause.Cause<ProviderError>;
   readonly startFailure?: {
     readonly status: "exited" | "dead" | "not-running";
     readonly exitCode?: number;
@@ -206,6 +212,7 @@ export type StartFailureRemediation = (input: {
 export interface BringUpOptions {
   readonly adoptionReceipts?: readonly AdoptionReceipt[];
   readonly executeReadinessAttempt?: ApplyOptions["executeReadinessAttempt"];
+  readonly continueHealthyDependency?: ApplyOptions["continueHealthyDependency"];
   readonly api?: EngineHttpApi;
   readonly ctx: ProviderErrorContext;
   readonly resolveContainerHelper?: ExecOptions["resolveContainerHelper"];
@@ -1011,7 +1018,10 @@ const startService = Effect.fnUntraced(function* (
   deps: BringUpDeps,
   plan: AppPlan,
   service: ServicePlan,
-  inspectedBeforeSchedule?: InspectResult,
+  beforeStart: {
+    readonly inspected: InspectResult | undefined;
+    readonly continueDependencies: Effect.Effect<StartResult["continuationFailure"], ProviderError>;
+  },
 ): Effect.fn.Return<StartResult, BringUpError> {
   const name = containerName(plan, service);
   const providerId = ProviderId.make(deps.options.ctx.providerId);
@@ -1027,18 +1037,7 @@ const startService = Effect.fnUntraced(function* (
     );
   }
 
-  yield* publish(
-    deps,
-    PreServiceStartEvent.make({
-      eventName: "pre-service-start",
-      appRef: appRef(plan),
-      serviceName: service.name,
-      providerId,
-      timestamp: yield* DateTime.now,
-    }),
-  );
-
-  const inspected = inspectedBeforeSchedule ?? (yield* inspectContainer(deps, name));
+  const inspected = beforeStart.inspected ?? (yield* inspectContainer(deps, name));
   const existingId = inspected.exists
     ? yield* verifiedNativeId(
         JSON.stringify(inspected.body),
@@ -1063,14 +1062,28 @@ const startService = Effect.fnUntraced(function* (
     inspected.publishFingerprint !== plannedFingerprint;
   const existedBefore = inspected.exists;
   const recreateReasons = existedBefore ? bringUpRecreateReasons(plan, service, inspected) : [];
+  const replacing =
+    existedBefore && (needsDataRootLabel || deps.options.reconcile === true || recreateReasons.length > 0);
+  if (!inspected.running || replacing) {
+    const continuation = yield* Effect.exit(beforeStart.continueDependencies);
+    if (Exit.isFailure(continuation)) return { changed: false, continuationCause: continuation.cause };
+    if (continuation.value !== undefined) return { changed: false, continuationFailure: continuation.value };
+  }
+  yield* publish(
+    deps,
+    PreServiceStartEvent.make({
+      eventName: "pre-service-start",
+      appRef: appRef(plan),
+      serviceName: service.name,
+      providerId,
+      timestamp: yield* DateTime.now,
+    }),
+  );
   let replacedReason: ServiceContainerChange["reason"];
   let anonymousVolumes: readonly string[] = [];
   let before = inspected;
   let startedIdentity: string | undefined = before.exists ? existingId : undefined;
-  if (
-    before.exists &&
-    (needsDataRootLabel || deps.options.reconcile === true || recreateReasons.length > 0)
-  ) {
+  if (replacing) {
     yield* prepareCreationEnvironment(deps, plan, service);
     if (existingId !== undefined) {
       yield* stopContainerSilent(deps, existingId);
@@ -1633,19 +1646,47 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
             ? error.message
             : "Readiness attempt infrastructure failure.",
       ),
-    startService: Effect.fnUntraced(function* (service) {
+    startService: Effect.fnUntraced(function* (service, greenDependencies) {
       if (options.signal?.aborted === true) {
         return yield* Effect.interrupt;
       }
-      const started = yield* startService(
-        deps,
-        plan,
-        plan.services[service.name] ?? service,
-        inspectedConsumers.get(service.name),
-      ).pipe(
+      const started = yield* startService(deps, plan, plan.services[service.name] ?? service, {
+        inspected: inspectedConsumers.get(service.name),
+        continueDependencies: interruptOnAbort(
+          Effect.gen(function* () {
+            const continuation = options.continueHealthyDependency;
+            if (continuation === undefined) return undefined;
+            for (const edge of greenDependencies) {
+              const containerId = startedIds.get(edge.service);
+              if (containerId === undefined) {
+                if (!edge.required) continue;
+                return yield* new ProviderInternalError({
+                  providerId: options.ctx.providerId,
+                  operation: "bringUp.continueHealthyDependency",
+                  message: `Could not prove the native identity of ${edge.service} before starting ${service.name}.`,
+                  remediation:
+                    "Inspect the provider state, then retry the same command with the same selection.",
+                });
+              }
+              const error = yield* continuation({
+                consumer: service.name,
+                dependency: edge.service,
+                containerId,
+                createdVolumes,
+              });
+              if (error !== undefined && edge.required) return { dependency: edge.service, error };
+            }
+          }),
+          options.signal,
+        ),
+      }).pipe(
         Effect.catch((error) => (options.signal?.aborted === true ? Effect.interrupt : Effect.fail(error))),
       );
       if (started.startedIdentity !== undefined) startedIds.set(service.name, started.startedIdentity);
+      if (started.continuationCause !== undefined)
+        return { changed: started.changed, continuationCause: started.continuationCause };
+      if (started.continuationFailure !== undefined)
+        return { changed: started.changed, continuationFailure: started.continuationFailure };
       if (started.dependencyUnavailable !== undefined)
         return { changed: started.changed, dependencyUnavailable: started.dependencyUnavailable };
       const failure = started.startFailure;
@@ -1788,8 +1829,8 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
     }),
   }).pipe(
     Effect.catchCause((cause) => {
-      const [reason] = cause.reasons;
-      return cause.reasons.length === 1 && reason?._tag === "Fail"
+      const reason = unscopedFailureReason(cause);
+      return reason?._tag === "Fail"
         ? captureStartFailure(deps, plan, reason.error)
         : Effect.failCause(cause);
     }),
@@ -1806,6 +1847,13 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
       }),
     );
   }
+  const continuationError = result.blocked.find(
+    (service) => service.continuationError !== undefined,
+  )?.continuationError;
+  if (continuationError !== undefined)
+    return yield* options.signal?.aborted === true
+      ? Effect.interrupt
+      : Effect.fail(redactProviderError(continuationError, deps.redactor));
   const [blocked] = result.blocked;
   if (blocked !== undefined) {
     const aborted = options.signal?.aborted === true;

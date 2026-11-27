@@ -125,6 +125,21 @@ const catalogHandler = (options: {
   };
 };
 
+test("an online catalog row and working master login do not prove access to the requested database", async () => {
+  const handle = catalogHandler({});
+  const adapter = mssql(
+    makeContext({
+      handle: (request) =>
+        isPasswordProbe(request) && request.argv[request.argv.indexOf("-d") + 1] === "appdb"
+          ? result({ exitCode: 1, stderr: 'Cannot open database "appdb" requested by the login.' })
+          : handle(request),
+    }),
+  );
+  expect(await runExit(adapter.delta({ user: "sa", password: ADMIN_SECRET }))).toMatchObject({
+    _tag: "Failure",
+  });
+});
+
 describe("mssql credential adapter admin", () => {
   test("accepts sa with sysadmin proof", async () => {
     const adapter = mssql(

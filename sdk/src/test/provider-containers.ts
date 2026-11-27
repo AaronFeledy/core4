@@ -1,6 +1,7 @@
-import { Clock, DateTime, Effect } from "effect";
+import { Clock, DateTime, Effect, Graph } from "effect";
 import {
   HealthcheckTargetUnsupportedError,
+  ProviderInternalError,
   ProviderUnavailableError,
   ServiceNotFoundError,
   ServiceStartError,
@@ -10,6 +11,8 @@ import {
   type ContainerBringDownReceipt,
   LANDO_DATA_ROOT_LABEL,
   type ObservedBringDown,
+  type ServiceName,
+  type ServicePlan,
   effectiveReadiness,
 } from "../schema/index.ts";
 import type { RuntimeProviderShape, ServiceRuntimeFields, ServiceSelector } from "../services/index.ts";
@@ -80,12 +83,49 @@ export const makeTestProviderContainers = () => {
         ),
       );
       let changed = false;
-      for (const service of Object.values(plan.services)) {
+      const graph = Graph.directed<ServicePlan, null>((graph) => {
+        const contents = Object.values(plan.services);
+        const indices = new Map(contents.map((service) => [service.name, Graph.addNode(graph, service)]));
+        for (const service of contents) {
+          const consumer = indices.get(service.name);
+          if (consumer === undefined) continue;
+          for (const edge of service.dependsOn) {
+            const dependency = indices.get(edge.service);
+            if (dependency !== undefined) Graph.addEdge(graph, dependency, consumer, null);
+          }
+        }
+      });
+      if (!Graph.isAcyclic(graph)) {
+        return yield* new ProviderInternalError({
+          providerId: TEST_PROVIDER_ID,
+          operation: "apply",
+          message: "Service dependencies contain a cycle.",
+          remediation: "Remove the cyclic dependency and retry.",
+        });
+      }
+      const green = new Map<ServiceName, string>();
+      for (const service of Graph.values(Graph.topo(graph))) {
         if (options.signal?.aborted) return yield* Effect.interrupt;
         const target = { app: plan.id, service: service.name };
         const current = containers.get(key(target));
+        if (current?.status !== "running" && options.continueHealthyDependency !== undefined) {
+          for (const edge of service.dependsOn) {
+            if (edge.condition !== "service_healthy") continue;
+            const containerId = green.get(edge.service);
+            if (containerId === undefined) continue;
+            const failure = yield* options.continueHealthyDependency({
+              consumer: service.name,
+              dependency: edge.service,
+              containerId,
+              createdVolumes: [],
+            });
+            if (options.signal?.aborted) return yield* Effect.interrupt;
+            if (failure !== undefined && edge.required) return yield* failure;
+          }
+        }
         const now = yield* Clock.currentTimeMillis;
         if (current === undefined) generation += 1;
+        const containerId = current?.containerId ?? `test-container-${generation}`;
         const completesOnStart = completes.has(service.name);
         changed ||= current?.status !== "running";
         containers.set(key(target), {
@@ -93,7 +133,7 @@ export const makeTestProviderContainers = () => {
           appRoot: plan.identity?.appRoot ?? plan.root,
           service: service.name,
           providerId: plan.provider,
-          containerId: current?.containerId ?? `test-container-${generation}`,
+          containerId,
           status: completesOnStart ? "exited" : "running",
           ...(completesOnStart ? { exitCode: 0 } : {}),
           lastStartedAt:
@@ -124,6 +164,7 @@ export const makeTestProviderContainers = () => {
               }),
             );
           }
+          if (!completesOnStart) green.set(service.name, containerId);
         }
       }
       return { changed };
