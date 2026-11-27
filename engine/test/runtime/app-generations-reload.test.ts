@@ -1,7 +1,8 @@
 import { expect, spyOn, test } from "bun:test";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
 import { withAppDiscovery } from "@lando/landofile/operation-discovery";
 import { makeLandoPaths } from "@lando/paths";
 import { PathsService } from "@lando/sdk/services";
@@ -18,19 +19,17 @@ const withPlugin = async (
   run: (fixture: {
     readonly app: string;
     readonly plugin: string;
+    readonly entry: string;
     readonly registry: string;
-    readonly registryBytes: string;
     readonly pluginsDir: string;
   }) => Promise<void>,
 ) => {
   const root = await mkdtemp(join(tmpdir(), "lando-generation-reload-"));
   const app = join(root, "app");
   const plugin = join(root, "plugin");
+  const entry = join(plugin, "index.ts");
   const pluginsDir = join(root, "installed");
   const registry = join(pluginsDir, "registry.json");
-  const registryBytes = JSON.stringify({
-    "@example/reload": { name: "@example/reload", version: "1.0.0", path: plugin },
-  });
   try {
     for (const path of [app, plugin, pluginsDir]) await mkdir(path);
     await writeFile(join(app, ".lando.yml"), "name: generation\n");
@@ -40,9 +39,12 @@ const withPlugin = async (
         landoPlugin: { name: "@example/reload", version: "1.0.0", api: 4, entry: "index.ts" },
       }),
     );
-    await writeFile(join(plugin, "index.ts"), `export const value = "${before}";`);
-    await writeFile(registry, registryBytes);
-    await run({ app, plugin, registry, registryBytes, pluginsDir });
+    await writeFile(entry, `export const value = "${before}";`);
+    await writeFile(
+      registry,
+      JSON.stringify({ "@example/reload": { name: "@example/reload", version: "1.0.0", path: plugin } }),
+    );
+    await run({ app, plugin, entry, registry, pluginsDir });
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -53,7 +55,7 @@ const importValue = (plugin: string) =>
 
 const openGeneration = (
   fixture: { readonly app: string; readonly plugin: string; readonly pluginsDir: string },
-  resources: Layer.Layer<never>,
+  resources: Layer.Layer<never> = Layer.empty,
 ) =>
   Effect.map(
     makeAppGenerations({
@@ -80,9 +82,8 @@ test("an acquire paused after selection cannot lease the old generation after re
     Effect.runPromise(
       Effect.scoped(
         Effect.gen(function* () {
-          const paused = yield* Deferred.make<void>();
-          const resume = yield* Deferred.make<() => void>();
-          const acquire = yield* openGeneration(fixture, Layer.empty);
+          const resumeBorrower = yield* Deferred.make<() => void>();
+          const acquire = yield* openGeneration(fixture);
           const first = yield* Effect.scoped(acquire);
           expect(first.value).toBe(before);
 
@@ -95,8 +96,7 @@ test("an acquire paused after selection cannot lease the old generation after re
             }
             pauseNext = false;
             selectionPaused = true;
-            Deferred.doneUnsafe(resume, Effect.succeed(task));
-            Deferred.doneUnsafe(paused, Effect.void);
+            Deferred.doneUnsafe(resumeBorrower, Effect.succeed(task));
             return () => undefined;
           });
           const tracer = Tracer.make({
@@ -127,14 +127,11 @@ test("an acquire paused after selection cannot lease the old generation after re
               Effect.withTracerEnabled(true),
             ),
           );
-          yield* Deferred.await(paused);
-          const unpause = yield* Deferred.await(resume);
+          const resume = yield* Deferred.await(resumeBorrower);
           yield* Effect.gen(function* () {
-            yield* Effect.promise(() =>
-              writeFile(join(fixture.plugin, "index.ts"), `export const value = "${after}";`),
-            );
+            yield* Effect.promise(() => writeFile(fixture.entry, `export const value = "${after}";`));
             expect(yield* importValue(fixture.plugin)).toBe(after);
-          }).pipe(Effect.ensuring(Effect.sync(unpause)));
+          }).pipe(Effect.ensuring(Effect.sync(resume)));
           expect((yield* Fiber.join(borrower)).value).toBe(after);
         }),
       ),
@@ -162,7 +159,7 @@ test("session close reclaims superseded scopes without waiting for outstanding b
           );
           const acquire = yield* openGeneration(fixture, resources).pipe(Scope.provide(session));
           const first = yield* acquire.pipe(Scope.provide(lease));
-          yield* Effect.promise(() => writeFile(fixture.registry, `${fixture.registryBytes}\n`));
+          yield* Effect.promise(() => appendFile(fixture.registry, "\n"));
           const second = yield* Effect.scoped(acquire);
           expect(second).not.toBe(first);
           expect(closed).toEqual([]);
@@ -185,12 +182,12 @@ test("reload waits for a superseded generation's in-progress teardown before evi
         Effect.gen(function* () {
           const closing = yield* Deferred.make<void>();
           const finishClose = yield* Deferred.make<void>();
-          const drain = yield* Deferred.make<{ readonly barrier: Promise<void> }>();
+          const drain = yield* Deferred.make<Promise<void>>();
           const register = ModuleCache.registerPluginReloadDrain;
           const observe = spyOn(ModuleCache, "registerPluginReloadDrain").mockImplementation((callback) =>
             register((previous) => {
               const barrier = callback(previous);
-              Deferred.doneUnsafe(drain, Effect.succeed({ barrier }));
+              Deferred.doneUnsafe(drain, Effect.succeed(barrier));
               return barrier;
             }),
           );
@@ -215,14 +212,11 @@ test("reload waits for a superseded generation's in-progress teardown before evi
           yield* Deferred.await(closing);
 
           const pendingAtBarrier = yield* Effect.gen(function* () {
-            yield* Effect.promise(() =>
-              writeFile(join(fixture.plugin, "index.ts"), `export const value = "${after}";`),
-            );
+            yield* Effect.promise(() => writeFile(fixture.entry, `export const value = "${after}";`));
             const reload = yield* Effect.forkChild(importValue(fixture.plugin));
-            const { barrier } = yield* Deferred.await(drain);
+            const barrier = yield* Deferred.await(drain);
             yield* Effect.yieldNow;
-            // The in-memory drain either returns immediately or waits on the scope finalizer.
-            // Race only that barrier, not the filesystem work that follows it.
+            // Race the drain itself; eviction does filesystem work after the barrier.
             const result = yield* Effect.promise(() =>
               Promise.race([barrier.then(() => "drained"), Promise.resolve().then(() => "pending")]),
             );

@@ -2,11 +2,13 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
 import { withAppDiscovery } from "@lando/landofile/operation-discovery";
 import { makeLandoPaths } from "@lando/paths";
 import { PluginLoadError } from "@lando/sdk/errors";
 import { PathsService } from "@lando/sdk/services";
 import { Cause, Context, Deferred, Effect, Exit, Fiber, Layer, Scope, Tracer } from "effect";
+
 import { makeAppGenerations } from "../../src/runtime/app-generations.ts";
 
 class GenerationId extends Context.Service<GenerationId, number>()("test/generation-id") {}
@@ -39,7 +41,6 @@ test.each(["success", "failure", "session close"] as const)(
             const finishFirst = yield* Deferred.make<void>();
             const closeStarted = yield* Deferred.make<void>();
             const finishClose = yield* Deferred.make<void>();
-            const selected = yield* Deferred.make<void>();
             const closed: number[] = [];
             const interrupted: number[] = [];
             let builds = 0;
@@ -96,20 +97,22 @@ test.each(["success", "failure", "session close"] as const)(
             const acquire = Effect.scoped(withAppDiscovery(root, apps.acquire(root)));
             const first = yield* Effect.forkChild(acquire);
             yield* Deferred.await(constructing);
+            const selected = yield* Deferred.make<void>();
             const second = yield* Effect.forkChild(
               acquire.pipe(Effect.withTracer(selectionTracer(selected)), Effect.withTracerEnabled(true)),
             );
             yield* Deferred.await(selected);
             yield* Effect.yieldNow;
-            yield* Fiber.interruptAll([first, second]);
-            for (const waiter of [first, second]) {
+            const waiters = [first, second];
+            yield* Fiber.interruptAll(waiters);
+            for (const waiter of waiters) {
               const exit = yield* Fiber.await(waiter);
               expect(Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause)).toBe(true);
             }
 
+            if (outcome !== "session close") yield* Deferred.succeed(finishFirst, undefined);
             switch (outcome) {
               case "success": {
-                yield* Deferred.succeed(finishFirst, undefined);
                 const next = yield* acquire;
                 expect({ generation: next.id, builds, closed }).toEqual({
                   generation: 1,
@@ -119,7 +122,6 @@ test.each(["success", "failure", "session close"] as const)(
                 break;
               }
               case "failure": {
-                yield* Deferred.succeed(finishFirst, undefined);
                 yield* Deferred.await(closeStarted);
                 const retrySelected = yield* Deferred.make<void>();
                 const retry = yield* Effect.forkChild(
