@@ -823,20 +823,24 @@ expect(brokenTool?.issues?.map(({ reason }) => reason).sort()).toEqual(["alias-c
 const issue = brokenTool?.issues?.find(({ reason }) => reason === "alias-collision");
 const first = ["tooling", "broken", "flags", "first", "alias"];
 const second = ["tooling", "broken", "flags", "second", "alias"];
+const Source = Schema.Struct({ file: Schema.String, layer: Schema.String, path: Schema.Array(Schema.String) });
+const located = Schema.decodeUnknownSync(Schema.Struct({
+  path: Schema.Array(Schema.String),
+  source: Source,
+  related: Schema.Array(Schema.Struct({ path: Schema.Array(Schema.String), source: Source })),
+}))(issue);
 // Lando reports the path it discovered; Windows may spell the temp directory with an 8.3 short name.
-const canonical = (file: string | undefined) => Effect.promise(() => realpath(file ?? ""));
+const canonical = (source: typeof Source.Type) =>
+  Effect.map(Effect.promise(() => realpath(source.file)), (file) => ({ ...source, file }));
 expect({
-  path: issue?.path,
-  file: yield* canonical(issue?.source?.file),
-  source: { ...issue?.source, file: undefined },
-  related: issue?.related?.map((entry) => ({ ...entry, source: { ...entry.source, file: undefined } })),
-  relatedFile: yield* canonical(issue?.related?.[0]?.source?.file),
+  path: located.path,
+  source: yield* canonical(located.source),
+  related: yield* Effect.forEach(located.related, (entry) =>
+    Effect.map(canonical(entry.source), (source) => ({ ...entry, source }))),
 }).toEqual({
   path: second,
-  file: landofile,
-  source: { file: undefined, layer: "canonical", path: second },
-  related: [{ path: first, source: { file: undefined, layer: "canonical", path: first } }],
-  relatedFile: landofile,
+  source: { file: landofile, layer: "canonical", path: second },
+  related: [{ path: first, source: { file: landofile, layer: "canonical", path: first } }],
 });
 expect((yield* list).filter((name) => ["app:healthy", "app:broken", "fixture:broken"].includes(name))).toEqual(["app:healthy"]);
 const waitForChangeAfter = (after: number) => {
