@@ -105,15 +105,14 @@ describe("managed native init readiness", () => {
           },
         }),
       );
-      const plan = await Effect.runPromise(provider.planSetup({ force: false }));
-      await Effect.runPromise(Effect.scoped(provider.setup(plan, { force: false })));
+      await Effect.runPromise(Effect.scoped(provider.setup({ force: false })));
       // Simulate published-bundle replace wiping helper while keeping the bridge identity.
       await rm(join(paths.runtimeBinDir, "catatonit"));
       await writeFile(
         join(paths.runtimeBinDir, ".runtime-installed-version"),
         `${LEGACY_NATIVE_INIT_BRIDGE_VERSION}\n`,
       );
-      await Effect.runPromise(Effect.scoped(provider.setup(plan, { force: false })));
+      await Effect.runPromise(Effect.scoped(provider.setup({ force: false })));
       expect(new Uint8Array(await readFile(join(paths.runtimeBinDir, "catatonit")))).toEqual(
         new Uint8Array(fixture.elf),
       );
@@ -169,8 +168,7 @@ describe("managed native init readiness", () => {
               },
             }),
           );
-          const plan = await Effect.runPromise(provider.planSetup({ force: false }));
-          await Effect.runPromise(Effect.scoped(provider.setup(plan, { force: false })));
+          await Effect.runPromise(Effect.scoped(provider.setup({ force: false })));
           expect(await readdir(paths.root)).toEqual(["run"]);
         }));
     }

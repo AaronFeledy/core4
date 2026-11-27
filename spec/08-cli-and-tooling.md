@@ -142,7 +142,7 @@ The registry is authoritative for ids, aliases, bootstrap levels, flags, and res
 | `meta:templates:list` | `templates`, `templates:list` | `plugins` | List bundled, plugin, and reviewed-index templates |
 | `meta:templates:trust` | `templates:trust` | `minimal` | List and revoke stored template consents (§23.11) |
 | `meta:templates:validate` | `templates:validate` | `minimal` | Resolve, compile, and plan a template read-only |
-| `meta:setup` | `setup` | `provider` | Configure provider, CA, router, shell integration |
+| `meta:setup` | `setup` | `provider` | Configure provider, CA, router, shell integration; `--dry-run` reports the planned host changes and needed credentials without changing anything (§10.8) |
 | `meta:shellenv` | `shellenv` | `none` | Print embedded shell snippets |
 | `meta:uninstall` | `uninstall` | `none` | Remove recorded Lando-owned files through a command-owned maintenance runtime that does not require valid global configuration; `--yes`, `--dry-run` |
 | `meta:update` | `update` | `plugins` | Update core and plugins |

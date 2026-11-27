@@ -321,6 +321,7 @@ import {
   FileSyncPolicyReason,
   FileSyncServicePolicy,
 } from "./file-sync-policy.ts";
+import { HostChange, HostChangeOutcome, HostChangePlanEntry } from "./host-change.ts";
 import {
   HostEventCmdStep,
   HostEventCommandStep,
@@ -465,7 +466,6 @@ import {
   ServiceProjectUser,
 } from "./primitives.ts";
 import { PromptSpec } from "./prompt.ts";
-import { ProviderSetupPlan } from "./provider-setup.ts";
 import {
   AppRouteOwner,
   ProxyApplyResult,
@@ -760,7 +760,9 @@ const basePublicSchemaRegistry = schemaRegistry({
   BuildStep,
   AppPlan,
   AppliedAppPlan,
-  ProviderSetupPlan,
+  HostChange,
+  HostChangePlanEntry,
+  HostChangeOutcome,
   ServicePlan,
   ServiceHomePlan,
   AppMountInput,

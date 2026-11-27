@@ -178,7 +178,6 @@ const makeLogsLayer = (
     platform: "linux",
     capabilities: effectiveCapabilities,
     isAvailable: Effect.succeed(true),
-    planSetup: () => Effect.succeed({ providerId, changes: [] }),
     setup: () => Effect.void,
     getStatus: Effect.succeed({ state: "running" as const }),
     getVersions: Effect.succeed({ provider: "0.0.0" }),

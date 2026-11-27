@@ -19,9 +19,6 @@ The fixture record is exhaustive over `ProviderError["_tag"]`, including all thr
 | ProviderCapabilityError | pass | pass | pass | pass | pass | pass | pass |
 | ProviderConfigError | pass | pass | pass | pass | pass | pass | pass |
 | ProviderInternalError | pass | pass | pass | pass | pass | pass | pass |
-| ProviderSetupConsentDeniedError | pass | pass | pass | pass | pass | pass | pass |
-| ProviderSetupPrivilegeUnavailableError | pass | pass | pass | pass | pass | pass | pass |
-| ProviderSetupProvisioningError | pass | pass | pass | pass | pass | pass | pass |
 | ProviderSetupUnsupportedHostError | pass | pass | pass | pass | pass | pass | pass |
 | ProviderUnavailableError | pass | pass | pass | pass | pass | pass | pass |
 | ServiceExecError | pass | pass | pass | pass | pass | pass | pass |

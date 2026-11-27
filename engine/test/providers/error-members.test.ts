@@ -1,7 +1,12 @@
 import { expect, test } from "bun:test";
 import { RedactionService } from "@lando/redaction/service";
 import { ProviderUnavailableError, ServiceStartError } from "@lando/sdk/errors";
-import { type ProviderError, RuntimeProviderRegistry, type RuntimeProviderShape } from "@lando/sdk/services";
+import {
+  type HostChangeApplyError,
+  type ProviderError,
+  RuntimeProviderRegistry,
+  type RuntimeProviderShape,
+} from "@lando/sdk/services";
 import { Effect, Result, Schema, type Scope } from "effect";
 import { providerMemberPolicy } from "../../src/providers/output-policy.ts";
 import { assertRedactedError } from "./fixtures/assert-redacted-error.ts";
@@ -12,7 +17,10 @@ import { memberCalls } from "./fixtures/member-calls.ts";
 const calls: Readonly<
   Record<
     string,
-    ((provider: RuntimeProviderShape) => Effect.Effect<unknown, ProviderError, Scope.Scope>) | undefined
+    | ((
+        provider: RuntimeProviderShape,
+      ) => Effect.Effect<unknown, ProviderError | HostChangeApplyError, Scope.Scope>)
+    | undefined
   >
 > = memberCalls;
 test.each(Object.entries(providerMemberPolicy).filter(([, [, errors]]) => errors !== "none"))(

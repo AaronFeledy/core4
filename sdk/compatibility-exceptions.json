@@ -87,14 +87,25 @@
     "justification": "Doctor gains a lando-roots section that reports root-owned files under Lando's own roots. Existing section ids are unchanged; consumers that filter on known sections keep working and can ignore the new id."
   },
   {
-    "fingerprint": "sha256:fd4ba94d76f1f9b0fcd5c39f6b11d5b712820ad002726be6d53c297ee4c569f5",
+    "fingerprint": "sha256:75487d2b3b34df4dc3d0a8ad8412526be6cffea197511377c353ddbdd09f22d4",
     "changeKind": "unsupported-construct",
     "locations": [
       {
-        "surface": "schema:ProviderSetupPlan",
-        "path": "$.changes.items.anyOf"
+        "surface": "command:meta:setup",
+        "path": "$.anyOf"
       }
     ],
-    "justification": "The closed provider-setup host-change union gains enable-user-linger, which the managed Linux provider plans when no systemd user manager runs. Plans are produced and consumed within one setup run and never persisted; existing change members are unchanged."
+    "justification": "The meta:setup result becomes a union discriminated by dryRun: `lando setup --dry-run` returns the planned host changes (each with its exact commands and, when a step reads input, the manual commands a person can run instead), what this run would do with each (`approval`: approved, will-ask, will-skip, blocked, or not-offered) and the flags that approve it without a terminal (`approvedBy`), and how a run would get administrator access (`elevation`), while a finished setup adds dryRun: false and one hostChanges outcome per planned change, with the digest of any input a step piped to root. Consumers that read a finished setup keep every field they read before."
+  },
+  {
+    "fingerprint": "sha256:e6fc8e5eea3ef67e2e0ccaa76dcd1e51aa3149709f9e21430f0f3a4bedaca28f",
+    "changeKind": "surface-removed",
+    "locations": [
+      {
+        "surface": "schema:ProviderSetupPlan",
+        "path": "$"
+      }
+    ],
+    "justification": "ProviderSetupPlan and its closed provider-only change union are replaced by the open HostChange contract (with HostChangePlanEntry and HostChangeOutcome), which covers provider, CA, router, and core host changes with exact commands, consent class, requirement, and undo. The removed schema was never persisted and never shipped in a release."
   }
 ]

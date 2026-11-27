@@ -193,8 +193,7 @@ describe("provider-lando runtime path resolution", () => {
           },
         }),
       );
-      const plan = await Effect.runPromise(provider.planSetup({ force: false }));
-      await Effect.runPromise(Effect.scoped(provider.setup(plan, { force: false })));
+      await Effect.runPromise(Effect.scoped(provider.setup({ force: false })));
       expect(machineCalls).toEqual(["inspect", "create", "start", "inspect"]);
       expect(rootlessProbeCount).toBe(0);
     } finally {

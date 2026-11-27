@@ -61,6 +61,8 @@
     "./global-app/runtime": "./src/global-app/runtime.ts",
     "./global-app/service": "./src/global-app/service.ts",
     "./global-app/startup-admission": "./src/global-app/startup-admission.ts",
+    "./host-changes/apply": "./src/host-changes/apply.ts",
+    "./host-changes/plan": "./src/host-changes/plan.ts",
     "./host/root-ownership": "./src/host/root-ownership.ts",
     "./host/shell-profile": "./src/host/shell-profile.ts",
     "./http/local-ca-trust": "./src/http/local-ca-trust.ts",

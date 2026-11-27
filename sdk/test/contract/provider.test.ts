@@ -499,10 +499,8 @@ describe("RuntimeProvider contract", () => {
   test("fails with ContractFailure when setup does not return an Effect", async () => {
     const provider = {
       ...TestRuntimeProvider,
-      setup: (
-        _plan: Parameters<typeof TestRuntimeProvider.setup>[0],
-        _options: Parameters<typeof TestRuntimeProvider.setup>[1],
-      ) => "not-an-effect" as unknown as Effect.Effect<void>,
+      setup: (_options: Parameters<typeof TestRuntimeProvider.setup>[0]) =>
+        "not-an-effect" as unknown as Effect.Effect<void>,
     } as typeof TestRuntimeProvider;
 
     await expectContractFailure(provider, "setup returns an Effect");
