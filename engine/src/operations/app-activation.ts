@@ -13,6 +13,7 @@ import { digest, recordedStartCommand } from "./accelerated-start-record.ts";
 import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
 import { claimAppDataIdentity, claimDataIdentityBeforeRetirement } from "./data-identity-claim.ts";
 import { reconcileAppDataIdentity } from "./data-identity-reconcile.ts";
+import { type DataUpgrade, assessDataVersions, publishDataUpgradeNotices } from "./data-version-admission.ts";
 import { runAppInitEvents } from "./events.ts";
 import { validateDesiredFileSyncEngine } from "./file-sync-acquire.ts";
 import { preflightSelectedStartFileSync } from "./file-sync-plan.ts";
@@ -36,13 +37,15 @@ import {
   withVolumeTransitionNotices,
 } from "./volume-transition-notice.ts";
 
-declare const admitted: unique symbol;
+const admitted: unique symbol = Symbol("admitted app activation");
 
 interface AdmittedBase {
   readonly [admitted]: true;
   readonly target: ResolvedAppTarget;
   readonly provider: PreparedRuntimeProvider;
   readonly placement: Effect.Success<ReturnType<typeof ensureAppPlacementState>>;
+  readonly dataUpgrades: readonly DataUpgrade[];
+  readonly dataVersionChanges?: StartAppResult["dataVersionChanges"];
   /** Services an unfinished accelerated start removed when admission resumed it. */
   readonly removedByResume: ReadonlyArray<string>;
 }
@@ -124,7 +127,18 @@ export function withAppActivation<A, E, R>(
           pending !== null &&
           request.operation === "start" &&
           digest(services ?? null) === digest(pending.record.services ?? null);
+        const selectedProvider = yield* registry.select(plan);
+        const prepare = yield* Effect.cached(prepareProvider(selectedProvider));
+        const assess = () =>
+          assessDataVersions(
+            selectedPlan,
+            placement.plan === undefined ? placement.superseded : [placement.plan, ...placement.superseded],
+            prepare,
+          );
+        // Resuming, retiring a name, and rotating file sync can all replace containers while keeping their data.
+        let dataUpgrades = yield* assess();
         if (pending !== null && !sameAttempt) {
+          const previous = digest(placement.plan ?? null);
           const { signal, managed } = request;
           resumed = yield* startAppForTarget(
             {
@@ -136,6 +150,7 @@ export function withAppActivation<A, E, R>(
             { beforeStart: managed?.resume?.beforeStart ?? Effect.void },
           );
           placement = yield* ensureAppPlacementState(target.app, plan.provider);
+          if (previous !== digest(placement.plan ?? null)) dataUpgrades = yield* assess();
           if (digest(services ?? null) !== digest(pending.record.services ?? null)) {
             const events = yield* EventService;
             yield* events.publish(
@@ -149,9 +164,8 @@ export function withAppActivation<A, E, R>(
         if (request.operation === "start" && scoped)
           yield* preflightSelectedStartFileSync(selectedPlan, placement.plan);
         yield* validateDesiredFileSyncEngine(request.operation === "start" ? selectedPlan : plan);
-        const selectedProvider = yield* registry.select(plan);
         const overlays = yield* prepareStartOverlays({ ...target, plan: selectedPlan }, selectedProvider);
-        const provider = yield* prepareProvider(selectedProvider);
+        const provider = yield* prepare;
         if (!scoped) yield* claimDataIdentityBeforeRetirement(target, placement.superseded, provider);
         const retired = yield* retireSupersededRealizations(target, placement.superseded, {
           provider,
@@ -190,8 +204,21 @@ export function withAppActivation<A, E, R>(
                   ? placement.plan
                   : yield* preflightSelectedRelaunch(target, selectedPlan, request.operation);
             }
+            yield* publishDataUpgradeNotices(dataUpgrades);
             if (resumed === undefined) yield* runAppInitEvents(plan);
-            const base = { target, provider, placement, removedByResume: resumed?.servicesRemoved ?? [] };
+            const dataVersionChanges = [
+              ...(resumed?.dataVersionChanges ?? []),
+              ...dataUpgrades.map(({ service, from, to }) => ({ service, from, to })),
+            ];
+            const base = {
+              [admitted]: true as const,
+              target,
+              provider,
+              placement,
+              dataUpgrades,
+              removedByResume: resumed?.servicesRemoved ?? [],
+              ...(dataVersionChanges.length === 0 ? {} : { dataVersionChanges }),
+            };
             const admission = scoped
               ? {
                   ...base,
@@ -202,7 +229,7 @@ export function withAppActivation<A, E, R>(
                   preparedTargets,
                 }
               : { ...base, scope: "app" as const, overlays, preparedTargets };
-            return yield* (body as ActivationBody<A, E, R, typeof admission>)(admission);
+            return yield* body(admission);
           }),
         });
       }),
@@ -227,13 +254,18 @@ export const startAppForTarget = Effect.fn("AppOperation.startForTarget")(functi
         );
         const executionTargets =
           admission.preparedTargets === undefined ? {} : { preparedTargets: admission.preparedTargets };
-        if (admission.scope === "services") {
-          return yield* launchAdmittedSelectedStart(admission, options, managed, executionTargets);
-        }
-        return yield* launchAdmittedApp(admission, options, managed, {
-          ...executionTargets,
-          announceApplyOutcome: true,
-        });
+        const result = yield* admission.scope === "services"
+          ? launchAdmittedSelectedStart(admission, options, managed, executionTargets)
+          : launchAdmittedApp(admission, options, managed, {
+              ...executionTargets,
+              announceApplyOutcome: true,
+            });
+        return {
+          ...result,
+          ...(admission.dataVersionChanges === undefined
+            ? {}
+            : { dataVersionChanges: admission.dataVersionChanges }),
+        };
       }),
   );
 });

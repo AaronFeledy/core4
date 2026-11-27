@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { type AppPlan, FileSyncSessionRef, PortablePath } from "@lando/sdk/schema";
+import { type AppPlan, FileSyncSessionRef, PortablePath, ServiceName } from "@lando/sdk/schema";
 import { type FileSyncEngineShape, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { TestFileSyncEngine, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Cause, Effect, Exit } from "effect";
@@ -9,6 +9,7 @@ import {
 } from "../../src/operations/accelerated-start-journal.ts";
 import { startApp } from "../../src/operations/start.ts";
 import { app } from "./accelerated-start-recovery-support.ts";
+import { databaseRuntime, versionedPlan } from "./data-version-support.ts";
 import {
   type FailurePoint,
   changedPlan,
@@ -24,6 +25,33 @@ const tmpfsTarget = PortablePath.make("/app/tmp");
 
 const start = (harness: Effect.Success<ReturnType<typeof rotationHarness>>) =>
   startApp({}, targetFor(harness.desired)).pipe(Effect.provide(harness.layer));
+
+test("a downgrade refuses before file-sync rotation can quiesce or remove the original database", async () => {
+  const name = ServiceName.make("web");
+  const previousService = oldPlan.services[name];
+  const desiredService = changedPlan.services[name];
+  if (previousService === undefined || desiredService === undefined) throw new Error("Missing web service");
+  const previous = versionedPlan(oldPlan, previousService, "11.4");
+  const desired = versionedPlan(changedPlan, desiredService, "10.11");
+  const original = databaseRuntime(previous, name);
+  const harness = await Effect.runPromise(
+    rotationHarness({
+      previous,
+      desired,
+      inspect: () => Effect.succeed(original),
+      exec: (target) =>
+        target.expectedContainerId === original.containerId
+          ? Effect.succeed({ exitCode: 0, stdout: "11.4.13-MariaDB\n\0", stderr: "" })
+          : Effect.die("Attempted to read a different container"),
+    }),
+  );
+
+  const error = await Effect.runPromise(Effect.flip(start(harness)));
+
+  expect(error).toMatchObject({ _tag: "ServiceDataVersionError", dataVersion: { direction: "downgrade" } });
+  expect(harness.calls).toEqual([]);
+  expect(harness.applied()).toBe(previous);
+});
 
 test("rotates the complete old session set before init and preserves named volumes without destroy hooks", async () => {
   const harness = await Effect.runPromise(rotationHarness());
