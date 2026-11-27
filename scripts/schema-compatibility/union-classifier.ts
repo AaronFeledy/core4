@@ -14,6 +14,12 @@ type Preservation = "union-widening" | "optional-properties";
 
 const PLAIN_STRUCT_KEYS = new Set(["additionalProperties", "properties", "required", "type"]);
 
+const propertyNames = (schema: JsonValue): string[] =>
+  isJsonObject(schema) && isJsonObject(schema.properties) ? Object.keys(schema.properties) : [];
+
+const isClosedStruct = (schema: JsonValue): boolean =>
+  isJsonObject(schema) && schema.type === "object" && schema.additionalProperties === false;
+
 const preservesValues = (
   before: JsonValue,
   after: JsonValue,
@@ -29,11 +35,24 @@ const preservesValues = (
     switch (key) {
       case "anyOf": {
         if (!Array.isArray(oldValue) || !Array.isArray(newValue)) return false;
+        if (mode === "union-widening")
+          return oldValue.every((arm) => newValue.some((candidate) => preservesValues(arm, candidate, mode)));
+        if (oldValue.length !== newValue.length) return false;
+        if (!oldValue.every((arm) => newValue.some((candidate) => preservesValues(arm, candidate, mode))))
+          return false;
+        const partners = newValue.map((arm) =>
+          oldValue.find((candidate) => preservesValues(candidate, arm, mode)),
+        );
+        if (partners.some((partner) => partner === undefined)) return false;
+        // An old value can't carry a key no closed old arm declared, so an optional key that is new
+        // to the whole union can't change which arm an old value matches.
+        const declared = new Set(oldValue.flatMap(propertyNames));
+        const added = newValue.flatMap((arm, index) => {
+          const own = new Set(propertyNames(partners[index] ?? {}));
+          return propertyNames(arm).filter((name) => !own.has(name));
+        });
         return (
-          oldValue.every((arm) => newValue.some((candidate) => preservesValues(arm, candidate, mode))) &&
-          (mode === "union-widening" ||
-            (oldValue.length === newValue.length &&
-              newValue.every((arm) => oldValue.some((candidate) => preservesValues(candidate, arm, mode)))))
+          added.length === 0 || (oldValue.every(isClosedStruct) && added.every((name) => !declared.has(name)))
         );
       }
       case "properties": {

@@ -289,6 +289,40 @@ test.each(["strict", "output"] as const)(
   },
 );
 
+const closedArm = (tag: string, fields: JsonSchema = {}): JsonSchema => ({
+  type: "object",
+  additionalProperties: false,
+  properties: { kind: { const: tag }, ...fields },
+  required: ["kind"],
+});
+
+test.each([
+  [
+    "another arm already declares the key",
+    [closedArm("database"), closedArm("web", { version: { type: "string" } })],
+    [
+      closedArm("database", { version: { type: "string" } }),
+      closedArm("web", { version: { type: "string" } }),
+    ],
+  ],
+  [
+    "another arm is open",
+    [closedArm("database"), { type: "object", properties: { kind: { const: "web" } }, required: ["kind"] }],
+    [
+      closedArm("database", { version: { type: "string" } }),
+      { type: "object", properties: { kind: { const: "web" } }, required: ["kind"] },
+    ],
+  ],
+] as const)("leaves an optional union-member field for review when %s", (_case, beforeArms, afterArms) => {
+  const plan = (members: ReadonlyArray<JsonSchema>) => ({
+    type: "object",
+    properties: { services: { type: "object", additionalProperties: { anyOf: members } } },
+  });
+  expect(classifySchemaChange(plan(beforeArms), plan(afterArms), "strict")).toMatchObject([
+    { verdict: "unknown" },
+  ]);
+});
+
 test.each([
   ...JSON_SCHEMA_NAMES.filter((name) => name.endsWith("ServiceConfig")),
   "ServiceConfigInput",
