@@ -4,6 +4,7 @@ import { definePlugin } from "@lando/sdk/plugins";
 import { PluginManifest, ServiceName, type ServicePlan } from "@lando/sdk/schema";
 import type { AppFeatureDefinition, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
+import { NGINX_DEFAULT_IMAGE } from "@lando/service-lando/services/default-images";
 import { Effect, Schema } from "effect";
 import { bundledPluginModules } from "../../src/composition.ts";
 import * as Registry from "../../src/plugins/registry.ts";
@@ -12,8 +13,7 @@ import { planApp } from "../plan-app.ts";
 
 const web = ServiceName.make("web");
 const worker = { name: "nginx", uid: 101, gid: 101 };
-const stockImage = "nginx:1.26-alpine";
-const foreignImage = "example.test/library/nginx:1.26-alpine";
+const foreignImage = `example.test/library/${NGINX_DEFAULT_IMAGE}`;
 const pluginName = "@example/launcher-mutation";
 
 type LauncherWrites = Pick<
@@ -144,7 +144,7 @@ test.each(["after service", "app"] as const)(
 );
 
 test("a canonical alias of the stock artifact preserves the worker", async () => {
-  const artifact = { kind: "ref", ref: `index.docker.io/library/${stockImage}` } as const;
+  const artifact = { kind: "ref", ref: `index.docker.io/library/${NGINX_DEFAULT_IMAGE}` } as const;
   const service = await plan({}, { phase: "app", apply: (ctx) => ctx.setArtifact(artifact) });
   expect(service?.artifact).toEqual(artifact);
   expect(service?.projectUser).toEqual(worker);

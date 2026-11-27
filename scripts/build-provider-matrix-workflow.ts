@@ -309,9 +309,15 @@ on:
       - core/test/live/nginx-route-cli-live.integration.test.ts
       - core/test/live/route-cli-live-support.ts
       - engine/src/planner/endpoints.ts
+      - engine/src/planner/home.ts
       - engine/src/planner/project-user.ts
+      - engine/src/planner/service-artifact.ts
+      - engine/src/services/app-feature-mutations.ts
+      - engine/src/services/draft.ts
       - engine/src/services/extends.ts
+      - engine/src/services/extra-args-launcher.ts
       - plugins/provider-docker/**
+      - plugins/service-lando/src/services/default-images.ts
       - plugins/service-lando/src/services/nginx*
       - plugins/service-lando/src/services/static.ts
       - scripts/provider-matrix*

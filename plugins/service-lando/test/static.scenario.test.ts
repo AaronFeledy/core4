@@ -209,7 +209,7 @@ describe("static service type — scenario: nginx-backed dist/ serve + lando cur
     if (web === undefined) throw new Error("web service missing from static plan");
 
     expect(web.type).toBe("static:nginx");
-    expect(web.artifact).toEqual({ kind: "ref", ref: "nginx:1.26-alpine" });
+    expect(web.artifact).toEqual({ kind: "ref", ref: "nginx:1.30-alpine" });
     expect(web.endpoints).toEqual([
       {
         kind: "internal",

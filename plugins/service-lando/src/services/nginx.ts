@@ -24,10 +24,10 @@ import { launcherAuthority, primaryPortSelector, servicePortEndpoints } from "./
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { tcpProbe } from "./_tcp-probe.ts";
 import { resolveWebroot } from "./_webroot.ts";
+import { NGINX_DEFAULT_IMAGE } from "./default-images.ts";
 import { landoErrorPagesBuildStep, nginxErrorPageConfigLines } from "./http-errors.ts";
 import { nginxHiddenPathConfigLines } from "./http-hidden-paths.ts";
 import {
-  STOCK_NGINX_IMAGE,
   nginxDefaultSiteRemovalBuildStep,
   nginxLauncherCommand,
   stockNginxIdentity,
@@ -158,7 +158,7 @@ const applyNginxFeature = (ctx: ServiceFeatureContext): void => {
   const webroot = resolveWebroot("nginx", service.webroot, service.appMount);
   const backend = service.backend?.trim() ?? "";
 
-  ctx.setArtifact({ kind: "ref", ref: service.image ?? STOCK_NGINX_IMAGE });
+  ctx.setArtifact({ kind: "ref", ref: service.image ?? NGINX_DEFAULT_IMAGE });
   applyAuthoredProcessFields(ctx, ["user"]);
   ctx.setHealthcheck(tcpProbe(port, 10));
 

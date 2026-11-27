@@ -7,7 +7,7 @@ tags: [docs, nginx, service, webserver]
 
 # Add nginx
 
-Add `type: nginx` under `services` in `.lando.yml`. Lando pulls `nginx:1.26-alpine` and listens on `80`. Your repository is mounted at `/app` and served as the document root:
+Add `type: nginx` under `services` in `.lando.yml`. Lando pulls `nginx:1.30-alpine` and listens on `80`. Your repository is mounted at `/app` and served as the document root:
 
 ```yaml
 name: nginx-demo
@@ -212,7 +212,7 @@ If startup fails with this override, Lando includes a hint naming the required
 
 ## Pin a version
 
-Set `image:` when `nginx:1.26-alpine` isn't the version you want:
+Set `image:` when `nginx:1.30-alpine` isn't the version you want:
 
 ```yaml
 services:

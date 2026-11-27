@@ -4,16 +4,19 @@ import type {
   ServiceImageIdentity,
 } from "@lando/sdk/services";
 import { ServiceConfigIssue } from "./_feature-helpers.ts";
+import { NGINX_DEFAULT_IMAGE } from "./default-images.ts";
 
-export const STOCK_NGINX_IMAGE = "nginx:1.26-alpine";
 export const stockNginxLauncherOptions = { projectUser: true } as const satisfies LauncherCommandOptions;
 
+// Verified /etc/passwd in nginx:1.30-alpine (linux/amd64), config:
+// sha256:d5f49e5ab196322ceaca86fd802279f6ace122b19c43fa67d80b029f23936f53.
+// nginx:x:101:101:nginx:/var/cache/nginx:/sbin/nologin
 // The worker's passwd home, /var/cache/nginx, must not become a home store.
 export const stockNginxIdentity: ServiceImageIdentity = {
   defaultUser: "root",
   homes: { root: "/root" },
   projectUser: { name: "nginx", uid: 101, gid: 101 },
-  projectUserDefault: { launcherImage: STOCK_NGINX_IMAGE },
+  projectUserDefault: { launcherImage: NGINX_DEFAULT_IMAGE },
 };
 
 /**

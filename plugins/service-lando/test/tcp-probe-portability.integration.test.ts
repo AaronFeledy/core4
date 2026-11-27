@@ -19,7 +19,7 @@ const images = [
     { image: phpImageFor(version, "apache"), port: 80, command: [] },
     { image: phpImageFor(version, "fpm"), port: 9000, command: [] },
   ]),
-  { image: "nginx:1.26-alpine", port: 80, command: [] },
+  { image: "nginx:1.30-alpine", port: 80, command: [] },
   { image: "httpd:2.4-alpine", port: 80, command: [] },
   {
     image: "caddy:2-alpine",
