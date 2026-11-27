@@ -147,7 +147,7 @@ test("stdio-outstanding-request-cap-rejects-the-257th-as-busy-with-default-concu
       Effect.gen(function* () {
         const release = yield* Deferred.make<void>();
         const spec = {
-          id: "app:info",
+          id: "app:config:get",
           summary: "Info",
           resultSchema: Schema.Struct({}),
           run: () =>
@@ -199,9 +199,16 @@ test("stdio-outstanding-request-cap-rejects-the-257th-as-busy-with-default-concu
     message: "Server busy",
     remediation: "Restart the MCP client with healthy piped stdin/stdout and retry the request.",
   });
-  expect(Schema.decodeUnknownSync(Schema.JsonObject)(observed.busy.result).structuredContent).toMatchObject({
+  const busy = Schema.decodeUnknownSync(
+    Schema.Struct({
+      content: Schema.Array(Schema.Struct({ type: Schema.Literal("text"), text: Schema.String })),
+      structuredContent: Schema.JsonObject,
+    }),
+  )(observed.busy.result);
+  expect(JSON.parse(busy.content[0]?.text ?? "null")).toEqual(busy.structuredContent);
+  expect(busy.structuredContent).toMatchObject({
     apiVersion: "v4",
-    command: "app:info",
+    command: "app:config:get",
     ok: false,
     warnings: [],
     deprecations: [],
