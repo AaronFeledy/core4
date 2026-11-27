@@ -260,3 +260,59 @@ test("global supervised warnings use global logs", async () => {
   expect(successOf(timed.exit)[0]?.state).toBe("restarting");
   expect(await Effect.runPromise(warnings.list)).toMatchObject([{ remediation: "lando global:logs -s web" }]);
 });
+
+test("finds a database refusal before chatty shutdown without increasing the display tail", async () => {
+  const plannedApp = {
+    ...plan,
+    services: {
+      [web.name]: {
+        ...web,
+        dataVersion: {
+          label: "MongoDB",
+          target: PortablePath.make("/data/db"),
+          refusals: [
+            {
+              pattern: "Invalid featureCompatibilityVersion",
+              exitCodes: [62],
+              direction: "incompatible" as const,
+            },
+          ],
+        },
+      },
+    },
+  };
+  const lines = [
+    '{"s":"F","msg":"Wrong mongod version","attr":{"error":"UPGRADE PROBLEM: Invalid featureCompatibilityVersion document"}}',
+    ...Array.from({ length: 70 }, (_, index) => `{"msg":"Shutdown step ${index}"}`),
+  ];
+  const provider = {
+    ...TestRuntimeProvider,
+    inspect: () =>
+      Effect.succeed({
+        app: plannedApp.id,
+        service: web.name,
+        providerId: plan.provider,
+        status: "exited" as const,
+        publications: { status: "unknown" as const },
+        exitCode: 62,
+      }),
+    logs: (
+      target: Parameters<typeof TestRuntimeProvider.logs>[0],
+      options?: Parameters<typeof TestRuntimeProvider.logs>[1],
+    ) =>
+      Stream.fromIterable(
+        lines.slice(-(options?.tail ?? lines.length)).map((line) => ({
+          service: target.service ?? web.name,
+          stream: "stdout" as const,
+          line,
+        })),
+      ),
+  };
+  const error = await Effect.runPromise(
+    Effect.flip(waitForServiceReadiness({ provider, plan: plannedApp, services: [web.name] })),
+  );
+  if (!(error instanceof ServiceNotReadyError)) throw new TypeError("Expected readiness error");
+  expect(error.dataVersion).toEqual({ direction: "incompatible", evidence: "server" });
+  expect(error.logTail?.lines).toHaveLength(50);
+  expect(error.logTail?.truncated).toBe(true);
+});

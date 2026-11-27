@@ -1,4 +1,8 @@
-import type { AppPlan, ServiceDataVersionFinding, ServicePlan } from "@lando/sdk/schema";
+import type { AppPlan, ServiceDataVersion, ServiceDataVersionFinding, ServicePlan } from "@lando/sdk/schema";
+
+// A server can log dozens of shutdown steps after its refusal. The displayed tail stays capped.
+export const startupFailureLogLookback = (contract: ServiceDataVersion | undefined): number =>
+  contract !== undefined && contract.refusals.length > 0 ? 200 : 50;
 
 export const dataVersionRemediation = (
   plan: AppPlan,

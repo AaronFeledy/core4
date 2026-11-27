@@ -45,7 +45,7 @@ import { removeRuntimeContainer } from "../container-removal.ts";
 import { nativeStartIntervalNs } from "../create-values.ts";
 import { sharedNetworkLabels } from "../data-root-labels.ts";
 import { type AdoptionReceipt, dataRootRefusal, decideDataRootOwnership } from "../data-root-ownership.ts";
-import { dataVersionRemediation } from "../data-version-diagnostic.ts";
+import { dataVersionRemediation, startupFailureLogLookback } from "../data-version-diagnostic.ts";
 import { completionIntentServices } from "../dependency-gates.ts";
 import { type LifecycleDialect, libpodLifecycleDialect } from "../dialect.ts";
 import type {
@@ -1450,13 +1450,14 @@ const captureServiceLogTail = Effect.fnUntraced(
     | undefined,
     ProviderError
   > {
+    const contract = extras?.classifyDataVersion === true ? service.dataVersion : undefined;
     const collected = yield* Stream.runCollect(
       containerConsoleLogs(
         deps.api,
         deps.options.ctx,
         extras?.containerId ?? containerName(plan, service),
         service.name,
-        { follow: false, tail: SERVICE_START_LOG_TAIL_LINES, sources: [] },
+        { follow: false, tail: startupFailureLogLookback(contract), sources: [] },
       ),
     );
     if (collected.length === 0) return undefined;
@@ -1464,9 +1465,9 @@ const captureServiceLogTail = Effect.fnUntraced(
     const redactor = Option.isSome(provided) ? provided.value : deps.redactor;
     const raw = collected.map((chunk) => chunk.line).join("\n");
     const dataVersion =
-      service.dataVersion !== undefined && extras?.classifyDataVersion === true
-        ? classifyDataVersionRefusal(service.dataVersion, {
-            exitCode: extras.exitCode,
+      contract !== undefined
+        ? classifyDataVersionRefusal(contract, {
+            exitCode: extras?.exitCode,
             lines: raw.split("\n"),
           })
         : undefined;

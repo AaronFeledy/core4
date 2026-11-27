@@ -1,4 +1,7 @@
-import { dataVersionRemediation } from "@lando/container-runtime/data-version-diagnostic";
+import {
+  dataVersionRemediation,
+  startupFailureLogLookback,
+} from "@lando/container-runtime/data-version-diagnostic";
 import { completionIntentServices } from "@lando/container-runtime/dependency-gates";
 import { listenerAuthorityAction, listenerDiagnostic } from "@lando/container-runtime/listener-diagnostic";
 import { observeTcpListener } from "@lando/container-runtime/listener-observation";
@@ -86,6 +89,9 @@ export const failReadiness = Effect.fn("ServiceReadiness.fail")(function* (
 ) {
   const redactor = yield* redactorForReadiness;
   const service = target.plan.services[target.service];
+  const runtime = evidence.runtime;
+  const terminalContract =
+    runtime?.status === "exited" || runtime?.status === "dead" ? service?.dataVersion : undefined;
   const diagnose = evidence.reason === "healthcheck-failed" || evidence.reason === "healthcheck-timeout";
   const [listener, logEvidence] = yield* Effect.all(
     [
@@ -98,16 +104,20 @@ export const failReadiness = Effect.fn("ServiceReadiness.fail")(function* (
           )
         : Effect.succeed(undefined),
       Stream.runCollect(
-        target.provider.logs({ app: target.plan.id, service: target.service }, { follow: false, tail: 50 }),
+        target.provider.logs(
+          { app: target.plan.id, service: target.service },
+          { follow: false, tail: startupFailureLogLookback(terminalContract) },
+        ),
       ).pipe(
         Effect.map((chunks) => {
           if (chunks.length === 0) return undefined;
           const raw = chunks.map((chunk) => chunk.line).join("\n");
-          const contract = service?.dataVersion;
-          const runtime = evidence.runtime;
           const version =
-            contract !== undefined && (runtime?.status === "exited" || runtime?.status === "dead")
-              ? classifyDataVersionRefusal(contract, { exitCode: runtime.exitCode, lines: raw.split("\n") })
+            terminalContract !== undefined
+              ? classifyDataVersionRefusal(terminalContract, {
+                  exitCode: runtime?.exitCode,
+                  lines: raw.split("\n"),
+                })
               : undefined;
           return {
             tail: {
