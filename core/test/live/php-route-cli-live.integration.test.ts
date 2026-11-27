@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { chmod, mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { isAddressedRoute } from "@lando/engine/operations/service-connections";
+import type { StartedService } from "@lando/sdk/schema";
 import { Schema } from "effect";
 
 import {
@@ -161,29 +163,15 @@ describe.serial("compiled CLI managed PHP routing", () => {
           if (process.platform !== "win32") await chmod(join(root, path), privateFiles ? 0o600 : 0o644);
         }
         const routeUrl = (
-          service:
-            | {
-                readonly connections: ReadonlyArray<{
-                  source: string;
-                  binding: string;
-                  host?: string;
-                  url?: string;
-                }>;
-              }
-            | undefined,
+          service: Pick<StartedService, "routes"> | undefined,
           scheme: "http" | "https",
           hostname: string,
         ) => {
-          const connection = service?.connections.find(
-            (connection) =>
-              connection.source === "route" &&
-              connection.binding === "assigned" &&
-              connection.host === hostname &&
-              connection.url?.startsWith(`${scheme}://`),
-          );
-          if (connection?.url === undefined)
-            throw new Error(`start published no ${scheme} route for ${hostname}`);
-          return new URL(connection.url);
+          const route = service?.routes
+            .filter(isAddressedRoute)
+            .find((route) => route.host === hostname && route.protocol === scheme);
+          if (route === undefined) throw new Error(`start published no ${scheme} route for ${hostname}`);
+          return new URL(route.url);
         };
         try {
           // When: the real compiled CLI plans and starts both generated server configurations.

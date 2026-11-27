@@ -7,8 +7,8 @@ test("successful starts with restarting services use warning summaries without c
   const result: StartAppResult = {
     app: "supervised",
     servicesStarted: [
-      { name: "web", state: "ready", connections: connections(["http://web:3000"], "app") },
-      { name: "worker", state: "restarting", connections: [] },
+      { name: "web", state: "ready", connections: connections(["http://web:3000"], "app"), routes: [] },
+      { name: "worker", state: "restarting", connections: [], routes: [] },
     ],
   };
   const summary = buildStartSummary(result);
@@ -23,7 +23,7 @@ test("rebuild keeps its success heading but warns about restarting services", ()
   const summary = buildStartSummary(
     {
       app: "supervised",
-      servicesStarted: [{ name: "worker", state: "restarting", connections: [] }],
+      servicesStarted: [{ name: "worker", state: "restarting", connections: [], routes: [] }],
     },
     "rebuild",
   );

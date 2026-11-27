@@ -65,16 +65,18 @@ export const BoundText = Schema.Struct({
 });
 export type BoundText = typeof BoundText.Type;
 
-/** The public route facts a service publishes: its URL, hostname, and origin. */
-export const PUBLIC_ROUTE_FACTS = ["url", "hostname", "origin"] as const;
+const ROUTE_URL_MEMBERS = ["hostname", "origin", "publicPort", "scheme"] as const;
+
+/** The public route facts a service publishes. */
+export const PUBLIC_ROUTE_FACTS = ["url", ...ROUTE_URL_MEMBERS] as const;
 export type PublicRouteFact = (typeof PUBLIC_ROUTE_FACTS)[number];
 
 export const RouteUrlPart = Schema.Struct({
   service: Schema.String.annotate({ description: "Name of the service whose public route is read." }),
   member: Schema.optionalKey(
-    Schema.Literals(["hostname", "origin"]).annotate({
+    Schema.Literals(ROUTE_URL_MEMBERS).annotate({
       description:
-        "Route fact read instead of the URL: the route hostname, or the scheme, hostname, and port origin.",
+        "Route fact read instead of the URL: the hostname, the origin (scheme, hostname, and any nonstandard port), the router's public port as decimal text, or the scheme (http or https).",
     }),
   ),
   encoding: Schema.Literals(["raw", "uri-component"]).annotate({

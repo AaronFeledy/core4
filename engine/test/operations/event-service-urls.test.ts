@@ -123,12 +123,16 @@ describe("event step service URLs", () => {
   test("resolves a direct post-start step and a canonical tooling command from the applied routes", async () => {
     // When
     const { result, commands } = await runEvent("post-start", {
-      "post-start": [{ cmd: "curl {{ services.web.url }}" }, { task: "site" }, { command: "app:site" }],
+      "post-start": [
+        { cmd: "curl {{ services.web.url }} {{ services.web.scheme }} {{ services.web.publicPort }}" },
+        { task: "site" },
+        { command: "app:site" },
+      ],
     });
     // Then
     expect(result._tag).toBe("Success");
     expect(commandText(commands).filter((text) => text.includes(URL))).toHaveLength(3);
-    expect(commandText(commands)[0]).toContain(`curl '${URL}'`);
+    expect(commandText(commands)[0]).toContain(`curl '${URL}' 'https' '8443'`);
   });
 
   test.each([
@@ -147,7 +151,7 @@ describe("event step service URLs", () => {
           _tag: "LandofileEventStepFailedError",
           event,
           index: 0,
-          message: expect.stringContaining(`not available during ${event}`),
+          message: expect.stringContaining(`services.web.url is unavailable: during ${event}`),
           outputTail: "",
           issues: [{ rule: "landofile.tooling", reason: "event-phase" }],
         },
@@ -160,7 +164,9 @@ describe("event step service URLs", () => {
   test.each([
     ["{{ url.parse(services.web.url).hostname == 'applied.test' }}", 1],
     ["{{ url.parse(services.web.url).hostname == 'other.test' }}", 0],
-  ])("evaluates a step condition reading a URL: %s", async (condition, runs) => {
+    ["{{ number(services.web.publicPort) == 8443 }}", 1],
+    ["{{ number(services.web.publicPort) == 443 }}", 0],
+  ])("evaluates a step condition reading a route fact: %s", async (condition, runs) => {
     // When
     const { result, commands } = await runEvent("post-start", {
       "post-start": [{ cmd: "echo ran", if: condition }],

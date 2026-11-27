@@ -1,6 +1,6 @@
 import { causeRemediation } from "@lando/sdk/command-result";
 import { ToolingExecError } from "@lando/sdk/errors";
-import { AppId, ServiceConnection, ServiceState } from "@lando/sdk/schema";
+import { AppId, ServiceConnection, ServiceRoute, ServiceState } from "@lando/sdk/schema";
 import { FileSystem, GlobalAppService, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { Effect, Result, Schema } from "effect";
 
@@ -15,8 +15,12 @@ import { hostProviderId } from "../providers/host-provider.ts";
 import { observeRuntime } from "../providers/runtime-observation.ts";
 import { withReadOnlyLandofile } from "../services/landofile-live.ts";
 import { canonicalMissingAppRoot } from "./app-mutation-lock.ts";
-import { type ObservedService, collectObservedConnections, observeService } from "./connection-collector.ts";
-import { serviceStateOf } from "./connection-state.ts";
+import {
+  type ServiceAddressObservation,
+  collectObservedConnections,
+  observeService,
+} from "./connection-collector.ts";
+import { connectionActivity, serviceStateOf } from "./connection-state.ts";
 import { readGlobalLandofile } from "./global-plan.ts";
 
 export interface GlobalStatusOptions {
@@ -32,6 +36,7 @@ export const GlobalStatusServiceSchema = Schema.Struct({
   primary: Schema.Boolean,
   status: ServiceState,
   connections: Schema.Array(ServiceConnection),
+  routes: Schema.Array(ServiceRoute),
   desired: Schema.Literals(["enabled", "disabled", "blocked", "unverified", "unmanaged", "unavailable"]),
   policy: Schema.optionalKey(GlobalContributionStateSchema),
   pending: Schema.Array(GlobalReconciliationPending),
@@ -179,33 +184,44 @@ export const globalStatus = Effect.fn("GlobalApp.status")(function* (options: Gl
       }),
     );
   const selectedNames = new Set(options.services?.length ? options.services : names);
-  const observations: ObservedService[] = [];
+  const observations: ServiceAddressObservation[] = [];
+  const fallbackStatus = (name: string) => {
+    const runtime = owned.find((service) => service.service === name);
+    const ownershipUnknown = uncertain.some((service) => service.service === name);
+    return runtime !== undefined
+      ? serviceStateOf(runtime)
+      : (idle || observed?._tag === "Success") && !ownershipUnknown
+        ? ("stopped" as const)
+        : ("unknown" as const);
+  };
+  const statuses = new Map<string, typeof ServiceState.Type>();
   if (plan !== undefined) {
     for (const service of Object.values(plan.services)) {
-      if (!selectedNames.has(String(service.name))) continue;
+      const name = String(service.name);
+      if (!selectedNames.has(name)) continue;
       // Inspect can synthesize ownership from the plan; inventory must establish it first.
-      if (!owned.some((runtime) => runtime.service === service.name)) continue;
       const inspection =
-        provider === undefined || !online
+        provider === undefined || !owned.some((runtime) => runtime.service === service.name)
           ? undefined
           : yield* Effect.result(provider.inspect({ app: plan.id, service: service.name, plan }));
-      if (inspection?._tag === "Success") observations.push(observeService(plan, inspection.success));
+      if (inspection?._tag === "Success") {
+        const row = observeService(plan, inspection.success);
+        observations.push(row);
+        statuses.set(name, row.state);
+      } else {
+        const status = fallbackStatus(name);
+        statuses.set(name, status);
+        observations.push({ name, state: connectionActivity(status) === "inactive" ? status : "unknown" });
+      }
     }
   }
   const connections = plan === undefined ? [] : yield* collectObservedConnections(plan, observations);
   const services: GlobalStatusService[] = [...selectedNames].sort().map((name) => {
     const policy = entries.find((entry) => entry.id === name);
     const applied = Object.values(plan?.services ?? {}).find((service) => service.name === name);
-    const runtime = owned.find((service) => service.service === name);
     const collected = connections.find((row) => row.name === name);
     const ownershipUnknown = uncertain.some((service) => service.service === name);
-    const status =
-      collected?.state ??
-      (runtime !== undefined
-        ? serviceStateOf(runtime)
-        : (idle || observed?._tag === "Success") && !ownershipUnknown
-          ? "stopped"
-          : "unknown");
+    const status = statuses.get(name) ?? fallbackStatus(name);
     const work = pending.filter((entry) => entry.services.length === 0 || entry.services.includes(name));
     if (ownershipUnknown)
       work.push(
@@ -240,6 +256,7 @@ export const globalStatus = Effect.fn("GlobalApp.status")(function* (options: Gl
       primary: applied?.primary ?? false,
       status,
       connections: collected?.connections ?? [],
+      routes: collected?.routes ?? [],
       desired: policy?.state ?? (resolution._tag === "Success" ? "unmanaged" : "unavailable"),
       ...(policy === undefined ? {} : { policy }),
       pending: work,

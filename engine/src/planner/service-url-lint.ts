@@ -1,6 +1,11 @@
 import { serviceUrlReads } from "@lando/landofile/compiled-sites";
 import type { NormalizedRoute } from "@lando/landofile/route-normalize";
-import { type EndpointPlan, type ParsedPendingSite, selectHttpEndpoint } from "@lando/sdk/schema";
+import {
+  type EndpointPlan,
+  type ParsedPendingSite,
+  isWildcardHostname,
+  selectHttpEndpoint,
+} from "@lando/sdk/schema";
 import { SERVICE_URL_REFUSED_EVENTS, serviceUrlFailureText } from "../operations/invocation-service-urls.ts";
 import type { Availability } from "./endpoint-availability.ts";
 import type { PlannerIssue } from "./resolved-validation.ts";
@@ -12,7 +17,7 @@ export type ServiceUrlLintFacts =
   | { readonly _tag: "Resolved"; readonly endpoints: readonly EndpointPlan[] };
 
 /**
- * Lint findings for `{{ services.<name>.url }}`, `.hostname`, and `.origin` reads at tooling and
+ * Lint findings for `url`, `hostname`, `origin`, `publicPort`, and `scheme` reads at tooling and
  * Landofile event sites, judged against the desired configuration only: an unknown service,
  * routing disabled, a service with no route that has a concrete hostname, and a lifecycle step
  * that runs while no route is served. A service without authored routes gets a generated default
@@ -60,17 +65,19 @@ export const serviceUrlLintIssues = (input: {
       if (facts._tag === "Unresolved") return [];
       if (!input.routerEnabled) return known("routing-disabled");
       const routes = input.routes.get(service);
-      const noRoute = (message: string) =>
-        finding("no-route", message, "Add a route with a concrete hostname for the service.");
+      const noRoute = (reason: string) =>
+        finding(
+          "no-route",
+          `services.${service}.${fact} is unavailable: ${reason}.`,
+          "Add a route with a concrete hostname for the service.",
+        );
       if (routes === undefined)
         return selectHttpEndpoint(facts.endpoints).status === "none"
-          ? noRoute(`${service} declares no routes and has no HTTP listener, so it gets no default route.`)
+          ? noRoute("the service declares no routes and has no HTTP listener, so it gets no default route")
           : [];
-      if (routes.some((route) => !route.hostname.includes("*"))) return [];
+      if (routes.some((route) => !isWildcardHostname(route.hostname))) return [];
       return noRoute(
-        routes.length === 0
-          ? `${service} declares no routes, so services.${service}.${fact} has no value.`
-          : `${service} has only wildcard routes, so services.${service}.${fact} has no value.`,
+        routes.length === 0 ? "the service declares no routes" : "the service has only wildcard routes",
       );
     });
   });

@@ -76,6 +76,7 @@ test.each([{ selected: false }, { selected: true }])(
           endpoint: { port: 3000, transport: "tcp", names: ["http"], primary: false },
         },
       ],
+      routes: [],
     });
     expect(result.servicesStarted).toEqual([row]);
     expect(scan?.op).toBe("scan");
@@ -168,11 +169,12 @@ test("initial full start keeps completed routed jobs out of addresses and URL sc
   // Then completed addresses remain configured and only the running consumer is scanned.
   const completed = result.servicesStarted.find((row) => row.name === "web");
   expect(completed?.state).toBe("completed");
-  expect(completed?.connections.map((connection) => connection.state)).toEqual([
-    "inactive",
-    "inactive",
-    "inactive",
-  ]);
+  expect(completed?.connections.map((connection) => connection.state)).toEqual(["inactive", "inactive"]);
+  expect(completed?.routes[0]).toMatchObject({
+    hostMatch: "exact",
+    host: "job.example.test",
+    state: "inactive",
+  });
   expect(scanner.calls.find((call) => call.op === "scan")).toMatchObject({
     options: { urls: [{ service: consumer, url: "http://localhost:3000/" }] },
   });

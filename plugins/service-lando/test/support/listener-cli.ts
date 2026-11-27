@@ -123,7 +123,9 @@ export const acquireListenerApp = Effect.fnUntraced(function* (socketPath: strin
 export type ListenerApp = Effect.Success<ReturnType<typeof acquireListenerApp>>;
 
 export const publicationFor = (connections: readonly ServiceConnection[], port: number) => {
-  const connection = connections.find((item) => item.source === "publication" && item.endpoint.port === port);
+  const connection = connections
+    .filter((item) => item.source === "publication")
+    .find((item) => item.endpoint.port === port);
   if (connection === undefined || connection.binding !== "assigned")
     throw new Error(`Missing observed publication for ${port}`);
   expect(connection.host).toBe("localhost");

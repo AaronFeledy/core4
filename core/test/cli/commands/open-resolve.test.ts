@@ -3,12 +3,13 @@ import {
   type AppPlan,
   type EndpointPlan,
   ProviderId,
-  type ServiceConnection,
   ServiceName,
+  type ServiceRoute,
   type StartedService,
 } from "@lando/sdk/schema";
 import { DateTime } from "effect";
 import { isOpenableScheme, resolveOpenTargets } from "../../../src/cli/commands/open.ts";
+import { routeRow } from "../connection-fixtures";
 
 const plan: Pick<AppPlan, "services"> = {
   services: Object.fromEntries(
@@ -31,26 +32,25 @@ const plan: Pick<AppPlan, "services"> = {
     ]),
   ),
 };
-const connection = (host: string, protocol: "http" | "https" = "https") =>
+const route = (host: string, protocol: "http" | "https" = "https") =>
   ({
-    scope: "host",
-    source: "route",
     binding: "assigned",
     state: "active",
     host,
+    hostMatch: "exact",
     protocol,
     port: protocol === "http" ? 8080 : 8443,
     url: `${protocol}://${host}:${protocol === "http" ? 8080 : 8443}/v1`,
     pathPrefix: "/v1",
-    alternateUrls: [],
     endpoint: { port: 80, transport: "tcp", names: [], primary: false },
-  }) satisfies ServiceConnection;
+  }) satisfies ServiceRoute;
 const rows: readonly StartedService[] = [
-  { name: "api", state: "running", connections: [connection("api.test", "http")] },
+  { name: "api", state: "running", connections: [], routes: [route("api.test", "http")] },
   {
     name: "web",
     state: "running",
-    connections: [connection("web.test"), connection("web-alt.test", "http")],
+    connections: [],
+    routes: [route("web.test"), route("web-alt.test", "http")],
   },
 ];
 const withWebEndpoints = (
@@ -85,12 +85,13 @@ describe("resolveOpenTargets", () => {
         {
           name: "web",
           state: "running",
-          connections: [
+          connections: [],
+          routes: [
             {
-              ...connection("secondary.test", "http"),
+              ...route("secondary.test", "http"),
               endpoint: { port: 8080, transport: "tcp", names: [], primary: false },
             },
-            connection("primary.test", "http"),
+            route("primary.test", "http"),
           ],
         },
       ];
@@ -116,11 +117,17 @@ describe("resolveOpenTargets", () => {
         {
           name: "web",
           state: "running",
-          connections: [connection("site.test", "http"), { ...connection("site.test"), endpoint: tls }],
+          connections: [],
+          routes: [route("site.test", "http"), { ...route("site.test"), endpoint: tls }],
         },
       ];
       const httpsOnly: readonly StartedService[] = [
-        { name: "web", state: "running", connections: [{ ...connection("site.test"), endpoint: tls }] },
+        {
+          name: "web",
+          state: "running",
+          connections: [],
+          routes: [{ ...route("site.test"), endpoint: tls }],
+        },
       ];
       expect(resolveOpenTargets(declared, selection, both).map((target) => target.url)).toEqual([
         "https://site.test:8443/v1",
@@ -130,7 +137,7 @@ describe("resolveOpenTargets", () => {
       ]);
       // An HTTPS route an author bound to the plain primary is still that service's URL.
       const plainHttps: readonly StartedService[] = [
-        { name: "web", state: "running", connections: [connection("site.test")] },
+        { name: "web", state: "running", connections: [], routes: [route("site.test")] },
       ];
       expect(resolveOpenTargets(declared, selection, plainHttps).map((target) => target.url)).toEqual([
         "https://site.test:8443/v1",
@@ -152,14 +159,25 @@ describe("resolveOpenTargets", () => {
         {
           name: "web",
           state: "running",
-          connections: [{ ...connection("site.test"), endpoint: primary, url: "https://site.test/primary" }],
+          connections: [],
+          routes: [
+            {
+              ...route("site.test"),
+              endpoint: primary,
+              pathPrefix: "/primary",
+              url: "https://site.test/primary",
+            },
+          ],
         },
       ];
       const observedTls: readonly StartedService[] = [
         {
           name: "web",
           state: "running",
-          connections: [{ ...connection("site.test"), endpoint: tls, url: "https://site.test/tls" }],
+          connections: [],
+          routes: [
+            { ...route("site.test"), endpoint: tls, pathPrefix: "/tls", url: "https://site.test/tls" },
+          ],
         },
       ];
       // The primary is the only default listener, so the HTTPS route bound to it opens.
@@ -180,10 +198,11 @@ describe("resolveOpenTargets", () => {
       {
         name: "web",
         state: "running",
-        connections: [
-          connection("first.test", "http"),
+        connections: [],
+        routes: [
+          route("first.test", "http"),
           {
-            ...connection("second.test", "http"),
+            ...route("second.test", "http"),
             endpoint: { port: 8080, transport: "tcp", names: [], primary: false },
           },
         ],
@@ -218,15 +237,16 @@ describe("resolveOpenTargets", () => {
       {
         name: "api",
         state: "running" as const,
-        connections: [connection("plain.test", "http"), connection("secure.test")],
+        connections: [],
+        routes: [route("plain.test", "http"), route("secure.test")],
       },
     ];
     expect(resolveOpenTargets(plan, {}, observed).map((target) => target.hostname)).toEqual(["secure.test"]);
   });
 
-  test.each(["inactive", "unknown"] as const)("excludes %s assigned connections", (state) => {
+  test.each(["inactive", "unknown"] as const)("excludes %s assigned routes", (state) => {
     const observed = [
-      { name: "web", state: "running" as const, connections: [{ ...connection("web.test"), state }] },
+      { name: "web", state: "running" as const, connections: [], routes: [{ ...route("web.test"), state }] },
     ];
     expect(resolveOpenTargets(plan, { all: true }, observed)).toEqual([]);
   });
@@ -237,10 +257,9 @@ describe("resolveOpenTargets", () => {
       {
         name: "web",
         state: "running",
-        connections: [
+        routes: [
           {
-            scope: "host",
-            source: "route",
+            hostMatch: "exact",
             binding: "pending",
             state: "unknown",
             host: "pending.test",
@@ -248,7 +267,15 @@ describe("resolveOpenTargets", () => {
             pathPrefix: "/v1",
             endpoint,
           },
-          connection("*.wild.test"),
+          routeRow({
+            host: "*.wild.test",
+            hostMatch: "pattern",
+            protocol: "https",
+            port: 8443,
+            pathPrefix: "/v1",
+          }),
+        ],
+        connections: [
           {
             scope: "app",
             source: "listener",
@@ -284,8 +311,8 @@ describe("resolveOpenTargets", () => {
       {
         name: "web",
         state: "running",
+        routes: [{ ...route("web.test"), state: "unknown" }],
         connections: [
-          { ...connection("web.test"), state: "unknown" },
           {
             scope: "host",
             source: "publication",
@@ -312,6 +339,7 @@ describe("resolveOpenTargets", () => {
       {
         name: "api",
         state: "running",
+        routes: [],
         connections: [
           {
             scope: "host",
@@ -327,7 +355,7 @@ describe("resolveOpenTargets", () => {
           },
         ],
       },
-      rows[1] ?? { name: "web", state: "running", connections: [] },
+      ...rows.filter((row) => row.name === "web"),
     ];
     expect(resolveOpenTargets(plan, {}, observed).map((target) => target.hostname)).toEqual(["web.test"]);
   });
@@ -337,10 +365,11 @@ describe("resolveOpenTargets", () => {
       {
         name: "web",
         state: "running",
-        connections: [
-          connection("web.test", "http"),
-          connection("web.test"),
-          { ...connection("web.test"), pathPrefix: "/v2", url: "https://web.test:8443/v2" },
+        connections: [],
+        routes: [
+          route("web.test", "http"),
+          route("web.test"),
+          { ...route("web.test"), pathPrefix: "/v2", url: "https://web.test:8443/v2" },
         ],
       },
     ];

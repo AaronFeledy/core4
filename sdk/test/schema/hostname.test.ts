@@ -10,6 +10,7 @@ import {
   ServiceName,
   certificateNameForHostname,
   getJsonSchema,
+  isWildcardHostname,
 } from "@lando/sdk/schema";
 import { Result, Schema } from "effect";
 
@@ -53,6 +54,16 @@ test.each(["wild.*.site", "a**b.*x*.site"])(
     expect(parseRouteHostname(hostname)).toEqual(Result.succeed(hostname));
   },
 );
+
+test.each([
+  ["app.test", false],
+  ["127.0.0.1", false],
+  ["*.app.test", true],
+  ["a*b.test", true],
+  ["x.*.test", true],
+] as const)("classifies hostname %s as wildcard: %s", (hostname, expected) => {
+  expect(isWildcardHostname(hostname)).toBe(expected);
+});
 
 test.each([
   "",

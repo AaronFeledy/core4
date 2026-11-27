@@ -4,7 +4,7 @@ import { displayWidth, stripAnsi } from "@lando/renderer/console-layout";
 import type { RebuildAppResult } from "@lando/sdk/app";
 import { renderRebuildAppResult } from "../../src/cli/commands/rebuild.ts";
 import type { RenderContext } from "../../src/cli/renderer-boundary.ts";
-import { connections } from "./connection-fixtures";
+import { connections, routeRow } from "./connection-fixtures";
 
 const result: RebuildAppResult = {
   app: "windows-cms-final",
@@ -13,15 +13,32 @@ const result: RebuildAppResult = {
     {
       name: "appserver",
       state: "running",
-      connections: [
-        ...connections([
-          "https://windows-cms-final.lndo.site:444",
-          "http://windows-cms-final.lndo.site:8080",
-        ]),
-        ...connections(["http://appserver:80"], "app"),
+      connections: connections(["http://appserver:80"], "app"),
+      routes: [
+        routeRow({
+          hostMatch: "exact",
+          host: "windows-cms-final.lndo.site",
+          protocol: "https",
+          port: 444,
+          pathPrefix: "",
+          url: "https://windows-cms-final.lndo.site:444",
+        }),
+        routeRow({
+          hostMatch: "exact",
+          host: "windows-cms-final.lndo.site",
+          protocol: "http",
+          port: 8080,
+          pathPrefix: "",
+          url: "http://windows-cms-final.lndo.site:8080",
+        }),
       ],
     },
-    { name: "database", state: "running", connections: connections(["tcp://database:3306"], "app") },
+    {
+      name: "database",
+      state: "running",
+      connections: connections(["tcp://database:3306"], "app"),
+      routes: [],
+    },
   ],
 };
 

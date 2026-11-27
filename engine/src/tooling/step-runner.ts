@@ -9,7 +9,7 @@ import {
 import { mapFailures } from "@lando/sdk/command-result";
 import { ConfigExpressionError, ToolingCompileError, ToolingStepConditionError } from "@lando/sdk/errors";
 import type { ExpressionContext } from "@lando/sdk/expressions";
-import type { SecretRef } from "@lando/sdk/schema";
+import type { PublicRouteFact, SecretRef } from "@lando/sdk/schema";
 import { Environment, EventForSelector, PortablePath } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
 import { compileSelector } from "./step-compiler.ts";
@@ -134,8 +134,7 @@ export const resolveLeaf = Effect.fnUntraced(function* (leaf: ToolingStepLeaf, c
 export type ToolingStepServiceUrls = (
   sites: InvocationProgram,
 ) => Effect.Effect<
-  | Readonly<Record<string, { readonly url: string; readonly hostname: string; readonly origin: string }>>
-  | undefined,
+  Readonly<Record<string, Readonly<Record<PublicRouteFact, string>>>> | undefined,
   ToolingCompileError
 >;
 

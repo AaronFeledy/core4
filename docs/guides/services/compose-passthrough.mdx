@@ -107,8 +107,8 @@ For LAN binds and short-syntax ports, see [Reach an app from another device](../
     </Step>
     <Hidden reason="whoami HTTPS route answers ready with status 200">
       <Step name="route-ready">
-        <Verify command="lando start --format=json" expect={{ stdout: { regex: "\"checks\":\\s*\\[[^\\]]*?\\{[^}]*\"service\":\\s*\"whoami\"[^}]*\"url\":\\s*\"https://whoami[.]compose-passthrough-demo[.]lndo[.]site(?::[0-9]+)?/?\"[^}]*\"verdict\":\\s*\"ready\"[^}]*\"statusCode\":\\s*200(?=\\s*[,}])" } }} />
-        <Verify command="lando info --format=json" expect={{ stdout: { regex: "\"connections\":\\s*\\[.*?\"source\":\\s*\"route\"[^}]*\"protocol\":\\s*\"https\"[^}]*\"url\":\\s*\"https://whoami[.]compose-passthrough-demo[.]lndo[.]site(?::[0-9]+)?/?\"" } }} />
+        <Verify command={`lando start --jq '[.result.checks[] | select(.service == "whoami" and .verdict == "ready" and .statusCode == 200) | .url][0]'`} expect={{ stdout: { regex: "^\\s*https://whoami[.]compose-passthrough-demo[.]lndo[.]site(?::[0-9]+)?/?\\s*$" } }} />
+        <Verify command={`lando info --jq '[.result.services[] | select(.service == "whoami") | .routes[] | select(.hostMatch == "exact" and .protocol == "https") | .url][0]'`} expect={{ stdout: { regex: "^\\s*https://whoami[.]compose-passthrough-demo[.]lndo[.]site(?::[0-9]+)?/?\\s*$" } }} />
       </Step>
     </Hidden>
     <Step name="cleanup-e2e">

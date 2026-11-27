@@ -25,6 +25,7 @@ const infoResult = {
         ...connections(["http://demo.lndo.site"]),
         ...connections(["http://appserver:80"], "app"),
       ],
+      routes: [],
     },
     {
       app: "demo",
@@ -35,6 +36,7 @@ const infoResult = {
       primary: false,
       status: "running",
       connections: connections(["tcp://database:3306"], "app"),
+      routes: [],
     },
   ],
 } as const;

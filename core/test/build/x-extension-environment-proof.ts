@@ -6,7 +6,11 @@ import {
 } from "../../../scripts/schema-compatibility/model.ts";
 import { normalizeJsonSchema } from "../../../scripts/schema-compatibility/normalize.ts";
 import { environmentDeltas } from "./fixtures/x-extension-environment.delta.ts";
-import { routeMemberDeltas, routeTextDeltas } from "./fixtures/x-extension-route-text.delta.ts";
+import {
+  routeMemberDeltas,
+  routeMemberExpansionDeltas,
+  routeTextDeltas,
+} from "./fixtures/x-extension-route-text.delta.ts";
 import { wireObject } from "./x-extension-wire-proof.ts";
 
 const compileTransitions = (deltas: typeof environmentDeltas) =>
@@ -70,5 +74,9 @@ const replayObject = (deltas: typeof routeMemberDeltas) => {
   };
 };
 
-/** Route parts gained the optional member after the schema parity checkpoint, so replay it after parity. */
-export const evolveHistoricalRouteMember = replayObject(routeMemberDeltas);
+const evolveHistoricalRouteMember = replayObject(routeMemberDeltas);
+const expandHistoricalRouteMembers = replayObject(routeMemberExpansionDeltas);
+
+/** Replay both RouteText member changes, in order, after the schema parity checkpoint. */
+export const evolveHistoricalRouteMembers = (historical: JsonSchema, mode: "bare" | "authoring" = "bare") =>
+  expandHistoricalRouteMembers(evolveHistoricalRouteMember(historical, mode), mode);

@@ -240,6 +240,7 @@ describe("lando info text does not double-wrap the redaction sentinel", () => {
         primary: true,
         status: "running",
         connections: connections(["tcp://mysql:3306"], "app"),
+        routes: [],
         creds: {
           user: "appuser",
           password: REDACTED,

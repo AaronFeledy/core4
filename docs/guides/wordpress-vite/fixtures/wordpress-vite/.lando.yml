@@ -19,7 +19,10 @@ services:
     port: 5173
     primary: false
     environment:
-      VITE_DEV_SERVER_URL: "{{ services.node.url }}"
+      DEV_SERVER_ORIGIN: "{{ service.origin }}"
+      DEV_SERVER_HOST: "{{ service.hostname }}"
+      DEV_SERVER_PORT: "{{ service.publicPort }}"
+      DEV_SERVER_SCHEME: "{{ service.scheme }}"
       WORDPRESS_ORIGIN: "{{ services.appserver.origin }}"
     routes:
       - hostname: "vite.{{ app.name }}.{{ proxy.defaultDomain }}"

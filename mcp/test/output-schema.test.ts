@@ -11,12 +11,14 @@ import {
   DeprecationUse,
   ExecAppResult,
   InfoAppResult,
+  type ServiceConnection,
   ServiceInfo,
+  type ServiceRoute,
   StartAppResult,
   getJsonSchemaWithDeprecations,
 } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
-import { Effect, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 import { compactOutputSchema } from "../src/output-schema";
 import { rejectionResult, toolOutputSchema } from "../src/tool-result";
 import { conforms } from "./schema-conformance";
@@ -91,6 +93,66 @@ test.each([
   });
 });
 
+const routeEndpoint = { port: 8080, transport: "tcp", names: ["web"], primary: true } as const;
+const connections = [
+  {
+    host: "web",
+    endpoint: routeEndpoint,
+    scope: "app",
+    source: "listener",
+    protocol: "http",
+    port: 8080,
+    url: "http://web:8080",
+    binding: "assigned",
+    alternateUrls: [],
+    state: "active",
+  },
+  {
+    host: "localhost",
+    endpoint: routeEndpoint,
+    scope: "host",
+    source: "publication",
+    protocol: "http",
+    port: 48080,
+    url: "http://localhost:48080",
+    binding: "assigned",
+    alternateUrls: [],
+    state: "active",
+  },
+] as const satisfies readonly ServiceConnection[];
+const routes = [
+  {
+    host: "demo.test",
+    endpoint: routeEndpoint,
+    protocol: "https",
+    pathPrefix: "/app",
+    hostMatch: "exact",
+    port: 8443,
+    url: "https://demo.test:8443/app",
+    binding: "assigned",
+    state: "active",
+  },
+  {
+    host: "*.demo.test",
+    endpoint: routeEndpoint,
+    protocol: "https",
+    pathPrefix: "/app",
+    hostMatch: "pattern",
+    port: 8443,
+    binding: "assigned",
+    state: "active",
+  },
+  {
+    host: "pending.demo.test",
+    endpoint: routeEndpoint,
+    protocol: "http",
+    pathPrefix: "",
+    hostMatch: "exact",
+    binding: "pending",
+    state: "inactive",
+  },
+] as const satisfies readonly ServiceRoute[];
+
 const fixtures: readonly {
   readonly command: string;
   readonly schema: Schema.Codec<unknown, unknown>;
@@ -110,7 +172,8 @@ const fixtures: readonly {
           provider: "test",
           primary: true,
           status: "running",
-          connections: [],
+          connections,
+          routes,
         },
       ],
     },
@@ -118,7 +181,11 @@ const fixtures: readonly {
   {
     command: "app:start",
     schema: StartAppResult,
-    value: { app: "demo", servicesStarted: [{ name: "web", state: "running", connections: [] }], checks: [] },
+    value: {
+      app: "demo",
+      servicesStarted: [{ name: "web", state: "running", connections, routes }],
+      checks: [],
+    },
   },
   {
     command: "app:config:get",
@@ -180,6 +247,11 @@ test.each(fixtures)(
       expect(conforms(projected, envelope)).toBe(true);
       expect(envelope).toMatchObject({ output: { truncated: true } });
     }
+    const result = envelopes[0]?.result;
+    expect(result).toEqual(value);
+    expect(Result.isSuccess(Schema.decodeUnknownResult(schema)(result, { onExcessProperty: "error" }))).toBe(
+      true,
+    );
     expect(envelopes[2]?.result).toEqual(value);
     expect(Schema.decodeUnknownSync(Schema.JsonObject)(envelopes[1]?.error).issues).toEqual(error.issues);
   },

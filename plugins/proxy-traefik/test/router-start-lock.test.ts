@@ -131,6 +131,7 @@ const makeHarness = () => {
             name: "traefik",
             state: "running",
             connections: [],
+            routes: [],
             endpoints: ["http://127.0.0.1:38080", "https://127.0.0.1:38443"],
           },
         ];

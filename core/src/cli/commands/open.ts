@@ -1,4 +1,3 @@
-import { routerEnabled } from "@lando/engine/config/router-config";
 import { resolveAppliedStateTarget } from "@lando/engine/operations/applied-state-target";
 import { observedAppPlan } from "@lando/engine/providers/app-placement";
 import { type HostProxyOpenerError, canOpenHost, openUrl } from "@lando/engine/services/host-opener";
@@ -8,9 +7,10 @@ import type {
   ComposeKeyRejectedError,
   EventError,
   LandofileLoadExpressionError,
+  OpenTargetUnresolvedError,
   ProxyError,
 } from "@lando/sdk/errors";
-import { HostProxyOpenUrlSchemeError, OpenTargetUnresolvedError } from "@lando/sdk/errors";
+import { HostProxyOpenUrlSchemeError } from "@lando/sdk/errors";
 import { PostOpenUrlEvent, PreOpenUrlEvent } from "@lando/sdk/events";
 import type { AppPlan, AppRef, StartedService } from "@lando/sdk/schema";
 import type { ProcessRunner } from "@lando/sdk/services";
@@ -29,6 +29,7 @@ import type { RenderContext } from "../renderer-boundary";
 import { commandResultFormat } from "../spec/input-coercion";
 import { appendTerminalQr } from "../terminal-qr";
 import { collectOpenConnections } from "./open-connections";
+import { diagnoseUnresolvedOpenTarget } from "./open-diagnosis";
 import { OpenTargetSchema, resolveOpenTargets } from "./open-targets";
 
 export type { OpenTarget, OpenTargetSelection } from "./open-targets";
@@ -111,50 +112,8 @@ export const openForPlan = Effect.fnUntraced(function* (
   connections: readonly StartedService[],
 ): Effect.fn.Return<OpenAppResult, OpenAppError, ProcessRunner | EventService | RedactionService> {
   const targets = resolveOpenTargets(plan, options, connections);
-  if (targets.length === 0) {
-    const knownServices = Object.values(plan.services).map((service) => String(service.name));
-    const knownServicesText = knownServices.length === 0 ? "none" : knownServices.join(", ");
-    const unpublishedRoutes = !routerEnabled(plan) && plan.routes.length > 0;
-    const askedForUnpublishedRoute =
-      unpublishedRoutes &&
-      options.route !== undefined &&
-      plan.routes.some((route) => route.hostname === options.route);
-    if (askedForUnpublishedRoute) {
-      return yield* Effect.fail(
-        new OpenTargetUnresolvedError({
-          message: `No openable URL matched --route ${options.route} for ${plan.name}: that hostname is declared but the router is disabled. Known services: ${knownServicesText}.`,
-          remediation:
-            "Set `router:` `enabled: true` in your Landofile to publish the declared routes, or omit `--route` to open a published http host port.",
-        }),
-      );
-    }
-    if (
-      (options.service !== undefined || options.route !== undefined) &&
-      resolveOpenTargets(plan, { all: true }, connections).length > 0
-    ) {
-      const selected =
-        options.route !== undefined ? `--route ${options.route}` : `--service ${options.service ?? ""}`;
-      return yield* Effect.fail(
-        new OpenTargetUnresolvedError({
-          message: `No openable URL matched ${selected} for ${plan.name}. Known services: ${knownServicesText}.`,
-          remediation:
-            "Choose one of the listed services or routes. For multiple HTTP listeners, select an explicit --route or mark the intended HTTP endpoint primary: true, then rerun `lando open`.",
-        }),
-      );
-    }
-    return yield* Effect.fail(
-      new OpenTargetUnresolvedError({
-        message: unpublishedRoutes
-          ? `No openable URL for ${plan.name}: its routes are declared but the router is disabled, and no service publishes an http host port. Known services: ${knownServicesText}.`
-          : `No active host HTTP(S) connection for ${plan.name}. Known services: ${knownServicesText}.`,
-        app: plan.name,
-        services: knownServices,
-        remediation: unpublishedRoutes
-          ? "Set `router:` `enabled: true` in your Landofile to publish the declared routes, or publish an http endpoint on a host port, then rerun `lando open`."
-          : "Start the app and ensure its proxy routes or HTTP host publications are active. For multiple HTTP listeners, select an explicit --route or mark the intended HTTP endpoint primary: true, then rerun `lando open`.",
-      }),
-    );
-  }
+  if (targets.length === 0)
+    return yield* Effect.fail(diagnoseUnresolvedOpenTarget(plan, options, connections));
 
   for (const target of targets) {
     if (!isOpenableScheme(target.url)) {

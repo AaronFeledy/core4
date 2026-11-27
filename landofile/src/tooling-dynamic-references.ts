@@ -73,8 +73,8 @@ export const serviceUrlPlacementIssues = (sites: readonly ParsedPendingSite[]) =
       rule: "landofile.tooling" as const,
       path: site.path,
       source: site.source,
-      message: "A var that reads a public service URL cannot choose a task or step's service, user, or dir.",
+      message: "A var that reads a public route fact cannot choose a task or step's service, user, or dir.",
       suggestion:
-        "Read the URL in a command, cmds step, env value, or var; choose service, user, and dir from literals or invocation input.",
+        "Read the route fact in a command, cmds step, env value, or var; choose service, user, and dir from literals or invocation input.",
     }));
 };

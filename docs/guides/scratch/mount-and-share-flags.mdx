@@ -103,7 +103,7 @@ Recipe scratches skip post-init hooks by default. Add `--run-post-init` when the
       <Run command="lando scratch:start --fork --name review-with-a-long-scratch-name --detach --format=json" capture={{ name: "scratchId", json: "handle.id" }} />
     </Step>
     <Step name="inspect">
-      <Verify command="lando scratch:info {{capture:scratchId}} --format=json" expect={{ stdout: { regex: "\"id\":\\s*\"(scratch-[a-z0-9-]{1,25}-[a-f0-9]{6})\"[\\s\\S]*\"hostname\":\\s*\"web\\.(?=[a-z0-9-]{1,63}\\.lndo\\.site\")[a-z0-9][a-z0-9-]*-[a-f0-9]{8}--\\1\\.lndo\\.site\"" } }} />
+      <Verify command="lando scratch:info {{capture:scratchId}} --jq '[.result.id, .result.routes[0].host]'" expect={{ stdout: { regex: "^\\s*\\[\\s*\"(scratch-[a-z0-9-]{1,25}-[a-f0-9]{6})\"\\s*,\\s*\"web\\.(?=[a-z0-9-]{1,63}\\.lndo\\.site\")[a-z0-9][a-z0-9-]*-[a-f0-9]{8}--\\1\\.lndo\\.site\"\\s*\\]\\s*$" } }} />
     </Step>
     <Step name="cleanup">
       <Cleanup />

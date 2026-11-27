@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { isAddressedRoute } from "@lando/engine/operations/service-connections";
 import { RequestPolicy, layerWith } from "@lando/http-client";
 import { NetworkTrust } from "@lando/http-client/network-trust";
 import { makeLandoPaths } from "@lando/paths";
@@ -34,12 +35,13 @@ export const resolveFetchUrl = Effect.fnUntraced(function* (
           }),
       ),
     );
-    const connections = result.services.find((item) => item.service === service)?.connections ?? [];
-    const routes = connections.filter((item) => item.source === "route" && item.binding === "assigned");
+    const routes = (result.services.find((item) => item.service === service)?.routes ?? []).filter(
+      isAddressedRoute,
+    );
     const selected = routes.find((item) => item.protocol === "https") ?? routes[0];
     if (selected === undefined) {
       return yield* new ScenarioFetchError({
-        message: `No assigned host route for ${service}.`,
+        message: `No assigned host route with a concrete hostname for ${service}.`,
         remediation: "Start the fixture app and check its assigned routes with `lando info`.",
       });
     }

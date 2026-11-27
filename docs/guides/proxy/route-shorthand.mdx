@@ -247,7 +247,37 @@ lando start
 lando info
 ```
 
-Use the HTTPS URLs and ports printed by `lando info`. Matching uses the scheme,
+`lando info` prints a URL, including the router port when needed, for each
+assigned exact route. A pending route has no URL yet. A wildcard route names
+many hostnames, so no single URL stands for it, and
+`lando info` lists it under Route patterns instead. With the router on the
+default HTTPS port, the `wild` service's entry there reads:
+
+```text
+*.route-order.lndo.site [https pattern]
+```
+
+In `lando info --format=json`, that route is an entry in the service's `routes`
+with `hostMatch: "pattern"`. It has a `port` and no `url`. These are its fields
+(`endpoint` is left out here):
+
+```json
+{
+  "host": "*.route-order.lndo.site",
+  "protocol": "https",
+  "pathPrefix": "",
+  "hostMatch": "pattern",
+  "port": 443,
+  "binding": "assigned",
+  "state": "active"
+}
+```
+
+A concrete route has `hostMatch: "exact"` and a `url`. `lando open` and the
+terminal links in `lando info` only use exact routes. To reach a pattern route,
+open a hostname it matches, such as `https://docs.route-order.lndo.site`.
+
+Matching uses the scheme,
 case-insensitive hostname and path prefix on the router's selected listener port.
 The shorthand `:port` selects a **backend** container port. It can declare an internal
 HTTP listener there when none exists, but it never opens a new public host port. Two
@@ -256,7 +286,8 @@ two public ports. Set public listener ports under `router:` instead.
 
 The proxy merges every running app into one router table, so this ordering spans
 all apps running at the same time, not just yours. Exact hostnames beat wildcard
-hostnames, then a longer path prefix beats a shorter one. A route's rank comes
+hostnames, then a longer path prefix beats a shorter one within the same band
+unless both prefixes reach the path weight cap. A route's rank comes
 only from its own hostname specificity and path prefix length, never from how
 many routes an app declares or the order you declare them in. The diagnostic
 fallback always sits below every app route. Two routes of equal specificity have
@@ -423,6 +454,28 @@ Skip lint and `lando start` reports the same entries, at the same paths, in one 
     </Step>
     <Step name="cleanup">
       <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="wildcard-routes-reported-as-patterns" render={false} reason="Prove lando info and lando start report wildcard routes as hostname patterns with no URL, and concrete routes with one">
+    <Step name="start">
+      <UseFixture name="route-shorthand-demo" />
+      <Run command="lando start" />
+    </Step>
+    <Step name="inspect-info">
+      <Verify command={`lando info --jq '[.result.services[] | select(.service == "app") | .routes[] | select(.host == "*.app.lndo.site" and .protocol == "https") | .hostMatch][0]'`} expect={{ stdout: { regex: "^\\s*pattern\\s*$" } }} />
+      <Verify command={`lando info --jq '[.result.services[] | select(.service == "app") | .routes[] | select(.host == "lets.combine.*.lndo.site") | .hostMatch + " " + .pathPrefix + " " + (.port | tostring)][0]'`} expect={{ stdout: { regex: "^\\s*pattern /everything/for-real 38080\\s*$" } }} />
+      <Verify command={`lando info --jq '[.result.services[] | select(.service == "app") | .routes[] | select(.host == "app.lndo.site" and .protocol == "https") | .url][0]'`} expect={{ stdout: { regex: "^\\s*https://app\\.lndo\\.site:38443\\s*$" } }} />
+      <Verify command={`lando info --jq '[.result.services[] | .routes[] | select(.hostMatch == "pattern" and .url != null)] | length'`} expect={{ stdout: { regex: "^\\s*0\\s*$" } }} />
+      <Verify command={`lando info --jq '[.result.services[] | .connections[] | select(.source == "route")] | length'`} expect={{ stdout: { regex: "^\\s*0\\s*$" } }} />
+    </Step>
+    <Step name="inspect-start">
+      <Verify command={`lando start --jq '[.result.servicesStarted[] | .routes[] | select(.hostMatch == "pattern")] | length'`} expect={{ stdout: { regex: "^\\s*[1-9][0-9]*\\s*$" } }} />
+      <Verify command={`lando start --jq '[.result.servicesStarted[] | .routes[] | select(.hostMatch == "pattern" and .url != null)] | length'`} expect={{ stdout: { regex: "^\\s*0\\s*$" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
     </Step>
   </Scenario>
 

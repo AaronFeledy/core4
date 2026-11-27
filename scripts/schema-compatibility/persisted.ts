@@ -158,5 +158,5 @@ export const persistedMigrationRemediation = (
   const ordered = [...stores].sort();
   const examples = ordered.map((store) => `{"store":"${store}","version":${storeVersions[store]}}`).join(",");
   const metadata = ordered.length === 1 ? examples : `[${examples}]`;
-  return `Persisted schema surface: accept only with matching exception.persistedState (${metadata}). Bump each store's version and add a migration that rewrites historical records, then set persistedState to the new version.`;
+  return `Persisted schema surface: accept only with matching exception.persistedState (${metadata}). Bump the store version when older readers cannot decode newly written values. Migrate historical payloads only if the current decoder cannot read them unchanged. Set persistedState to the new version.`;
 };

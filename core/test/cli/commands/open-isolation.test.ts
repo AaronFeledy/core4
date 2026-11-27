@@ -261,7 +261,9 @@ test("scoped observations retain completion intent from the full plan", async ()
     ),
   );
   // Then
-  expect(result).toMatchObject([{ name: "web", state: "completed" }]);
+  expect(result).toMatchObject([
+    { name: "web", state: "completed", routes: [{ host: "web.myapp.lndo.site", state: "inactive" }] },
+  ]);
   expect(result[0]?.connections.every((connection) => connection.state !== "active")).toBe(true);
 });
 

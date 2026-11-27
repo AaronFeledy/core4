@@ -1,11 +1,45 @@
 import {
   type EndpointRef,
+  type PublicRouteFact,
   type RoutePlan,
   type ServiceConnection,
   type ServicePlan,
+  type ServiceRoute,
+  isWildcardHostname,
   routeListenerPreference,
   selectHttpEndpoint,
 } from "@lando/sdk/schema";
+
+type ServedRoute = Extract<ServiceRoute, { readonly binding: "assigned" }>;
+type AddressKey = "host" | "protocol" | "port" | "pathPrefix" | "hostMatch";
+export type ExactRouteAddress = Pick<
+  Extract<ServedRoute, { readonly hostMatch: "exact" }>,
+  AddressKey | "url"
+>;
+export type PatternRouteAddress = Pick<Extract<ServedRoute, { readonly hostMatch: "pattern" }>, AddressKey>;
+export type RouteAddress = ExactRouteAddress | PatternRouteAddress;
+
+/** A route's public identity, whether or not the router has assigned a port. */
+export const routeHost = (
+  route: RoutePlan,
+  protocol: RouteAddress["protocol"],
+): Omit<RouteAddress, "port"> => ({
+  host: route.hostname.toLowerCase(),
+  protocol,
+  pathPrefix: route.pathPrefix ?? "",
+  hostMatch: isWildcardHostname(route.hostname) ? "pattern" : "exact",
+});
+
+export const routeAddress = (
+  route: RoutePlan,
+  protocol: RouteAddress["protocol"],
+  port: number,
+): RouteAddress => {
+  const { hostMatch, ...location } = routeHost(route, protocol);
+  return hostMatch === "exact"
+    ? { ...location, hostMatch, port, url: connectionUrl({ ...location, port }) }
+    : { ...location, hostMatch, port };
+};
 
 /**
  * The route a public service URL names: the first concrete HTTPS or `both` route, otherwise the
@@ -15,7 +49,7 @@ export const primaryConcreteRoute = (
   routes: readonly RoutePlan[],
   service: string,
 ): RoutePlan | undefined => {
-  const own = routes.filter((route) => route.service === service && !route.hostname.includes("*"));
+  const own = routes.filter((route) => route.service === service && !isWildcardHostname(route.hostname));
   return own.find((route) => route.scheme !== "http") ?? own[0];
 };
 
@@ -45,33 +79,19 @@ export const primaryRouteCandidates = (
   return listeners.length > 0 ? listeners : https.length > 0 ? https : own;
 };
 
-export const routeUrl = (route: RoutePlan, protocol: "http" | "https", port: number): string =>
-  connectionUrl({
-    host: route.hostname,
-    protocol,
-    port,
-    ...(route.pathPrefix === undefined ? {} : { pathPrefix: route.pathPrefix }),
-  });
-
-/** A service's public route facts, each a pure function of its route, scheme, and port. */
-export interface RouteFacts {
-  /** `scheme://hostname[:port][pathPrefix]`. */
-  readonly url: string;
-  /** The route hostname, lowercase, without a port. */
-  readonly hostname: string;
-  /** `scheme://hostname[:port]`, with no path and no trailing slash. */
-  readonly origin: string;
-}
+export interface RouteFacts extends Readonly<Record<PublicRouteFact, string>> {}
 
 /**
  * Project a route's public facts by hand rather than through `new URL()`, which rewrites or rejects
  * hostnames routes admit, such as `127.1` and `web.123`. The port is omitted only for http on 80
  * and https on 443.
  */
-export const routeFacts = (route: RoutePlan, protocol: "http" | "https", port: number): RouteFacts => ({
-  url: routeUrl(route, protocol, port),
-  hostname: route.hostname.toLowerCase(),
-  origin: connectionUrl({ host: route.hostname, protocol, port }),
+export const routeFacts = ({ url, host, protocol, port }: ExactRouteAddress): RouteFacts => ({
+  url,
+  hostname: host,
+  origin: connectionUrl({ host, protocol, port }),
+  publicPort: String(port),
+  scheme: protocol,
 });
 
 export const connectionHost = (address: string): string => {
@@ -79,18 +99,26 @@ export const connectionHost = (address: string): string => {
   return host === "0.0.0.0" || host === "127.0.0.1" ? "localhost" : host === "::" ? "::1" : host;
 };
 
-export const connectionUrl = (input: {
+type ConnectionAuthorityInput = {
   readonly host: string;
   readonly port: number;
   readonly protocol: string;
   readonly pathPrefix?: string;
-}): string => {
+};
+
+/** The host, nonstandard port, and path prefix of a client address. */
+export const connectionAuthority = (input: ConnectionAuthorityInput): string => {
   const normalized = input.host.replace(/^\[|\]$/gu, "").toLowerCase();
   const host = normalized.includes(":") ? `[${normalized}]` : normalized;
   const standard =
     (input.protocol === "http" && input.port === 80) || (input.protocol === "https" && input.port === 443);
-  return `${input.protocol}://${host}${standard ? "" : `:${input.port}`}${input.pathPrefix ?? ""}`;
+  return `${host}${standard ? "" : `:${input.port}`}${input.pathPrefix ?? ""}`;
 };
+
+export const connectionUrl = (input: ConnectionAuthorityInput): string =>
+  `${input.protocol}://${connectionAuthority(input)}`;
+
+export const effectiveRoutePath = (prefix: string): string => (prefix === "" ? "/" : prefix);
 
 export const clientConnectionUrls = (input: {
   readonly service: ServicePlan;

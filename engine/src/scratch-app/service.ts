@@ -60,7 +60,7 @@ import { loadUserLandofileFile, makeEngineUserAppResolution } from "../landofile
 import { routeOwnerFromPlan } from "../lifecycle/route-owner.ts";
 import { routeUrlRouterError } from "../lifecycle/route-url-bindings.ts";
 import { prepareServiceCertificates } from "../lifecycle/service-certificates.ts";
-import { routeUrl } from "../operations/connection-url.ts";
+import { routeAddress } from "../operations/connection-url.ts";
 import {
   type GlobalConsumerAdmissionServices,
   requireSelectableRouter,
@@ -900,10 +900,14 @@ const makeScratchAppService = Effect.fnUntraced(function* (
   ): Effect.fn.Return<ScratchInfo, ScratchAppNotFoundError | ScratchAppError> {
     const entry = yield* resolveEntry(reference);
     const scratchPaths = yield* paths(entry.id);
-    const cachedPlan = yield* readCachedPlan(scratchPaths.planCache);
-    const info = { ...summaryFromEntry(entry), ...scratchPlanDetail(cachedPlan) };
-    if (cachedPlan === undefined || cachedPlan.routes.length === 0 || !routerEnabled(cachedPlan)) return info;
-    const observation = yield* router.observeRoutes(routeOwnerFromPlan(cachedPlan), cachedPlan.routes).pipe(
+    const plan =
+      (yield* readCachedPlan(scratchPaths.planCache)) ??
+      (yield* providerRegistry
+        .resolveAppliedPlan(AbsolutePath.make(entry.rootPath), { kind: "scratch", id: entry.id }, "exact")
+        .pipe(Effect.catch(() => Effect.succeed(undefined))));
+    const info = { ...summaryFromEntry(entry), ...scratchPlanDetail(plan) };
+    if (plan === undefined || plan.routes.length === 0 || !routerEnabled(plan)) return info;
+    const observation = yield* router.observeRoutes(routeOwnerFromPlan(plan), plan.routes).pipe(
       Effect.map((evidence) => evidence.observation),
       Effect.catchTag("ProxyError", () => Effect.succeed(undefined)),
     );
@@ -912,9 +916,8 @@ const makeScratchAppService = Effect.fnUntraced(function* (
     return {
       ...info,
       routes: observation.publications.map(({ route, authority }) => ({
-        ...authority,
         service: route.service,
-        url: routeUrl(route, authority.scheme, authority.port),
+        ...routeAddress(route, authority.scheme, authority.port),
       })),
     };
   });

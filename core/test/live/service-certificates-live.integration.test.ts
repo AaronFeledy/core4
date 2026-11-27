@@ -136,9 +136,7 @@ describe.serial("generated service certificates and router-less teardown", () =>
         );
         const routeHosts = started.servicesStarted
           .find((service) => service.name === "web")
-          ?.connections.flatMap((connection) =>
-            connection.source === "route" && connection.host !== undefined ? [connection.host] : [],
-          );
+          ?.routes.map((route) => route.host);
         expect(routeHosts?.length, JSON.stringify(started)).toBeGreaterThan(0);
 
         // Then: one current pair, signed by the mkcert root, covering the service's names.

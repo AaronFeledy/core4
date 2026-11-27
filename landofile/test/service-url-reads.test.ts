@@ -17,6 +17,8 @@ describe("serviceUrlReads", () => {
     ["{{ (services.web).url }}", { web: ["url"] }],
     ["{{ (services).web.url }}", { web: ["url"] }],
     ["{{ services.web.hostname }}", { web: ["hostname"] }],
+    ["{{ number(services.web.publicPort) == 8443 }}", { web: ["publicPort"] }],
+    ['{{ services.web["scheme"] }}', { web: ["scheme"] }],
     ['{{ services["web"].hostname }}', { web: ["hostname"] }],
     ['{{ services.web["origin"] }}', { web: ["origin"] }],
     ["{{ (services.web).origin }}", { web: ["origin"] }],

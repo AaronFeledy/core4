@@ -44,7 +44,9 @@ services:
     type: "node:22"
     endpoints: []
     environment:
-      VITE_REVERB_URL: "{{ services.reverb.url }}"
+      VITE_REVERB_HOST: "{{ services.reverb.hostname }}"
+      VITE_REVERB_PORT: "{{ services.reverb.publicPort }}"
+      VITE_REVERB_SCHEME: "{{ services.reverb.scheme }}"
 tooling:
   artisan:
     service: appserver

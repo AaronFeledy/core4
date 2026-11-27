@@ -16,7 +16,8 @@ import { makeTaskTree } from "@lando/sdk/task-progress";
 import { DateTime, Effect } from "effect";
 import { warnIfLocalCaUntrusted } from "../http/local-ca-trust.ts";
 import { endpointScanPolicy } from "../services/endpoint-scan.ts";
-import { scanTargets } from "../subsystems/scanner/connection-targets.ts";
+import { appendScanPath } from "../subsystems/scanner/connection-targets.ts";
+import { activeHostHttpAddresses } from "./service-connections.ts";
 import { startScanTreeId } from "./start-progress.ts";
 
 export interface PostStartScanInput {
@@ -39,12 +40,10 @@ export const startupScanUrls = (
     const name = ServiceName.make(service.name);
     const planned = plan.services[name];
     if (planned?.scanner?.enabled === false) return [];
-    return service.connections.flatMap((connection) =>
-      scanTargets(
-        [{ ...connection, service: name }],
-        endpointScanPolicy(planned, connection.endpoint)?.path ?? planned?.scanner?.path ?? "/",
-      ),
-    );
+    return activeHostHttpAddresses(service).map((address) => {
+      const path = endpointScanPolicy(planned, address.endpoint)?.path ?? planned?.scanner?.path ?? "/";
+      return { service: name, url: appendScanPath(address.url, path), endpoint: address.endpoint };
+    });
   });
   return [...new Map(targets.map((target) => [`${target.service}/${target.url}`, target])).values()];
 };

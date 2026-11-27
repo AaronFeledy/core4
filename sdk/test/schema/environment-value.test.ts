@@ -6,6 +6,8 @@ import {
   Environment,
   EnvironmentValue,
   EventCmdStep,
+  PUBLIC_ROUTE_FACTS,
+  RouteUrlPart,
   ServiceConfig,
   ServiceCredsDisplay,
   ServiceName,
@@ -139,8 +141,6 @@ describe("environment values", () => {
 });
 
 describe("applied route text", () => {
-  // Applied state version 12 persists service environments: a record written before route facts
-  // gained `member` and one written after must both decode strictly and encode back unchanged.
   const appliedPlan = (environment: Record<string, unknown>) => ({
     id: "demo",
     name: "demo",
@@ -173,11 +173,19 @@ describe("applied route text", () => {
   test.each([
     { name: "before route facts", parts: [{ service: "web", encoding: "raw" }, "/api"] },
     {
-      name: "with route facts",
+      name: "with hostname and origin facts",
       parts: [
         { service: "web", member: "hostname", encoding: "raw" },
         ",",
         { service: "web", member: "origin", encoding: "uri-component" },
+      ],
+    },
+    {
+      name: "with public port and scheme facts",
+      parts: [
+        { service: "web", member: "scheme", encoding: "raw" },
+        "://example.test:",
+        { service: "web", member: "publicPort", encoding: "uri-component" },
       ],
     },
   ])("decodes and re-encodes a record written $name", ({ parts }) => {
@@ -188,6 +196,7 @@ describe("applied route text", () => {
     const encoded = Schema.encodeSync(AppliedAppPlan)(decoded);
     // Then
     expect(decoded.services[ServiceName.make("web")]?.environment.APP).toEqual({ _tag: "RouteText", parts });
+    expect(encoded.services.web?.environment.APP).toEqual({ _tag: "RouteText", parts });
     expect(Schema.decodeUnknownSync(AppliedAppPlan)(encoded, { onExcessProperty: "error" })).toEqual(decoded);
   });
 
@@ -197,4 +206,10 @@ describe("applied route text", () => {
     });
     expect(Result.isFailure(Schema.decodeUnknownResult(AppliedAppPlan)(record))).toBe(true);
   });
+});
+
+test("route text members name exactly the public route facts other than the implicit URL", () => {
+  expect([...RouteUrlPart.fields.member.schema.literals]).toEqual(
+    PUBLIC_ROUTE_FACTS.filter((fact) => fact !== "url"),
+  );
 });

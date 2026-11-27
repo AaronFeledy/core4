@@ -10,13 +10,8 @@ import type {
   ScratchIsolationConflictError,
   ScratchSourceUnresolvedError,
 } from "../errors/index.ts";
-import {
-  type AbsolutePath,
-  type AppRef,
-  type IsolateMode,
-  ProxyAuthority,
-  ServiceName,
-} from "../schema/index.ts";
+import { type AbsolutePath, type AppRef, type IsolateMode, ServiceName } from "../schema/index.ts";
+import { exactRouteAddress, patternRouteAddress } from "../schema/route-address.ts";
 
 export interface ScratchAppPaths {
   readonly base: AbsolutePath;
@@ -133,13 +128,13 @@ export interface ScratchServiceEndpoints {
   }>;
 }
 
-export const ScratchPublishedRoute = Schema.Struct({
-  ...ProxyAuthority.fields,
-  service: ServiceName.annotate({ description: "Scratch service receiving requests to this URL." }),
-  url: Schema.String.annotate({
-    description: "Published route URL, including any nonstandard port and path prefix.",
-  }),
-});
+const scratchRoute = {
+  service: ServiceName.annotate({ description: "Scratch service receiving requests on this route." }),
+};
+export const ScratchPublishedRoute = Schema.Union([
+  Schema.Struct({ ...scratchRoute, ...exactRouteAddress }),
+  Schema.Struct({ ...scratchRoute, ...patternRouteAddress }),
+]);
 export type ScratchPublishedRoute = typeof ScratchPublishedRoute.Type;
 
 /**
@@ -150,6 +145,7 @@ export interface ScratchInfo extends ScratchSummary {
   readonly mounts: ReadonlyArray<ScratchMountPoint>;
   readonly network: ScratchNetworkMembership;
   readonly endpoints: ReadonlyArray<ScratchServiceEndpoints>;
+  /** Router-confirmed routes when enabled routes are declared; empty when none are confirmed. Only exact entries carry a URL. */
   readonly routes?: ReadonlyArray<ScratchPublishedRoute>;
 }
 

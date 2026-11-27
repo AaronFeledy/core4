@@ -73,23 +73,33 @@ those ids instead.
 
 Info repeats the list fields, then prints `root`, the per-app bridge (and the shared network when the scratch joined it), each mount (service, target, source, kind, read-only), and endpoints grouped by service.
 
-Under `routes`, look for the URLs the router confirms for this scratch. The
-JSON `routes` entries include `service`, `hostname`, `scheme`, `port`, and
-`url`, which includes any nonstandard port and route path prefix. If the
-router cannot confirm a route, info does not report it, and an empty `routes`
-list means the scratch declares routes but none are confirmed yet. A scratch
-with no routes, or with routing turned off, has no `routes` field. A reported
-URL does not imply the service behind it is healthy.
+Under `routes`, look for the routes the router confirms for this scratch. The
+JSON `routes` entries carry `service`, `host`, `protocol`, `port`, `pathPrefix`,
+and `hostMatch`. An entry with `hostMatch: "exact"` also has a `url`, which
+includes any nonstandard port and the route path prefix. A wildcard route is a
+`hostMatch: "pattern"` entry. Its `host` is the pattern and it has no `url`,
+because a pattern names no single URL. In text output a pattern reads like
+`*.scratch-info-guide.lndo.site:38080 [http pattern]`. These are the same
+address fields `lando info` uses for its `routes` entries.
+
+If the router cannot confirm a route, info does not report it, and an empty
+`routes` list means the scratch declares routes but none are confirmed yet. A
+scratch with no routes, or with routing turned off, has no `routes` field. A
+reported route does not imply the service behind it is healthy.
 
 <Guide>
-  <Scenario id="published-route-urls" render={false} reason="Prove scratch info reports the published URL with its port and path in JSON and text">
+  <Scenario id="published-route-urls" render={false} reason="Prove scratch info reports an exact route with its URL, port, and path, and a wildcard route as a pattern with no URL, in JSON and text">
     <Step name="fork">
       <UseFixture name="scratch-info-web" />
       <Run command="lando scratch:start --fork --no-hostname-suffix --detach --format=json" capture={{ name: "scratchId", json: "handle.id" }} />
     </Step>
     <Step name="inspect">
-      <Verify command="lando scratch:info {{capture:scratchId}} --format=json" expect={{ stdout: { regex: "\"hostname\":\\s*\"web\\.scratch-info-guide\\.lndo\\.site\"[\\s\\S]*\"url\":\\s*\"http://web\\.scratch-info-guide\\.lndo\\.site:38080/hello\"" } }} />
+      <Verify command={`lando scratch:info {{capture:scratchId}} --jq '[.result.routes[] | select(.host == "web.scratch-info-guide.lndo.site") | .url][0]'`} expect={{ stdout: { regex: "^\\s*http://web\\.scratch-info-guide\\.lndo\\.site:38080/hello\\s*$" } }} />
+      <Verify command={`lando scratch:info {{capture:scratchId}} --jq '[.result.routes[] | select(.host == "*.scratch-info-guide.lndo.site") | .hostMatch][0]'`} expect={{ stdout: { regex: "^\\s*pattern\\s*$" } }} />
+      <Verify command={`lando scratch:info {{capture:scratchId}} --jq '[.result.routes[] | select(.hostMatch == "pattern" and .url != null)] | length'`} expect={{ stdout: { regex: "^\\s*0\\s*$" } }} />
+      <Verify command={`lando scratch:info {{capture:scratchId}} --jq '[.result.routes[] | select(.hostname != null or .scheme != null)] | length'`} expect={{ stdout: { regex: "^\\s*0\\s*$" } }} />
       <Verify command="lando scratch:info {{capture:scratchId}} --renderer=plain --format=text" expect={{ stdout: { regex: "http://web\\.scratch-info-guide\\.lndo\\.site:38080/hello" } }} />
+      <Verify command="lando scratch:info {{capture:scratchId}} --renderer=plain --format=text" expect={{ stdout: { regex: "\\*\\.scratch-info-guide\\.lndo\\.site:38080 \\[http pattern\\]" } }} />
     </Step>
     <Step name="cleanup">
       <Cleanup />

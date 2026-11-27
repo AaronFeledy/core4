@@ -30,7 +30,6 @@ test.each([
       service,
       state: "running",
       publications,
-      routes: [],
     });
     expect(rows.filter((row) => row.scope === "app").map((row) => row.url)).toEqual([
       "tcp://web:15432",

@@ -1,6 +1,6 @@
 import { sha256Hex } from "@lando/sdk/digest";
 import { ScratchAppError } from "@lando/sdk/errors";
-import type { AppPlan, RoutePlan } from "@lando/sdk/schema";
+import { type AppPlan, type RoutePlan, isWildcardHostname } from "@lando/sdk/schema";
 import type { ScratchAcquireInput } from "@lando/sdk/services";
 import { Effect } from "effect";
 import { resolveProxyDefaultDomain } from "../config/proxy-default-domain.ts";
@@ -33,7 +33,7 @@ export const suffixScratchHostname = (
     if (available < digest.length) return undefined;
     const prefixLength = Math.min(12, available - digest.length - 1);
     const head = target.slice(0, Math.max(0, prefixLength)).replace(/-+$/u, "");
-    const prefix = target.includes("*") && !head.includes("*") ? "*" : head;
+    const prefix = isWildcardHostname(target) && !isWildcardHostname(head) ? "*" : head;
     if (prefix.length > 0 && prefixLength < 1) return undefined;
     labels[targetIndex] = `${prefix.length === 0 ? digest : `${prefix}-${digest}`}${suffix}`;
   }

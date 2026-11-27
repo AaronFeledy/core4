@@ -1,7 +1,6 @@
-import type { ServiceConnection, ServiceName, ServicePlan } from "@lando/sdk/schema";
-import { activeHostHttpUrls } from "../../operations/service-connections.ts";
+import type { ServiceName, ServicePlan, StartedService } from "@lando/sdk/schema";
 
-export type ScanSourceEndpoint = ServiceConnection & {
+export type ScanSourceService = Pick<StartedService, "connections" | "routes"> & {
   readonly service: ServiceName;
   readonly servicePlan?: ServicePlan | undefined;
 };
@@ -12,21 +11,9 @@ export const appendScanPath = (base: string, path: string): string => {
   return new URL(relative, origin).toString();
 };
 
-export const publishedHostPort = (connection: ScanSourceEndpoint): number | undefined =>
-  connection.scope === "host" &&
-  connection.source === "publication" &&
-  connection.binding === "assigned" &&
-  connection.state === "active"
-    ? connection.port
-    : undefined;
-
-export const scanTargets = (connections: readonly ScanSourceEndpoint[], path: string) => {
-  const targets = connections.flatMap((connection) =>
-    activeHostHttpUrls([connection]).map((base) => ({
-      service: connection.service,
-      url: appendScanPath(base, path),
-      endpoint: connection.endpoint,
-    })),
+export const publishedHostPorts = (source: ScanSourceService): readonly number[] =>
+  source.connections.flatMap((connection) =>
+    connection.scope === "host" && connection.binding === "assigned" && connection.state === "active"
+      ? [connection.port]
+      : [],
   );
-  return [...new Map(targets.map((target) => [`${target.service}/${target.url}`, target])).values()];
-};

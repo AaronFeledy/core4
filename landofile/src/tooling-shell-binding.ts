@@ -8,6 +8,7 @@ import {
 import {
   type Environment,
   LandofileLayer,
+  PUBLIC_ROUTE_FACTS,
   SecretRef,
   type ValidationIssueSource,
   formatValidationIssuePath,
@@ -199,8 +200,7 @@ export const bindToolingShellSite = (
       throw new ToolingCompileError({
         tool: "<tooling-task>",
         message: `Public route fact bindings are not supported at ${formatValidationIssuePath(site.source.path)}.`,
-        remediation:
-          "Read one service's route fact with {{ services.<name>.url }}, .hostname, or .origin, naming the service literally.",
+        remediation: `Read one service's route fact with {{ services.<name>.<fact> }} (${PUBLIC_ROUTE_FACTS.join(", ")}), naming the service literally.`,
       });
     const value =
       segment.kind === "LiteralSegment" && trimNextLiteral

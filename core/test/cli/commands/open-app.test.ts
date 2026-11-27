@@ -4,6 +4,7 @@ import { realpath } from "node:fs/promises";
 import { invokeOperation } from "@lando/core/cli/operations";
 import { HostProxyOpenerError } from "@lando/engine/services/host-opener";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
+import { OpenTargetUnresolvedError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
@@ -34,6 +35,7 @@ import {
 } from "../../../src/cli/commands/open.ts";
 import type { RenderContext } from "../../../src/cli/renderer-boundary.ts";
 import { renderTerminalQr } from "../../../src/cli/terminal-qr.ts";
+import { connections, routeRow } from "../connection-fixtures.ts";
 
 const route = (over: Pick<RoutePlan, "hostname" | "scheme"> & { readonly service: string }): RoutePlan => ({
   priority: 2,
@@ -112,28 +114,34 @@ const layers = (rec: ReturnType<typeof record>) =>
     ),
   );
 
-const observed = (plan: AppPlan) =>
+const observed = (plan: AppPlan, ports = { http: 80, https: 443 }) =>
   Object.values(plan.services).map((service) => ({
     name: String(service.name),
     state: "running",
-    connections:
+    connections: [],
+    routes:
       plan.router?.enabled === false
         ? []
         : plan.routes
             .filter((route) => route.service === service.name)
-            .map((route) => ({
-              scope: "host",
-              source: "route",
-              binding: "assigned",
-              state: "active",
-              host: route.hostname,
-              protocol: route.scheme === "http" ? "http" : "https",
-              port: route.scheme === "http" ? 80 : 443,
-              pathPrefix: route.pathPrefix ?? "",
-              url: `${route.scheme === "http" ? "http" : "https"}://${route.hostname}${route.pathPrefix ?? ""}`,
-              alternateUrls: [],
-              endpoint: { port: 80, transport: "tcp", names: [], primary: false },
-            })),
+            .map((route) => {
+              const protocol = route.scheme === "http" ? "http" : "https";
+              const port = ports[protocol];
+              const address = {
+                host: route.hostname,
+                protocol,
+                port,
+                pathPrefix: route.pathPrefix ?? "",
+              } as const;
+              const suffix = port === (protocol === "http" ? 80 : 443) ? "" : `:${port}`;
+              return route.hostname.includes("*")
+                ? routeRow({ ...address, hostMatch: "pattern" })
+                : routeRow({
+                    ...address,
+                    hostMatch: "exact",
+                    url: `${protocol}://${route.hostname}${suffix}${address.pathPrefix}`,
+                  });
+            }),
   })) satisfies readonly StartedService[];
 
 const run = (plan: AppPlan, options: OpenAppOptions, rec: ReturnType<typeof record>) =>
@@ -265,18 +273,9 @@ describe("openForPlan", () => {
       ["web", "api"],
     );
     const result = await Effect.runPromise(
-      openForPlan(
-        plan,
-        { print: true, all: true },
-        observed(plan).map((row) => ({
-          ...row,
-          connections: row.connections.map((connection) => ({
-            ...connection,
-            port: connection.protocol === "http" ? 8080 : 8443,
-            url: `${connection.protocol}://${connection.host}:${connection.protocol === "http" ? 8080 : 8443}`,
-          })),
-        })),
-      ).pipe(Effect.provide(layers(rec))),
+      openForPlan(plan, { print: true, all: true }, observed(plan, { http: 8080, https: 8443 })).pipe(
+        Effect.provide(layers(rec)),
+      ),
     );
     expect(result.targets.map((target) => target.url)).toEqual([
       "https://web.myapp.lndo.site:8443",
@@ -387,6 +386,95 @@ describe("openForPlan", () => {
       expect(err.remediation).not.toContain("proxy");
     }
     expect(rec.commands).toEqual([]);
+  });
+
+  const wildcard = route({ hostname: "*.x", scheme: "https", service: "web" });
+  const concrete = route({ hostname: "concrete.x", scheme: "https", service: "api" });
+  const wildcardOnly = makePlan([wildcard], ["web"]);
+  const wildcardWithSibling = makePlan([wildcard, concrete], ["web", "api"]);
+
+  test.each([
+    [
+      "explicit pattern with a concrete sibling",
+      wildcardWithSibling,
+      { route: "*.x" },
+      "--route *.x",
+      "concrete hostname",
+    ],
+    [
+      "service selection with a concrete sibling",
+      wildcardWithSibling,
+      { service: "web" },
+      "service web declares only hostname-pattern routes",
+      "publish an HTTP port",
+    ],
+    [
+      "default selection",
+      wildcardOnly,
+      {},
+      "the app declares only hostname-pattern routes",
+      "publish an HTTP port",
+    ],
+    [
+      "--all",
+      wildcardOnly,
+      { all: true },
+      "the app declares only hostname-pattern routes",
+      "publish an HTTP port",
+    ],
+  ] as const)("diagnoses a pattern for %s", async (_label, plan, selection, diagnosis, remediation) => {
+    const rec = record();
+    const error = await Effect.runPromise(
+      Effect.flip(openForPlan(plan, selection, observed(plan))).pipe(Effect.provide(layers(rec))),
+    );
+
+    expect(error).toBeInstanceOf(OpenTargetUnresolvedError);
+    expect(error).toMatchObject({ app: "myapp", services: Object.keys(plan.services) });
+    expect(error.message).toContain(diagnosis);
+    expect(error.message).toContain("*.x");
+    expect(error.remediation).toContain(remediation);
+    expect(rec.commands).toEqual([]);
+  });
+
+  test("router-disabled diagnosis takes precedence over a declared pattern", async () => {
+    const plan = { ...wildcardOnly, router: { enabled: false } };
+    const error = await Effect.runPromise(
+      Effect.flip(openForPlan(plan, { route: "*.x" }, observed(plan))).pipe(Effect.provide(layers(record()))),
+    );
+
+    expect(error).toBeInstanceOf(OpenTargetUnresolvedError);
+    expect(error.message).toContain("router is disabled");
+    expect(error.remediation).toContain("enabled: true");
+  });
+
+  test("a pattern-only service can still open its active HTTP publication", async () => {
+    const rows = observed(wildcardOnly).map((row) => ({
+      ...row,
+      connections: [...row.connections, ...connections(["http://localhost"])],
+    }));
+    const result = await Effect.runPromise(
+      openForPlan(wildcardOnly, { service: "web", print: true }, rows).pipe(Effect.provide(layers(record()))),
+    );
+
+    expect(result.targets).toEqual([
+      { service: "web", hostname: "localhost", scheme: "http", url: "http://localhost" },
+    ]);
+  });
+
+  test("an inactive concrete sibling keeps the generic error for a mixed service", async () => {
+    const plan = makePlan([wildcard, route({ ...concrete, service: "web" })], ["web"]);
+    const rows = observed(plan).map((row) => ({
+      ...row,
+      routes: row.routes.map((route) =>
+        route.hostMatch === "exact" ? { ...route, state: "inactive" as const } : route,
+      ),
+    }));
+    const error = await Effect.runPromise(
+      Effect.flip(openForPlan(plan, { service: "web" }, rows)).pipe(Effect.provide(layers(record()))),
+    );
+
+    expect(error).toBeInstanceOf(OpenTargetUnresolvedError);
+    expect(error.message).toContain("No active host HTTP(S) connection");
   });
 
   test("selection miss reports --route when both --route and --service are set", async () => {
@@ -709,10 +797,10 @@ test("default open follows a generated HTTPS route when the service's primary li
     {
       name: ServiceName.make("web"),
       state: "running",
-      connections: [
+      connections: [],
+      routes: [
         {
-          scope: "host",
-          source: "route",
+          hostMatch: "exact",
           binding: "assigned",
           state: "active",
           host: "web.myapp.lndo.site",
@@ -720,7 +808,6 @@ test("default open follows a generated HTTPS route when the service's primary li
           port: 443,
           pathPrefix: "",
           url: "https://web.myapp.lndo.site",
-          alternateUrls: [],
           endpoint: { port: 443, transport: "tcp", names: ["web-https"], primary: false },
         },
       ],

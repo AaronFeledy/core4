@@ -541,6 +541,14 @@ describe("lando info", () => {
           endpoint: 3000,
           backend: { service: node.name, protocol: "http", port: 3000 },
         },
+        {
+          hostname: "*.node.test-info.lndo.site",
+          priority: 2,
+          scheme: "https",
+          service: node.name,
+          endpoint: 3000,
+          backend: { service: node.name, protocol: "http", port: 3000 },
+        },
       ],
     };
 
@@ -550,7 +558,10 @@ describe("lando info", () => {
         Effect.provide(
           makeInfoLayer("running", {
             plannedApp: routedPlan,
-            proxyAuthorities: [{ scheme: "https", hostname: "node.test-info.lndo.site", port: 7443 }],
+            proxyAuthorities: [
+              { scheme: "https", hostname: "node.test-info.lndo.site", port: 7443 },
+              { scheme: "https", hostname: "*.node.test-info.lndo.site", port: 443 },
+            ],
           }),
         ),
       ),
@@ -559,8 +570,15 @@ describe("lando info", () => {
     // Then the unpublished listener never becomes a bogus host URL: it is reported
     // only as the address other services dial on the app network.
     const nodeInfo = result.services.find((service) => service.service === "node");
-    expect(nodeInfo?.connections.filter((connection) => connection.scope === "host")).toMatchObject([
-      { source: "route", binding: "assigned", state: "active", url: "https://node.test-info.lndo.site:7443" },
+    expect(nodeInfo?.connections.filter((connection) => connection.scope === "host")).toEqual([]);
+    expect(nodeInfo?.routes).toMatchObject([
+      {
+        hostMatch: "exact",
+        binding: "assigned",
+        state: "active",
+        url: "https://node.test-info.lndo.site:7443",
+      },
+      { host: "*.node.test-info.lndo.site", hostMatch: "pattern", binding: "assigned", state: "active" },
     ]);
     expect(nodeInfo?.connections.filter((connection) => connection.scope === "app")).toMatchObject([
       { source: "listener", binding: "assigned", state: "active", url: "http://node:3000" },
@@ -568,6 +586,11 @@ describe("lando info", () => {
     const output = renderInfoAppResult(result);
     expect(output).not.toContain("localhost:3000");
     expect(output).toContain("node\trunning\thttps://node.test-info.lndo.site:7443\thttp://node:3000");
+    const lines = output.split("\n");
+    expect(lines[1]).toBe("service\tstate\tHost\tApp Network");
+    const row = lines.indexOf("node\trunning\thttps://node.test-info.lndo.site:7443\thttp://node:3000");
+    expect(row).toBeGreaterThan(1);
+    expect(lines[row + 1]).toBe("node\troute-pattern\t*.node.test-info.lndo.site [https pattern]");
   });
 
   test("prints a visible host-proxy unavailable notice from the plan extension", async () => {

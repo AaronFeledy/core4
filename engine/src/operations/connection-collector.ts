@@ -14,10 +14,15 @@ import {
   projectServiceConnections,
   serviceStateOf,
 } from "./service-connections.ts";
+import { projectServiceRoutes } from "./service-routes.ts";
 
-export interface ObservedService {
+export interface ServiceAddressObservation {
   readonly name: string;
   readonly state: ServiceState;
+  readonly runtime?: Pick<ServiceRuntimeInfo, "publications">;
+}
+
+export interface ObservedService extends ServiceAddressObservation {
   readonly runtime: ServiceRuntimeInfo;
 }
 
@@ -25,7 +30,7 @@ export type CollectedService = StartedService;
 
 export const collectObservedConnections = Effect.fn("Connections.collectObserved")(function* (
   plan: AppPlan,
-  rows: readonly ObservedService[],
+  rows: readonly ServiceAddressObservation[],
 ) {
   const router = yield* Effect.serviceOption(RouterService);
   const enabled = routerEnabled(plan);
@@ -38,21 +43,27 @@ export const collectObservedConnections = Effect.fn("Connections.collectObserved
   const services = Object.values(plan.services);
   return rows.map((row): CollectedService => {
     const service = services.find((service) => String(service.name) === row.name);
+    const publications = row.runtime?.publications ?? { status: "unknown" };
     return {
       name: row.name,
       state: row.state,
       connections:
         service === undefined
-          ? row.runtime.publications.status === "present"
-            ? row.runtime.publications.bindings.map((binding) =>
-                observedPublicationConnection(binding, row.state),
-              )
+          ? publications.status === "present"
+            ? publications.bindings.map((binding) => observedPublicationConnection(binding, row.state))
             : []
           : projectServiceConnections({
               plan,
               service,
               state: row.state,
-              publications: row.runtime.publications,
+              publications,
+            }),
+      routes:
+        service === undefined
+          ? []
+          : projectServiceRoutes({
+              service,
+              state: row.state,
               routes: plan.routes,
               routerEnabled: enabled,
               ...(routeEvidence === undefined ? {} : { routeEvidence }),
@@ -102,7 +113,7 @@ export const startedServices = (
   rows: readonly CollectedService[],
   containers?: Readonly<Record<string, ServiceContainerChange>>,
 ): readonly StartedService[] =>
-  rows.map(({ name, state, connections }) => {
+  rows.map(({ name, state, connections, routes }) => {
     const container = containers?.[name];
-    return { name, state, connections, ...(container === undefined ? {} : { container }) };
+    return { name, state, connections, routes, ...(container === undefined ? {} : { container }) };
   });

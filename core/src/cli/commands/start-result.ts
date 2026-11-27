@@ -1,49 +1,115 @@
+import { connectionAuthority, effectiveRoutePath } from "@lando/engine/operations/connection-url";
 import { activeHostHttpUrls } from "@lando/engine/operations/service-connections";
-import { type SummaryDocument, formatQuietSummary, worstSummaryTone } from "@lando/renderer/summary";
+import {
+  type SummaryDocument,
+  type SummaryRow,
+  formatQuietSummary,
+  worstSummaryTone,
+} from "@lando/renderer/summary";
 /** `lando start` result rendering. */
 import type { StartAppResult } from "@lando/sdk/app";
-import type { CheckResult, ServiceConnection } from "@lando/sdk/schema";
+import type { CheckResult, ServiceConnection, ServiceRoute, StartedService } from "@lando/sdk/schema";
 import type { RenderContext } from "../renderer-boundary";
 import { isDecoratedContext, summaryPaintOptions } from "../renderer-boundary";
-import { connectionText, scopedConnectionText } from "./connection-summary";
+import { appNetworkText, connectionText, routeText } from "./connection-summary";
 import { START_STATUS_TONES, lifecycleLine, serviceRowsText, summaryToneFromTable } from "./service-summary";
 
 export const startStatusTone = summaryToneFromTable(START_STATUS_TONES, "warn");
 
-const uniqueEndpoints = (services: StartAppResult["servicesStarted"]): readonly ServiceConnection[] => {
+type Endpoint = ServiceConnection | ServiceRoute;
+
+const endpointText = (endpoint: Endpoint): string =>
+  "hostMatch" in endpoint ? routeText(endpoint) : connectionText(endpoint);
+
+const twinAuthority = (endpoint: Extract<Endpoint, { binding: "assigned" }>): string =>
+  connectionAuthority({
+    ...endpoint,
+    pathPrefix: effectiveRoutePath("hostMatch" in endpoint ? endpoint.pathPrefix : ""),
+  });
+
+const uniqueEndpoints = (endpoints: readonly Endpoint[]): readonly Endpoint[] => {
   const seen = new Set<string>();
-  const https: ServiceConnection[] = [];
-  const http: ServiceConnection[] = [];
-  const other: ServiceConnection[] = [];
-  for (const service of services) {
-    for (const connection of service.connections.filter((connection) => connection.scope === "host")) {
-      const text = connectionText(connection);
-      if (seen.has(text)) continue;
-      seen.add(text);
-      if (connection.protocol === "https") https.push(connection);
-      else if (connection.protocol === "http") http.push(connection);
-      else other.push(connection);
-    }
+  const https: Endpoint[] = [];
+  const http: Endpoint[] = [];
+  const other: Endpoint[] = [];
+  for (const endpoint of endpoints) {
+    const text = endpointText(endpoint);
+    if (seen.has(text)) continue;
+    seen.add(text);
+    if (endpoint.protocol === "https") https.push(endpoint);
+    else if (endpoint.protocol === "http") http.push(endpoint);
+    else other.push(endpoint);
   }
   return [...https, ...http, ...other];
 };
 
-const isWebUrl = (url: string): boolean => url.startsWith("https://") || url.startsWith("http://");
-
-const endpointPrefix = (url: string): string => new URL(url.endsWith("/") ? url : `${url}/`).href;
-
 // A check probes its endpoint plus the service's scan path, so a check URL can
 // also start with a shorter sibling route (`/api` vs `/api/v2`). The endpoint
 // that owns a check is the longest published URL of its service that prefixes it.
-const checkEndpoint = (result: StartAppResult, check: CheckResult): string | undefined =>
-  activeHostHttpUrls(
-    result.servicesStarted.find((service) => service.name === check.service)?.connections ?? [],
-  )
-    .filter((endpoint) => check.url.startsWith(endpointPrefix(endpoint)))
+const checkEndpoint = (service: StartedService, check: CheckResult): string | undefined =>
+  activeHostHttpUrls(service)
+    .filter((endpoint) => {
+      const prefix = endpoint.endsWith("/") ? endpoint : `${endpoint}/`;
+      return check.url === endpoint || check.url.startsWith(URL.parse(prefix)?.href ?? prefix);
+    })
     .reduce<string | undefined>(
       (longest, endpoint) => (longest === undefined || endpoint.length > longest.length ? endpoint : longest),
       undefined,
     );
+
+const checkSuffix = (check: CheckResult): string => {
+  const redirect = check.statusCode !== undefined && check.statusCode >= 300 && check.statusCode < 400;
+  switch (check.verdict) {
+    case "ready":
+      return check.statusCode === undefined ? "" : ` ${check.detail ?? check.statusCode}`;
+    case "expected":
+      return ` · expected${check.detail === undefined ? "" : `: ${check.detail}`}`;
+    case "app-error":
+      return redirect && check.detail !== undefined
+        ? ` · ${check.detail}`
+        : ` ${check.statusCode} from your app`;
+    case "service-error":
+      return ` ${check.statusCode} from the web server`;
+    case "lando-error":
+      return " unreachable";
+    default: {
+      const unreachable: never = check.verdict;
+      return unreachable;
+    }
+  }
+};
+
+const endpointRows = (
+  endpoints: readonly Endpoint[],
+  checks: ReadonlyMap<string, readonly CheckResult[]>,
+): readonly SummaryRow[] => {
+  const httpsAuthorities = new Set(
+    endpoints.flatMap((row) =>
+      row.binding === "assigned" && row.state === "active" && row.protocol === "https"
+        ? [twinAuthority(row)]
+        : [],
+    ),
+  );
+  const withChecks = new Set<string>();
+  return endpoints.map((row) => {
+    const [link] = activeHostHttpUrls(
+      "hostMatch" in row ? { routes: [row], connections: [] } : { connections: [row], routes: [] },
+    );
+    const muted =
+      row.binding === "assigned" &&
+      row.state === "active" &&
+      row.protocol === "http" &&
+      httpsAuthorities.has(twinAuthority(row));
+    const suffix =
+      link === undefined || withChecks.has(link) ? "" : (checks.get(link) ?? []).map(checkSuffix).join("");
+    if (link !== undefined) withChecks.add(link);
+    return {
+      label: `${endpointText(row)}${suffix}`,
+      ...(link === undefined ? {} : { href: link }),
+      ...(muted ? { muted: true } : {}),
+    };
+  });
+};
 
 const serviceNoun = (count: number): string => (count === 1 ? "service" : "services");
 
@@ -83,78 +149,46 @@ export const buildStartSummary = (
   result: StartAppResult,
   action: "start" | "rebuild" = "start",
 ): SummaryDocument => {
-  const urls = uniqueEndpoints(result.servicesStarted);
-  const httpsRests = new Set(
-    urls.flatMap((connection) =>
-      connection.binding === "assigned" &&
-      connection.state === "active" &&
-      connection.url.startsWith("https://")
-        ? [connection.url.slice("https://".length)]
-        : [],
-    ),
-  );
+  const routes = result.servicesStarted.flatMap((service) => service.routes);
+  const urls = uniqueEndpoints([
+    ...result.servicesStarted.flatMap((service) => service.connections.filter((row) => row.scope === "host")),
+    ...routes.filter((route) => route.hostMatch === "exact"),
+  ]);
+  const patterns = uniqueEndpoints(routes.filter((route) => route.hostMatch === "pattern"));
+  const checks = new Map<string, CheckResult[]>();
+  for (const check of result.checks ?? []) {
+    const service = result.servicesStarted.find((row) => row.name === check.service);
+    const link = service === undefined ? undefined : checkEndpoint(service, check);
+    if (link === undefined) continue;
+    const attached = checks.get(link);
+    if (attached === undefined) checks.set(link, [check]);
+    else attached.push(check);
+  }
   // Host URLs are listed once above; the app-network address is per service,
   // so a database moved to an unpublished port still shows where to dial it.
-  const rows = result.servicesStarted.map((service) => ({
-    label: service.name,
-    tone: startStatusTone(service.state),
-    value: service.state,
-    ...(scopedConnectionText(service.connections, "app").length === 0
-      ? {}
-      : { fields: [{ label: "App Network", value: scopedConnectionText(service.connections, "app") }] }),
-  }));
+  const rows = result.servicesStarted.map((service) => {
+    const app = appNetworkText(service);
+    return {
+      label: service.name,
+      tone: startStatusTone(service.state),
+      value: service.state,
+      ...(app.length === 0 ? {} : { fields: [{ label: "App Network", value: app }] }),
+    };
+  });
   return {
     title: action === "rebuild" ? "Rebuilt" : "Started",
     ...startOutcome(result),
     sections: [
-      {
-        title: "Host",
-        rows: urls.map((connection) => {
-          const url = connection.url ?? "";
-          const link = activeHostHttpUrls([connection])[0];
-          const httpRest = url.startsWith("http://") ? url.slice("http://".length) : undefined;
-          const muted = connection.state === "active" && httpRest !== undefined && httpsRests.has(httpRest);
-          const check =
-            link !== undefined && isWebUrl(url)
-              ? result.checks?.find((check) => checkEndpoint(result, check) === url)
-              : undefined;
-          let suffix = "";
-          const redirect =
-            check?.statusCode !== undefined && check.statusCode >= 300 && check.statusCode < 400;
-          if (check !== undefined) {
-            switch (check.verdict) {
-              case "ready":
-                suffix = check.statusCode === undefined ? "" : ` ${check.detail ?? check.statusCode}`;
-                break;
-              case "expected":
-                suffix = ` · expected${check.detail === undefined ? "" : `: ${check.detail}`}`;
-                break;
-              case "app-error":
-                suffix =
-                  redirect && check.detail !== undefined
-                    ? ` · ${check.detail}`
-                    : ` ${check.statusCode} from your app`;
-                break;
-              case "service-error":
-                suffix = ` ${check.statusCode} from the web server`;
-                break;
-              case "lando-error":
-                suffix = " unreachable";
-                break;
-              default: {
-                const unreachable: never = check.verdict;
-                return unreachable;
-              }
-            }
-          }
-          return {
-            label: `${connectionText(connection)}${suffix}`,
-            ...(link === undefined ? {} : { href: link }),
-            ...(muted ? { muted: true } : {}),
-          };
-        }),
-        ...(urls.length === 0 ? { notes: ["No published endpoints."] } : {}),
-      },
+      ...(urls.length > 0 || patterns.length === 0
+        ? [
+            {
+              title: "Host",
+              rows: endpointRows(urls, checks),
+              ...(urls.length === 0 ? { notes: ["No published endpoints."] } : {}),
+            },
+          ]
+        : []),
+      ...(patterns.length === 0 ? [] : [{ title: "Route patterns", rows: endpointRows(patterns, checks) }]),
       {
         title: "Services",
         rows,

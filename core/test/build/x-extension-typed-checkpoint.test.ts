@@ -19,7 +19,7 @@ import { evolveHistoricalEndpointKind } from "./x-extension-endpoint-kind-proof.
 import { evolveHistoricalEndpointMetadata } from "./x-extension-endpoint-metadata-proof.ts";
 import {
   evolveHistoricalEnvironment,
-  evolveHistoricalRouteMember,
+  evolveHistoricalRouteMembers,
   evolveHistoricalRouteText,
 } from "./x-extension-environment-proof.ts";
 import { evolveHistoricalExtraArgs } from "./x-extension-extra-args-proof.ts";
@@ -197,7 +197,7 @@ test.each(mutations)(
       await loadNormalizedArtifact("schema:ConfigTranslateEncodeInput"),
       "$.context.services",
     );
-    const evolved = evolveHistoricalRouteMember(evolveSchemaParity(expected, "services"), "authoring");
+    const evolved = evolveHistoricalRouteMembers(evolveSchemaParity(expected, "services"), "authoring");
     expect(jsonEquals(evolved, current)).toBe(true);
     const changed = mutateFirst(current, change);
     expect(changed).not.toBe(current);

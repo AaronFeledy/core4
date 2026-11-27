@@ -26,7 +26,9 @@ services:
     port: 5173
     environment:
       APP_URL: "{{ services.appserver.url }}"
-      VITE_DEV_SERVER_URL: "{{ services.node.url }}"
+      DEV_SERVER_HOST: "{{ service.hostname }}"
+      DEV_SERVER_PORT: "{{ service.publicPort }}"
+      DEV_SERVER_SCHEME: "{{ service.scheme }}"
     routes:
       - hostname: "vite.{{ app.name }}.{{ proxy.defaultDomain }}"
         scheme: both

@@ -2,7 +2,11 @@ import { expect, test } from "bun:test";
 import { publicationObservationFromInspect } from "@lando/container-runtime/podman/inspect";
 import { ProviderId, ServiceConnection, ServiceName, type ServicePlan } from "@lando/sdk/schema";
 import { DateTime, Schema } from "effect";
-import { activeHostHttpUrls, projectServiceConnections } from "../../src/operations/service-connections.ts";
+import {
+  activeHostHttpAddresses,
+  activeHostHttpUrls,
+  projectServiceConnections,
+} from "../../src/operations/service-connections.ts";
 
 const service: ServicePlan = {
   name: ServiceName.make("web"),
@@ -23,14 +27,20 @@ const service: ServicePlan = {
   ],
 };
 
-test("retains stopped fixed and pending configured connections without active URLs", () => {
-  // Given / When
-  const connections = projectServiceConnections({
+const connectionsFor = (input: Partial<Parameters<typeof projectServiceConnections>[0]>) =>
+  projectServiceConnections({
     plan: { slug: "test" },
     service,
+    state: "running",
+    publications: { status: "unknown" },
+    ...input,
+  });
+
+test("retains stopped fixed and pending configured connections without active URLs", () => {
+  // Given / When
+  const connections = connectionsFor({
     state: "stopped",
     publications: { status: "missing" },
-    routes: [],
   });
   // Then
   expect(connections.map((row) => [row.scope, row.binding, row.state])).toEqual([
@@ -38,7 +48,7 @@ test("retains stopped fixed and pending configured connections without active UR
     ["host", "assigned", "inactive"],
     ["host", "pending", "inactive"],
   ]);
-  expect(activeHostHttpUrls(connections)).toEqual([]);
+  expect(activeHostHttpUrls({ connections, routes: [] })).toEqual([]);
   expect(connections).toEqual(connections.map((row) => Schema.decodeUnknownSync(ServiceConnection)(row)));
 });
 
@@ -62,13 +72,7 @@ test("preserves aliases while matching multiple actual bindings by IP and pinned
       },
     },
   });
-  const rows = projectServiceConnections({
-    plan: { slug: "test" },
-    service: planned,
-    state: "running",
-    routes: [],
-    publications,
-  });
+  const rows = connectionsFor({ service: planned, publications });
   expect(rows.filter((row) => row.scope === "app")).toHaveLength(1);
   expect(rows.slice(0, 3).map((row) => row.endpoint)).toEqual(
     Array.from({ length: 3 }, () => ({ port: 3000, transport: "tcp", names: ["a", "z"], primary: true })),
@@ -81,11 +85,8 @@ test("preserves aliases while matching multiple actual bindings by IP and pinned
 });
 
 test("retains unmatched fixed intent when an observed binding has another IP or host port", () => {
-  const rows = projectServiceConnections({
-    plan: { slug: "test" },
+  const rows = connectionsFor({
     service: { ...service, endpoints: [service.endpoints[1]].filter((endpoint) => endpoint !== undefined) },
-    state: "running",
-    routes: [],
     publications: {
       status: "present",
       bindings: [{ port: 3000, transport: "tcp", bindAddress: "0.0.0.0", hostPort: 9090 }],
@@ -103,13 +104,7 @@ test.each([
   [{ NetworkSettings: { Ports: {} } }, "inactive"],
   [{ NetworkSettings: { Ports: { "3000/tcp": [{ HostIp: "127.0.0.1", HostPort: "broken" }] } } }, "unknown"],
 ] as const)("keeps missing and malformed inspect evidence distinct from known empty", (inspect, state) => {
-  const rows = projectServiceConnections({
-    plan: { slug: "test" },
-    service,
-    state: "running",
-    routes: [],
-    publications: publicationObservationFromInspect(inspect),
-  });
+  const rows = connectionsFor({ publications: publicationObservationFromInspect(inspect) });
   expect(rows.filter((row) => row.scope === "host").map((row) => row.state)).toEqual([state, state]);
 });
 
@@ -128,36 +123,18 @@ test("does not promote opaque app_protocol or conflicting protocol groups into H
       { kind: "internal", protocol: "https", port: 3000 },
     ],
   };
-  const rows = projectServiceConnections({
-    plan: { slug: "test" },
-    service: planned,
-    state: "running",
-    routes: [],
-    publications: { status: "unknown" },
-  });
+  const rows = connectionsFor({ service: planned });
   expect(rows.map((row) => row.protocol)).toEqual(["tcp", "tcp", "tcp"]);
-  expect(activeHostHttpUrls(rows)).toEqual([]);
+  expect(activeHostHttpUrls({ connections: rows, routes: [] })).toEqual([]);
 });
 
-const route = {
-  hostname: "web.example.test",
-  scheme: "both",
-  priority: 2,
-  service: service.name,
-  pathPrefix: "/api",
-  backend: { service: service.name, protocol: "http", port: 3000, host: "web.internal" },
-} as const;
-
 test("uses canonical qualified listeners on aliasless shared-only topology", () => {
-  const connections = projectServiceConnections({
+  const connections = connectionsFor({
     plan: {
       slug: "demo",
       networking: { perAppBridge: null, sharedNetworkMembership: { name: "shared", aliases: {} } },
     },
-    service,
     state: "ready",
-    publications: { status: "unknown" },
-    routes: [],
   });
   expect(connections.find((connection) => connection.scope === "app")).toMatchObject({
     host: "web.demo.internal",
@@ -167,94 +144,80 @@ test("uses canonical qualified listeners on aliasless shared-only topology", () 
 });
 
 test("does not advertise an app listener when no managed network realizes it", () => {
-  const connections = projectServiceConnections({
+  const connections = connectionsFor({
     plan: { slug: "demo", networking: { perAppBridge: null } },
-    service,
     state: "ready",
-    publications: { status: "unknown" },
-    routes: [],
   });
   expect(connections.filter((connection) => connection.scope === "app")).toEqual([]);
   expect(connections.filter((connection) => connection.scope === "host")).toHaveLength(2);
 });
-const authorities = [
-  { hostname: route.hostname, scheme: "http", port: 80 },
-  { hostname: route.hostname, scheme: "https", port: 443 },
-] as const;
-
-test("retains both external schemes, default ports and path prefixes with live route evidence", () => {
-  const rows = projectServiceConnections({
-    plan: { slug: "test" },
-    service,
-    state: "ready",
-    publications: { status: "unknown" },
-    routes: [route],
-    routeEvidence: {
-      configuredAuthorities: authorities,
-      observation: {
-        status: "present",
-        publications: authorities.map((authority) => ({ route, authority })),
+test("selects only assigned active host HTTP addresses, publications before exact routes", () => {
+  const endpoint = { port: 3000, transport: "tcp", names: ["web"], primary: true } as const;
+  const base = { host: "localhost", protocol: "http", endpoint } as const;
+  const publication = { ...base, scope: "host", source: "publication" } as const;
+  const assigned = {
+    ...publication,
+    binding: "assigned",
+    state: "active",
+    port: 8080,
+    url: "http://localhost:8080",
+    alternateUrls: [],
+  } as const;
+  const route = { ...base, host: "web.test", protocol: "https", pathPrefix: "/api" } as const;
+  const addresses = activeHostHttpAddresses({
+    connections: [
+      { ...assigned, scope: "app", source: "listener" },
+      { ...publication, binding: "pending", state: "unknown" },
+      { ...assigned, state: "inactive" },
+      { ...assigned, protocol: "tcp", url: "tcp://localhost:8080" },
+      assigned,
+    ],
+    routes: [
+      { ...route, host: "*.test", hostMatch: "pattern", binding: "assigned", state: "active", port: 443 },
+      { ...route, hostMatch: "exact", binding: "pending", state: "inactive" },
+      {
+        ...route,
+        hostMatch: "exact",
+        binding: "assigned",
+        state: "inactive",
+        port: 8443,
+        url: "https://web.test:8443/api",
       },
-    },
+      {
+        ...route,
+        hostMatch: "exact",
+        binding: "assigned",
+        state: "active",
+        port: 443,
+        url: "https://web.test/api",
+      },
+    ],
   });
-  expect(activeHostHttpUrls(rows)).toEqual(["http://web.example.test/api", "https://web.example.test/api"]);
+  expect(addresses).toEqual([
+    { ...base, via: "publication", pathPrefix: "", url: "http://localhost:8080" },
+    { ...route, via: "route", url: "https://web.test/api" },
+  ]);
 });
-
-test.each(["host", "path", "scheme"] as const)(
-  "rejects route evidence with a mismatched backend or route %s",
-  (part) => {
-    const other = {
-      ...route,
-      ...(part === "host" ? { backend: { ...route.backend, host: "foreign.internal" } } : {}),
-      ...(part === "path" ? { pathPrefix: "/other" } : {}),
-      ...(part === "scheme" ? { scheme: "https" as const } : {}),
-    };
-    const rows = projectServiceConnections({
-      plan: { slug: "test" },
-      service,
-      state: "running",
-      publications: { status: "unknown" },
-      routes: [route],
-      routeEvidence: {
-        configuredAuthorities: authorities,
-        observation: {
-          status: "present",
-          publications: authorities.map((authority) => ({ route: other, authority })),
-        },
-      },
-    });
-    expect(rows.filter((row) => row.source === "route").map((row) => row.state)).toEqual([
-      "inactive",
-      "inactive",
-    ]);
-  },
-);
 
 test.each(["starting", "restarting", "unknown"] as const)(
   "keeps %s host activity unknown despite an assigned binding",
   (state) => {
-    const rows = projectServiceConnections({
-      plan: { slug: "test" },
-      service,
+    const rows = connectionsFor({
       state,
-      routes: [],
       publications: {
         status: "present",
         bindings: [{ port: 3000, transport: "tcp", bindAddress: "127.0.0.1", hostPort: 8080 }],
       },
     });
     expect(rows.map((row) => row.state)).toEqual(["unknown", "unknown", "inactive"]);
-    expect(activeHostHttpUrls(rows)).toEqual([]);
+    expect(activeHostHttpUrls({ connections: rows, routes: [] })).toEqual([]);
   },
 );
 
 test("matches observed assignments and leaves unknown extra bindings generic", () => {
   // Given / When
-  const connections = projectServiceConnections({
-    plan: { slug: "test" },
-    service,
+  const connections = connectionsFor({
     state: "ready",
-    routes: [],
     publications: {
       status: "present",
       bindings: [
@@ -264,7 +227,7 @@ test("matches observed assignments and leaves unknown extra bindings generic", (
     },
   });
   // Then
-  expect(activeHostHttpUrls(connections)).toEqual(["http://localhost:8080"]);
+  expect(activeHostHttpUrls({ connections, routes: [] })).toEqual(["http://localhost:8080"]);
   expect(connections.at(-1)).toMatchObject({
     protocol: "tcp",
     host: "::1",
@@ -275,11 +238,7 @@ test("matches observed assignments and leaves unknown extra bindings generic", (
 
 test.each(["unknown", "present"] as const)("keeps absent publications honest for %s evidence", (status) => {
   // Given / When
-  const connections = projectServiceConnections({
-    plan: { slug: "test" },
-    service,
-    state: "running",
-    routes: [],
+  const connections = connectionsFor({
     publications: status === "unknown" ? { status } : { status, bindings: [] },
   });
   // Then

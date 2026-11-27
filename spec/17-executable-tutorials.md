@@ -107,7 +107,7 @@ Display and execution are bound by default. They MAY diverge only through explic
 
 An empty string is a valid bound value. Display values MUST be short literals such as paths, names, or masked credentials, never explanatory prose; this is an authoring requirement enforced by review, not a subjective machine check. A `display` value masks what readers see and is not secret storage: raw credentials MUST NOT appear in `value` or `display` of committed MDX. Divergence between display and execution MUST be explicit through bindings or display props; the compiler imposes no count-based or percentage limit on it.
 
-`<Fetch>` props do not interpolate guide variables. Its `url` MUST be an absolute HTTP(S) URL without credentials or begin with the separate `{{route:service}}` token, optionally followed by a path, query, or fragment. At execution the token selects an assigned route for the named service from `lando info` JSON, preferring HTTPS and otherwise taking the first assigned route. The request fails if there is no assigned route.
+`<Fetch>` props do not interpolate guide variables. Its `url` MUST be an absolute HTTP(S) URL without credentials or begin with the separate `{{route:service}}` token, optionally followed by a path, query, or fragment. At execution the token reads the named service's `routes` from `lando info` JSON and selects an assigned route with `hostMatch: exact`, preferring HTTPS and otherwise taking the first such route. `active` is not required. Routes with `hostMatch: pattern` are skipped wherever they are listed, because a pattern has no URL. The request fails if the service has no assigned route with a concrete hostname.
 
 ### 19.6 Transcripts
 

@@ -66,6 +66,8 @@ test.each([...cases])(
       url: { _tag: "RouteText", parts: [{ service: "cache", encoding: "raw" }] },
       hostname: { _tag: "RouteText", parts: [{ service: "cache", member: "hostname", encoding: "raw" }] },
       origin: { _tag: "RouteText", parts: [{ service: "cache", member: "origin", encoding: "raw" }] },
+      publicPort: { _tag: "RouteText", parts: [{ service: "cache", member: "publicPort", encoding: "raw" }] },
+      scheme: { _tag: "RouteText", parts: [{ service: "cache", member: "scheme", encoding: "raw" }] },
       port: PortNumber.make(6379),
       creds: { user: "default", database: "0", password },
     });

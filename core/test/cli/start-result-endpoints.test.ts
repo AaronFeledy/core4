@@ -5,7 +5,7 @@ import type { StartAppResult } from "@lando/sdk/app";
 import { ServiceName } from "@lando/sdk/schema";
 import { buildStartSummary, renderStartAppResult } from "../../src/cli/commands/start-result.ts";
 import type { RenderContext } from "../../src/cli/renderer-boundary.ts";
-import { connections } from "./connection-fixtures";
+import { connections, routeRow, service as serviceAddresses } from "./connection-fixtures";
 
 const ESC = String.fromCharCode(27);
 const ST = `${ESC}\\`;
@@ -42,6 +42,7 @@ const counterpartResult: StartAppResult = {
     {
       name: "web",
       state: "running",
+      routes: [],
       connections: connections([
         "http://my-app.lndo.site",
         "https://my-app.lndo.site",
@@ -58,17 +59,81 @@ const nearMissResult: StartAppResult = {
     {
       name: "web",
       state: "running",
-      connections: connections([
-        "http://example.com/app",
-        "https://example.com/app/",
-        "https://example.com/other",
-        "http://example.com:8080/app",
-      ]),
+      connections: [],
+      routes: [
+        routeRow({
+          host: "example.com",
+          protocol: "http",
+          port: 80,
+          pathPrefix: "/app",
+          hostMatch: "exact",
+          url: "http://example.com/app",
+        }),
+        routeRow({
+          host: "example.com",
+          protocol: "https",
+          port: 443,
+          pathPrefix: "/app/",
+          hostMatch: "exact",
+          url: "https://example.com/app/",
+        }),
+        routeRow({
+          host: "example.com",
+          protocol: "https",
+          port: 443,
+          pathPrefix: "/other",
+          hostMatch: "exact",
+          url: "https://example.com/other",
+        }),
+        routeRow({
+          host: "example.com",
+          protocol: "http",
+          port: 8080,
+          pathPrefix: "/app",
+          hostMatch: "exact",
+          url: "http://example.com:8080/app",
+        }),
+      ],
     },
   ],
 };
 
 describe("buildStartSummary url ranking and counterparts", () => {
+  test("mutes an omitted HTTP root beside the explicit HTTPS root", () => {
+    const result: StartAppResult = {
+      app: "my-app",
+      servicesStarted: [
+        {
+          name: "web",
+          state: "running",
+          connections: [],
+          routes: [
+            routeRow({
+              host: "web.test",
+              protocol: "http",
+              port: 80,
+              pathPrefix: "",
+              hostMatch: "exact",
+              url: "http://web.test",
+            }),
+            routeRow({
+              host: "web.test",
+              protocol: "https",
+              port: 443,
+              pathPrefix: "/",
+              hostMatch: "exact",
+              url: "https://web.test/",
+            }),
+          ],
+        },
+      ],
+    };
+    expect(buildStartSummary(result).sections[0]?.rows).toEqual([
+      { label: "https://web.test/", href: "https://web.test/" },
+      { label: "http://web.test", href: "http://web.test", muted: true },
+    ]);
+  });
+
   test("ranks unique urls HTTPS then HTTP then other and mutes exact HTTP counterparts", () => {
     // Given mixed-scheme endpoints with one exact HTTPS counterpart.
     const urls = buildStartSummary(counterpartResult).sections[0]?.rows;
@@ -93,6 +158,78 @@ describe("buildStartSummary url ranking and counterparts", () => {
     expect(urls?.every((row) => row.muted !== true)).toBe(true);
   });
 
+  test("ranks pattern twins ahead of HTTP, mutes default HTTP twins, and links only exact routes", () => {
+    const summary = buildStartSummary({
+      app: "my-app",
+      servicesStarted: [
+        {
+          name: "web",
+          state: "running",
+          connections: [],
+          routes: [
+            routeRow({
+              host: "*.example.com",
+              protocol: "http",
+              port: 80,
+              pathPrefix: "/app",
+              hostMatch: "pattern",
+            }),
+            routeRow({
+              host: "*.example.com",
+              protocol: "http",
+              port: 8080,
+              pathPrefix: "/app",
+              hostMatch: "pattern",
+            }),
+            routeRow({
+              host: "*.example.com",
+              protocol: "https",
+              port: 443,
+              pathPrefix: "/app",
+              hostMatch: "pattern",
+            }),
+            routeRow({
+              host: "web.test",
+              protocol: "http",
+              port: 80,
+              pathPrefix: "",
+              hostMatch: "exact",
+              url: "http://web.test",
+            }),
+            routeRow({
+              host: "web.test",
+              protocol: "http",
+              port: 8080,
+              pathPrefix: "",
+              hostMatch: "exact",
+              url: "http://web.test:8080",
+            }),
+            routeRow({
+              host: "web.test",
+              protocol: "https",
+              port: 443,
+              pathPrefix: "",
+              hostMatch: "exact",
+              url: "https://web.test",
+            }),
+          ],
+        },
+      ],
+    });
+
+    expect(summary.sections.map((section) => section.title)).toEqual(["Host", "Route patterns", "Services"]);
+    expect(summary.sections[0]?.rows).toEqual([
+      { label: "https://web.test", href: "https://web.test" },
+      { label: "http://web.test", href: "http://web.test", muted: true },
+      { label: "http://web.test:8080", href: "http://web.test:8080" },
+    ]);
+    expect(summary.sections[1]?.rows).toEqual([
+      { label: "*.example.com/app [https pattern]" },
+      { label: "*.example.com/app [http pattern]", muted: true },
+      { label: "*.example.com:8080/app [http pattern]" },
+    ]);
+  });
+
   test("does not repeat endpoints on service rows", () => {
     const web = buildStartSummary(counterpartResult).sections[1]?.rows[0];
     expect(web?.fields).toBeUndefined();
@@ -112,7 +249,7 @@ describe("renderStartAppResult endpoint hyperlinks", () => {
     ];
     const result: StartAppResult = {
       app: "my-app",
-      servicesStarted: [{ name: service, state: "running", connections: connections(urls) }],
+      servicesStarted: [{ name: service, state: "running", ...serviceAddresses(connections(urls)) }],
       checks: urls.map((url, index) => ({
         id: `http:web:${url}/health`,
         kind: "http",
@@ -132,24 +269,51 @@ describe("renderStartAppResult endpoint hyperlinks", () => {
   test("gives a route the verdict of its own check, not a longer sibling route's", () => {
     // Given: /api/v2's check is listed first and also starts with /api's prefix.
     const service = ServiceName.make("web");
-    const urls = ["https://my-app.lndo.site/api", "https://my-app.lndo.site/api/v2"];
+    const root = "https://my-app.lndo.site/api";
+    const nested = "https://my-app.lndo.site/api/v2";
     const result: StartAppResult = {
       app: "my-app",
-      servicesStarted: [{ name: service, state: "running", connections: connections(urls) }],
+      servicesStarted: [
+        {
+          name: service,
+          state: "running",
+          ...serviceAddresses(
+            [],
+            [
+              routeRow({
+                host: "my-app.lndo.site",
+                protocol: "https",
+                port: 443,
+                hostMatch: "exact",
+                pathPrefix: "/api",
+                url: root,
+              }),
+              routeRow({
+                host: "my-app.lndo.site",
+                protocol: "https",
+                port: 443,
+                hostMatch: "exact",
+                pathPrefix: "/api/v2",
+                url: nested,
+              }),
+            ],
+          ),
+        },
+      ],
       checks: [
         {
-          id: `http:web:${urls[1]}/`,
+          id: `http:web:${nested}/`,
           kind: "http",
           service,
-          url: `${urls[1]}/`,
+          url: `${nested}/`,
           verdict: "app-error",
           statusCode: 500,
         },
         {
-          id: `http:web:${urls[0]}/`,
+          id: `http:web:${root}/`,
           kind: "http",
           service,
-          url: `${urls[0]}/`,
+          url: `${root}/`,
           verdict: "ready",
           statusCode: 200,
         },
@@ -214,6 +378,7 @@ describe("renderStartAppResult endpoint hyperlinks", () => {
         {
           name: "web",
           state: "running",
+          routes: [],
           connections: [
             ...connections(["https://my-app.lndo.site"]),
             ...connections(["http://web:3000"], "app"),

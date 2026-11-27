@@ -36,7 +36,7 @@ import { evolveHistoricalEndpointKind } from "./x-extension-endpoint-kind-proof.
 import { evolveHistoricalEndpointMetadata } from "./x-extension-endpoint-metadata-proof.ts";
 import {
   evolveHistoricalEnvironment,
-  evolveHistoricalRouteMember,
+  evolveHistoricalRouteMembers,
   evolveHistoricalRouteText,
 } from "./x-extension-environment-proof.ts";
 import { evolveHistoricalExtraArgs } from "./x-extension-extra-args-proof.ts";
@@ -138,7 +138,7 @@ const beforeSchemaParity = (): JsonSchema =>
   );
 
 const expectedLandofile = (): JsonSchema =>
-  evolveHistoricalRouteMember(evolveSchemaParity(beforeSchemaParity(), "bare"));
+  evolveHistoricalRouteMembers(evolveSchemaParity(beforeSchemaParity(), "bare"));
 
 describe("closed x-* extension artifact repair", () => {
   test("pins the independently reviewed tooling sensitivity delta and source provenance", async () => {

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { planRedactionValues } from "@lando/redaction/plan-values";
 import { ConfigExpressionError } from "@lando/sdk/errors";
-import { type LandofileShape, PortNumber, ServiceName } from "@lando/sdk/schema";
+import { type LandofileShape, PortNumber, type RouteUrlPart, ServiceName } from "@lando/sdk/schema";
 import {
   FileSystem,
   PluginRegistry,
@@ -158,7 +158,7 @@ test("plans mutually referencing and self-referencing service URLs without crede
     });
   }));
 
-test("plans and lowers self and peer hostname and origin reads beside the URL", () =>
+test("plans and lowers self and peer route facts beside the container port", () =>
   withAppRoot(async (root) => {
     // Given web reads its own facts (mixed with service.port and an encoded hostname) and peer's
     // origin, while peer reads web's hostname: a reciprocal read that must not form a cycle
@@ -174,6 +174,8 @@ test("plans and lowers self and peer hostname and origin reads beside the URL", 
             environment: {
               SELF_HOST: "{{ service.hostname }}",
               SELF_ORIGIN: "{{ service.origin }}",
+              PUBLIC_PORT: "{{ service.publicPort }}/{{ url.encodeComponent(service.publicPort) }}",
+              SCHEME: "{{ services.peer.scheme }}/{{ url.encodeComponent(services.peer.scheme) }}",
               ALLOWED: "{{ services.web.hostname }},{{ url.encodeComponent(service.hostname) }}",
               LISTEN: "{{ service.origin }} on {{ service.port }}",
               PEER_ORIGIN: "{{ services.peer.origin }}/api",
@@ -201,7 +203,7 @@ test("plans and lowers self and peer hostname and origin reads beside the URL", 
     );
     const lowered = Result.getOrThrow(lowerRouteUrls(app, proof));
     // Then the planned descriptors name each member, and lowering projects it from one authority
-    const part = (service: string, member?: "hostname" | "origin", encoding = "raw") => ({
+    const part = (service: string, member: RouteUrlPart["member"], encoding = "raw") => ({
       service,
       ...(member === undefined ? {} : { member }),
       encoding,
@@ -209,6 +211,14 @@ test("plans and lowers self and peer hostname and origin reads beside the URL", 
     expect(app.services[ServiceName.make("web")]?.environment).toMatchObject({
       SELF_HOST: { _tag: "RouteText", parts: [part("web", "hostname")] },
       SELF_ORIGIN: { _tag: "RouteText", parts: [part("web", "origin")] },
+      PUBLIC_PORT: {
+        _tag: "RouteText",
+        parts: [part("web", "publicPort"), "/", part("web", "publicPort", "uri-component")],
+      },
+      SCHEME: {
+        _tag: "RouteText",
+        parts: [part("peer", "scheme"), "/", part("peer", "scheme", "uri-component")],
+      },
       ALLOWED: {
         _tag: "RouteText",
         parts: [part("web", "hostname"), ",", part("web", "hostname", "uri-component")],
@@ -219,6 +229,8 @@ test("plans and lowers self and peer hostname and origin reads beside the URL", 
     expect(lowered.services[ServiceName.make("web")]?.environment).toMatchObject({
       SELF_HOST: "web.test",
       SELF_ORIGIN: "https://web.test:8443",
+      PUBLIC_PORT: "8443/8443",
+      SCHEME: "https/https",
       ALLOWED: "web.test,web.test",
       LISTEN: "https://web.test:8443 on 80",
       PEER_ORIGIN: "https://peer.test:8443/api",
@@ -420,6 +432,8 @@ test("resolves services.<name>.creds.* before the reading service's type runs, w
         url: { _tag: "RouteText", parts: [{ service: "web", encoding: "raw" }] },
         hostname: { _tag: "RouteText", parts: [{ service: "web", member: "hostname", encoding: "raw" }] },
         origin: { _tag: "RouteText", parts: [{ service: "web", member: "origin", encoding: "raw" }] },
+        publicPort: { _tag: "RouteText", parts: [{ service: "web", member: "publicPort", encoding: "raw" }] },
+        scheme: { _tag: "RouteText", parts: [{ service: "web", member: "scheme", encoding: "raw" }] },
       },
       database: {
         url: { _tag: "RouteText", parts: [{ service: "database", encoding: "raw" }] },
@@ -428,6 +442,11 @@ test("resolves services.<name>.creds.* before the reading service's type runs, w
           parts: [{ service: "database", member: "hostname", encoding: "raw" }],
         },
         origin: { _tag: "RouteText", parts: [{ service: "database", member: "origin", encoding: "raw" }] },
+        publicPort: {
+          _tag: "RouteText",
+          parts: [{ service: "database", member: "publicPort", encoding: "raw" }],
+        },
+        scheme: { _tag: "RouteText", parts: [{ service: "database", member: "scheme", encoding: "raw" }] },
         port: PortNumber.make(5432),
         creds: { user: "lando", password: "s3cret-pw", database: "appdb" },
       },

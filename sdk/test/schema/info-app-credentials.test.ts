@@ -11,6 +11,7 @@ const service = {
   primary: true,
   status: "stopped",
   connections: [],
+  routes: [],
 } as const;
 
 const decode = Schema.decodeUnknownSync(InfoAppResult);

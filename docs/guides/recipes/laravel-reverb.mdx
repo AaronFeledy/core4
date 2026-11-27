@@ -72,47 +72,24 @@ lando artisan migrate --no-interaction
 lando artisan install:broadcasting --reverb --without-node --no-interaction
 ```
 
-That requires `laravel/reverb`, sets `BROADCAST_CONNECTION=reverb`, writes `REVERB_APP_ID`, `REVERB_APP_KEY`, and `REVERB_APP_SECRET` into `.env`, and adds `resources/js/echo.js`. `--without-node` skips the npm step. `appserver` has no Node; the recipe already provides a separate `node` service for npm. Keep that service when adding Reverb below.
+That requires `laravel/reverb`, sets `BROADCAST_CONNECTION=reverb`, writes the `REVERB_*` and `VITE_REVERB_*` lines into `.env`, and adds `resources/js/echo.js`. `--without-node` skips the npm step. `appserver` has no Node; the recipe already provides a separate `node` service for npm. Keep that service when adding Reverb below.
 
-Now set the hosts. Reverb has two audiences, and they reach it by different names. Laravel's side goes in `.env`:
+Now set the host. Reverb has two audiences, and they reach it by different names:
+
+| Variables | Read by | Reaches Reverb at |
+| --- | --- | --- |
+| `REVERB_HOST`, `REVERB_PORT`, `REVERB_SCHEME` | Laravel publishing events from `appserver` and `worker` | `http://reverb:8080`, the service key on the app network |
+| `VITE_REVERB_HOST`, `VITE_REVERB_PORT`, `VITE_REVERB_SCHEME` | Echo in the browser | `wss://ws.reverb-demo.lndo.site`, through the proxy |
+
+Laravel's side lives in `.env`. `install:broadcasting` writes `REVERB_HOST="localhost"`, and inside a container `localhost` is the container itself, not Reverb. Change that one line and keep the port and scheme the installer wrote:
 
 ```dotenv
 REVERB_HOST=reverb
 REVERB_PORT=8080
 REVERB_SCHEME=http
-
-VITE_REVERB_APP_KEY="${REVERB_APP_KEY}"
 ```
 
-| Variables | Read by | Reaches Reverb at |
-| --- | --- | --- |
-| `REVERB_*` | Laravel publishing events from `appserver` and `worker` | `http://reverb:8080`, the service key on the app network |
-| `VITE_REVERB_URL` | Echo in the browser | `wss://ws.reverb-demo.lndo.site`, through the proxy |
-
-`install:broadcasting` writes `REVERB_HOST="localhost"`. Replace it. Inside a container `localhost` is the container itself, not Reverb.
-
-The browser's side, `VITE_REVERB_URL`, doesn't go in `.env`. Lando sets it on `node` in the next section. Delete the `VITE_REVERB_HOST`, `VITE_REVERB_PORT`, and `VITE_REVERB_SCHEME` lines the installer wrote, then replace `resources/js/echo.js` with:
-
-```js
-import Echo from 'laravel-echo';
-
-import Pusher from 'pusher-js';
-window.Pusher = Pusher;
-
-const reverb = new URL(import.meta.env.VITE_REVERB_URL);
-
-window.Echo = new Echo({
-    broadcaster: 'reverb',
-    key: import.meta.env.VITE_REVERB_APP_KEY,
-    wsHost: reverb.hostname,
-    wsPort: Number(reverb.port) || 80,
-    wssPort: Number(reverb.port) || 443,
-    forceTLS: reverb.protocol === 'https:',
-    enabledTransports: ['ws', 'wss'],
-});
-```
-
-This is the installer's file with host, port, and scheme read from one URL. `URL.port` is empty on the scheme's default port, so the `80` and `443` fallbacks apply there.
+The browser's side needs no edit. Leave the `VITE_REVERB_*` lines in `.env` and leave `resources/js/echo.js` as the installer wrote them. That file already reads `VITE_REVERB_HOST`, `VITE_REVERB_PORT`, and `VITE_REVERB_SCHEME`, and Lando sets those three on `node` in the next section.
 
 ## Add Reverb and Node
 
@@ -135,10 +112,14 @@ services:
     type: "node:22"
     endpoints: []
     environment:
-      VITE_REVERB_URL: "{{ services.reverb.url }}"
+      VITE_REVERB_HOST: "{{ services.reverb.hostname }}"
+      VITE_REVERB_PORT: "{{ services.reverb.publicPort }}"
+      VITE_REVERB_SCHEME: "{{ services.reverb.scheme }}"
 ```
 
-`{{ services.reverb.url }}` is the URL the router publishes for `reverb`, the same one `lando info` prints, port included when the router isn't on 443. Vite exposes `VITE_*` variables from the container's environment to the bundle, and they take priority over `.env`.
+The three expressions read the route the router publishes for `reverb`: its hostname, the router port a browser dials (`443`, or a fallback such as `8443`), and `https`. See [Read a service's public URL](../landofile/expressions.mdx#read-a-services-public-url).
+
+Vite exposes `VITE_*` variables from the container's environment to the bundle, and it prefers them over `.env`. So the `.env` lines that point `VITE_REVERB_HOST` at `${REVERB_HOST}` lose to the values on `node`, and the browser gets the proxy address instead of `reverb:8080`.
 
 Then point the recipe's `npm` tooling at `node`:
 
@@ -168,27 +149,31 @@ lando npm install --save-dev laravel-echo pusher-js
 lando npm run build
 ```
 
-Vite bakes `VITE_REVERB_URL` and `VITE_REVERB_APP_KEY` into the bundle at build time. When the router moves to another port, the next `lando start` gives `node` the new URL, but the built bundle still holds the old one. Run `lando npm run build` again after `lando info` shows a different port. Check the value the next build will use:
+Vite bakes `VITE_REVERB_HOST`, `VITE_REVERB_PORT`, `VITE_REVERB_SCHEME`, and `VITE_REVERB_APP_KEY` into the bundle at build time. The first three come from `node`'s environment and the key comes from `.env`. When the router moves to another port, the next `lando start` gives `node` the new port, but the built bundle still holds the old one. Run `lando npm run build` again after `lando info` shows a different port. Check the values the next build will use:
 
 ```sh
-lando exec node -- printenv VITE_REVERB_URL
+lando exec node -- printenv VITE_REVERB_HOST VITE_REVERB_PORT VITE_REVERB_SCHEME
 ```
+
+That prints `ws.reverb-demo.lndo.site`, the router port, and `https` on three lines.
 
 ## Check the websocket path
 
+Use Reverb's full HTTPS URL from `lando info`, including any port, for both checks:
+
 ```sh
-lando info
-curl https://ws.reverb-demo.lndo.site/up
+REVERB_URL=$(lando info --jq '.result.services[] | select(.service == "reverb") | .url')
+curl "$REVERB_URL/up"
 ```
 
-`lando info` lists `https://ws.reverb-demo.lndo.site` for `reverb`, and `/up` answers `{"health":"OK"}`. Now do the upgrade a browser does, through the proxy:
+The `/up` endpoint answers `{"health":"OK"}`. Now do the upgrade a browser does, through the proxy:
 
 ```sh
 KEY=$(grep '^REVERB_APP_KEY=' .env | cut -d= -f2)
 curl -i -N --http1.1 --max-time 3 \
   -H "Connection: Upgrade" -H "Upgrade: websocket" \
   -H "Sec-WebSocket-Version: 13" -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" \
-  "https://ws.reverb-demo.lndo.site/app/$KEY?protocol=7"
+  "$REVERB_URL/app/$KEY?protocol=7"
 ```
 
 You want `HTTP/1.1 101 Switching Protocols`, an `X-Powered-By: Laravel Reverb` header, and a text frame whose `event` is `pusher:connection_established`. curl then sits on the open socket until `--max-time` hangs up with exit code 28. A websocket that refuses to close is the feature, not the bug.
@@ -303,7 +288,9 @@ lando destroy -y
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"command\":\\s*\"php artisan queue:listen\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"condition\":\\s*\"service_healthy\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"npm\":\\s*\\{[^}]*\"service\":\\s*\"node\"" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"VITE_REVERB_URL\":\\s*\"\\{\\{ services\\.reverb\\.url \\}\\}\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"VITE_REVERB_HOST\":\\s*\"\\{\\{ services\\.reverb\\.hostname \\}\\}\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"VITE_REVERB_PORT\":\\s*\"\\{\\{ services\\.reverb\\.publicPort \\}\\}\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"VITE_REVERB_SCHEME\":\\s*\"\\{\\{ services\\.reverb\\.scheme \\}\\}\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"APP_URL\":\\s*\"\\{\\{ services\\.appserver\\.url \\}\\}\"" } }} />
     </Step>
     <Step name="start">
@@ -315,7 +302,7 @@ lando destroy -y
       <Run command="lando destroy -y" />
     </Step>
   </Scenario>
-  <Scenario id="runtime-reverb-url" layer="e2e" timeout={600000} render={false} reason="Check that the Node container receives the published Reverb URL">
+  <Scenario id="runtime-reverb-url" layer="e2e" timeout={900000} render={false} reason="Check that the Node container receives the published Reverb host, port, and scheme, and that the built Echo bundle uses them instead of the .env values">
     <Step name="install-reverb">
       <UseFixture name="laravel-reverb" />
       <Run command="lando app:config:unset services.worker.command" />
@@ -330,7 +317,12 @@ lando destroy -y
     </Step>
     <Step name="check-reverb-url">
       <Run command="lando start --format=json" />
-      <Verify command="lando exec node -- printenv VITE_REVERB_URL" expect={{ stdout: { regex: "^https://ws\\.laravel-reverb\\.lndo\\.site(?::[0-9]+)?/?\\s*$" } }} />
+      <Verify command="lando exec node -- printenv VITE_REVERB_HOST VITE_REVERB_PORT VITE_REVERB_SCHEME" expect={{ stdout: { regex: "^ws\\.laravel-reverb\\.lndo\\.site\\r?\\n[0-9]+\\r?\\nhttps\\s*$" } }} />
+    </Step>
+    <Step name="check-built-bundle">
+      <Run command="lando npm install --save-dev laravel-echo pusher-js" />
+      <Run command="lando npm run build" />
+      <Verify command={`lando exec node -- sh -c 'test -n "$VITE_REVERB_HOST" && test -n "$VITE_REVERB_PORT" && f=$(grep -lE -- "wsHost: ?.$VITE_REVERB_HOST[^.a-z0-9-]" public/build/assets/*.js) && grep -Eq -- "wsPort: ?[^0-9]?$VITE_REVERB_PORT[^0-9]" $f && grep -Eq -- "wssPort: ?[^0-9]?$VITE_REVERB_PORT[^0-9]" $f && ! grep -Eq -- "wsHost: ?.(localhost|reverb)[^.a-z0-9-]" $f && echo reverb-bundle-ok'`} expect={{ stdout: { regex: "reverb-bundle-ok" } }} />
     </Step>
     <Step name="cleanup">
       <Cleanup />

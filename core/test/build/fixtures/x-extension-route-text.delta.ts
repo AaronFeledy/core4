@@ -53,3 +53,15 @@ export const routeMemberDeltas = environmentDeltas.map(({ mode }) => ({
   before: environmentProjection(routePart, mode, reviewedSlot),
   after: environmentProjection(memberRoutePart, mode, reviewedSlot),
 }));
+
+// Reviewed next: route parts also accept the router's public port and scheme.
+const expandedMemberRoutePart = Schema.Struct({
+  ...memberRoutePart.fields,
+  member: Schema.optionalKey(Schema.Literals(["hostname", "origin", "publicPort", "scheme"])),
+});
+
+export const routeMemberExpansionDeltas = environmentDeltas.map(({ mode }) => ({
+  mode,
+  before: environmentProjection(memberRoutePart, mode, reviewedSlot),
+  after: environmentProjection(expandedMemberRoutePart, mode, reviewedSlot),
+}));

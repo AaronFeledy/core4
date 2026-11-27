@@ -17,7 +17,7 @@ import { evolveHistoricalEndpointKind } from "./x-extension-endpoint-kind-proof.
 import { evolveHistoricalEndpointMetadata } from "./x-extension-endpoint-metadata-proof.ts";
 import {
   evolveHistoricalEnvironment,
-  evolveHistoricalRouteMember,
+  evolveHistoricalRouteMembers,
   evolveHistoricalRouteText,
 } from "./x-extension-environment-proof.ts";
 import { evolveHistoricalExtraArgs } from "./x-extension-extra-args-proof.ts";
@@ -143,7 +143,7 @@ const evolvedTyped = (source: keyof typeof typedCaptured) => {
     evolveHistoricalEndpointKind(beforeEndpointKind, "wire"),
     source === "fragment" ? "landofile" : source,
   );
-  const expected = evolveHistoricalRouteMember(
+  const expected = evolveHistoricalRouteMembers(
     evolveSchemaParity(evolveHistoricalExtraArgs(evolveHistoricalRouteText(evolved, "authoring")), source),
     "authoring",
   );
@@ -229,7 +229,7 @@ describe("embedded wire closed x-* artifact repair", () => {
         "authoring",
       ),
     );
-    const repaired = evolveHistoricalRouteMember(
+    const repaired = evolveHistoricalRouteMembers(
       evolveSchemaParity(historicalRepair, "services"),
       "authoring",
     );

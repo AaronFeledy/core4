@@ -38,11 +38,16 @@ test.each([
   ["{{ service.name }}", ["port"], "unsupported-member"],
   ["{{ service.url }}", ["environment", "SELF"], "route-fact"],
   ["{{ service.hostname }}", ["environment", "SELF"], "route-fact"],
+  ["{{ service.publicPort }}", ["environment", "SELF"], "route-fact"],
+  ["{{ service.scheme }}", ["environment", "SELF"], "route-fact"],
   ['{{ url.encodeComponent(service["origin"]) }}', ["environment", "SELF"], "route-fact"],
   ["{{ service.origin }} {{ service.hostname }}", ["environment", "SELF"], "route-fact"],
   ["{{ service.origin }}:{{ service.port }}", ["environment", "SELF"], "supported"],
+  ["{{ service.publicPort }}:{{ service.port }}", ["environment", "SELF"], "supported"],
   ["{{ service.hostname }} {{ service.name }}", ["environment", "SELF"], "unsupported-member"],
   ["{{ service.hostname }}", ["command", 2], "unsupported-member"],
+  ["{{ service.publicPort }}", ["command", 2], "unsupported-member"],
+  ["{{ service.scheme }}", ["command", 2], "unsupported-member"],
   ["{{ service.origin }}:{{ service.port }}", ["command", 2], "unsupported-member"],
 ] as const)("classifies %s at %j as %s", (expression, path, expected) => {
   const template = Result.getOrThrow(parseExpressionEither(expression, { filePath: ".lando.yml" }));

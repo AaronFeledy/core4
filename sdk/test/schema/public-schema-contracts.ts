@@ -184,6 +184,7 @@ export const PUBLIC_SCHEMA_CONTRACT_FIXTURES = {
   HttpEndpointSelection: "sdk/test/schema/endpoint-foundation.test.ts",
   LogicalEndpoint: "sdk/test/schema/endpoint-foundation.test.ts",
   ServiceConnection: "sdk/test/schema/endpoint-foundation.test.ts",
+  ServiceRoute: "sdk/test/schema/service-route.test.ts",
   ServiceState: "sdk/test/schema/service-info.test.ts",
   RouteEvidence: "sdk/test/contract/router-service.test.ts",
   PluginDoctorReport: "sdk/test/schema/plugin-doctor.test.ts",

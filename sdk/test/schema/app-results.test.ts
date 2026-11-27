@@ -24,7 +24,7 @@ const roundTrip = <A, I>(schema: Schema.Codec<A, I>, value: unknown): A => {
   return Schema.decodeUnknownSync(schema)(encoded, { onExcessProperty: "error" });
 };
 
-const startedService = { name: "web", state: "running" as const, connections: [] as const };
+const startedService = { name: "web", state: "running", connections: [], routes: [] } as const;
 
 const infoService = {
   app: "demo",
@@ -35,7 +35,17 @@ const infoService = {
   primary: true,
   status: "running" as const,
   connections: [] as const,
+  routes: [] as const,
 };
+
+test("requires routes on both start and info service rows", () => {
+  const { routes: _startedRoutes, ...incompleteStart } = startedService;
+  const { routes: _infoRoutes, ...incompleteInfo } = infoService;
+  expect(Result.isFailure(decode(StartAppResult, { app: "demo", servicesStarted: [incompleteStart] }))).toBe(
+    true,
+  );
+  expect(Result.isFailure(decode(InfoAppResult, { app: "demo", services: [incompleteInfo] }))).toBe(true);
+});
 
 describe("LandofileEventsOutcome", () => {
   test("skipped requires reason", () => {

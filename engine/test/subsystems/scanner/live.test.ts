@@ -198,6 +198,26 @@ describe("makeUrlScanner", () => {
     ]);
   });
 
+  test("skips supplied wildcard hostnames but scans a concrete hostname with a star in the path", async () => {
+    const http = requestSequence([httpStatus(200)]);
+    const source = endpointsOf([]);
+    const scanner = makeUrlScanner({ http: http.http, listEndpoints: source.listEndpoints });
+
+    const result = await drive(
+      scanner.scan(appId, {
+        urls: [
+          { service: web, url: "http://*.x.test/" },
+          { service: web, url: "http://x.test/a*b" },
+        ],
+      }),
+    );
+
+    expect(http.requests.map(({ url }) => url)).toEqual(["http://x.test/a*b"]);
+    expect(result.endpoints.map(({ url, outcome }) => ({ url, outcome }))).toEqual([
+      { url: "http://x.test/a*b", outcome: "green" },
+    ]);
+  });
+
   test("does not rediscover endpoints when every supplied URL is non-HTTP", async () => {
     // Given an explicit TCP-only list and a discoverable HTTP endpoint.
     const http = requestSequence([httpStatus(200)]);

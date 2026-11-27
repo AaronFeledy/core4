@@ -38,7 +38,7 @@ import { projectServiceObservation } from "./info-probes.ts";
 import { projectServiceMounts } from "./info-storage.ts";
 import { resolveInfoTarget } from "./info-target.ts";
 import { plannedServiceArtifact } from "./planned-service-artifact.ts";
-import { primaryRouteConnectionUrl } from "./route-connections.ts";
+import { primaryRouteUrl } from "./service-routes.ts";
 import { selectInfoPlan } from "./service-selection.ts";
 
 export type InfoAppError = SdkInfoAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
@@ -73,7 +73,7 @@ const serviceInfoMetadata = (
   plan: AppPlan,
   service: ServicePlan,
   capabilities: RuntimeProviderShape["capabilities"],
-): Omit<InfoAppService, "status" | "health" | "readiness" | "connections"> => {
+): Omit<InfoAppService, "status" | "health" | "readiness" | "connections" | "routes"> => {
   const logSources = infoLogSources(service, capabilities);
   const creds = credsFromService(service);
   const artifact = plannedServiceArtifact(service.artifact);
@@ -172,7 +172,7 @@ export const infoForPlan = Effect.fn("AppOperation.infoForPlan")(function* (
     const desiredOnly = options.desiredOnly?.has(row.name) === true;
     const mounts = desiredOnly ? undefined : projectServiceMounts(plan, service, observed.runtime);
     const appMount = serviceAppMount(service);
-    const url = desiredOnly ? undefined : primaryRouteConnectionUrl(urlRoutes, row.name, row.connections);
+    const url = desiredOnly ? undefined : primaryRouteUrl(urlRoutes, row.name, row.routes);
     return ServiceInfoConsistent.make({
       ...serviceInfoMetadata(plan, service, provider.capabilities),
       ...projectServiceObservation(service, observed, provider.capabilities.serviceHealth),
@@ -180,6 +180,7 @@ export const infoForPlan = Effect.fn("AppOperation.infoForPlan")(function* (
         ? { status: "unknown" as const }
         : {}),
       connections: desiredOnly ? [] : row.connections,
+      routes: desiredOnly ? [] : row.routes,
       ...(url === undefined ? {} : { url }),
       ...(mounts === undefined ? {} : { mounts }),
       ...(appMount === undefined ? {} : { appMount }),

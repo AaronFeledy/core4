@@ -28,6 +28,18 @@ tooling:
     service: web
     description: Print the scheme, hostname, and port without a path.
     cmd: [echo, "{{ services.web.origin }}"]
+  site-port:
+    service: web
+    description: Print the router port a browser dials for web.
+    cmd: [echo, "{{ services.web.publicPort }}"]
+  site-scheme:
+    service: web
+    description: Print http or https for web's route.
+    cmd: [echo, "{{ services.web.scheme }}"]
+  site-address:
+    service: web
+    description: Print web's URL, then the router port on its own.
+    cmd: [echo, "{{ services.web.url }}", "{{ services.web.publicPort }}"]
 events:
   post-start:
     - service: web

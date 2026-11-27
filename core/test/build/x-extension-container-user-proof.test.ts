@@ -24,7 +24,7 @@ import { evolveHistoricalEndpointKind } from "./x-extension-endpoint-kind-proof.
 import { evolveHistoricalEndpointMetadata } from "./x-extension-endpoint-metadata-proof.ts";
 import {
   evolveHistoricalEnvironment,
-  evolveHistoricalRouteMember,
+  evolveHistoricalRouteMembers,
   evolveHistoricalRouteText,
 } from "./x-extension-environment-proof.ts";
 import { evolveHistoricalExtraArgs } from "./x-extension-extra-args-proof.ts";
@@ -213,7 +213,7 @@ test.each([
       ),
     ),
   );
-  const expected = evolveHistoricalRouteMember(
+  const expected = evolveHistoricalRouteMembers(
     evolveSchemaParity(
       evolveHistoricalExtraArgs(
         evolveHistoricalRouteText(

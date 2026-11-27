@@ -169,7 +169,7 @@ the fixture app. Include a cleanup step that destroys the app.
 
 | Field | What it does |
 | --- | --- |
-| `url` | Absolute HTTP(S) URL without credentials, or a URL beginning with `{{route:<service>}}`. The token uses the first assigned HTTPS host route in `lando info --format=json`, or the first assigned HTTP route if there is no HTTPS route. Its URL retains the router's bound port and path prefix. Use an absolute URL to choose a different route. |
+| `url` | Absolute HTTP(S) URL without credentials, or a URL beginning with `{{route:<service>}}`. The token reads the service's `routes` in `lando info --format=json`: the first assigned HTTPS route with `hostMatch: "exact"`, or the first such HTTP route if there is no HTTPS route. Wildcard pattern routes are skipped because they have no URL. Its URL retains the router's bound port and path prefix. Use an absolute URL to choose a different route. |
 | `method` | `GET` by default, or `HEAD`. |
 | `headers` | Optional request header names and string values. The request's `Host` comes from the URL. |
 | `expect.status` | Required final response status, or a nonempty list of accepted statuses. |

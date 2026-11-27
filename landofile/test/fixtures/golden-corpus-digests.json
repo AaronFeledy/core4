@@ -569,11 +569,11 @@
     },
     {
       "fixture": "docs/guides/expressions/fixtures/expressions-public-url-live",
-      "digest": "188c17af79fe099ea2d0e22bdff6d7ca0b0fcae92140bdd4bb31618ccb7ffa2d"
+      "digest": "038b9711259098288580417cd9af8d04746c8048742ce890ec2ee4ad2a959488"
     },
     {
       "fixture": "docs/guides/expressions/fixtures/expressions-public-url",
-      "digest": "7f7ede7212d723dbd387236b9c68a207040c38f484c6cfbb51da14f7e05980e8"
+      "digest": "3d0e7d143bd9d44876d559102d67e639598d63761211b800c725582451570fa2"
     },
     {
       "fixture": "docs/guides/expressions/fixtures/expressions-service-creds",
@@ -618,7 +618,7 @@
     },
     {
       "fixture": "docs/guides/expressions/fixtures/expressions-url-tooling-live",
-      "digest": "71224a384de9bb76f1157c4a7f636081213dc4737a3b567fa0153425424717de"
+      "digest": "d2c64636578323cf151f5c8c63ae97b33f2d1efbc18077e5b59c7a159b20f117"
     },
     {
       "fixture": "docs/guides/expressions/fixtures/expressions-url-tooling-refused",
@@ -629,7 +629,7 @@
     },
     {
       "fixture": "docs/guides/expressions/fixtures/expressions-url-tooling",
-      "digest": "047ff5871a4591d255a743c11c2ca9cb87cf0e7f3b2fa7760b11578d9a9e3963"
+      "digest": "43ae1c3f91bb31aa261293fac3a0dd81a43ec598133b0bf95ddcfd3b3cf065f0"
     },
     {
       "fixture": "docs/guides/external-access/fixtures/external-access-demo",
@@ -860,15 +860,15 @@
     },
     {
       "fixture": "docs/guides/laravel-reverb/fixtures/laravel-reverb",
-      "digest": "3b1a29b3477819f66ec7e1cb563670aeccd59fb1e96003fd22545f3bf3b1730f"
+      "digest": "817bbd1a916491d652c54144ef76d259a1bf401ab434973b7fa5e6b00c36c56a"
     },
     {
       "fixture": "docs/guides/laravel-vite/fixtures/laravel-vite",
-      "digest": "00ea8ef5a37c7d63bda4f69e73303cbc39f28e7adfedaa33c9dca66347bec41e"
+      "digest": "957868f5b560a6e6fa1ecc98e5a1298799e59044f5b84c140802e3d89a21a1b9"
     },
     {
       "fixture": "docs/guides/list-and-info/fixtures/scratch-info-web",
-      "digest": "94a384275aa69d47e7f884b2a05cdc5c61a023e11acb9d04469f493aa6a6e922"
+      "digest": "b45212ab90fdc242d46f0ced49de2aaf7923eb561fc4bd109bcf75e1f63fe4de"
     },
     {
       "fixture": "docs/guides/locale/fixtures/locale-demo",
@@ -1771,7 +1771,7 @@
     },
     {
       "fixture": "docs/guides/wordpress-vite/fixtures/wordpress-vite",
-      "digest": "dec4715bdf80d32cdefa77dfce8b5d2580b66571f60c4590b53333b7d52ced0c"
+      "digest": "4ff19c6e50bb123cf52e292c5866ba6b2f7f8d0709a1dc183ed0751bdaa6a8d4"
     },
     {
       "fixture": "docs/guides/xdebug-phpstorm/fixtures/xdebug-custom-image",

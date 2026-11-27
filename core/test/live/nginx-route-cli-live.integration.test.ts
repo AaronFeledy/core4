@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { chmod, mkdir, mkdtemp, rm, stat } from "node:fs/promises";
 import { release, tmpdir, userInfo } from "node:os";
 import { join } from "node:path";
+import { isAddressedRoute } from "@lando/engine/operations/service-connections";
 import { ConfigLintResult } from "@lando/sdk/schema";
 import { Schema } from "effect";
 
@@ -155,17 +156,14 @@ describe.serial("compiled CLI stock nginx", () => {
           const output = await appCli(root, ["start"], 300_000);
           const readyAt = performance.now();
           const started = decodeStart(output);
-          const connection = started.servicesStarted
-            .find((service) => service.name === "web")
-            ?.connections.find(
-              (connection) =>
-                connection.binding === "assigned" &&
-                (docker
-                  ? connection.source === "publication"
-                  : connection.source === "route" && connection.host === hostname),
-            );
-          if (connection?.url === undefined) throw new Error(`start reported no host URL for ${name}`);
-          const url = new URL(connection.url);
+          const startedWeb = started.servicesStarted.find((service) => service.name === "web");
+          const address = docker
+            ? startedWeb?.connections.find(
+                (row) => row.binding === "assigned" && row.source === "publication",
+              )
+            : startedWeb?.routes.filter(isAddressedRoute).find((row) => row.host === hostname);
+          if (address === undefined) throw new Error(`start reported no host URL for ${name}`);
+          const url = new URL(address.url);
           expect(url.hostname).toBe(docker ? "localhost" : hostname);
           const port = url.port || (url.protocol === "https:" ? "443" : "80");
           // Then: the reported host URL serves the exact unique body, without changing checkout permissions.
@@ -222,12 +220,12 @@ describe.serial("compiled CLI stock nginx", () => {
           if (!docker) {
             expect(web.connections.filter((connection) => connection.source === "publication")).toEqual([]);
           }
-          const ingress = web.connections.find(
-            (connection) =>
-              connection.source === (docker ? "publication" : "route") && connection.host === url.hostname,
-          );
+          const ingress = docker
+            ? web.connections.find(
+                (connection) => connection.source === "publication" && connection.host === url.hostname,
+              )
+            : web.routes.find((route) => route.host === url.hostname);
           expect(ingress).toMatchObject({
-            scope: "host",
             state: "active",
             endpoint: listener?.endpoint,
           });

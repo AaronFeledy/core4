@@ -1,6 +1,6 @@
 import { routerEnabled } from "@lando/engine/config/router-config";
 import { collectPlanConnections } from "@lando/engine/operations/connection-collector";
-import type { AppPlan, StartedService } from "@lando/sdk/schema";
+import { type AppPlan, type StartedService, isWildcardHostname } from "@lando/sdk/schema";
 import { Effect } from "effect";
 
 import { type OpenTargetSelection, defaultHttpListeners, resolveOpenTargets } from "./open-targets";
@@ -12,7 +12,7 @@ export const collectOpenConnections = Effect.fn("OpenApp.collectConnections")(fu
   const routes = plan.routes.filter(
     (route) =>
       routerEnabled(plan) &&
-      !route.hostname.includes("*") &&
+      !isWildcardHostname(route.hostname) &&
       (selection.route === undefined || route.hostname === selection.route),
   );
   const services = Object.fromEntries(
@@ -56,10 +56,7 @@ export const collectOpenConnections = Effect.fn("OpenApp.collectConnections")(fu
         continue;
       const rows = yield* collect(entry);
       observed.push(...rows);
-      const routeRows = rows.map((row) => ({
-        ...row,
-        connections: row.connections.filter((connection) => connection.source === "route"),
-      }));
+      const routeRows = rows.map((row) => ({ ...row, connections: [] }));
       if (resolveOpenTargets(plan, selection, routeRows).length > 0) return rows;
     }
     for (const entry of entries) {

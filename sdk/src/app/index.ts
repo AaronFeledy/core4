@@ -136,6 +136,7 @@ export type {
   RebuildAppResult,
   RestartAppResult,
   ServiceConnection,
+  ServiceRoute,
   ServiceState,
   ShareStopAppResult,
   StartAppResult,

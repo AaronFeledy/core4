@@ -1,4 +1,26 @@
-import { PortNumber, type ServiceConnection } from "@lando/sdk/schema";
+import {
+  PortNumber,
+  type ServiceConnection,
+  type ServiceRoute,
+  type StartedService,
+} from "@lando/sdk/schema";
+
+type AssignedRoute = Extract<ServiceRoute, { binding: "assigned" }>;
+type RouteRowInput = Pick<AssignedRoute, "host" | "protocol" | "port" | "pathPrefix"> &
+  ({ readonly hostMatch: "exact"; readonly url: string } | { readonly hostMatch: "pattern" });
+
+export const routeRow = (
+  address: RouteRowInput,
+  state: AssignedRoute["state"] = "active",
+  endpoint: AssignedRoute["endpoint"] = { port: 80, transport: "tcp", names: [], primary: false },
+): AssignedRoute => {
+  return { ...address, binding: "assigned", state, endpoint };
+};
+
+export const service = (
+  connections: readonly ServiceConnection[],
+  routes: readonly ServiceRoute[] = [],
+): Pick<StartedService, "connections" | "routes"> => ({ connections, routes });
 
 export const connections = (
   urls: readonly string[],

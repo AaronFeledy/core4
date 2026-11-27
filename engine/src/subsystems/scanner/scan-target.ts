@@ -9,9 +9,7 @@ import { Clock, Duration, Effect, Predicate, Ref } from "effect";
 import type * as HttpClient from "effect/http/HttpClient";
 import type * as HttpClientError from "effect/http/HttpClientError";
 import { type AttemptStatus, type ScanClassification, classify } from "./classify.ts";
-import type { ScanSourceEndpoint } from "./connection-targets.ts";
-
-export { type ScanSourceEndpoint, publishedHostPort, scanTargets } from "./connection-targets.ts";
+import type { ScanSourceService } from "./connection-targets.ts";
 
 export const SCANNER_ID = "http-probe";
 
@@ -57,7 +55,7 @@ export interface UrlScannerDeps {
   readonly listEndpoints: (
     appId: AppId,
     plan?: AppPlan,
-  ) => Effect.Effect<ReadonlyArray<ScanSourceEndpoint>, ScannerError>;
+  ) => Effect.Effect<ReadonlyArray<ScanSourceService>, ScannerError>;
   readonly onAttempt?: (attempt: ScanAttempt) => Effect.Effect<void>;
 }
 

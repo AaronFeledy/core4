@@ -121,6 +121,24 @@ test("dedupes omitted filters and empty filters, and hostname case", async () =>
   expect(refs).toEqual([{ index: 0 }]);
 });
 
+test("ranks a fixed corpus at fixed priorities", () => {
+  const routes = [
+    route({ hostname: "*.a.test" }),
+    route({ hostname: "*.a.test", pathPrefix: "/api" }),
+    route({ hostname: "api*.a.test" }),
+    route({ hostname: "a.*.b.test" }),
+    route({ hostname: "lets.combine.*.lndo.site", pathPrefix: "/everything/for-real" }),
+    route({ hostname: "www.a.test" }),
+    route({ hostname: "www.a.test", pathPrefix: "/" }),
+    route({ hostname: "www.a.test", pathPrefix: "/api" }),
+    route({ hostname: "127.0.0.1" }),
+  ];
+
+  const ranked = prioritizeRoutes(routes);
+
+  expect(ranked.map(({ priority }) => priority)).toEqual([3, 6, 3, 3, 22, 65540, 65540, 65543, 65540]);
+});
+
 test("keeps the minimum exact priority above the capped maximum wildcard priority", () => {
   // Given
   const routes = [

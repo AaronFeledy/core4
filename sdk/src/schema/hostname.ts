@@ -53,6 +53,9 @@ export const RouteHostname = Schema.String.check(
 });
 export type RouteHostname = typeof RouteHostname.Type;
 
+/** Whether a route hostname holds a wildcard, so it matches many request hosts and names no URL. */
+export const isWildcardHostname = (hostname: string): boolean => hostname.includes("*");
+
 export const DomainName = Schema.String.check(
   Schema.isPattern(DOMAIN_NAME_PATTERN, {
     message: "Expected a plain DNS domain such as lndo.site, without a scheme, port, path, or wildcard.",

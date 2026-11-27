@@ -5,6 +5,7 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
+import { isAddressedRoute } from "@lando/engine/operations/service-connections";
 import { InfoAppResult } from "@lando/sdk/schema";
 import { Schema } from "effect";
 
@@ -213,10 +214,8 @@ describe.serial("two Lando data roots on one host", () => {
         const info = Schema.decodeUnknownSync(InfoEnvelope)(await lando(second, app, ["info"]));
         const route = info.result.services
           .find((service) => service.service === "web")
-          ?.connections.find(
-            (connection) => connection.source === "route" && connection.binding === "assigned",
-          );
-        if (route === undefined || !("url" in route) || route.url === undefined) {
+          ?.routes.find(isAddressedRoute);
+        if (route === undefined) {
           throw new Error(`info published no assigned route for ${name}`);
         }
         const url = new URL(route.url);

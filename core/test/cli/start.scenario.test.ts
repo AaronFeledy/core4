@@ -1389,13 +1389,13 @@ describe("lando start", () => {
     ]);
     expect(harness.buildOrder.slice(10)).toContain("inspect:web");
     expect(harness.buildOrder.slice(10)).toContain("inspect:database");
-    expect(
-      result.servicesStarted
-        .find((service) => service.name === "web")
-        ?.connections.flatMap((connection) =>
-          connection.scope === "host" && connection.binding === "assigned" ? [connection.url] : [],
-        ),
-    ).toEqual(["https://web.test-start.lndo.site:4443"]);
+    expect(result.servicesStarted.find((service) => service.name === "web")?.routes).toMatchObject([
+      {
+        hostMatch: "exact",
+        binding: "assigned",
+        url: "https://web.test-start.lndo.site:4443",
+      },
+    ]);
   });
 
   test("retains applied resources and routes with only the primary post-app-start publication failure", async () => {
@@ -2100,6 +2100,7 @@ describe("lando start", () => {
         {
           name: "web",
           state: "completed",
+          routes: [],
           connections: [
             {
               scope: "host",
@@ -2130,6 +2131,7 @@ describe("lando start", () => {
         {
           name: "database",
           state: "running",
+          routes: [],
           connections: [
             {
               scope: "host",
@@ -2175,6 +2177,7 @@ describe("lando start", () => {
         {
           name: "web",
           state: "ready",
+          routes: [],
           connections: [
             {
               scope: "host",
@@ -2205,6 +2208,7 @@ describe("lando start", () => {
         {
           name: "database",
           state: "running",
+          routes: [],
           connections: [
             {
               scope: "host",

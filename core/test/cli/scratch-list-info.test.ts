@@ -346,8 +346,9 @@ describe("ScratchAppService list/info backed by the registry", () => {
     backend: { service: ServiceName.make(service), protocol: "http", port: 80 },
   });
   const routes = [
-    route("appserver", "appserver.scratch-routes-000006.lndo.site"),
+    { ...route("appserver", "appserver.scratch-routes-000006.lndo.site"), pathPrefix: "/hello" },
     route("database", "admin.scratch-routes-000006.lndo.site"),
+    route("appserver", "*.scratch-routes-000006.lndo.site"),
   ];
   const observing = (observeRoutes: RouterServiceShape["observeRoutes"]): RouterServiceShape => ({
     ...makeTestRouterService(),
@@ -371,17 +372,48 @@ describe("ScratchAppService list/info backed by the registry", () => {
   interface InfoRoutesCase {
     readonly router: RouterServiceShape;
     readonly plan?: Partial<Pick<AppPlan, "router" | "routes">>;
-    readonly expected: ReadonlyArray<{ readonly service: string; readonly url: string }> | undefined;
+    readonly expected: typeof ScratchInfoResultSchema.Encoded.routes;
+    readonly routeLines?: readonly string[];
   }
-  const appserverUrl = "http://appserver.scratch-routes-000006.lndo.site:38080";
+  const appserverRoute = {
+    service: "appserver",
+    host: "appserver.scratch-routes-000006.lndo.site",
+    protocol: "http",
+    port: 38080,
+    pathPrefix: "/hello",
+    hostMatch: "exact",
+    url: "http://appserver.scratch-routes-000006.lndo.site:38080/hello",
+  } as const;
   const infoRoutesCases: ReadonlyArray<readonly [string, InfoRoutesCase]> = [
     [
       "every route the router confirms",
       {
         router: observing(confirmed(routes)),
         expected: [
-          { service: "appserver", url: appserverUrl },
-          { service: "database", url: "http://admin.scratch-routes-000006.lndo.site:38080" },
+          appserverRoute,
+          {
+            service: "database",
+            host: "admin.scratch-routes-000006.lndo.site",
+            protocol: "http",
+            port: 38080,
+            pathPrefix: "",
+            hostMatch: "exact",
+            url: "http://admin.scratch-routes-000006.lndo.site:38080",
+          },
+          {
+            service: "appserver",
+            host: "*.scratch-routes-000006.lndo.site",
+            protocol: "http",
+            port: 38080,
+            pathPrefix: "",
+            hostMatch: "pattern",
+          },
+        ],
+        routeLines: [
+          "routes:",
+          "  appserver http://appserver.scratch-routes-000006.lndo.site:38080/hello",
+          "  database http://admin.scratch-routes-000006.lndo.site:38080",
+          "  appserver *.scratch-routes-000006.lndo.site:38080 [http pattern]",
         ],
       },
     ],
@@ -389,7 +421,7 @@ describe("ScratchAppService list/info backed by the registry", () => {
       "only the routes the router confirms",
       {
         router: observing(confirmed(routes.slice(0, 1))),
-        expected: [{ service: "appserver", url: appserverUrl }],
+        expected: [appserverRoute],
       },
     ],
     [
@@ -420,21 +452,26 @@ describe("ScratchAppService list/info backed by the registry", () => {
     ],
   ];
 
-  test.each(infoRoutesCases)("info reports %s", async (_label, { router, plan: overrides, expected }) => {
-    await withTempRoots(async ({ dataRoot }) => {
-      const id = "scratch-routes-000006";
-      await Effect.runPromise(seedRegistry(seedEntry(dataRoot, { id })));
-      const instanceRoot = join(dataRoot, "scratch", id);
-      await Bun.write(join(instanceRoot, ".keep"), "");
-      await seedScratchPlan(instanceRoot, { ...planWithDetails(dataRoot, id), routes, ...overrides });
+  test.each(infoRoutesCases)(
+    "info reports %s",
+    async (_label, { router, plan: overrides, expected, routeLines }) => {
+      await withTempRoots(async ({ dataRoot }) => {
+        const id = "scratch-routes-000006";
+        await Effect.runPromise(seedRegistry(seedEntry(dataRoot, { id })));
+        const instanceRoot = join(dataRoot, "scratch", id);
+        await Bun.write(join(instanceRoot, ".keep"), "");
+        await seedScratchPlan(instanceRoot, { ...planWithDetails(dataRoot, id), routes, ...overrides });
 
-      const info = await runScratch(
-        Effect.flatMap(ScratchAppService, (service) => service.info(id)),
-        router,
-      );
-      expect(info.routes?.map(({ service, url }) => ({ service: String(service), url }))).toEqual(
-        expected === undefined ? undefined : [...expected],
-      );
-    });
-  });
+        const info = await runScratch(
+          Effect.flatMap(ScratchAppService, (service) => service.info(id)),
+          router,
+        );
+        expect(Schema.encodeSync(ScratchInfoResultSchema)(info).routes).toStrictEqual(expected);
+        if (routeLines !== undefined)
+          expect(renderScratchInfoResult(info).split("\n").slice(-routeLines.length)).toEqual([
+            ...routeLines,
+          ]);
+      });
+    },
+  );
 });

@@ -22,12 +22,14 @@ const infoOf = (
     readonly publications?: PublicationObservation;
     readonly routerEnabled?: boolean;
     readonly observedRoute?: boolean;
+    readonly publishedRoutes?: readonly AppPlan["routes"][number][];
+    readonly routes?: readonly AppPlan["routes"][number][];
   } = {},
 ) => {
   const planned = {
     ...plan,
     services: { [service.name]: service },
-    routes: [route],
+    routes: [...(options.routes ?? [route])],
     router: { enabled: options.routerEnabled ?? true },
   };
   const provider = {
@@ -41,7 +43,10 @@ const infoOf = (
         publications: options.publications ?? { status: "unknown" as const },
       }),
   };
-  const authority = { scheme: "https" as const, hostname: route.hostname, port: 38443 };
+  const publications = planned.routes.map((route) => ({
+    route,
+    authority: { scheme: "https" as const, hostname: route.hostname, port: 38443 },
+  }));
   return Effect.runPromise(
     infoForPlan(planned).pipe(
       Effect.provideService(
@@ -57,10 +62,17 @@ const infoOf = (
           ...makeTestRouterService(),
           observeRoutes: () =>
             Effect.succeed({
-              configuredAuthorities: [authority],
+              configuredAuthorities: publications.map(({ authority }) => authority),
               observation:
                 options.observedRoute === true
-                  ? { status: "present" as const, publications: [{ route, authority }] }
+                  ? {
+                      status: "present" as const,
+                      publications:
+                        options.publishedRoutes?.map((route) => ({
+                          route,
+                          authority: { scheme: "https" as const, hostname: route.hostname, port: 38443 },
+                        })) ?? publications,
+                    }
                   : { status: "unknown" as const },
             }),
         }),
@@ -68,6 +80,61 @@ const infoOf = (
     ),
   );
 };
+
+const filteredRoute: typeof route & Pick<AppPlan["routes"][number], "filters"> = {
+  ...route,
+  filters: [
+    { kind: "stripPrefix", prefix: "/api" },
+    { kind: "addPrefix", prefix: "/v1" },
+  ],
+};
+
+test.each([
+  { ...filteredRoute, priority: 3 },
+  {
+    ...filteredRoute,
+    filters: [
+      { kind: "stripPrefix", prefix: "/api" },
+      { kind: "addPrefix", prefix: "/v2" },
+    ],
+  },
+  { ...filteredRoute, filters: filteredRoute.filters?.toReversed() ?? [] },
+] satisfies AppPlan["routes"])("does not report stale publication as active: %j", async (stale) => {
+  const result = await infoOf(web, {
+    routes: [filteredRoute],
+    observedRoute: true,
+    publishedRoutes: [stale],
+  });
+  expect(result.services[0]?.routes).toMatchObject([
+    { binding: "assigned", url: "https://web.demo.lndo.site:38443/api", state: "inactive" },
+  ]);
+});
+
+test("recognizes equivalent published filters regardless of authoring names and header case", async () => {
+  const planned: AppPlan["routes"][number] = {
+    ...route,
+    filters: [
+      { kind: "requestHeader", name: "merge-key", header: "X-Custom", value: "yes" },
+      { kind: "redirect", to: "/home" },
+    ],
+  };
+  const result = await infoOf(web, {
+    routes: [planned],
+    observedRoute: true,
+    publishedRoutes: [
+      {
+        ...planned,
+        filters: [
+          { kind: "requestHeader", header: "x-custom", value: "yes" },
+          { kind: "redirect", to: "/home", permanent: false },
+        ],
+      },
+    ],
+  });
+  expect(result.services[0]?.routes).toMatchObject([
+    { binding: "assigned", url: "https://web.demo.lndo.site:38443/api", state: "active" },
+  ]);
+});
 
 test("round trips actual info without redundant fields or runtime leakage", async () => {
   const result = await infoOf(web, {
@@ -89,6 +156,7 @@ test("round trips actual info without redundant fields or runtime leakage", asyn
     "primary",
     "provider",
     "readiness",
+    "routes",
     "service",
     "status",
     "type",
@@ -119,7 +187,8 @@ test.each([
 ] as const)("projects the %s run state as %s and keeps the configured route prefix", async (run, state) => {
   const result = await infoOf(web, { run, observedRoute: true });
   expect(result.services[0]?.status).toBe(state);
-  expect(result.services[0]?.connections.find((row) => row.source === "route")).toMatchObject({
+  expect(result.services[0]?.routes[0]).toMatchObject({
+    hostMatch: "exact",
     url: "https://web.demo.lndo.site:38443/api",
     state: state === "unknown" || state === "restarting" ? "unknown" : "inactive",
   });
@@ -127,9 +196,41 @@ test.each([
 
 test("retains disabled routes but never describes them as active", async () => {
   const result = await infoOf(web, { routerEnabled: false, observedRoute: true });
-  expect(result.services[0]?.connections.find((row) => row.source === "route")).toMatchObject({
+  expect(result.services[0]?.routes[0]).toMatchObject({
+    hostMatch: "exact",
     state: "inactive",
     url: "https://web.demo.lndo.site:38443/api",
+  });
+});
+
+test("keeps each same-host route path once when an authority repeats", async () => {
+  const { pathPrefix: _pathPrefix, ...root } = route;
+  const result = await infoOf(web, { routes: [root, route], observedRoute: true });
+  const urls = result.services[0]?.routes.map(
+    (row) => row.binding === "assigned" && row.hostMatch === "exact" && row.url,
+  );
+  expect(urls).toEqual(["https://web.demo.lndo.site:38443", "https://web.demo.lndo.site:38443/api"]);
+});
+
+test("keeps a loopback route hostname while normalizing a loopback publication bind", async () => {
+  const result = await infoOf(web, {
+    routes: [{ ...route, hostname: "127.0.0.1" }],
+    observedRoute: true,
+    publications: {
+      status: "present",
+      bindings: [{ port: 3000, transport: "tcp", bindAddress: "127.0.0.1", hostPort: 3000 }],
+    },
+  });
+  const service = result.services[0];
+  expect(service?.url).toBe("https://127.0.0.1:38443/api");
+  expect(service?.routes[0]).toMatchObject({
+    host: "127.0.0.1",
+    hostMatch: "exact",
+    url: "https://127.0.0.1:38443/api",
+  });
+  expect(service?.connections.find((row) => row.source === "publication")).toMatchObject({
+    host: "localhost",
+    url: "http://localhost:3000",
   });
 });
 

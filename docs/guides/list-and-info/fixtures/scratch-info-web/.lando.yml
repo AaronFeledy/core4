@@ -6,3 +6,5 @@ services:
       - hostname: web.scratch-info-guide.lndo.site
         scheme: http
         pathPrefix: /hello
+      - hostname: "*.scratch-info-guide.lndo.site"
+        scheme: http

@@ -264,9 +264,7 @@
     "lando artisan tinker --execute 'event(new App\\Events\\PingSent('\\''hello from tinker'\\''))'",
     "lando create-project laravel/laravel",
     "lando exec node -- node --env-file=.env echo-listen.mjs",
-    "lando logs -s worker",
-    "lando npm install --save-dev laravel-echo pusher-js",
-    "lando npm run build"
+    "lando logs -s worker"
   ],
   "docs/guides/recipes/laravel-vite.mdx": [
     "lando artisan config:clear",

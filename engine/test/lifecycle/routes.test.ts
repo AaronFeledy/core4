@@ -212,13 +212,14 @@ describe("route connection collection", () => {
 
     // Then
     expect(calls).toEqual([]);
-    expect(rows[0]?.connections.find((connection) => connection.source === "route")).toMatchObject({
+    expect(rows[0]?.routes[0]).toMatchObject({
+      hostMatch: "exact",
       state: "inactive",
       url: "https://demo.lndo.site:38443",
     });
   });
 
-  test("returns active routed connections only with matching live evidence", async () => {
+  test("returns active routes only with matching live evidence", async () => {
     // Given
     const plan: AppPlan = { ...cachedPlan, router: { enabled: true } };
     const proxy: RouterServiceShape = {
@@ -255,7 +256,8 @@ describe("route connection collection", () => {
     );
 
     // Then
-    expect(rows[0]?.connections.find((connection) => connection.source === "route")).toMatchObject({
+    expect(rows[0]?.routes[0]).toMatchObject({
+      hostMatch: "exact",
       state: "active",
       url: "https://demo.lndo.site:38443",
     });
