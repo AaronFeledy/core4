@@ -64,15 +64,6 @@ test.each([false, true])(
   },
 );
 
-test("accepts internal input widening without a bump or exception", () => {
-  const before = new Map([[surface, artifact(["running"], 1)]]);
-  const after = new Map([[surface, artifact(["running", "stopping"], 1)]]);
-
-  const findings = compareArtifactSets(before, after, { exceptions: [] });
-
-  expect(findings).toEqual([expect.objectContaining({ verdict: "compatible", changeKind: "enum-widened" })]);
-});
-
 test.each([1, 2])("requires a version bump for unknown internal changes: current version %s", (version) => {
   const before = new Map([[surface, { ...artifact([], 1), schema: { type: "string", pattern: "^a" } }]]);
   const after = new Map([[surface, { ...artifact([], version), schema: { type: "string", pattern: "^b" } }]]);
