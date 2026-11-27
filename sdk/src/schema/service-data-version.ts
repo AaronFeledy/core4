@@ -5,6 +5,9 @@ import { PortablePath } from "./primitives.ts";
 export const ServiceDataVersionRecord = Schema.Struct({
   path: PortablePath.annotate({ description: "Container path to the database version record." }),
   pattern: Schema.String.annotate({ description: "Regular expression whose first capture is a version." }),
+}).annotate({
+  identifier: "ServiceDataVersionRecord",
+  description: "A database-owned file and the version capture to read from it.",
 });
 export type ServiceDataVersionRecord = typeof ServiceDataVersionRecord.Type;
 
@@ -17,6 +20,9 @@ export const ServiceDataVersionRefusal = Schema.Struct({
     description: "Refusal direction, or compare to determine it from captured versions.",
   }),
   hint: Schema.optionalKey(Schema.String).annotate({ description: "Product-specific recovery advice." }),
+}).annotate({
+  identifier: "ServiceDataVersionRefusal",
+  description: "How to recognize a database's native refusal to open data from another version.",
 });
 export type ServiceDataVersionRefusal = typeof ServiceDataVersionRefusal.Type;
 
@@ -36,6 +42,9 @@ export const ServiceDataVersion = Schema.Struct({
     }),
   ).annotate({ description: "Evidence and policy for comparing versions before activation." }),
   refusals: Schema.Array(ServiceDataVersionRefusal).annotate({ description: "Native startup refusals." }),
+}).annotate({
+  identifier: "ServiceDataVersion",
+  description: "Service-type rules for comparing the selected database image with existing storage.",
 });
 export type ServiceDataVersion = typeof ServiceDataVersion.Type;
 
@@ -50,6 +59,9 @@ export const ServiceDataVersionFinding = Schema.Struct({
   evidence: Schema.Literals(["record", "running-image", "guard", "server"]).annotate({
     description: "Source that established the refusal.",
   }),
+}).annotate({
+  identifier: "ServiceDataVersionFinding",
+  description: "Version mismatch and its supporting evidence, reported by a startup failure.",
 });
 export type ServiceDataVersionFinding = typeof ServiceDataVersionFinding.Type;
 

@@ -7,11 +7,18 @@ import {
   isJsonObject,
   jsonEquals,
   jsonValueKey,
+  stringArray,
 } from "./model.ts";
 
-// Prove only inclusion by preservation of each old arm, possibly with a
-// nested widening. Other changes are left to the ordinary classifier.
-const preservesValues = (before: JsonValue, after: JsonValue): boolean => {
+type Preservation = "union-widening" | "optional-properties";
+
+const PLAIN_STRUCT_KEYS = new Set(["additionalProperties", "properties", "required", "type"]);
+
+const preservesValues = (
+  before: JsonValue,
+  after: JsonValue,
+  mode: Preservation = "union-widening",
+): boolean => {
   if (jsonEquals(before, after)) return true;
   if (!isJsonObject(before) || !isJsonObject(after)) return false;
   if (Object.keys(before).length !== Object.keys(after).length) return false;
@@ -20,25 +27,38 @@ const preservesValues = (before: JsonValue, after: JsonValue): boolean => {
     if (newValue === undefined) return false;
     if (jsonEquals(oldValue, newValue)) return true;
     switch (key) {
-      case "anyOf":
+      case "anyOf": {
+        if (!Array.isArray(oldValue) || !Array.isArray(newValue)) return false;
         return (
-          Array.isArray(oldValue) &&
-          Array.isArray(newValue) &&
-          oldValue.every((arm) => newValue.some((candidate) => preservesValues(arm, candidate)))
+          oldValue.every((arm) => newValue.some((candidate) => preservesValues(arm, candidate, mode))) &&
+          (mode === "union-widening" ||
+            (oldValue.length === newValue.length &&
+              newValue.every((arm) => oldValue.some((candidate) => preservesValues(candidate, arm, mode)))))
         );
-      case "properties":
-        return (
-          isJsonObject(oldValue) &&
-          isJsonObject(newValue) &&
-          Object.keys(oldValue).length === Object.keys(newValue).length &&
-          Object.entries(oldValue).every(([name, field]) => {
-            const candidate = newValue[name];
-            return candidate !== undefined && preservesValues(field, candidate);
-          })
-        );
+      }
+      case "properties": {
+        if (!isJsonObject(oldValue) || !isJsonObject(newValue)) return false;
+        const added = Object.keys(newValue).filter((name) => !Object.hasOwn(oldValue, name));
+        const required = new Set(stringArray(after.required) ?? []);
+        // Only closed, plain structs prove the same optional-field addition the ordinary
+        // classifier allows. Other constraints may interact with the newly declared key.
+        if (
+          added.length > 0 &&
+          (mode !== "optional-properties" ||
+            before.type !== "object" ||
+            before.additionalProperties !== false ||
+            !Object.keys(before).every((field) => PLAIN_STRUCT_KEYS.has(field)) ||
+            added.some((name) => required.has(name)))
+        )
+          return false;
+        return Object.entries(oldValue).every(([name, field]) => {
+          const candidate = newValue[name];
+          return candidate !== undefined && preservesValues(field, candidate, mode);
+        });
+      }
       case "items":
       case "additionalProperties":
-        return preservesValues(oldValue, newValue);
+        return preservesValues(oldValue, newValue, mode);
       default:
         return false;
     }
@@ -94,6 +114,15 @@ export const compareUnion = (
   after: readonly JsonValue[],
   context: { readonly polarity: SchemaPolarity; readonly path: string },
 ): CompatibilityFinding | undefined => {
+  if (preservesValues({ anyOf: before }, { anyOf: after }, "optional-properties")) {
+    return finding(
+      "compatible",
+      "property-added",
+      context.path,
+      "Only optional properties were added inside the union members.",
+      { before, after },
+    );
+  }
   if (context.polarity === "strict") return undefined;
   const beforeKeys = new Set(before.map(jsonValueKey));
   const afterKeys = new Set(after.map(jsonValueKey));

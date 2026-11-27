@@ -261,6 +261,34 @@ test("proves an outer anyOf widening through a preserved arm's nested union", ()
   ]);
 });
 
+test.each(["strict", "output"] as const)(
+  "classifies an optional field inside an object union nested in a record under %s polarity",
+  (polarity) => {
+    const arm = (tag: string, fields: JsonSchema = {}, required = ["kind"]) => ({
+      type: "object",
+      additionalProperties: false,
+      properties: { kind: { const: tag }, ...fields },
+      required,
+    });
+    const plan = (members: ReadonlyArray<JsonSchema>) => ({
+      type: "object",
+      properties: { services: { type: "object", additionalProperties: { anyOf: members } } },
+    });
+    const before = plan([arm("database"), arm("web")]);
+    const compatible = plan([arm("web"), arm("database", { version: { type: "string" } })]);
+    expect(classifySchemaChange(before, compatible, polarity)).toMatchObject([
+      { verdict: "compatible", changeKind: "property-added", path: "$.services.additionalProperties.anyOf" },
+    ]);
+    const required = plan([
+      arm("web"),
+      arm("database", { version: { type: "string" } }, ["kind", "version"]),
+    ]);
+    expect(classifySchemaChange(before, required, polarity)).toMatchObject([
+      { verdict: "unknown", changeKind: "unsupported-keyword", path: "$.services.additionalProperties" },
+    ]);
+  },
+);
+
 test.each([
   ...JSON_SCHEMA_NAMES.filter((name) => name.endsWith("ServiceConfig")),
   "ServiceConfigInput",

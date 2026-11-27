@@ -337,7 +337,13 @@ const compareNode = (
     if (ANNOTATION_KEYS.has(key) || HANDLED_KEYS.has(key) || jsonEquals(before[key], after[key])) continue;
     if (key === "additionalProperties" && isJsonObject(before[key]) && isJsonObject(after[key])) {
       const nested = compareNode(before[key], after[key], { ...context, path: childPath(context.path, key) });
-      if (nested.length > 0 && nested.every(({ changeKind }) => changeKind === "union-widened")) {
+      if (
+        nested.length > 0 &&
+        nested.every(
+          ({ changeKind, verdict }) =>
+            changeKind === "union-widened" || (changeKind === "property-added" && verdict === "compatible"),
+        )
+      ) {
         findings.push(...nested);
         continue;
       }
