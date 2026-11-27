@@ -39,6 +39,16 @@ Redirects nginx sends on its own, such as adding the trailing slash to a directo
 
 Hidden paths, meaning any path segment that starts with `.` such as `/.git/config` or `/.env`, get Lando's 403 page, so your repository's dotfiles stay private even though the app root is the default webroot. `/.well-known/` stays served.
 
+## Serve files only you can read
+
+On Linux providers that support [project-user mapping](./file-ownership.mdx), the stock nginx launcher maps its `nginx` workers to your host user. The workers can read files you own in a private checkout without changing the files' owner or permissions. The master still starts as root and the listener port stays the same. This also applies when nginx serves files in front of PHP-FPM.
+
+Run `lando info --format=json` from your app directory and check `projectUser` for the `web` service. When it names `nginx`, user commands such as `lando exec` use that account by default too. Lando doesn't persist `/var/cache/nginx` as a home. If the provider can't map the worker, `projectUserExplanation` tells you why; the service may not be able to read private files.
+
+On an engine that renumbers image accounts, the default worker keeps its container identity if your host UID or GID is `0`. Lando never renumbers the worker to either zero ID.
+
+Set `projectUser: false` on the service to opt out. If you supply your own `command:` or `entrypoint:`, Lando doesn't assume your launcher uses the stock worker. If you supply a different image or a replacement build, it doesn't assume that image has the stock account or IDs.
+
 ## Pair nginx with PHP
 
 nginx is commonly paired with a `php-fpm` service: nginx serves static
@@ -145,7 +155,7 @@ services:
 
 ## Run as a non-root user
 
-Set `user: nginx` to run nginx as the image's own `nginx` account, with or without a PHP backend. Lando writes its whole nginx configuration to `/tmp/lando-nginx.conf`, points the PID file and temp directories at `/tmp` too, and starts the daemon with `nginx -c /tmp/lando-nginx.conf`, so nothing gets written into the image's root-owned config tree at start:
+Set `user: nginx` only if you want to run the master itself as the image's `nginx` account, with or without a PHP backend. This isn't needed for the default worker mapping. Lando writes its whole nginx configuration to `/tmp/lando-nginx.conf`, points the PID file and temp directories at `/tmp` too, and starts the daemon with `nginx -c /tmp/lando-nginx.conf`, so nothing gets written into the image's root-owned config tree at start:
 
 ```yaml
 services:

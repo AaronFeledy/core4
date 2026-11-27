@@ -210,6 +210,9 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
         capabilities: input.providerCapabilities,
         authored: draft.normalizedConfig.projectUser,
         authoredUser: draft.normalizedConfig.user,
+        authoredLauncher:
+          draft.normalizedConfig.command !== undefined || draft.normalizedConfig.entrypoint !== undefined,
+        processUser: draft.user,
         appSourceMounted: appMount !== undefined,
         identity: homeIntent.identity,
         host: input.host,

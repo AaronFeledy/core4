@@ -2,8 +2,9 @@ import { expect } from "bun:test";
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { makeLandoPaths } from "@lando/paths";
+import { introspectProviderCapabilities, makePodmanApiClient } from "@lando/provider-lando";
 import { InfoAppResult, StartAppResult } from "@lando/sdk/schema";
-import { Option, Schema } from "effect";
+import { Effect, Option, Schema } from "effect";
 
 import { isScannerLiveEligible, managedProviderSocketPath } from "./scanner-live-fixture.ts";
 
@@ -24,6 +25,17 @@ export const prerequisite = !isScannerLiveEligible()
     : Bun.which("curl") === null
       ? "Install curl in the live-test environment."
       : undefined;
+
+// Call only after the prerequisite has confirmed the opted-in managed socket.
+export const managedLinuxMapsProjectUser = async (): Promise<boolean> => {
+  if (process.platform !== "linux") return false;
+  const capabilities = await Effect.runPromise(
+    introspectProviderCapabilities(makePodmanApiClient(managedProviderSocketPath), "linux").pipe(
+      Effect.timeout("5 seconds"),
+    ),
+  );
+  return capabilities.projectUserMapping === "userns-keep-id";
+};
 
 export const infoEnvelope = Schema.fromJsonString(
   Schema.Struct({ ok: Schema.Literal(true), result: InfoAppResult }),

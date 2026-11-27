@@ -179,10 +179,12 @@ export interface ServiceImageIdentity {
   readonly homes: Readonly<Record<string, AbsoluteContainerPath>>;
   /**
    * The identity that owns files this image's service creates on a provider
-   * that maps one container id to the host user. Omitted when the type's
-   * default user is root or the image ships no such principal.
+   * that maps one container id to the host user. Omitted when the image
+   * ships no such principal.
    */
   readonly projectUser?: ServiceProjectUser;
+  /** Use the implicit catalog account only with the generated launcher. */
+  readonly projectUserDefault?: "launcher";
   /** Principals whose passwd home the image does not create or give to that user.
    * Lando creates and owns it in a root build step so a fresh home store seeds correctly. */
   readonly preparedHomes?: ReadonlyArray<string>;

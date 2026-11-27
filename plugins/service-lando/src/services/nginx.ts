@@ -16,7 +16,6 @@ import type {
 import { Effect, Schema } from "effect";
 import { UNSUPPORTED_LAUNCHER_EXTRA_ARGS_REMEDIATION } from "./_extra-args.ts";
 import {
-  rootIdentity,
   serviceFeatureApply,
   serviceFeatureValidateEffective,
   serviceTypeResolve,
@@ -27,12 +26,16 @@ import { tcpProbe } from "./_tcp-probe.ts";
 import { resolveWebroot } from "./_webroot.ts";
 import { landoErrorPagesBuildStep, nginxErrorPageConfigLines } from "./http-errors.ts";
 import { nginxHiddenPathConfigLines } from "./http-hidden-paths.ts";
-import { nginxDefaultSiteRemovalBuildStep, nginxLauncherCommand } from "./nginx-config.ts";
+import {
+  STOCK_NGINX_IMAGE,
+  nginxDefaultSiteRemovalBuildStep,
+  nginxLauncherCommand,
+  stockNginxIdentity,
+} from "./nginx-config.ts";
 import { PHP_FPM_PORT, phpListenPort } from "./php-via.ts";
 import { defaultNginxStaticCommand } from "./static.ts";
 import { uploadDirRegex } from "./upload-dirs.ts";
 
-const DEFAULT_IMAGE = "nginx:1.26-alpine";
 export const NGINX_LISTENER = {
   port: 80,
   daemon: "nginx",
@@ -154,7 +157,7 @@ const applyNginxFeature = (ctx: ServiceFeatureContext): void => {
   const webroot = resolveWebroot("nginx", service.webroot, service.appMount);
   const backend = service.backend?.trim() ?? "";
 
-  ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
+  ctx.setArtifact({ kind: "ref", ref: service.image ?? STOCK_NGINX_IMAGE });
   applyAuthoredProcessFields(ctx, ["user"]);
   ctx.setHealthcheck(tcpProbe(port, 10));
 
@@ -256,11 +259,7 @@ export const nginxServiceType: ServiceType = {
     "nginx",
     "Put flags in command: or configure the generated server block through type settings.",
   ),
-  // Verified /etc/passwd in nginx:1.26-alpine (linux/amd64), config:
-  // sha256:42ce3d3585d47518cb0c1ef4bd3d8a65c1edfcbbfd423eda86990a83f378b111.
-  // nginx:x:101:101:nginx:/var/cache/nginx:/sbin/nologin
-  // Its passwd home is a cache directory, intentionally excluded from home persistence.
-  identity: rootIdentity(),
+  identity: stockNginxIdentity,
   schema: Schema.Unknown,
   resolve: (input) =>
     serviceTypeResolve("nginx", "Failed to resolve nginx", () => {

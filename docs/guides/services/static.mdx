@@ -28,6 +28,8 @@ tooling:
 
 Before starting this example, build your site into `dist/` so that `dist/index.html` exists. The configuration serves generated files, not your source templates.
 
+On Linux providers that support [project-user mapping](./file-ownership.mdx), the generated `static` and `static:nginx` launchers use the [stock nginx worker mapping](./nginx.mdx#serve-files-only-you-can-read). They can serve private files you own without changing their permissions, and the app mount stays read-only. The master still starts as root. This mapping doesn't apply to `static:caddy`.
+
 ## Read missing paths and directories
 
 On a matched host with default `static:nginx`:
@@ -109,7 +111,7 @@ Lando generates a Caddyfile during the image build and starts `caddy run --confi
 
 ## Run as a non-root user
 
-Set `user: nginx` to run the default `static:nginx` server as the image's own `nginx` account. Lando writes its whole nginx configuration to `/tmp/lando-nginx.conf`, points the PID file and temp directories at `/tmp` too, and starts the daemon with `nginx -c /tmp/lando-nginx.conf`, so nothing gets written into the image's root-owned config tree at start:
+Set `user: nginx` only if you want to run the `static:nginx` master itself as the image's `nginx` account. This isn't needed for the default worker mapping. Lando writes its whole nginx configuration to `/tmp/lando-nginx.conf`, points the PID file and temp directories at `/tmp` too, and starts the daemon with `nginx -c /tmp/lando-nginx.conf`, so nothing gets written into the image's root-owned config tree at start:
 
 ```yaml
 services:
@@ -130,7 +132,8 @@ If you set your own `command:`, Lando preserves it instead of generating the
 launcher. Include the nginx `listen <port>;` directive with your planned port.
 Lando never appends it to your command. If startup fails, Lando includes a hint
 naming that setting. An authored `entrypoint:` alone still receives Lando's
-generated nginx command.
+generated nginx command. Either override stops Lando from selecting the catalog
+worker automatically.
 
 `static:caddy` reads its baked Caddyfile at start and writes nothing, so it also
 works under a non-root `user:`. It still listens on `80` by default, so the same
@@ -142,7 +145,8 @@ planned port.
 ## Pin a version
 
 Set `image:` to pin a specific nginx version. The generated nginx launcher still
-applies:
+applies, but Lando doesn't assume the replacement image has the same worker
+account or IDs:
 
 ```yaml
 services:

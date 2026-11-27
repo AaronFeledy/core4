@@ -755,7 +755,7 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
     }),
     projectUser: Schema.optionalKey(Schema.Union([Schema.Literal(false), Schema.String])).annotate({
       description:
-        'In-container identity that owns files written to the app mount. Accepts false, a numeric "<uid>:<gid>" pair, or the project user name the service type declares. Omitted, a numeric or matching authored user is used, then the service type default.',
+        'In-container identity mapped to the host user for the app mount. Set false to opt out, or explicitly request a numeric "<uid>:<gid>" pair or the project user name declared by the service type. With this key omitted, an authored numeric process user is the first candidate. Without one, the declared catalog account may apply. A launcher-scoped default requires the generated launcher and an unset or matching process user. The provider determines whether the candidate can be mapped; an explicit request that cannot be mapped fails planning.',
     }),
     working_dir: Schema.optionalKey(PortablePath).annotate({
       description: "Container working directory for service processes.",

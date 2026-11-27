@@ -1,11 +1,19 @@
 import { describe, expect, test } from "bun:test";
-import { chmod, mkdir, mkdtemp, rm } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ConfigLintResult } from "@lando/sdk/schema";
 import { Schema } from "effect";
 
-import { binary, cli, decodeStart, infoEnvelope, prerequisite, run } from "./route-cli-live-support.ts";
+import {
+  binary,
+  cli,
+  decodeStart,
+  infoEnvelope,
+  managedLinuxMapsProjectUser,
+  prerequisite,
+  run,
+} from "./route-cli-live-support.ts";
 
 const lintEnvelope = Schema.fromJsonString(
   Schema.Struct({ ok: Schema.Literal(true), result: ConfigLintResult }),
@@ -13,7 +21,7 @@ const lintEnvelope = Schema.fromJsonString(
 
 describe.serial("compiled CLI managed nginx routing", () => {
   test.skipIf(prerequisite !== undefined && process.env.LANDO_GUIDE_E2E !== "1")(
-    "serves the app body through global Traefik when nginx uses a nondefault listener",
+    "serves HTML through global Traefik and keeps host files private when workers are mapped",
     async () => {
       if (prerequisite !== undefined) throw new Error(prerequisite);
       // Given: an installed managed router and a uniquely named app outside the checkout.
@@ -27,12 +35,22 @@ describe.serial("compiled CLI managed nginx routing", () => {
           global.services.find((service) => service.service === "traefik"),
           "The inherited roots must contain the installed managed global Traefik app; this test never runs setup.",
         ).toMatchObject({ provider: "lando" });
+        const privateFiles = await managedLinuxMapsProjectUser();
         const publicRoot = join(root, "public");
-        await mkdir(publicRoot);
-        await chmod(root, 0o755);
-        await chmod(publicRoot, 0o755);
-        await Bun.write(join(publicRoot, "index.html"), body);
-        await chmod(join(publicRoot, "index.html"), 0o644);
+        const index = join(publicRoot, "index.html");
+        if (!privateFiles && process.platform !== "win32") await chmod(root, 0o755);
+        await mkdir(publicRoot, { mode: privateFiles ? 0o700 : 0o755 });
+        await Bun.write(index, body);
+        if (process.platform !== "win32") await chmod(index, privateFiles ? 0o600 : 0o644);
+        const permissions = () =>
+          Promise.all(
+            [root, publicRoot, index].map(async (path) => {
+              const { uid, gid, mode } = await stat(path);
+              return { uid, gid, mode: mode & 0o777 };
+            }),
+          );
+        const before = privateFiles ? await permissions() : undefined;
+        if (before !== undefined) expect(before.map(({ mode }) => mode)).toEqual([0o700, 0o700, 0o600]);
         await Bun.write(
           join(root, ".lando.yml"),
           [
@@ -73,37 +91,44 @@ describe.serial("compiled CLI managed nginx routing", () => {
           expect(url.hostname).toBe(hostname);
           const port = url.port || (url.protocol === "https:" ? "443" : "80");
           // Then: only the discovered ingress URL, resolved to loopback with its Host header, serves this body.
-          const response = await run(
-            root,
-            [
-              "curl",
-              "--silent",
-              "--show-error",
-              "--fail",
-              "--noproxy",
-              "*",
-              "--connect-timeout",
-              "3",
-              "--max-time",
-              "5",
-              "--resolve",
-              `${hostname}:${port}:127.0.0.1`,
-              "--header",
-              `Host: ${url.host}`,
-              // Trust relaxation is confined to this unique fixture host, with no redirects followed.
-              ...(url.protocol === "https:" ? ["--insecure"] : []),
-              "--write-out",
-              "\n%{http_code}",
-              url.href,
-            ],
-            30_000,
-          );
+          const request = (target: URL) =>
+            run(
+              root,
+              [
+                "curl",
+                "--silent",
+                "--show-error",
+                "--noproxy",
+                "*",
+                "--connect-timeout",
+                "3",
+                "--max-time",
+                "5",
+                "--resolve",
+                `${hostname}:${port}:127.0.0.1`,
+                "--header",
+                `Host: ${url.host}`,
+                // Trust relaxation is confined to this unique fixture host, with no redirects followed.
+                ...(url.protocol === "https:" ? ["--insecure"] : []),
+                "--write-out",
+                "\n%{http_code}",
+                target.href,
+              ],
+              30_000,
+            );
+          const response = await request(url);
           const firstHttpMs = performance.now() - readyAt;
           expect(response).toBe(`${body}\n200`);
+          const missingStatus = (await request(new URL("/missing.html", url))).split("\n").at(-1);
+          expect(missingStatus).toBe("404");
+          const after = privateFiles ? await permissions() : undefined;
+          if (privateFiles) expect(after).toEqual(before);
+          expect(await Bun.file(index).text()).toBe(body);
           const info = Schema.decodeUnknownSync(infoEnvelope)(await cli(root, ["info"])).result;
           const web = info.services.find((service) => service.service === "web");
           if (web === undefined) throw new Error(`info omitted web for ${name}`);
           expect(web.provider).toBe("lando");
+          if (privateFiles) expect(web.projectUser).toEqual({ name: "nginx", uid: 101, gid: 101 });
           const listener = web.connections.find((connection) => connection.scope === "app");
           expect(listener).toMatchObject({
             source: "listener",
@@ -132,6 +157,10 @@ describe.serial("compiled CLI managed nginx routing", () => {
               route,
               status: 200,
               body,
+              missingStatus: Number(missingStatus),
+              privateFiles,
+              before,
+              after,
               startMs: readyAt - startAt,
               firstHttpMs,
             }),

@@ -62,7 +62,7 @@ Catalog service types declare the users inside the image they ship and where eac
 | `type: "node:22"` | Home persists at `/home/node` or `/root`, depending on `user:` |
 | `type: "php:8.3"` | With a realized project user, home persists at `/var/www` for `www-data`. Otherwise the default is `/root`; `user: www-data` selects `/var/www` |
 | `type: apache` with `user: www-data` | Home persists at `/home/www-data` |
-| `type: nginx` or `type: static` with `user: nginx` | No home store; that account's home is nginx's cache directory. Root keeps `/root` |
+| `type: nginx` or `type: static` using the `nginx` account | No home store, whether selected as the project user or set with `user: nginx`. Root's home path remains `/root` |
 | `type: compose` | No home store; set `home.path` to keep one |
 | `type: "node:22"` with a different `image:` | No home store; set `home.path` to keep one |
 | A catalog type with a `user:` it does not document | No home store; set `home.path` to keep one |
@@ -113,7 +113,7 @@ The moment you supply the image yourself, whether through `type: compose`, an `i
 
 Image references compare canonically, so repeating the image a versioned type already ships is not a custom image. With `type: "mariadb:11.4"`, both `image: mariadb:11.4` and `image: docker.io/library/mariadb:11.4` keep catalog behavior, home included. Without a version in `type:`, any `image:` counts as your own.
 
-The same thing happens when a catalog service runs as a user the image does not document, for example `user: lando-nonexistent` on `type: apache`, and for nginx's `nginx` account, whose home is its cache directory. On nginx and static, root still keeps `/root`. `lando info` tells you which case you hit; see [Check what Lando keeps](#check-what-lando-keeps).
+The same thing happens when a catalog service runs as a user the image does not document, for example `user: lando-nonexistent` on `type: apache`. Lando also leaves `/var/cache/nginx` out of home persistence even when the `nginx` account is the default for user commands. Root processes still use `/root`, but Lando plans no automatic `/root` volume when `nginx` is the project user. `lando info` tells you which case you hit; see [Check what Lando keeps](#check-what-lando-keeps).
 
 To keep a home Lando can't infer, name the path yourself:
 
