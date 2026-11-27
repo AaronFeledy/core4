@@ -90,6 +90,7 @@ export const prepareLandofileSource = Effect.fn("Landofile.prepareSource")(funct
         content,
         env: capturedEnv,
         environmentRecorder,
+        ...(resolvedContext.contained === true ? { contained: true } : {}),
       })
     : parseLandofileSource({ ...resolvedContext, sourceFile: filePath }, content, {
         templates: {

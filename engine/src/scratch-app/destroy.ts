@@ -39,6 +39,7 @@ export interface ScratchReapInput {
   readonly instanceRoot: AbsolutePath;
   readonly keepVolumes?: boolean;
   readonly plan?: AppPlan;
+  readonly materializationOnly?: boolean;
   readonly reason?: PreScratchDestroyEvent["reason"];
 }
 
@@ -63,11 +64,13 @@ export const makeScratchReaper = Effect.gen(function* () {
       // The desired cache may miss after a frame bump; recover the matching applied plan
       // before planless orphan cleanup so snapshots and provider teardown still own the app.
       const lookupRoot = entry?.layout === "legacy" ? AbsolutePath.make(entry.rootPath) : managedRoot;
-      const { plan, ownership, inventoryOnly } = yield* resolveScratchTeardown({
-        id: input.id,
-        lookupRoot,
-        ...(input.plan === undefined ? {} : { plan: input.plan }),
-      }).pipe(Effect.provideService(RuntimeProviderRegistry, providers));
+      const { plan, ownership, inventoryOnly } = input.materializationOnly
+        ? { plan: undefined, ownership: [], inventoryOnly: false }
+        : yield* resolveScratchTeardown({
+            id: input.id,
+            lookupRoot,
+            ...(input.plan === undefined ? {} : { plan: input.plan }),
+          }).pipe(Effect.provideService(RuntimeProviderRegistry, providers));
       const app = {
         kind: "scratch" as const,
         id: input.id,
@@ -94,7 +97,10 @@ export const makeScratchReaper = Effect.gen(function* () {
         },
       };
       const provider = plan === undefined ? undefined : yield* providers.select(plan);
-      const orphan = plan === undefined ? yield* scanner.prepareScratch(input.id, keepVolumes) : undefined;
+      const orphan =
+        plan === undefined && !input.materializationOnly
+          ? yield* scanner.prepareScratch(input.id, keepVolumes)
+          : undefined;
       const evidence =
         plan !== undefined && entry?.status !== "acquiring"
           ? ("applied" as const)
@@ -114,6 +120,7 @@ export const makeScratchReaper = Effect.gen(function* () {
         yield* events.publish(PostStopEvent.make({ scope: "app", app, timestamp: DateTime.nowUnsafe() }));
         yield* events.publish(PreDestroyEvent.make({ app, evidence, timestamp: DateTime.nowUnsafe() }));
         const destroy = Effect.gen(function* () {
+          if (input.materializationOnly) return "unchanged" as const;
           const snapshots =
             keepVolumes || plan === undefined
               ? []
@@ -163,7 +170,7 @@ export const makeScratchReaper = Effect.gen(function* () {
             );
           return stopped || destroyed || removed > 0 ? ("destroyed" as const) : ("unchanged" as const);
         });
-        const outcome = yield* reason === "gc"
+        const outcome = yield* reason === "gc" || input.materializationOnly
           ? destroy
           : withDestroyProgress({
               events,
@@ -178,21 +185,22 @@ export const makeScratchReaper = Effect.gen(function* () {
             });
         // teardown succeeded: the destroyed container's build output is stale.
         const buildOwner = BuildOwner.scratch(AppId.make(input.id));
-        yield* (
-          Option.isSome(paths)
-            ? removeAppBuildOutput(buildOwner, scratchProviderId, undefined, {
-                images: "release",
-              }).pipe(
-                Effect.provideService(PathsService, paths.value),
-                Effect.provideService(StateStore, stateStore),
-                Effect.provideService(RuntimeProviderRegistry, providers),
-              )
-            : clearAppBuildResults(stateStore, buildOwner)
-        ).pipe(
-          Effect.catch((failure) =>
-            warnBuildOutputCleanupFailure({ providerId: scratchProviderId, message: failure.message }),
-          ),
-        );
+        if (!input.materializationOnly)
+          yield* (
+            Option.isSome(paths)
+              ? removeAppBuildOutput(buildOwner, scratchProviderId, undefined, {
+                  images: "release",
+                }).pipe(
+                  Effect.provideService(PathsService, paths.value),
+                  Effect.provideService(StateStore, stateStore),
+                  Effect.provideService(RuntimeProviderRegistry, providers),
+                )
+              : clearAppBuildResults(stateStore, buildOwner)
+          ).pipe(
+            Effect.catch((failure) =>
+              warnBuildOutputCleanupFailure({ providerId: scratchProviderId, message: failure.message }),
+            ),
+          );
         yield* events.publish(
           PostDestroyEvent.make({ app, evidence, outcome, timestamp: DateTime.nowUnsafe() }),
         );

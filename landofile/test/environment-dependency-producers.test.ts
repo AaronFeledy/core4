@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { TemplateRenderContext } from "@lando/sdk/schema";
@@ -9,8 +9,8 @@ import { recordEnvironment } from "../src/environment-dependencies.ts";
 import { resolveLandofileLoadExpressions } from "../src/load-expression.ts";
 import { DEFAULT_LANDOFILE_LOAD_POLICY } from "../src/load-expression-file.ts";
 import { authoredDocumentFrom } from "../src/provenance.ts";
-
 import { renderLandofileTemplate } from "../src/template-render.ts";
+import { loadLandofileTs } from "../src/ts-loader.ts";
 
 const envContext = (env: Record<string, string>): TemplateRenderContext => ({
   bootstrapLevel: "app",
@@ -236,6 +236,36 @@ describe("typescript producer records ctx.env reads", () => {
     },
   );
 });
+
+test.skipIf(process.platform === "win32")(
+  "contained symlinked TS entries track names from their physical imports",
+  async () => {
+    const root = await realpath(await mkdtemp(join(tmpdir(), "lando-symlink-env-deps-")));
+    try {
+      const physical = join(root, "config");
+      const filePath = join(root, ".lando.ts");
+      const content = 'import getName from "./helper"; export default (ctx) => ({ name: getName(ctx.env) });';
+      await mkdir(physical);
+      await Bun.write(join(physical, "landofile.ts"), content);
+      await Bun.write(join(physical, "helper.ts"), "export default (env) => env.APP_NAME;");
+      await symlink(join("config", "landofile.ts"), filePath);
+      const recorder = recordEnvironment({ APP_NAME: "recorded-name", EXTRA: "ignored" });
+      const value = await Effect.runPromise(
+        loadLandofileTs({
+          filePath,
+          appRoot: root,
+          content,
+          contained: true,
+          environmentRecorder: recorder,
+        }),
+      );
+      expect(value).toEqual({ name: "recorded-name" });
+      expect(recorder.dependencies()).toEqual({ _tag: "Names", names: ["APP_NAME"] });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+);
 
 describe("raw env vs view separation", () => {
   test("enumerating the raw capture does not mark the recorder Complete", () => {

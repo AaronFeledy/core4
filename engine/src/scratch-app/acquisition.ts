@@ -1,5 +1,5 @@
 import { failureOutcomeFromCause, mapFailures, normalizeDefect } from "@lando/sdk/command-result";
-import { ScratchAppError, ServiceNotReadyError } from "@lando/sdk/errors";
+import { LandofileVersionConstraintError, ScratchAppError, ServiceNotReadyError } from "@lando/sdk/errors";
 import { MessageWarnEvent } from "@lando/sdk/events";
 import type { AbsolutePath, AppPlan } from "@lando/sdk/schema";
 import type { EventService, FileSystem } from "@lando/sdk/services";
@@ -47,11 +47,18 @@ export const withScratchAcquisition = <A, E, R>(
       Effect.gen(function* () {
         yield* services.registry.upsert("acquire", entry);
         let plan: AppPlan | undefined;
+        let retain = keepOnFailure;
         const work = Effect.suspend(() =>
           acquire((validated) => {
             plan = validated;
           }),
         ).pipe(
+          Effect.tapError((error) =>
+            Effect.sync(() => {
+              // This top-level refusal has no scratch identity to hand back to the caller.
+              if (error instanceof LandofileVersionConstraintError) retain = false;
+            }),
+          ),
           mapFailures((error) => {
             if (!(error instanceof ScratchAppError)) return error;
             const readiness = error.cause instanceof ServiceNotReadyError ? error.cause : undefined;
@@ -69,12 +76,22 @@ export const withScratchAcquisition = <A, E, R>(
           }),
         );
         const reap = (reason: "acquire-failure" | "scope-close") =>
-          Effect.suspend(() => services.reap({ ...target, reason, ...(plan === undefined ? {} : { plan }) }));
+          Effect.suspend(() =>
+            services.reap({
+              ...target,
+              reason,
+              ...(plan === undefined ? { materializationOnly: true } : { plan }),
+            }),
+          );
         const result = yield* compensateFailure(
           restore(work),
-          keepOnFailure
-            ? Effect.void
-            : reap("acquire-failure").pipe(Effect.catchCause((cause) => Effect.fail(cleanupFailure(cause)))),
+          Effect.suspend(() =>
+            retain
+              ? Effect.void
+              : reap("acquire-failure").pipe(
+                  Effect.catchCause((cause) => Effect.fail(cleanupFailure(cause))),
+                ),
+          ),
           "cleanup",
         );
         if (!entry.detached) {

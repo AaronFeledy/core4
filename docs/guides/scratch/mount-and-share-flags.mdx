@@ -76,7 +76,7 @@ Mounts with absolute sources pass through in every mode. Under `full` and recipe
 lando scratch:start --fork --detach --isolate=full --exclude=coverage/ --no-local-overrides
 ```
 
-Full isolation always skips `.git/`, `node_modules/`, `vendor/`, `.lando/cache/`, and `.DS_Store`. Repeat `--exclude` for project-specific paths. `--no-local-overrides` also drops `.lando.local.yml` and `.lando.user.yml` from the scratch copy. The source app stays untouched.
+Full isolation skips `.git/`, `node_modules/`, `vendor/`, `.lando/cache/`, and `.DS_Store`. Repeat `--exclude` for project-specific paths. Exclusions keep the selected Landofile layers and `.lando.lock.yml`, but if an exclusion removes a file the Landofile needs, the fork fails before starting. See [Fork an existing app](./fork-existing-app.mdx#choose-a-copy-or-a-shared-tree) to omit local and user layers.
 
 ## Control scratch hostnames
 

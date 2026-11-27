@@ -8,6 +8,7 @@ import { discoveryCwd } from "@lando/landofile/operation-discovery";
 import { isPathWithin } from "@lando/paths";
 import { isProviderError } from "@lando/redaction/provider-error";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
+import { tryPromiseSettled } from "@lando/sdk/abortable-promise";
 import { mapFailures, mapStreamFailures } from "@lando/sdk/command-result";
 import { sha256Hex } from "@lando/sdk/digest";
 import {
@@ -510,25 +511,34 @@ const directorySizeBytes = async (root: string): Promise<number> => {
 const copyHostTree = (
   source: string,
   destination: string,
-): Effect.Effect<DataTransferResult, DataTransferError> =>
-  Effect.tryPromise({
+): Effect.Effect<DataTransferResult, DataTransferError> => {
+  const copyFailure = (cause: unknown) =>
+    new DataTransferError({
+      message: "Failed to copy host directory tree.",
+      fromEndpoint: `hostPath:${source}`,
+      toEndpoint: `hostPath:${destination}`,
+      operation: "copy-host-tree",
+      cause,
+      remediation: "Verify the source path is readable and the destination is writable, then retry.",
+    });
+  // An interrupted caller can remove the destination once pending filesystem writes have settled.
+  return tryPromiseSettled({
     try: async () => {
       await mkdir(destination, { recursive: true });
       if (!(await reflinkCopyTree(source, destination))) {
-        await cp(source, destination, { recursive: true, dereference: false, force: true });
+        await cp(source, destination, { recursive: true, verbatimSymlinks: true, force: true });
       }
-      return { accelerated: true, sizeBytes: await directorySizeBytes(destination) };
     },
-    catch: (cause) =>
-      new DataTransferError({
-        message: "Failed to copy host directory tree.",
-        fromEndpoint: `hostPath:${source}`,
-        toEndpoint: `hostPath:${destination}`,
-        operation: "copy-host-tree",
-        cause,
-        remediation: "Verify the source path is readable and the destination is writable, then retry.",
+    catch: copyFailure,
+  }).pipe(
+    Effect.andThen(
+      Effect.tryPromise({
+        try: async () => ({ accelerated: true, sizeBytes: await directorySizeBytes(destination) }),
+        catch: copyFailure,
       }),
-  });
+    ),
+  );
+};
 
 const hostSourceIsDirectory = (path: string): Effect.Effect<boolean, DataTransferError> =>
   Effect.tryPromise({
