@@ -2,12 +2,15 @@ import { UninstallResultSchema } from "@lando/engine/operations/uninstall";
 import { Schema } from "effect";
 import { LifecycleJourneyError } from "./install-lifecycle-journey-runner.ts";
 
+// Contributed uninstall steps are `<maintainer>:<step>`.
+const HOST_GLOBAL_STEP_IDS = ["socket-proxy-helper:socket-proxy-helper", "provider-lando:delegate-cgroups"];
+
 const UninstallEnvelope = Schema.fromJsonString(Schema.Struct({ result: UninstallResultSchema }));
 
 export const assertLifecycleHostIsolation = (dryRun: string): void => {
   const { result } = Schema.decodeUnknownSync(UninstallEnvelope)(dryRun);
   const hostTargets = result.steps.filter(
-    (step) => ["socket-proxy-helper", "cgroups-delegate"].includes(step.id) && step.status !== "skipped",
+    (step) => HOST_GLOBAL_STEP_IDS.includes(step.id) && step.status !== "skipped",
   );
   if (hostTargets.length > 0) {
     throw new LifecycleJourneyError(

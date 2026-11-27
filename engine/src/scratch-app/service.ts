@@ -1,16 +1,14 @@
 import { randomBytes } from "node:crypto";
-import { readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { migrateAppliedPlan } from "@lando/container-runtime/applied-state";
-import { HostTreeCopyGuard } from "@lando/data-mover/host-tree-copy-guard";
 import type { UserAppResolution } from "@lando/landofile/app-resolution";
 import { OperationDiscovery, discoveryCwd, withDiscoveryCwd } from "@lando/landofile/operation-discovery";
 import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
+import { projectSelectedLandofileRootName } from "@lando/landofile/service";
 import { causeRemediation, mapFailures } from "@lando/sdk/command-result";
 import { sha256Hex } from "@lando/sdk/digest";
 import {
   AppPlacementError,
-  DataTransferError,
   type DebuggerHostUnavailableError,
   type LandofileVersionConstraintError,
   type RouteUrlBindingError,
@@ -23,7 +21,6 @@ import {
   AbsolutePath,
   type AppPlan,
   AppPlan as AppPlanSchema,
-  type DataTransferSpec,
   type IsolateMode,
   type LandofileShape,
   type NetworkingPlan,
@@ -39,7 +36,7 @@ import {
   EventService,
   FileSystem,
   GlobalAppService,
-  LandofileService,
+  ManagedFileTransactionGuard,
   PathsService,
   RouterService,
   RuntimeProviderRegistry,
@@ -59,11 +56,7 @@ import {
 import { Context, DateTime, Effect, Layer, Option, Predicate, Schema, type Scope } from "effect";
 import { routerEnabled } from "../config/router-config.ts";
 import { globalCreateProviderId } from "../global-app/placement.ts";
-import {
-  loadUserLandofile,
-  loadUserLandofileFile,
-  makeEngineUserAppResolution,
-} from "../landofile/app-resolution.ts";
+import { loadUserLandofileFile, makeEngineUserAppResolution } from "../landofile/app-resolution.ts";
 import { routeOwnerFromPlan } from "../lifecycle/route-owner.ts";
 import { routeUrlRouterError } from "../lifecycle/route-url-bindings.ts";
 import { prepareServiceCertificates } from "../lifecycle/service-certificates.ts";
@@ -80,10 +73,12 @@ import { ensureAppPlacement } from "../providers/app-placement.ts";
 import { prepareProvider } from "../providers/prepared.ts";
 import { RuntimeCwd } from "../runtime/cwd.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
+import { scopedLandofileRuntimeInputs } from "../services/landofile-live.ts";
 import { prepareDebuggerOverlay } from "../subsystems/start-overlay-registry.ts";
 import { withScratchAcquisition } from "./acquisition.ts";
 import { makeScratchReaper } from "./destroy.ts";
-import { checkAdmittedForkRoot, scratchIsolationConflict } from "./fork-source.ts";
+import { copyScratchFork } from "./fork-copy.ts";
+import { scratchIsolationConflict } from "./fork-source.ts";
 import { makeScratchGc } from "./gc.ts";
 import { ownerPidIsDead } from "./gc-candidates.ts";
 import { applyScratchHostnames } from "./hostnames.ts";
@@ -95,7 +90,13 @@ import {
   scratchPathsFor,
   stampScratchExtension,
 } from "./identity.ts";
-import { decodeScratchLandofile, loadScratchForkLandofile } from "./landofile.ts";
+import {
+  assertScratchForkLandofile,
+  compileScratchForkRoot,
+  decodeScratchLandofile,
+  selectCopiedScratchRoot,
+  selectScratchForkSource,
+} from "./landofile.ts";
 import { makeScratchLifecycleLock } from "./lifecycle-lock.ts";
 import { applyMountCwd, isolateScratchMounts } from "./mount-isolation.ts";
 import { openScratchPlan } from "./plan.ts";
@@ -269,8 +270,6 @@ const mapInitError = (
   }
   return scratchAppError("materialize", "Unable to render the recipe into the scratch app root.", cause);
 };
-
-const DEFAULT_SCRATCH_EXCLUDES = [".git/", "node_modules/", "vendor/", ".lando/cache/", ".DS_Store"] as const;
 
 const applyShareGlobalStorage = (plan: AppPlan): AppPlan => {
   const built = landoNetworkingPlan({
@@ -452,13 +451,15 @@ const scratchPlanDetail = (
       };
 
 const makeScratchAppService = Effect.fnUntraced(function* (
-  resolution: Pick<UserAppResolution, "loadUserLandofile" | "loadUserLandofileFile">,
+  resolution: Pick<UserAppResolution, "loadUserLandofileFile"> & {
+    readonly inputs: Effect.Effect<LandofileRuntimeInputs>;
+  },
 ) {
   const fileSystem = yield* FileSystem;
   const configuredPaths = yield* PathsService;
   const stateStore = yield* StateStore;
+  const transactionGuard = yield* Effect.serviceOption(ManagedFileTransactionGuard);
   const events = yield* EventService;
-  const landofileService = yield* LandofileService;
   const environmentResolver = yield* EnvironmentValueResolver;
   const planner = yield* AppPlanner;
   const providerRegistry = yield* RuntimeProviderRegistry;
@@ -552,121 +553,15 @@ const makeScratchAppService = Effect.fnUntraced(function* (
       Effect.catch(() => Effect.succeed(undefined)),
     );
 
-  const removeExcludedPaths = (destination: string, excludes: ReadonlyArray<string>) =>
-    Effect.tryPromise({
-      try: async () => {
-        const patterns = [...DEFAULT_SCRATCH_EXCLUDES, ...excludes].map((pattern) =>
-          pattern.replace(/^\.\//u, ""),
-        );
-        const visit = async (directory: string, relativeDirectory: string): Promise<void> => {
-          const entries = await readdir(directory, { withFileTypes: true });
-          for (const entry of entries) {
-            const relative =
-              relativeDirectory.length === 0 ? entry.name : `${relativeDirectory}/${entry.name}`;
-            const excluded = patterns.some((pattern) => {
-              const directoryOnly = pattern.endsWith("/");
-              const normalized = directoryOnly ? pattern.slice(0, -1) : pattern;
-              if (directoryOnly && normalized === ".git") return entry.name === ".git";
-              if (directoryOnly && !entry.isDirectory()) return false;
-              if (!normalized.includes("/") && !normalized.includes("*")) return entry.name === normalized;
-              return new Bun.Glob(normalized).match(relative);
-            });
-            const path = join(directory, entry.name);
-            if (excluded) {
-              await rm(path, { recursive: true, force: true });
-            } else if (entry.isDirectory()) {
-              await visit(path, relative);
-            }
-          }
-        };
-        await visit(destination, "");
-      },
-      catch: (cause) =>
-        scratchAppError(
-          "materialize",
-          `Unable to apply scratch copy exclusions under ${destination}.`,
-          cause,
-        ),
-    });
-
-  const removeLocalOverrides = (destination: string) =>
-    Effect.tryPromise({
-      try: () =>
-        Promise.all(
-          [".lando.local.yml", ".lando.user.yml"].map((file) => rm(join(destination, file), { force: true })),
-        ),
-      catch: (cause) =>
-        scratchAppError(
-          "materialize",
-          `Unable to remove local Landofile overrides under ${destination}.`,
-          cause,
-        ),
-    }).pipe(Effect.asVoid);
-
-  const copyAppRoot = ({
-    source,
-    destination,
-    input,
-    verify,
-  }: {
-    readonly source: AbsolutePath;
-    readonly destination: AbsolutePath;
-    readonly input: ScratchAcquireInput;
-    readonly verify?: Effect.Effect<void, ScratchAppError>;
-  }) => {
-    const transfer: DataTransferSpec = {
-      from: { _tag: "hostPath", path: source },
-      to: { _tag: "hostPath", path: destination },
-      overwrite: true,
-    };
-    const copy = Effect.scoped(dataMover.transfer(transfer));
-    const guarded =
-      verify === undefined
-        ? copy
-        : copy.pipe(
-            Effect.provideService(HostTreeCopyGuard, {
-              transfer,
-              verify: verify.pipe(
-                mapFailures(
-                  (cause) =>
-                    new DataTransferError({
-                      operation: "verify-host-tree-source",
-                      message: cause.message,
-                      remediation: cause.remediation,
-                      cause,
-                    }),
-                ),
-              ),
-            }),
-            Effect.andThen(verify),
-          );
-    return guarded.pipe(
-      Effect.asVoid,
-      mapFailures((cause) => {
-        if (cause instanceof ScratchAppError) return cause;
-        if (
-          cause instanceof DataTransferError &&
-          cause.operation === "verify-host-tree-source" &&
-          cause.cause instanceof ScratchAppError
-        )
-          return cause.cause;
-        return scratchAppError(
-          "materialize",
-          `Unable to copy the source app root into the scratch app at ${destination}.`,
-          cause,
-        );
-      }),
-      Effect.andThen(removeExcludedPaths(destination, input.excludes ?? [])),
-      Effect.andThen(input.noLocalOverrides === true ? removeLocalOverrides(destination) : Effect.void),
-    );
-  };
-
-  const startScratchPlan = Effect.fn("ScratchAppService.startScratchPlan")(function* (request: {
-    readonly id: string;
-    readonly plan: AppPlan;
-    readonly planCache: AbsolutePath;
-    readonly landofileRouter?: RouterConfig;
-  }) {
+  const startScratchPlan = Effect.fn("ScratchAppService.startScratchPlan")(function* (
+    request: {
+      readonly id: string;
+      readonly plan: AppPlan;
+      readonly planCache: AbsolutePath;
+      readonly landofileRouter?: RouterConfig;
+    },
+    recordPlan: (plan: AppPlan) => void,
+  ) {
     const { id: scratchId, plan: markedPlan, planCache, landofileRouter } = request;
     // A routed scratch start without a selectable router refuses before placement, builds, or certificates.
     yield* requireSelectableRouter(markedPlan).pipe(
@@ -705,6 +600,8 @@ const makeScratchAppService = Effect.fnUntraced(function* (
       ),
     );
     yield* writeCachedPlan(planCache, markedPlan);
+    // From the first build onward, compensation may need to clean up provider-owned resources.
+    recordPlan(markedPlan);
     const builtPlan = yield* Option.match(buildOrchestrator, {
       onNone: () => Effect.succeed(markedPlan),
       onSome: (orchestrator) =>
@@ -755,9 +652,7 @@ const makeScratchAppService = Effect.fnUntraced(function* (
         yield* materializeDir(request.instanceRoot);
         yield* materializeDir(AbsolutePath.make(request.entry.rootPath));
         const startup = yield* prepare;
-        // An invalid desired plan is not teardown evidence.
-        recordPlan(startup.plan);
-        const handle = yield* startScratchPlan(startup);
+        const handle = yield* startScratchPlan(startup, recordPlan);
         yield* scratchRegistry.upsert("mark-running", {
           ...request.entry,
           rootPath: String(startup.plan.root),
@@ -772,30 +667,39 @@ const makeScratchAppService = Effect.fnUntraced(function* (
     hostCwd: string,
     source: Extract<ScratchAcquireInput["source"], { readonly kind: "fork" }>,
   ) {
-    const { landofile, admitted } = yield* loadScratchForkLandofile(
+    const isolate = resolveScratchAcquireIsolation(input);
+    const provided = yield* resolution.inputs;
+    const inputs = {
+      ...provided,
+      stateStore,
+      ...(provided.transactionGuard === undefined && Option.isSome(transactionGuard)
+        ? { transactionGuard: transactionGuard.value }
+        : {}),
+    };
+    const { selection, admitted } = yield* selectScratchForkSource(
       { source, cwd: hostCwd, graph: pluginGraph },
-      resolution.loadUserLandofile(landofileService),
-    ).pipe(Effect.provideService(FileSystem, fileSystem));
-    const capabilities = yield* providerRegistry.capabilities.pipe(
-      mapFailures((cause) =>
-        scratchAppError("acquire", "Unable to resolve provider capabilities for the scratch app.", cause),
-      ),
+      { inputs, noLocalOverrides: input.noLocalOverrides, full: isolate === "full" },
+    ).pipe(
+      Effect.provideService(FileSystem, fileSystem),
+      Effect.provideService(PathsService, configuredPaths),
     );
-    const sourcePlan = yield* planner
-      .plan(landofile, capabilities)
-      .pipe(
-        mapFailures((cause) =>
-          scratchAppError("acquire", "Unable to plan the source app for the scratch fork.", cause),
-        ),
-      );
-    if (admitted !== undefined) {
-      yield* checkAdmittedForkRoot(admitted, sourcePlan.root);
-      yield* admitted.verify;
-    }
-    const base = input.name ?? landofile.document.name ?? sourcePlan.name;
+    const atSource = <A, E>(effect: Effect.Effect<A, E>) =>
+      admitted === undefined
+        ? effect
+        : effect.pipe(Effect.provideService(OperationDiscovery, admitted.discovery));
+    const sourceConfig =
+      isolate === "full" ? undefined : yield* atSource(compileScratchForkRoot(selection, inputs, "defer"));
+    const base =
+      input.name ??
+      (sourceConfig === undefined
+        ? yield* atSource(projectSelectedLandofileRootName(selection, inputs)).pipe(
+            Effect.orElseSucceed(() => undefined),
+          )
+        : sourceConfig.document.name) ??
+      "app";
+    if (admitted !== undefined) yield* admitted.verify;
     const scratchId = yield* synthesizeId(base);
     const scratchPaths = yield* paths(scratchId);
-    const isolate = resolveScratchAcquireIsolation(input);
     const registryEntry = yield* makeRegistryEntry({
       id: scratchId,
       source: { kind: "fork" },
@@ -812,38 +716,38 @@ const makeScratchAppService = Effect.fnUntraced(function* (
         keepOnFailure: input.keepOnFailure === true,
       },
       Effect.gen(function* () {
+        const loadFork = Effect.gen(function* () {
+          if (sourceConfig !== undefined) return sourceConfig;
+          const omitLocalOverrides = input.noLocalOverrides === true;
+          yield* copyScratchFork(
+            selection,
+            { root: scratchPaths.root, excludes: input.excludes ?? [], omitLocalOverrides, admitted },
+            dataMover,
+          );
+          const copied = yield* selectCopiedScratchRoot({
+            source: selection,
+            appRoot: scratchPaths.root,
+            inputs,
+            omitLocalOverrides,
+          });
+          return yield* compileScratchForkRoot(copied, inputs, "publish");
+        });
+        const landofile = yield* loadFork;
+        yield* assertScratchForkLandofile(landofile);
         const forkLandofile = {
           ...landofile,
           document: { ...landofile.document, name: scratchId },
           pendingSites: landofile.pendingSites.filter((site) => site.path[0] !== "name"),
-          context: {
-            ...landofile.context,
-            appRoot: isolate === "full" ? scratchPaths.root : landofile.context.appRoot,
-          },
         };
-        const planning = planner.plan(forkLandofile, capabilities, { kind: "scratch" });
-        const planFork =
-          isolate === "full"
-            ? Effect.suspend(() => {
-                const copy = copyAppRoot({
-                  source: sourcePlan.root,
-                  destination: scratchPaths.root,
-                  input,
-                  ...(admitted === undefined ? {} : { verify: admitted.verify }),
-                });
-                // The data mover resolves its permitted app root from the discovery cwd first.
-                const materialize =
-                  admitted !== undefined
-                    ? admitted.verify.pipe(
-                        Effect.andThen(copy),
-                        Effect.provideService(OperationDiscovery, admitted.discovery),
-                      )
-                    : source.path === undefined
-                      ? copy
-                      : withDiscoveryCwd(sourcePlan.root, copy);
-                return materialize.pipe(Effect.andThen(withDiscoveryCwd(scratchPaths.root, planning)));
-              })
-            : planning;
+        const capabilities = yield* providerRegistry.capabilities.pipe(
+          mapFailures((cause) =>
+            scratchAppError("acquire", "Unable to resolve provider capabilities for the scratch app.", cause),
+          ),
+        );
+        const planFork = withDiscoveryCwd(
+          forkLandofile.context.appRoot,
+          planner.plan(forkLandofile, capabilities, { kind: "scratch" }),
+        );
         const forkPlan = yield* planFork.pipe(
           mapFailures((cause) =>
             cause instanceof ScratchAppError
@@ -1073,14 +977,16 @@ const makeScratchAppService = Effect.fnUntraced(function* (
   });
 });
 
-const makeScratchAppServiceLayer = (
-  resolution: Pick<UserAppResolution, "loadUserLandofile" | "loadUserLandofileFile">,
-) => Layer.effect(ScratchAppService, makeScratchAppService(resolution));
+const makeScratchAppServiceLayer = (resolution: Parameters<typeof makeScratchAppService>[0]) =>
+  Layer.effect(ScratchAppService, makeScratchAppService(resolution));
 
 export const layerWith = (inputs: LandofileRuntimeInputs) =>
-  makeScratchAppServiceLayer(makeEngineUserAppResolution(inputs));
+  makeScratchAppServiceLayer({ ...makeEngineUserAppResolution(inputs), inputs: Effect.succeed(inputs) });
 
-export const layer = makeScratchAppServiceLayer({ loadUserLandofile, loadUserLandofileFile });
+export const layer = makeScratchAppServiceLayer({
+  inputs: scopedLandofileRuntimeInputs,
+  loadUserLandofileFile,
+});
 
 /**
  * Converts a live foreground scratch app to a detached one

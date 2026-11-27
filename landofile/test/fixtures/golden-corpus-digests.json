@@ -720,6 +720,10 @@
       "digest": "c6c92dd1b0fd56562771781bee776087f1749d29ae36d72a6be888c76b5a11eb"
     },
     {
+      "fixture": "docs/guides/fork-existing-app/fixtures/fork-project-layers",
+      "digest": "168e991053ceb23324b7b6efd8faa22649c4dcd430ad8bd8b55e1150261a3734"
+    },
+    {
       "fixture": "docs/guides/fork-existing-app/fixtures/fork-source-workspace/site",
       "digest": "8e042833441ed465136cb08fe3c2815a99e0ccfe93e3615e35bdad0d025eedfe"
     },

@@ -165,3 +165,62 @@ export const HostChangeOutcome = Schema.Struct({
   ),
 }).annotate({ description: "What one run did with one planned host change." });
 export type HostChangeOutcome = typeof HostChangeOutcome.Type;
+
+export const HostChangeReceiptPhase = Schema.Literals(["applying", "applied", "undoing"]).annotate({
+  description:
+    "`applying`: a step started and the run has not settled. `applied`: Lando made the change, in whole or in part. `undoing`: uninstall started undoing it.",
+});
+export type HostChangeReceiptPhase = typeof HostChangeReceiptPhase.Type;
+
+export const HostChangeReceipt = Schema.Struct({
+  id: HostChangeId,
+  owner: Schema.String,
+  summary: Schema.String,
+  phase: HostChangeReceiptPhase,
+  attempt: Schema.optionalKey(
+    Schema.String.annotate({
+      description:
+        "The apply attempt that started an `applying` record. Only that attempt may drop it; any other run treats it as an interrupted attempt that may have changed the host.",
+    }),
+  ),
+  startedAt: Schema.String.annotate({ description: "When the first step started, as ISO-8601." }),
+  appliedAt: Schema.optionalKey(
+    Schema.String.annotate({ description: "When the change settled, as ISO-8601." }),
+  ),
+  facts: Schema.optionalKey(
+    Schema.Record(Schema.String, Schema.String).annotate({
+      description: "What the plan observed and the apply learned, such as the exact range it added.",
+    }),
+  ),
+  undo: HostChangeUndo,
+}).annotate({
+  description: "Lando's record of a host change it made, kept so uninstall can undo exactly that change.",
+});
+export type HostChangeReceipt = typeof HostChangeReceipt.Type;
+
+export const HostChangeReceipts = Schema.Array(HostChangeReceipt);
+export type HostChangeReceipts = typeof HostChangeReceipts.Type;
+
+/**
+ * The change an uninstall step declares to undo a recorded change: exactly the recorded undo
+ * commands, with the recorded undo's consent. Undefined when the receipt has no undo steps.
+ */
+export const receiptUndoChange = (
+  receipt: HostChangeReceipt,
+  stage: HostChangeStage,
+): HostChange | undefined =>
+  receipt.undo._tag === "steps"
+    ? {
+        id: receipt.id,
+        owner: receipt.owner,
+        stage,
+        summary: receipt.undo.summary,
+        reason: `Lando recorded this change when it made it: ${receipt.summary}.`,
+        consent: receipt.undo.consent,
+        persistent: false,
+        requirement: "recommended",
+        ...(receipt.facts === undefined ? {} : { details: receipt.facts }),
+        steps: receipt.undo.steps,
+        undo: { _tag: "none", detail: "Setup makes the change again when it needs it." },
+      }
+    : undefined;

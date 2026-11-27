@@ -21,7 +21,6 @@ import {
   stripLandoShellenvBlock,
 } from "../../src/host/shell-profile.ts";
 import {
-  CGROUPS_DELEGATE_CONF_CONTENT,
   type RemoveRuntimeDirDeps,
   UninstallRuntimeDirError,
   buildUninstallPlan,
@@ -765,108 +764,13 @@ describe("uninstall managed provider runtime path", () => {
 });
 
 describe("platform-specific uninstall helpers", () => {
-  test.each(["win32", "darwin"] as const)("does not probe Linux helpers on %s", async (platform) => {
+  test("Windows leaves PowerShell profiles to the user", async () => {
     const roots = makeUninstallRoots("lando-uninstall-platform-helpers-");
     try {
-      const linuxOnlyPath = join(roots.root, "linux-only-helper");
-      const options = sandboxUninstallOptions(roots, {
-        cgroupsDelegatePath: linuxOnlyPath,
-        exists: (path) => {
-          if (path === linuxOnlyPath) throw new Error("Linux helper path was probed");
-          return existsSync(path);
-        },
-      });
-      const plan = await buildUninstallPlan(options, "keep-data", platform);
-      expect(plan.some((step) => step.id === "cgroups-delegate")).toBe(false);
-      if (platform === "win32") {
-        expect(plan.find((step) => step.id === "shell-entries")).toMatchObject({
-          target: "PowerShell profiles",
-          status: "manual",
-        });
-      }
-    } finally {
-      rmSync(roots.root, { recursive: true, force: true });
-    }
-  });
-});
-describe("uninstall cgroups delegation drop-in", () => {
-  test.each([
-    ["setup-written", CGROUPS_DELEGATE_CONF_CONTENT, { keepData: true }],
-    ["echo-written", `${CGROUPS_DELEGATE_CONF_CONTENT}\n`, { purge: true }],
-    ["different", "[Service]\nDelegate=cpu\n", { keepData: true }],
-  ] as const)("%s delegate.conf is manual and left untouched", async (_kind, content, mode) => {
-    const roots = makeUninstallRoots("lando-uninstall-delegate-");
-    try {
-      writeFileSync(roots.cgroupsDelegatePath, content);
-
-      const result = await Effect.runPromise(
-        uninstall(sandboxUninstallOptions(roots, { yes: true, ...mode })),
-      );
-
-      expect(result.failed).toBe(false);
-      expect(readFileSync(roots.cgroupsDelegatePath, "utf8")).toBe(content);
-      expect(result.steps.find((step) => step.id === "cgroups-delegate")).toMatchObject({
+      const plan = await buildUninstallPlan(sandboxUninstallOptions(roots), "keep-data", "win32");
+      expect(plan.find((step) => step.id === "shell-entries")).toMatchObject({
+        target: "PowerShell profiles",
         status: "manual",
-        outcome: "manual",
-        target: roots.cgroupsDelegatePath,
-      });
-    } finally {
-      rmSync(roots.root, { recursive: true, force: true });
-    }
-  });
-
-  test("a read-only drop-in requires no unlink attempt", async () => {
-    const roots = makeUninstallRoots("lando-uninstall-delegate-eacces-");
-    try {
-      writeFileSync(roots.cgroupsDelegatePath, CGROUPS_DELEGATE_CONF_CONTENT);
-
-      const result = await Effect.runPromise(
-        uninstall(
-          sandboxUninstallOptions(roots, {
-            yes: true,
-            keepData: true,
-            remove: async (path: string) => {
-              if (path === roots.cgroupsDelegatePath) {
-                const error = new Error(
-                  `EACCES: permission denied, unlink '${path}'`,
-                ) as NodeJS.ErrnoException;
-                error.code = "EACCES";
-                throw error;
-              }
-              rmSync(path, { recursive: true, force: true });
-            },
-          }),
-        ),
-      );
-
-      expect(result.failed).toBe(false);
-      expect(existsSync(roots.cgroupsDelegatePath)).toBe(true);
-      const step = result.steps.find((entry) => entry.id === "cgroups-delegate");
-      expect(step).toMatchObject({
-        status: "manual",
-        outcome: "manual",
-      });
-      expect(step?.error).toBeUndefined();
-    } finally {
-      rmSync(roots.root, { recursive: true, force: true });
-    }
-  });
-
-  test("missing delegate.conf is skipped", async () => {
-    const roots = makeUninstallRoots("lando-uninstall-delegate-missing-");
-    try {
-      const result = await Effect.runPromise(
-        uninstall(
-          sandboxUninstallOptions(roots, {
-            yes: true,
-            keepData: true,
-          }),
-        ),
-      );
-
-      expect(result.steps.find((step) => step.id === "cgroups-delegate")).toMatchObject({
-        status: "skipped",
-        outcome: "skipped",
       });
     } finally {
       rmSync(roots.root, { recursive: true, force: true });
@@ -1232,7 +1136,6 @@ describe("uninstall shellenv profile strip", () => {
           userDataRoot: roots.userDataRoot,
           userCacheRoot: roots.userCacheRoot,
           userConfRoot: roots.userConfRoot,
-          cgroupsDelegatePath: roots.cgroupsDelegatePath,
           yes: true,
           purge: true,
           listDiscoveredApps: async () => [],
@@ -1287,7 +1190,6 @@ describe("uninstall shellenv profile strip", () => {
           userDataRoot: roots.userDataRoot,
           userCacheRoot: roots.userCacheRoot,
           userConfRoot: roots.userConfRoot,
-          cgroupsDelegatePath: roots.cgroupsDelegatePath,
           yes: true,
           purge: true,
           listDiscoveredApps: async () => [],

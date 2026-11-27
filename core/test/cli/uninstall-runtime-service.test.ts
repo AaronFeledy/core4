@@ -20,7 +20,6 @@ const makeRoots = () => {
 
 // Every host-reaching uninstall path has to land inside the temp root.
 const sandboxUninstallIo = (root: string) => ({
-  cgroupsDelegatePath: join(root, "delegate.conf"),
   shellProfilePath: join(root, ".profile"),
   listDiscoveredApps: async () => [],
 });

@@ -10,6 +10,7 @@ import type { ConfigError, LandoRuntimeBootstrapError } from "@lando/sdk/errors"
 import type { ConfigService } from "@lando/sdk/services";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Layer } from "effect";
+import * as InteractionServiceLayer from "../../interaction/service.ts";
 import { type CliInvocationContext, processInvocationContext } from "../../runtime/invocation-context";
 import { makeLandoGenerationRuntime, makeLandoRuntime } from "../../runtime/layer";
 import type { BuiltInCommandCatalog } from "../built-in-command-catalog-service";
@@ -50,6 +51,8 @@ export const runMetaUninstall = async (
     uninstall(uninstallOptionsFromInput(input, prepare)),
     Layer.mergeAll(
       PrivateFileAccessService.layer,
+      // sudo may ask once, before the first step, only in a terminal run.
+      InteractionServiceLayer.layer,
       HostPrivilegeService.layer({
         handoff: { suspend: suspendCommandProgress },
         hasTerminal: hostHasPromptTerminal,

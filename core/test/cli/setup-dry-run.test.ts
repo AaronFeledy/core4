@@ -10,6 +10,7 @@ import {
   RuntimeProviderRegistry,
 } from "@lando/core/services";
 import { TestRuntimeProvider, makeTestDownloader, makeTestInteractionService } from "@lando/core/testing";
+import { makeHostChangeReceiptStore } from "@lando/engine/host-changes/receipts";
 import { GlobalConfigSources } from "@lando/engine/services/config";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import { layerWith as httpClientLayerWith } from "@lando/http-client/live";
@@ -30,6 +31,7 @@ import {
   makeTestPrivilegeService,
   makeTestRuntimeProviderRegistry,
 } from "@lando/sdk/test";
+import { type TestStateStore, makeTestStateStore } from "@lando/state-store/testing";
 import { Cause, Effect, Exit, Layer, Schema } from "effect";
 import { SetupResultSchema, setupSpec } from "../../src/cli/command-specs/meta/setup.ts";
 
@@ -48,12 +50,27 @@ const change = (id: string, overrides: Partial<HostChange> = {}): HostChange => 
 });
 
 /** A provider that plans a standard and a separately approved change and applies what it is handed. */
-const fixture = () => {
+const fixture = (stateStore?: TestStateStore) => {
   const counts = { setup: 0, opened: 0, elevated: 0, probes: 0, trusted: 0 };
   const proposals: ReadonlyArray<HostChangeProposal> = [
     {
-      change: change("install-uidmap"),
-      apply: (steps) => steps.run("run").pipe(Effect.as({ changed: true })),
+      change: change("install-uidmap", {
+        undo: {
+          _tag: "steps",
+          consent: "separate",
+          summary: "Remove uidmap",
+          steps: [
+            {
+              id: "remove",
+              summary: "remove",
+              argv: ["/usr/bin/true", "remove"],
+              privileged: true,
+              when: "always",
+            },
+          ],
+        },
+      }),
+      apply: (steps) => steps.run("run").pipe(Effect.as({ changed: true, facts: { package: "uidmap" } })),
     },
     {
       change: change("enable-linger", {
@@ -143,6 +160,7 @@ const fixture = () => {
       ),
       Layer.succeed(PrivilegeService, PrivilegeService.of(privilege)),
       Layer.succeed(CertificateAuthority, ca),
+      ...(stateStore === undefined ? [] : [stateStore.layer]),
       httpClientLayerWith({
         fetch: (() => Promise.reject(new Error("no network"))) as unknown as typeof fetch,
       }),
@@ -255,6 +273,18 @@ describe("lando setup host-change consent", () => {
       { id: "provider-lando:enable-linger", outcome: "declined" },
     ]);
     expect([counts.opened, counts.setup, counts.elevated]).toEqual([1, 1, 1]);
+  });
+
+  test("records each change it made so uninstall can undo it", async () => {
+    const stateStore = makeTestStateStore();
+    const { run } = fixture(stateStore);
+
+    succeeded((await run({ yes: true, "no-interactive": true })).exit);
+
+    const receipts = await Effect.runPromise(makeHostChangeReceiptStore(stateStore.service).list);
+    expect(receipts.map(({ id, phase, facts }) => ({ id: String(id), phase, facts }))).toEqual([
+      { id: "provider-lando:install-uidmap", phase: "applied", facts: { package: "uidmap" } },
+    ]);
   });
 
   test("one consent and one session cover trusting the local CA with the provider's changes", async () => {
