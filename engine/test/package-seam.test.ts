@@ -164,6 +164,7 @@ describe("Engine package seam", () => {
 
     expect(workspaceDependencies).toEqual([
       ["@lando/container-runtime", "workspace:*"],
+      ["@lando/data-mover", "workspace:*"],
       ["@lando/http-client", "workspace:*"],
       ["@lando/landofile", "workspace:*"],
       ["@lando/paths", "workspace:*"],
