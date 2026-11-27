@@ -49,49 +49,35 @@ export type CredentialAttempt =
 export const activationDatabaseTargets = (
   plan: AppPlan,
   retained: readonly ServicePlan[],
-): ReadonlyMap<ServiceName, DatabaseTarget> =>
-  new Map(
-    Object.values(plan.services).flatMap((service) => {
-      if (service.connection === undefined) return [];
-      return [
-        [
-          service.name,
-          {
-            service,
-            connection: service.connection,
-            isCatalogCandidate: () => catalogCandidate({ plan, service, retained }) !== undefined,
-          },
-        ] as const,
-      ];
-    }),
-  );
-
-type CredentialTrigger =
-  | { readonly kind: "healthy-edge" }
-  | {
-      readonly kind: "after-apply";
-      readonly action: NonNullable<ApplyResult["services"]>[string]["action"] | undefined;
-      readonly previous: ServicePlan | undefined;
-      readonly attempted: CredentialAttempt | undefined;
-    };
-
-export const credentialWork = (
-  target: DatabaseTarget,
-  trigger: CredentialTrigger,
-): "skip" | "observe" | "converge" => {
-  switch (trigger.kind) {
-    case "healthy-edge":
-      return target.isCatalogCandidate() ? "converge" : "skip";
-    case "after-apply": {
-      const { action, previous, attempted } = trigger;
-      if (attempted?.kind === "unproven-build") return "observe";
-      if (attempted !== undefined || action === undefined) return "skip";
-      if (action === "kept" && !connectionChanged(previous, target.service)) {
-        return previous === undefined && target.isCatalogCandidate() ? "converge" : "skip";
-      }
-      return target.isCatalogCandidate() ? "converge" : "observe";
-    }
+): ReadonlyMap<ServiceName, DatabaseTarget> => {
+  const targets = new Map<ServiceName, DatabaseTarget>();
+  for (const service of Object.values(plan.services)) {
+    if (service.connection === undefined) continue;
+    targets.set(service.name, {
+      service,
+      connection: service.connection,
+      isCatalogCandidate: () => catalogCandidate({ plan, service, retained }) !== undefined,
+    });
   }
+  return targets;
+};
+
+export const credentialWorkAfterApply = (
+  target: DatabaseTarget,
+  input: {
+    readonly action: NonNullable<ApplyResult["services"]>[string]["action"] | undefined;
+    readonly previous: ServicePlan | undefined;
+    readonly attempted: CredentialAttempt | undefined;
+  },
+): "skip" | "observe" | "converge" => {
+  const { action, previous, attempted } = input;
+  if (attempted?.kind === "unproven-build") return "observe";
+  if (attempted !== undefined || action === undefined) return "skip";
+  if (action === "kept") {
+    if (previous === undefined) return target.isCatalogCandidate() ? "converge" : "skip";
+    if (!connectionChanged(previous, target.service)) return "skip";
+  }
+  return target.isCatalogCandidate() ? "converge" : "observe";
 };
 
 export const unprovenBuildDetail = "The database image's catalog provenance could not be verified.";

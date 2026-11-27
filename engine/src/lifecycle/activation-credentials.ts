@@ -25,7 +25,7 @@ import {
   credentialGateError,
   credentialGateFailure,
   credentialRecovery,
-  credentialWork,
+  credentialWorkAfterApply,
   unprovenBuildDetail,
 } from "./activation-credential-policy.ts";
 import { observeUnmanagedCredentials, warning } from "./activation-credential-warnings.ts";
@@ -70,7 +70,7 @@ export const makeActivationCredentialWorker = Effect.fn("Activation.makeCredenti
       for (const edge of consumer.dependsOn) {
         if (!edge.required || edge.condition !== "service_healthy") continue;
         const target = targets.get(edge.service);
-        if (target === undefined || credentialWork(target, { kind: "healthy-edge" }) === "skip") continue;
+        if (target === undefined || !target.isCatalogCandidate()) continue;
         return yield* new ProviderCapabilityError({
           providerId: provider.id,
           operation: "database-credential-convergence",
@@ -103,9 +103,11 @@ export const makeActivationCredentialWorker = Effect.fn("Activation.makeCredenti
     ),
   );
 
-  const remaining = yield* Ref.make(
-    Math.max(...[...targets.values()].map(({ connection }) => credentialBudgetMs(connection.family))),
-  );
+  let budgetMs = 0;
+  for (const { connection } of targets.values()) {
+    budgetMs = Math.max(budgetMs, credentialBudgetMs(connection.family));
+  }
+  const remaining = yield* Ref.make(budgetMs);
   const early = yield* Ref.make(
     new Map<ServiceName, { readonly containerId: string; readonly result: CredentialAttempt | undefined }>(),
   );
@@ -171,8 +173,7 @@ export const makeActivationCredentialWorker = Effect.fn("Activation.makeCredenti
         let result: CredentialAttempt | undefined;
         if (entry === undefined) {
           const target = targets.get(dependency.dependency);
-          if (target === undefined || credentialWork(target, { kind: "healthy-edge" }) === "skip")
-            return undefined;
+          if (target === undefined || !target.isCatalogCandidate()) return undefined;
           const start = yield* Clock.monotonicTimeNanos;
           result = yield* attempt(target, dependency.createdVolumes, {
             kind: "inline",
@@ -206,12 +207,11 @@ export const makeActivationCredentialWorker = Effect.fn("Activation.makeCredenti
   const finish = Effect.fnUntraced(function* (applied: ApplyResult) {
     const attempted = yield* Ref.get(early);
     const results = yield* Effect.forEach(
-      [...targets.values()],
+      targets.values(),
       Effect.fnUntraced(function* (target) {
         const { service, connection } = target;
         const done = attempted.get(service.name)?.result;
-        const work = credentialWork(target, {
-          kind: "after-apply",
+        const work = credentialWorkAfterApply(target, {
           action: applied.services?.[service.name]?.action,
           previous: previousPlan?.services[service.name],
           attempted: done,
