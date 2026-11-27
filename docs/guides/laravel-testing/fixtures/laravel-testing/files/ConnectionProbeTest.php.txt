@@ -1,0 +1,14 @@
+<?php
+
+namespace Tests\Feature;
+
+use Tests\TestCase;
+
+class ConnectionProbeTest extends TestCase
+{
+    public function test_it_reports_the_connection(): void
+    {
+        fwrite(STDOUT, 'probe-connection='.config('database.default').PHP_EOL);
+        $this->assertTrue(true);
+    }
+}

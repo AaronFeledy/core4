@@ -1,0 +1,22 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TestCase;
+
+class UserCountTest extends TestCase
+{
+    use RefreshDatabase;
+
+    public function test_it_starts_from_an_empty_database(): void
+    {
+        $this->assertSame('sqlite', config('database.default'));
+        $this->assertSame(0, User::count());
+
+        User::factory()->create();
+
+        $this->assertSame(1, User::count());
+    }
+}

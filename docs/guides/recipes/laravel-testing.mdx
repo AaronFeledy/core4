@@ -1,0 +1,158 @@
+---
+id: laravel-testing
+provider: test
+tags: [docs, recipes, laravel, php, phpunit, testing]
+---
+
+# Run Laravel tests
+
+Run your Laravel test suite with `lando artisan test`. Before the first run, change two lines in `phpunit.xml` so tests that use `RefreshDatabase` can't wipe your development database.
+
+This page starts from an app on the Laravel recipe with Laravel installed by `lando create-project laravel/laravel`, as [Run the Laravel recipe](./laravel-workflow.mdx) sets up. Run the commands from the app directory on your host.
+
+## Keep tests off your development database
+
+A new Laravel app's `phpunit.xml` sends tests to an in-memory SQLite database:
+
+```xml
+<env name="DB_CONNECTION" value="sqlite"/>
+<env name="DB_DATABASE" value=":memory:"/>
+```
+
+Those lines don't take effect in Lando. The recipe sets `DB_CONNECTION`, `DB_DATABASE`, and the other `DB_*` variables in the `appserver` environment so Laravel can reach the recipe's database:
+
+```sh
+lando exec appserver -- printenv DB_CONNECTION
+```
+
+With the default MariaDB database, that prints `mysql`. PHPUnit's `<env>` entries don't replace a variable that's already set, so the stock config runs your tests against the development database. A test that uses `RefreshDatabase` then runs `migrate:fresh` there, which drops every table and your data with it. Adding `force="true"` to the `<env>` lines doesn't help, because Laravel reads the server variables first and they still hold the recipe's values.
+
+In `phpunit.xml`, change those two lines from `<env>` to `<server>`:
+
+```xml
+<server name="DB_CONNECTION" value="sqlite"/>
+<server name="DB_DATABASE" value=":memory:"/>
+```
+
+PHPUnit always writes `<server>` values, and Laravel reads them first, so tests get SQLite in memory. Other `lando artisan` commands keep using the recipe's database.
+
+## Write a test
+
+```sh
+lando artisan make:test UserCountTest
+```
+
+Laravel writes `tests/Feature/UserCountTest.php`. Replace its contents with a test that checks it starts from an empty database:
+
+```php
+<?php
+
+namespace Tests\Feature;
+
+use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TestCase;
+
+class UserCountTest extends TestCase
+{
+    use RefreshDatabase;
+
+    public function test_it_starts_from_an_empty_database(): void
+    {
+        $this->assertSame('sqlite', config('database.default'));
+        $this->assertSame(0, User::count());
+
+        User::factory()->create();
+
+        $this->assertSame(1, User::count());
+    }
+}
+```
+
+`RefreshDatabase` migrates the in-memory database for the test, so the `users` table starts empty. The first assertion fails the test if it ever runs on another connection.
+
+## Run the suite
+
+```sh
+lando artisan test
+lando artisan test --filter=UserCountTest
+```
+
+`lando artisan test` runs PHPUnit in `appserver`. Each test class gets a `PASS` line, and the `Tests:` summary should read `3 passed`: the two example tests Laravel ships plus yours. `--filter` runs only the tests whose names match.
+
+## Check your development data
+
+```sh
+lando mariadb -e "SELECT email FROM users"
+```
+
+Your development rows are still there. If the table is empty after a test run, check that both `<server>` lines are in `phpunit.xml`.
+
+<Guide>
+  <Scenario id="laravel-tests" layer="e2e" timeout={600000} tags={["@smoke"]} render={false} reason="Prove the stock phpunit.xml tests the development database, the server lines move tests to SQLite in memory, and the suite leaves development data alone">
+    <Step name="app">
+      <UseFixture name="laravel-testing" />
+      <Run command="lando init . --recipe laravel --name=laravel-testing --yes" />
+      <Run command="lando start" />
+      <Run command="lando create-project laravel/laravel" />
+    </Step>
+    <Hidden reason="Stand in for development data">
+      <Step name="dev-data">
+        <Run command="lando artisan db:seed --force" />
+        <Verify command={`lando mariadb -e "SELECT email FROM users"`} expect={{ stdout: { regex: "test@example\\.com" } }} />
+      </Step>
+    </Hidden>
+    <Step name="recipe-env">
+      <Verify command="lando exec appserver -- printenv DB_CONNECTION" expect={{ stdout: { regex: "^mysql\\s*$" } }} />
+    </Step>
+    <Hidden reason="Tripwire for #2802: with the stock phpunit.xml a RefreshDatabase test runs on the development database and empties it">
+      <Step name="stock-config-wipes">
+        <Run command="lando exec appserver -- cp files/UserCountTest.php.txt tests/Feature/UserCountTest.php" />
+        <Verify command="lando artisan test --filter=UserCountTest" expectExit={1} />
+        <Verify command={`lando mariadb -e "SELECT COUNT(*) AS users FROM users"`} expect={{ stdout: { regex: "users\\s+0\\s*$" } }} />
+        <Run command="lando exec appserver -- rm tests/Feature/UserCountTest.php" />
+        <Run command="lando artisan db:seed --force" />
+      </Step>
+    </Hidden>
+    <Hidden reason="force on the env lines still leaves Laravel on the recipe's connection">
+      <Step name="env-force">
+        <Run command="lando exec appserver -- cp files/ConnectionProbeTest.php.txt tests/Feature/ConnectionProbeTest.php" />
+        <Run command={`lando exec appserver -- sed -i -e 's|<env name="DB_CONNECTION" value="sqlite"/>|<env name="DB_CONNECTION" value="sqlite" force="true"/>|' -e 's|<env name="DB_DATABASE" value=":memory:"/>|<env name="DB_DATABASE" value=":memory:" force="true"/>|' phpunit.xml`} />
+        <Verify command="lando artisan test --filter=ConnectionProbeTest" expect={{ stdout: { regex: "probe-connection=mysql" } }} />
+      </Step>
+    </Hidden>
+    <Hidden reason="Make the page's phpunit.xml edit and check that tests now see SQLite">
+      <Step name="server-lines">
+        <Run command={`lando exec appserver -- sed -i -e 's|<env name="DB_CONNECTION" value="sqlite" force="true"/>|<server name="DB_CONNECTION" value="sqlite"/>|' -e 's|<env name="DB_DATABASE" value=":memory:" force="true"/>|<server name="DB_DATABASE" value=":memory:"/>|' phpunit.xml`} />
+        <Verify command={`lando exec appserver -- grep -c '<server name="DB_' phpunit.xml`} expect={{ stdout: { regex: "^2\\s*$" } }} />
+        <Verify command="lando artisan test --filter=ConnectionProbeTest" expect={{ stdout: { regex: "probe-connection=sqlite" } }} />
+        <Run command="lando exec appserver -- rm tests/Feature/ConnectionProbeTest.php" />
+      </Step>
+    </Hidden>
+    <Step name="write-test">
+      <Run command="lando artisan make:test UserCountTest" />
+    </Step>
+    <Hidden reason="Replace the generated test with the page's version from the fixture">
+      <Step name="test-file">
+        <Run command="lando exec appserver -- cp files/UserCountTest.php.txt tests/Feature/UserCountTest.php" />
+      </Step>
+    </Hidden>
+    <Step name="run-suite">
+      <Verify command="lando artisan test" expect={{ stdout: { regex: "UserCountTest[\\s\\S]*Tests\\b[^\\n]*3 passed" } }} />
+      <Verify command="lando artisan test --filter=UserCountTest" expect={{ stdout: { regex: "Tests\\b[^\\n]*1 passed" } }} />
+    </Step>
+    <Step name="dev-data-kept">
+      <Verify command={`lando mariadb -e "SELECT email FROM users"`} expect={{ stdout: { regex: "test@example\\.com" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y --purge" />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Next
+
+- [Run the Laravel recipe](./laravel-workflow.mdx)
+- [Import and export app databases](../tooling/db-import-export.mdx)
+- [Run Laravel Horizon queues](./laravel-horizon.mdx)
