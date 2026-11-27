@@ -4,7 +4,11 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { TestSelectionError, runTestSelection } from "../../../scripts/run-test-selection.ts";
 import { collectTestFiles, resolveTestSelection } from "../../../scripts/test-selection-files.ts";
-import { type TestSelection, selectionMatches } from "../../../scripts/test-selections.ts";
+import {
+  type ContributorTestPreset,
+  type TestSelection,
+  selectionMatches,
+} from "../../../scripts/test-selections.ts";
 import { createTestSelectionFixture } from "./support/test-selection-fixture.ts";
 
 const ROOT_KEYS = [
@@ -16,7 +20,7 @@ const ROOT_KEYS = [
 
 const runCapturedSelection = async (
   root: string,
-  selection: TestSelection,
+  selection: TestSelection | ContributorTestPreset,
   env: Readonly<Record<string, string | undefined>> = process.env,
 ) => {
   const runner = new URL("../../../scripts/run-test-selection.ts", import.meta.url).href;
@@ -26,7 +30,10 @@ const runCapturedSelection = async (
       "--no-orphans",
       "--eval",
       `import { runTestSelection } from ${JSON.stringify(runner)};
-       process.exitCode = await runTestSelection(${JSON.stringify(selection.id)}, ${JSON.stringify({ root, selections: [selection] })});`,
+       process.exitCode = await runTestSelection(${JSON.stringify(selection.id)}, ${JSON.stringify({
+         root,
+         ...("kind" in selection ? { presets: [selection] } : { selections: [selection] }),
+       })});`,
     ],
     { cwd: root, env, stdout: "pipe", stderr: "pipe" },
   );
@@ -85,6 +92,29 @@ test("runs a tree selector through Bun's directory walk with ignore patterns and
   const { code, output } = await runCapturedSelection(fixture.root, selection);
   expect(code, output).toBe(0);
   expect(await Bun.file(receipt).text()).toBe("tree\n");
+});
+
+test("runs a contributor preset by id without running its ignored files", async () => {
+  await using fixture = await createTestSelectionFixture();
+  const receipt = join(fixture.root, "preset.txt");
+  await fixture.put(
+    "pkg/test/unit.test.ts",
+    `import { test } from "bun:test";
+    test("selected case", async () => { await Bun.write(${JSON.stringify(receipt)}, "selected"); });`,
+  );
+  await fixture.put(
+    "pkg/test/live.integration.test.ts",
+    `import { test } from "bun:test";
+    test("ignored case", () => { throw new Error("Preset ran a live test"); });`,
+  );
+  const { code, output } = await runCapturedSelection(fixture.root, {
+    kind: "preset",
+    id: "upgrade",
+    paths: ["pkg/test/"],
+    ignore: ["**/*.integration.test.ts"],
+  });
+  expect(code, output).toBe(0);
+  expect(await Bun.file(receipt).text()).toBe("selected");
 });
 
 test("rejects unknown, empty, and Go selections before spawning Bun", async () => {

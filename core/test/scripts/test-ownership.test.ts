@@ -252,6 +252,44 @@ test("checks the exact unit shard matrix and the Go builder without treating Go 
 });
 
 test("the real repository has no unowned tests or unexecuted declarations", async () => {
-  const result = await checkTestOwnership();
+  const [result, withoutPresets] = await Promise.all([
+    checkTestOwnership(),
+    collectTestInventory({ presets: [] }),
+  ]);
   expect(result.issues.map(formatOwnershipIssue)).toEqual([]);
+  expect(result.entries).toEqual(withoutPresets);
+});
+
+test("a preset checks every selector but cannot admit a test with live prerequisites", async () => {
+  await using fixture = await createTestSelectionFixture();
+  const { issues } = await checkTestOwnership({
+    ...fixture.options,
+    presets: [
+      {
+        kind: "preset",
+        id: "upgrade",
+        paths: ["pkg/test/", "pkg/test/missing.test.ts"],
+      },
+    ],
+  });
+  expect(issues.map((issue) => [issue.code, issue.paths])).toEqual([
+    ["PRESET_FILE", ["upgrade", "pkg/test/live.integration.test.ts"]],
+    ["STALE_SELECTOR", ["upgrade", "pkg/test/missing.test.ts"]],
+  ]);
+});
+
+test.each([
+  "CHECK=1 bun run test:selection 'upgrade'",
+  "bun test:selection upgrade",
+  "bun scripts/run-test-selection.ts upgrade",
+])("a contributor preset cannot run from a workflow: %s", async (command) => {
+  await using fixture = await createTestSelectionFixture();
+  await fixture.workflow(`bun run test:selection live\n${command}`);
+  const { issues } = await checkTestOwnership({
+    ...fixture.options,
+    presets: [{ kind: "preset", id: "upgrade", paths: ["pkg/test/unit.test.ts"] }],
+  });
+  expect(issues.map((issue) => [issue.code, issue.paths])).toEqual([
+    ["WORKFLOW_PRESET", ["upgrade", "ci.yml", "live"]],
+  ]);
 });

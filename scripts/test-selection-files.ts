@@ -1,5 +1,5 @@
 import { resolve } from "node:path";
-import { type TestSelection, selectionMatches } from "./test-selections.ts";
+import { type ContributorTestPreset, type TestSelection, selectionMatches } from "./test-selections.ts";
 
 export const TEST_ROOT = resolve(import.meta.dirname, "..");
 export const normalizeTestPath = (path: string): string => path.replaceAll("\\", "/").replace(/^\.\//u, "");
@@ -28,13 +28,17 @@ export const collectTestFiles = async (root = TEST_ROOT): Promise<readonly strin
   return existing.filter((path): path is string => path !== undefined);
 };
 
-export const resolveTestSelection = (selection: TestSelection, files: readonly string[]): readonly string[] =>
+export const resolveTestSelection = (
+  selection: TestSelection | ContributorTestPreset,
+  files: readonly string[],
+): readonly string[] =>
   [
     ...new Set(
       files.filter(
         (path) =>
-          (selection.runner === "go" ? path.endsWith("_test.go") : isBunTest(path)) &&
-          selectionMatches(selection, path),
+          (!("kind" in selection) && selection.runner === "go"
+            ? path.endsWith("_test.go")
+            : isBunTest(path)) && selectionMatches(selection, path),
       ),
     ),
   ].sort();
