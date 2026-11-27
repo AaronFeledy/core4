@@ -157,52 +157,67 @@ services:
 
 ## Upgrade to a newer MariaDB
 
-Changing `image:` keeps the data volume, so the newer server opens the old data files. Set `MARIADB_AUTO_UPGRADE` so the official image runs `mariadb-upgrade` on them when the version changes. Run these from the app directory on your host. This example moves an app pinned to `mariadb:10.11` up to the default `mariadb:11.4`.
+Changing `image:` keeps the data volume. Lando sets `MARIADB_AUTO_UPGRADE=1` on every `mariadb` service, so the official image runs `mariadb-upgrade` on the existing data when the version changes. To move from `mariadb:10.11` to the default `mariadb:11.4`, run these commands from the app directory on your host.
 
-1. Export a copy while the old version still runs:
+1. Export the database while the old version still runs. You can't undo an upgrade in place. The export holds the service's configured database, not other databases or user accounts on the server:
 
    ```sh
    lando db:export before-upgrade.sql.gz
    ```
 
-2. Turn on the upgrade, then drop the pin. To land on another version, set `image:` to it instead of removing it:
+2. Drop the pin. To upgrade to a different version, set `image:` to that version instead:
 
    ```sh
-   lando app:config:set services.db.environment.MARIADB_AUTO_UPGRADE 1
    lando app:config:unset services.db.image
    ```
 
-3. Apply it. Lando replaces the `db` container, and the image backs up its system tables and runs `mariadb-upgrade` before the service reports ready:
+3. Start the app. Lando replaces the `db` container, and the image backs up its system tables and runs `mariadb-upgrade` before the service reports ready:
 
    ```sh
    lando start
    ```
 
-4. Check the server version, and the version `mariadb-upgrade` last ran for:
+4. Check the running server version and the version recorded by `mariadb-upgrade`:
 
    ```sh
    lando mariadb -N -e 'SELECT VERSION()'
    lando exec db -- cat /var/lib/mysql/mariadb_upgrade_info
    ```
 
-   Both should name the new version, and your tables are still there. That proves the upgrade ran, not that your app's queries behave the same on the new server. Run your app's tests next.
+   Both should name the new version, and your tables should still be there. Run your app's tests to check that its queries still work on the new server.
 
-You can leave `MARIADB_AUTO_UPGRADE` set. On later starts with the same version, the image logs `MariaDB upgrade not required` and skips it.
+On later starts with the same version, the image logs `MariaDB upgrade not required` and skips the upgrade. To stop the image from upgrading data on its own, set `MARIADB_AUTO_UPGRADE: "0"` under the service's `environment:`. Your value replaces Lando's. The newer server still opens the data, but nothing records its version, so Lando can't stop a later downgrade.
 
 ## Go back to the old version
 
-MariaDB doesn't support downgrading data files that a newer series has opened, so don't just set `image:` back. Restore the export onto a fresh volume instead. `--volumes` deletes the data of every service in the app, not only `db`, so back up anything else you need first:
+MariaDB doesn't support downgrading data files that a newer series has created or upgraded. If you set `image:` back, Lando refuses to start the older server when the recorded data version is newer than the image's:
+
+```sh
+lando app:config:set services.db.image mariadb:10.11
+lando start
+```
+
+The `db` container exits before the server starts. The error includes this log tail:
+
+```
+MariaDB 10.11 can't open this data: MariaDB 11.4 already created or upgraded it, and MariaDB doesn't support downgrading data files.
+To keep this data, set services.db.image to mariadb:11.4 or newer, then run lando start.
+To move it to 10.11, run lando db:export on the newer version, then lando destroy --volumes (this deletes every service's data in the app), switch back, run lando start, and lando db:import the export.
+```
+
+Lando runs this check in its own launcher on official `mariadb` images. A service that sets `command:`, `entrypoint:`, or `build:` skips it.
+
+To go back, restore the export from before the upgrade onto a fresh volume. `--volumes` deletes the data of every service in the app, not only `db`, so back up anything else you need first. With `image:` already set to the old version:
 
 ```sh
 lando destroy -y --volumes
-lando app:config:set services.db.image mariadb:10.11
 lando start
 lando db:import before-upgrade.sql.gz --yes
 ```
 
-The same export, destroy, and import route also works when you'd rather start the new version on a clean volume than upgrade in place.
+Use the same export, destroy, and import steps to start the new version on a clean volume instead of upgrading in place.
 
-  <Scenario id="upgrade" layer="e2e" tags={['@smoke']} render>
+  <Scenario id="upgrade" layer="e2e" timeout={600000} tags={['@smoke']} render>
     <Step name="scaffold"><UseFixture name="mariadb-pinned" /></Step>
     <Hidden reason="Start on the pinned 10.11 and seed a row to carry across">
       <Step name="seed">
@@ -210,14 +225,13 @@ The same export, destroy, and import route also works when you'd rather start th
         <Run command={`lando mariadb -e "CREATE TABLE notes (body TEXT); INSERT INTO notes VALUES ('still here');"`} />
       </Step>
     </Hidden>
-    <Hidden reason="Tripwire for #2566: the stock mariadb service does not set MARIADB_AUTO_UPGRADE yet">
-      <Step name="no-auto-upgrade-default">
-        <Verify command="lando exec db -- env" expect={{ stdout: { regex: "^(?![\\s\\S]*MARIADB_AUTO_UPGRADE=)[\\s\\S]*MYSQL_TCP_PORT=3306" } }} />
+    <Hidden reason="Prove the stock mariadb service sets MARIADB_AUTO_UPGRADE without any authored environment">
+      <Step name="auto-upgrade-default">
+        <Verify command="lando exec db -- printenv MARIADB_AUTO_UPGRADE" expect={{ stdout: { regex: "^1\\s*$" } }} />
       </Step>
     </Hidden>
     <Step name="export"><Run command="lando db:export before-upgrade.sql.gz" /></Step>
     <Step name="upgrade">
-      <Run command="lando app:config:set services.db.environment.MARIADB_AUTO_UPGRADE 1" />
       <Run command="lando app:config:unset services.db.image" />
       <Run command="lando start" />
     </Step>
@@ -233,9 +247,17 @@ The same export, destroy, and import route also works when you'd rather start th
         <Verify command="lando logs --service db" expect={{ stdout: { regex: "MariaDB upgrade not required" } }} />
       </Step>
     </Hidden>
+    <Step name="refused">
+      <Run command="lando app:config:set services.db.image mariadb:10.11" />
+      <Run command="lando start" expectExit={1} />
+    </Step>
+    <Hidden reason="Prove the failed start reports the db exit and carries the refusal in its machine-readable log tail">
+      <Step name="refusal-message">
+        <Verify command="lando start --format=json" expectExit={1} expect={{ stdout: { regex: "^(?=[\\s\\S]*\"_tag\":\"ServiceNotReadyError\")(?=[\\s\\S]*\"exitCode\":1)(?=[\\s\\S]*\"logTail\":[\\s\\S]*MariaDB 10[.]11 can't open this data: MariaDB 11[.]4 already created or upgraded it)" } }} />
+      </Step>
+    </Hidden>
     <Step name="roll-back">
       <Run command="lando destroy -y --volumes" />
-      <Run command="lando app:config:set services.db.image mariadb:10.11" />
       <Run command="lando start" />
       <Run command="lando db:import before-upgrade.sql.gz --yes" />
     </Step>
@@ -243,6 +265,14 @@ The same export, destroy, and import route also works when you'd rather start th
       <Step name="restored">
         <Verify command="lando mariadb -N -e 'SELECT VERSION()'" expect={{ stdout: { regex: "^10[.]11[.]" } }} />
         <Verify command="lando mariadb -N -e 'SELECT body FROM notes'" expect={{ stdout: { regex: "still here" } }} />
+      </Step>
+    </Hidden>
+    <Hidden reason="Prove an authored MARIADB_AUTO_UPGRADE of 0 replaces the default and the image skips the upgrade">
+      <Step name="opt-out">
+        <Run command="lando app:config:set services.db.environment.MARIADB_AUTO_UPGRADE 0" />
+        <Run command="lando app:config:unset services.db.image" />
+        <Run command="lando start" />
+        <Verify command="lando logs --service db" expect={{ stdout: { regex: "skipped due to [$]MARIADB_AUTO_UPGRADE setting" } }} />
       </Step>
     </Hidden>
     <Step name="cleanup"><Cleanup /><Run command="lando destroy -y --volumes" /></Step>
