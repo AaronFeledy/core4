@@ -122,6 +122,35 @@ To materialize a recipe instead of forking the app, use [Start a scratch app fro
       <Run command="lando scratch:destroy {{capture:scratchId}}" />
     </Step>
   </Scenario>
+  <Scenario id="fork-quoted-nested-source-from-app" layer="scenario" render={false} reason="Check quoted relative paths and parent discovery from inside a different valid app">
+    <Step name="fork-the-source-not-the-caller">
+      <UseFixture name="fork-from-another-app" />
+      <Run command={'lando scratch --fork --source "source app/nested" --mount-cwd=/caller --detach --format=json'} capture={{ name: "scratchId", json: "handle.id" }} />
+      <Verify command="lando scratch:info {{capture:scratchId}} --format=json" expect={{ stdout: { regex: "\"id\":\\s*\"scratch-fork-target-guide-[a-f0-9]{6}\"" } }} />
+      <Verify command="lando scratch:info {{capture:scratchId}} --format=json" expect={{ stdout: { regex: "\"target\":\\s*\"/caller\",\\s*\"source\":\\s*\"[^\"]*[\\\\/]fork-from-another-app\"" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando scratch:destroy {{capture:scratchId}} --yes" />
+    </Step>
+  </Scenario>
+  <Scenario id="fork-targeted-source-live" layer="e2e" timeout={180000} platforms={["linux"]} tags={["@smoke"]} render={false} reason="Verify a targeted full fork copies the source while a targeted cwd fork reads the caller">
+    <Step name="start-a-full-fork-of-the-source">
+      <UseFixture name="fork-from-another-app" />
+      <Run command={'lando scratch --fork --source "source app/nested" --detach --format=json'} capture={{ name: "fullId", json: "handle.id" }} />
+      <Verify command="lando scratch:info {{capture:fullId}} --format=json" expect={{ stdout: { regex: "\"service\":\\s*\"target\",\\s*\"target\":\\s*\"/app\",\\s*\"source\":\\s*\"[^\"]*/scratch/scratch-fork-target-guide-[a-f0-9]{6}/root\"" } }} />
+      <Verify file="fork-from-another-app/source app/marker.txt" expect={{ regex: "^source-marker\\r?\\n$" }} />
+    </Step>
+    <Step name="mount-the-caller-in-a-cwd-fork-of-the-source">
+      <Run command={'lando scratch --fork --source "source app/nested" --mount-cwd=/caller --detach --format=json'} capture={{ name: "cwdId", json: "handle.id" }} />
+      <Verify file="fork-from-another-app/target-receipt.txt" expect={{ regex: "^target-service:caller-marker\\n$" }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando scratch:destroy {{capture:cwdId}} --yes" />
+      <Run command="lando scratch:destroy {{capture:fullId}} --yes" />
+    </Step>
+  </Scenario>
   <Scenario id="reject-invalid-fork-sources" render={false} reason="Reject invalid explicit paths without falling back to an enclosing app">
     <Step name="reject-invalid-source-paths">
       <UseFixture name="fork-source-workspace" />

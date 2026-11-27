@@ -1,0 +1,29 @@
+name: fork-target-guide
+router:
+  enabled: false
+services:
+  target:
+    type: compose
+    image: docker.io/library/busybox:1.37
+    appMount: /app
+    home: false
+    command:
+      - sh
+      - -ec
+      - |
+        if test -d /caller; then
+          marker=$(cat /caller/marker.txt)
+          test "$marker" = caller-marker
+          printf 'target-service:%s\n' "$marker" > /caller/target-receipt.txt
+        else
+          marker=$(cat /app/marker.txt)
+          test "$marker" = source-marker
+          printf 'changed-in-fork\n' > /app/marker.txt
+        fi
+        touch /tmp/fork-ready
+        exec sleep 600
+    readiness:
+      command: [test, -f, /tmp/fork-ready]
+      intervalSeconds: 1
+      timeoutSeconds: 2
+      retries: 10
