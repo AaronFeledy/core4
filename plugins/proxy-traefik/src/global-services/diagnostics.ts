@@ -9,7 +9,7 @@ import {
   renderTraefikDiagnosticNginxConfig,
 } from "../diagnostics.ts";
 
-export const TRAEFIK_DIAGNOSTICS_IMAGE = "nginx:1.26-alpine" as const;
+export const TRAEFIK_DIAGNOSTICS_IMAGE = "nginx:1.30-alpine" as const;
 export const TRAEFIK_DIAGNOSTICS_COMMAND: ReadonlyArray<string> = [
   "sh",
   "-ec",

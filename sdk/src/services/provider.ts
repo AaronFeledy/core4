@@ -374,8 +374,8 @@ export interface ServiceRuntimeIdentity {
 export interface ListFilter {
   readonly app?: AppId;
   readonly includeScratch?: boolean;
-  /** Also report Lando-labeled containers no applied plan accounts for. Used by teardown evidence
-   * and host-wide observation; providers that already discover by label may ignore this flag. */
+  /** Also report Lando-labeled containers no applied plan accounts for. Used by applied-state
+   * evidence and host-wide observation; providers that already discover by label may ignore this flag. */
   readonly includeUnplanned?: boolean;
 }
 
@@ -461,10 +461,17 @@ export class RuntimeProviderRegistry extends Context.Service<
       providerId: ProviderId,
       root: AbsolutePath,
     ) => Effect.Effect<ResourceOwnership | undefined, ProviderUnavailableError | NoProviderInstalledError>;
+    /** Every ownership inventory one provider recorded, read from the filesystem only. */
+    readonly listResourceOwnership?: (
+      providerId: ProviderId,
+    ) => Effect.Effect<ReadonlyArray<ResourceOwnership>, ProviderUnavailableError | NoProviderInstalledError>;
     /**
-     * The applied plan for a lookup root, failing closed on contradictory or orphaned runtime
-     * state. With the default `"ancestor"` lookup a working directory inside an app resolves
-     * that app; `"exact"` never returns an enclosing app's plan.
+     * The applied plan for a lookup root, failing closed on contradictory state. With no matching
+     * plan the root is not applied (`undefined`) unless workloads may still run there: containers
+     * a running runtime reports, recorded containers on a runtime that could not be checked, or an
+     * ownership record that does not name its resources. Retained volumes and recorded networks
+     * never block. With the default `"ancestor"` lookup a working directory inside an app
+     * resolves that app; `"exact"` never returns an enclosing app's plan.
      */
     readonly resolveAppliedPlan: (
       root: AbsolutePath,
@@ -729,6 +736,11 @@ export interface OwnedResourcesCleanupOptions {
   /** Restrict ownership-inventory cleanup to these app identities at a shared root. */
   readonly appIds?: ReadonlyArray<AppId>;
   readonly purgeCaches?: boolean;
+  /**
+   * Retire the selected apps' shared global-cache members without inspecting or deleting the
+   * volumes, which other apps keep using. Ignored when `purgeCaches` removes them instead.
+   */
+  readonly releaseCaches?: boolean;
 }
 
 export type RuntimeProviderShape = RuntimeProvider["Service"];

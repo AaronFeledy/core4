@@ -9,7 +9,7 @@ export const TeardownProvider = Context.Reference<ProviderId | undefined>("@land
   defaultValue: () => undefined,
 });
 
-const destroyCommand = (app: AppRef, provider: ProviderId): string => {
+export const destroyCommand = (app: Pick<AppRef, "kind" | "id">, provider: ProviderId): string => {
   switch (app.kind) {
     case "global":
       return `lando global:destroy --provider=${provider} --yes`;

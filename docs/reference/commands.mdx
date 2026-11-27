@@ -675,7 +675,7 @@ Arguments:
 
 | Argument | Description |
 | --- | --- |
-| `id` | Scratch app id. |
+| `id` | Scratch app id or the --name it was started with. |
 
 Flags:
 
@@ -707,7 +707,7 @@ Arguments:
 
 | Argument | Description |
 | --- | --- |
-| `id` | Scratch app id. |
+| `id` | Scratch app id or the --name it was started with. |
 
 ## `lando apps:scratch:list`
 
@@ -725,7 +725,7 @@ Arguments:
 
 | Argument | Description |
 | --- | --- |
-| `id` | Scratch app id. |
+| `id` | Scratch app id or the --name it was started with. |
 
 Flags:
 
@@ -772,7 +772,7 @@ Flags:
 | `--answers` | Path to a JSON answers file. |
 | `--detach` | Return after acquiring the scratch app. |
 | `--exclude` | Exclude a path pattern from a fully isolated fork (repeatable). |
-| `--fork` | Use the current app as the scratch source. |
+| `--fork` | Fork an existing app. |
 | `--from` | Recipe reference to materialize as a scratch app. |
 | `--hostname` | Keep this exact planned route hostname unchanged (repeatable). |
 | `--interactive` | Force interactive prompting even when stdin or stderr is not a terminal. |
@@ -786,11 +786,12 @@ Flags:
 | `--option` | Alias for --answer in key=value form (repeatable). |
 | `--run-post-init` | Run recipe post-init hooks after materialization. |
 | `--share-global-storage` | Join the shared cross-app network and expose the global app's storage scope. |
+| `--source` | Directory to discover the app to fork from. Requires --fork; defaults to the current directory. |
 | `--yes, -y` | Accept every recipe prompt's default without asking. |
 
 ## `lando apps:scratch:stop`
 
-Stop a scratch Lando app.
+Stop and destroy a scratch Lando app.
 
 Aliases: `lando scratch:stop`
 
@@ -798,7 +799,7 @@ Arguments:
 
 | Argument | Description |
 | --- | --- |
-| `id` | Scratch app id. |
+| `id` | Scratch app id or the --name it was started with. |
 
 Flags:
 

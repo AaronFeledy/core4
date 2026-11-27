@@ -1,10 +1,10 @@
-import { expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
 import { ProcessTimeoutError } from "@lando/sdk/errors";
 import { ProcessRunner } from "@lando/sdk/services";
 import { Cause, Effect, Exit, Stream } from "effect";
 import * as BunProcessRunner from "../../src/services/process-runner";
 
-for (const mode of ["take", "interrupt", "timeout"] as const) {
+for (const mode of ["take", "interrupt", "signal", "timeout"] as const) {
   test(`kills and reaps a streaming child after ${mode}`, async () => {
     // Given a real child that emits its PID then ignores graceful termination.
     const ready = Promise.withResolvers<number>();
@@ -19,6 +19,7 @@ for (const mode of ["take", "interrupt", "timeout"] as const) {
             'process.on("SIGTERM", () => {}); setTimeout(() => process.exit(0), 5000); process.stdout.write(String(process.pid) + "\\n");',
           ],
           ...(mode === "timeout" ? { timeoutMs: 300 } : {}),
+          ...(mode === "signal" ? { signal: controller.signal } : {}),
         })
         .pipe(
           Stream.tap(({ chunk }) =>
@@ -30,7 +31,7 @@ for (const mode of ["take", "interrupt", "timeout"] as const) {
         );
       return (mode === "take" ? stream.pipe(Stream.take(1)) : stream).pipe(Stream.runDrain);
     }).pipe(Effect.provide(BunProcessRunner.layer));
-    const completion = Effect.runPromiseExit(program, { signal: controller.signal });
+    const completion = Effect.runPromiseExit(program, mode === "signal" ? {} : { signal: controller.signal });
     let pid: number | undefined;
     try {
       const childPid = await Effect.runPromise(
@@ -38,10 +39,11 @@ for (const mode of ["take", "interrupt", "timeout"] as const) {
       );
       pid = childPid;
       // When consumption ends early, is interrupted, or reaches its timeout.
-      if (mode === "interrupt") controller.abort();
+      if (mode === "interrupt" || mode === "signal") controller.abort();
       const exit = await Effect.runPromise(Effect.promise(() => completion).pipe(Effect.timeout("1 second")));
       // Then termination has reaped the child, not merely stopped the stream fiber.
       expect(Exit.isSuccess(exit)).toBe(mode === "take");
+      if (mode === "signal") expect(Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause)).toBe(true);
       if (Exit.isFailure(exit) && mode === "timeout") {
         const failure = Cause.findErrorOption(exit.cause);
         expect(failure._tag === "Some" && failure.value instanceof ProcessTimeoutError).toBe(true);
@@ -60,6 +62,42 @@ for (const mode of ["take", "interrupt", "timeout"] as const) {
     }
   }, 4500);
 }
+
+test.each([0, 7])("keeps native exit %i when the signal aborts during output delivery", async (code) => {
+  const controller = new AbortController();
+  const source = `process.stdout.write("ready"); process.exit(${code});`;
+  const spawn = spyOn(Bun, "spawn");
+  try {
+    const stream = BunProcessRunner.service
+      .streamWithExit({
+        cmd: process.execPath,
+        args: ["-e", source],
+        signal: controller.signal,
+      })
+      .pipe(
+        Stream.tap((event) => {
+          if (!("kind" in event)) return Effect.void;
+          const index = spawn.mock.calls.findIndex(([argv]) => Array.isArray(argv) && argv.includes(source));
+          const child = spawn.mock.results[index]?.value;
+          if (
+            typeof child !== "object" ||
+            child === null ||
+            !("exited" in child) ||
+            !(child.exited instanceof Promise)
+          )
+            return Effect.die(new TypeError("Could not observe the native child"));
+          const exited = child.exited;
+          return Effect.promise(() => exited).pipe(Effect.tap(() => Effect.sync(() => controller.abort())));
+        }),
+      );
+    const events = await Effect.runPromise(Stream.runCollect(stream));
+    expect(controller.signal.aborted).toBe(true);
+    expect(events.at(-1)).toEqual({ exitCode: code });
+  } finally {
+    spawn.mockRestore();
+    controller.abort();
+  }
+});
 
 test("streaming concurrently drains both pipes and feeds stdin", async () => {
   const chunks = await Effect.runPromise(

@@ -69,7 +69,7 @@ describe("@lando/proxy-traefik plugin exports", () => {
       );
       expect(diagnostics).toMatchObject({
         type: "compose",
-        image: "nginx:1.26-alpine",
+        image: "nginx:1.30-alpine",
         appMount: false,
         command: TRAEFIK_DIAGNOSTICS_COMMAND,
         hostnames: ["traefik-diagnostics.global.internal"],

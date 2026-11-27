@@ -92,7 +92,7 @@ The files in the build context are build inputs. When the context is the app fol
 
 `lando destroy` keeps the newest image of each built service for up to seven days, so a `lando start` in that window reuses it without building. `lando destroy --purge-caches` removes those images right away. See [Tear down](../cli/everyday-commands.mdx#tear-down).
 
-A `build.app` step did its work inside one container, so its result counts only for that container. `lando start` reports the step as cached while the service still has the container the step ran in, and runs the step in every new container:
+A `build.app` step did its work inside one container, so its result counts only for that container. `lando start` can reuse it only if Lando recorded exit code `0`. A result without a recorded exit code is not reusable, even if the container stayed. For a step with a recorded success:
 
 | What you ran | `build.app` steps |
 | --- | --- |
@@ -143,7 +143,9 @@ The two phases fail differently:
 | `build.artifact` | Stops the start, along with the other services' image builds, which are reported as aborted | Nothing. No container exists yet |
 | `build.app` | Lets steps that don't depend on the failed one finish, then fails the start with every failed step listed | The app's containers |
 
-Either way the error names the service, repeats the last lines of the step's output, and gives the `lando logs --build` command that prints all of it. To read it and get going again, see [Recover from a failed build step](./php-build-failures.mdx).
+Either way the error names the service and can include the last lines of the step's output. To read the saved output with `lando logs --build` and get going again, see [Recover from a failed build step](./php-build-failures.mdx).
+
+If a `build.app` step's output ends without an exit status, Lando saves the output but records the step as failed, not cached. Check what the step changed before running `lando start` again, because the next start can run the step again even if it already did its work.
 
 ## Check what the planner sees
 

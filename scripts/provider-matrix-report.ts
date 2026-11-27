@@ -1,5 +1,6 @@
 import { bounded, writeJsonReport } from "./_acceptance-harness.ts";
 import type { ProviderAcceptanceCellPlan, ProviderAcceptanceCheckPlan } from "./provider-matrix-plan.ts";
+import { withRunnerOwnedTestRoots } from "./test-preload-roots.ts";
 
 export type ProviderAcceptanceOutcome = "passed" | "failed" | "skipped";
 
@@ -210,15 +211,16 @@ export const writeProviderAcceptanceReport = async ({
   await writeJsonReport(path, report);
 };
 
-export const runBunCommand = async (command: readonly string[]): Promise<CommandResult> => {
-  const proc = Bun.spawn({ cmd: Array.from(command), env: process.env, stdout: "pipe", stderr: "pipe" });
-  const [exitCode, stdout, stderr] = await Promise.all([
-    proc.exited,
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-  ]);
-  return { exitCode, stdout, stderr };
-};
+export const runBunCommand = (command: readonly string[]): Promise<CommandResult> =>
+  withRunnerOwnedTestRoots({ env: process.env, live: false }, async (env) => {
+    const proc = Bun.spawn({ cmd: Array.from(command), env, stdout: "pipe", stderr: "pipe" });
+    const [exitCode, stdout, stderr] = await Promise.all([
+      proc.exited,
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+    ]);
+    return { exitCode, stdout, stderr };
+  });
 
 const assertNever = (value: never): never => {
   throw new Error(`Unexpected provider acceptance outcome: ${String(value)}`);

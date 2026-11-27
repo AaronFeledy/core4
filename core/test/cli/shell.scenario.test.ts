@@ -33,7 +33,7 @@ import { outputRegisteredTestProvider } from "@lando/engine/testing/output-provi
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
-import { type Context, DateTime, Effect, Layer, Redacted, Stream } from "effect";
+import { Cause, type Context, DateTime, Effect, Exit, Layer, Redacted, Stream } from "effect";
 import { resolveBuiltInCommand } from "../../src/cli/built-in-command-registry.ts";
 import { appShellSpec } from "../../src/cli/command-specs/app/shell.ts";
 import { DEFAULT_SERVICE_LOGIN_SHELL, SESSION_NO_HISTORY_ENV } from "../../src/cli/service-login-shell.ts";
@@ -655,6 +655,62 @@ describe("shellApp — shell modes", () => {
 
     expect(raw).toBe(false);
   });
+
+  test.each([false, true])(
+    "service shell flushes held output before provider release on output-only EOF, aborted=%s",
+    async (aborted) => {
+      const controller = new AbortController();
+      const rawModes: boolean[] = [];
+      const stdout: number[] = [];
+      const payload = new TextEncoder().encode("held-prefix");
+      let outputAtRelease: readonly number[] | undefined;
+      const provider = fakeProvider({
+        readAppEnvironment: () => Effect.succeed([Redacted.make("held-prefix-of-secret")]),
+        execStream: () =>
+          Stream.fromEffect(
+            Effect.gen(function* () {
+              yield* Effect.addFinalizer(() =>
+                Effect.sync(() => {
+                  outputAtRelease = [...stdout];
+                }),
+              );
+              if (aborted) controller.abort();
+              return { kind: "stdout" as const, chunk: payload };
+            }),
+          ),
+      });
+
+      const exit = await Effect.runPromiseExit(
+        shellApp({
+          service: "web",
+          signal: controller.signal,
+          io: {
+            writeStdout: (chunk) =>
+              stdout.push(...(typeof chunk === "string" ? new TextEncoder().encode(chunk) : chunk)),
+            writeStderr: () => {},
+            stdin: (async function* () {})(),
+            stdinIsTTY: () => true,
+            setStdinRawMode: (raw) => {
+              rawModes.push(raw);
+            },
+          },
+        }).pipe(
+          Effect.provide(layer(undefined, provider)),
+          Effect.provideService(RedactionService, makeRedactionService()),
+        ),
+      );
+
+      if (Exit.isSuccess(exit)) throw new TypeError("service shell completed without an exit");
+      if (aborted) expect(Cause.hasInterruptsOnly(exit.cause)).toBe(true);
+      else
+        expect(exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error)).toMatchObject([
+          { _tag: "ServiceExecError", service: "web" },
+        ]);
+      expect(rawModes).toEqual([true, false]);
+      expect(stdout).toEqual([...payload]);
+      expect(outputAtRelease).toEqual([...payload]);
+    },
+  );
 
   test("defaults to host mode (no --service) and routes through ShellRunner.interactive", async () => {
     const specs: ShellInteractiveSpec[] = [];

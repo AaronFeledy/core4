@@ -8,7 +8,7 @@ import { outputRegisteredTestProvider } from "@lando/engine/testing/output-provi
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService } from "@lando/redaction/service";
 import { mapFailures } from "@lando/sdk/command-result";
-import { CacheError, PluginLoadError, ScratchAppNotFoundError, SecretNotFoundError } from "@lando/sdk/errors";
+import { CacheError, PluginLoadError, SecretNotFoundError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
@@ -70,6 +70,7 @@ export { TestRuntimeProvider } from "@lando/sdk/test";
  */
 export { TestClock } from "effect/testing";
 
+import { resolveScratchReference } from "@lando/engine/scratch-app/reference";
 import {
   SCRATCH_REGISTRY_VERSION,
   ScratchRegistry,
@@ -258,14 +259,6 @@ const serviceNotRegistered = (id: string): PluginLoadError =>
     message: `Plugin service ${id} is not registered in TestRuntime.`,
     pluginName: id,
     remediation: `Register service ${id} in the TestRuntime plugin registry before loading it.`,
-  });
-
-const scratchNotFound = (id: string): ScratchAppNotFoundError =>
-  new ScratchAppNotFoundError({
-    message: `Scratch app ${id} is not present in TestRuntime.`,
-    id,
-    suggestions: [],
-    remediation: "Acquire the scratch app before resolving it.",
   });
 
 const makeServicePlan = (providerId: ProviderId): ServicePlan =>
@@ -768,6 +761,10 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
     network: {},
     endpoints: [],
   });
+  const resolveScratchSummary = (reference: string) =>
+    Effect.suspend(() =>
+      Effect.fromResult(resolveScratchReference([...scratchSummaries.values()], reference)),
+    );
   const scratchService: Context.Service.Shape<typeof ScratchAppService> = ScratchAppService.of({
     kind: "scratch",
     root: Effect.succeed(AbsolutePath.make("/test-runtime/scratch")),
@@ -781,7 +778,7 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
         const summary: ScratchSummary = {
           id,
           app: appRefForScratch(id, paths.root),
-          source: input.source,
+          source: input.source.kind === "fork" ? { kind: "fork" } : input.source,
           mode: canonicalScratchIsolationMode(input),
           created: "2026-06-01T00:00:00.000Z",
           status: input.detached ? "detached" : "attached",
@@ -790,29 +787,19 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
         scratchRegistryEntries.set(id, scratchRegistryEntryFromSummary(summary, paths));
         return scratchHandle(summary);
       }),
-    resolveById: (id) =>
-      Effect.flatMap(
-        Effect.sync(() => scratchSummaries.get(id)),
-        (summary) =>
-          summary === undefined ? Effect.fail(scratchNotFound(id)) : Effect.succeed(scratchHandle(summary)),
-      ),
-    info: (id) =>
-      Effect.flatMap(
-        Effect.sync(() => scratchSummaries.get(id)),
-        (summary) =>
-          summary === undefined ? Effect.fail(scratchNotFound(id)) : Effect.succeed(scratchInfo(summary)),
-      ),
+    resolveById: (reference) => Effect.map(resolveScratchSummary(reference), scratchHandle),
+    info: (reference) => Effect.map(resolveScratchSummary(reference), scratchInfo),
     list: () =>
       Effect.sync(() =>
         Array.from(scratchSummaries.values()).sort((left, right) => left.id.localeCompare(right.id)),
       ),
     start: (id) => scratchService.resolveById(id),
     stop: (id) => scratchService.resolveById(id),
-    destroy: (id) =>
-      Effect.flatMap(scratchService.resolveById(id), (handle) =>
+    destroy: (reference) =>
+      Effect.flatMap(scratchService.resolveById(reference), (handle) =>
         Effect.sync(() => {
-          scratchSummaries.delete(id);
-          scratchRegistryEntries.delete(id);
+          scratchSummaries.delete(handle.id);
+          scratchRegistryEntries.delete(handle.id);
           return handle;
         }),
       ),

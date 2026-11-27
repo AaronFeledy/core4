@@ -121,7 +121,7 @@ export const sidebar = [
           { label: "Export traces", slug: "guides/cli/export-traces" },
           { label: "Start a scratch app from a recipe", slug: "guides/scratch/scratch-from-recipe" },
           { label: "Run a command in a disposable scratch", slug: "guides/scratch/disposable-tool-runner" },
-          { label: "Fork the current app into a scratch", slug: "guides/scratch/fork-existing-app" },
+          { label: "Fork an existing app into a scratch", slug: "guides/scratch/fork-existing-app" },
           { label: "List scratch apps", slug: "guides/scratch/list-and-info" },
           {
             label: "Mount the working directory into a scratch",

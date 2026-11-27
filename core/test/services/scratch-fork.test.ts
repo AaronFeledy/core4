@@ -490,29 +490,35 @@ const makeScratchForkLayer = (
 };
 
 describe("ScratchAppServiceLayer.layer fork acquire", () => {
-  test("rejects an unsatisfied source constraint before provider capabilities or planning", async () => {
-    await withTempProject(['lando: "<0.0.0"', forkLandofile].join("\n"), async (dir) => {
-      let capabilitiesCalls = 0;
-      const outcome = await Effect.runPromise(
-        Effect.flatMap(ScratchAppService, (service) =>
-          Effect.scoped(service.acquire({ source: { kind: "fork" }, detached: true })),
-        ).pipe(
-          Effect.provide(
-            makeScratchForkLayer(dir, [], [], {
-              onCapabilities: () => {
-                capabilitiesCalls += 1;
-              },
-            }),
+  test.each([
+    ["implicit source", { kind: "fork" } as const],
+    ["explicit source", { kind: "fork", path: "." } as const],
+  ])(
+    "rejects an unsatisfied version constraint for the %s before provider capabilities",
+    async (_label, source) => {
+      await withTempProject(['lando: "<0.0.0"', forkLandofile].join("\n"), async (dir) => {
+        let capabilitiesCalls = 0;
+        const outcome = await Effect.runPromise(
+          Effect.flatMap(ScratchAppService, (service) =>
+            Effect.scoped(service.acquire({ source, detached: true })),
+          ).pipe(
+            Effect.provide(
+              makeScratchForkLayer(dir, [], [], {
+                onCapabilities: () => {
+                  capabilitiesCalls += 1;
+                },
+              }),
+            ),
+            Effect.result,
           ),
-          Effect.result,
-        ),
-      );
+        );
 
-      expect(outcome._tag).toBe("Failure");
-      if (outcome._tag === "Failure") expect(outcome.failure._tag).toBe("LandofileVersionConstraintError");
-      expect(capabilitiesCalls).toBe(0);
-    });
-  });
+        expect(outcome._tag).toBe("Failure");
+        if (outcome._tag === "Failure") expect(outcome.failure._tag).toBe("LandofileVersionConstraintError");
+        expect(capabilitiesCalls).toBe(0);
+      });
+    },
+  );
 
   test("re-plans the current app under a fresh scratch identity and applies the fork plan", async () => {
     await withTempProject(forkLandofile, async (dir) => {
@@ -825,7 +831,7 @@ describe("ScratchAppServiceLayer.layer fork acquire", () => {
       expect(Exit.hasInterrupts(exit)).toBe(true);
       expect(applied).toHaveLength(1);
       // Reaping stops with volumes kept, then destroys with volumes removed.
-      expect(destroyed.map((call) => call.volumes)).toEqual(keepOnFailure ? [] : [false, true]);
+      expect(destroyed.map((call) => call.volumes)).toEqual(keepOnFailure ? [] : [false, true, false]);
       expect(routes.removed).toHaveLength(keepOnFailure ? 0 : 1);
     });
   });
@@ -911,7 +917,7 @@ describe("ScratchAppServiceLayer.layer fork acquire", () => {
         // is retained.
         expect(hostRoutes.removed).toEqual(keepOnFailure || reapFails ? [] : hostRoutes.applied);
         expect(destroyed.map((call) => call.volumes)).toEqual(
-          keepOnFailure || reapFails ? [] : [false, true],
+          keepOnFailure || reapFails ? [] : [false, true, false],
         );
         expect(await readFile(join(dir, ".lando.yml"), "utf8")).toBe(routedForkLandofile);
       });
@@ -1036,8 +1042,16 @@ describe("ScratchAppServiceLayer.layer fork acquire", () => {
     });
   });
 
-  test("isolate=full copies the source app root and plans under the scratch root", async () => {
-    await withTempProject(forkLandofile, async (dir) => {
+  test("isolate=full copies the explicit source app when invoked inside another app", async () => {
+    await withTempProject(undefined, async (workspace) => {
+      const dir = join(workspace, "source-app");
+      const other = join(workspace, "other-app");
+      const sourceSubdir = join(dir, "src");
+      await mkdir(other);
+      await mkdir(sourceSubdir, { recursive: true });
+      await writeFile(join(dir, ".lando.yml"), forkLandofile);
+      await writeFile(join(other, ".lando.yml"), forkLandofile.replace("name: forkme", "name: other"));
+      await writeFile(join(other, "marker.txt"), "invocation-app-content");
       await writeFile(join(dir, "marker.txt"), "source-content");
       await mkdir(join(dir, "node_modules", "package"), { recursive: true });
       await mkdir(join(dir, "coverage"), { recursive: true });
@@ -1046,18 +1060,20 @@ describe("ScratchAppServiceLayer.layer fork acquire", () => {
       await writeFile(join(dir, ".lando.local.yml"), "name: forkme\n");
       await writeFile(join(dir, ".lando.user.yml"), "name: forkme\n");
       const appliedPlans: AppPlan[] = [];
-      const handle = await Effect.runPromise(
-        Effect.flatMap(ScratchAppService, (service) =>
-          Effect.scoped(
+      const { handle, listing } = await Effect.runPromise(
+        Effect.gen(function* () {
+          const service = yield* ScratchAppService;
+          const handle = yield* Effect.scoped(
             service.acquire({
-              source: { kind: "fork" },
+              source: { kind: "fork", path: "../source-app/src" },
               detached: true,
               isolate: "full",
               excludes: ["coverage/"],
               noLocalOverrides: true,
             }),
-          ),
-        ).pipe(Effect.provide(makeScratchForkLayer(dir, appliedPlans))),
+          );
+          return { handle, listing: yield* service.list() };
+        }).pipe(Effect.provide(makeScratchForkLayer(other, appliedPlans))),
       );
 
       expect(appliedPlans).toHaveLength(1);
@@ -1065,6 +1081,8 @@ describe("ScratchAppServiceLayer.layer fork acquire", () => {
       if (appliedPlan === undefined) throw new Error("scratch fork acquire did not apply a plan");
       expect(String(appliedPlan.root)).not.toBe(dir);
       expect(String(appliedPlan.root)).toContain(join("scratch", handle.id, "root"));
+      expect(handle.id).toMatch(/^scratch-forkme-/u);
+      expect(listing.map(({ source }) => source)).toEqual([{ kind: "fork" }]);
       expect(await readFile(join(String(appliedPlan.root), "marker.txt"), "utf8")).toBe("source-content");
       expect(await readFile(join(String(appliedPlan.root), ".lando.yml"), "utf8")).toContain("forkme");
       expect(await readFile(join(dir, "marker.txt"), "utf8")).toBe("source-content");
@@ -1113,7 +1131,9 @@ describe("ScratchAppServiceLayer.layer fork acquire", () => {
       expect(result.destroyed).toEqual(result.keepHandle);
       expect(destroyCalls).toEqual([
         { app: result.handle.id, volumes: false, removeState: false },
-        { app: result.handle.id, volumes: true, removeState: true },
+        { app: result.handle.id, volumes: true, removeState: false },
+        { app: result.handle.id, volumes: false, removeState: true },
+        { app: result.keepHandle.id, volumes: false, removeState: false },
         { app: result.keepHandle.id, volumes: false, removeState: false },
         { app: result.keepHandle.id, volumes: false, removeState: true },
       ]);
@@ -1139,7 +1159,8 @@ describe("ScratchAppServiceLayer.layer fork acquire", () => {
       expect(appliedPlans).toHaveLength(1);
       expect(destroyCalls).toEqual([
         { app: String(appliedPlans.at(0)?.id), volumes: false, removeState: false },
-        { app: String(appliedPlans.at(0)?.id), volumes: true, removeState: true },
+        { app: String(appliedPlans.at(0)?.id), volumes: true, removeState: false },
+        { app: String(appliedPlans.at(0)?.id), volumes: false, removeState: true },
       ]);
     });
   });

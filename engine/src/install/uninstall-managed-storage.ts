@@ -1,6 +1,11 @@
 import { Result, Schema } from "effect";
 import { UninstallResourceCleanupError } from "./uninstall-cleanup-error.ts";
-import { type RuntimeExec, type UninstallRuntime, runUninstallRuntime } from "./uninstall-runtime.ts";
+import {
+  type RuntimeExec,
+  type UninstallRuntime,
+  type UninstallRuntimeSeams,
+  runUninstallRuntime,
+} from "./uninstall-runtime.ts";
 
 const Usage = Schema.fromJsonString(
   Schema.Array(Schema.Struct({ Type: Schema.String, Total: Schema.Number })),
@@ -9,8 +14,14 @@ const Usage = Schema.fromJsonString(
 export const assertManagedStorageResolved = async (
   exec: RuntimeExec,
   runtime: UninstallRuntime,
+  seams: UninstallRuntimeSeams = {},
 ): Promise<void> => {
-  const usage = await runUninstallRuntime(exec, runtime, { args: ["system", "df", "--format", "json"] });
+  const usage = await runUninstallRuntime(
+    exec,
+    runtime,
+    { args: ["system", "df", "--format", "json"] },
+    seams,
+  );
   const decoded = Schema.decodeUnknownResult(Usage)(usage.stdout);
   const retained: string[] = [];
   if (Result.isFailure(decoded)) {

@@ -1,5 +1,8 @@
 import { expect, test } from "bun:test";
-import { rmSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, rmdirSync } from "node:fs";
+import { join } from "node:path";
+import { resolveManagedRuntimeDir } from "@lando/container-runtime/podman/managed-runtime-dir";
+import { makeLandoPaths } from "@lando/paths";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Effect } from "effect";
 import { makePrepareUninstallCleanup } from "../../src/install/uninstall-discovery.ts";
@@ -21,6 +24,7 @@ for (const scenario of [
   test(`managed ${scenario} cleanup gates subsequent machine, storage and state destruction`, async () => {
     // Given an owned installation with the reported managed resource usage.
     const roots = makeUninstallRoots("lando-uninstall-proof-");
+    mkdirSync(join(roots.userDataRoot, "runtime"), { recursive: true });
     const mutations: string[] = [];
     const remaining = new Set([roots.userDataRoot, roots.userCacheRoot]);
     const calls: string[][] = [];
@@ -54,7 +58,9 @@ for (const scenario of [
           ...sandboxUninstallOptions(roots),
           purge: true,
           yes: true,
-          prepareResourceCleanup: makePrepareUninstallCleanup([], exec, "linux"),
+          prepareResourceCleanup: makePrepareUninstallCleanup([], exec, "linux", {
+            prepareRuntimeDir: () => Effect.succeed(join(roots.root, "xdg")),
+          }),
           exists: (path) => remaining.has(path),
           readManagedProviderMachine: () => ({ ownership: "owned", name: "lando" }),
           teardownProviderMachines: async () => {
@@ -92,3 +98,26 @@ for (const scenario of [
     }
   });
 }
+
+test("cleanup of a data root with no runtime tree does not create a private runtime dir", async () => {
+  const roots = makeUninstallRoots("lando-uninstall-no-runtime-");
+  const privateDir = await Effect.runPromise(
+    resolveManagedRuntimeDir(makeLandoPaths({ userDataRoot: roots.userDataRoot }).runtimeDir),
+  );
+  const calls: string[][] = [];
+  const exec = async (file: string, args: readonly string[]) => {
+    if (!file.startsWith(roots.userDataRoot)) throw Object.assign(new Error("missing"), { code: "ENOENT" });
+    calls.push([...args]);
+    return { stdout: args.includes("--version") ? "podman" : "" };
+  };
+  try {
+    await (
+      await makePrepareUninstallCleanup([], exec, "linux")(roots.userDataRoot, roots.userCacheRoot)
+    ).cleanup();
+    if (typeof privateDir === "string") expect(existsSync(privateDir)).toBe(false);
+    expect(calls).toEqual([]);
+  } finally {
+    if (typeof privateDir === "string" && existsSync(privateDir)) rmdirSync(privateDir);
+    rmSync(roots.root, { recursive: true, force: true });
+  }
+});
