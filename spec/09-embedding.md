@@ -170,7 +170,7 @@ The optional `invokeOperation` helper from `@lando/core/cli/operations` returns 
 | `waitForEvent` | Typed composable wrapper over `EventService.waitFor`. |
 | `TestInteractionService` | Supplies seeded answers, records prompts, and never reads stdin. |
 | `recordedEvents` | Returns captured redacted lifecycle events. |
-| `ScenarioContext` | Runtime for executable guides and generated scenarios, including foreground `runCli` and scoped child `startCli` with piped input, stdout-line readiness, and a repeatable result (§19.4). |
+| `ScenarioContext` | Guide runtime with foreground `runCli` and scoped child `startCli` (§19.4). |
 | `ScenarioProcessError`, `ScenarioStartOptions`, `ScenarioCliProcess` | Tagged failure, launch options, and scoped child handle used by `ScenarioContext.startCli`. |
 | `TestClock`, `TestRandom` | Effect test primitives wired through the runtime. |
 

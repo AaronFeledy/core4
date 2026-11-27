@@ -8,24 +8,22 @@ tags: [docs, mcp, agent]
 
 # Drive Lando through MCP
 
-With Lando installed, configure your MCP client to launch `lando mcp` as a child
-process with piped stdin and stdout. Start it in the app you work on most: tools and resources use
-that directory's app unless a tool call names another one with `appPath`.
-Before connecting, inspect the tools the server will expose without starting the
-long-running session:
+With Lando installed, configure your MCP client to launch `lando mcp` with piped
+stdin and stdout. Start it in your app directory. Tools and resources use that
+app unless a tool call specifies another with `appPath`.
+
+From the app directory, check which tools the server will expose:
 
 ```sh
 lando mcp --list --format=json
 ```
 
-Check that the catalog includes the tools you intend to expose before connecting
-the client. Do not launch serve mode directly in a terminal or add `--format=json`
-to it; that format is for the terminating `--list` command.
+Use `--format=json` with `--list`, not serve mode. The MCP client must launch
+serve mode over pipes, not in a terminal.
 
-For example, in GitHub Copilot, add this server to `~/.copilot/mcp-config.json`.
-Replace `/home/you/shop` with the absolute path to your app, and make sure
-Copilot can find `lando` on its `PATH` (or use the full executable path as
-`command`).
+For GitHub Copilot, add this server to `~/.copilot/mcp-config.json`. Replace
+`/home/you/shop` with your app's absolute path. If `lando` isn't on Copilot's
+`PATH`, use the executable's absolute path as `command`.
 
 ```json
 {
@@ -67,23 +65,22 @@ If you're writing a client, send this line on stdin:
 {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"my-agent","version":"1.0.0"}}}
 ```
 
-Read stdout until the initialization response with `id: 1` arrives. Check its
-`result.protocolVersion`, then send the notification and the tool request below,
-one line each:
+Read the stdout response with `id: 1` and check `result.protocolVersion`. Then
+send these two lines on stdin:
 
 ```json
 {"jsonrpc":"2.0","method":"notifications/initialized"}
 {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"app:config:get","arguments":{"args":{"key":"name"}}}}
 ```
 
-Keep stdin open until stdout delivers the response with `id: 2`. Check
-`result.structuredContent.result.value` for the app name, then close stdin to
-send EOF and wait for the child to exit.
+Keep stdin open until the response with `id: 2` arrives. Check the app name at
+`result.structuredContent.result.value`, then close stdin and wait for the child
+to exit.
 
 Lando ignores empty lines and lines containing only spaces, tabs, or carriage
 returns. If a line's text is not valid JSON, Lando replies with one parse error
 with `id: null`. Calls already running and requests on later lines continue.
-This is a response from the server, not a line to send:
+The server sends:
 
 ```json
 {"jsonrpc":"2.0","id":null,"error":{"code":-32700,"message":"Parse error"}}
@@ -351,8 +348,7 @@ call returns `isError: true` with a `CommandConfirmationError` whose `reason` is
 `non-interactive`. Elicitation never lifts a deny: a tool outside the effective
 allowlist is still unknown to the session.
 
-This request confirms a rebuild. Only send it when you intend to recreate the
-app's containers:
+Send this request only if you intend to recreate the app's containers:
 
 ```json
 {"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"app:rebuild","arguments":{"flags":{"yes":true}}}}
@@ -456,10 +452,9 @@ for it before loading the new code. This also applies when several apps share
 the plugin. A syntax error makes that plugin's tools return a `PluginLoadError`
 that names the plugin and the import error, and planning an app that uses one
 of its service types reports the same error. Built-in tools and other plugins'
-tools keep working. If the session dropped the broken tool, fix the file and
-call `app:config:view` with `appPath` set to that app. Then refresh `tools/list`
-before retrying the tool. If files keep changing during loading, finish the edit
-and retry the call.
+tools keep working. After fixing the file, call `app:config:view` with the
+affected `appPath` if the session dropped the tool. Refresh `tools/list` before
+retrying it. If files change during loading, finish editing and retry the call.
 
 ## Find out why a tool is missing
 

@@ -102,7 +102,7 @@ Built and not listed below: the Effect runtime and SDK contracts; the service-ty
 | Full Bun config-source isolation for child processes | §9.6 | Not started | Network and CA projection are built. |
 | Error, event, service, template-step, API-report, acceptance-index, Mutagen-client, and plugin-template generators | §17.2 | Not started | |
 | Guide case files | §19.7 | Not started | Guide discovery reads only `.mdx`. Tracked in #2523. |
-| Background scenario runs | §19.4 | Partial | `ScenarioContext.startCli` supports scoped source and compiled children, piped stdin, stdout-line readiness, and a captured result. Workspace-file readiness and caller signal delivery remain in #2524. |
+| Background scenario runs | §19.4 | Partial | `ScenarioContext.startCli` supports scoped pipe dialogues on both layers. Workspace-file readiness and caller signal delivery remain in #2524. |
 | Home guides own feature tests | §19.1, §19.9 | Not started | No source-to-home-guide map beyond three PRD coverage sections (#2525). Duplicate live suites: #2526. Migration of `core/test/live`: #2528. |
 | `<Run shell>` | §19.3 | Contract only | The harness fails it with `NotImplementedError`; build or remove it in #2527. |
 | Multi-provider apps | §5.9 | Not started | One provider per app. |

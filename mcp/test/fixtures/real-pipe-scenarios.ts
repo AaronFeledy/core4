@@ -16,10 +16,10 @@ export async function runFramingCase(command: readonly string[], cwd: string, ro
     }
     await pipe.closeInput();
   }
-  const code = await pipe.finish();
-  expect(code).toBe(row.exit === "clean" ? 0 : 1);
+  const clean = row.exit === "clean";
+  expect(await pipe.finish()).toBe(clean ? 0 : 1);
   expect(pipe.diagnostics.at(-1)).toEqual(
-    row.exit === "clean"
+    clean
       ? { event: "serverExit", exit: "Success" }
       : { event: "serverExit", exit: "Failure", interruptedOnly: false, error: row.exit },
   );

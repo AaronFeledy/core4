@@ -100,10 +100,11 @@ const capture = (stream: ReadableStream<Uint8Array>) => {
         if (done) break;
         const remaining = outputLimit - bytes;
         if (remaining > 0) {
-          text += decoder.decode(chunk.subarray(0, remaining), { stream: true });
-          bytes += Math.min(chunk.byteLength, remaining);
+          const retained = chunk.subarray(0, remaining);
+          text += decoder.decode(retained, { stream: true });
+          bytes += retained.byteLength;
         }
-        if (chunk.byteLength > remaining) truncated = true;
+        truncated ||= chunk.byteLength > remaining;
         if (remaining > 0 || truncated) notify();
       }
       text += decoder.decode();
@@ -206,14 +207,16 @@ export const startScenarioProcess = Effect.fnUntraced(function* (
   return {
     command: input.command,
     write: (text) =>
-      Effect.tryPromise({
-        try: async () => {
-          if (stdin === undefined || !stillRunning(proc)) throw failure("input-closed");
-          const pipe = stdin;
-          await pipe.write(text);
-          await pipe.flush();
-        },
-        catch: () => failure("input-closed"),
+      Effect.suspend(() => {
+        const pipe = stdin;
+        if (pipe === undefined || !stillRunning(proc)) return Effect.fail(failure("input-closed"));
+        return Effect.tryPromise({
+          try: async () => {
+            await pipe.write(text);
+            await pipe.flush();
+          },
+          catch: () => failure("input-closed"),
+        });
       }),
     closeInput: Effect.promise(async () => {
       const pipe = stdin;

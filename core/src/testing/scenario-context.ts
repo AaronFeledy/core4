@@ -924,10 +924,9 @@ const makeScenarioContext = (
     };
   });
 
-  const e2eEnv = options.e2eEnv ?? process.env;
   const env =
     runnerKind === "e2e"
-      ? e2eEnv
+      ? (options.e2eEnv ?? process.env)
       : {
           ...process.env,
           LANDO_USER_DATA_ROOT: join(testDir, "host", "data"),
@@ -1033,7 +1032,7 @@ const makeScenarioContext = (
         ),
       );
       const url = yield* resolveFetchUrl(props.url, info);
-      const ca = url.protocol === "https:" ? yield* readScenarioCa(getWorkingDirectory(), e2eEnv) : undefined;
+      const ca = url.protocol === "https:" ? yield* readScenarioCa(getWorkingDirectory(), env) : undefined;
       return yield* requestScenarioRoute(url, props, ca);
     }),
   } satisfies E2eScenarioContext;
