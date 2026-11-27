@@ -1,5 +1,7 @@
 import { expect, test } from "bun:test";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
+import { mergeFailure } from "@lando/sdk/command-result";
+import { EnvironmentValueResolutionError, ProviderUnavailableError } from "@lando/sdk/errors";
 import {
   type AppPlan,
   type DatabaseConnection,
@@ -11,11 +13,10 @@ import {
 import type { CommandSpec, ExecChunk } from "@lando/sdk/services";
 import { EnvironmentValueResolver } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { Deferred, Effect, Fiber, Layer, Stream } from "effect";
+import { Cause, Deferred, Effect, Exit, Fiber, Layer, Stream } from "effect";
 import { TestClock } from "effect/testing";
 import {
   type DatabaseCredentialCheckInput,
-  type DatabaseCredentialOutcome,
   changedCredentialMembers,
   checkDatabaseCredentials,
 } from "../../src/operations/database-credentials.ts";
@@ -114,15 +115,15 @@ const baseLayer = (secretEnv: Record<string, string> = {}) => {
   return Layer.mergeAll(resolver, eventLayer.pipe(Layer.provide(redaction)));
 };
 
-const run = <A>(
-  effect: Effect.Effect<A, never, EnvironmentValueResolver>,
+const run = <A, E>(
+  effect: Effect.Effect<A, E, EnvironmentValueResolver>,
   secretEnv: Record<string, string> = {},
 ): Promise<A> => Effect.runPromise(effect.pipe(Effect.provide(baseLayer(secretEnv)))) as Promise<A>;
 
 const check = (
   provider: DatabaseCredentialCheckInput["provider"],
   input: Partial<DatabaseCredentialCheckInput> = {},
-): Effect.Effect<readonly DatabaseCredentialOutcome[], never, EnvironmentValueResolver> =>
+) =>
   Effect.scoped(
     Effect.gen(function* () {
       const session = yield* (yield* EnvironmentValueResolver).openSession();
@@ -145,6 +146,55 @@ test("performs no exec when no service publishes a connection", async () => {
   // Then
   expect(outcomes).toEqual([]);
   expect(fake.calls).toEqual([]);
+});
+
+test.each(["resolution", "exec"] as const)(
+  "read-only credential observation propagates mixed %s failure and interruption",
+  async (stage) => {
+    const database = withDatabase(service(mariadbConnection({}, "postgres")));
+    const absent = new EnvironmentValueResolutionError({
+      message: "Credential resolution failed",
+      variable: "PGPASSWORD",
+      reason: "unresolved-binding",
+      remediation: "Set the credential.",
+    });
+    const transport = new ProviderUnavailableError({
+      providerId: "lando",
+      operation: "exec",
+      message: "Exec failed",
+      remediation: "Check the runtime.",
+    });
+    const exit = await Effect.runPromiseExit(
+      checkDatabaseCredentials({
+        plan: database,
+        services: [{ name: "db", state: "ready" }],
+        session: {
+          resolveEnvironment: () =>
+            stage === "resolution"
+              ? Effect.failCause(mergeFailure(Cause.fail(absent), Cause.interrupt(42), "cleanup"))
+              : Effect.succeed({ PGPASSWORD: "original" }),
+        },
+        provider: {
+          execStream: () =>
+            Stream.failCause(mergeFailure(Cause.fail(transport), Cause.interrupt(42), "cleanup")),
+        },
+      }),
+    );
+    expect(Exit.isFailure(exit) && Cause.hasFails(exit.cause) && Cause.hasInterrupts(exit.cause)).toBe(true);
+  },
+);
+
+test("read-only credential observation propagates a sanitized exec defect", async () => {
+  const sentinel = "SYNTHETIC_PRIVATE_EXEC_DEFECT";
+  const exit = await Effect.runPromiseExit(
+    check(
+      { execStream: () => Stream.die(new Error(`capture defect: ${sentinel}`)) },
+      { plan: withDatabase(service(mariadbConnection({}, "postgres"))) },
+    ).pipe(Effect.provide(baseLayer())),
+  );
+  if (!Exit.isFailure(exit)) throw new Error("Expected a defect instead of a credential verdict");
+  expect(exit.cause.reasons.map((reason) => reason._tag)).toEqual(["Die"]);
+  expect(Cause.pretty(exit.cause)).not.toContain(sentinel);
 });
 
 test("skips a database service that did not start", async () => {
@@ -384,8 +434,8 @@ test("a SQL Server readiness failure tail gains credential remediation without r
   );
   // Then
   expect(error).toMatchObject({ _tag: "ServiceNotReadyError", reason: "not-running" });
-  expect(error.remediation).toContain("lando db:creds:apply --service db");
-  expect(error.remediation).not.toContain("<svc>");
+  expect(error.remediation).not.toContain("lando db:creds:apply");
+  expect(error.remediation).not.toContain("`lando start`");
   expect(error.remediation).toContain("guides/services/mssql");
 });
 
@@ -429,7 +479,7 @@ test("classifies the raw log tail before redaction removes a password-shaped sig
     ).pipe(Effect.provideService(RedactionService, redaction)),
   );
   // Then: the verdict comes from the raw bytes, while only the redacted tail is retained.
-  expect(error.remediation).toContain("lando db:creds:apply");
+  expect(error.remediation).not.toContain("lando db:creds:apply");
   expect(error.remediation).toContain("guides/services/mssql");
   expect(error.logTail?.lines.join("\n")).not.toContain("Login");
 });

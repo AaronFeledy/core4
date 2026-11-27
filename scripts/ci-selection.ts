@@ -5,6 +5,7 @@ export const PROFILES = ["docs", "guides", "runtime", "providers"] as const;
 export type CiProfile = (typeof PROFILES)[number];
 export type CiTier = CiProfile | "broad";
 export type CiSelection = { readonly profile: CiProfile; readonly broad: boolean; readonly reason: string };
+export type CiPathSelection = CiSelection & { readonly providerChanges: boolean };
 
 // Job-level policy only. The guide tier includes the complete binary prerequisite closure.
 export const CI_JOB_TIERS: Readonly<Record<string, CiTier>> = {
@@ -54,6 +55,11 @@ const affectsProviders = (path: string): boolean =>
   path.startsWith("engine/test/providers/") ||
   /^engine\/src\/operations\/service-readiness(?:-[^/]+)?\.ts$/u.test(path) ||
   path === "engine/src/lifecycle/startup-completion.ts" ||
+  path === "engine/src/lifecycle/activation-apply.ts" ||
+  /^engine\/src\/lifecycle\/activation-credentials?(?:-[^/]+)?\.ts$/u.test(path) ||
+  path.startsWith("engine/src/operations/database-convergence/") ||
+  path === "engine/src/operations/database-credential-convergence.ts" ||
+  path === "engine/src/operations/database-credentials.ts" ||
   path.startsWith("engine/src/subsystems/healthcheck/") ||
   path === "engine/src/testing/live-provider-socket.ts" ||
   path === "sdk/src/services/service-readiness.ts" ||
@@ -70,6 +76,8 @@ const affectsProviders = (path: string): boolean =>
   /^plugins\/file-sync-mutagen\/src\/(?:mutagen-process-client|provision|session-ledger)\.ts$/u.test(path) ||
   path.startsWith("sdk/src/services/provider") ||
   path.startsWith("sdk/test/contract/provider") ||
+  path === "docs/guides/tooling/db-creds-apply.mdx" ||
+  path.startsWith("docs/guides/db-creds-apply/fixtures/mssql/") ||
   path === ".github/workflows/ci.yml" ||
   TEST_SELECTIONS.some(
     (selection) =>
@@ -114,14 +122,15 @@ const affectsPlatformBuild = (path: string): boolean =>
     path,
   );
 
-export const selectPaths = (paths: readonly string[]): CiSelection => {
+export const selectPaths = (paths: readonly string[]): CiPathSelection => {
+  const providerChanges = paths.some(affectsProviders);
   if (paths.includes(".bun-version"))
-    return { profile: "runtime", broad: true, reason: "Bun toolchain change" };
+    return { profile: "runtime", broad: true, reason: "Bun toolchain change", providerChanges };
   if (paths.some(affectsPlatformBuild))
-    return { profile: "runtime", broad: true, reason: "platform build path" };
-  if (paths.length === 0) return { profile: "runtime", broad: false, reason: "empty diff" };
-  if (paths.some(affectsProviders))
-    return { profile: "providers", broad: false, reason: "provider or CI coverage path" };
+    return { profile: "runtime", broad: true, reason: "platform build path", providerChanges };
+  if (paths.length === 0) return { profile: "runtime", broad: false, reason: "empty diff", providerChanges };
+  if (providerChanges)
+    return { profile: "providers", broad: false, reason: "provider or CI coverage path", providerChanges };
   let profile: CiProfile = "docs";
   for (const path of paths) {
     if (path.startsWith("docs/guides/")) {
@@ -134,9 +143,9 @@ export const selectPaths = (paths: readonly string[]): CiSelection => {
       (path.startsWith("docs/") && /\.(md|mdx)$/.test(path))
     )
       continue;
-    return { profile: "runtime", broad: false, reason: "runtime or unknown path" };
+    return { profile: "runtime", broad: false, reason: "runtime or unknown path", providerChanges };
   }
-  return { profile, broad: false, reason: "changed paths" };
+  return { profile, broad: false, reason: "changed paths", providerChanges };
 };
 
 export const jobSelected = (tier: CiTier, selection: CiSelection): boolean =>

@@ -17,6 +17,7 @@ export const failingProvider = (): Required<RuntimeProviderShape> => {
   return {
     ...TestRuntimeProvider,
     runtimeIdentity: "test-runtime",
+    healthyDependencyContinuation: true,
     isAvailable: Effect.fail(availabilityError),
     appliedPlans: fail(),
     cleanupOwnedResources: fail,
@@ -62,6 +63,7 @@ export const failingProvider = (): Required<RuntimeProviderShape> => {
     adoptDataRoot: fail,
     inspectResourceNames: fail,
     observeVolume: fail,
+    observeBoundVolume: fail,
     adoptVolume: fail,
     removeVolume: fail,
     copyToService: fail,

@@ -707,6 +707,7 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CT
         if (plan.identity?.dataRoot === undefined) return;
         yield* planState.ownership.adopt(plan, yield* appliedPlans.resolveMutationPlan(plan.id), witness);
       }),
+      healthyDependencyContinuation: true,
       apply: Effect.fn("RuntimeProvider.apply")(function* (plan, applyOptions) {
         yield* validateHealthcheckExecution(plan, applyOptions.executeReadinessAttempt);
         const previous = yield* appliedPlans.resolveMutationPlan(plan.id);
@@ -733,6 +734,7 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CT
             : { resolveServiceEnvironment: applyOptions.resolveServiceEnvironment }),
           reconcile: applyOptions.reconcile,
           onVolumeCreated: applyOptions.onVolumeCreated,
+          continueHealthyDependency: applyOptions.continueHealthyDependency,
           completionPlan: applyOptions.completionPlan ?? applyOptions.recordedPlan ?? plan,
           ...(options.eventService === undefined ? {} : { eventService: options.eventService }),
         }).pipe(

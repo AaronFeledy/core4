@@ -38,6 +38,7 @@ import {
   requireContract,
   utf8,
 } from "./_shared.ts";
+import { checkHealthyDependencyContinuation } from "./provider-healthy-continuation.ts";
 import { checkHostChangeProposals } from "./provider-host-changes.ts";
 import { checkProviderStartupDns } from "./provider-startup-dns.ts";
 
@@ -554,6 +555,7 @@ export const runProviderContract = Effect.fnUntraced(function* (
   );
 
   yield* checkProviderStartupDns(provider, testAppPlan);
+  yield* checkHealthyDependencyContinuation(provider, testAppPlan);
 
   yield* checkHostChangeProposals(provider);
   yield* requireContract(typeof provider.setup === "function", "setup is callable", provider.setup);

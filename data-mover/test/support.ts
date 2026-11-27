@@ -12,9 +12,10 @@ import {
   type VolumeRef,
   appIdentityKey,
 } from "@lando/sdk/schema";
-import { RuntimeProvider, RuntimeProviderRegistry } from "@lando/sdk/services";
+import { RuntimeProvider, RuntimeProviderRegistry, type RuntimeProviderShape } from "@lando/sdk/services";
 import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
-import { DateTime, Effect, Layer } from "effect";
+import { DateTime, Effect, Layer, Stream } from "effect";
+import { tarArchive } from "./tar-fixture.ts";
 
 const rootKeys = [
   "LANDO_USER_DATA_ROOT",
@@ -40,6 +41,16 @@ afterEach(async () => {
 
 export const fixtureOwnerRoot = AbsolutePath.make("/tmp/lando-sdk-test");
 export const fixtureOwnerKey = appIdentityKey("owner", fixtureOwnerRoot);
+export const writeFixtureVolume = (
+  provider: Pick<RuntimeProviderShape, "importVolume">,
+  target: VolumeRef,
+  payload: string,
+) =>
+  provider.importVolume({
+    target,
+    archive: Stream.make(tarArchive([{ name: "./payload", data: payload }])),
+    beforeCommit: Effect.void,
+  });
 export const fixtureVolume = (ref: VolumeRef = { app: AppId.make("data-app"), store: "data" }) => ({
   ref,
   provenance: "known" as const,

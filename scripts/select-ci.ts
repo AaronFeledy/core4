@@ -1,6 +1,6 @@
 import { appendFile } from "node:fs/promises";
 import * as Schema from "effect/Schema";
-import { type CiSelection, selectPaths } from "./ci-selection.ts";
+import { type CiPathSelection, selectPaths } from "./ci-selection.ts";
 
 export class CiGitError extends Error {
   constructor(
@@ -22,10 +22,15 @@ export const selectCi = (input: {
   readonly base: string;
   readonly head: string;
   readonly cwd: string;
-}): CiSelection => {
+}): CiPathSelection => {
   if (input.event !== "pull_request" && input.event !== "merge_group")
-    return { profile: "runtime", broad: true, reason: "broad event" };
-  const fallback = (reason: string): CiSelection => ({ profile: "providers", broad: false, reason });
+    return { profile: "runtime", broad: true, reason: "broad event", providerChanges: false };
+  const fallback = (reason: string): CiPathSelection => ({
+    profile: "providers",
+    broad: false,
+    reason,
+    providerChanges: true,
+  });
   if (![input.base, input.head].every((sha) => /^[a-f0-9]{40,64}$/.test(sha)))
     return fallback("missing or unusable SHAs");
   const repoArgs = ["rev-parse", "--git-dir"];
@@ -66,6 +71,6 @@ if (import.meta.main) {
   if (env.GITHUB_OUTPUT)
     await appendFile(
       env.GITHUB_OUTPUT,
-      `profile=${selection.profile}\nbroad=${selection.broad}\nreason=${selection.reason}\n`,
+      `profile=${selection.profile}\nbroad=${selection.broad}\nreason=${selection.reason}\nprovider_changes=${selection.providerChanges}\n`,
     );
 }

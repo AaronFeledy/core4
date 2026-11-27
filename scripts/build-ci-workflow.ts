@@ -607,6 +607,19 @@ ${laneRun("services-lando", "service-lando-integration")}
           esac
           exit "$status"
 
+      - name: Run SQL Server activation regressions
+        if: \${{ matrix.suite == 'providers' && needs.selection.outputs.provider_changes == 'true' }}
+        env:
+          LANDO_SCENARIO_E2E_BINARY: \${{ github.workspace }}/dist/lando
+          LANDO_GUIDE_E2E: "1"
+        run: |
+          test -S "$LANDO_TEST_PODMAN_SOCKET"
+          set -o pipefail
+          status=0
+          ${testSelectionCommand("providers-mssql-activation")} 2>&1 | tee /tmp/lando-provider-test-logs/mssql-activation.log || status=$?
+          LANDO_GUIDE_SCENARIO_LIVE_OUTPUT=1 bun run scripts/test-reporters/run-guide-scenarios.ts test/scenarios/generated/guides/db-creds-apply/mssql-sa-and-database-name.test.ts 2>&1 | tee /tmp/lando-provider-test-logs/mssql-guide.log || status=$?
+          exit "$status"
+
       - name: Teardown Lando runtime
         if: always()
         run: |

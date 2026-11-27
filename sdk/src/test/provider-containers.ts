@@ -1,21 +1,39 @@
-import { Clock, DateTime, Effect } from "effect";
+import { Clock, DateTime, Effect, Graph } from "effect";
 import {
   HealthcheckTargetUnsupportedError,
+  ProviderInternalError,
   ProviderUnavailableError,
   ServiceNotFoundError,
   ServiceStartError,
 } from "../errors/index.ts";
 import {
+  type AppPlan,
   type BringDownOutcome,
   type ContainerBringDownReceipt,
   LANDO_DATA_ROOT_LABEL,
   type ObservedBringDown,
+  type ServiceName,
+  type ServicePlan,
   effectiveReadiness,
+  planDataId,
 } from "../schema/index.ts";
-import type { RuntimeProviderShape, ServiceRuntimeFields, ServiceSelector } from "../services/index.ts";
+import type {
+  ApplyOptions,
+  RuntimeProviderShape,
+  ServiceRuntimeFields,
+  ServiceSelector,
+} from "../services/index.ts";
 import { TEST_PROVIDER_ID } from "./_shared.ts";
+import { makeTestProviderVolumes } from "./provider-volumes.ts";
+
+type ApplyTestProviderContainers = (
+  plan: AppPlan,
+  options: ApplyOptions,
+  environments: ReadonlyMap<string, Readonly<Record<string, string>>>,
+) => ReturnType<RuntimeProviderShape["apply"]>;
 
 export const makeTestProviderContainers = () => {
+  const volumes = makeTestProviderVolumes();
   const containers = new Map<
     string,
     ServiceRuntimeFields & {
@@ -52,8 +70,8 @@ export const makeTestProviderContainers = () => {
         lastStartedAt: DateTime.toDateUtc(DateTime.makeUnsafe(now)),
       });
     });
-  const apply: RuntimeProviderShape["apply"] = Effect.fn("TestRuntimeProvider.applyContainers")(
-    function* (plan, options) {
+  const apply: ApplyTestProviderContainers = Effect.fn("TestRuntimeProvider.applyContainers")(
+    function* (plan, options, environments) {
       for (const service of Object.values(plan.services)) {
         const probe = effectiveReadiness(service);
         if (
@@ -80,12 +98,50 @@ export const makeTestProviderContainers = () => {
         ),
       );
       let changed = false;
-      for (const service of Object.values(plan.services)) {
+      const graph = Graph.directed<ServicePlan, null>((graph) => {
+        const contents = Object.values(plan.services);
+        const indices = new Map(contents.map((service) => [service.name, Graph.addNode(graph, service)]));
+        for (const service of contents) {
+          const consumer = indices.get(service.name);
+          if (consumer === undefined) continue;
+          for (const edge of service.dependsOn) {
+            const dependency = indices.get(edge.service);
+            if (dependency !== undefined) Graph.addEdge(graph, dependency, consumer, null);
+          }
+        }
+      });
+      if (!Graph.isAcyclic(graph)) {
+        return yield* new ProviderInternalError({
+          providerId: TEST_PROVIDER_ID,
+          operation: "apply",
+          message: "Service dependencies contain a cycle.",
+          remediation: "Remove the cyclic dependency and retry.",
+        });
+      }
+      const green = new Map<ServiceName, string>();
+      for (const service of Graph.values(Graph.topo(graph))) {
         if (options.signal?.aborted) return yield* Effect.interrupt;
         const target = { app: plan.id, service: service.name };
         const current = containers.get(key(target));
+        if (current?.status !== "running" && options.continueHealthyDependency !== undefined) {
+          for (const edge of service.dependsOn) {
+            if (edge.condition !== "service_healthy") continue;
+            const containerId = green.get(edge.service);
+            if (containerId === undefined) continue;
+            const failure = yield* options.continueHealthyDependency({
+              consumer: service.name,
+              dependency: edge.service,
+              containerId,
+              createdVolumes: [],
+            });
+            if (options.signal?.aborted) return yield* Effect.interrupt;
+            if (failure !== undefined && edge.required) return yield* failure;
+          }
+        }
         const now = yield* Clock.currentTimeMillis;
         if (current === undefined) generation += 1;
+        const containerId = current?.containerId ?? `test-container-${generation}`;
+        volumes.attach({ plan, service, containerId, environment: environments.get(service.name) });
         const completesOnStart = completes.has(service.name);
         changed ||= current?.status !== "running";
         containers.set(key(target), {
@@ -93,7 +149,7 @@ export const makeTestProviderContainers = () => {
           appRoot: plan.identity?.appRoot ?? plan.root,
           service: service.name,
           providerId: plan.provider,
-          containerId: current?.containerId ?? `test-container-${generation}`,
+          containerId,
           status: completesOnStart ? "exited" : "running",
           ...(completesOnStart ? { exitCode: 0 } : {}),
           lastStartedAt:
@@ -124,6 +180,7 @@ export const makeTestProviderContainers = () => {
               }),
             );
           }
+          if (!completesOnStart) green.set(service.name, containerId);
         }
       }
       return { changed };
@@ -137,12 +194,14 @@ export const makeTestProviderContainers = () => {
         const receipt = { service: container.service, containerId: container.containerId };
         if (options.containers === "remove") {
           containers.delete(id);
+          volumes.forget(container.containerId);
           receipts.push({ ...receipt, action: "removed" });
         } else if (container.status === "running") {
           containers.set(id, { ...container, status: "exited" });
           receipts.push({ ...receipt, action: "stopped" });
         } else receipts.push({ ...receipt, action: "already-stopped" });
       }
+      if (options.volumes) volumes.purge(target.plan === undefined ? target.app : planDataId(target.plan));
       if (receipts.length === 0 && target.plan === undefined)
         return { kind: "no-op", reason: "no-applied-plan" };
       return options.containers === "remove"
@@ -174,6 +233,7 @@ export const makeTestProviderContainers = () => {
         );
       if (disposition === "remove") {
         containers.delete(id);
+        volumes.forget(containerId);
         return Effect.succeed({ service, containerId, action: "removed" });
       }
       if (current.status !== "running")
@@ -182,6 +242,7 @@ export const makeTestProviderContainers = () => {
       return Effect.succeed({ service, containerId, action: "stopped" });
     });
   return {
+    volumes,
     apply,
     inspect,
     restart,

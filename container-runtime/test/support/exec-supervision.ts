@@ -94,7 +94,10 @@ export const supervisedExecFixtureOptions = (
 } => (api !== undefined && installed.has(api) ? fixtureHelperOptions : {});
 
 const ExecBody = Schema.Struct({ Cmd: Schema.Array(Schema.String) });
-const Container = Schema.Struct({ Id: Schema.optionalKey(Schema.String) });
+const Container = Schema.Struct({
+  Id: Schema.optionalKey(Schema.String),
+  Mounts: Schema.optionalKey(Schema.Array(Schema.Unknown)),
+});
 
 /** Translate the real framed exec boundary into the existing fake workload. */
 export const installSupervisedExecFixture = (api: EngineHttpApi): void => {
@@ -147,7 +150,10 @@ export const installSupervisedExecFixture = (api: EngineHttpApi): void => {
             ...response,
             body: JSON.stringify({
               ...JSON.parse(response.body),
-              Mounts: [{ Source: delivery.source, Destination: delivery.target, RW: false }],
+              Mounts: [
+                ...(decoded.Mounts ?? []),
+                { Type: "bind", Source: delivery.source, Destination: delivery.target, RW: false },
+              ],
             }),
           };
         }

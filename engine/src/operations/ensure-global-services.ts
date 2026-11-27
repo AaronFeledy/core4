@@ -324,6 +324,7 @@ export const ensureGlobalServicesRunning = Effect.fnUntraced(
       applyActivation({
         provider,
         plan: runtimePlan,
+        credentialPlan: desiredFinalPlan,
         previousPlan: retained.recordedPlan,
         certificates,
         reconcile: false,

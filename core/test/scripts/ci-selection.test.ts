@@ -23,6 +23,8 @@ describe("CI selection", () => {
     ["docs/src/assets/logo.svg", "docs"],
     ["docs/guides/start.mdx", "guides"],
     ["docs/guides/start/fixtures/input.json", "guides"],
+    ["docs/guides/tooling/db-creds-apply.mdx", "providers"],
+    ["docs/guides/db-creds-apply/fixtures/mssql/.lando.yml", "providers"],
     ["recipes/drupal/README.mdx", "runtime"],
     ["docs/astro.config.ts", "runtime"],
     ["scripts/build-ci-workflow.ts", "providers"],
@@ -38,6 +40,12 @@ describe("CI selection", () => {
     ["engine/src/operations/service-readiness-supervision.ts", "providers"],
     ["engine/src/operations/service-readiness-wait.ts", "providers"],
     ["engine/src/lifecycle/startup-completion.ts", "providers"],
+    ["engine/src/lifecycle/activation-apply.ts", "providers"],
+    ["engine/src/lifecycle/activation-credential-attempt.ts", "providers"],
+    ["engine/src/lifecycle/activation-credential-policy.ts", "providers"],
+    ["engine/src/lifecycle/activation-credential-warnings.ts", "providers"],
+    ["engine/src/lifecycle/activation-credentials.ts", "providers"],
+    ["engine/src/operations/database-convergence/mssql.ts", "providers"],
     ["engine/src/subsystems/healthcheck/runner-factory.ts", "providers"],
     ["engine/src/testing/live-provider-socket.ts", "providers"],
     ["sdk/src/services/service-readiness.ts", "providers"],
@@ -68,6 +76,7 @@ describe("CI selection", () => {
     ["engine/src/operations/start-internal.ts", "runtime"],
     ["engine/src/operations/stop.ts", "runtime"],
     ["core/test/live/new-live.integration.test.ts", "providers"],
+    ["core/test/live/mssql-activation-live.integration.test.ts", "providers"],
     ["plugins/service-lando/src/php-baseline.ts", "providers"],
     ["plugins/service-lando/test/php-baseline.integration.test.ts", "providers"],
     ["plugins/provider-lando/src/provider.ts", "providers"],
@@ -77,19 +86,28 @@ describe("CI selection", () => {
     ["core/test/foo.test.ts", "runtime"],
     ["unknown", "runtime"],
   ])("classifies %s as %s", (path, profile) => {
-    expect(selectPaths([path])).toMatchObject({ profile, broad: false });
+    expect(selectPaths([path])).toMatchObject({
+      profile,
+      broad: false,
+      providerChanges: profile === "providers",
+    });
   });
 
   test.each([
-    { paths: [".bun-version"] },
-    { paths: [".bun-version", "core/src/cli/run.ts"] },
-    { paths: ["core/src/cli/run.ts", ".bun-version"] },
-    { paths: [".bun-version", "docs/page.md"] },
-    { paths: ["docs/page.md", ".bun-version"] },
-    { paths: [".bun-version", "plugins/provider-lando/src/provider.ts"] },
-    { paths: ["plugins/provider-lando/src/provider.ts", ".bun-version"] },
-  ])("selects broad runtime CI for root Bun toolchain changes %j", ({ paths }) => {
-    expect(selectPaths(paths)).toEqual({ profile: "runtime", broad: true, reason: "Bun toolchain change" });
+    { paths: [".bun-version"], providerChanges: false },
+    { paths: [".bun-version", "core/src/cli/run.ts"], providerChanges: false },
+    { paths: ["core/src/cli/run.ts", ".bun-version"], providerChanges: false },
+    { paths: [".bun-version", "docs/page.md"], providerChanges: false },
+    { paths: ["docs/page.md", ".bun-version"], providerChanges: false },
+    { paths: [".bun-version", "plugins/provider-lando/src/provider.ts"], providerChanges: true },
+    { paths: ["plugins/provider-lando/src/provider.ts", ".bun-version"], providerChanges: true },
+  ])("selects broad runtime CI for root Bun toolchain changes %j", ({ paths, providerChanges }) => {
+    expect(selectPaths(paths)).toEqual({
+      profile: "runtime",
+      broad: true,
+      reason: "Bun toolchain change",
+      providerChanges,
+    });
   });
 
   test("selects every existing platform tier for a Bun toolchain change", () => {
@@ -205,6 +223,7 @@ describe("CI selection", () => {
     for (const event of ["push", "workflow_dispatch"]) {
       const selection = selectCi({ event, base: "", head: "", cwd: "/unusable" });
       expect(selection.broad).toBe(true);
+      expect(selection.providerChanges).toBe(false);
       expect(Object.values(CI_JOB_TIERS).every((tier) => jobSelected(tier, selection))).toBe(true);
     }
   });
@@ -213,6 +232,7 @@ describe("CI selection", () => {
     expect(selectCi({ event: "pull_request", base: "--bad", head: "", cwd: "/unusable" })).toMatchObject({
       profile: "providers",
       broad: false,
+      providerChanges: true,
     });
   });
 
@@ -300,6 +320,7 @@ describe("CI selection", () => {
         profile: "docs",
         broad: false,
         reason: "changed paths",
+        providerChanges: false,
       });
     } finally {
       await rm(cwd, { recursive: true, force: true });
@@ -329,6 +350,43 @@ describe("CI selection", () => {
       expect(workflow.jobs[id]?.if).toContain("needs.selection.outputs");
     }
     expect(workflow.jobs["build-linux-x64"]?.if).toContain("!failure()");
+  });
+
+  test("runs SQL Server activation only in the Linux providers matrix cell for provider changes", () => {
+    const { jobs } = Schema.decodeUnknownSync(
+      Schema.Struct({
+        jobs: Schema.Struct({
+          selection: Schema.Struct({ outputs: Schema.Record(Schema.String, Schema.String) }),
+          "provider-integration-linux-x64-runner": Schema.Struct({
+            steps: Schema.Array(
+              Schema.Struct({
+                run: Schema.optionalKey(Schema.String),
+                if: Schema.optionalKey(Schema.String),
+              }),
+            ),
+          }),
+        }),
+      }),
+    )(Bun.YAML.parse(renderCiWorkflow()));
+    const step = jobs["provider-integration-linux-x64-runner"].steps.find(({ run }) =>
+      run?.includes("test:selection providers-mssql-activation"),
+    );
+    expect(jobs.selection.outputs.provider_changes).toBe("${{ steps.select.outputs.provider_changes }}");
+    const expression = step?.if?.replace(/^\$\{\{|\}\}$/g, "");
+    const evaluate = new Function("matrix", "needs", `return ${expression}`);
+    for (const suite of ["providers", "engine", "services"]) {
+      for (const providerChanges of ["true", "false"]) {
+        const selected: unknown = evaluate(
+          { suite },
+          { selection: { outputs: { provider_changes: providerChanges } } },
+        );
+        expect({ suite, providerChanges, selected }).toEqual({
+          suite,
+          providerChanges,
+          selected: suite === "providers" && providerChanges === "true",
+        });
+      }
+    }
   });
 
   test.each(["docs", "guides", "runtime", "providers", "broad"] as const)(
@@ -484,7 +542,12 @@ describe("platform build path selection", () => {
     // Given / When: classify a platform job's script or compiled-test input.
     const selection = selectPaths([path]);
     // Then: no platform build can be skipped for this PR.
-    expect(selection).toEqual({ profile: "runtime", broad: true, reason: "platform build path" });
+    expect(selection).toEqual({
+      profile: "runtime",
+      broad: true,
+      reason: "platform build path",
+      providerChanges: false,
+    });
     for (const { id } of CI_PLATFORMS) {
       const tier = CI_JOB_TIERS[`build-${id}`];
       expect(tier).toBeDefined();
@@ -510,6 +573,6 @@ describe("platform build path selection", () => {
         "plugins/provider-lando/src/provider.ts",
         "core/test/build/host-execution-compiled.integration.test.ts",
       ]),
-    ).toEqual({ profile: "runtime", broad: true, reason: "platform build path" });
+    ).toEqual({ profile: "runtime", broad: true, reason: "platform build path", providerChanges: true });
   });
 });

@@ -23,6 +23,7 @@ export {
   orDieWithRole,
   primaryFailureReason,
   raceJoined,
+  unscopedFailureReason,
   withDeadline,
 } from "./failure.ts";
 

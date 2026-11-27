@@ -21,12 +21,33 @@ services:
     creds:
       database: credential_demo
       password: pg-fixture-pass-one
+  client:
+    type: compose
+    image: docker.io/library/postgres:16
+    appMount: false
+    home: false
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGUSER: "{{ services.db.creds.user }}"
+      PGPASSWORD: "{{ services.db.creds.password }}"
+      PGCONNECT_TIMEOUT: "5"
+    entrypoint: [/bin/sh, -c]
+    command:
+      - |
+        psql -X -w -h db -d credential_demo -tAc 'SELECT 2616;' >/tmp/boot-select 2>&1
+        printf 'boot-select status=%s\n' "$?" >>/tmp/boot-select
+        exec sleep infinity
 ```
 
-Start the app and add a marker row before you change the password:
+The `client` service stands in for your app. It waits for `db` to be healthy, runs one query when it boots, and saves the output and exit status in `/tmp/boot-select`.
+
+Start the app, read the result of that boot query, and add a marker row before you change the password:
 
 ```sh
 lando start --format=json
+lando exec client -- cat /tmp/boot-select
 lando psql -c "CREATE TABLE creds_marker(id int PRIMARY KEY); INSERT INTO creds_marker(id) VALUES (2457);"
 ```
 
@@ -34,16 +55,27 @@ Set `services.db.creds.password` to `pg-fixture-pass-two` in `.lando.yml`, leavi
 
 ```sh
 lando start --format=json
+lando exec client -- cat /tmp/boot-select
 lando psql -tAc "SELECT id FROM creds_marker WHERE id = 2457;"
 lando db:export marker.sql --format=json
 lando start --format=json
 ```
 
-The first start reports one `credentialChanges` entry for `db` with `changedMembers: ["password"]`. The query returns `2457`, and `marker.sql` contains the row. The second start omits `credentialChanges`: Lando skips credential work for an unchanged service that's already running. Without `--format=json`, look for the start message that names the service and the credential fields that changed, not their values.
+Both times, `/tmp/boot-select` holds `2616` and `boot-select status=0`. The password edit replaces `client`, and its one query at boot already uses the new password. The first start after the edit reports one `credentialChanges` entry for `db` with `changedMembers: ["password"]`. The `creds_marker` query returns `2457`, and `marker.sql` contains the row. The last start omits `credentialChanges`: Lando skips credential work for an unchanged service that's already running. Without `--format=json`, look for the start message that names the service and the credential fields that changed, not their values.
 
 ## Point `creds.database` at the right data
 
 Changing the name does not move any data. If Lando creates an empty database on existing storage, it warns with `LANDO_DATABASE_CREATED_ON_EXISTING_STORAGE` and lists other databases it found. To use the old data, set `creds.database` back to the original name and run `lando start`. If you meant to use a new database, [import or restore a backup](./db-import-export.mdx) into it. In MongoDB a name-only edit doesn't create an empty database or report a `database` change. MongoDB creates the database on the first write.
+
+## Start services that wait on the database
+
+A service that requires a Lando-managed catalog database with `condition: service_healthy` waits for two checks. The usual readiness probe runs first. Then Lando verifies or applies the database's `creds` before it starts or replaces the waiting service. Its first connection at boot can use the configured user, password, and database, as `client` does in the example above.
+
+If credential preparation fails for a required dependency, the error names the database and the service that was waiting. That check stops Lando from starting or replacing the waiting service at this point. It doesn't undo any work already done by the command. With `required: false`, a credential refusal doesn't block the waiting service.
+
+If the error says a write may have taken effect, inspect the database before you try again. Fix the issue named in the error, then retry the same command with the same service selection. Don't delete the database volume to retry.
+
+Lando doesn't restart a waiting service that's already running and isn't being replaced. If no required edge blocks the command, it can finish with a warning even when Lando couldn't verify or apply the database credentials.
 
 ## Check credentials for a custom image or launcher
 
@@ -53,7 +85,7 @@ When Lando starts or replaces a typed database service it can't manage, or its c
 
 If you get `LANDO_DATABASE_ADMIN_SEED_UNAVAILABLE`, Lando couldn't read or create its private administrator seed. For MySQL, MariaDB, MongoDB, and SQL Server, Lando skips adopting `lando_admin` and still tries the previous or desired administrator credentials. Check ownership and permissions on `db-admin/key.v1` in your Lando data directory, or restore the original seed from backup. Don't replace an existing seed.
 
-If you get `LANDO_DATABASE_CREDENTIAL_CONVERGENCE_FAILED`, start can still succeed even though the database credentials haven't caught up. This can happen if you restored a volume from another machine or changed the administrator password outside Lando. With the service still running, preview the repair and check the listed changes before applying them:
+If you get `LANDO_DATABASE_CREDENTIAL_CONVERGENCE_FAILED`, Lando couldn't verify or apply the credentials. This can happen if you restored a volume from another machine or changed the administrator password outside Lando. `lando db:creds:apply` needs a running catalog database already recorded for this app. The desired and applied database must agree on the provider, image, launcher, and owned storage. A failed start does not establish those prerequisites. If they hold, preview the repair and check the listed changes before applying them:
 
 ```sh
 lando db:creds:apply --service db --format=json
@@ -69,22 +101,25 @@ Lando uses its own `lando_admin` account for routine changes. If the warning say
 <Guide>
   <Scenario id="postgres-password-converges" layer="e2e" tags={["@smoke"]} render>
     <Step name="start-and-seed">
-      <UseFixture name="postgres" />
+      <UseFixture name="postgres-gated-client" />
       <Verify command="lando start --format=json" expect={{ stdout: { regex: "\"ok\":\\s*true", not: { regex: "LANDO_DATABASE_CREDENTIAL_CONVERGENCE_FAILED" } } }} />
+      <Verify command="lando exec client -- cat /tmp/boot-select" expect={{ stdout: { regex: "^2616\\s+boot-select status=0\\s*$" } }} />
       <Run command={`lando psql -c "CREATE TABLE creds_marker(id int PRIMARY KEY); INSERT INTO creds_marker(id) VALUES (2457);"`} />
     </Step>
-    <Hidden reason="Apply the same password edit without an editor">
+    <Hidden reason="Apply the same password edit without an editor; drop the first boot's result so only a replaced client can pass (issue 2616)">
       <Step name="edit-password">
         <Run command={`lando bun -e 'await Bun.write(".lando.local.yml", Bun.file("changed-creds.lando.local.yml"))'`} />
+        <Run command="lando exec client -- rm /tmp/boot-select" />
       </Step>
     </Hidden>
     <Step name="start-applies-password">
       <Verify command="lando start --format=json" expectExit={0} expect={{ stdout: { regex: "\"credentialChanges\":\\s*\\[\\s*\\{\\s*\"service\":\\s*\"db\",\\s*\"family\":\\s*\"postgres\",\\s*\"changedMembers\":\\s*\\[\\s*\"password\"\\s*\\]\\s*\\}\\s*\\]" } }} />
+      <Verify command="lando exec client -- cat /tmp/boot-select" expect={{ stdout: { regex: "^2616\\s+boot-select status=0\\s*$" } }} />
     </Step>
     <Step name="verify-existing-data">
       <Verify command={`lando psql -tAc "SELECT id FROM creds_marker WHERE id = 2457;"`} expect={{ stdout: { regex: "^2457\\s*$" } }} />
       <Verify command="lando db:export marker.sql --format=json" expect={{ stdout: { regex: "\"ok\":\\s*true" } }} />
-      <Verify file="postgres/marker.sql" expect={{ regex: "COPY [^\\n]*creds_marker[^\\n]*\\r?\\n2457\\r?\\n" }} />
+      <Verify file="postgres-gated-client/marker.sql" expect={{ regex: "COPY [^\\n]*creds_marker[^\\n]*\\r?\\n2457\\r?\\n" }} />
     </Step>
     <Step name="verify-unchanged-start">
       <Verify command="lando start --format=json" expectExit={0} expect={{ stdout: { not: { regex: "credentialChanges" } } }} />
@@ -188,15 +223,18 @@ Lando uses its own `lando_admin` account for routine changes. If the warning say
     </Step>
   </Scenario>
 
-  <Scenario id="mssql-sa-and-database-name" layer="e2e" platforms={["linux"]} render={false} reason="SQL Server rotates sa and leaves the original database intact">
+  <Scenario id="mssql-sa-and-database-name" layer="e2e" platforms={["linux"]} render={false} reason="SQL Server has the configured database before a waiting service boots, rotates sa, and leaves the original database intact">
     <Step name="start-and-seed">
       <UseFixture name="mssql" />
+      <Run command={`lando bun -e 'await Bun.write(".lando.user.yml", Bun.file("gated-client.lando.user.yml"))'`} />
       <Verify command="lando start --format=json" expect={{ stdout: { regex: "\"ok\":\\s*true", not: { regex: "LANDO_DATABASE_CREDENTIAL_CONVERGENCE_FAILED" } } }} />
+      <Verify command="lando exec client -- cat /tmp/boot-select" expect={{ stdout: { regex: "^\\s*credential_demo\\s+boot-select status=0\\s*$" } }} />
       <Run command={`lando sqlcmd -b -d credential_demo -Q "CREATE TABLE dbo.creds_marker(id INT PRIMARY KEY); INSERT INTO dbo.creds_marker VALUES (2457);"`} />
     </Step>
     <Step name="apply-and-read">
       <Run command={`lando bun -e 'await Bun.write(".lando.local.yml", Bun.file("changed-creds.lando.local.yml"))'`} />
       <Verify command="lando start --format=json" expect={{ stdout: { regex: "(?=[\\s\\S]*LANDO_DATABASE_CREATED_ON_EXISTING_STORAGE)(?=[\\s\\S]*\"changedMembers\":\\s*\\[\\s*\"password\",\\s*\"database\",\\s*\"rootPassword\"\\s*\\])" } }} />
+      <Verify command="lando exec client -- cat /tmp/boot-select" expect={{ stdout: { regex: "^\\s*credential_empty\\s+boot-select status=0\\s*$" } }} />
       <Verify command={`lando sqlcmd -b -h -1 -d credential_empty -Q "SET NOCOUNT ON; SELECT COUNT(*) FROM sys.tables; SELECT id FROM credential_demo.dbo.creds_marker;"`} expect={{ stdout: { regex: "^\\s*0\\s+2457\\s*$" } }} />
     </Step>
     <Step name="cleanup">

@@ -184,6 +184,27 @@ test.each([0, 7])(
   },
 );
 
+test("preserves the cleanup role when capture propagates a sanitized defect", async () => {
+  const sentinel = "SYNTHETIC_PRIVATE_CAPTURE_CLEANUP";
+  const source = Stream.unwrap(
+    Effect.gen(function* () {
+      yield* Effect.addFinalizer(() =>
+        Effect.failCause(annotateFailureRole(Cause.die(new Error(sentinel)), "cleanup")),
+      );
+      return Stream.make({ exitCode: 0 });
+    }),
+  );
+  const exit = await Effect.runPromiseExit(captureCommandOutput(source, { failure, preserveDefects: true }));
+  if (!Exit.isFailure(exit)) throw new Error("Expected a cleanup defect");
+  expect(
+    exit.cause.reasons.map((reason) => [
+      reason._tag,
+      Context.getOrUndefined(Cause.reasonAnnotations(reason), FailureRoleAnnotation),
+    ]),
+  ).toEqual([["Die", "cleanup"]]);
+  expect(Cause.pretty(exit.cause)).not.toContain(sentinel);
+});
+
 test("preserves interrupts and finalizes on cancellation and downstream early completion", async () => {
   let closed = 0;
   const source = Stream.unwrap(

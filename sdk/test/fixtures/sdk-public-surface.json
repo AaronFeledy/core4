@@ -429,6 +429,7 @@
       "exportVolume:(ref:VolumeRef) => Stream.Stream<Uint8Array,ProviderError,Scope.Scope>",
       "getStatus:Effect.Effect<ProviderStatus,ProviderError>",
       "getVersions:Effect.Effect<ProviderVersions,ProviderError>",
+      "healthyDependencyContinuation?:true",
       "id:string",
       "importArtifact:(data:Stream.Stream<Uint8Array,ProviderError>) => Effect.Effect<ProviderArtifactRef,ProviderError,Scope.Scope>",
       "importVolume:<E,R>(spec:VolumeArchiveImportSpec<E,R>) => Effect.Effect<void,ProviderError|E,Scope.Scope|R>",
@@ -444,6 +445,7 @@
       "adoptDataRoot?:(plan:AppPlan,volumeWitness:(coordinationKey:string) => Effect.Effect<string|undefined,ProviderError>) => Effect.Effect<void,ProviderError>",
       "logs:(target:LogTarget,options:LogOptions) => Stream.Stream<LogChunk,ProviderError>",
       "matchingPublishPorts?:(containerId:string,ports:ReadonlyArray<PortNumber>) => Effect.Effect<ReadonlyArray<PortNumber>,ProviderError>",
+      "observeBoundVolume?:(target:ServiceSelector & { expectedContainerId:string },destination:PortablePath) => Effect.Effect<VolumeInfo,ProviderError>",
       "observeVolume?:(target:ServiceSelector,destination:PortablePath) => Effect.Effect<VolumeInfo,ProviderError>",
       "occupiedPublishPorts?:(ports:ReadonlyArray<PortNumber>) => Effect.Effect<ReadonlyArray<PortNumber>,ProviderError>",
       "openAgentSocketBridge?:(input:AgentSocketBridgeInput) => Effect.Effect<AgentSocketBridgeResult,ProviderError,Scope.Scope>",
@@ -612,6 +614,7 @@
       "resolveCommandCompletion",
       "structuralRedaction",
       "taggedErrorJson",
+      "unscopedFailureReason",
       "withDeadline"
     ],
     "./database-creds": [
