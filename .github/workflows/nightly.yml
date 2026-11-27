@@ -493,7 +493,13 @@ jobs:
 
       - name: Run e2e guide scenarios
         run: |
-          LANDO_SCENARIO_E2E_BINARY="$GITHUB_WORKSPACE/dist/lando" bun run scripts/test-reporters/run-guide-scenarios.ts test/scenarios/generated/guides/** --max-concurrency=1 --test-name-pattern="\[e2e\]"
+          # Setup leaves system trust untouched; host curl still needs the local route CA.
+          ca_root="$("$LANDO_USER_DATA_ROOT/bin/mkcert" -CAROOT)"
+          test -n "$ca_root" && test -s "$ca_root/rootCA.pem" || exit 1
+          curl_ca_bundle="$(mktemp "$RUNNER_TEMP/lando-guide-curl-ca.XXXXXX")"
+          trap 'rm -f "$curl_ca_bundle"' EXIT
+          cat /etc/ssl/certs/ca-certificates.crt "$ca_root/rootCA.pem" > "$curl_ca_bundle"
+          CURL_CA_BUNDLE="$curl_ca_bundle" LANDO_SCENARIO_E2E_BINARY="$GITHUB_WORKSPACE/dist/lando" bun run scripts/test-reporters/run-guide-scenarios.ts test/scenarios/generated/guides/** --max-concurrency=1 --test-name-pattern="\[e2e\]"
         env:
           LANDO_GUIDE_E2E: "1"
           LANDO_GUIDE_SCENARIO_LIVE_OUTPUT: "1"
