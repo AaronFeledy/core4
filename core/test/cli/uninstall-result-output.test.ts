@@ -47,7 +47,6 @@ test("uninstall machine output retains owned classification for manual contribut
         _userDataRoot: data,
         _userCacheRoot: join(root, "cache"),
         _userConfRoot: join(root, "config"),
-        _cgroupsDelegatePath: join(root, "delegate.conf"),
         _shellProfilePath: join(root, "profile"),
         _listDiscoveredApps: async () => [],
         _readManagedProviderMachine: () => ({ ownership: "absent" }),

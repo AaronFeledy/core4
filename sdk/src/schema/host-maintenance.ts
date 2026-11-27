@@ -1,5 +1,7 @@
 import { Schema } from "effect";
 
+import { HostChange, HostChangeId } from "./host-change.ts";
+
 // ============================================================================
 // Plugin-owned host uninstall plans and execution results
 // ============================================================================
@@ -33,6 +35,15 @@ export const HostUninstallStep = Schema.Struct({
   ...plannedFields,
   status: HostUninstallStepStatus,
   preserveOnKeepData: Schema.optionalKey(Schema.Boolean),
+  change: Schema.optionalKey(
+    HostChange.annotate({
+      description:
+        "The privileged undo the step runs, with its exact commands. Its consent decides whether `--purge` runs it: a `separate` one runs only when `--undo` names it.",
+    }),
+  ),
+  receiptId: Schema.optionalKey(
+    HostChangeId.annotate({ description: "The recorded host change this step undoes." }),
+  ),
 });
 export type HostUninstallStep = typeof HostUninstallStep.Type;
 

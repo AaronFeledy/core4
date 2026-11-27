@@ -21,18 +21,21 @@ const plan = (id: string, status: string) =>
     },
   });
 
-test.each(["socket-proxy-helper", "cgroups-delegate"])("refuses existing %s before installing", (id) => {
-  // Given production uninstall would reach an existing host-global integration.
-  const dryRun = plan(id, "owned");
-  // When preflight checks its real dry-run projection.
-  const check = () => assertLifecycleHostIsolation(dryRun);
-  // Then root isolation cannot be mistaken for host isolation.
-  expect(check).toThrow("Fresh host required");
-});
+test.each(["socket-proxy-helper:socket-proxy-helper", "provider-lando:delegate-cgroups"])(
+  "refuses existing %s before installing",
+  (id) => {
+    // Given production uninstall would reach an existing host-global integration.
+    const dryRun = plan(id, "owned");
+    // When preflight checks its real dry-run projection.
+    const check = () => assertLifecycleHostIsolation(dryRun);
+    // Then root isolation cannot be mistaken for host isolation.
+    expect(check).toThrow("Fresh host required");
+  },
+);
 
 test("accepts a host without global integration", () => {
   // Given no host-global uninstall target exists.
-  const dryRun = plan("socket-proxy-helper", "skipped");
+  const dryRun = plan("socket-proxy-helper:socket-proxy-helper", "skipped");
   // When preflight checks the production projection.
   const check = () => assertLifecycleHostIsolation(dryRun);
   // Then a dedicated clean runner can proceed.

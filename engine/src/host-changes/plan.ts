@@ -184,6 +184,16 @@ export const previewApprovals = (
     approvedBy: [...hostChangeApprovedBy(change)],
   }));
 
+/**
+ * Why a run needs administrator access, from the summaries of what it will do as root, as one
+ * readable clause: "disable lingering for dev and remove Lando's local CA from the system store".
+ */
+export const privilegePurpose = (summaries: ReadonlyArray<string>): string => {
+  const clauses = summaries.map((summary) => summary.charAt(0).toLowerCase() + summary.slice(1));
+  if (clauses.length <= 2) return clauses.join(" and ");
+  return `${clauses.slice(0, -1).join(", ")}, and ${clauses.at(-1)}`;
+};
+
 /** Whether any change in the plan runs a step as root, so the run needs credentials. */
 export const planNeedsPrivilege = (changes: ReadonlyArray<HostChange>): boolean =>
   changes.some((change) => change.steps.some((step) => step.privileged));
