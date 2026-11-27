@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
-import { chmod, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { chmod, lstat, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { createServer, request as httpRequest } from "node:http";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -1437,6 +1437,7 @@ console.log(JSON.stringify({
     "identity-digest",
     "shim",
     "socket-file",
+    "container-directory-public",
     "run-directory-public",
   ] as const)(
     "replaces a rejected %s real worker record without signalling foreign workers",
@@ -1498,9 +1499,12 @@ console.log(JSON.stringify({
             await rm(before.socketPath);
             await writeFile(before.socketPath, "not a socket", { mode: 0o600 });
             break;
-          case "run-directory-public":
+          case "container-directory-public":
             if (before.socketPath === undefined) throw new Error("Expected socket");
             await chmod(dirname(before.socketPath), 0o755);
+            break;
+          case "run-directory-public":
+            await chmod(dirname(path), 0o755);
             break;
         }
         if (rejection !== "dead")
@@ -1527,6 +1531,13 @@ console.log(JSON.stringify({
         // Then replacement gets a new session; foreign processes are untouched.
         expect(after?.pid).not.toBe(before.pid);
         expect(second.sessionId).not.toBe(first.sessionId);
+        if (rejection === "run-directory-public" || rejection === "container-directory-public") {
+          if (after?.socketPath === undefined) throw new Error("Missing replacement socket");
+          expect((await lstat(dirname(path))).mode & 0o777).toBe(0o700);
+          expect((await lstat(dirname(after.socketPath))).mode & 0o777).toBe(0o711);
+          expect((await lstat(after.socketPath)).mode & 0o777).toBe(0o666);
+          expect(await Effect.runPromise(probeWorker(after))).toBe("live");
+        }
         if (rejection === "foreign-app" || rejection === "foreign-root" || rejection === "corrupt")
           expect(pidIsAlive(before.pid)).toBe(true);
         if (

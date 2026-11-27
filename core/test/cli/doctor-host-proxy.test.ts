@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { ConfigService, PathsService, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
+import { ensureHostProxyContainerDirectory } from "@lando/engine/subsystems/host-proxy/run-directory";
 import {
   HOST_PROXY_WORKER_PROTOCOL_VERSION,
   type HostProxyWorkerRecord,
@@ -64,8 +65,8 @@ afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
-const tempRoot = async (): Promise<string> => {
-  const root = await mkdtemp(join(tmpdir(), "lando-doctor-host-proxy-"));
+const tempRoot = async (prefix = "lando-doctor-host-proxy-"): Promise<string> => {
+  const root = await mkdtemp(join(tmpdir(), prefix));
   roots.push(root);
   return root;
 };
@@ -167,13 +168,19 @@ describe("meta:doctor host-proxy transport reachability", () => {
     });
   });
 
-  test("reports a live Unix-socket worker as reachable", async () => {
+  test.each(["supported", "outside"] as const)("reports a live Unix-socket worker (%s)", async (kind) => {
     // Given
-    const root = await tempRoot();
+    const root = await tempRoot("ldhp-");
     const app = { kind: "user" as const, id: "demo", root: AbsolutePath.make(join(root, "app")) };
-    const socketPath = join(root, "host-proxy-control.sock");
+    const runDir = makeLandoPaths({ userDataRoot: root }).hostProxyRunDir(app.id, app.root);
+    const socketPath = join(
+      await ensureHostProxyContainerDirectory(kind === "supported" ? runDir : join(root, "other-run")),
+      "sock",
+    );
     const controlToken = "doctor-control-token";
+    let controlRequests = 0;
     const server = createServer((request, response) => {
+      controlRequests += 1;
       if (request.headers["x-lando-host-proxy-control"] !== controlToken) {
         response.writeHead(401).end();
         return;
@@ -218,16 +225,20 @@ describe("meta:doctor host-proxy transport reachability", () => {
     // Then
     const check = result.checks.find((candidate) => candidate.name === "host-proxy-transport");
     expect(check).toMatchObject({
-      status: "pass",
-      severity: "info",
+      status: kind === "supported" ? "pass" : "warn",
+      severity: kind === "supported" ? "info" : "warn",
       context: {
         appId: "demo",
         transport: "unix-socket",
-        reachability: "reachable",
+        privateRunDirectory: kind === "supported" ? "true" : "false",
+        ...(kind === "supported"
+          ? { reachability: "reachable" }
+          : { reachability: "unreachable", failure: "socket-path-mismatch" }),
         endpoint: socketPath,
       },
-      solutions: [],
+      ...(kind === "supported" ? { solutions: [] } : {}),
     });
+    if (kind === "outside") expect(controlRequests).toBe(0);
   });
 
   test("reports a live protocol-v1 legacy Unix-socket worker as reachable", async () => {
@@ -285,9 +296,10 @@ describe("meta:doctor host-proxy transport reachability", () => {
 
   test("warns when a live Unix socket is outside an owner-only run directory", async () => {
     // Given
-    const root = await tempRoot();
+    const root = await tempRoot("ldhp-");
     const app = { kind: "user" as const, id: "demo", root: AbsolutePath.make(join(root, "app")) };
-    const socketPath = join(root, "host-proxy-control.sock");
+    const runDir = makeLandoPaths({ userDataRoot: root }).hostProxyRunDir(app.id, app.root);
+    const socketPath = join(await ensureHostProxyContainerDirectory(runDir), "sock");
     const controlToken = "doctor-control-token";
     const server = createServer((_request, response) => {
       response.writeHead(200, { "content-type": "application/json" });
@@ -305,7 +317,6 @@ describe("meta:doctor host-proxy transport reachability", () => {
     servers.push(server);
     await listenUnix(server, socketPath);
     await chmod(socketPath, 0o666);
-    await chmod(root, 0o755);
     await Effect.runPromise(
       writeWorkerRecord(
         app,
@@ -324,6 +335,7 @@ describe("meta:doctor host-proxy transport reachability", () => {
         ownerOnlyFileAccess,
       ),
     );
+    await chmod(runDir, 0o755);
 
     // When
     const result = await runDoctor(root);
@@ -380,7 +392,11 @@ describe("meta:doctor host-proxy transport reachability", () => {
         {
           appId: isolatedApp.id,
           appRoot: isolatedApp.root,
-          socketPath: join(isolated, "isolated.sock"),
+          socketPath: join(
+            makeLandoPaths({ userDataRoot: isolated }).hostProxyRunDir(isolatedApp.id, isolatedApp.root),
+            "container",
+            "sock",
+          ),
           shimPath: join(isolated, "lando"),
           ...workerFields,
         },
@@ -394,7 +410,11 @@ describe("meta:doctor host-proxy transport reachability", () => {
         {
           appId: ambientApp.id,
           appRoot: ambientApp.root,
-          socketPath: join(ambient, "ambient.sock"),
+          socketPath: join(
+            makeLandoPaths({ userDataRoot: ambient }).hostProxyRunDir(ambientApp.id, ambientApp.root),
+            "container",
+            "sock",
+          ),
           shimPath: join(ambient, "lando"),
           ...workerFields,
         },
@@ -1565,6 +1585,7 @@ describe("meta:doctor host-proxy transport reachability", () => {
           return yield* Effect.never;
         }),
         socketMetadata: () => Effect.succeed(undefined),
+        socketDirectoryPrivate: () => Effect.die("not used"),
       }),
     );
 
