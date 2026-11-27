@@ -1,5 +1,11 @@
 import { randomUUID } from "node:crypto";
-import { AbsolutePath, type AppPlan, type VolumeCreationFact, planDataId } from "@lando/sdk/schema";
+import {
+  AbsolutePath,
+  type AppPlan,
+  LANDO_DATA_ROOT_LABEL,
+  type VolumeCreationFact,
+  planDataId,
+} from "@lando/sdk/schema";
 
 import { Option, Schema } from "effect";
 import {
@@ -57,6 +63,7 @@ export const volumeCreationFact = (input: {
     !generation ||
     !owner ||
     volume.Name !== input.name ||
+    volume.Labels[LANDO_DATA_ROOT_LABEL] !== input.labels[LANDO_DATA_ROOT_LABEL] ||
     volume.Labels[VOLUME_INSTANCE_LABEL] !== generation ||
     volume.Labels[VOLUME_OWNER_LABEL] !== owner
   )

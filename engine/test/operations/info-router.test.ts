@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { type AppPlan, type PublicationObservation, ServiceInfo, type ServicePlan } from "@lando/sdk/schema";
 import { RouterService, RuntimeProviderRegistry } from "@lando/sdk/services";
-import { TestRuntimeProvider, makeTestRouterService } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRouterService, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect, Layer, Schema } from "effect";
 import { infoForPlan } from "../../src/operations/info.ts";
 import { plan, web } from "./start-progress-topology-support.ts";
@@ -46,10 +46,7 @@ const infoOf = (
     infoForPlan(planned).pipe(
       Effect.provideService(
         RuntimeProviderRegistry,
-        RuntimeProviderRegistry.of({
-          appliedPlansFor: () => Effect.succeed([]),
-          resolveAppliedPlan: () => Effect.succeed(undefined),
-          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+        makeTestRuntimeProviderRegistry({
           list: Effect.succeed([planned.provider]),
           capabilities: Effect.succeed(provider.capabilities),
           select: () => Effect.succeed(provider),
@@ -95,6 +92,7 @@ test("round trips actual info without redundant fields or runtime leakage", asyn
     "service",
     "status",
     "type",
+    "url",
   ]);
 });
 

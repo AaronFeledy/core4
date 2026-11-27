@@ -755,7 +755,7 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
     }),
     projectUser: Schema.optionalKey(Schema.Union([Schema.Literal(false), Schema.String])).annotate({
       description:
-        'In-container identity that owns files written to the app mount. Accepts false, a numeric "<uid>:<gid>" pair, or the project user name the service type declares. Omitted, a numeric or matching authored user is used, then the service type default.',
+        'In-container identity mapped to the host user for the app mount. Set false to opt out, or request a non-root numeric "<uid>:<gid>" pair or the project user name declared by the service type. If omitted, an authored root process user is not mapped; an authored non-root numeric pair takes precedence over the catalog default. A launcher-scoped catalog default requires the matching stock image, an opted-in launcher using the image entrypoint, no authored command or entrypoint, and a process user that is unset or equals the catalog account name. For a service eligible for mapping, an explicit request that cannot be mapped fails planning.',
     }),
     working_dir: Schema.optionalKey(PortablePath).annotate({
       description: "Container working directory for service processes.",
@@ -803,7 +803,7 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
     }),
     packageRoot: Schema.optionalKey(Schema.String).annotate({
       description:
-        "App-root-relative source directory for project-file inputs: bare Node infers the Node version from .nvmrc and package.json engines, and catalog Node types select the package manager from package.json (packageManager or devEngines.packageManager). It changes neither mounts nor the container working directory. A custom image or replacement Compose build owns its toolchain and rejects an authored packageRoot.",
+        "App-root-relative source directory for project-file inputs: bare Node infers the Node version from .nvmrc and package.json engines, and catalog Node types select the package manager from package.json (packageManager or devEngines.packageManager). It does not move the app mount or the container working directory. A nested package root contributes a preset node_modules exclude, except under Yarn Plug'n'Play. A custom image or replacement Compose build owns its toolchain and rejects an authored packageRoot.",
     }),
     webroot: Schema.optionalKey(PortablePath).annotate({
       description:

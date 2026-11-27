@@ -1,0 +1,7 @@
+name: scratch-fork-guide
+services:
+  web:
+    type: apache
+    routes:
+      - hostname: web.fork-source-with-an-authored-route-label-that-needs-shortening.lndo.site
+        scheme: http

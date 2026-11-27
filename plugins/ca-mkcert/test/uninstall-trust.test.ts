@@ -1,0 +1,318 @@
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import {
+  HostChangeId,
+  type HostChangeReceipt,
+  type HostPlatform,
+  type HostUninstallStep,
+} from "@lando/sdk/schema";
+import { TEST_CERTIFICATES } from "@lando/sdk/test";
+import { Effect } from "effect";
+
+import {
+  LOCAL_CA_MAINTAINER_ID,
+  type LocalCaHostAccess,
+  makeLocalCaHostMaintainer,
+  mkcertCaRoot,
+} from "../src/uninstall-trust.ts";
+
+// rootA's serial is 0x1000: mkcert names its entries after the decimal form.
+const NICKNAME = "mkcert development CA 4096";
+const SHA1 = "6BDF0095A4C98D80C015A3E24146B22DFF0DBBCA";
+const SHA256 =
+  "D4:AB:14:F1:74:9F:27:BC:35:6B:71:25:D2:82:A1:DA:64:33:09:56:77:54:8F:3C:F9:05:3E:C4:42:FA:C7:40";
+
+describe("mkcert CAROOT resolution", () => {
+  test.each<[string, HostPlatform, Record<string, string>, string | undefined]>([
+    ["CAROOT wins everywhere", "win32", { CAROOT: "/ca", LOCALAPPDATA: "C:\\L" }, "/ca"],
+    ["empty CAROOT is unset", "linux", { CAROOT: "", HOME: "/h" }, "/h/.local/share/mkcert"],
+    [
+      "windows uses LOCALAPPDATA, never XDG",
+      "win32",
+      { LOCALAPPDATA: "C:\\L", XDG_DATA_HOME: "/x" },
+      "C:\\L\\mkcert",
+    ],
+    ["windows without LOCALAPPDATA has none", "win32", { HOME: "/h" }, undefined],
+    ["XDG_DATA_HOME beats the darwin default", "darwin", { XDG_DATA_HOME: "/x", HOME: "/h" }, "/x/mkcert"],
+    ["darwin default", "darwin", { HOME: "/h" }, "/h/Library/Application Support/mkcert"],
+    ["linux default", "linux", { HOME: "/h" }, "/h/.local/share/mkcert"],
+    ["wsl resolves like linux", "wsl", { XDG_DATA_HOME: "/x" }, "/x/mkcert"],
+    ["no HOME has none", "linux", {}, undefined],
+  ])("%s", (_name, platform, env, expected) => {
+    expect(mkcertCaRoot(platform, env)).toBe(expected);
+  });
+});
+
+describe("local CA uninstall step", () => {
+  let dir: string;
+  let caroot: string;
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "lando-local-ca-uninstall-"));
+    caroot = join(dir, "mkcert");
+    await mkdir(caroot);
+  });
+  afterEach(() => rm(dir, { recursive: true, force: true }));
+
+  const plan = async (platform: HostPlatform, access: Partial<LocalCaHostAccess>) => {
+    const maintainer = makeLocalCaHostMaintainer({ exists: () => false, listDirs: () => [], ...access });
+    expect(maintainer.id).toBe(LOCAL_CA_MAINTAINER_ID);
+    const steps = await Effect.runPromise(
+      maintainer.uninstall?.plan({ platform, userDataRoot: dir, receipts: [] }) ?? Effect.die("no uninstall"),
+    );
+    expect(steps).toHaveLength(1);
+    return steps[0] as HostUninstallStep;
+  };
+
+  test("is skipped when CAROOT holds no root", async () => {
+    const step = await plan("linux", { env: { CAROOT: caroot } });
+    expect(step).toMatchObject({ id: "trust", status: "skipped", target: caroot });
+    expect(step.preserveOnKeepData).toBeUndefined();
+  });
+
+  test("linux names the anchor setup wrote under Lando's fixed name", async () => {
+    await writeFile(join(caroot, "rootCA.pem"), TEST_CERTIFICATES.rootA);
+    const anchor = "/etc/pki/ca-trust/source/anchors/lando-local-ca.pem";
+    const step = await plan("linux", {
+      env: { CAROOT: caroot, PATH: "" },
+      exists: (path) => path === anchor,
+    });
+    expect(step.detail).toContain(`\`sudo rm -f ${anchor} && sudo /usr/bin/update-ca-trust extract\``);
+  });
+
+  test("linux names the anchor files, NSS databases and Homebrew bundles that exist", async () => {
+    await writeFile(join(caroot, "rootCA.pem"), TEST_CERTIFICATES.rootA);
+    const prefix = join(dir, "brew");
+    await mkdir(join(prefix, "opt", "ca-certificates"), { recursive: true });
+    const home = "/home/u";
+    const firefox = `${home}/.mozilla/firefox`;
+    const present = new Set([
+      `/usr/local/share/ca-certificates/${NICKNAME.replaceAll(" ", "_")}.crt`,
+      `${home}/.pki/nssdb/cert9.db`,
+      `${firefox}/abc.default/cert9.db`,
+    ]);
+    const step = await plan("linux", {
+      env: { CAROOT: caroot, HOME: home, HOMEBREW_PREFIX: prefix, PATH: "" },
+      exists: (path) => present.has(path),
+      listDirs: (path) => (path === firefox ? ["abc.default", "no-db"] : []),
+    });
+
+    expect(step).toMatchObject({
+      status: "manual",
+      target: caroot,
+      destructive: false,
+    });
+    // Advisory: the step removes nothing, so keep-data has nothing to preserve.
+    expect(step.preserveOnKeepData).toBeUndefined();
+    expect(step.detail).toContain(SHA256);
+    expect(step.detail).toContain(
+      "`sudo rm -f /usr/local/share/ca-certificates/mkcert_development_CA_4096.crt && sudo /usr/sbin/update-ca-certificates`",
+    );
+    expect(step.detail).not.toContain("/etc/pki/ca-trust/source/anchors");
+    expect(step.detail).not.toContain("ca-certificates/lando-local-ca.crt");
+    expect(step.detail).toContain(`\`certutil -D -d sql:${home}/.pki/nssdb -n '${NICKNAME}'\``);
+    expect(step.detail).toContain(`\`certutil -D -d sql:${firefox}/abc.default -n '${NICKNAME}'\``);
+    expect(step.detail).not.toContain("no-db");
+    expect(step.detail).toContain(`\`${prefix}/bin/brew postinstall ca-certificates\``);
+    expect(step.detail).not.toContain("certutil.exe");
+    expect(step.detail).toContain(`delete ${caroot},`);
+    expect(step.detail).not.toContain("\n");
+  });
+
+  test("linux also names the browser databases Lando's setup writes, such as Chromium's XDG database", async () => {
+    await writeFile(join(caroot, "rootCA.pem"), TEST_CERTIFICATES.rootA);
+    const home = join(dir, "home");
+    const xdg = join(home, ".local", "share", "pki", "nssdb");
+    await mkdir(xdg, { recursive: true });
+    await writeFile(join(xdg, "cert9.db"), "");
+    const step = await plan("linux", { env: { CAROOT: caroot, HOME: home, PATH: "" } });
+    expect(step.detail).toContain(`\`certutil -D -d sql:${xdg} -n '${NICKNAME}'\``);
+  });
+
+  test("wsl adds the Windows store removal", async () => {
+    await writeFile(join(caroot, "rootCA.pem"), TEST_CERTIFICATES.rootA);
+    const step = await plan("wsl", { env: { CAROOT: caroot, PATH: "" } });
+    expect(step.detail).toContain(`\`certutil.exe -user -delstore Root ${SHA1}\``);
+    expect(step.detail).toContain(`\`certutil.exe -delstore Root ${SHA1}\``);
+  });
+
+  test("darwin removes the trust setting and the System keychain entry", async () => {
+    const support = join(dir, "Application Support", "mkcert");
+    await mkdir(support, { recursive: true });
+    await writeFile(join(support, "rootCA.pem"), TEST_CERTIFICATES.rootA);
+    const step = await plan("darwin", { env: { CAROOT: support, PATH: "" } });
+    expect(step.detail).toContain(`\`sudo security remove-trusted-cert -d '${support}/rootCA.pem'\``);
+    expect(step.detail).toContain(
+      `\`sudo security delete-certificate -Z ${SHA1} /Library/Keychains/System.keychain\``,
+    );
+  });
+
+  test("windows deletes from the user Root store by SHA-1", async () => {
+    await writeFile(join(caroot, "rootCA.pem"), TEST_CERTIFICATES.rootA);
+    const step = await plan("win32", { env: { CAROOT: caroot } });
+    expect(step.detail).toContain(`\`certutil -user -delstore Root ${SHA1}\``);
+    expect(step.detail).toContain(`\`certutil -delstore Root ${SHA1}\``);
+    expect(step.detail).not.toContain("sudo");
+  });
+
+  describe("legacy Java keystore", () => {
+    const keytoolDelete = (keytool: string, keystore: string) =>
+      `${keytool} -delete -alias '${NICKNAME}' -keystore ${keystore} -storepass changeit`;
+
+    test.each<[string, Record<string, string>, ReadonlyArray<string>, string]>([
+      [
+        "a root-owned JDK needs sudo",
+        { JAVA_HOME: "/usr/lib/jvm/java-17", HOME: "/home/u" },
+        ["/usr/lib/jvm/java-17/lib/security/cacerts"],
+        `sudo ${keytoolDelete("/usr/lib/jvm/java-17/bin/keytool", "/usr/lib/jvm/java-17/lib/security/cacerts")}`,
+      ],
+      [
+        "a JDK under HOME does not",
+        { JAVA_HOME: "/home/u/jdk", HOME: "/home/u" },
+        ["/home/u/jdk/lib/security/cacerts"],
+        keytoolDelete("/home/u/jdk/bin/keytool", "/home/u/jdk/lib/security/cacerts"),
+      ],
+      [
+        "the JDK 8 jre keystore wins like mkcert",
+        { JAVA_HOME: "/home/u/jdk8", HOME: "/home/u" },
+        ["/home/u/jdk8/lib/security/cacerts", "/home/u/jdk8/jre/lib/security/cacerts"],
+        keytoolDelete("/home/u/jdk8/bin/keytool", "/home/u/jdk8/jre/lib/security/cacerts"),
+      ],
+    ])("%s", async (_name, env, keystores, command) => {
+      await writeFile(join(caroot, "rootCA.pem"), TEST_CERTIFICATES.rootA);
+      const present = new Set(keystores);
+      const step = await plan("linux", {
+        env: { CAROOT: caroot, PATH: "", ...env },
+        exists: (path) => present.has(path),
+      });
+      expect(step.detail).toContain(`Run \`${command}\`.`);
+    });
+
+    test("windows quotes keytool paths and the alias for cmd", async () => {
+      await writeFile(join(caroot, "rootCA.pem"), TEST_CERTIFICATES.rootA);
+      const javaHome = "C:\\Program Files\\Java\\jdk-17";
+      const step = await plan("win32", {
+        env: { CAROOT: caroot, JAVA_HOME: javaHome },
+        exists: (path) => path === `${javaHome}\\lib\\security\\cacerts`,
+      });
+      expect(step.detail).toContain(
+        `\`"${javaHome}\\bin\\keytool.exe" -delete -alias "${NICKNAME}" -keystore "${javaHome}\\lib\\security\\cacerts" -storepass changeit\``,
+      );
+    });
+
+    test.each<[string, Record<string, string>]>([
+      ["JAVA_HOME is unset", {}],
+      ["JAVA_HOME has no keystore", { JAVA_HOME: "/usr/lib/jvm/none" }],
+    ])("is omitted when %s", async (_name, env) => {
+      await writeFile(join(caroot, "rootCA.pem"), TEST_CERTIFICATES.rootA);
+      const step = await plan("linux", { env: { CAROOT: caroot, PATH: "", ...env } });
+      expect(step.detail).not.toContain("keytool");
+    });
+  });
+
+  test("execute reports the planned manual detail", async () => {
+    await writeFile(join(caroot, "rootCA.pem"), TEST_CERTIFICATES.rootA);
+    const maintainer = makeLocalCaHostMaintainer({ env: { CAROOT: caroot } });
+    const step = await plan("win32", { env: { CAROOT: caroot } });
+    const outcome = await Effect.runPromise(
+      maintainer.uninstall?.execute({ platform: "win32", userDataRoot: dir, receipts: [], step }) ??
+        Effect.die("no uninstall"),
+    );
+    expect(outcome).toEqual({ outcome: "manual", detail: step.detail });
+  });
+
+  describe("the anchor setup recorded", () => {
+    const anchor = "/usr/local/share/ca-certificates/lando-local-ca.crt";
+    const digest = createHash("sha256").update(TEST_CERTIFICATES.rootA).digest("hex");
+    const receipt: HostChangeReceipt = {
+      id: HostChangeId.make("ca-mkcert:trust-system-store"),
+      owner: "@lando/ca-mkcert",
+      summary: "Trust Lando's local CA in the system store",
+      phase: "applied",
+      startedAt: "2026-11-26T00:00:00.000Z",
+      facts: { anchor, sha256: digest },
+      undo: {
+        _tag: "steps",
+        consent: "separate",
+        summary: "Remove Lando's local CA from the system store",
+        steps: [
+          {
+            id: "remove-anchor",
+            summary: "remove",
+            argv: ["/usr/bin/rm", "-f", "--", anchor],
+            privileged: true,
+            when: "always",
+          },
+          {
+            id: "refresh",
+            summary: "refresh",
+            argv: ["/usr/sbin/update-ca-certificates"],
+            privileged: true,
+            when: "always",
+          },
+        ],
+      },
+    };
+    const planWith = async (installed: string | undefined) => {
+      await writeFile(join(caroot, "rootCA.pem"), TEST_CERTIFICATES.rootA);
+      const maintainer = makeLocalCaHostMaintainer({
+        env: { CAROOT: caroot, PATH: "" },
+        exists: (path) => path === anchor && installed !== undefined,
+        readText: (path) =>
+          path === anchor ? installed : path.endsWith("rootCA.pem") ? TEST_CERTIFICATES.rootA : undefined,
+        listDirs: () => [],
+      });
+      const input = { platform: "linux", userDataRoot: dir, receipts: [receipt] } as const;
+      const steps = await Effect.runPromise(maintainer.uninstall?.plan(input) ?? Effect.die("no uninstall"));
+      return { maintainer, input, steps };
+    };
+
+    test("is undone with --undo only while the installed anchor is the certificate setup recorded", async () => {
+      const { maintainer, input, steps } = await planWith(TEST_CERTIFICATES.rootA);
+      const [step] = steps;
+      if (step === undefined) throw new Error("expected the anchor step");
+      const ran: string[] = [];
+
+      const outcome = await Effect.runPromise(
+        maintainer.uninstall?.execute({
+          ...input,
+          step,
+          run: {
+            run: (id) =>
+              Effect.sync(() => {
+                ran.push(id);
+                return { exitCode: 0, stdout: "", stderr: "" };
+              }),
+          },
+        }) ?? Effect.die("no uninstall"),
+      );
+
+      expect(steps.map(({ id, status }) => [id, status])).toEqual([
+        ["trust-system-store", "owned"],
+        ["trust", "manual"],
+      ]);
+      expect(step).toMatchObject({
+        receiptId: receipt.id,
+        // The apps --keep-data leaves in place still serve HTTPS through this trust.
+        preserveOnKeepData: true,
+        change: { consent: "separate" },
+      });
+      expect(step.detail).toContain("lando setup");
+      expect(ran).toEqual(["remove-anchor", "refresh"]);
+      expect(outcome.outcome).toBe("completed");
+    });
+
+    test.each([
+      ["an anchor that holds another certificate", TEST_CERTIFICATES.rootB, "manual"],
+      ["an anchor already removed", undefined, "skipped"],
+    ] as const)("leaves %s alone", async (_name, installed, status) => {
+      const { steps } = await planWith(installed);
+
+      expect(steps[0]).toMatchObject({ id: "trust-system-store", status });
+      expect(steps[0]?.change).toBeUndefined();
+      if (status === "manual") expect(steps[0]?.detail).toContain(`\`sudo /usr/bin/rm -f -- ${anchor}\``);
+    });
+  });
+});

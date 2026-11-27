@@ -4,7 +4,7 @@ import { createBufferedRendererIO } from "@lando/renderer/io";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { CommandResultEnvelope, GlobalConfig, ProviderId, StreamFrame } from "@lando/sdk/schema";
 import { ConfigService, PathsService, RuntimeProviderRegistry } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect, Layer, Schema } from "effect";
 import { metaDoctorSpec } from "../../src/cli/command-specs/meta/doctor";
 import { doctor } from "../../src/cli/commands/doctor";
@@ -38,14 +38,14 @@ const providerReport = async (state: "running" | "idle" | "failure"): Promise<Do
             get: (key) => Effect.succeed(config[key]),
           }),
           Layer.succeed(PathsService, makeLandoPaths({ env: {} })),
-          Layer.succeed(RuntimeProviderRegistry, {
-            resolveAppliedPlan: () => Effect.succeed(undefined),
-            resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-            appliedPlansFor: () => Effect.succeed([]),
-            list: Effect.succeed([ProviderId.make(provider.id)]),
-            capabilities: Effect.succeed(provider.capabilities),
-            select: () => Effect.succeed(provider),
-          }),
+          Layer.succeed(
+            RuntimeProviderRegistry,
+            makeTestRuntimeProviderRegistry({
+              list: Effect.succeed([ProviderId.make(provider.id)]),
+              capabilities: Effect.succeed(provider.capabilities),
+              select: () => Effect.succeed(provider),
+            }),
+          ),
         ),
       ),
     ),

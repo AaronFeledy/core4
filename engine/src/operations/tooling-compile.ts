@@ -305,7 +305,9 @@ export const executeToolingInvocations = Effect.fnUntraced(function* (
             );
           })
         : Effect.flatMap(ToolingEngine, (engine) => engine.run(invocation, input.plan, provider));
-    const result = yield* withToolingOutput(run);
+    const result = yield* withToolingOutput(
+      Effect.suspend(() => (invocation.signal?.aborted ? Effect.interrupt : run)),
+    );
     combined = {
       ...result,
       stdout: combined.stdout + (result.stdout ?? ""),

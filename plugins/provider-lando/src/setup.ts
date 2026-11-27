@@ -24,13 +24,14 @@ import {
   type PortNumber,
   hostPlatformFamily,
 } from "@lando/sdk/schema";
-import type { ProviderError } from "@lando/sdk/services";
+import type { HostChangeApplyError, ProviderError } from "@lando/sdk/services";
 import {
   type ProgressEmitter,
   type TaskTreeController,
   makeTaskTree,
   withCurrentTaskDetail,
 } from "@lando/sdk/task-progress";
+import { storeErrorRemediation } from "@lando/state-store";
 import { writeFileAtomic } from "@lando/state-store/atomic";
 
 import { rejectIntelMacHost } from "./host-support.ts";
@@ -214,7 +215,9 @@ export interface SetupOptions {
   readonly skipSocketProbe?: boolean;
   readonly runtimeBundleDownloader?: RuntimeBundleDownloader;
   readonly readinessCheck?: Effect.Effect<void, ProviderUnavailableError>;
-  readonly managedRuntimeSetup?: (progress: RuntimeSetupProgress) => Effect.Effect<void, ProviderError>;
+  readonly managedRuntimeSetup?: (
+    progress: RuntimeSetupProgress,
+  ) => Effect.Effect<void, ProviderError | HostChangeApplyError>;
   readonly smoke?: boolean;
   readonly artifactDownload?: ArtifactDownload;
   readonly nftArtifactDownload?: ArtifactDownload;
@@ -1262,7 +1265,7 @@ const withStep = Effect.fnUntraced(function* <A, E>(
 
 export const setupProviderLando = Effect.fn("ProviderLando.setup")(function* (
   options: SetupOptions,
-): Effect.fn.Return<SetupResult, ProviderError> {
+): Effect.fn.Return<SetupResult, ProviderError | HostChangeApplyError> {
   const platform = options.platform;
   const family = hostPlatformFamily(platform);
   const arch = options.arch;
@@ -1297,8 +1300,14 @@ export const setupProviderLando = Effect.fn("ProviderLando.setup")(function* (
           ? new ProviderUnavailableError({
               providerId: "lando",
               operation: "setup",
-              message: "Cannot acquire the managed runtime installation lock.",
-              remediation: "Wait for the other runtime setup to finish, then retry `lando setup`.",
+              message:
+                cause.reason === "newer-version"
+                  ? cause.message
+                  : "Cannot acquire the managed runtime installation lock.",
+              remediation: storeErrorRemediation(
+                cause,
+                "Wait for the other runtime setup to finish, then retry `lando setup`.",
+              ),
               cause,
             })
           : cause,

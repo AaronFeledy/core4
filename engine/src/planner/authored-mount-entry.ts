@@ -29,6 +29,8 @@ export interface MountAuthoringContext {
   /** Service whose name keys service-scoped stores; defaults to `serviceName`. */
   readonly storeOwner?: string;
   readonly configs?: LandofileShape["configs"];
+  /** Files where Lando binds its own commands in this service beyond the helper's; an exact mount at one is refused. */
+  readonly commandTargets?: ReadonlyArray<string>;
 }
 
 export const mountInputError = (

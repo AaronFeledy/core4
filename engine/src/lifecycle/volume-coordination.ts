@@ -1,11 +1,13 @@
-import { StateStoreError } from "@lando/sdk/errors";
-import type { AppPlan, DataStorePlan, VolumeLocator } from "@lando/sdk/schema";
+import { mapFailures } from "@lando/sdk/command-result";
+import { ProviderUnavailableError, StateStoreError } from "@lando/sdk/errors";
+import { type AppPlan, type DataStorePlan, type VolumeLocator, planDataId } from "@lando/sdk/schema";
 import {
   type ProviderError,
   type RuntimeProviderShape,
   type StateStoreShape,
   physicalVolumeLockKey,
 } from "@lando/sdk/services";
+import { readVolumeInitialization } from "@lando/state-store/volume-initialization";
 import {
   type VolumeLockMode,
   type VolumeLockRequest,
@@ -80,6 +82,15 @@ export const verifyActiveVolumeCoordination = (
   provider: Pick<RuntimeProviderShape, "id" | "locateVolume">,
 ): Effect.Effect<void, ProviderError> =>
   ActiveLocatedVolumes.pipe(Effect.flatMap((volumes) => verifyLocatedVolumes(volumes, provider)));
+
+export const coordinatedServiceVolume = (plan: AppPlan, store: string) =>
+  ActiveLocatedVolumes.pipe(
+    Effect.map((volumes) => {
+      const app = planDataId(plan);
+      return volumes.find(({ ref }) => ref.app === app && ref.scope === "service" && ref.store === store)
+        ?.locator;
+    }),
+  );
 
 export const withPlanVolumeCoordination = Effect.fn("Lifecycle.withPlanVolumeCoordination")(function* <
   A,
@@ -189,11 +200,39 @@ export const withPlanVolumeCoordination = Effect.fn("Lifecycle.withPlanVolumeCoo
   }
 });
 
+export const adoptPlanDataRoot = (
+  provider: Pick<RuntimeProviderShape, "id" | "adoptDataRoot">,
+  plan: AppPlan,
+  stateStore: StateStoreShape,
+) =>
+  provider.adoptDataRoot?.(plan, (key) =>
+    readVolumeInitialization(stateStore, key).pipe(
+      Effect.map((record) => record?.identity.generation),
+      mapFailures(
+        (cause) =>
+          new ProviderUnavailableError({
+            providerId: provider.id,
+            operation: "data-root-adoption",
+            message: "Cannot read the volume initialization witness.",
+            remediation: "Repair the local volume initialization state and try again.",
+            cause,
+          }),
+      ),
+    ),
+  ) ?? Effect.void;
+
 /** Launch work must prepare the runtime before volume discovery acquires its locks. */
-export const withLaunchVolumeCoordination = <A, E, R>(input: {
+export const withLaunchVolumeCoordination = Effect.fn("Lifecycle.withLaunchVolumeCoordination")(function* <
+  A,
+  E,
+  R,
+>(input: {
   readonly plan: AppPlan;
   readonly additionalPlans?: ReadonlyArray<AppPlan>;
   readonly provider: PreparedRuntimeProvider;
   readonly stateStore: StateStoreShape;
   readonly body: (coordination: VolumeCoordination) => Effect.Effect<A, E, R>;
-}) => withPlanVolumeCoordination(input);
+}) {
+  yield* adoptPlanDataRoot(input.provider, input.plan, input.stateStore);
+  return yield* withPlanVolumeCoordination(input);
+});

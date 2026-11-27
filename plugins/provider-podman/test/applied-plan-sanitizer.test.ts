@@ -29,7 +29,7 @@ import {
 import { AppPlanSanitizer } from "@lando/sdk/services";
 import { makeStateStore } from "@lando/state-store/service";
 import { DateTime, Effect } from "effect";
-import { loadAppliedPlan } from "../src/applied-state.ts";
+import { loadAppliedPlanStrict } from "../src/applied-state.ts";
 import { ownerOnlyFileAccess } from "./private-file-access.ts";
 import { makeRuntimeProvider } from "./provider-fixture.ts";
 
@@ -249,11 +249,11 @@ test("an overlaid plan applied through provider-podman is persisted without the 
   await Effect.runPromise(Effect.scoped(provider.apply(overlaid, { reconcile: true })));
 
   // Then
-  const persisted = await Effect.runPromise(loadAppliedPlan(state, appId));
+  const persisted = await Effect.runPromise(loadAppliedPlanStrict(state, appId));
   expect(overlaid.services[serviceName]?.environment.SSH_AUTH_SOCK).toBe("/run/lando/ssh-agent/agent.sock");
   expect(overlaid.services[serviceName]?.environment.LANDO_HOST_PROXY_TOKEN).toBeUndefined();
   expect(overlaid.services[serviceName]?.mounts).toContainEqual(
-    expect.objectContaining({ target: "/run/lando/host-proxy/credentials", readOnly: true }),
+    expect.objectContaining({ source: "/tmp/container", target: "/run/lando/host-proxy", readOnly: true }),
   );
   expect(overlaid.services[serviceName]?.environment.GNUPGHOME).toBe("/tmp/lando-gnupg");
   expect<AppPlan | undefined>(persisted).toEqual(basePlan);
@@ -290,7 +290,7 @@ test.each(["per-app", "record", "memory"] as const)(
             ? makeAppliedPlanStore({ providerId: "lando", layout })
             : makeAppliedPlanStore({ providerId: "podman", layout });
         yield* store.persistAppliedPlan(state, desired);
-        return yield* store.loadAppliedPlan(state, desired.id);
+        return yield* store.loadAppliedPlanStrict(state, desired.id);
       }).pipe(Effect.provide(AppPlanSanitizerLayer.layer)),
     );
     expect<AppPlan | undefined>(projected).toEqual(basePlan);

@@ -57,7 +57,7 @@ lando scratch:start --fork --detach --isolate=full
 
 Do not combine `--mount-cwd` with `--isolate=full`. That pair fails with `ScratchIsolationConflictError` and creates nothing.
 
-On a fork, `--mount-cwd` defaults isolation to `cwd` unless you set `--isolate`.
+On a fork, `--mount-cwd` defaults isolation to `cwd` unless you set `--isolate`. The scratch still owns its own volumes and networks. Destroying it leaves the source app's `info` and `start` working, even if you never started that app.
 
 Isolation decides where the app mount and every mount with a relative source, such as `source: ./assets`, point:
 
@@ -76,20 +76,59 @@ Mounts with absolute sources pass through in every mode. Under `full` and recipe
 lando scratch:start --fork --detach --isolate=full --exclude=coverage/ --no-local-overrides
 ```
 
-Full isolation always skips `.git/`, `node_modules/`, `vendor/`, `.lando/cache/`, and `.DS_Store`. Repeat `--exclude` for project-specific paths. `--no-local-overrides` also drops `.lando.local.yml` and `.lando.user.yml` from the scratch copy. The source app stays untouched.
+Full isolation skips `.git/`, `node_modules/`, `vendor/`, `.lando/cache/`, and `.DS_Store`. Repeat `--exclude` for project-specific paths. Exclusions keep the selected Landofile layers and `.lando.lock.yml`, but if an exclusion removes a file the Landofile needs, the fork fails before starting. See [Fork an existing app](./fork-existing-app.mdx#choose-a-copy-or-a-shared-tree) to omit local and user layers.
 
 ## Control scratch hostnames
 
-Scratch routes get `--<scratch-id>` before the final two DNS labels. Keep every planned hostname with `--no-hostname-suffix`, or keep selected hostnames by repeating `--hostname`.
+Lando adds `--<scratch-id>` to the label before the configured proxy domain. For a hostname outside that domain, it uses the label before the last two DNS labels. A default route already names the scratch, as in `web.<scratch-id>.lndo.site`, so it keeps that hostname.
+
+If the suffix would make a label longer than DNS allows, Lando shortens that label and adds a short hash; the label still ends in `--<scratch-id>`. Lando rejects a rewrite that can't fit or would give two different hostnames the same name. Keep every planned hostname with `--no-hostname-suffix`, or keep selected hostnames by repeating `--hostname`.
 
 ```sh
 lando scratch:start --fork --detach --no-hostname-suffix
 lando scratch:start --fork --detach --hostname=api.example.test
 ```
 
-Recipe scratches skip post-init hooks by default. Add `--run-post-init` when the recipe needs them. Add `--keep-on-failure` to retain the scratch root and registry entry after a failed start so you can inspect logs or destroy it yourself.
+Recipe scratches skip post-init hooks by default. Add `--run-post-init` when the recipe needs them. Add `--keep-on-failure` to skip automatic cleanup after a failed start so you can inspect what was created and destroy it yourself.
 
 ## Next
 
 - [Start a scratch app from a recipe](./scratch-from-recipe.mdx)
-- [Fork the current app into a scratch](./fork-existing-app.mdx)
+- [Fork an existing app into a scratch](./fork-existing-app.mdx)
+
+<Guide>
+  <Scenario id="fork-long-authored-route" layer="e2e" timeout={180000} platforms={["linux"]} tags={["@smoke"]} render={false} reason="Check a fork shortens a long authored DNS label with a hash without losing its scratch id suffix">
+    <Step name="fork">
+      <UseFixture name="scratch-fork-web" />
+      <Run command="lando scratch:start --fork --name review-with-a-long-scratch-name --detach --format=json" capture={{ name: "scratchId", json: "handle.id" }} />
+    </Step>
+    <Step name="inspect">
+      <Verify command="lando scratch:info {{capture:scratchId}} --format=json" expect={{ stdout: { regex: "\"id\":\\s*\"(scratch-[a-z0-9-]{1,25}-[a-f0-9]{6})\"[\\s\\S]*\"hostname\":\\s*\"web\\.(?=[a-z0-9-]{1,63}\\.lndo\\.site\")[a-z0-9][a-z0-9-]*-[a-f0-9]{8}--\\1\\.lndo\\.site\"" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando scratch:destroy {{capture:scratchId}}" />
+      <Run command="lando destroy -y --volumes" />
+    </Step>
+  </Scenario>
+  <Scenario id="cwd-fork-destroy-leaves-source-info" layer="e2e" timeout={180000} platforms={["linux"]} tags={["@smoke"]} render={false} reason="Destroying a cwd scratch of a never-started source must leave source info working">
+    <Step name="fork">
+      <UseFixture name="cwd-destroy-source" />
+      <Run command="lando scratch:start --fork --mount-cwd --detach --format=json" capture={{ name: "scratchId", json: "handle.id" }} />
+    </Step>
+    <Step name="destroy-scratch">
+      <Run command="lando scratch:destroy {{capture:scratchId}}" />
+    </Step>
+    <Step name="source-info">
+      <Verify command="lando info --format=json" expect={{ stdout: { regex: "\"service\":\\s*\"web\"" } }} />
+    </Step>
+    <Step name="source-start">
+      <Run command="lando start" />
+      <Verify command="lando info --format=json" expect={{ stdout: { regex: "\"service\":\\s*\"web\"[\\s\\S]*\"status\":\\s*\"running\"" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes" />
+    </Step>
+  </Scenario>
+</Guide>

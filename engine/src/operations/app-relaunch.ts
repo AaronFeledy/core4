@@ -1,10 +1,10 @@
 import type { StartAppOptions } from "@lando/sdk/app";
-import { type BuildOptions, EventService, StateStore } from "@lando/sdk/services";
+import { type BuildOptions, StateStore } from "@lando/sdk/services";
 import { Effect } from "effect";
 import { withLaunchVolumeCoordination } from "../lifecycle/volume-coordination.ts";
 import { prepareProvider } from "../providers/prepared.ts";
 import type { AdmittedApp } from "./app-activation.ts";
-import { mergeRemovedServices, publishRemovalNotice, servicesHaltWillRemove } from "./start-convergence.ts";
+import { mergeRemovedServices } from "./start-convergence.ts";
 import type { StartManagedScope } from "./start-file-sync.ts";
 import { rotateChangedFileSync } from "./start-file-sync-rotation.ts";
 import { markStartMutation } from "./start-incomplete-notice.ts";
@@ -14,25 +14,27 @@ import { haltAppRuntime } from "./stop.ts";
 /**
  * The whole-app cycle restart and rebuild share: halt the admitted app, then launch it again.
  *
- * The halt keeps applied state, so admission still holds. The relaunch repeats only what the halt
- * and its `post-stop` hook can change: the runtime may have gone away, file sync may need
- * rotation, a volume may have changed owner, and the halt recorded a drain.
+ * The halt stops containers and keeps them along with applied state, so admission still holds.
+ * The relaunch repeats only what the halt and its `post-stop` hook can change: the runtime may have
+ * gone away, file sync may need rotation, a volume may have changed owner, and the halt recorded a
+ * drain. The relaunch's whole-app convergence removes services the Landofile no longer defines.
  */
 export const haltAndRelaunchApp = Effect.fn("AppOperation.haltAndRelaunch")(function* (
   admitted: AdmittedApp,
   options: StartAppOptions,
   managed: StartManagedScope | undefined,
-  execution: { readonly buildOptions?: BuildOptions; readonly forceAppBuild?: boolean } = {},
+  execution: {
+    readonly buildOptions?: BuildOptions;
+    readonly forceAppBuild?: boolean;
+    readonly announceApplyOutcome?: boolean;
+  } = {},
 ) {
-  const { target, placement } = admitted;
+  const { target } = admitted;
   const plan = target.plan;
-  const events = yield* EventService;
   const stateStore = yield* StateStore;
 
   yield* markStartMutation(plan);
-  const removedByHalt = yield* servicesHaltWillRemove(placement.plan, plan, admitted.provider);
-  yield* haltAppRuntime({}, target);
-  yield* publishRemovalNotice(events, removedByHalt);
+  yield* haltAppRuntime(target);
   yield* managed?.onStopped ?? Effect.void;
 
   const provider = yield* prepareProvider(admitted.provider);
@@ -51,6 +53,6 @@ export const haltAndRelaunchApp = Effect.fn("AppOperation.haltAndRelaunch")(func
   });
   return {
     ...result,
-    servicesRemoved: mergeRemovedServices(admitted.removedByResume, removedByHalt, result.servicesRemoved),
+    servicesRemoved: mergeRemovedServices(admitted.removedByResume, result.servicesRemoved),
   };
 });

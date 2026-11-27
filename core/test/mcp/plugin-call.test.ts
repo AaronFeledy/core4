@@ -1,18 +1,20 @@
 import { expect, test } from "bun:test";
+import * as DeprecationServiceLayer from "@lando/engine/deprecation/service";
 import { PluginContributionGraph } from "@lando/engine/plugins/contribution-graph";
 import { McpRuntimeConfig, McpService } from "@lando/mcp/service";
 import { startStdioClient, testAppGenerations } from "@lando/mcp/testing";
 import { RedactionService } from "@lando/redaction/service";
 import type { ExecutableCommandSpec } from "@lando/sdk/plugins";
+import { StreamFrameSink } from "@lando/sdk/services";
 import { Deferred, Effect, Fiber, Layer, Schema } from "effect";
 import { mcpRegistryWithPlugins } from "../../src/cli/commands/meta/mcp-plugins";
 import { serviceLayer } from "../../src/mcp-command-executor";
 import { pluginFixtureGraph } from "./plugin-fixture";
 
-const fixture = (spec: ExecutableCommandSpec) =>
+const fixture = (spec: ExecutableCommandSpec, options: Parameters<typeof pluginFixtureGraph>[1] = {}) =>
   Layer.unwrap(
     mcpRegistryWithPlugins({ commandEntries: [] }).pipe(
-      Effect.provideService(PluginContributionGraph, pluginFixtureGraph(spec)),
+      Effect.provideService(PluginContributionGraph, pluginFixtureGraph(spec, options)),
       Effect.map((registry) =>
         serviceLayer.pipe(
           Layer.provide(
@@ -21,7 +23,7 @@ const fixture = (spec: ExecutableCommandSpec) =>
               env: { ...process.env },
               commandEntries: registry.commandEntries,
               defaultAllowlist: [],
-              apps: testAppGenerations(),
+              apps: testAppGenerations(DeprecationServiceLayer.layer),
             }),
           ),
         ),
@@ -123,6 +125,59 @@ test.each([false, true])("plugin confirmation without elicitation refuses unless
   expect(executions).toBe(yes ? 1 : 0);
 });
 
+test("a live plugin command delivers its output as progress before the final envelope", async () => {
+  const observed = await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        // Given: a live command that streams a line, then waits until the client has seen it.
+        const seen = yield* Deferred.make<void>();
+        const spec: ExecutableCommandSpec = {
+          ...base,
+          streamingMode: "live",
+          resultSchema: Schema.Struct({ done: Schema.Boolean }),
+          run: () =>
+            Effect.gen(function* () {
+              const sink = yield* StreamFrameSink;
+              yield* sink.emit({ _tag: "stdout", kind: "bytes", chunk: "first line\n" });
+              yield* Deferred.await(seen);
+              return { done: true };
+            }),
+        };
+        return yield* Effect.gen(function* () {
+          const service = yield* McpService;
+          const client = yield* startStdioClient(service.serve({ transport: "stdio", allow: [spec.id] }));
+
+          // When: the call runs with a progress token.
+          const call = yield* client.sendRequest("tools/call", {
+            name: spec.id,
+            _meta: { progressToken: "live" },
+          });
+          let message = yield* client.next;
+          while (message.method !== "notifications/progress") message = yield* client.next;
+          yield* Deferred.succeed(seen, undefined);
+          return { progress: message, response: yield* call.response };
+        }).pipe(Effect.provide(fixture(spec)));
+      }),
+    ).pipe(Effect.timeout("10 seconds")),
+  );
+
+  // Then: the line arrived as progress while the command ran, and the final envelope is the
+  // ordinary command result that also retains the streamed output.
+  expect(observed.progress).toMatchObject({
+    params: { progressToken: "live", message: JSON.stringify({ _tag: "stdout", chunk: "first line\n" }) },
+  });
+  expect(observed.response).toMatchObject({
+    result: {
+      isError: false,
+      structuredContent: {
+        ok: true,
+        result: { done: true },
+        output: { chunks: [{ _tag: "stdout", chunk: "first line\n" }], truncated: false },
+      },
+    },
+  });
+});
+
 test("plugin tools/call accepts elicitation confirmation", async () => {
   const spec: ExecutableCommandSpec = { ...base, flags: { yes: { type: "boolean" } } };
   const response = await Effect.runPromise(
@@ -178,4 +233,34 @@ test("cancelling a plugin call interrupts its retained-runtime work and finalize
       }),
     ),
   );
+});
+
+test("calling a deprecated plugin command lists the command in that call's deprecations", async () => {
+  // Given: a plugin whose manifest deprecates its command.
+  const notice = { since: "4.2.0", severity: "warn", note: "Use fixture:inspect-all instead." } as const;
+  const call = (client: Effect.Success<ReturnType<typeof startStdioClient>>) =>
+    client.request("tools/call", { name: base.id, arguments: {} });
+
+  // When: an MCP client calls it twice.
+  const responses = await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const service = yield* McpService;
+        const client = yield* startStdioClient(service.serve({ transport: "stdio", allow: [base.id] }));
+        return [yield* call(client), yield* call(client)];
+      }),
+    ).pipe(Effect.provide(fixture(base, { deprecated: notice }))),
+  );
+
+  // Then: each call's envelope records the command it used, as the CLI does.
+  for (const response of responses)
+    expect(response).toMatchObject({
+      result: {
+        isError: false,
+        structuredContent: {
+          ok: true,
+          deprecations: [{ kind: "command", id: base.id, notice, timestamp: expect.any(String) }],
+        },
+      },
+    });
 });

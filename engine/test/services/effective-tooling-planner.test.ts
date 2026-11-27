@@ -24,7 +24,7 @@ import {
   ToolingEngine,
   type ToolingInvocation,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Cause, Effect, Exit, Layer, Schema } from "effect";
 import { compileToolingCommands } from "../../src/cache/command-compiler.ts";
@@ -39,6 +39,7 @@ import * as BunFileSystem from "../../src/services/file-system.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";
 import * as BunProcessRunner from "../../src/services/process-runner.ts";
 import { emptyConfigServiceLayer } from "../_support/agent-env-test-config.ts";
+import { pathsServiceLayer } from "../paths-service.ts";
 
 const capabilities: ProviderCapabilities = {
   artifactBuild: true,
@@ -141,7 +142,9 @@ test("attaches effective tooling on fresh and cache-hit plans and keys service t
     ),
   ).pipe(Layer.provide(PluginRegistryLayer.layer));
   const plannerLayer = AppPlannerLayer.layer.pipe(
-    Layer.provide(Layer.mergeAll(AppCacheService.layer, BunFileSystem.layer, registryLayer)),
+    Layer.provide(
+      Layer.mergeAll(AppCacheService.layer, BunFileSystem.layer, registryLayer, pathsServiceLayer()),
+    ),
   );
   const landofile = {
     name: "effective-tooling-cache",
@@ -189,13 +192,10 @@ test("attaches effective tooling on fresh and cache-hit plans and keys service t
       Layer.succeed(LandofileService, LandofileService.of({ discover: compileTestLandofile(landofile) })),
       Layer.succeed(
         RuntimeProviderRegistry,
-        RuntimeProviderRegistry.of({
+        makeTestRuntimeProviderRegistry({
           appliedPlansFor: () => Effect.succeed([changed]),
-          resolveAppliedPlan: () => Effect.succeed(undefined),
-          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+          readAppliedPlanStrict: () => Effect.succeed(changed),
           list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
-          capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-          select: () => Effect.succeed(TestRuntimeProvider),
         }),
       ),
       Layer.succeed(
@@ -281,7 +281,9 @@ const phpPlannerLayer = (serviceType: ServiceType, feature?: ServiceFeatureDefin
     ),
   ).pipe(Layer.provide(PluginRegistryLayer.layer));
   return AppPlannerLayer.layer.pipe(
-    Layer.provide(Layer.mergeAll(AppCacheService.layer, BunFileSystem.layer, registryLayer)),
+    Layer.provide(
+      Layer.mergeAll(AppCacheService.layer, BunFileSystem.layer, registryLayer, pathsServiceLayer()),
+    ),
   );
 };
 
@@ -460,13 +462,8 @@ test("fails runTooling reserved when a stale plan predates authored run", async 
         Layer.succeed(LandofileService, LandofileService.of({ discover: compileTestLandofile(landofile) })),
         Layer.succeed(
           RuntimeProviderRegistry,
-          RuntimeProviderRegistry.of({
-            appliedPlansFor: () => Effect.succeed([]),
-            resolveAppliedPlan: () => Effect.succeed(undefined),
-            resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+          makeTestRuntimeProviderRegistry({
             list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
-            capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-            select: () => Effect.succeed(TestRuntimeProvider),
           }),
         ),
         Layer.succeed(

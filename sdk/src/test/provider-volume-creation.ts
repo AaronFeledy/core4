@@ -5,26 +5,42 @@ import {
   AbsolutePath,
   AppId,
   type AppPlan,
+  PortablePath,
   ProviderId,
   type VolumeCreationFact,
   appIdentityKey,
 } from "../schema/index.ts";
 import type { RuntimeProviderShape } from "../services/index.ts";
-import { type ContractFailure, makeTestAppPlan, mapProviderFailure, requireContract } from "./_shared.ts";
+import {
+  type ContractFailure,
+  TEST_SERVICE_NAME,
+  makeTestAppPlan,
+  makeTestServicePlan,
+  mapProviderFailure,
+  requireContract,
+} from "./_shared.ts";
 
 export const runProviderVolumeCreationContract = Effect.fnUntraced(function* (
   provider: RuntimeProviderShape,
   serviceStartCount: () => number,
 ): Effect.fn.Return<void, ContractFailure> {
+  const destination = PortablePath.make("/data");
+  const providerId = ProviderId.make(provider.id);
   const makePlan = (): AppPlan => {
     const id = `volume-receipt-${crypto.randomUUID()}`;
     const root = AbsolutePath.make(`/tmp/${id}`);
     return {
-      ...makeTestAppPlan(ProviderId.make(provider.id)),
+      ...makeTestAppPlan(providerId),
       id: AppId.make(id),
       slug: id,
       root,
       identity: { appRoot: root, ownerKey: appIdentityKey("owner", root) },
+      services: {
+        [TEST_SERVICE_NAME]: {
+          ...makeTestServicePlan(providerId),
+          mounts: [{ type: "volume", store: `${id}-data`, target: destination, readOnly: false }],
+        },
+      },
       stores: [
         { name: `${id}-data`, scope: "app", kind: "data" },
         { name: `${id}-cache`, scope: "app", kind: "cache" },
@@ -65,6 +81,41 @@ export const runProviderVolumeCreationContract = Effect.fnUntraced(function* (
       JSON.stringify(facts) === JSON.stringify(result.createdVolumes),
     "apply reports each verified creation exactly once through callback and result",
   );
+  if (provider.observeBoundVolume !== undefined) {
+    const target = { app: plan.id, service: TEST_SERVICE_NAME, plan };
+    const running = yield* provider
+      .inspect(target)
+      .pipe(mapFailures(mapProviderFailure("inspect the volume's running container")));
+    if (running.containerId === undefined) {
+      return yield* requireContract(false, "volume observation fixture exposes its native container ID");
+    }
+    const mounted = yield* provider
+      .observeBoundVolume(
+        {
+          ...target,
+          expectedContainerId: running.containerId,
+        },
+        destination,
+      )
+      .pipe(mapFailures(mapProviderFailure("observe the expected native container's mount")));
+    yield* requireContract(
+      mounted.ref.store === facts[0]?.nativeName && mounted.identity?.generation === facts[0]?.generation,
+      "bound mount observation matches the created volume's native identity",
+    );
+    const wrong = yield* Effect.result(
+      provider.observeBoundVolume(
+        {
+          ...target,
+          expectedContainerId: `${running.containerId}-replaced`,
+        },
+        destination,
+      ),
+    );
+    yield* requireContract(
+      Result.isFailure(wrong),
+      "bound mount observation rejects a mismatched native container ID",
+    );
+  }
   let adoptedCallbacks = 0;
   yield* Effect.scoped(
     provider.apply(plan, {
@@ -76,9 +127,9 @@ export const runProviderVolumeCreationContract = Effect.fnUntraced(function* (
     }),
   ).pipe(mapFailures(mapProviderFailure("reapply with existing volumes succeeds")));
   yield* requireContract(adoptedCallbacks === 0, "existing volumes never emit creation receipts");
-  yield* Effect.scoped(provider.destroy({ app: plan.id, plan }, { volumes: true })).pipe(
-    mapFailures(mapProviderFailure("receipt contract cleanup succeeds")),
-  );
+  yield* Effect.scoped(
+    provider.bringDown({ app: plan.id, plan }, { containers: "remove", volumes: true }),
+  ).pipe(mapFailures(mapProviderFailure("receipt contract cleanup succeeds")));
 
   const failingPlan = makePlan();
   const failure = new ProviderInternalError({
@@ -108,7 +159,7 @@ export const runProviderVolumeCreationContract = Effect.fnUntraced(function* (
       serviceStartCount() === startsBeforeFailure,
     "receipt failure aborts apply before any service starts",
   );
-  yield* Effect.scoped(provider.destroy({ app: failingPlan.id, plan: failingPlan }, { volumes: true })).pipe(
-    mapFailures(mapProviderFailure("failed receipt contract cleanup succeeds")),
-  );
+  yield* Effect.scoped(
+    provider.bringDown({ app: failingPlan.id, plan: failingPlan }, { containers: "remove", volumes: true }),
+  ).pipe(mapFailures(mapProviderFailure("failed receipt contract cleanup succeeds")));
 });

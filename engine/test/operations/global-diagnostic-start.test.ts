@@ -21,7 +21,7 @@ import {
   RouterService,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
-import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRouterService, TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Cause, DateTime, Effect, Schema } from "effect";
 
 import { renderGlobalDist } from "../../src/global-app/service.ts";
@@ -87,17 +87,25 @@ for (const failBuild of [false, true]) {
         ),
       inspect: (target: Parameters<typeof TestRuntimeProvider.inspect>[0]) =>
         TestRuntimeProvider.inspect(target).pipe(
-          Effect.map(({ status: _status, health: _health, exitCode: _exitCode, ...runtime }) => ({
-            ...runtime,
-            appRoot: target.app === globalPlan.id ? globalRoot : root,
-            ...(target.app === globalPlan.id
-              ? {
-                  status: running.has(target.service) ? ("running" as const) : ("exited" as const),
-                  containerId: `global-${target.service}`,
-                }
-              : { status: "running" as const }),
-            lastStartedAt: DateTime.toDate(DateTime.makeUnsafe(-10_000)),
-          })),
+          Effect.map(
+            ({
+              status: _status,
+              health: _health,
+              healthCheckedAt: _healthCheckedAt,
+              exitCode: _exitCode,
+              ...runtime
+            }) => ({
+              ...runtime,
+              appRoot: target.app === globalPlan.id ? globalRoot : root,
+              ...(target.app === globalPlan.id
+                ? {
+                    status: running.has(target.service) ? ("running" as const) : ("exited" as const),
+                    containerId: `global-${target.service}`,
+                  }
+                : { status: "running" as const }),
+              lastStartedAt: DateTime.toDate(DateTime.makeUnsafe(-10_000)),
+            }),
+          ),
         ),
       apply: (applied: AppPlan) =>
         applied.id === globalPlan.id
@@ -187,18 +195,20 @@ for (const failBuild of [false, true]) {
         Effect.provideService(AppPlanner, {
           plan: () => Effect.succeed({ ...globalPlan, valueModel: 1 as const }),
         }),
-        Effect.provideService(RuntimeProviderRegistry, {
-          appliedPlansFor: (requestedRoot) =>
-            Effect.sync(() =>
-              appliedGlobal === undefined || requestedRoot !== globalRoot ? [] : [appliedGlobal],
-            ),
-          resolveAppliedPlan: (requestedRoot) =>
-            Effect.sync(() => (requestedRoot === globalRoot ? appliedGlobal : undefined)),
-          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-          list: Effect.succeed([plan.provider]),
-          capabilities: Effect.succeed(provider.capabilities),
-          select: () => Effect.succeed(provider),
-        }),
+        Effect.provideService(
+          RuntimeProviderRegistry,
+          makeTestRuntimeProviderRegistry({
+            appliedPlansFor: (requestedRoot) =>
+              Effect.sync(() =>
+                appliedGlobal === undefined || requestedRoot !== globalRoot ? [] : [appliedGlobal],
+              ),
+            resolveAppliedPlan: (requestedRoot) =>
+              Effect.sync(() => (requestedRoot === globalRoot ? appliedGlobal : undefined)),
+            list: Effect.succeed([plan.provider]),
+            capabilities: Effect.succeed(provider.capabilities),
+            select: () => Effect.succeed(provider),
+          }),
+        ),
         Effect.provideService(RouterService, {
           ...TestRouterService,
           id: "traefik",

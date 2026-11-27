@@ -65,10 +65,6 @@ const unusedRunner = {
   },
 };
 
-const unusedPrivilege = {
-  elevate: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
-};
-
 const memoryFiles = () => {
   const files = new Map<string, string>();
   return {
@@ -175,7 +171,6 @@ const makeDeps = (
     exists: () => Effect.succeed(false),
     readText: () => Effect.fail(new Error("missing")),
     processRunner: unusedRunner,
-    privilege: unusedPrivilege,
     classifyOverride,
   },
 });

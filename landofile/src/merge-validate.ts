@@ -7,12 +7,16 @@ import { classifyLoadFailure } from "./pipeline/legacy.ts";
 import type { LandofileRuntimeInputs } from "./ports.ts";
 import { evaluateLandofileRootLayers } from "./root-compile.ts";
 
-export const finalizeLandofileRootLayers = Effect.fnUntraced(function* (
+export type RootLoadInputs = LandofileRuntimeInputs & {
+  readonly overrides?: LandofileFinalizeOverrides | undefined;
+};
+
+const finalizeLandofileRootLayers = Effect.fnUntraced(function* (
   evaluated: Effect.Success<ReturnType<typeof evaluateLandofileRootLayers>>,
   canonicalPath: string,
-  inputs?: LandofileRuntimeInputs & { readonly overrides?: LandofileFinalizeOverrides | undefined },
+  inputs?: RootLoadInputs,
 ) {
-  const { merged, runtime, session } = evaluated;
+  const { merged, runtime } = evaluated;
   const appRoot = runtime.appRoot;
   const landofile = yield* finalizeLandofile(canonicalPath, merged, {
     scope: evaluated.scope,
@@ -30,20 +34,35 @@ export const finalizeLandofileRootLayers = Effect.fnUntraced(function* (
       classifyLoadFailure(error, appRoot, merged.provenance.documents),
     ),
   );
-  yield* publishIncludeProposals(session, inputs?.stateStore);
   return landofile;
 });
 
-export const mergeLandofileRootLayers = Effect.fnUntraced(function* (
+export const compileLandofileRoot = Effect.fnUntraced(function* (
   appRoot: string,
   canonicalPath: string,
-  inputs?: LandofileRuntimeInputs & { readonly overrides?: LandofileFinalizeOverrides | undefined },
+  options?: {
+    readonly inputs?: RootLoadInputs;
+    readonly selection?: Parameters<typeof evaluateLandofileRootLayers>[1]["selection"];
+    readonly pinPublication?: "publish" | "defer";
+  },
 ) {
-  yield* ensureConsistentRoot(appRoot, inputs);
+  const inputs = options?.inputs;
   const session = yield* createIncludeResolutionSession({ appRoot, ...inputs });
   const evaluated = yield* evaluateLandofileRootLayers(appRoot, {
     session,
     ...(inputs === undefined ? {} : { inputs }),
+    ...(options?.selection === undefined ? {} : { selection: options.selection }),
   });
-  return yield* finalizeLandofileRootLayers(evaluated, canonicalPath, inputs);
+  const landofile = yield* finalizeLandofileRootLayers(evaluated, canonicalPath, inputs);
+  if (options?.pinPublication !== "defer") yield* publishIncludeProposals(session, inputs?.stateStore);
+  return landofile;
 }, Effect.scoped);
+
+export const mergeLandofileRootLayers = Effect.fnUntraced(function* (
+  appRoot: string,
+  canonicalPath: string,
+  inputs?: RootLoadInputs,
+) {
+  yield* ensureConsistentRoot(appRoot, inputs);
+  return yield* compileLandofileRoot(appRoot, canonicalPath, inputs === undefined ? undefined : { inputs });
+});

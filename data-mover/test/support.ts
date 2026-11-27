@@ -12,9 +12,10 @@ import {
   type VolumeRef,
   appIdentityKey,
 } from "@lando/sdk/schema";
-import { RuntimeProvider, RuntimeProviderRegistry } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
-import { DateTime, Effect, Layer } from "effect";
+import { RuntimeProvider, RuntimeProviderRegistry, type RuntimeProviderShape } from "@lando/sdk/services";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
+import { DateTime, Effect, Layer, Stream } from "effect";
+import { tarArchive } from "./tar-fixture.ts";
 
 const rootKeys = [
   "LANDO_USER_DATA_ROOT",
@@ -40,6 +41,16 @@ afterEach(async () => {
 
 export const fixtureOwnerRoot = AbsolutePath.make("/tmp/lando-sdk-test");
 export const fixtureOwnerKey = appIdentityKey("owner", fixtureOwnerRoot);
+export const writeFixtureVolume = (
+  provider: Pick<RuntimeProviderShape, "importVolume">,
+  target: VolumeRef,
+  payload: string,
+) =>
+  provider.importVolume({
+    target,
+    archive: Stream.make(tarArchive([{ name: "./payload", data: payload }])),
+    beforeCommit: Effect.void,
+  });
 export const fixtureVolume = (ref: VolumeRef = { app: AppId.make("data-app"), store: "data" }) => ({
   ref,
   provenance: "known" as const,
@@ -53,56 +64,51 @@ export const fixtureVolume = (ref: VolumeRef = { app: AppId.make("data-app"), st
   },
 });
 
-export const registryLayer = Layer.succeed(RuntimeProviderRegistry, {
-  appliedPlansFor: () => Effect.succeed([]),
-  resolveAppliedPlan: () => Effect.succeed(undefined),
-  resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-  list: Effect.succeed([ProviderId.make("test")]),
-  capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-  select: (target) =>
-    target === "test"
-      ? Effect.succeed(TestRuntimeProvider)
-      : Effect.fail(
-          new ProviderUnavailableError({
-            providerId: typeof target === "string" ? target : "unknown",
-            operation: "select",
-            message: "Provider is not installed in this test fixture.",
-            remediation:
-              "Install or start the selected runtime provider and confirm it can perform `select`.",
-          }),
-        ),
-});
+export const registryLayer = Layer.succeed(
+  RuntimeProviderRegistry,
+  makeTestRuntimeProviderRegistry({
+    list: Effect.succeed([ProviderId.make("test")]),
+    select: (target) =>
+      target === "test"
+        ? Effect.succeed(TestRuntimeProvider)
+        : Effect.fail(
+            new ProviderUnavailableError({
+              providerId: typeof target === "string" ? target : "unknown",
+              operation: "select",
+              message: "Provider is not installed in this test fixture.",
+              remediation:
+                "Install or start the selected runtime provider and confirm it can perform `select`.",
+            }),
+          ),
+  }),
+);
 export const layer = dataMoverLayer.pipe(
   Layer.provide(
     Layer.effect(
       RuntimeProviderRegistry,
-      Effect.map(RuntimeProvider, (provider) => ({
-        appliedPlansFor: () => Effect.succeed([]),
-        resolveAppliedPlan: () => Effect.succeed(undefined),
-        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-        list: Effect.succeed([ProviderId.make(provider.id)]),
-        capabilities: Effect.succeed(provider.capabilities),
-        select: () =>
-          Effect.succeed({
-            ...provider,
-            appliedPlans: Effect.succeed([
-              {
-                valueModel: 1,
-                id: AppId.make("data-app"),
-                name: "Data app",
-                slug: "data-app",
-                root: fixtureOwnerRoot,
-                provider: ProviderId.make(provider.id),
-                services: {},
-                routes: [],
-                stores: [],
-                fileSync: [],
-                metadata: { resolvedAt: DateTime.makeUnsafe(0), source: "test", runtime: 4 },
-                extensions: {},
-              } satisfies AppPlan,
-            ]),
-          }),
-      })),
+      Effect.map(RuntimeProvider, (provider) => {
+        const plan = {
+          valueModel: 1,
+          id: AppId.make("data-app"),
+          name: "Data app",
+          slug: "data-app",
+          root: fixtureOwnerRoot,
+          provider: ProviderId.make(provider.id),
+          services: {},
+          routes: [],
+          stores: [],
+          fileSync: [],
+          metadata: { resolvedAt: DateTime.makeUnsafe(0), source: "test", runtime: 4 },
+          extensions: {},
+        } satisfies AppPlan;
+        return makeTestRuntimeProviderRegistry({
+          list: Effect.succeed([plan.provider]),
+          capabilities: Effect.succeed(provider.capabilities),
+          select: () => Effect.succeed(provider),
+          appliedStateInventory: () => Effect.succeed({ plans: [plan], unreadable: [] }),
+          readAppliedPlanStrict: ({ id }) => Effect.succeed(id === plan.id ? plan : undefined),
+        });
+      }),
     ),
   ),
 );

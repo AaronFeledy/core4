@@ -95,7 +95,7 @@ const stripGuide = (
           stripStep(step, ctx),
         );
     }
-    return child.type === "mdxJsxFlowElement" ? [] : [child];
+    return child.type === "mdxJsxFlowElement" || child.type === "mdxFlowExpression" ? [] : [child];
   });
 
 export const stripRecipeReadme = (sourcePath: string, content: string): ReadonlyArray<RecipeReadmeOutput> => {
@@ -112,7 +112,8 @@ export const stripRecipeReadme = (sourcePath: string, content: string): Readonly
     const ctx: StripContext = { stepCounter: 0, cleanups: [], guide, variant };
     const children: RootContent[] = [];
     for (const child of guide.root.children) {
-      if (child.type === "yaml") continue;
+      // Front matter and MDX comments, such as `lando-lint` waivers, carry no reader content.
+      if (child.type === "yaml" || child.type === "mdxFlowExpression") continue;
       if (child.type === "mdxJsxFlowElement" && child.name === "Guide")
         children.push(...stripGuide(child, ctx));
       else if (child.type !== "mdxJsxFlowElement" && child.type !== "mdxJsxTextElement") children.push(child);
@@ -161,7 +162,9 @@ if (import.meta.main) {
   try {
     process.stdout.write(`${JSON.stringify(await buildRecipeReadmes(REPO_ROOT), null, 2)}\n`);
   } catch (error) {
-    process.stderr.write(`${JSON.stringify(error, null, 2)}\n`);
+    process.stderr.write(
+      `${error instanceof Error ? (error.stack ?? error.message) : JSON.stringify(error, null, 2)}\n`,
+    );
     process.exitCode = 1;
   }
 }

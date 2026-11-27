@@ -24,7 +24,7 @@ lando db:import dump.sql.zst --yes
 
 ## Export or import a dump
 
-`db:export` writes `<service>.sql.gz` in the current directory when you are inside the app, otherwise the app root. Relative paths resolve the same way.
+`db:export` writes `<service>.sql.gz` in the current directory when you are inside the app, otherwise the app root. Relative paths resolve the same way. An absolute path works for both commands and can point anywhere on the host, so a dump you'd rather not keep in the checkout can stay outside it.
 
 ```sh
 lando db:export backups/app.sql.gz --service database
@@ -75,14 +75,14 @@ Lando refuses to write a dump to a terminal, so redirect or pipe stdout. To feed
 
 A dump that fails partway has already sent part of its bytes downstream, and Lando exits non-zero. In a pipeline, check the export's exit status before trusting the output, for example with `set -o pipefail` in bash. If the reader closes early, as `| head` does, Lando stops the dump and exits with status 141.
 
-Scripts and agents that need the structured result can still ask for it. With `-`, `--format=json`, `--format=yaml`, `--json=<keys>`, and `--jq` write the result to stderr, because stdout carries the dump:
+Scripts and agents that need the structured result can still ask for it. With `-`, `--format=ndjson`, `--format=json`, `--format=yaml`, `--json=<keys>`, and `--jq` write the result to stderr, because stdout carries the dump. `--format=ndjson` is the easiest to read there, because every line it writes is one JSON frame:
 
 ```sh
 set -o pipefail
-lando db:export - --format=json 2> result.json | gzip > dump.sql.gz
+lando db:export - --format=ndjson 2> result.ndjson | gzip > dump.sql.gz
 ```
 
-`result.json` ends with one result envelope: `"ok": true` on success, or `"ok": false` and the tagged error on failure, including failures before the dump starts. With the default renderer the envelope is usually all stderr holds, but a diagnostic or `--debug` output can come before it, so read the last line for JSON or the last document for YAML.
+The last line of `result.ndjson` is the `result` frame. Its `envelope` has `"ok": true` on success, or `"ok": false` and the tagged error on failure, including failures before the dump starts. The lines before it are the dump client's own output and Lando's lifecycle events, as described in [Watch the database client's output](#watch-the-database-clients-output). `--format=json` writes the same frames, except that a flag Lando rejects before the command runs, such as a bad `--compression` value, gets a single envelope instead of a `result` frame. `--format=yaml` writes one result document. A diagnostic or `--debug` output can also land on stderr, so read the last line for NDJSON or JSON and the last document for YAML.
 
 To import from stdin, pass `-` and `--yes`. Lando can't ask for confirmation because stdin carries the dump:
 
@@ -112,15 +112,29 @@ cmd /d /c "lando db:import - --yes < dump.sql"
 
 On Windows, Lando can't stop an export while the program reading it has stopped reading but is still running. Ctrl+C usually stops that program too; if it doesn't, close it and Lando exits.
 
-## Inspect a failed database command
+## Watch the database client's output
 
-Request JSON when you need structured diagnostics:
+`db:import`, `db:export`, `db:reset`, and `db:seed` run a database client inside the service, such as `mysql`, `pg_dump`, `sqlcmd`, or `mongorestore`. Whatever that client writes to stderr, such as a warning, a Postgres `NOTICE`, or `mongorestore` progress, appears in your terminal while the command runs, not after it ends. The dump itself and the answers to Lando's own checks, such as the table count it reads before an import, never show up there.
+
+Scripts and agents get the same output as stream frames. With `--format=ndjson`, every line on stdout is one JSON frame:
 
 ```sh
-lando db:export backups/app.sql.gz --service database --format=json
+lando db:import backups/app.sql.gz --service database --yes --format=ndjson
 ```
 
-Failed service-command transfers report `DataTransferError`; failed SQL actions
+Each `stderr` frame carries a piece of the client's output with the `service` that wrote it, `event` frames report Lando's lifecycle events, and the last line is a single `result` frame that holds the command envelope. `--format=json` writes the same frames. `--format=yaml` doesn't stream: it prints one document after the command ends, without the client's output. Over [MCP](../../agent-native/mcp/), an allowed `db:*` call delivers the client's output as progress notifications before its result.
+
+A SQLite file target runs `sqlite3` in a short-lived helper container instead, and its output reaches you only in the error when the helper fails.
+
+## Inspect a failed database command
+
+Request machine output when you need structured diagnostics:
+
+```sh
+lando db:export backups/app.sql.gz --service database --format=ndjson
+```
+
+The failure is in the last line, the `result` frame, under `envelope.error`. Failed service-command transfers report `DataTransferError`; failed SQL actions
 report `SqlCommandFailedError`. When the command supplied them, `exitCode` and
 `stderrTail` preserve its exit status and redacted stderr. The tail is limited to
 8 KiB, including its truncation marker. Oversized unfinished lines may be
@@ -192,7 +206,7 @@ lando db:snapshots
 lando db:restore before-change --yes
 ```
 
-`db:restore` takes a label or the id `db:snapshots` prints. Both ids and labels resolve only within the current app, owner, and database store. Labels don't have to be unique. A label on more than one snapshot in that scope fails with `SnapshotAmbiguousError` and lists the matching ids, newest first, so pass one of those. A name that matches nothing in that scope fails with `SnapshotNotFoundError`.
+`db:restore` takes a label or the id `db:snapshots` prints. Both ids and labels resolve only within the current app, owner, and database store. An exact id wins. Otherwise Lando uses the newest snapshot with that label, so you can reuse a label like `before-change` and always get the latest one. Labels don't have to be unique, and `db:snapshots` lists every snapshot that shares one; pass an id to restore an older one. Restore takes a recovery snapshot first, so if you restored the wrong one, restore the recovery snapshot ID it reports. A name that matches nothing in that scope fails with `SnapshotNotFoundError`.
 
 A snapshot restores only into the database volume that took it, with matching owner, service, database family, version, image, and recorded physical volume generation. Snapshots from another app or checkout don't restore, even when they show up in `db:snapshots --from-app`. Native snapshots also cannot restore through another provider. Move data across providers with `db:export` on the source, then `db:import` or `db:seed <file>` on the destination.
 
@@ -229,7 +243,14 @@ Doctor's filesystem-only `legacy-snapshot-catalogs` check lists the count and pa
 
 Before `db:import`, `db:reset`, or `db:restore` changes your data, Lando takes an automatic recovery snapshot. After a successful operation, Lando keeps the newest 3 recovery snapshots per database automatically, including the one just taken. Failed operations leave every recovery snapshot in place and report the snapshot ID you can restore. Retention stays within this app folder and database; another Git worktree's snapshots stay put.
 
-`lando db:snapshots:prune` handles manual snapshots created by `db:snapshot`, not automatic recovery snapshots. It keeps the newest 3 manual snapshots by default. Prune and purge delete native data through the recording provider before removing the catalog entry. If deletion fails, the snapshot stays listed so you can retry. If automatic retention warns that cleanup failed, your database operation still succeeded; older recovery snapshots may remain until a later successful operation retries cleanup.
+`lando db:snapshots:prune` handles manual snapshots created by `db:snapshot`. It keeps the newest 3 by default; `--keep-latest` changes that number. Add `--recovery` to prune the automatic recovery snapshots instead. A recovery snapshot holds a full copy of the database as it was before the change, so delete them when that copy shouldn't stay on disk, such as after importing production data. Preview first, then delete every recovery snapshot for the database:
+
+```sh
+lando db:snapshots:prune --recovery --keep-latest 0 --preview
+lando db:snapshots:prune --recovery --keep-latest 0 --yes
+```
+
+Prune and purge delete native data through the recording provider before removing the catalog entry. If deletion fails, the snapshot stays listed so you can retry. If automatic retention warns that cleanup failed, your database operation still succeeded; older recovery snapshots may remain until a later successful operation retries cleanup.
 
 ## Confirm destructive work
 
@@ -260,6 +281,27 @@ lando db:reset --yes
       <Run command="lando help db:export --format=json" />
       <Verify command="lando help db:export --format=json" expect={{ stdout: { regex: "\"name\":\"file\"[^}]*\"stdio\":\"stdout\"" } }} />
     </Step>
+    <Hidden reason="A streaming command advertises ndjson; a listing that never streams does not.">
+      <Step name="advertised-formats">
+        <Verify command="lando help db:export --format=json" expect={{ stdout: { regex: "\"advertisedFormats\":\\[\"text\",\"json\",\"yaml\",\"ndjson\"\\]" } }} />
+        <Verify command="lando help db:snapshots --format=json" expect={{ stdout: { regex: "\"advertisedFormats\":\\[\"text\",\"json\",\"yaml\"\\]" } }} />
+      </Step>
+    </Hidden>
+  </Scenario>
+
+  <Scenario id="reset-streams-frames" render={false} reason="A live db command answers ndjson with one frame sequence ending in a result frame, and a listing refuses ndjson.">
+    <Step name="reset-ndjson">
+      <UseFixture name="one-db" />
+      <Run command="lando start" />
+      <Run command="lando db:reset --format=ndjson" expectExit={1} />
+      <Verify errorTag="SqlConfirmRequiredError" expect={{ regex: "Reset will destroy" }} />
+      <Verify command="lando db:reset --format=ndjson" expectExit={1} expect={{ stdout: { regex: "^([{]\"_tag\":\"(event|stderr)\",[^\\n]*\\n)*[{]\"_tag\":\"result\",\"envelope\":[{]\"apiVersion\":\"v4\",\"command\":\"db:reset\",\"ok\":false,[^\\n]*\\n?$" } }} />
+      <Run command="lando db:snapshots --format=ndjson" expectExit={2} />
+      <Verify errorTag="RendererSelectionError" expect={{ regex: "Allowed: text, json, yaml[.]" }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
   </Scenario>
 
   <Scenario id="export-stdout-json-on-stderr" render={false} reason="Regression for the result envelope leaving stdout to a dash dump">
@@ -267,6 +309,14 @@ lando db:reset --yes
       <UseFixture name="one-db" />
       <Run command="lando db:export - --compression=brotli --format=json" expectExit={2} />
       <Verify command="lando db:export - --compression=brotli --format=json" expectExit={2} expect={{ stdout: "", stderr: { regex: "\"ok\":false,\"error\":\\{\"_tag\":\"MalformedCliFlagValueError\"" } }} />
+    </Step>
+    <Step name="selection-failures">
+      <Run command="lando db:export - --format=ndjson --jq=." expectExit={2} />
+      <Verify command="lando db:export - --format=ndjson --jq=." expectExit={2} expect={{ stdout: "", stderr: { regex: "^\\{\"_tag\":\"result\",\"envelope\":\\{[^\\n]*\"_tag\":\"JsonProjectionError\"" } }} />
+      <Run command="lando db:export - --format=json --log-level=bogus" expectExit={2} />
+      <Verify command="lando db:export - --format=json --log-level=bogus" expectExit={2} expect={{ stdout: "", stderr: { regex: "\"ok\":false,\"error\":\\{\"_tag\":\"LogLevelSelectionError\"" } }} />
+      <Run command="lando db:export - --format=json --renderer=bogus" expectExit={2} />
+      <Verify command="lando db:export - --format=json --renderer=bogus" expectExit={2} expect={{ stdout: "", stderr: { regex: "\"ok\":false,\"error\":\\{\"_tag\":\"RendererSelectionError\"" } }} />
     </Step>
   </Scenario>
 
@@ -311,6 +361,57 @@ lando db:reset --yes
     </Step>
     <Step name="cleanup">
       <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="prune-recovery-bucket" render={false} reason="Regression for pruning automatic recovery snapshots">
+    <Step name="preview-and-confirm">
+      <UseFixture name="one-db" />
+      <Run command="lando start" />
+      <Run command="lando db:snapshots:prune --recovery --keep-latest 0 --preview --format=json" />
+      <Verify command="lando db:snapshots:prune --recovery --keep-latest 0 --preview --format=json" expect={{ stdout: { regex: "\"retentionApplied\":false" } }} />
+      <Run command="lando db:snapshots:prune --recovery --keep-latest 0 --format=json" expectExit={1} />
+      <Verify errorTag="SqlConfirmRequiredError" expect={{ regex: "recovery snapshot" }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="restore-label-and-prune-recovery" layer="e2e" render={false} reason="A reused label restores the newest snapshot and --recovery deletes only recovery snapshots">
+    <Step name="restore-reused-label">
+      <UseFixture name="one-db" />
+      <Verify command="lando start --format=json" expect={{ stdout: { regex: "\"ok\":true" } }} />
+      <Run command="lando db:snapshot --label baseline" />
+      <Run command="lando db:snapshot --label baseline" />
+      <Verify command="lando db:restore baseline --yes --format=json" expect={{ stdout: { regex: "\"ok\":true.*\"recoverySnapshotId\":" } }} />
+    </Step>
+    <Step name="prune-recovery">
+      <Run command="lando db:snapshots:prune --recovery --keep-latest 0 --preview" />
+      <Verify command="lando db:snapshots --format=json" expect={{ stdout: { regex: "\"recoveryReason\":\"restore\"" } }} />
+      <Run command="lando db:snapshots:prune --recovery --keep-latest 0 --yes" />
+      <Verify command="lando db:snapshots --format=json" expect={{ stdout: { not: { regex: "\"recoveryReason\":\"(import|reset|restore|seed)\"" } } }} />
+      <Verify command="lando db:snapshots --format=json" expect={{ stdout: { regex: "\"label\":\"baseline\"[\\s\\S]*\"label\":\"baseline\"" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="stream-client-output" layer="e2e" render={false} reason="Live db commands on a real database end their frames in one result frame, and a dash export keeps the dump on stdout.">
+    <Step name="start">
+      <UseFixture name="one-db" />
+      <Verify command="lando start --format=json" expect={{ stdout: { regex: "\"ok\":true" } }} />
+    </Step>
+    <Step name="stream-frames">
+      <Verify command="lando db:export backups/app.sql.gz --service database --format=ndjson" expect={{ stdout: { regex: "(^|\\n)[{]\"_tag\":\"result\",\"envelope\":[{]\"apiVersion\":\"v4\",\"command\":\"db:export\",\"ok\":true[^\\n]*\\n?$" } }} />
+      <Verify command="lando db:import backups/app.sql.gz --service database --yes --format=ndjson" expect={{ stdout: { regex: "(^|\\n)[{]\"_tag\":\"result\",\"envelope\":[{]\"apiVersion\":\"v4\",\"command\":\"db:import\",\"ok\":true[^\\n]*\\n?$" } }} />
+      <Verify command="lando db:export - --format=ndjson" expect={{ stdout: { regex: "^-- MySQL dump" }, stderr: { regex: "(^|\\n)[{]\"_tag\":\"result\",\"envelope\":[{]\"apiVersion\":\"v4\",\"command\":\"db:export\",\"ok\":true" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y --volumes" />
     </Step>
   </Scenario>
 

@@ -33,7 +33,7 @@ for (const reusePolicy of ["exact", "adopt"] as const) {
         // Given authenticated control through a private host Unix socket.
         const root = await mkdtemp(join(tmpdir(), "lando-host-proxy-reuse-"));
         const paths = { userDataRoot: root };
-        const socketPath = join(dirname(workerStatePath(app, paths)), "host-proxy.sock");
+        const socketPath = join(dirname(workerStatePath(app, paths)), "container", "sock");
         const shimPath = join(root, "shim");
         const privateFileAccess = await Effect.runPromise(
           Effect.scoped(PrivateFileAccessService.pipe(Effect.provide(PrivateFileAccessService.layer))),
@@ -73,6 +73,7 @@ for (const reusePolicy of ["exact", "adopt"] as const) {
         });
         try {
           await mkdir(dirname(socketPath), { recursive: true, mode: 0o700 });
+          await chmod(dirname(socketPath), 0o711);
           await writeFile(shimPath, "shim");
           await new Promise<void>((resolve) => control.listen(socketPath, resolve));
           await chmod(socketPath, 0o666);
@@ -111,10 +112,14 @@ for (const reusePolicy of ["exact", "adopt"] as const) {
             return;
           }
 
-          // When host directory privacy is lost, the otherwise live socket cannot be reused.
+          // When the container-facing directory or its private run directory loses its mode, the
+          // otherwise live socket cannot be reused.
           await chmod(dirname(socketPath), 0o755);
           expect(await ensure()).toBeUndefined();
-          await chmod(dirname(socketPath), 0o700);
+          await chmod(dirname(socketPath), 0o711);
+          await chmod(dirname(dirname(socketPath)), 0o755);
+          expect(await ensure()).toBeUndefined();
+          await chmod(dirname(dirname(socketPath)), 0o700);
 
           // When any current-protocol ownership identity is absent or foreign, reuse is rejected.
           for (const value of [undefined, "/foreign"]) {

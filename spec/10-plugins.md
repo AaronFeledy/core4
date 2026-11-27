@@ -31,6 +31,8 @@ CLI discovery precedence, from earliest to latest, is bundled plugins, system pl
 
 App-local plugins are trusted host code and do not receive a separate execution prompt. `pluginDirs:` are local-only. Explicit `plugins:` resolve during app materialization, install into an app-scoped store, and lock in `.lando.lock.yml` (§7.7.4). Routine startup MUST use the locked local copy and MUST NOT contact the source unless the lock changes, the cache is missing or corrupt, or the user explicitly updates it.
 
+An explicit source on a top-level native scratch fork selects the source app's local registry under the same policy as invoking a command inside that app (§21.4.1). The caller's app-local registry does not participate, even if the source is refused. This neither grants install trust nor authorizes retargeting a retained runtime.
+
 Library runtimes discover nothing by default and independently opt into bundled, system, user, and app sources (§16.4). Enabling all four produces CLI-equivalent discovery.
 
 ### 9.4 Manifest schema
@@ -94,7 +96,7 @@ Command ids MUST be canonical and namespaced. Command descriptors carry no `name
 
 | Surface | Loaded by | Architectural rule |
 |---|---|---|
-| `providers` | Provider registry | Implements `RuntimeProvider` (§5). |
+| `providers` | Provider registry | Implements `RuntimeProvider` (§5). The contribution's required filesystem-only callbacks (`appliedPlans`, `appliedStateInventory`, `readAppliedPlanStrict`) are checked when the registry resolves it, not at plugin import (§5.3.1). |
 | `serviceTypes` | App planner | Resolves or declaratively defines service types (§6.11). |
 | `serviceFeatures` | Service planner | Mutates one service through published context. |
 | `appFeatures` | App planner | Mutates selected services through published context. |
@@ -203,7 +205,7 @@ App-declared plugins install only into their app-scoped store, use the same trus
 - App-scoped plugins load only from their lockfile-selected local copy.
 - One manifest-resolution pass per runtime, or per contribution generation in a retained MCP host (§10.14), selects plugins for discovery, the contribution graph, help, routing, MCP, and configuration validation, with ordinary discovery precedence, roots, app-local plugins, and disables. A later source replaces an earlier plugin with the same name. Across different plugins, the first command owner in precedence order keeps a command id and the shadowed declaration is reported as a diagnostic; a winner that later fails to load is never replaced by the shadowed command. A manifest that repeats a command id is invalid.
 - Plugin command identity, listing, routing, and MCP eligibility come from manifest command descriptors; CLI metadata listing and routing MUST NOT import plugin entry or command modules. MCP schema construction loads the implementations it exposes. There is no persisted plugin-command cache; bundled descriptors are also embedded at build time for level-`none` help (§12.1). Executable loaders stay lazy and keyed by canonical id; a declared command without a loader stays listed; declaration alone does not establish implementation availability, so the missing loader is reported when the command is used, its target help is requested, or MCP validates it.
-- Native top-level dispatch resolves a token that no built-in or tooling task owns (a plugin command id or one of its active aliases) through the graph, loads and validates its `ExecutableCommandSpec` (§8.3), and runs it under the declared `bootstrap` level. Event command steps MAY invoke the same lazy implementation. A command module that fails to load or validate fails only that command.
+- Native top-level dispatch resolves a token that no built-in or tooling task owns (a plugin command id or one of its active aliases) through the graph, loads and validates its `ExecutableCommandSpec` (§8.3), and runs it under the declared `bootstrap` level, routing its output through a live `StreamFrameSink` under §8.11.3 when the spec declares `streamingMode: "live"`. Event command steps MAY invoke the same lazy implementation and honor the same declaration. A command module that fails to load or validate fails only that command.
 - Each contribution module loads on first use. Config translators load only for explicit translation or the declared local-snapshot refresh phase (§7.4.2), never ordinary discovery/loading.
 - Layer results compose into the runtime; plain objects are wrapped as Layers.
 - A throwing module becomes `PluginLoadError`, marks that plugin unhealthy, and MUST NOT prevent unrelated plugins from loading. A command module that throws or fails validation fails only that command; the plugin's other commands stay available.

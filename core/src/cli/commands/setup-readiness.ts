@@ -5,7 +5,7 @@ import { writeFileAtomicViaRename } from "@lando/engine/cache/atomic";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import { causeMessage } from "@lando/sdk/errors";
 import type { Redactor } from "@lando/sdk/secrets";
-import { DateTime, Effect, Option, Schema } from "effect";
+import { DateTime, Effect, Option, Predicate, Schema } from "effect";
 import { CliInvocation } from "../../runtime/invocation-context";
 
 export const SetupReadinessStep = Schema.Struct({
@@ -161,13 +161,23 @@ const setupFailurePlatformHint = (stepId: string): string => {
     case "win32":
       return `On ${process.platform}, rerun from an elevated shell only when the failing ${stepId} step requires host changes, then rerun \`lando setup\`.`;
     default:
-      return `On ${process.platform}, verify sudo/askpass access and host integration prerequisites for the failing ${stepId} step, then rerun \`lando setup\`.`;
+      return `On ${process.platform}, fix the reported problem for the failing ${stepId} step, then rerun \`lando setup\`.`;
   }
 };
+
+// A tagged failure already names its own fix (for example `sudo -v` for missing credentials).
+const ownRemediation = (cause: unknown): string | undefined =>
+  Predicate.hasProperty(cause, "remediation") &&
+  typeof cause.remediation === "string" &&
+  cause.remediation.length > 0
+    ? cause.remediation
+    : undefined;
 
 export const setupFailureRemediation = (
   stepId: string,
   cause: unknown,
   redactor: Pick<Redactor, "redactString">,
 ): string =>
-  redactor.redactString(`${setupFailurePlatformHint(stepId)} Last failure: ${causeMessage(cause)}`);
+  redactor.redactString(
+    `${ownRemediation(cause) ?? setupFailurePlatformHint(stepId)} Last failure: ${causeMessage(cause)}`,
+  );

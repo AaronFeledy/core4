@@ -33,6 +33,11 @@ const PHASE_COMMAND_TIMEOUT_MS: Partial<Readonly<Record<WorkflowPerformanceStepI
   rebuild: 180_000,
 };
 
+/** Drupal first-start scaffolds via build.app (Composer-heavy). Lane-local only; does not raise global start. */
+export const DRUPAL_JOURNEY_START_TIMEOUT_MS = 900_000;
+/** Drupal journey sample covers init + scaffold-on-start + checks; keep other lanes on the default. */
+export const DRUPAL_JOURNEY_SAMPLE_TIMEOUT_MS = 1_800_000;
+
 export const timeoutMsForPerformanceCommand = (id: WorkflowPerformanceStepId): number =>
   PHASE_COMMAND_TIMEOUT_MS[id] ?? DEFAULT_WORKFLOW_PERFORMANCE_COMMAND_TIMEOUT_MS;
 

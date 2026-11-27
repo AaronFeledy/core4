@@ -230,6 +230,30 @@ test("strict validation flags ${NAME} forms and unreadable expressions in every 
   ]);
 });
 
+test("strict validation admits a public service URL only in a hostEvents command", () => {
+  // Given a URL read in a command, in a step target, and through a computed service name
+  const hostEvents = {
+    "post-start": [
+      { cmd: "curl {{ services.web.url }}", service: ":host" },
+      { cmd: "true", service: "{{ services.web.url }}" },
+      { cmd: "curl {{ services[env.SERVICE].url }}", service: ":host" },
+    ],
+  };
+  // When
+  const issues = hostEventsShellConfigError(hostEvents, join(root, "config.yml"))?.issues ?? [];
+  // Then
+  expect(issues.map((issue) => [issue.path.join("."), issue.message])).toEqual([
+    [
+      "hostEvents.post-start.1.service",
+      "services.web.url is not supported at hostEvents.post-start.1.service.",
+    ],
+    [
+      "hostEvents.post-start.2.cmd",
+      "A services read with a computed service name is not supported at hostEvents.post-start.2.cmd.",
+    ],
+  ]);
+});
+
 test("runtime config decoding ignores hostEvents host-shell findings so other commands keep working", () => {
   // Given
   const tree = { hostEvents: { "pre-start": [{ cmd: "echo hi >&2", service: ":host" }] } };

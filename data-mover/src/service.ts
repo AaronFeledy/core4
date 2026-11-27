@@ -1,12 +1,14 @@
 import { createHash, randomUUID } from "node:crypto";
 import { cp, mkdir, readdir, realpath, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
+import { inventoryProtectsApp, protectedSlotError } from "@lando/container-runtime/applied-state";
 import { APP_ROOT_LABEL, SNAPSHOT_STORE_LABEL } from "@lando/container-runtime/labels";
 import { findAppRoot } from "@lando/landofile/discovery";
 import { discoveryCwd } from "@lando/landofile/operation-discovery";
 import { isPathWithin } from "@lando/paths";
 import { isProviderError } from "@lando/redaction/provider-error";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
+import { tryPromiseSettled } from "@lando/sdk/abortable-promise";
 import { mapFailures, mapStreamFailures } from "@lando/sdk/command-result";
 import { sha256Hex } from "@lando/sdk/digest";
 import {
@@ -33,6 +35,7 @@ import {
 import {
   AbsolutePath,
   type AppId,
+  type AppPlan,
   type DataEndpoint,
   type DataTransferProgress,
   type DataTransferResult,
@@ -45,6 +48,7 @@ import {
   type VolumeSnapshotRef,
   planDataId,
   snapshotHandle,
+  snapshotInPruneBucket,
 } from "@lando/sdk/schema";
 import {
   DataMover,
@@ -72,6 +76,7 @@ import {
   Layer,
   Option,
   Queue,
+  Result,
   Schema,
   type Scope,
   Stream,
@@ -82,6 +87,7 @@ import {
   encodeArchiveStream,
   encodeCompressionStream,
 } from "./archive-stream.ts";
+import { HostTreeCopyGuard } from "./host-tree-copy-guard.ts";
 import { legacySnapshotReferences, orphanedSnapshotMethods } from "./orphaned-snapshots.ts";
 import { providerFailure } from "./provider-failure.ts";
 import { checkedServiceCommand, serviceCommandStdout } from "./service-command-redaction.ts";
@@ -505,25 +511,34 @@ const directorySizeBytes = async (root: string): Promise<number> => {
 const copyHostTree = (
   source: string,
   destination: string,
-): Effect.Effect<DataTransferResult, DataTransferError> =>
-  Effect.tryPromise({
+): Effect.Effect<DataTransferResult, DataTransferError> => {
+  const copyFailure = (cause: unknown) =>
+    new DataTransferError({
+      message: "Failed to copy host directory tree.",
+      fromEndpoint: `hostPath:${source}`,
+      toEndpoint: `hostPath:${destination}`,
+      operation: "copy-host-tree",
+      cause,
+      remediation: "Verify the source path is readable and the destination is writable, then retry.",
+    });
+  // An interrupted caller can remove the destination once pending filesystem writes have settled.
+  return tryPromiseSettled({
     try: async () => {
       await mkdir(destination, { recursive: true });
       if (!(await reflinkCopyTree(source, destination))) {
-        await cp(source, destination, { recursive: true, dereference: false, force: true });
+        await cp(source, destination, { recursive: true, verbatimSymlinks: true, force: true });
       }
-      return { accelerated: true, sizeBytes: await directorySizeBytes(destination) };
     },
-    catch: (cause) =>
-      new DataTransferError({
-        message: "Failed to copy host directory tree.",
-        fromEndpoint: `hostPath:${source}`,
-        toEndpoint: `hostPath:${destination}`,
-        operation: "copy-host-tree",
-        cause,
-        remediation: "Verify the source path is readable and the destination is writable, then retry.",
+    catch: copyFailure,
+  }).pipe(
+    Effect.andThen(
+      Effect.tryPromise({
+        try: async () => ({ accelerated: true, sizeBytes: await directorySizeBytes(destination) }),
+        catch: copyFailure,
       }),
-  });
+    ),
+  );
+};
 
 const hostSourceIsDirectory = (path: string): Effect.Effect<boolean, DataTransferError> =>
   Effect.tryPromise({
@@ -1103,10 +1118,15 @@ export const makeDataMoverService = (
             "artifact endpoints carry engine image archives, not volume tree archives",
           );
         }
-        yield* validateHostEndpoints(spec, persistence.paths.scratchDir);
         const hostToHost = spec.from._tag === "hostPath" && spec.to._tag === "hostPath";
-        const treeCopy = hostToHost ? yield* hostSourceIsDirectory(spec.from.path) : false;
+        const scope = hostToHost ? yield* HostTreeCopyGuard : undefined;
+        const guard = scope?.transfer === spec ? scope : undefined;
+        if (guard !== undefined) yield* guard.verify;
+        yield* validateHostEndpoints(spec, persistence.paths.scratchDir);
+        const treeCopy =
+          hostToHost && (guard !== undefined || (yield* hostSourceIsDirectory(spec.from.path)));
         if (treeCopy && spec.from._tag === "hostPath" && spec.to._tag === "hostPath") {
+          if (guard !== undefined) yield* guard.verify;
           const treeResult = yield* copyHostTree(spec.from.path, spec.to.path);
           yield* events.publish(
             DataTransferProgressEvent.make({
@@ -1741,11 +1761,7 @@ export const makeDataMoverService = (
           }
           const retained = new Set(policy.retainSnapshotIds?.map(String));
           return [...infos]
-            .filter((info) => {
-              const manual =
-                info.metadata?.recoveryReason === undefined || info.metadata.recoveryReason === "manual";
-              return policy.recovery === true ? !manual : manual;
-            })
+            .filter((info) => snapshotInPruneBucket(info, policy.recovery === true))
             .sort(
               (left, right) =>
                 Number(retained.has(String(right.id))) - Number(retained.has(String(left.id))) ||
@@ -1793,24 +1809,42 @@ export const layerWithPrivateFileAccess: Layer.Layer<
           // Explicit call-time bindings come from operations that already selected
           // their provider. The bootstrap placeholder is never a selection.
           const supplied = yield* Effect.serviceOption(RuntimeProvider);
-          if (Option.isSome(supplied) && supplied.value.id !== "stub") return supplied.value;
-          if (app === undefined) return yield* providerRegistry.select(providerId);
-          const inspectAppliedPlans = (id: ProviderId) =>
-            providerRegistry
-              .select(id)
-              .pipe(Effect.flatMap((candidate) => candidate.appliedPlans ?? Effect.succeed([])));
+          const bound = Option.isSome(supplied) && supplied.value.id !== "stub" ? supplied.value : undefined;
+          if (app === undefined) return bound ?? (yield* providerRegistry.select(providerId));
+          if (bound !== undefined && !volume) {
+            yield* providerRegistry.readAppliedPlanStrict({ id: app, provider: ProviderId.make(bound.id) });
+            return bound;
+          }
+          const inspectAppliedPlans = providerRegistry.appliedStateInventory;
           // The first provider that could not be inspected keeps its own tag and remediation.
           let uninspected: Effect.Error<ReturnType<typeof inspectAppliedPlans>> | undefined;
-          for (const id of yield* providerRegistry.list) {
+          const scope = bound === undefined ? providerId : ProviderId.make(bound.id);
+          for (const id of scope === undefined ? yield* providerRegistry.list : [scope]) {
             const inspected = yield* Effect.result(inspectAppliedPlans(id));
-            if (inspected._tag === "Failure") {
+            if (Result.isFailure(inspected)) {
               uninspected ??= inspected.failure;
               continue;
             }
-            const plan = inspected.success.find((plan) => (volume ? planDataId(plan) : plan.id) === app);
-            if (plan !== undefined) return yield* providerRegistry.select(plan);
+            const plan: AppPlan | undefined = inspected.success.plans.find(
+              (plan) => plan.provider === id && (volume ? planDataId(plan) : plan.id) === app,
+            );
+            if (plan !== undefined) {
+              const recorded: AppPlan | undefined = yield* providerRegistry.readAppliedPlanStrict(plan);
+              if (
+                recorded !== undefined &&
+                recorded.provider === id &&
+                (volume ? planDataId(recorded) : recorded.id) === app
+              )
+                return bound ?? (yield* providerRegistry.select(recorded));
+            }
+            // A protected receipt can't reveal whether a renamed app still owns this data ID.
+            const issue =
+              inspected.success.unreadable.find((entry) => inventoryProtectsApp(entry, app)) ??
+              (volume && bound === undefined ? inspected.success.unreadable[0] : undefined);
+            if (issue !== undefined) uninspected ??= protectedSlotError(id, issue, issue.appId ?? app);
           }
           if (uninspected !== undefined) return yield* Effect.fail(uninspected);
+          if (bound !== undefined) return bound;
           return yield* Effect.fail(
             new ProviderUnavailableError({
               providerId: "unknown",

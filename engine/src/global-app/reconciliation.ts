@@ -1,7 +1,9 @@
 import { mapFailures } from "@lando/sdk/command-result";
 import { GlobalAppError, type StateStoreError } from "@lando/sdk/errors";
 import { GlobalAppService, StateStore, type StateWrite } from "@lando/sdk/services";
+import { storeErrorRemediation } from "@lando/state-store";
 import { Effect, Result, Schema } from "effect";
+import type { GlobalRoutePublication } from "../operations/global-routes.ts";
 
 export const GlobalReconciliationPhase = Schema.Literals(["evidence", "containers", "routes", "generation"]);
 
@@ -68,6 +70,7 @@ export const transitionGlobalPending = (
       if (clear.phase !== entry.phase) continue;
       const selected = clear.services;
       if (selected === undefined) return [];
+      if (services.length === 0) continue;
       services = services.filter((id) => !selected.includes(id));
       if (services.length === 0) return [];
     }
@@ -108,7 +111,10 @@ const receiptError = (cause: StateStoreError): GlobalAppError =>
   new GlobalAppError({
     operation: "reconciliation",
     message: "Unable to read or save global service reconciliation state.",
-    remediation: "Repair access to the global app state directory, then repeat the policy command.",
+    remediation: storeErrorRemediation(
+      cause,
+      "Repair access to the global app state directory, then repeat the policy command.",
+    ),
     cause,
   });
 
@@ -244,13 +250,37 @@ export const recordGlobalResourceCleanup = Effect.fn("GlobalApp.recordResourceCl
 
 /** Route-only recovery cannot prove that unknown container ownership has been resolved. */
 export const recordGlobalRouteCleanup = Effect.fn("GlobalApp.recordRouteCleanup")(function* () {
+  yield* recordGlobalRoutePublication({ kind: "withdrawn" });
+});
+
+/** Replacement proves absence only for services excluded from the effective table. */
+export const recordGlobalRoutePublication = Effect.fn("GlobalApp.recordRoutePublication")(function* (
+  outcome: GlobalRoutePublication,
+) {
+  if (outcome.kind === "no-router") return;
   yield* whenRecorded(
-    updateReconciliation((previous, existing) =>
-      !existing
-        ? Result.succeed(undefined)
-        : transitionGlobalPending(previous.pending, "routes", { clears: [{ phase: "routes" }] }).pipe(
+    updateReconciliation((previous, existing) => {
+      if (!existing) return Result.succeed(undefined);
+      switch (outcome.kind) {
+        case "withdrawn":
+          return transitionGlobalPending(previous.pending, "routes", { clears: [{ phase: "routes" }] }).pipe(
             Result.map((pending) => ({ ...previous, routesClearedRevision: previous.revision, pending })),
-          ),
-    ),
+          );
+        case "replaced": {
+          const routed = new Set<string>(outcome.routes.map((route) => route.service));
+          const absent = previous.pending
+            .filter(({ phase }) => phase === "routes")
+            .flatMap(({ services }) => services.filter((service) => !routed.has(service)));
+          if (absent.length === 0 && previous.routesClearedRevision === undefined)
+            return Result.succeed(undefined);
+          const { routesClearedRevision: _priorWithdrawal, ...rest } = previous;
+          return transitionGlobalPending(previous.pending, "routes", {
+            clears: [{ phase: "routes", services: absent }],
+          }).pipe(Result.map((pending) => ({ ...rest, pending })));
+        }
+        default:
+          return outcome satisfies never;
+      }
+    }),
   );
 });

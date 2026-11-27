@@ -1,5 +1,6 @@
 import {
   type HostProxyContainerTarget,
+  type PreservedPathVerdict,
   buildProviderCapabilities,
   decodeProviderCapabilitiesFor,
   engineInfoArchitecture,
@@ -7,8 +8,10 @@ import {
   engineInfoUsernsRemap,
   hostProxyCapabilities,
   hostProxyContainerTargets,
+  withPreservedPathVerdict,
 } from "@lando/container-runtime/capabilities";
 import { volumeCreationLabels } from "@lando/container-runtime/data-plane";
+import { preflightDataRootPurge } from "@lando/container-runtime/data-root-purge";
 import {
   dockerLifecycleDialect,
   dockerPullDialect,
@@ -21,6 +24,7 @@ import {
   isDockerApiVersionError,
   makeDockerApiClient as makeRuntimeDockerApiClient,
 } from "@lando/container-runtime/docker/api-client";
+import { compareDockerApiVersion } from "@lando/container-runtime/docker/api-version";
 import type { ProviderErrorContext } from "@lando/container-runtime/engine-api";
 import { apiResponseFailure, parseEngineJson } from "@lando/container-runtime/engine-errors";
 import { validateHealthcheckExecution } from "@lando/container-runtime/healthcheck-attempt";
@@ -35,7 +39,6 @@ import {
   makeProviderLogSourceBinding,
 } from "@lando/container-runtime/log-source-binding";
 import { serviceContainerName } from "@lando/container-runtime/plan";
-import { bringDown } from "@lando/container-runtime/podman/bring-down";
 import {
   type BringUpOptions,
   type StartFailureRemediation,
@@ -53,7 +56,6 @@ import { containerConsoleLogs, logs } from "@lando/container-runtime/podman/logs
 import {
   bindResolvedProviderOps,
   composeAdaptersFor,
-  forgetAppliedPlanUnlessKept,
   makeProviderPlanState,
   makeResourceOwnershipStore,
   notImplementedError,
@@ -72,10 +74,9 @@ import { inspectEngineResourceNames } from "@lando/container-runtime/resource-na
 import { runObservationFromListState } from "@lando/container-runtime/run-observation";
 import { readAppEnvironment } from "@lando/container-runtime/runtime-provider";
 import {
-  DESTROY_NO_OP,
+  BRING_DOWN_NO_OP,
   postExactServiceLifecycle,
   postServiceLifecycle,
-  removeObservedContainer,
 } from "@lando/container-runtime/service-lifecycle";
 import { normalizeNamedPipePath } from "@lando/container-runtime/transport";
 import { waitForExit } from "@lando/container-runtime/wait-for-exit";
@@ -106,7 +107,6 @@ import { Effect, Layer, Schema, Stream } from "effect";
 import { AGENT_RELAY_IMAGE, makeDockerDesktopAgentSocketBridge } from "./agent-socket-relay.ts";
 import {
   listAppliedPlans,
-  listObservedPlans,
   loadAppliedPlanStrict,
   persistAppliedPlan,
   removeAppliedPlan,
@@ -123,7 +123,7 @@ export {
   appliedPlanPath,
   appliedPlansDir,
   listAppliedPlans,
-  loadAppliedPlan,
+  loadAppliedPlanStrict,
   persistAppliedPlan,
   removeAppliedPlan,
 } from "./applied-state.ts";
@@ -267,13 +267,41 @@ const isVmMediatedDockerHost = (platform: HostPlatform, dockerHost: string): boo
   );
 };
 
+/** Engine facts that only a live endpoint reports. Omitted facts take the conservative default. */
+export interface DockerEngineFacts {
+  readonly containerTargets?: ReadonlyArray<HostProxyContainerTarget>;
+  readonly rootless?: boolean;
+  readonly usernsRemap?: boolean;
+  /**
+   * The request API version in use reaches 1.44, where Docker honors `Healthcheck.StartInterval`.
+   * Omitted when no live endpoint answered, so the declaration cannot know yet.
+   */
+  readonly healthStartInterval?: boolean;
+}
+
+const healthStartIntervalLiveRemediation =
+  "Lando declares `start_interval` only after it verifies live that Docker Engine speaks API 1.44 or newer (Docker Engine 25 and later); start Docker and rerun the command.";
+
+const healthStartIntervalOldApiRemediation =
+  "Upgrade to Docker Engine 25 or newer (API 1.44), or unset DOCKER_API_VERSION when it pins an older API.";
+
+const healthStartIntervalVerdict = (healthStartInterval: boolean | undefined): PreservedPathVerdict => {
+  switch (healthStartInterval) {
+    case true:
+      return { _tag: "supported" };
+    case undefined:
+      return { _tag: "withheld", remediation: healthStartIntervalLiveRemediation };
+    case false:
+      return { _tag: "withheld", remediation: healthStartIntervalOldApiRemediation };
+  }
+};
+
 export const dockerCapabilitiesForHost = (
   platform: HostPlatform,
   dockerHost: string,
-  containerTargets: ReadonlyArray<HostProxyContainerTarget> = [],
-  rootless = false,
-  usernsRemap = false,
+  facts: DockerEngineFacts = {},
 ): ProviderCapabilities => {
+  const { containerTargets = [], rootless = false, usernsRemap = false } = facts;
   // A VM-mediated endpoint hides the engine's identity facts. A rootless
   // Docker engine maps only container root to the host user, and a daemon
   // user namespace stores subordinate host ids, so neither can realize a
@@ -289,8 +317,9 @@ export const dockerCapabilitiesForHost = (
         : ("host-ids" as const);
   const projectUserMapping =
     vmMediated || usernsRemap || rootless ? ("unsupported" as const) : ("image-renumber" as const);
-  return buildProviderCapabilities({
+  const capabilities = buildProviderCapabilities({
     bindMounts: true,
+    serviceHealth: "native",
     artifactBuild: true,
     artifactPull: true,
     bindMountPerformance: isVmMediatedDockerHost(platform, dockerHost) ? "slow" : "native",
@@ -316,6 +345,11 @@ export const dockerCapabilitiesForHost = (
       delivery: isVmMediatedDockerHost(platform, dockerHost) ? "volume-relay" : "bind-directory",
     },
   });
+  return withPreservedPathVerdict(
+    capabilities,
+    "healthcheck.start_interval",
+    healthStartIntervalVerdict(facts.healthStartInterval),
+  );
 };
 
 export const dockerCapabilitiesForPlatform = (platform: HostPlatform): ProviderCapabilities =>
@@ -349,13 +383,15 @@ export const introspectProviderCapabilities = (
     ),
     Effect.map((info) => {
       const engineArch = engineInfoArchitecture(info);
-      return dockerCapabilitiesForHost(
-        platform,
-        dockerHost,
-        hostProxyContainerTargets(engineArch),
-        engineInfoRootless(info) ?? false,
-        engineInfoUsernsRemap(info) ?? false,
-      );
+      const startIntervalVersion = api.requestApiVersion?.(["1.44"]);
+      return dockerCapabilitiesForHost(platform, dockerHost, {
+        containerTargets: hostProxyContainerTargets(engineArch),
+        rootless: engineInfoRootless(info) ?? false,
+        usernsRemap: engineInfoUsernsRemap(info) ?? false,
+        healthStartInterval:
+          startIntervalVersion !== undefined &&
+          (compareDockerApiVersion(startIntervalVersion, "1.44") ?? -1) >= 0,
+      });
     }),
   );
 
@@ -538,6 +574,7 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CT
     };
     const planState = makeProviderPlanState({
       ctx: DOCKER_CTX,
+      userDataRoot: options.userDataRoot,
       providerId: ProviderId.make(PROVIDER_ID),
       endpointNamespace: resolvedDockerHost,
       pullHelperImage: (ref) =>
@@ -559,12 +596,10 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CT
       persist: persistAppliedPlan,
       remove: removeAppliedPlan,
     });
+    const providerBringDown = planState.bringDownWith({ api: dockerApi, dialect: dockerLifecycleDialect });
     const { appliedPlans } = planState;
-    const resolvePlan = (target: {
-      readonly app: AppId;
-      readonly plan?: AppPlan;
-    }): Effect.Effect<AppPlan | undefined, never> =>
-      target.plan === undefined ? appliedPlans.resolvePlan(target.app) : Effect.succeed(target.plan);
+    const resolvePlan = (target: { readonly app: AppId; readonly plan?: AppPlan }) =>
+      appliedPlans.resolvePlan(target.app).pipe(Effect.map((recorded) => target.plan ?? recorded));
 
     const resolvedOps = bindResolvedProviderOps(planState, {
       ctx: DOCKER_CTX,
@@ -572,8 +607,8 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CT
         readAppEnvironment(target, names, { api: dockerApi, ctx: DOCKER_CTX }),
       noPlanError: (_app, operation) => makeUnavailable(operation),
       service: {
-        lifecycle: (plan, target, action) =>
-          postServiceLifecycle(plan, target, action, { api: dockerApi, ctx: DOCKER_CTX }),
+        restart: (plan, target) =>
+          postServiceLifecycle(plan, target, "restart", { api: dockerApi, ctx: DOCKER_CTX }),
         resume: (target, identity) =>
           postExactServiceLifecycle(target, identity, "start", { api: dockerApi, ctx: DOCKER_CTX }),
         suspend: (target, identity) =>
@@ -629,10 +664,9 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CT
       appliedPlans:
         options.appliedPlanState === undefined || options.appliedPlanStateDir === undefined
           ? Effect.succeed([])
-          : listObservedPlans(options.appliedPlanState, options.appliedPlanStateDir),
-      planSetup: Effect.fn("RuntimeProvider.planSetup")(() =>
-        Effect.succeed({ providerId: ProviderId.make(PROVIDER_ID), changes: [] }),
-      ),
+          : listAppliedPlans(options.appliedPlanState, options.appliedPlanStateDir).pipe(
+              Effect.map(({ plans }) => plans),
+            ),
       setup: Effect.fn("RuntimeProvider.setup")(() => Effect.void),
       getStatus: dockerApi.info.pipe(
         Effect.as({ state: "running" as const, message: "ready" }),
@@ -669,11 +703,17 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CT
       ),
       removeArtifact: (request) => removeContainerArtifact(dockerApi, request, DOCKER_CTX),
       listArtifacts: (selector) => listContainerArtifacts(dockerApi, selector, DOCKER_CTX),
+      adoptDataRoot: Effect.fn("RuntimeProvider.adoptDataRoot")(function* (plan, witness) {
+        if (plan.identity?.dataRoot === undefined) return;
+        yield* planState.ownership.adopt(plan, yield* appliedPlans.resolveMutationPlan(plan.id), witness);
+      }),
+      healthyDependencyContinuation: true,
       apply: Effect.fn("RuntimeProvider.apply")(function* (plan, applyOptions) {
         yield* validateHealthcheckExecution(plan, applyOptions.executeReadinessAttempt);
         const previous = yield* appliedPlans.resolveMutationPlan(plan.id);
-        yield* planState.ownership.prepare(plan, previous);
+        const adoptionReceipts = yield* planState.ownership.prepare(plan, previous);
         return yield* bringUp(plan, {
+          adoptionReceipts,
           ...(applyOptions.executeReadinessAttempt === undefined
             ? {}
             : { executeReadinessAttempt: applyOptions.executeReadinessAttempt }),
@@ -694,6 +734,7 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CT
             : { resolveServiceEnvironment: applyOptions.resolveServiceEnvironment }),
           reconcile: applyOptions.reconcile,
           onVolumeCreated: applyOptions.onVolumeCreated,
+          continueHealthyDependency: applyOptions.continueHealthyDependency,
           completionPlan: applyOptions.completionPlan ?? applyOptions.recordedPlan ?? plan,
           ...(options.eventService === undefined ? {} : { eventService: options.eventService }),
         }).pipe(
@@ -703,38 +744,13 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CT
       }),
       ...resolvedOps,
       cleanupOwnedResources: planState.cleanupOwnedResources,
-      destroy: Effect.fn("RuntimeProvider.destroy")(function* (target, destroyOptions) {
-        return yield* appliedPlans.resolveMutationPlan(target.app).pipe(
-          Effect.map((previous) => target.plan ?? previous),
-          Effect.flatMap((plan) =>
-            plan === undefined
-              ? Effect.succeed(DESTROY_NO_OP)
-              : bringDown(plan, {
-                  api: dockerApi,
-                  endpointNamespace: resolvedDockerHost,
-                  ctx: DOCKER_CTX,
-                  dialect: dockerLifecycleDialect,
-                  volumes: destroyOptions.volumes,
-                  ...(destroyOptions.purgeCaches === undefined
-                    ? {}
-                    : { purgeCaches: destroyOptions.purgeCaches }),
-                }).pipe(
-                  Effect.tap(() => forgetAppliedPlanUnlessKept(appliedPlans, target.app, destroyOptions)),
-                  Effect.map(({ shutdownObservations, volumesRemoved, skipped }) => ({
-                    kind: "destroyed" as const,
-                    volumesRemoved,
-                    shutdownObservations,
-                    ...(skipped === undefined ? {} : { skipped }),
-                  })),
-                ),
-          ),
-        );
+      bringDown: Effect.fn("RuntimeProvider.bringDown")(function* (target, bringDownOptions) {
+        const previous = yield* appliedPlans.resolveMutationPlan(target.app);
+        const plan = target.plan ?? previous;
+        if (plan === undefined) return BRING_DOWN_NO_OP;
+        return yield* providerBringDown.app({ app: target.app, plan, options: bringDownOptions });
       }),
-      removeObservedService: Effect.fn("RuntimeProvider.removeObservedService")((observed) =>
-        appliedPlans
-          .resolveMutationPlan(observed.app)
-          .pipe(Effect.andThen(removeObservedContainer(observed, { api: dockerApi, ctx: DOCKER_CTX }))),
-      ),
+      bringDownObserved: providerBringDown.observed,
       logs: (target, logOptions) =>
         Stream.unwrap(
           resolvePlan(target).pipe(
@@ -820,6 +836,7 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CT
                     providerId: ProviderId.make(PROVIDER_ID),
                     ...runObservationFromListState(container.state),
                     containerId: container.id,
+                    nativeName: container.name,
                     labels: container.labels,
                     publications,
                   };
@@ -858,6 +875,15 @@ export const plugin = definePlugin({
       runtimeProviderId,
       {
         id: runtimeProviderId,
+        purge: Effect.fn("Docker.preflightPurge")(function* (input) {
+          const endpoint = resolveDockerHost(input);
+          const ctx = dockerContextForEnv(input.env);
+          return yield* preflightDataRootPurge(
+            makeRuntimeDockerApiClient(endpoint, ctx, { env: input.env }),
+            ctx,
+            { ...input, endpoint, pluginId: PLUGIN_NAME },
+          );
+        }),
         declaredCapabilities: dockerCapabilitiesForPlatform,
         resourceOwnership: (ctx, root) =>
           makeResourceOwnershipStore(PROVIDER_ID, ctx.stateStore).summary(root),
@@ -865,10 +891,7 @@ export const plugin = definePlugin({
           Effect.flatMap(PathsService, (paths) =>
             listAppliedPlans(ctx.stateStore, paths.pluginStateDir(PLUGIN_NAME)),
           ),
-        appliedPlans: (ctx) =>
-          Effect.flatMap(PathsService, (paths) =>
-            listObservedPlans(ctx.stateStore, paths.pluginStateDir(PLUGIN_NAME)),
-          ),
+        readAppliedPlanStrict: (ctx, appId) => loadAppliedPlanStrict(ctx.stateStore, appId),
         make: Effect.fn("RuntimeProvider.make")(function* (ctx) {
           const { paths, platform, resolveContainerHelper, sanitizeAppliedPlan, eventService } =
             yield* providerHostInputs;

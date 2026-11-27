@@ -9,7 +9,7 @@ tags: [docs, tooling, php, composer]
 
 [Composer on PHP](composer-php.mdx) covers routing a `composer` tooling task. This guide makes `composer install` part of the build so you do not run it by hand after every `lando start`.
 
-In a PHP project with `composer.json`, add the command under `services.appserver.build.app` in `.lando.yml`. Lando runs it after the project code is mounted, each time it creates the `appserver` container: on the first start, on the start after `lando stop` or `lando destroy`, and on `lando restart`. A `lando start` that keeps the container reports the step as cached. `lando rebuild` forces it to run again:
+In a PHP project with `composer.json`, add the command under `services.appserver.build.app` in `.lando.yml`. Lando runs it after the project code is mounted, each time it creates the `appserver` container: on the first start, on the start after `lando destroy`, and on a start that replaces the container for a Landofile change. `lando stop` and `lando restart` keep the container, so the start that follows reports the step as cached, as does any `lando start` that keeps it. `lando rebuild` forces it to run again, for example after you change `composer.json`:
 
 ```yaml
 name: php-composer-workflows-demo
@@ -30,7 +30,7 @@ tooling:
       - composer
 ```
 
-Run `lando start` from the project directory to apply the configuration and install dependencies. `build.app` runs after the code is mounted, so Composer can read `composer.json`. By default, `vendor/` is a service-owned excluded directory, not the host’s `vendor/`; see [app mount excludes](../setup/file-sync-excludes.mdx). The flags keep installation non-interactive and quiet, and `--no-dev` omits development dependencies. Remove that flag if your development workflow needs them.
+Run `lando start` from the project directory to apply the configuration and install dependencies. `build.app` runs after the code is mounted, so Composer can read `composer.json`. Composer writes `vendor/` to your project directory, where your editor can read it; see [app mount excludes](../setup/file-sync-excludes.mdx) to give a service its own copy. The flags keep installation non-interactive and quiet, and `--no-dev` omits development dependencies. Remove that flag if your development workflow needs them.
 
 Check the installed dependencies inside the service:
 

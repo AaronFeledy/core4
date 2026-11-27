@@ -20,9 +20,16 @@ import { type InvocationProgram, evaluateInvocationSite, siteExpression } from "
 import type { AuthoredOrigin } from "./provenance.ts";
 import { ROUTE_URL_SITE_REMEDIATION, isServiceEnvironmentValuePath } from "./route-url-expression.ts";
 import { eligibleBindingPath } from "./secret-reference.ts";
+import { readsServiceUrl } from "./service-url-reads.ts";
 
 export * from "./invocation-sites.ts";
-export { dynamicToolingNames, dynamicToolingReferenceIssues } from "./tooling-dynamic-references.ts";
+export { routeUrlSiteError } from "./route-url-expression.ts";
+export { isPublicRouteFact, serviceUrlReads } from "./service-url-reads.ts";
+export {
+  dynamicToolingNames,
+  dynamicToolingReferenceIssues,
+  serviceUrlPlacementIssues,
+} from "./tooling-dynamic-references.ts";
 export { consumedToolingInputs, toolingInvocationIssues } from "./tooling-invocation-input.ts";
 export { readsToolingData, toolingDataNames } from "./tooling-provenance.ts";
 export { bindToolingShellSite } from "./tooling-shell-binding.ts";
@@ -133,9 +140,30 @@ export const consumeSites = (input: {
   let document = input.document;
   const pendingSites: ParsedPendingSite[] = [];
   for (const site of input.pendingSites) {
-    const selfName = isServiceEnvironmentValuePath(site.path) ? site.path[1] : undefined;
+    const environmentSite = isServiceEnvironmentValuePath(site.path);
+    // Load admits route-fact reads outside a service environment only at invocation sites, where
+    // the applied route table supplies them when the command runs; keep the whole expression for then.
+    if (!environmentSite && readsServiceUrl(site.template)) {
+      pendingSites.push(site);
+      continue;
+    }
+    const selfName = environmentSite ? site.path[1] : undefined;
     const self = typeof selfName === "string" ? input.context.services?.[selfName] : undefined;
-    const selfUrl = isPlainRecord(self) ? { url: self.url } : undefined;
+    // A service reads its own route facts as `service.url`, `service.hostname`, and `service.origin`.
+    const selfRoute = isPlainRecord(self)
+      ? { url: self.url, hostname: self.hostname, origin: self.origin }
+      : undefined;
+    const plannerSelf = isPlainRecord(input.context.service) ? input.context.service : undefined;
+    const serviceSelf =
+      plannerSelf === undefined && selfRoute === undefined ? undefined : { ...plannerSelf, ...selfRoute };
+    // Only the planner supplies `service.port`, so a self-port read waits for it.
+    if (
+      plannerSelf?.port === undefined &&
+      expressionScopeMembers(site.template, "service", "direct-property").members.has("port")
+    ) {
+      pendingSites.push(site);
+      continue;
+    }
     // Lowered shell sites keep their authored text: only binding sites materialize
     // into deferred descriptors here, or an invocation would receive a SecretRef object.
     if (
@@ -145,7 +173,7 @@ export const consumeSites = (input: {
       pendingSites.push(site);
       continue;
     }
-    const scopes = [...input.scopes, "secrets", ...(selfUrl === undefined ? [] : ["service"])];
+    const scopes = [...input.scopes, "secrets", ...(serviceSelf === undefined ? [] : ["service"])];
     if (!expressionInterpolationsTouchOnlyScopes(site.template, scopes)) {
       pendingSites.push(site);
       continue;
@@ -174,7 +202,7 @@ export const consumeSites = (input: {
     }
     const evaluated = evaluateTemplateEither(
       site.template,
-      { ...input.context, ...(selfUrl === undefined ? {} : { service: selfUrl }), secrets },
+      { ...input.context, ...(serviceSelf === undefined ? {} : { service: serviceSelf }), secrets },
       {
         path: site.path,
         filePath: "file" in site.source ? site.source.file : undefined,
@@ -203,12 +231,12 @@ export const consumeSites = (input: {
       input.renderText && typeof value === "number" && Number.isFinite(value) ? String(value) : value;
     // Load refuses a literal URL reference outside a service environment; a computed member
     // access can still produce the descriptor, so the destination is checked on the value too.
-    const misplacedRoute = containsRouteText(rendered) && !isServiceEnvironmentValuePath(site.path);
+    const misplacedRoute = containsRouteText(rendered) && !environmentSite;
     if (misplacedRoute || (input.renderText && !Schema.is(EnvironmentValue)(rendered)))
       return Result.fail(
         new ConfigExpressionError({
           message: misplacedRoute
-            ? `A public service URL is not supported at ${site.path.join(".")}.`
+            ? `A public service route fact is not supported at ${site.path.join(".")}.`
             : "This field takes text; the expression must return text or a finite number.",
           path: site.path,
           source: site.source,

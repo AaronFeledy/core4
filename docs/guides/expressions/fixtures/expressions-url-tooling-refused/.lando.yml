@@ -1,0 +1,26 @@
+# lando-lint: expect-invalid tooling reads the self shorthands, an unknown service, and a URL in a placement field
+name: url-tooling-refused
+services:
+  web:
+    type: nginx
+    primary: true
+tooling:
+  self:
+    service: web
+    cmd: "echo {{ service.url }}"
+  self-host:
+    service: web
+    cmd: "echo {{ service.hostname }}"
+  missing:
+    service: web
+    cmd: [echo, "{{ services.nope.origin }}"]
+  placed:
+    service: web
+    dir: "{{ services.web.url }}"
+    cmd: pwd
+  placed-var:
+    service: web
+    vars:
+      site: "{{ services.web.url }}"
+    dir: "{{ vars.site }}"
+    cmd: pwd

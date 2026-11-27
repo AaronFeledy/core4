@@ -1,15 +1,19 @@
 import type { Effect, Layer } from "effect";
 import type {
+  AppliedStateVersionError,
   ProviderCapabilityError,
+  ProviderInternalError,
   ProviderUnavailableError,
   ProxyError,
   SshError,
 } from "../errors/index.ts";
 import type { SecretStoreUnavailableError } from "../errors/secret.ts";
 import type { RendererContribution } from "../renderer/index.ts";
+import type { HostChangeReceipt } from "../schema/host-change.ts";
 import type { HostUninstallOutcome, HostUninstallStep } from "../schema/host-maintenance.ts";
 import type {
   AbsolutePath,
+  AppId,
   AppPlan,
   AppliedStateInventory,
   HostPlatform,
@@ -28,6 +32,7 @@ import type {
 } from "../schema/plugin-doctor.ts";
 import type { ConfigTranslatorShape } from "../services/config-translator.ts";
 import type { ContainerHelperAssets } from "../services/host-assets.ts";
+import type { HostChangeStepRunner } from "../services/host-change.ts";
 import type {
   AppFeatureDefinition,
   CertificateAuthority,
@@ -38,6 +43,7 @@ import type {
   PathsService,
   ProcessRunner,
   RouterService,
+  RuntimeProviderRegistry,
   RuntimeProviderShape,
   SecretStore,
   ServiceFeatureDefinition,
@@ -45,7 +51,6 @@ import type {
   SshService,
 } from "../services/index.ts";
 import type { AppPlanSanitizer } from "../services/plan-sanitizer.ts";
-import type { PrivilegeService } from "../services/process.ts";
 import type { TemplateEngine } from "../template/index.ts";
 import type { ExecutableCommandLoader } from "./command.ts";
 import type { LandoPluginContext, PluginStateStore } from "./index.ts";
@@ -56,20 +61,52 @@ export type RuntimeProviderFactoryRequirements =
   | ContainerHelperAssets
   | AppPlanSanitizer;
 
+export type ProviderPurgeResult = {
+  readonly endpoint: string;
+  readonly removed: readonly string[];
+  readonly retained: readonly string[];
+  readonly failed: readonly string[];
+  readonly outsideScope: number;
+};
+
+export type ProviderPurgePreflight =
+  | { readonly kind: "skipped"; readonly endpoint: string; readonly reason: string }
+  | {
+      readonly kind: "reachable";
+      readonly endpoint: string;
+      readonly counts: Readonly<Record<"container" | "network" | "volume" | "image", number>>;
+      readonly apps: readonly { readonly appId: string; readonly appRoot: string }[];
+      readonly syncPresent: boolean;
+      readonly sweep: () => Effect.Effect<ProviderPurgeResult>;
+    };
+
+export type ProviderPurgeHook = (input: {
+  readonly platform: HostPlatform;
+  readonly env: Readonly<Record<string, string | undefined>>;
+  readonly dataRoot: string;
+  readonly buildStore: string;
+}) => Effect.Effect<ProviderPurgePreflight | undefined, ProviderUnavailableError | ProviderInternalError>;
+
 export interface RuntimeProviderContribution {
-  readonly appliedStateInventory?: (
+  readonly purge?: ProviderPurgeHook;
+  readonly appliedStateInventory: (
     ctx: LandoPluginContext,
-  ) => Effect.Effect<AppliedStateInventory, ProviderUnavailableError, PathsService>;
+  ) => Effect.Effect<
+    AppliedStateInventory,
+    ProviderUnavailableError | AppliedStateVersionError,
+    PathsService
+  >;
+  /** Filesystem-only targeted read. Returns undefined only when the app has no record. */
+  readonly readAppliedPlanStrict: (
+    ctx: LandoPluginContext,
+    appId: AppId,
+  ) => Effect.Effect<AppPlan | undefined, ProviderUnavailableError | AppliedStateVersionError, PathsService>;
   readonly id: ProviderId;
   readonly declaredCapabilities?: (platform: HostPlatform, arch?: string) => ProviderCapabilities;
   readonly resourceOwnership?: (
     ctx: LandoPluginContext,
     root: AbsolutePath,
   ) => Effect.Effect<ResourceOwnership | undefined, ProviderUnavailableError>;
-  /** Read durable ownership claims without connecting to or initializing the runtime. */
-  readonly appliedPlans: (
-    ctx: LandoPluginContext,
-  ) => Effect.Effect<ReadonlyArray<AppPlan>, ProviderUnavailableError, PathsService>;
   readonly make: (
     ctx: LandoPluginContext,
   ) => Effect.Effect<
@@ -91,7 +128,11 @@ export interface HostMaintenanceContribution {
     readonly execute: (
       input: HostUninstallInput & {
         readonly step: HostUninstallStep;
-        readonly elevate?: PrivilegeService["Service"]["elevate"];
+        /**
+         * Runs the steps `step.change` declared, privileged ones through the uninstall's one
+         * administrator session. Absent when the step declared no change or no session exists.
+         */
+        readonly run?: HostChangeStepRunner;
       },
     ) => Effect.Effect<HostUninstallOutcome, never>;
   };
@@ -100,6 +141,8 @@ export interface HostMaintenanceContribution {
 export interface HostUninstallInput {
   readonly platform: HostPlatform;
   readonly userDataRoot: string;
+  /** The host changes setup recorded for this maintainer's plugin. */
+  readonly receipts: ReadonlyArray<HostChangeReceipt>;
 }
 
 export interface HostRuntimePaths {
@@ -186,7 +229,7 @@ export interface RouterServiceContribution {
 export type SshServiceContributionLayer = Layer.Layer<
   SshService,
   SshError,
-  FileSystem | GlobalAppService | PathsService
+  FileSystem | GlobalAppService | PathsService | RuntimeProviderRegistry
 >;
 export type SecretStoreContributionLayer = Layer.Layer<
   SecretStore,

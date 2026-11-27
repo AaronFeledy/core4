@@ -1,0 +1,34 @@
+name: url-tooling
+services:
+  web:
+    type: nginx
+    primary: true
+    # This lint-only fixture does not serve files from the checkout.
+    appMount: false
+    webroot: /usr/share/nginx/html
+    routes:
+      - hostname: url-tooling.lndo.site
+        scheme: both
+tooling:
+  smoke:
+    service: ":host"
+    description: Fetch the home page through the proxy.
+    cmd: "curl -fsSk {{ services.web.url }}/"
+  site-url:
+    service: web
+    description: Print the address the router publishes for web.
+    env:
+      SITE_URL: "{{ services.web.url }}"
+    cmd: printenv SITE_URL
+  site-host:
+    service: web
+    description: Print the hostname the router publishes for web.
+    cmd: [echo, "{{ services.web.hostname }}"]
+  site-origin:
+    service: web
+    description: Print the scheme, hostname, and port without a path.
+    cmd: [echo, "{{ services.web.origin }}"]
+events:
+  post-start:
+    - service: web
+      cmd: "echo Site is up at {{ services.web.url }}"

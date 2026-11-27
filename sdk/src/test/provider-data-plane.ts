@@ -17,16 +17,15 @@ import {
 import { followLogSources, logFollowLineChunks, makeMemoryLogFileAccess } from "../log-follow/index.ts";
 import {
   AbsolutePath,
-  AppId,
+  type AppId,
   type DataEndpoint,
   PortablePath,
   ProviderId,
   type ServiceName,
-  type StorageScope,
-  type VolumeInfo,
   type VolumeMountPlan,
   type VolumeRef,
   type VolumeSnapshotRef,
+  planDataId,
 } from "../schema/index.ts";
 import type { AppSelector, ExecChunk, LogChunk, RuntimeProviderShape } from "../services/index.ts";
 import {
@@ -44,6 +43,7 @@ import {
   concatBytes,
   contractFailure,
   decodeUtf8,
+  isSdkError,
   makeTestAppPlan,
   mapProviderFailure,
   mapProviderOrContractFailure,
@@ -56,6 +56,7 @@ import {
   utf8,
 } from "./_shared.ts";
 import { makeTestProviderContainers } from "./provider-containers.ts";
+import type { makeTestProviderVolumes } from "./provider-volumes.ts";
 
 export interface ProviderDataPlaneContractInput {
   readonly providerName?: string;
@@ -247,7 +248,7 @@ export const runProviderDataPlaneContract = Effect.fnUntraced(function* (
     unsupportedExit._tag === "Failure" &&
       unsupportedExit.cause.reasons.length === 1 &&
       unsupportedExit.cause.reasons.some(
-        (reason) => reason._tag === "Fail" && reason.error instanceof DataEndpointUnsupportedError,
+        (reason) => reason._tag === "Fail" && isSdkError(reason.error, DataEndpointUnsupportedError),
       ),
     "unrealizable transfer fails DataEndpointUnsupportedError",
     unsupportedExit,
@@ -445,7 +446,7 @@ export const runProviderDataPlaneContract = Effect.fnUntraced(function* (
       .pipe(Effect.result);
     yield* requireContract(
       result._tag === "Failure" &&
-        (result.failure instanceof ProviderCapabilityError || result.failure instanceof CapabilityError),
+        (isSdkError(result.failure, ProviderCapabilityError) || isSdkError(result.failure, CapabilityError)),
       "unsupported volume snapshots fail with a typed capability error",
       result,
     );
@@ -486,39 +487,10 @@ export const runProviderDataPlaneContract = Effect.fnUntraced(function* (
   );
 }, Effect.scoped);
 
-const volumeKey = (ref: {
-  readonly app: AppId;
-  readonly store: string;
-  readonly scope?: string | undefined;
-}): string => `${ref.app}:${ref.store}:${ref.scope ?? "app"}`;
-
 const servicePathKey = (
   target: { readonly app: AppId; readonly service: ServiceName },
   path: PortablePath,
 ): string => `${target.app}:${target.service}:${path}`;
-
-const storageScopeFromKey = (scope: string | undefined): StorageScope | undefined =>
-  scope === "service" || scope === "app" || scope === "global" ? scope : undefined;
-
-const volumeRef = (app: AppId, store: string, scope?: StorageScope | undefined): VolumeRef =>
-  scope === undefined ? { app, store } : { app, store, scope };
-
-const testVolumeGeneration = "00000000-0000-4000-8000-000000000001";
-const testVolumeRoot = AbsolutePath.make("/tmp/lando-sdk-test");
-
-const volumeInfo = (ref: VolumeRef, labels?: Readonly<Record<string, string>> | undefined): VolumeInfo => ({
-  ref,
-  instanceId: testVolumeGeneration,
-  provenance: "known",
-  identity: {
-    coordinationKey: JSON.stringify(["endpoint:test", ref.store]),
-    nativeName: ref.store,
-    generation: testVolumeGeneration,
-    ownerRoot: testVolumeRoot,
-    origin: "created",
-  },
-  ...(labels === undefined ? {} : { labels }),
-});
 
 const collectAsyncBytes = (input: AsyncIterable<Uint8Array> | undefined): Effect.Effect<Uint8Array> =>
   Effect.promise(async () => {
@@ -528,28 +500,32 @@ const collectAsyncBytes = (input: AsyncIterable<Uint8Array> | undefined): Effect
     return concatBytes(chunks);
   });
 
-const mountedVolumeKeyForSpec = (spec: Parameters<RuntimeProviderShape["run"]>[0]): string | undefined => {
+const mountedVolumeRefForSpec = (spec: Parameters<RuntimeProviderShape["run"]>[0]): VolumeRef | undefined => {
   const mount = spec.mounts?.[0];
-  return mount === undefined ? undefined : volumeKey({ app: TEST_APP_ID, store: mount.store });
+  if (mount === undefined) return undefined;
+  const plan = spec.owner?.plan;
+  const app = plan === undefined ? (spec.owner?.app ?? TEST_APP_ID) : planDataId(plan);
+  const scope = plan?.stores.find((store) => store.name === mount.store)?.scope;
+  return { app, store: mount.store, ...(scope === undefined ? {} : { scope }) };
 };
 
 const runTestEphemeral = Effect.fnUntraced(function* (
-  testVolumeBytes: Map<string, Uint8Array>,
+  volumes: ReturnType<typeof makeTestProviderVolumes>,
   spec: Parameters<RuntimeProviderShape["run"]>[0],
 ) {
   const command = spec.command.join(" ");
-  const mountedVolumeKey = mountedVolumeKeyForSpec(spec);
+  const ref = mountedVolumeRefForSpec(spec);
 
-  if (mountedVolumeKey !== undefined && command === "sh -c cat > /data/payload") {
+  if (ref !== undefined && command === "sh -c cat > /data/payload") {
     const payload = yield* collectAsyncBytes(spec.stdinStream);
-    testVolumeBytes.set(mountedVolumeKey, cloneBytes(payload));
+    volumes.ensure(ref).fileBytes = cloneBytes(payload);
     return { exitCode: 0, stdout: "", stderr: "" };
   }
 
-  if (mountedVolumeKey !== undefined && command === "sh -c cat /data/payload") {
+  if (ref !== undefined && command === "sh -c cat /data/payload") {
     return {
       exitCode: 0,
-      stdout: decodeUtf8(testVolumeBytes.get(mountedVolumeKey) ?? utf8("")),
+      stdout: decodeUtf8(volumes.get(ref)?.fileBytes ?? utf8("")),
       stderr: "",
     };
   }
@@ -566,9 +542,7 @@ const runTestEphemeral = Effect.fnUntraced(function* (
  * artifacts, and applied environments, so independent tests do not share provider state.
  */
 export const makeTestRuntimeProvider = (): RuntimeProviderShape => {
-  const containers = makeTestProviderContainers();
-  const testVolumeBytes = new Map<string, Uint8Array>();
-  const testVolumeArchives = new Map<string, Uint8Array>();
+  const { volumes, apply: applyContainers, ...containers } = makeTestProviderContainers();
   const testSnapshotBytes = new Map<
     string,
     { readonly fileBytes: Uint8Array; readonly treeBytes: Uint8Array }
@@ -586,10 +560,10 @@ export const makeTestRuntimeProvider = (): RuntimeProviderShape => {
     version: "0.0.0-test",
     platform: "linux",
     capabilities: testCapabilities,
+    healthyDependencyContinuation: true,
 
     isAvailable: Effect.succeed(true),
-    planSetup: (_options) => Effect.succeed({ providerId: TEST_PROVIDER_ID, changes: [] }),
-    setup: (_plan, _options) => Effect.void,
+    setup: (_options) => Effect.void,
     getStatus: Effect.succeed({ state: "running" as const, message: "ready" }),
     getVersions: Effect.succeed({ provider: "0.0.0-test", runtime: "0.0.0-test" }),
 
@@ -641,7 +615,8 @@ export const makeTestRuntimeProvider = (): RuntimeProviderShape => {
       ).pipe(
         Effect.flatMap((environments) =>
           Effect.sync(() => {
-            testAppliedEnvironments.set(plan.id, new Map(environments));
+            const resolved = new Map(environments);
+            testAppliedEnvironments.set(plan.id, resolved);
             let changed = false;
             // Planned file binds (Compose config grants compile to read-only binds) expose their bytes.
             for (const service of Object.values(plan.services)) {
@@ -654,21 +629,23 @@ export const makeTestRuntimeProvider = (): RuntimeProviderShape => {
                 changed = true;
               }
             }
-            return { changed };
+            return { changed, environments: resolved };
           }),
         ),
         Effect.flatMap((result) =>
-          containers
-            .apply(plan, options)
-            .pipe(Effect.map((applied) => ({ changed: result.changed || applied.changed }))),
+          applyContainers(plan, options, result.environments).pipe(
+            Effect.map((applied) => ({ changed: result.changed || applied.changed })),
+          ),
         ),
       ),
     waitForExit: (_target) => Effect.succeed({ exitCode: 0 }),
-    destroy: (target, options) =>
-      containers.destroy(target, options).pipe(
+    bringDown: (target, options) =>
+      containers.bringDown(target, options).pipe(
         Effect.map((outcome) => {
-          const applied = testAppliedEnvironments.delete(target.app);
-          return applied ? { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } } : outcome;
+          if (options.containers === "stop" || !testAppliedEnvironments.delete(target.app)) return outcome;
+          return outcome.kind === "removed"
+            ? outcome
+            : { kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } };
         }),
       ),
 
@@ -715,17 +692,24 @@ export const makeTestRuntimeProvider = (): RuntimeProviderShape => {
       const exitChunk: ExecChunk = { exitCode: 0 };
 
       return Stream.unwrap(
-        containers.inspect(target, "exec").pipe(Effect.as(Stream.make(stdoutChunk, exitChunk))),
+        containers
+          .inspect(target, "exec")
+          .pipe(
+            Effect.map(
+              ({ containerId }) =>
+                volumes.probe(target, containerId, command) ?? Stream.make(stdoutChunk, exitChunk),
+            ),
+          ),
       );
     },
-    run: (spec) => runTestEphemeral(testVolumeBytes, spec),
+    run: (spec) => runTestEphemeral(volumes, spec),
     runStream: (spec) => {
       const command = spec.command.join(" ");
-      const mountedVolumeKey = mountedVolumeKeyForSpec(spec);
-      if (mountedVolumeKey !== undefined && command === "sh -c cat /data/payload") {
+      const ref = mountedVolumeRefForSpec(spec);
+      if (ref !== undefined && command === "sh -c cat /data/payload") {
         const stdoutChunk: ExecChunk = {
           kind: "stdout",
-          chunk: cloneBytes(testVolumeBytes.get(mountedVolumeKey) ?? utf8("")),
+          chunk: cloneBytes(volumes.get(ref)?.fileBytes ?? utf8("")),
         };
         const exitChunk: ExecChunk = { exitCode: 0 };
 
@@ -733,7 +717,7 @@ export const makeTestRuntimeProvider = (): RuntimeProviderShape => {
       }
 
       return Stream.unwrap(
-        runTestEphemeral(testVolumeBytes, spec).pipe(
+        runTestEphemeral(volumes, spec).pipe(
           Effect.map((result) => {
             const stdoutChunk: ExecChunk = {
               kind: "stdout",
@@ -747,7 +731,8 @@ export const makeTestRuntimeProvider = (): RuntimeProviderShape => {
       );
     },
     logs: (target, options) => {
-      const lines = runsContractServiceScript(target.plan?.services[target.service])
+      const planned = target.plan?.services[target.service];
+      const lines = runsContractServiceScript(planned)
         ? ["ready", CONTRACT_SPLIT_LINE, CONTRACT_LONG_LINE]
         : ["ready"];
       const consoleChunks: LogChunk[] = lines.map((line) => ({
@@ -758,39 +743,46 @@ export const makeTestRuntimeProvider = (): RuntimeProviderShape => {
 
       const sources = options.sources ?? [];
       const followSources = sources.filter((source) => source.strategy === "follow");
-      if (followSources.length === 0)
-        return Stream.unwrap(
-          containers.inspect(target, "logs").pipe(Effect.as(Stream.fromIterable(consoleChunks))),
-        );
-
       const fs = makeMemoryLogFileAccess();
       for (const source of followSources) {
         fs.writeFile(String(source.path), `follow:${String(source.id)}\n`);
       }
+      const chunks =
+        followSources.length === 0
+          ? Stream.fromIterable(consoleChunks)
+          : Stream.concat(
+              Stream.fromIterable(consoleChunks),
+              logFollowLineChunks(
+                followLogSources({
+                  service: target.service,
+                  sources,
+                  follow: options.follow,
+                  access: fs.access,
+                  ...(options.tail === undefined ? {} : { tail: options.tail }),
+                  ...(options.source === undefined ? {} : { source: options.source }),
+                }),
+              ),
+            );
 
-      const followers = logFollowLineChunks(
-        followLogSources({
-          service: target.service,
-          sources,
-          follow: options.follow,
-          access: fs.access,
-          ...(options.tail === undefined ? {} : { tail: options.tail }),
-          ...(options.source === undefined ? {} : { source: options.source }),
-        }),
-      );
-
+      // Like the real providers, a planned service whose container does not exist has no logs.
       return Stream.unwrap(
-        containers
-          .inspect(target, "logs")
-          .pipe(Effect.as(Stream.concat(Stream.fromIterable(consoleChunks), followers))),
+        planned === undefined
+          ? containers.inspect(target, "logs").pipe(Effect.as(chunks))
+          : containers
+              .list({ app: target.app })
+              .pipe(
+                Effect.map((rows) =>
+                  rows.some((row) => row.service === target.service) ? chunks : Stream.empty,
+                ),
+              ),
       );
     },
     snapshotVolume: (spec) =>
       Effect.sync(() => {
         const id = spec.snapshotId ?? `${spec.volume.store}-snapshot`;
-        const key = volumeKey(spec.volume);
-        const fileBytes = cloneBytes(testVolumeBytes.get(key) ?? utf8(""));
-        const treeBytes = cloneBytes(testVolumeArchives.get(key) ?? emptyVolumeArchive());
+        const volume = volumes.get(spec.volume);
+        const fileBytes = cloneBytes(volume?.fileBytes ?? utf8(""));
+        const treeBytes = cloneBytes(volume?.treeBytes ?? emptyVolumeArchive());
         testSnapshotBytes.set(id, { fileBytes, treeBytes });
         const payload = concatBytes([fileBytes, treeBytes]);
         return {
@@ -810,9 +802,9 @@ export const makeTestRuntimeProvider = (): RuntimeProviderShape => {
       options?: { readonly beforeCommit?: Effect.Effect<void, E> },
     ) =>
       Effect.gen(function* () {
-        const key = volumeKey(spec.target);
+        const volume = volumes.get(spec.target);
         const snapshot = testSnapshotBytes.get(spec.snapshot.id);
-        if (snapshot === undefined || spec.expectedTargetGeneration !== testVolumeGeneration) {
+        if (snapshot === undefined || volume?.info.identity.generation !== spec.expectedTargetGeneration) {
           return yield* Effect.fail(
             new VolumeOperationError({
               providerId: TEST_PROVIDER_ID,
@@ -826,38 +818,18 @@ export const makeTestRuntimeProvider = (): RuntimeProviderShape => {
           );
         }
         if (options?.beforeCommit !== undefined) yield* options.beforeCommit;
-        testVolumeBytes.set(key, cloneBytes(snapshot.fileBytes));
-        testVolumeArchives.set(key, cloneBytes(snapshot.treeBytes));
+        volume.fileBytes = cloneBytes(snapshot.fileBytes);
+        volume.treeBytes = cloneBytes(snapshot.treeBytes);
       }),
-    listVolumes: (filter) =>
-      Effect.sync(() => {
-        const keys = new Set([...testVolumeBytes.keys(), ...testVolumeArchives.keys()]);
-        const volumes = Array.from(keys).map((key) => {
-          const [app, store, scope] = key.split(":");
-          return volumeInfo(
-            volumeRef(AppId.make(app ?? String(TEST_APP_ID)), store ?? "data", storageScopeFromKey(scope)),
-            filter.labels,
-          );
-        });
-        return volumes.length > 0
-          ? volumes
-          : [
-              volumeInfo(
-                volumeRef(filter.app ?? TEST_APP_ID, filter.store ?? "data", filter.scope),
-                filter.labels,
-              ),
-            ];
-      }),
-    locateVolume: (ref) =>
-      Effect.succeed({
-        coordinationKey: JSON.stringify(["endpoint:test", ref.store]),
-        nativeName: ref.store,
-      }),
-    exportVolume: (ref) =>
-      Stream.sync(() => cloneBytes(testVolumeArchives.get(volumeKey(ref)) ?? emptyVolumeArchive())),
+    listVolumes: (filter) => Effect.sync(() => volumes.list(filter)),
+    locateVolume: (ref) => Effect.sync(() => volumes.locate(ref)),
+    observeBoundVolume: (target, destination) =>
+      containers
+        .inspect(target)
+        .pipe(Effect.flatMap(({ containerId }) => volumes.observe(target, containerId, destination))),
+    exportVolume: (ref) => Stream.sync(() => cloneBytes(volumes.get(ref)?.treeBytes ?? emptyVolumeArchive())),
     importVolume: (spec) =>
       Effect.gen(function* () {
-        const key = volumeKey(spec.target);
         const payload = yield* collectByteStream(spec.archive);
         if (payload.byteLength === 0) {
           return yield* Effect.fail(
@@ -872,15 +844,12 @@ export const makeTestRuntimeProvider = (): RuntimeProviderShape => {
         yield* spec.beforeCommit;
         const fileBytes = tarPayloadMember(payload);
         yield* Effect.sync(() => {
-          testVolumeArchives.set(key, cloneBytes(payload));
-          if (fileBytes !== undefined) testVolumeBytes.set(key, cloneBytes(fileBytes));
+          const volume = volumes.ensure(spec.target);
+          volume.treeBytes = cloneBytes(payload);
+          if (fileBytes !== undefined) volume.fileBytes = cloneBytes(fileBytes);
         });
       }),
-    removeVolume: (ref) =>
-      Effect.sync(() => {
-        testVolumeBytes.delete(volumeKey(ref));
-        testVolumeArchives.delete(volumeKey(ref));
-      }),
+    removeVolume: volumes.remove,
     copyToService: (target, spec) =>
       Effect.promise(async () => {
         const payload = await readFile(spec.sourcePath);

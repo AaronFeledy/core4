@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { type AppPlan, DEBUGGER_HOST_ALIAS, GlobalConfig, HOST_GATEWAY_TARGET } from "@lando/sdk/schema";
 import { ConfigService, EnvironmentValueResolver, StateStore } from "@lando/sdk/services";
+import { TestRouterService } from "@lando/sdk/test";
 import { Effect, Layer, Schema } from "effect";
 import { prepareServiceCertificates } from "../../src/lifecycle/service-certificates.ts";
 import { selectPreparedProvider } from "../../src/providers/prepared.ts";
@@ -41,7 +42,7 @@ test("scratch startup applies the resolved debugger address without rewriting it
       const { plan, certificates } = yield* prepareServiceCertificates(desired);
       yield* applyScratchStartup(
         { id: "debugger-scratch", plan, certificates },
-        { provider, environmentResolver, stateStore },
+        { provider, environmentResolver, stateStore, router: TestRouterService },
       );
     }).pipe(Effect.provide(Layer.merge(harness.layer, configLayer))),
   );

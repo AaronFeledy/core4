@@ -12,6 +12,7 @@ import {
 const capabilities = (overrides: Partial<ProviderCapabilities> = {}): ProviderCapabilities => ({
   ...buildProviderCapabilities({
     bindMounts: true,
+    serviceHealth: "native",
     bindMountPerformance: "native",
     tlsCertificates: "lando",
     rootless: true,
@@ -37,8 +38,8 @@ const base = (overrides: Partial<AppPlanCacheKeyInput> = {}): AppPlanCacheKeyInp
 });
 
 describe("deriveAppPlanCacheKey project-user facts", () => {
-  test("bumps the schema version for the new plan fields", () => {
-    expect(APP_PLAN_CACHE_SCHEMA_VERSION).toBe(67n);
+  test("invalidates app plans from before generated nginx worker mapping", () => {
+    expect(APP_PLAN_CACHE_SCHEMA_VERSION).toBe(71n);
   });
 
   test("mapping support changes the key", () => {
@@ -110,4 +111,9 @@ describe("deriveAppPlanCacheKey project-user facts", () => {
     );
     expect(second).toBe(first);
   });
+});
+test("a shared plan cache cannot return another data root's plan", () => {
+  expect(deriveAppPlanCacheKey(base({ dataRoot: "/data/root-a" }))).not.toBe(
+    deriveAppPlanCacheKey(base({ dataRoot: "/data/root-b" })),
+  );
 });

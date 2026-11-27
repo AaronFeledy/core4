@@ -34,7 +34,7 @@ import {
   type ServiceRuntimeInfo,
   StateStore,
 } from "@lando/sdk/services";
-import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRouterService, TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { DateTime, Effect, Layer, Schema, Stream } from "effect";
 import { startApp } from "../../src/operations/start.ts";
@@ -142,6 +142,7 @@ export const makeHarness = (
     readonly resolveAppliedPlan?: typeof RuntimeProviderRegistry.Service.resolveAppliedPlan;
     readonly resolveTeardownEvidence?: typeof RuntimeProviderRegistry.Service.resolveTeardownEvidence;
     readonly resourceOwnership?: typeof RuntimeProviderRegistry.Service.resourceOwnership;
+    readonly readAppliedPlanStrict?: typeof RuntimeProviderRegistry.Service.readAppliedPlanStrict;
     readonly stateStore?: ReturnType<typeof makeTestStateStore>;
     readonly applyEffect?: Effect.Effect<{ readonly changed: boolean }, ProviderUnavailableError>;
     /** Container-level outcome a fake apply reports; absent means the provider cannot report one. */
@@ -172,14 +173,14 @@ export const makeHarness = (
       plan: AppPlan,
       options?: ApplyOptions,
     ) => void | number | Effect.Effect<void, import("@lando/sdk/services").ProviderError>;
-    readonly onStop?: (...args: Parameters<RuntimeProviderShape["stop"]>) => void;
+    readonly onStop?: (observed: ServiceRuntimeInfo) => void;
     readonly inspect?: RuntimeProviderShape["inspect"];
     readonly exec?: RuntimeProviderShape["exec"];
     readonly logs?: RuntimeProviderShape["logs"];
     readonly listVolumes?: RuntimeProviderShape["listVolumes"];
     readonly locateVolume?: RuntimeProviderShape["locateVolume"];
     readonly onVolumeLock?: (key: string) => void;
-    readonly onDestroy?: (...args: Parameters<RuntimeProviderShape["destroy"]>) => void;
+    readonly onDestroy?: (...args: Parameters<RuntimeProviderShape["bringDown"]>) => void;
     readonly quiesceRetainedFileSync?: RuntimeProviderShape["quiesceRetainedFileSync"];
     readonly disposeFileSyncTargets?: RuntimeProviderShape["disposeFileSyncTargets"];
   } = {},
@@ -307,16 +308,52 @@ export const makeHarness = (
             bindings: [{ port: 3000, transport: "tcp", bindAddress: "127.0.0.1", hostPort: 3000 }],
           },
         })),
-    stop:
-      options.providerOverrides?.stop ??
-      ((target) =>
+    // Every planned service has a running container, as inspect reports.
+    list:
+      options.providerOverrides?.list ??
+      ((filter) =>
+        Effect.succeed(
+          filter.app !== undefined && filter.app !== plannedApp.id
+            ? []
+            : Object.values(plannedApp.services).map(
+                (service): ServiceRuntimeInfo => ({
+                  app: plannedApp.id,
+                  appRoot: plannedApp.identity?.appRoot ?? plannedApp.root,
+                  service: service.name,
+                  providerId: plannedApp.provider,
+                  containerId: `cid-${String(service.name)}`,
+                  status: "running",
+                  publications: { status: "unknown" },
+                }),
+              ),
+        )),
+    bringDownObserved:
+      options.providerOverrides?.bringDownObserved ??
+      ((observed, containers) =>
         Effect.sync(() => {
-          options.onStop?.(target);
+          options.onStop?.(observed);
+          return {
+            service: observed.service,
+            ...(observed.containerId === undefined ? {} : { containerId: observed.containerId }),
+            action: containers === "stop" ? ("stopped" as const) : ("removed" as const),
+          };
         })),
-    destroy: (target, destroyOptions) =>
+    bringDown: (target, destroyOptions) =>
       Effect.sync(() => options.onDestroy?.(target, destroyOptions)).pipe(
         Effect.andThen(options.destroyEffect ?? Effect.void),
-        Effect.as({ kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } }),
+        Effect.as(
+          destroyOptions.containers === "stop"
+            ? {
+                kind: "stopped" as const,
+                // Every planned service has a running container, as `list` reports, so stop stops each.
+                containers: Object.values(target.plan?.services ?? {}).map((service) => ({
+                  service: service.name,
+                  containerId: `cid-${String(service.name)}`,
+                  action: "stopped" as const,
+                })),
+              }
+            : { kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } },
+        ),
       ),
     listVolumes: options.listVolumes ?? TestRuntimeProvider.listVolumes,
     locateVolume:
@@ -342,7 +379,18 @@ export const makeHarness = (
   // What a provider really hands back: a decoded record, never the planner's object, with no events.
   const resolveUserAppliedPlan =
     options.resolveAppliedPlan ?? (() => Effect.succeed(appliedPlanRecord(plannedApp)));
-  const runtimeProviderRegistry = {
+  const selectProvider = (target?: AppPlan | ProviderId) => {
+    const select = options.selectProvider;
+    return select === undefined
+      ? Effect.succeed(provider)
+      : select(target).pipe(Effect.map(globalAdmission.wrapProvider));
+  };
+  const runtimeProviderRegistry = makeTestRuntimeProviderRegistry({
+    appliedStateInventory: () => Effect.succeed({ plans: options.appliedPlans ?? [], unreadable: [] }),
+    readAppliedPlanStrict:
+      options.readAppliedPlanStrict ??
+      (({ id, provider }: Pick<AppPlan, "id" | "provider">) =>
+        Effect.succeed(options.appliedPlans?.find((plan) => plan.id === id && plan.provider === provider))),
     // Both lookups answer from one applied state, so placement sees the app `resolveAppliedPlan` reports.
     appliedPlansFor: (root: AbsolutePath) =>
       Effect.gen(function* () {
@@ -359,12 +407,7 @@ export const makeHarness = (
     ...(options.resourceOwnership === undefined ? {} : { resourceOwnership: options.resourceOwnership }),
     list: Effect.succeed([providerId]),
     capabilities: Effect.succeed(capabilities),
-    select: (target?: AppPlan | ProviderId) => {
-      const select = options.selectProvider;
-      return select === undefined
-        ? Effect.succeed(provider)
-        : select(target).pipe(Effect.map(globalAdmission.wrapProvider));
-    },
+    select: selectProvider,
     resolveAppliedPlan: (
       root: AbsolutePath,
       app?: Pick<AppRef, "kind" | "id">,
@@ -381,7 +424,7 @@ export const makeHarness = (
             plan === undefined ? { kind: "absent" as const } : { kind: "applied" as const, plan },
           ),
         )),
-  };
+  });
   const layer = Layer.mergeAll(
     emptySnapshotsLayer,
     BunFileSystem.layer,
@@ -498,6 +541,7 @@ export const makeHarness = (
     applyTreeStarted,
     stateStore,
     runtimeProviderRegistry,
+    selectProvider,
     userDataRoot,
     globalAdmission,
   };

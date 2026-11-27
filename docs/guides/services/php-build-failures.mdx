@@ -134,7 +134,7 @@ lando start
 [app:app:authored-app:1] bare=[redacted]
 [app:app:authored-app:1] ! to-stderr
 [app:app:authored-app:1] unterminated [redacted] tail
-[app:app:authored-app:1] ✗ fail: app:app:authored-app:1 failed (exit 3) (88ms)
+[app:app:authored-app:1] ✗ fail: app failed (exit 3) (88ms)
 ▶ App dependency build failed (0 ✓ · 1 ✗) (95ms)
 App build failed: 1 of 1 build steps failed.
 Build step app:app:authored-app:1 for service app exited with code 3.
@@ -292,7 +292,7 @@ A step that already succeeded with the same inputs doesn't run again while its w
 ```text
 ▼ Building app dependencies (1 step)
 [app:app:authored-app:1] start: Build app
-[app:app:authored-app:1] ✓ complete: app:app:authored-app:1 cached (0ms)
+[app:app:authored-app:1] ✓ complete: app cached (0ms)
 ▶ App dependencies built (1 ✓ · 0 ✗) (5ms)
 ```
 
@@ -305,7 +305,7 @@ A service with `pull_policy: build` builds its image on every start. See [Contro
 
 ### After the containers are replaced
 
-A `build.app` step's result is good only for the container it ran in. `lando stop`, bare `lando restart`, and `lando destroy` all remove the app's containers, so the start that follows runs every `build.app` step again in the new ones. So does a `lando start` that recreates one service's container for a Landofile change, for that service. `lando restart -s <service>` runs no build steps when it keeps the container. When it replaces the container, that service's `build.app` steps run again. [When a step runs again](./build-steps.mdx#when-a-step-runs-again) has the full list.
+A `build.app` step's result is good only for the container it ran in. `lando destroy` removes the app's containers, so the start that follows runs every `build.app` step again in the new ones. So does a `lando start` or bare `lando restart` that recreates one service's container for a Landofile change, for that service. `lando stop` and bare `lando restart` otherwise keep the containers, so their steps stay cached. `lando restart -s <service>` runs no build steps when it keeps the container. When it replaces the container, that service's `build.app` steps run again. [When a step runs again](./build-steps.mdx#when-a-step-runs-again) has the full list.
 
 A successful `lando destroy` also removes the app's saved build output. This is the start after a destroy:
 
@@ -313,7 +313,7 @@ A successful `lando destroy` also removes the app's saved build output. This is 
 ▼ Building app dependencies (1 step)
 [app:app:authored-app:1] start: Build app
 [app:app:authored-app:1] app build step ok
-[app:app:authored-app:1] ✓ complete: app:app:authored-app:1 complete (129ms)
+[app:app:authored-app:1] ✓ complete: Built app (129ms)
 ▶ App dependencies built (1 ✓ · 0 ✗) (136ms)
 ```
 

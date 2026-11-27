@@ -1,3 +1,4 @@
+import * as BunFileSystem from "@lando/engine/services/file-system";
 import type {
   ConfigService,
   PathsService,
@@ -17,12 +18,15 @@ import { deprecationFindings, doctorDeprecations } from "./doctor-deprecations";
 import { filesystemWatchDoctor } from "./doctor-filesystem-watch";
 import { DefaultGlobalAppDoctorLayer, globalAppDoctor } from "./doctor-global-app";
 import type { HostDnsResolver } from "./doctor-host-dns";
+import type { DoctorSectionRun } from "./doctor-host-fix";
 import { legacySnapshotCatalogsDoctor } from "./doctor-legacy-snapshot-catalogs";
 import { listenerDoctorChecks } from "./doctor-listeners";
 import { DefaultMcpDoctorLayer, mcpDoctor } from "./doctor-mcp";
 import { missingAppRootsDoctor } from "./doctor-missing-app-roots";
 import { networkTrustDoctorStatus } from "./doctor-network-trust";
 import { orphanedSnapshotsDoctor } from "./doctor-orphaned-snapshots";
+import { rootOwnershipDoctor } from "./doctor-root-ownership";
+import { stateCompatibilityDoctor } from "./doctor-state-compatibility";
 import { subsystemDoctor } from "./doctor-subsystems";
 import { appVersionConstraintsForReport } from "./doctor-version-constraint";
 
@@ -43,8 +47,8 @@ interface DoctorSectionBase {
 
 export type DoctorSectionSpec<R> = DoctorSectionBase &
   (
-    | { readonly run: Effect.Effect<DoctorSectionResult, unknown, R>; readonly isolate?: undefined }
-    | { readonly run: Effect.Effect<DoctorSectionResult, never, R>; readonly isolate: false }
+    | { readonly run: Effect.Effect<DoctorSectionRun, unknown, R>; readonly isolate?: undefined }
+    | { readonly run: Effect.Effect<DoctorSectionRun, never, R>; readonly isolate: false }
   );
 
 export type DoctorSection =
@@ -123,6 +127,17 @@ export const doctorSections = (input: {
     configSection({
       id: "accelerated-starts",
       run: acceleratedStartsDoctor(redact).pipe(Effect.map((checks): DoctorSectionResult => ({ checks }))),
+    }),
+    configSection({
+      id: "lando-roots",
+      // The config tier provides roots but not file access, so the producer brings its own.
+      run: rootOwnershipDoctor(redact, { fix: options.fix === true }).pipe(
+        Effect.provide(BunFileSystem.layer),
+      ),
+    }),
+    configSection({
+      id: "state-compatibility",
+      run: stateCompatibilityDoctor(redact).pipe(Effect.map((checks): DoctorSectionResult => ({ checks }))),
     }),
     runtimeSection({
       id: "missing-app-roots",

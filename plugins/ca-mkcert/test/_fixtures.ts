@@ -1,19 +1,22 @@
 import { access, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { makeHostChangeApplier } from "@lando/engine/host-changes/apply";
+import type { ProcessExecError } from "@lando/sdk/errors";
 import type { ToolArtifactEntry } from "@lando/sdk/schema";
 import type {
   CertificateAuthorityShape,
-  PrivilegeService,
+  HostChangeApplier,
+  PrivilegeSession,
   ProcessResult,
   ProcessRunner,
   ProcessSpawnOptions,
 } from "@lando/sdk/services";
 import { Downloader } from "@lando/sdk/services";
 import { Cause, type Context, Effect, Exit, Stream } from "effect";
-
 import { makeMkcertCertificateAuthority } from "../src/ca.ts";
 import { MKCERT_TOOL_MANIFEST } from "../src/provision.ts";
+import type { WindowsTrustPaths } from "../src/windows-trust.ts";
 import { makeFakeDownloader, sha256Hex } from "./support/fake-downloader.ts";
 
 export const text = (value: string): Uint8Array<ArrayBuffer> => new TextEncoder().encode(value);
@@ -75,18 +78,18 @@ export const patchHostBinary = (
   return { url, restore };
 };
 
-export const patchHostArtifact = (bytes: Uint8Array): (() => void) => {
+export const patchHostArtifact = (bytes: Uint8Array, hostKey: string = HOST_KEY): (() => void) => {
   const artifacts = MKCERT_TOOL_MANIFEST.artifacts as Record<string, ToolArtifactEntry>;
-  const original = artifacts[HOST_KEY];
-  artifacts[HOST_KEY] = {
+  const original = artifacts[hostKey];
+  artifacts[hostKey] = {
     url: SOURCE_URL,
     sha256: sha256Hex(bytes),
     sizeBytes: bytes.byteLength,
-    installName: "mkcert",
+    installName: hostKey.startsWith("win32") ? "mkcert.exe" : "mkcert",
   };
   return () => {
-    if (original === undefined) delete artifacts[HOST_KEY];
-    else artifacts[HOST_KEY] = original;
+    if (original === undefined) delete artifacts[hostKey];
+    else artifacts[hostKey] = original;
   };
 };
 
@@ -125,6 +128,12 @@ export const makeFakeMkcertRunner = (options: {
   readonly issue?: { readonly certificate: string; readonly privateKey: string };
   /** Runs after each issuance writes its files, before mkcert reports success. */
   readonly afterIssue?: () => Promise<void>;
+  /** Answers `brew postinstall ca-certificates`; Homebrew is absent when unset. */
+  readonly brewPostinstall?: () => Promise<ProcessResult>;
+  /** When set, Lando cannot start `brew` at all. */
+  readonly brewSpawnError?: ProcessExecError;
+  /** Runs after a successful `mkcert -install`, like the trust it adds to the system store. */
+  readonly afterInstall?: () => Promise<void>;
 }): FakeProcessRunner => {
   const calls: RunCall[] = [];
   const run = async (input: ProcessSpawnOptions): Promise<ProcessResult> => {
@@ -134,15 +143,22 @@ export const makeFakeMkcertRunner = (options: {
       ...(input.env === undefined ? {} : { env: { ...input.env } }),
     });
     if (input.args[0] === "-CAROOT") return okResult(`${options.caRoot}\n`);
+    if (input.args[0] === "postinstall") {
+      if (options.brewPostinstall === undefined) throw new Error(`unexpected brew run: ${input.cmd}`);
+      return options.brewPostinstall();
+    }
     if (input.args[0] === "-install") {
       await createRootWhenMissing(input.env?.CAROOT ?? options.caRoot);
       const exitCode = options.installExitCode ?? 0;
-      return exitCode === 0
-        ? okResult("The local CA is now installed in the system trust store!\n")
-        : { exitCode, stdout: "", stderr: options.installStderr ?? "permission denied" };
+      if (exitCode !== 0)
+        return { exitCode, stdout: "", stderr: options.installStderr ?? "permission denied" };
+      await options.afterInstall?.();
+      return okResult("The local CA is now installed in the system trust store!\n");
     }
-    const certFile = input.args[input.args.indexOf("-cert-file") + 1];
-    const keyFile = input.args[input.args.indexOf("-key-file") + 1];
+    const certIndex = input.args.indexOf("-cert-file");
+    const keyIndex = input.args.indexOf("-key-file");
+    const certFile = certIndex === -1 ? undefined : input.args[certIndex + 1];
+    const keyFile = keyIndex === -1 ? undefined : input.args[keyIndex + 1];
     if (certFile === undefined || keyFile === undefined) {
       return {
         exitCode: 2,
@@ -163,7 +179,15 @@ export const makeFakeMkcertRunner = (options: {
 
   return {
     service: {
-      run: (input) => Effect.promise(() => run(input)),
+      run: (input) => {
+        const spawnError = options.brewSpawnError;
+        if (input.args[0] === "postinstall" && spawnError !== undefined) {
+          return Effect.sync(() => void calls.push({ cmd: input.cmd, args: [...input.args] })).pipe(
+            Effect.andThen(Effect.fail(spawnError)),
+          );
+        }
+        return Effect.promise(() => run(input));
+      },
       stream: () => Stream.die(new Error("stream is not used by the mkcert certificate authority")),
       streamWithExit: () =>
         Stream.die(new Error("streamWithExit is not used by the mkcert certificate authority")),
@@ -172,24 +196,58 @@ export const makeFakeMkcertRunner = (options: {
   };
 };
 
-export interface FakePrivilege {
-  readonly service: Context.Service.Shape<typeof PrivilegeService>;
-  readonly calls: () => ReadonlyArray<ReadonlyArray<string>>;
+/** A Debian-family host: its anchor directory and refresh command exist, and nothing else does. */
+export const DEBIAN_ANCHOR = "/usr/local/share/ca-certificates/lando-local-ca.crt";
+export const DEBIAN_REFRESH = "/usr/sbin/update-ca-certificates";
+export const debianHost = (path: string): boolean =>
+  path === "/usr/local/share/ca-certificates" || path === DEBIAN_REFRESH;
+
+export interface Elevation {
+  readonly argv: ReadonlyArray<string>;
+  readonly stdin?: string;
 }
 
-export const makeFakePrivilege = (result: ProcessResult = okResult()): FakePrivilege => {
-  const calls: Array<ReadonlyArray<string>> = [];
+/** The run's administrator session; `onElevate` answers each command, like the store it writes. */
+export const makeFakeSession = (
+  onElevate: (argv: ReadonlyArray<string>) => Promise<ProcessResult> = async () => okResult(),
+): { readonly session: PrivilegeSession; readonly elevations: () => ReadonlyArray<Elevation> } => {
+  const elevations: Elevation[] = [];
   return {
-    service: {
-      elevate: (command) =>
-        Effect.sync(() => {
-          calls.push([...command]);
-          return result;
+    session: {
+      transport: "direct",
+      elevate: (argv, options) =>
+        Effect.promise(() => {
+          const stdin = options?.stdin;
+          elevations.push({
+            argv: [...argv],
+            ...(stdin === undefined ? {} : { stdin: new TextDecoder().decode(stdin) }),
+          });
+          return onElevate(argv);
         }),
     },
-    calls: () => [...calls],
+    elevations: () => [...elevations],
   };
 };
+
+/** Plan the authority's host changes and approve every one, as `lando setup --yes` does. */
+export const approveCaChanges = (
+  ca: CertificateAuthorityShape,
+  session: PrivilegeSession,
+  runner?: Context.Service.Shape<typeof ProcessRunner>,
+): Promise<HostChangeApplier> =>
+  Effect.runPromise(
+    Effect.map(
+      ca.planHostChanges ?? Effect.succeed([]),
+      (proposals) =>
+        makeHostChangeApplier({
+          proposals,
+          approved: new Set(proposals.map(({ change }) => change.id)),
+          session,
+          ...(runner === undefined ? {} : { runner }),
+          redact: (value) => value,
+        }).applier,
+    ),
+  );
 
 export interface CaHarness {
   readonly root: string;
@@ -213,7 +271,18 @@ export const makeCaHarness = async (): Promise<CaHarness> => {
 export const makeCa = (
   harness: CaHarness,
   runner: FakeProcessRunner,
-  overrides: { readonly arch?: string } = {},
+  overrides: {
+    readonly arch?: string;
+    readonly platform?: string;
+    readonly env?: Readonly<Record<string, string | undefined>>;
+    readonly hostTrustsPem?: (pem: string) => boolean;
+    /** System bundle candidates; none exist unless a test supplies them, whatever the host has. */
+    readonly linuxSystemBundles?: ReadonlyArray<string>;
+    /** WSL markers and certutil.exe fallback; absent unless a test supplies them, whatever the host is. */
+    readonly windowsTrustPaths?: WindowsTrustPaths;
+    /** Host paths that exist; none unless a test supplies them, whatever the host has. */
+    readonly exists?: (path: string) => boolean;
+  } = {},
 ): { readonly ca: CertificateAuthorityShape; readonly downloadCalls: () => number } => {
   const downloader = makeFakeDownloader();
   downloader.serve(SOURCE_URL, MKCERT_BIN);
@@ -225,8 +294,17 @@ export const makeCa = (
       downloader: downloaderService,
       processRunner: runner.service,
       privateFileAccess: { enforce: async () => undefined, verify: async () => undefined },
-      platform: "linux",
+      platform: overrides.platform ?? "linux",
       arch: overrides.arch ?? "x64",
+      // No Homebrew unless a test supplies one, whatever the host has installed.
+      env: overrides.env ?? { PATH: "" },
+      hostTrustsPem: overrides.hostTrustsPem,
+      linuxSystemBundles: overrides.linuxSystemBundles ?? [join(harness.root, "no-system-bundle.pem")],
+      windowsTrustPaths: overrides.windowsTrustPaths ?? {
+        interop: [join(harness.root, "no-wsl-interop")],
+        certutil: join(harness.root, "no-certutil.exe"),
+      },
+      exists: overrides.exists ?? (() => false),
     }),
     downloadCalls: downloader.downloadCalls,
   };

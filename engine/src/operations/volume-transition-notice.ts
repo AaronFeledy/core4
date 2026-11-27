@@ -1,9 +1,18 @@
+import { posix } from "node:path";
 import { MessageWarnEvent } from "@lando/sdk/events";
-import type { AppPlan, DataStorePlan, ServiceHomePlan, ServicePlan } from "@lando/sdk/schema";
+import {
+  type AppPlan,
+  type DataStorePlan,
+  type ServiceHomePlan,
+  type ServicePlan,
+  effectiveExcludes,
+  serviceAppMount,
+} from "@lando/sdk/schema";
 import { EventService } from "@lando/sdk/services";
 import { quoteYamlScalar } from "@lando/sdk/yaml";
 import { Context, DateTime, Effect } from "effect";
 import { isDependencyEnvironmentStore } from "../planner/dependency-environments.ts";
+import { serviceFeatureBuildSteps } from "../planner/extensions.ts";
 
 const VolumeTransitionNotices = Context.Reference<Set<string> | undefined>(
   "@lando/engine/VolumeTransitionNotices",
@@ -27,7 +36,7 @@ const unknownReason = (
 ): string => {
   switch (home.reason) {
     case "custom-image":
-      return "its image now comes from your Landofile";
+      return "the service uses a custom image";
     case "no-identity":
       return `${service.type} doesn't declare image users`;
     case "undeclared-user":
@@ -70,6 +79,9 @@ const dataVolumes = (service: ServicePlan, stores: ReadonlyMap<string, DataStore
   return volumes;
 };
 
+const below = (target: string, parent: string): boolean =>
+  target !== parent && target.startsWith(`${parent.replace(/\/+$/u, "")}/`);
+
 export const publishVolumeTransitionNotices = Effect.fn("AppOperation.volumeTransitionNotices")(function* (
   applied: AppPlan | undefined,
   desired: AppPlan,
@@ -82,6 +94,12 @@ export const publishVolumeTransitionNotices = Effect.fn("AppOperation.volumeTran
   for (const service of Object.values(desired.services)) {
     const previous = applied.services[service.name];
     if (previous === undefined) continue;
+    const claimNotice = (target: string): boolean => {
+      const key = `${desired.root}\0${service.name}\0${target}`;
+      if (notices?.has(key)) return false;
+      notices?.add(key);
+      return true;
+    };
     const desiredVolumes = dataVolumes(service, desiredStores);
     for (const old of dataVolumes(previous, appliedStores).values()) {
       const managed = isDependencyEnvironmentStore(applied, previous, old);
@@ -121,9 +139,7 @@ export const publishVolumeTransitionNotices = Effect.fn("AppOperation.volumeTran
             ? `Service ${service.name} will no longer mount volume ${old.store} at ${old.target}.`
             : `Service ${service.name} will use volume ${next.store} at ${next.target} (previously ${old.store} at ${old.target}).`;
       }
-      const key = `${desired.root}\0${service.name}\0${old.target}`;
-      if (notices?.has(key)) continue;
-      notices?.add(key);
+      if (!claimNotice(old.target)) continue;
       const storage = `storage: [{ store: ${quoteYamlScalar(old.store)}, target: ${quoteYamlScalar(old.target)} }]`;
       const sameType =
         previous.serviceTypeId !== undefined &&
@@ -144,6 +160,33 @@ Export the data from the old service first, then import it using the new service
       yield* events.publish(
         MessageWarnEvent.make({
           body: `${message}\nLando leaves ${old.store} untouched.${advice}`,
+          timestamp: DateTime.nowUnsafe(),
+        }),
+      );
+    }
+
+    const oldAppMount = serviceAppMount(previous);
+    const newAppMount = serviceAppMount(service);
+    if (oldAppMount === undefined || newAppMount === undefined) continue;
+    const excludes = new Set(effectiveExcludes(newAppMount));
+    for (const old of previous.mounts) {
+      if (old.type !== "volume" || old.origin !== "derived") continue;
+      if (previous.home?.state === "persisted" && previous.home.target === old.target) continue;
+      if (!below(old.target, oldAppMount.target) || !below(old.target, newAppMount.target)) continue;
+      if (excludes.has(posix.relative(newAppMount.target, old.target))) continue;
+      const shadowed = service.mounts.some(
+        (mount) =>
+          mount.target === old.target ||
+          (below(mount.target, newAppMount.target) && below(old.target, mount.target)),
+      );
+      if (shadowed || !claimNotice(old.target)) continue;
+      const hasAppBuild = serviceFeatureBuildSteps(service.extensions).some((step) => step.phase === "app");
+      const advice = hasAppBuild
+        ? ""
+        : " Rerun the dependency install or other setup the service needs there.";
+      yield* events.publish(
+        MessageWarnEvent.make({
+          body: `Service ${service.name} will see app-mount contents at ${old.target} instead of volume ${old.store}.\nLando left ${old.store} untouched and did not copy its contents to the host.${advice}`,
           timestamp: DateTime.nowUnsafe(),
         }),
       );

@@ -8,6 +8,7 @@ import {
   type ProviderCapabilities,
   ProviderId,
   type ServicePlan,
+  landoSharedCrossAppNetworkName,
   landoSharedNetworkName,
   serviceAppMount,
 } from "@lando/core/schema";
@@ -103,14 +104,16 @@ const forkLandofile = [
   "provider: lando",
   "services:",
   "  appserver:",
-  "    type: node:22",
+  "    type: compose",
+  "    image: alpine",
+  "    command: [sleep, infinity]",
   "    primary: true",
   "",
 ].join("\n");
 
 const withScratchEnv = async <T>(
   landofile: string | undefined,
-  run: (dir: string) => Promise<T>,
+  run: (dir: string, dataRoot: string) => Promise<T>,
 ): Promise<T> => {
   const dir = await realpath(await mkdtemp(join(tmpdir(), "lando-scratch-flags-cwd-")));
   const cacheRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-scratch-flags-cache-")));
@@ -126,7 +129,7 @@ const withScratchEnv = async <T>(
     process.env.LANDO_USER_CACHE_ROOT = cacheRoot;
     process.env.LANDO_USER_DATA_ROOT = dataRoot;
     process.env.LANDO_USER_CONF_ROOT = confRoot;
-    return await run(dir);
+    return await run(dir, dataRoot);
   } finally {
     process.chdir(previousCwd);
     if (previousCacheRoot === undefined) delete process.env.LANDO_USER_CACHE_ROOT;
@@ -171,8 +174,6 @@ const makeLayer = (
         appliedPlans.push(plan);
         return { changed: true };
       }),
-    start: () => die("start"),
-    stop: () => die("stop"),
     restart: () => die("restart"),
     waitForExit: () => Effect.succeed({ exitCode: 0 }),
     exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
@@ -261,7 +262,7 @@ describe("ScratchAppServiceLayer.layer --mount-cwd transform", () => {
   test.each(["full", "baked", "cwd"] as const)(
     "fork %s isolates app-relative mounts through provider acquisition",
     async (isolate) => {
-      const yaml = `${forkLandofile}    mounts:\n      - ./config:/etc/project\n      - ../outside:/outside\n    appMount:\n      target: /app\n      excludes: [vendor]\n  worker:\n    type: node:22\n    mounts:\n      - ./jobs:/jobs\n`;
+      const yaml = `${forkLandofile}    mounts:\n      - ./config:/etc/project\n      - ../outside:/outside\n    appMount:\n      target: /app\n      excludes: [vendor]\n  worker:\n    type: compose\n    image: alpine\n    command: [sleep, infinity]\n    mounts:\n      - ./jobs:/jobs\n`;
       await withScratchEnv(yaml, async (dir) => {
         const absolute = `${yaml}      - ${dir}:/absolute\n`;
         await writeFile(join(dir, ".lando.yml"), absolute);
@@ -280,15 +281,15 @@ describe("ScratchAppServiceLayer.layer --mount-cwd transform", () => {
           type: "bind",
           source: dir,
         });
+        expect(String(acquired.root)).not.toBe(dir);
         if (isolate === "baked") {
-          expect(String(acquired.root)).toBe(dir);
           expect(serviceAppMount(primary)).toBeUndefined();
           expect(relative).toBeUndefined();
           expect(primary.mounts.find((mount) => mount.target === "/app/vendor")).toBeUndefined();
           expect(worker?.mounts.find((mount) => mount.target === "/jobs")).toBeUndefined();
           expect(acquired.fileSync).toEqual([]);
         } else {
-          const expectedRoot = isolate === "cwd" ? dir : acquired.root;
+          const expectedRoot = isolate === "cwd" ? dir : String(acquired.root);
           expect(relative).toMatchObject({
             type: "bind",
             source: join(expectedRoot, "config"),
@@ -300,7 +301,6 @@ describe("ScratchAppServiceLayer.layer --mount-cwd transform", () => {
           });
           expect(serviceAppMount(primary)?.source).toBe(expectedRoot);
           expect(primary.mounts.some((mount) => mount.target === "/outside")).toBe(isolate === "cwd");
-          if (isolate === "full") expect(acquired.root).not.toBe(dir);
         }
       });
     },
@@ -402,7 +402,7 @@ describe("ScratchAppServiceLayer.layer --share-global-storage transform", () => 
       "    primary: true",
       "    primary: true\n    networks:\n      peer:\n        aliases: [api]\n      default:\n        aliases: [www]",
     );
-    await withScratchEnv(withNetworks, async () => {
+    await withScratchEnv(withNetworks, async (_dir, dataRoot) => {
       const appliedPlans: AppPlan[] = [];
       await Effect.runPromise(
         Effect.flatMap(ScratchAppService, (service) =>
@@ -421,17 +421,17 @@ describe("ScratchAppServiceLayer.layer --share-global-storage transform", () => 
         },
       ]);
       expect(networking?.perAppBridge?.aliases).toMatchObject({ appserver: ["www"] });
-      expect(networking?.sharedNetworkMembership?.name).toBe("lando_bridge_network");
+      expect(networking?.sharedNetworkMembership?.name).toBe(landoSharedCrossAppNetworkName(dataRoot));
     });
   });
   test("joins the shared cross-app network and stamps the share marker", async () => {
-    await withScratchEnv(undefined, async () => {
+    await withScratchEnv(undefined, async (_dir, dataRoot) => {
       const appliedPlans: AppPlan[] = [];
       await Effect.runPromise(acquireRecipe(appliedPlans, { shareGlobalStorage: true }));
       const appliedPlan = appliedPlans.at(0);
       if (appliedPlan === undefined) throw new Error("scratch acquire did not apply a plan");
       expect(appliedPlan.networking?.sharedNetworkMembership).toBeDefined();
-      expect(landoSharedNetworkName(appliedPlan)).toBe("lando_bridge_network");
+      expect(landoSharedNetworkName(appliedPlan)).toBe(landoSharedCrossAppNetworkName(dataRoot));
       const marker = scratchMarker(appliedPlan);
       expect(marker.shareGlobalStorage).toBe(true);
       expect(marker.id).toBe(appliedPlan.id);

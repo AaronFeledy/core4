@@ -1,17 +1,19 @@
 import { join } from "node:path";
 import { mapFailures } from "@lando/sdk/command-result";
 import { LandofileLoadFailure } from "@lando/sdk/errors";
+import { isPlainRecord } from "@lando/sdk/landofile";
 import { LandofileAuthoringFragmentNative } from "@lando/sdk/schema";
 import { Effect, Result, Schema } from "effect";
 import { rejectComposeKeys } from "./compose/rejections.ts";
 import { withoutIncludeConditions } from "./include-condition-shape.ts";
 import { type IncludeResolutionSession, createIncludeResolutionSession } from "./include-session.ts";
-import { presentLandofileLayers } from "./layers.ts";
+import { type PresentLandofileLayer, presentLandofileLayers } from "./layers.ts";
 import { prepareIncludeAcquisition } from "./load-acquisition.ts";
 import { assertReadableRoot, ensureConsistentRoot, loadContext } from "./load-context.ts";
 import { finishLoadStage } from "./load-failures.ts";
 import { composePreparedLayers } from "./pipeline/compose.ts";
 import { classifyLoadFailure } from "./pipeline/legacy.ts";
+import { materializeLandofileLayer } from "./pipeline/materialize.ts";
 import type { LandofileEvaluationInputs, LandofileRuntimeInputs } from "./ports.ts";
 import type { SourceDocument } from "./provenance.ts";
 import { prepareLandofileSource, prepareLandofileValue } from "./source.ts";
@@ -34,9 +36,13 @@ const sourceDocument = (
 const acquireRootSources = Effect.fn("Landofile.acquireSources")(function* (
   appRoot: string,
   inputs?: Pick<LandofileEvaluationInputs, "templates">,
+  selection?: { readonly layers: readonly PresentLandofileLayer[]; readonly contained: boolean },
 ) {
-  const runtime = yield* loadContext(appRoot, inputs?.templates.context?.env);
-  const layers = yield* presentLandofileLayers(appRoot);
+  const context = yield* loadContext(appRoot, inputs?.templates.context?.env);
+  const runtime = selection?.contained
+    ? { ...context, policy: { ...context.policy, allowOutsideRoot: false }, contained: true }
+    : context;
+  const layers = selection?.layers ?? (yield* presentLandofileLayers(appRoot));
   const results = yield* Effect.forEach(layers, (layer) =>
     prepareLandofileSource(layer.filePath, { ...runtime, layer: layer.layer }, inputs).pipe(
       Effect.result,
@@ -89,11 +95,10 @@ export const inspectLandofileRootLayers = Effect.fn("Landofile.inspectLayers")(f
   return yield* acquireRootSources(appRoot, inputs);
 });
 
-const prepareRootSources = Effect.fn("Landofile.prepareSources")(function* (
-  appRoot: string,
-  inputs?: LandofileEvaluationInputs,
-) {
-  const { runtime, sources } = yield* acquireRootSources(appRoot, inputs);
+const prepareRootSources = Effect.fn("Landofile.prepareSources")(function* ({
+  runtime,
+  sources,
+}: Effect.Success<ReturnType<typeof acquireRootSources>>) {
   const prepared = yield* Effect.forEach(sources, ({ source, layer }) =>
     prepareLandofileValue(source).pipe(
       Effect.map(({ value }) => [
@@ -128,8 +133,37 @@ export const prepareLandofileRootLayers = Effect.fn("Landofile.prepareLayers")(f
   inputs?: LandofileRuntimeInputs,
 ) {
   yield* ensureConsistentRoot(appRoot, inputs);
-  return yield* prepareRootSources(appRoot, inputs);
+  return yield* prepareRootSources(yield* acquireRootSources(appRoot, inputs));
 });
+
+export const projectLandofileRootName = Effect.fnUntraced(function* (
+  selection: { readonly appRoot: string; readonly canonicalPath: string } & NonNullable<
+    Parameters<typeof acquireRootSources>[2]
+  >,
+  inputs: Pick<LandofileEvaluationInputs, "templates">,
+) {
+  const { appRoot, canonicalPath } = selection;
+  const acquired = yield* acquireRootSources(appRoot, inputs, selection);
+  const sources = acquired.sources.map(({ layer, source }) => {
+    if (!isPlainRecord(source.value)) return { layer, source };
+    const { name, recipe } = source.value;
+    const value = {
+      ...(Object.hasOwn(source.value, "name") ? { name } : {}),
+      ...(Object.hasOwn(source.value, "recipe") ? { recipe } : {}),
+    };
+    return { layer, source: { ...source, value } };
+  });
+  // Includes cannot declare name or recipe; keeping only those fields makes this a local projection.
+  const { prepared, runtime } = yield* prepareRootSources({ ...acquired, sources });
+  const session = yield* createIncludeResolutionSession({ appRoot });
+  const { document, scope } = yield* composePreparedLayers(prepared, runtime, { session });
+  const { value } = yield* materializeLandofileLayer(canonicalPath, document, {
+    ...scope,
+    siteFilter: (site) => site.path[0] === "name",
+  });
+  if (runtime.recorder !== undefined) yield* finishLoadStage(canonicalPath, runtime.recorder);
+  return typeof value.name === "string" ? value.name : undefined;
+}, Effect.scoped);
 
 export const validatePreparedAuthoringLayers = Effect.fnUntraced(function* (
   root: Effect.Success<ReturnType<typeof prepareLandofileRootLayers>>,
@@ -160,9 +194,15 @@ export const validatePreparedAuthoringLayers = Effect.fnUntraced(function* (
 
 export const evaluateLandofileRootLayers = Effect.fn("Landofile.evaluateLayers")(function* (
   appRoot: string,
-  evaluation: { readonly session: IncludeResolutionSession; readonly inputs?: LandofileEvaluationInputs },
+  evaluation: {
+    readonly session: IncludeResolutionSession;
+    readonly inputs?: LandofileEvaluationInputs;
+    readonly selection?: Parameters<typeof acquireRootSources>[2];
+  },
 ) {
-  const prepared = yield* prepareRootSources(appRoot, evaluation.inputs);
+  const prepared = yield* prepareRootSources(
+    yield* acquireRootSources(appRoot, evaluation.inputs, evaluation.selection),
+  );
   const { document: merged, scope } = yield* composePreparedLayers(
     prepared.prepared,
     prepared.runtime,

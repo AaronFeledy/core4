@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import {
+  APPLIED_STATE_VERSION,
+  appliedPlanPath,
+  makeAppliedPlanStore,
+} from "@lando/container-runtime/applied-state";
 import { runtimeProviderService } from "@lando/engine/runtime/bootstrap-layer-support";
 import * as BunProcessRunner from "@lando/engine/services/process-runner";
 import { makeLandoPaths } from "@lando/paths";
@@ -20,8 +25,11 @@ import {
   PathsService,
   RuntimeProvider,
   RuntimeProviderRegistry,
+  StateStore,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
+import { makePluginStateStore } from "@lando/state-store/plugin";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import * as StateStoreLayer from "@lando/state-store/service";
 import { DateTime, Effect, Layer, Schema, Stream } from "effect";
 import { layer as dataMoverLayer } from "../src/service.ts";
@@ -49,7 +57,101 @@ const silentEvents = Layer.succeed(
 const passthroughRedaction = RedactionService.layer;
 
 describe("BunDataMover.layer call-time provider", () => {
-  test.each(["none", "select", "appliedPlans", "data-id", "stale-service-id"] as const)(
+  test.each([
+    { scenario: "reports the newer receipt for an unbound transfer", newer: true, bound: false },
+    { scenario: "exports through the readable renamed owner", newer: false, bound: false },
+    {
+      scenario: "exports through the bound provider despite the unmatched receipt",
+      newer: true,
+      bound: true,
+    },
+  ])("$scenario", async ({ newer, bound }) => {
+    const dir = await mkdtemp(resolve(process.cwd(), ".tmp-volume-owner-"));
+    const target = resolve(dir, "output");
+    const plan: AppPlan = {
+      valueModel: 1,
+      id: AppId.make("new"),
+      name: "Renamed app",
+      slug: "new",
+      root: absolute(dir),
+      identity: { appRoot: absolute(dir), ownerKey: "owner", dataName: "old" },
+      provider: ProviderId.make("docker"),
+      services: {},
+      routes: [],
+      stores: [],
+      fileSync: [],
+      metadata: { resolvedAt: DateTime.makeUnsafe(0), source: "test", runtime: 4 },
+      extensions: {},
+    };
+    const receipt = appliedPlanPath(dir, plan.id);
+    const provider = RuntimeProvider.of({
+      ...TestRuntimeProvider,
+      id: plan.provider,
+      exportVolume: (ref) => Stream.make(new TextEncoder().encode(ref.app)),
+    });
+    try {
+      const result = await Effect.runPromise(
+        Effect.gen(function* () {
+          const state = yield* StateStore;
+          const access = yield* PrivateFileAccessService;
+          const scopedState = makePluginStateStore(state, absolute(dir), access);
+          const store = makeAppliedPlanStore({ providerId: "docker", layout: "per-app" });
+          yield* store.persistAppliedPlan(scopedState, plan);
+          if (newer) {
+            yield* Effect.promise(() =>
+              writeFile(receipt, JSON.stringify({ version: APPLIED_STATE_VERSION + 1, data: null })),
+            );
+          }
+          const registry = makeTestRuntimeProviderRegistry({
+            list: Effect.succeed([plan.provider]),
+            select: () => Effect.succeed(provider),
+            appliedStateInventory: () => store.listAppliedPlans(scopedState, dir),
+            readAppliedPlanStrict: ({ id }) => store.loadAppliedPlanStrict(scopedState, id),
+          });
+          return yield* Effect.flatMap(DataMover, (mover) =>
+            mover.transfer({
+              from: { _tag: "volume", app: AppId.make("old"), store: "data" },
+              to: { _tag: "hostPath", path: absolute(target) },
+              overwrite: true,
+            }),
+          ).pipe(
+            Effect.scoped,
+            Effect.result,
+            Effect.provideService(RuntimeProvider, bound ? provider : runtimeProviderService),
+            Effect.provide(
+              dataMoverLayer.pipe(
+                Layer.provide(
+                  Layer.mergeAll(
+                    Layer.succeed(StateStore, state),
+                    silentEvents,
+                    passthroughRedaction,
+                    Layer.succeed(PathsService, makeLandoPaths({ userDataRoot: dir })),
+                    Layer.succeed(RuntimeProviderRegistry, registry),
+                  ),
+                ),
+              ),
+            ),
+          );
+        }).pipe(Effect.provide(Layer.mergeAll(stateStoreLayer, PrivateFileAccessService.layer))),
+      );
+      if (newer && !bound) {
+        expect(result).toMatchObject({
+          _tag: "Failure",
+          failure: {
+            _tag: "DataTransferError",
+            cause: { _tag: "AppliedStateVersionError", path: receipt, appId: "new" },
+          },
+        });
+      } else {
+        expect(result._tag).toBe("Success");
+        expect(await readFile(target, "utf8")).toBe("old");
+      }
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test.each(["none", "select", "appliedPlans", "data-id", "stale-service-id", "bound-volume"] as const)(
     "selects the app plan past an unrelated provider's %s failure instead of accepting the bootstrap stub",
     async (broken) => {
       const dir = await mkdtemp(resolve(process.cwd(), ".tmp-data-selected-"));
@@ -87,7 +189,8 @@ describe("BunDataMover.layer call-time provider", () => {
           ),
       });
       const targets: Array<AppPlan | ProviderId | undefined> = [];
-      const registry = RuntimeProviderRegistry.of({
+      const inventories: ProviderId[] = [];
+      const registry = makeTestRuntimeProviderRegistry({
         list: Effect.succeed(
           broken === "none" || broken === "data-id" || broken === "stale-service-id"
             ? [ProviderId.make("selected")]
@@ -95,8 +198,14 @@ describe("BunDataMover.layer call-time provider", () => {
         ),
         capabilities: Effect.succeed(selected.capabilities),
         appliedPlansFor: () => Effect.succeed([plan]),
+        appliedStateInventory: (id) =>
+          Effect.sync(() => {
+            inventories.push(id);
+            return { plans: id === plan.provider ? [plan] : [], unreadable: [] };
+          }),
+        readAppliedPlanStrict: ({ id, provider }) =>
+          Effect.succeed(id === plan.id && provider === plan.provider ? plan : undefined),
         resolveAppliedPlan: () => Effect.succeed(plan),
-        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         select: (target) => {
           const failure = new ProviderUnavailableError({
             providerId: "broken",
@@ -120,7 +229,7 @@ describe("BunDataMover.layer call-time provider", () => {
             Effect.flatMap(DataMover, (mover) =>
               mover.transfer({
                 from:
-                  broken === "data-id"
+                  broken === "data-id" || broken === "bound-volume"
                     ? { _tag: "volume", app, store: "original-data" }
                     : { _tag: "serviceCmd", app, service, command: ["export"] },
                 to: { _tag: "hostPath", path: absolute(target) },
@@ -129,7 +238,10 @@ describe("BunDataMover.layer call-time provider", () => {
             ),
           ).pipe(
             Effect.result,
-            Effect.provideService(RuntimeProvider, runtimeProviderService),
+            Effect.provideService(
+              RuntimeProvider,
+              broken === "bound-volume" ? selected : runtimeProviderService,
+            ),
             Effect.provide(
               dataMoverLayer.pipe(
                 Layer.provide(
@@ -155,7 +267,10 @@ describe("BunDataMover.layer call-time provider", () => {
         }
         expect(result._tag).toBe("Success");
         expect(await readFile(target, "utf8")).toBe("registry-output");
-        expect(targets).toContain(plan);
+        if (broken === "bound-volume") {
+          expect([...new Set(inventories)]).toEqual([plan.provider]);
+          expect(targets).toEqual([]);
+        } else expect(targets).toContain(plan);
         expect(targets).not.toContain(undefined);
       } finally {
         await rm(dir, { recursive: true, force: true });

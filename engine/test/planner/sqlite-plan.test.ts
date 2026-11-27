@@ -10,6 +10,7 @@ import * as Plugins from "../../src/plugins/registry.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
 import * as Planner from "../../src/services/planner.ts";
 import { literalTestLandofile } from "../compiled-landofile.ts";
+import { pathsServiceLayer } from "../paths-service.ts";
 
 test("the final plan keeps the canonical SQLite path on the declaring service", async () => {
   const root = await mkdtemp(join(tmpdir(), "lando-sqlite-plan-"));
@@ -24,7 +25,11 @@ test("the final plan keeps the canonical SQLite path on the declaring service", 
       Effect.flatMap(AppPlanner, (planner) =>
         planner.plan(literalTestLandofile(document, root), TestRuntimeProvider.capabilities),
       ).pipe(
-        Effect.provide(Planner.layer.pipe(Layer.provide(Layer.mergeAll(Plugins.layer, BunFileSystem.layer)))),
+        Effect.provide(
+          Planner.layer.pipe(
+            Layer.provide(Layer.mergeAll(Plugins.layer, BunFileSystem.layer, pathsServiceLayer())),
+          ),
+        ),
       ),
     );
 

@@ -8,13 +8,16 @@ import {
   classifySchemaChange,
 } from "./schema-compatibility/classifier.ts";
 import { loadCompatibilityExceptions } from "./schema-compatibility/exceptions.ts";
+import { changeFingerprint } from "./schema-compatibility/fingerprint.ts";
 import type { JsonSchema } from "./schema-compatibility/model.ts";
+import { normalizeJsonSchema } from "./schema-compatibility/normalize.ts";
 import {
   buildPersistedSurfaceStores,
   legacyAppliedPayload,
   readPersistedStoreVersions,
 } from "./schema-compatibility/persisted.ts";
 import { loadBasePersistedStoreVersions } from "./schema-compatibility/store-versions.ts";
+import { suggestCompatibilityExceptions } from "./schema-compatibility/suggest-exceptions.ts";
 import {
   SCHEMA_ARTIFACT_FAMILIES,
   type SchemaArtifactFamily,
@@ -36,6 +39,8 @@ export interface SchemaCompatibilityResult {
   readonly baseRef: string;
   readonly findings: ReadonlyArray<SurfaceCompatibilityFinding>;
   readonly skips: ReadonlyArray<SchemaCompatibilitySkip>;
+  /** Entries to review and record for every finding no exception covers. */
+  readonly suggestions: ReadonlyArray<CompatibilityException>;
   readonly ok: boolean;
 }
 
@@ -78,11 +83,12 @@ const rootSchemasFromArtifacts = (artifacts: SchemaArtifactSet): Map<string, Jso
   return roots;
 };
 
-export const compareArtifactSets = (
+/** Adds the store bindings that internal persisted artifacts declare themselves. */
+const withArtifactStores = (
   before: SchemaArtifactSet,
   after: SchemaArtifactSet,
-  policy: AcceptCompatibilityOptions & { readonly exceptions: ReadonlyArray<CompatibilityException> },
-): ReadonlyArray<SurfaceCompatibilityFinding> => {
+  policy: AcceptCompatibilityOptions,
+): Required<AcceptCompatibilityOptions> => {
   const persistedStoresBySurface = new Map(policy.persistedStoresBySurface);
   const storeVersions = { ...policy.storeVersions };
   const baseStoreVersions = { ...policy.baseStoreVersions };
@@ -98,6 +104,15 @@ export const compareArtifactSets = (
     persistedStoresBySurface.set(artifact.surface, new Set([store]));
     storeVersions[store] = version;
   }
+  return { persistedStoresBySurface, storeVersions, baseStoreVersions };
+};
+
+export const compareArtifactSets = (
+  before: SchemaArtifactSet,
+  after: SchemaArtifactSet,
+  policy: AcceptCompatibilityOptions & { readonly exceptions: ReadonlyArray<CompatibilityException> },
+): ReadonlyArray<SurfaceCompatibilityFinding> => {
+  const options = withArtifactStores(before, after, policy);
   const surfaces = [...new Set([...before.keys(), ...after.keys()])].sort();
   return surfaces.flatMap((surface) => {
     const oldArtifact = before.get(surface);
@@ -110,6 +125,7 @@ export const compareArtifactSets = (
           changeKind: "surface-added",
           path: "$",
           message: "A public schema surface was added.",
+          fingerprint: changeFingerprint("surface-added", undefined, normalizeJsonSchema(newArtifact.schema)),
           accepted: false,
         },
       ];
@@ -120,6 +136,11 @@ export const compareArtifactSets = (
           changeKind: "surface-removed",
           path: "$",
           message: "A public schema surface was removed.",
+          fingerprint: changeFingerprint(
+            "surface-removed",
+            normalizeJsonSchema(oldArtifact.schema),
+            undefined,
+          ),
           accepted: false,
         },
       ];
@@ -128,11 +149,7 @@ export const compareArtifactSets = (
     } else {
       findings = [];
     }
-    return acceptCompatibilityExceptions(surface, findings, policy.exceptions, {
-      persistedStoresBySurface,
-      storeVersions,
-      baseStoreVersions,
-    }).map((entry) => ({
+    return acceptCompatibilityExceptions(surface, findings, policy.exceptions, options).map((entry) => ({
       ...entry,
       surface,
     }));
@@ -164,16 +181,18 @@ export const checkSchemaCompatibility = async (
     const surface = "schema:AppliedAppPlan";
     baseline.set(surface, { ...legacy, surface, schema: legacyAppliedPayload(legacy.schema) });
   }
-  const findings = compareArtifactSets(baseline, comparableArtifacts(after, before.unavailableFamilies), {
-    exceptions,
-    persistedStoresBySurface,
-    storeVersions,
-    baseStoreVersions,
-  });
+  const comparable = comparableArtifacts(after, before.unavailableFamilies);
+  const policy = { persistedStoresBySurface, storeVersions, baseStoreVersions };
+  const findings = compareArtifactSets(baseline, comparable, { ...policy, exceptions });
   return {
     baseRef,
     findings,
     skips,
+    suggestions: suggestCompatibilityExceptions(
+      findings,
+      exceptions,
+      withArtifactStores(baseline, comparable, policy),
+    ),
     ok: findings.every((entry) => entry.accepted || entry.verdict === "compatible"),
   };
 };
@@ -202,6 +221,11 @@ const main = async (): Promise<void> => {
   process.stdout.write(
     `[schema-compatibility] base=${result.baseRef} compatible=${counts.compatible} breaking=${counts.breaking} unknown=${counts.unknown} accepted=${counts.accepted} skipped=${counts.skipped}\n`,
   );
+  if (result.suggestions.length > 0) {
+    process.stdout.write(
+      `[schema-compatibility] ${result.suggestions.length} unreviewed change(s). After review, add each entry below to sdk/compatibility-exceptions.json (an entry whose fingerprint already exists replaces it) and write its justification:\n${JSON.stringify(result.suggestions, null, 2)}\n`,
+    );
+  }
   if (!result.ok) process.exitCode = 1;
 };
 

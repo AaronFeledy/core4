@@ -98,6 +98,7 @@ const runtimeFor = (
   extras: Partial<ServiceRuntimeFields> = {},
 ): Extract<ServiceRuntimeInfo, { status: "running" }> => ({
   app: plannedApp.id,
+  appRoot: plannedApp.identity?.appRoot ?? plannedApp.root,
   service,
   providerId: plannedApp.provider,
   status: "running",
@@ -153,10 +154,6 @@ const runStart = (
       }
       options.afterApply?.(applied, applyOptions);
     },
-    onStop: (target) => {
-      stopCalls.push(target.service);
-      options.onStop?.(target);
-    },
     inspect:
       options.inspect ??
       ((target) => {
@@ -168,10 +165,15 @@ const runStart = (
     providerOverrides: {
       list: (filter: ListFilter) =>
         Effect.succeed(containers.filter((entry) => filter.app === undefined || entry.app === filter.app)),
-      removeObservedService: (observation) =>
+      bringDownObserved: (observation, disposition) =>
         Effect.sync(() => {
+          if (disposition === "stop") {
+            stopCalls.push(observation.service);
+            options.onStop?.(observation);
+            return { service: observation.service, action: "stopped" as const };
+          }
           removed.push(String(observation.service));
-          return { kind: "removed" as const };
+          return { service: observation.service, action: "removed" as const };
         }),
       ...options.providerOverrides,
     },

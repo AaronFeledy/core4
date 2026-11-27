@@ -6,26 +6,23 @@ import {
   renderGlobalStatusResult,
 } from "../../../commands/meta/global-status";
 import type { LandoCommandSpec } from "../../../spec/command-base";
-import { formatFlag, serviceNamesFlag, specFlagsOf } from "../../../spec/input-coercion";
+import { commandResultFormatAmong, serviceNamesFlag, specFlagsOf } from "../../../spec/input-coercion";
 import { Flags } from "../../../spec/metadata";
 
 export const globalStatusFormatFromInput = (input: unknown): "json" | "table" =>
-  formatFlag(specFlagsOf(input), ["json", "table"], "table");
+  commandResultFormatAmong(input, ["json", "table"], "table");
 
 export const globalStatusOptionsFromInput = (input: unknown): GlobalStatusOptions => {
   if (typeof input !== "object" || input === null) return {};
   const flags = specFlagsOf(input);
   const services = serviceNamesFlag(flags);
-  return {
-    ...(services.length === 0 ? {} : { services }),
-    format: globalStatusFormatFromInput(input),
-  };
+  return services.length === 0 ? {} : { services };
 };
 
 export const metaGlobalStatusSpec: LandoCommandSpec<GlobalStatusResult> = {
   resultSchema: GlobalStatusResultSchema,
   id: "meta:global:status",
-  resultFormats: ["table"],
+  rendersTable: true,
   summary: "Show runtime status for the host-level global Lando app.",
   description: "Show runtime status for the host-level global Lando app.",
   namespace: "meta",
@@ -37,10 +34,6 @@ export const metaGlobalStatusSpec: LandoCommandSpec<GlobalStatusResult> = {
       char: "s",
       description: "Filter to a specific global service (repeatable).",
       multiple: true,
-    }),
-    format: Flags.string({
-      description: "Output format.",
-      default: "table",
     }),
   },
   run: (input) => globalStatus(globalStatusOptionsFromInput(input)),

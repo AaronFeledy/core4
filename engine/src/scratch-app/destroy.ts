@@ -1,6 +1,6 @@
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
-import { mapFailures } from "@lando/sdk/command-result";
+import { causeRemediation, mapFailures } from "@lando/sdk/command-result";
 import { ScratchAppError } from "@lando/sdk/errors";
 import {
   PostDestroyEvent,
@@ -20,22 +20,26 @@ import {
   StateStore,
 } from "@lando/sdk/services";
 import { DateTime, Effect, Option } from "effect";
-import { routeOwnerFromScratch } from "../lifecycle/route-owner.ts";
+import { routeOwnerFromPlan, routeOwnerFromRoot, routeOwnerFromScratch } from "../lifecycle/route-owner.ts";
 import { withdrawOwnerRoutes } from "../lifecycle/route-withdrawal.ts";
 import { removeServiceCertificates } from "../lifecycle/service-certificate-paths.ts";
+import { canonicalMissingAppRoot } from "../operations/app-mutation-lock.ts";
 import { withDestroyProgress } from "../operations/destroy-progress.ts";
 import { removeSnapshots, scratchOwnedSnapshots } from "../operations/destroy-snapshots.ts";
 import { BuildOwner } from "../services/build-owner.ts";
 import { clearAppBuildResults } from "../services/build-results.ts";
 import { removeAppBuildOutput, warnBuildOutputCleanupFailure } from "../services/build-transcript-cleanup.ts";
+import { cleanupScratchInventory, cleanupScratchOwnedState } from "./owned-cleanup.ts";
 import { ScratchRegistry } from "./registry.ts";
 import { ScratchResourceScanner } from "./scanner.ts";
+import { resolveScratchTeardown } from "./teardown-evidence.ts";
 
 export interface ScratchReapInput {
   readonly id: string;
   readonly instanceRoot: AbsolutePath;
   readonly keepVolumes?: boolean;
   readonly plan?: AppPlan;
+  readonly materializationOnly?: boolean;
   readonly reason?: PreScratchDestroyEvent["reason"];
 }
 
@@ -45,7 +49,7 @@ export const makeScratchReaper = Effect.gen(function* () {
   const providers = yield* RuntimeProviderRegistry;
   const scanner = yield* ScratchResourceScanner;
   const mover = yield* DataMover;
-  const router = yield* Effect.serviceOption(RouterService);
+  const router = yield* RouterService;
   const paths = yield* Effect.serviceOption(PathsService);
   const stateStore = yield* StateStore;
   return Effect.fn("ScratchApp.reap")(
@@ -53,22 +57,20 @@ export const makeScratchReaper = Effect.gen(function* () {
       const entry = yield* registry.get(input.id);
       const reason = input.reason ?? "acquire-failure";
       if (reason === "acquire-failure" && entry === undefined) return;
+      // The managed root as plans, inventories, and route owners record it, even once it is gone.
+      const managedRoot = AbsolutePath.make(
+        yield* canonicalMissingAppRoot(join(String(input.instanceRoot), "root")),
+      );
       // The desired cache may miss after a frame bump; recover the matching applied plan
       // before planless orphan cleanup so snapshots and provider teardown still own the app.
-      const lookupRoot = AbsolutePath.make(entry?.rootPath ?? join(String(input.instanceRoot), "root"));
-      const plan =
-        input.plan ??
-        (yield* providers
-          .resolveTeardownEvidence(lookupRoot, { kind: "scratch", id: input.id })
-          .pipe(Effect.map((evidence) => (evidence.kind === "applied" ? evidence.plan : undefined))));
-      if (plan !== undefined && plan.id !== input.id)
-        return yield* Effect.fail(
-          new ScratchAppError({
-            operation: "destroy",
-            message: "Cached scratch plan belongs to a different app.",
-            remediation: "Repair the scratch plan cache before retrying destroy.",
-          }),
-        );
+      const lookupRoot = entry?.layout === "legacy" ? AbsolutePath.make(entry.rootPath) : managedRoot;
+      const { plan, ownership, inventoryOnly } = input.materializationOnly
+        ? { plan: undefined, ownership: [], inventoryOnly: false }
+        : yield* resolveScratchTeardown({
+            id: input.id,
+            lookupRoot,
+            ...(input.plan === undefined ? {} : { plan: input.plan }),
+          }).pipe(Effect.provideService(RuntimeProviderRegistry, providers));
       const app = {
         kind: "scratch" as const,
         id: input.id,
@@ -95,20 +97,30 @@ export const makeScratchReaper = Effect.gen(function* () {
         },
       };
       const provider = plan === undefined ? undefined : yield* providers.select(plan);
-      const orphan = plan === undefined ? yield* scanner.prepareScratch(input.id, keepVolumes) : undefined;
+      const orphan =
+        plan === undefined && !input.materializationOnly
+          ? yield* scanner.prepareScratch(input.id, keepVolumes)
+          : undefined;
       const evidence =
-        plan === undefined || entry?.status === "acquiring" ? ("orphans" as const) : ("applied" as const);
+        plan !== undefined && entry?.status !== "acquiring"
+          ? ("applied" as const)
+          : inventoryOnly
+            ? ("inventory" as const)
+            : ("orphans" as const);
       yield* events.publish(PreScratchDestroyEvent.make({ ...payload, timestamp: DateTime.nowUnsafe() }));
       yield* Effect.gen(function* () {
         yield* events.publish(PreStopEvent.make({ scope: "app", app, timestamp: DateTime.nowUnsafe() }));
         const stopped =
           provider !== undefined && plan !== undefined
-            ? (yield* provider.destroy({ app: plan.id, plan }, { volumes: false, removeState: false }))
-                .kind === "destroyed"
+            ? (yield* provider.bringDown(
+                { app: plan.id, plan },
+                { containers: "remove", volumes: false, removeState: false },
+              )).kind === "removed"
             : yield* orphan?.stop ?? Effect.succeed(false);
         yield* events.publish(PostStopEvent.make({ scope: "app", app, timestamp: DateTime.nowUnsafe() }));
         yield* events.publish(PreDestroyEvent.make({ app, evidence, timestamp: DateTime.nowUnsafe() }));
         const destroy = Effect.gen(function* () {
+          if (input.materializationOnly) return "unchanged" as const;
           const snapshots =
             keepVolumes || plan === undefined
               ? []
@@ -116,22 +128,49 @@ export const makeScratchReaper = Effect.gen(function* () {
           const removed = yield* removeSnapshots(snapshots).pipe(Effect.provideService(DataMover, mover));
           const destroyed =
             provider !== undefined && plan !== undefined
-              ? (yield* provider.destroy(
+              ? (yield* provider.bringDown(
                   { app: plan.id, plan },
-                  { volumes: !keepVolumes, removeState: true },
-                )).kind === "destroyed"
+                  { containers: "remove", volumes: !keepVolumes, removeState: false },
+                )).kind === "removed"
               : yield* orphan?.destroy ?? Effect.succeed(false);
-          yield* withdrawOwnerRoutes(routeOwnerFromScratch(input.id)).pipe(
-            Effect.provideService(EventService, events),
-            Option.isSome(router) ? Effect.provideService(RouterService, router.value) : (effect) => effect,
-          );
-          yield* removeServiceCertificates(routeOwnerFromScratch(input.id).ownerKey).pipe(
-            Effect.provideService(EventService, events),
-            Option.isSome(paths) ? Effect.provideService(PathsService, paths.value) : (effect) => effect,
-          );
+          // Without a plan, the registry layout says which owner published; with neither, try both.
+          const managedOwner = routeOwnerFromRoot(input.id, managedRoot);
+          const routeOwners =
+            plan !== undefined
+              ? [routeOwnerFromPlan(plan)]
+              : entry?.layout === "legacy"
+                ? [routeOwnerFromScratch(input.id)]
+                : entry?.layout === "managed"
+                  ? [managedOwner]
+                  : [routeOwnerFromScratch(input.id), managedOwner];
+          for (const routeOwner of routeOwners) {
+            yield* withdrawOwnerRoutes(routeOwner).pipe(
+              Effect.provideService(EventService, events),
+              Effect.provideService(RouterService, router),
+            );
+            yield* removeServiceCertificates(routeOwner.ownerKey).pipe(
+              Effect.provideService(EventService, events),
+              Option.isSome(paths) ? Effect.provideService(PathsService, paths.value) : (effect) => effect,
+            );
+          }
+          if (plan !== undefined && provider !== undefined) {
+            yield* cleanupScratchOwnedState({ plan, provider, keepVolumes }).pipe(
+              Effect.provideService(RuntimeProviderRegistry, providers),
+              Effect.provideService(StateStore, stateStore),
+            );
+            // Last: a retry after any failure above recovers the plan from this receipt.
+            yield* provider.bringDown(
+              { app: plan.id, plan },
+              { containers: "remove", volumes: false, removeState: true },
+            );
+          } else
+            yield* cleanupScratchInventory({ id: input.id, ownership, keepVolumes }).pipe(
+              Effect.provideService(RuntimeProviderRegistry, providers),
+              Effect.provideService(StateStore, stateStore),
+            );
           return stopped || destroyed || removed > 0 ? ("destroyed" as const) : ("unchanged" as const);
         });
-        const outcome = yield* reason === "gc"
+        const outcome = yield* reason === "gc" || input.materializationOnly
           ? destroy
           : withDestroyProgress({
               events,
@@ -146,21 +185,22 @@ export const makeScratchReaper = Effect.gen(function* () {
             });
         // teardown succeeded: the destroyed container's build output is stale.
         const buildOwner = BuildOwner.scratch(AppId.make(input.id));
-        yield* (
-          Option.isSome(paths)
-            ? removeAppBuildOutput(buildOwner, scratchProviderId, undefined, {
-                images: "release",
-              }).pipe(
-                Effect.provideService(PathsService, paths.value),
-                Effect.provideService(StateStore, stateStore),
-                Effect.provideService(RuntimeProviderRegistry, providers),
-              )
-            : clearAppBuildResults(stateStore, buildOwner)
-        ).pipe(
-          Effect.catch((failure) =>
-            warnBuildOutputCleanupFailure({ providerId: scratchProviderId, message: failure.message }),
-          ),
-        );
+        if (!input.materializationOnly)
+          yield* (
+            Option.isSome(paths)
+              ? removeAppBuildOutput(buildOwner, scratchProviderId, undefined, {
+                  images: "release",
+                }).pipe(
+                  Effect.provideService(PathsService, paths.value),
+                  Effect.provideService(StateStore, stateStore),
+                  Effect.provideService(RuntimeProviderRegistry, providers),
+                )
+              : clearAppBuildResults(stateStore, buildOwner)
+          ).pipe(
+            Effect.catch((failure) =>
+              warnBuildOutputCleanupFailure({ providerId: scratchProviderId, message: failure.message }),
+            ),
+          );
         yield* events.publish(
           PostDestroyEvent.make({ app, evidence, outcome, timestamp: DateTime.nowUnsafe() }),
         );
@@ -198,6 +238,7 @@ export const makeScratchReaper = Effect.gen(function* () {
             message: "Unable to destroy scratch resources.",
             cause,
             remediation:
+              causeRemediation(cause) ??
               "Repair the failed provider, snapshot, or route operation and retry scratch destroy.",
           }),
     ),

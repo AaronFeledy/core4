@@ -43,13 +43,14 @@ import { CommandResultEnvelope, SnapshotInfo, appIdentityKey } from "@lando/sdk/
 import type {
   AppSelector,
   AppliedFileSyncInspection,
-  DestroyOptions,
+  BringDownOptions,
   FileSyncEngineShape,
   RuntimeProviderShape,
+  ServiceRuntimeInfo,
 } from "@lando/sdk/services";
 import { DataMover, RuntimeProvider, StateStore } from "@lando/sdk/services";
 import { startChildTaskId } from "@lando/sdk/task-progress";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import * as DiskStateStore from "@lando/state-store/service";
 import { Cause, DateTime, Effect, Exit, Layer, Schema, Stream } from "effect";
@@ -232,7 +233,7 @@ const makeDestroyLayer = (
 
   const events: string[] = [];
   const publishedEvents: Array<{ readonly _tag: string; readonly [key: string]: unknown }> = [];
-  const destroyCalls: Array<{ readonly target: AppSelector; readonly options: DestroyOptions }> = [];
+  const destroyCalls: Array<{ readonly target: AppSelector; readonly options: BringDownOptions }> = [];
   const artifactRemovals: string[] = [];
   const evidenceRoots: string[] = [];
   const volumes = new Set(plannedApp.stores.map((store) => store.name));
@@ -263,10 +264,10 @@ const makeDestroyLayer = (
     capabilities,
     ...(options.orphanEvidence === true || options.leftoverOrphans === true
       ? {
-          removeObservedService: () =>
+          bringDownObserved: (observed: ServiceRuntimeInfo) =>
             Effect.sync(() => {
               mutations.push("remove:orphan");
-              return { kind: "removed" as const };
+              return { service: observed.service, action: "removed" as const };
             }),
         }
       : {}),
@@ -310,11 +311,9 @@ const makeDestroyLayer = (
     ...(options.quiesceEffect === undefined
       ? {}
       : { quiesceForFileSync: () => (options.quiesceEffect ?? Effect.void).pipe(Effect.as({})) }),
-    start: () => Effect.void,
-    stop: () => Effect.void,
     restart: () => Effect.void,
     waitForExit: () => Effect.succeed({ exitCode: 0 }),
-    destroy: (target, destroyOptions) =>
+    bringDown: (target, destroyOptions) =>
       Effect.sync(() => {
         destroyCalls.push({ target, options: destroyOptions });
         const removed: { data: number; cache: number } = { data: 0, cache: 0 };
@@ -330,7 +329,8 @@ const makeDestroyLayer = (
       }).pipe(
         Effect.tap(() => options.providerDestroyEffect ?? Effect.void),
         Effect.map((removed) => ({
-          kind: "destroyed" as const,
+          kind: "removed" as const,
+          containers: [],
           volumesRemoved: removed,
           ...(options.sharedCacheInUse && destroyOptions.purgeCaches
             ? { skipped: [{ appId: plannedApp.id, resource: "lando-cache-npm", reason: "in use" }] }
@@ -400,14 +400,13 @@ const makeDestroyLayer = (
     Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(currentTestPlan(plannedApp)) })),
     Layer.succeed(
       RuntimeProviderRegistry,
-      RuntimeProviderRegistry.of({
+      makeTestRuntimeProviderRegistry({
         resolveTeardownEvidence: () =>
           Effect.succeed(
             options.absent !== true
               ? { kind: "applied" as const, plan: plannedApp }
               : { kind: "absent" as const },
           ),
-        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([providerId]),
         capabilities: Effect.succeed(capabilities),
         select: () => Effect.succeed(provider),
@@ -656,7 +655,11 @@ const expectRecordedBracket = (
     ids.map((id) => ({ app: { id }, evidence, outcome: expected.outcome })),
   );
   expect(harness.publishedEvents.filter((event) => event._tag === "task.tree.start")).toMatchObject([
-    { children: expected.children.map((id) => startChildTaskId(`destroy-${ids[0]}`, id)) },
+    {
+      children: expected.children.map((id) =>
+        expect.objectContaining({ id: startChildTaskId(`destroy-${ids[0]}`, id) }),
+      ),
+    },
   ]);
   expect(harness.events.indexOf("pre-destroy")).toBeLessThan(harness.events.indexOf("task.tree.start"));
   expect(harness.events.indexOf("task.tree.complete")).toBeLessThan(harness.events.indexOf("post-destroy"));
@@ -1023,7 +1026,11 @@ describe("lando destroy", () => {
     expect(harness.mutations.indexOf("inventory")).toBeLessThan(harness.mutations.indexOf("post-destroy"));
     expect(harness.destroyCalls).toHaveLength(1);
     expect(harness.destroyCalls[0]?.target).toEqual({ app: plan.id, plan });
-    expect(harness.destroyCalls[0]?.options).toEqual({ volumes: false, removeState: true });
+    expect(harness.destroyCalls[0]?.options).toEqual({
+      containers: "remove",
+      volumes: false,
+      removeState: true,
+    });
     expect(harness.volumes.has("test_destroy_database_data")).toBe(true);
     expect(harness.volumes.has("lando-cache-npm")).toBe(true);
     expect(result.servicesDestroyed).toEqual(["database", "web"]);
@@ -1086,7 +1093,11 @@ describe("lando destroy", () => {
     const harness = makeDestroyLayer();
     const result = await Effect.runPromise(destroyApp({ volumes: true }).pipe(Effect.provide(harness.layer)));
 
-    expect(harness.destroyCalls[0]?.options).toEqual({ volumes: true, removeState: true });
+    expect(harness.destroyCalls[0]?.options).toEqual({
+      containers: "remove",
+      volumes: true,
+      removeState: true,
+    });
     expect(harness.volumes.has("test_destroy_database_data")).toBe(false);
     expect(harness.volumes.has("lando-cache-npm")).toBe(true);
     expect(result).toMatchObject({ dataVolumesRemoved: true, cacheVolumesRemoved: false });
@@ -1099,6 +1110,7 @@ describe("lando destroy", () => {
     );
 
     expect(harness.destroyCalls[0]?.options).toEqual({
+      containers: "remove",
       volumes: false,
       purgeCaches: true,
       removeState: true,

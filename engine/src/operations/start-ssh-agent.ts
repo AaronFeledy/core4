@@ -16,7 +16,6 @@ import { makeTaskTree, runWithTaskTree } from "@lando/sdk/task-progress";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { DateTime, Effect, Option, type Scope } from "effect";
 import type { SshAgentIntent } from "../subsystems/ssh/intent.ts";
-import { probeSshAgent } from "../subsystems/ssh-agent/agent-probe.ts";
 import { cleanupAgentRelayState } from "../subsystems/ssh-agent/cleanup.ts";
 import { startDetachedAgentRelayWorker } from "../subsystems/ssh-agent/detached-worker.ts";
 import {
@@ -34,7 +33,7 @@ import type { AgentRelayUpstream } from "../subsystems/ssh-agent/relay.ts";
 import { type AgentRelaySession, runtimeSshAgentReady } from "../subsystems/ssh-agent/session.ts";
 import { type PublishSession, withRetainedSession } from "./retained-session.ts";
 import { startSshAgentTreeId } from "./start-progress.ts";
-import { startSshSidecar } from "./start-ssh-sidecar.ts";
+import { sidecarSocketReachable, startSshSidecar } from "./start-ssh-sidecar.ts";
 
 type Capabilities = Pick<ProviderCapabilities, "agentSocket">;
 type AgentError = SshAgentUnavailableError | SshAgentTransportError;
@@ -77,11 +76,7 @@ export const resolveSshAgentUpstream = Effect.fnUntraced(function* (
     readonly provider?: ProviderId;
     readonly intent: SshAgentIntent;
   },
-): Effect.fn.Return<
-  AgentRelayUpstream | { readonly _tag: "volume"; readonly volume: string },
-  SshAgentUnavailableError,
-  EventService
-> {
+) {
   const unavailable = () =>
     new SshAgentUnavailableError({
       message: "No SSH agent sidecar service is installed.",
@@ -93,7 +88,6 @@ export const resolveSshAgentUpstream = Effect.fnUntraced(function* (
     case "sidecar": {
       const ssh = yield* Effect.serviceOption(SshService);
       if (Option.isNone(ssh)) return yield* Effect.fail(unavailable());
-      const socket = yield* ssh.value.getAgentSocket(input.appId).pipe(mapFailures(unavailable));
       const globalApp = yield* Effect.serviceOption(GlobalAppService);
       const globalProvider = Option.isSome(globalApp)
         ? yield* globalApp.value.providerId.pipe(
@@ -110,23 +104,25 @@ export const resolveSshAgentUpstream = Effect.fnUntraced(function* (
             ),
           )
         : undefined;
-      if (
-        input.provider === globalProvider &&
-        globalProvider !== undefined &&
-        socket.runtimeVolume !== undefined
-      ) {
-        const upstream = { _tag: "volume" as const, volume: socket.runtimeVolume };
-        if (yield* runtimeSshAgentReady) return upstream;
-        return yield* startSshSidecar(input, ssh.value, upstream);
+      if (input.provider === globalProvider && globalProvider !== undefined) {
+        const service = ssh.value;
+        const delivery = service.getAgentSocket(input.appId).pipe(
+          mapFailures(unavailable),
+          Effect.map(({ runtimeVolume, socketPath }) =>
+            runtimeVolume === undefined
+              ? { _tag: "unix" as const, path: socketPath }
+              : { _tag: "volume" as const, volume: runtimeVolume },
+          ),
+        );
+        if (yield* runtimeSshAgentReady) {
+          const upstream = yield* delivery;
+          if (upstream._tag === "volume" || (yield* sidecarSocketReachable(upstream))) return upstream;
+        }
+        return yield* startSshSidecar(input, service, delivery);
       }
+      const socket = yield* ssh.value.getAgentSocket(input.appId).pipe(mapFailures(unavailable));
       const upstream: AgentRelayUpstream = { _tag: "unix", path: socket.socketPath };
-      const ready = yield* Effect.tryPromise({
-        try: () => probeSshAgent(upstream, { timeoutMs: 2_000 }),
-        catch: unavailable,
-      }).pipe(
-        Effect.as(true),
-        Effect.catch(() => Effect.succeed(false)),
-      );
+      const ready = yield* sidecarSocketReachable(upstream);
       return ready ? upstream : yield* startSshSidecar(input, ssh.value, upstream);
     }
     case "host": {

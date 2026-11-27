@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { StreamFrameSink, followLogsApp, logsApp, renderLogsAppResult } from "@lando/core/cli/operations";
+import { followLogsApp, logsApp, renderLogsAppResult } from "@lando/core/cli/operations";
 import { ProviderUnavailableError } from "@lando/core/errors";
 import {
   AbsolutePath,
@@ -23,6 +23,7 @@ import {
   PathsService,
   RuntimeProviderRegistry,
   StateStore,
+  StreamFrameSink,
 } from "@lando/core/services";
 import { makeTestStateStore } from "@lando/core/testing";
 import { makeGlobalAppServiceForRoot } from "@lando/engine/global-app/service";
@@ -38,7 +39,7 @@ import { makeLandoPaths } from "@lando/paths";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { StreamFrame } from "@lando/sdk/schema";
 import type { LogChunk, LogOptions, LogTarget, RuntimeProviderShape } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Cause, DateTime, Effect, Exit, Layer, Schema, Stream, Struct } from "effect";
 import { logsSpec } from "../../src/cli/command-specs/app/logs.ts";
 import { globalLogsSpec } from "../../src/cli/command-specs/meta/global/logs.ts";
@@ -177,7 +178,6 @@ const makeLogsLayer = (
     platform: "linux",
     capabilities: effectiveCapabilities,
     isAvailable: Effect.succeed(true),
-    planSetup: () => Effect.succeed({ providerId, changes: [] }),
     setup: () => Effect.void,
     getStatus: Effect.succeed({ state: "running" as const }),
     getVersions: Effect.succeed({ provider: "0.0.0" }),
@@ -202,12 +202,11 @@ const makeLogsLayer = (
     removeArtifact: () => Effect.succeed({ kind: "absent" as const }),
     listArtifacts: () => Effect.succeed([]),
     apply: () => Effect.succeed({ changed: false }),
-    start: () => Effect.void,
-    stop: () => Effect.void,
     restart: () => Effect.void,
     waitForExit: () => Effect.succeed({ exitCode: 0 }),
-    destroy: () => Effect.succeed({ kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } }),
-    removeObservedService: () => Effect.succeed({ kind: "absent" as const }),
+    bringDown: () =>
+      Effect.succeed({ kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } }),
+    bringDownObserved: (observed) => Effect.succeed({ service: observed.service, action: "absent" as const }),
     readAppEnvironment: () => Effect.succeed([]),
     exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
     execStream: () => Stream.die("not used"),
@@ -255,10 +254,8 @@ const makeLogsLayer = (
     Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(currentPlan) })),
     Layer.succeed(
       RuntimeProviderRegistry,
-      RuntimeProviderRegistry.of({
-        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+      makeTestRuntimeProviderRegistry({
         appliedPlansFor: () => Effect.succeed(overrides.applied ? [currentPlan] : []),
-        resolveAppliedPlan: () => Effect.succeed(undefined),
         list: Effect.succeed([providerId]),
         capabilities: Effect.succeed(defaultProviderCapabilities),
         select: () => Effect.succeed(provider),

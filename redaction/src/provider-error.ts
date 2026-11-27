@@ -1,5 +1,6 @@
 import { mapDefectCause, mapFailureCause } from "@lando/sdk/command-result";
 import {
+  AppliedStateVersionError,
   ArtifactBuildError,
   ArtifactTransferError,
   EnvironmentValueResolutionError,
@@ -8,9 +9,6 @@ import {
   ProviderCapabilityError,
   ProviderConfigError,
   ProviderInternalError,
-  ProviderSetupConsentDeniedError,
-  ProviderSetupPrivilegeUnavailableError,
-  ProviderSetupProvisioningError,
   ProviderSetupUnsupportedHostError,
   ProviderUnavailableError,
   SecretNotFoundError,
@@ -37,6 +35,7 @@ export const isProviderError = Schema.is(
     EnvironmentValueResolutionError,
     PlanReplanRequiredError,
     ProviderUnavailableError,
+    AppliedStateVersionError,
     ProviderCapabilityError,
     ProviderConfigError,
     ProviderInternalError,
@@ -48,9 +47,6 @@ export const isProviderError = Schema.is(
     VolumeOperationError,
     ServiceCopyError,
     ArtifactTransferError,
-    ProviderSetupConsentDeniedError,
-    ProviderSetupPrivilegeUnavailableError,
-    ProviderSetupProvisioningError,
     ProviderSetupUnsupportedHostError,
   ]),
 );
@@ -76,7 +72,7 @@ const baseFields = (
 });
 
 const setupFields = (
-  error: Pick<ProviderSetupConsentDeniedError, "providerId" | "message" | "remediation">,
+  error: Pick<ProviderSetupUnsupportedHostError, "providerId" | "message" | "remediation">,
   redactor: Redactor,
 ) => ({
   providerId: ProviderId.make(redactor.redactString(error.providerId)),
@@ -136,6 +132,16 @@ export function redactProviderError(
       });
     case "ProviderUnavailableError":
       return new ProviderUnavailableError(baseFields(error, redactor, options));
+    case "AppliedStateVersionError":
+      return new AppliedStateVersionError({
+        ...baseFields(error, redactor, options),
+        path: redactor.redactString(error.path),
+        storedVersion: error.storedVersion,
+        supportedVersion: error.supportedVersion,
+        ...(error.writtenBy === undefined ? {} : { writtenBy: redactor.redactString(error.writtenBy) }),
+        scope: error.scope,
+        ...(error.appId === undefined ? {} : { appId: redactor.redactString(error.appId) }),
+      });
     case "ProviderCapabilityError":
       return new ProviderCapabilityError({
         ...baseFields(error, redactor, options),
@@ -221,22 +227,6 @@ export function redactProviderError(
       return new ArtifactTransferError({
         ...baseFields(error, redactor, options),
         ...(error.artifactRef === undefined ? {} : { artifactRef: redactor.redactString(error.artifactRef) }),
-      });
-    case "ProviderSetupConsentDeniedError":
-      return new ProviderSetupConsentDeniedError({ ...setupFields(error, redactor), change: error.change });
-    case "ProviderSetupPrivilegeUnavailableError":
-      return new ProviderSetupPrivilegeUnavailableError({
-        ...setupFields(error, redactor),
-        change: error.change,
-      });
-    case "ProviderSetupProvisioningError":
-      return new ProviderSetupProvisioningError({
-        ...setupFields(error, redactor),
-        change: error.change,
-        stage: error.stage,
-        ...(error.exitCode === undefined ? {} : { exitCode: error.exitCode }),
-        ...(error.stderr === undefined ? {} : { stderr: redactor.redactString(error.stderr) }),
-        ...(options.cause === "omit" || error.cause === undefined ? {} : { cause: error.cause }),
       });
     case "ProviderSetupUnsupportedHostError":
       return new ProviderSetupUnsupportedHostError({

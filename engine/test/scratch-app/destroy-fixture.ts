@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { makeLandoPaths } from "@lando/paths";
@@ -9,35 +9,40 @@ import {
   ProviderUnavailableError,
   ProxyError,
   ScratchAppError,
+  appliedStateVersionError,
 } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
   AppPlan,
-  LandofileShape,
   ProviderId,
+  type ResourceOwnership,
   type SnapshotInfo,
+  appIdentityKey,
   planAppIdentity,
 } from "@lando/sdk/schema";
 import {
   AppPlanner,
+  type BringDownOptions,
   DataMover,
   EventService,
   type LandoEvent,
-  LandofileService,
+  type OwnedResourcesCleanupOptions,
   PathsService,
   RouterService,
   RuntimeProviderRegistry,
   ScratchAppService,
   StateStore,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider, makeTestRouterService } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRouterService, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { makeStateStore } from "@lando/state-store/service";
-import { DateTime, Effect, Layer, Predicate, Schema, Stream } from "effect";
+import { DateTime, Effect, Layer, Predicate, Stream } from "effect";
+import { RuntimeCwd } from "../../src/runtime/cwd.ts";
 import { SCRATCH_EXTENSION_KEY } from "../../src/scratch-app/identity.ts";
 import { SCRATCH_DESIRED_PLAN_VERSION } from "../../src/scratch-app/plan.ts";
 import {
+  SCRATCH_REGISTRY_VERSION,
   ScratchRegistry,
   type ScratchRegistryEntry,
   planScratchRegistryWrite,
@@ -73,7 +78,8 @@ interface DestroyFixtureOptions {
   readonly orphan?: boolean;
   readonly cwd?: boolean;
   readonly fail?: boolean;
-  readonly routeFail?: boolean;
+  /** `"once"` fails only the first route withdrawal, so a retry can succeed. */
+  readonly routeFail?: boolean | "once";
   readonly copyFail?: boolean;
   readonly registryFail?: boolean;
   readonly postScratchDestroyFail?: boolean;
@@ -83,6 +89,13 @@ interface DestroyFixtureOptions {
   readonly desiredPlanVersion?: number;
   /** Return the scratch app's applied plan from resolveAppliedPlan; defaults to none. */
   readonly appliedPlan?: boolean;
+  /** A newer receipt protects this scratch app, by name or as the provider's shared record. */
+  readonly offlineNewerReceipt?: "app" | "provider";
+  /**
+   * The scratch survives only as a provider ownership inventory under its managed root, beside a
+   * source app's inventory that also records a scratch id.
+   */
+  readonly ownershipOnly?: boolean;
 }
 
 export const withDestroyFixture = async (
@@ -132,6 +145,8 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
     identity: planAppIdentity({ root: planRoot }),
   };
   const calls: string[] = [];
+  let routeFailures =
+    options.routeFail === "once" ? 1 : options.routeFail === true ? Number.POSITIVE_INFINITY : 0;
   const events: LandoEvent[] = [];
   const rootObservations: { readonly tag: string; readonly exists: boolean }[] = [];
   const snapshots: SnapshotInfo[] = [id, AppId.make("user-app")].map((app) => ({
@@ -143,32 +158,69 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
     createdAt: DateTime.makeUnsafe(0),
   }));
   const removed: string[] = [];
+  const withdrawnOwnerKeys: string[] = [];
   const entries = new Map<string, ScratchRegistryEntry>();
   const entry: ScratchRegistryEntry = {
     id,
     rootPath: planRoot,
     source: { kind: "fork" },
     isolate: options.cwd ? "cwd" : "full",
+    layout: options.cwd ? "legacy" : "managed",
     detached: false,
     ownerPid: 999999999,
     status: "running",
     createdAt: "2026-01-01T00:00:00Z",
     updatedAt: "2026-01-01T00:00:00Z",
   };
-  if (!options.orphan) entries.set(id, entry);
-  await mkdir(join(instanceRoot, "root"), { recursive: true });
-  if (!options.orphan && options.skipDesiredPlan !== true)
+  if (!options.orphan && !options.ownershipOnly) entries.set(id, entry);
+  if (!options.ownershipOnly) await mkdir(join(instanceRoot, "root"), { recursive: true });
+  const managedRoot = AbsolutePath.make(join(await realpath(root), "scratch", id, "root"));
+  const sourceRoot = AbsolutePath.make(join(root, "source-app"));
+  if (options.copyFail) {
+    await mkdir(sourceRoot, { recursive: true });
+    await writeFile(join(sourceRoot, ".lando.yml"), "name: demo\nruntime: 4\nservices: {}\n");
+  }
+  let ownership: ReadonlyArray<ResourceOwnership> = options.ownershipOnly
+    ? [
+        {
+          appRoot: managedRoot,
+          ownerKey: appIdentityKey("owner", managedRoot),
+          providerId: ProviderId.make("lando"),
+          appIds: [id],
+        },
+        {
+          appRoot: sourceRoot,
+          ownerKey: appIdentityKey("owner", sourceRoot),
+          providerId: ProviderId.make("lando"),
+          appIds: [AppId.make("scratch-legacy-654321")],
+        },
+      ]
+    : [];
+  if (!options.orphan && !options.ownershipOnly && options.skipDesiredPlan !== true)
     await seedScratchPlan(instanceRoot, plan, options.desiredPlanVersion ?? SCRATCH_DESIRED_PLAN_VERSION);
   const stateStore = makeStateStore({ privateFileAccess: ownerOnlyFileAccess });
+  // A reap brings the scratch down three times: stop, destroy, then forget its applied receipt.
+  let stopped = false;
   const provider = {
     ...TestRuntimeProvider,
-    destroy: (_target: unknown, request: { readonly volumes: boolean; readonly removeState?: boolean }) =>
+    ...(options.offlineNewerReceipt
+      ? { isAvailable: Effect.succeed(false), getStatus: Effect.succeed({ state: "idle" as const }) }
+      : {}),
+    cleanupOwnedResources: (cleanupRoot: AbsolutePath, request: OwnedResourcesCleanupOptions) =>
       Effect.sync(() => {
-        calls.push(request.removeState ? `destroy:${request.volumes}` : "stop");
-        return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
+        calls.push(`cleanup:${request.appIds?.join(",")}:releaseCaches=${request.releaseCaches}`);
+        ownership = ownership.filter((hints) => hints.appRoot !== cleanupRoot);
+        return { servicesRemoved: [], networksRemoved: 0, volumesRemoved: { data: 0, cache: 0 } };
+      }),
+    bringDown: (_target: unknown, request: BringDownOptions) =>
+      Effect.sync(() => {
+        const call = request.removeState ? "forget" : stopped ? `destroy:${request.volumes}` : "stop";
+        stopped = true;
+        calls.push(call);
+        return call;
       }).pipe(
-        Effect.flatMap((outcome) =>
-          options.fail && request.removeState
+        Effect.flatMap((call) =>
+          options.fail && call.startsWith("destroy:")
             ? Effect.fail(
                 new ProviderUnavailableError({
                   providerId: "lando",
@@ -177,22 +229,68 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
                   remediation: "Install or start the `lando` provider and confirm it can perform `destroy`.",
                 }),
               )
-            : Effect.succeed(outcome),
+            : Effect.sync(() => {
+                if (call === "forget") applied = undefined;
+                return { kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } };
+              }),
         ),
       ),
   };
-  const applied =
-    options.appliedPlan === true ? { ...plan, extensions: { [SCRATCH_EXTENSION_KEY]: { id } } } : undefined;
+  // The applied receipt a forgetting bring-down removes.
+  let applied: AppPlan | undefined =
+    options.appliedPlan === true
+      ? {
+          ...plan,
+          extensions: {
+            [SCRATCH_EXTENSION_KEY]: options.cwd ? { id } : { id, projectRoot: planRoot },
+          },
+        }
+      : undefined;
+  const unreadable =
+    options.offlineNewerReceipt === undefined
+      ? []
+      : [
+          {
+            ...(options.offlineNewerReceipt === "app" ? { appId: plan.id } : {}),
+            path: join(root, "applied.json"),
+            reason: "newer-version" as const,
+            storedVersion: 11,
+            supportedVersion: 10,
+          },
+        ];
   const providers = Layer.succeed(
     RuntimeProviderRegistry,
-    RuntimeProviderRegistry.of({
-      appliedPlansFor: () => Effect.succeed(applied === undefined ? [] : [applied]),
-      resolveAppliedPlan: () => Effect.succeed(applied),
-      resolveTeardownEvidence: () =>
-        Effect.succeed(
-          applied === undefined ? { kind: "absent" as const } : { kind: "applied" as const, plan: applied },
-        ),
-      list: Effect.succeed([ProviderId.make("lando")]),
+    makeTestRuntimeProviderRegistry({
+      readAppliedPlanStrict: ({ id, provider }) => {
+        const issue = unreadable.find(
+          (entry) => (entry.appId === undefined || entry.appId === id) && provider === plan.provider,
+        );
+        return issue === undefined
+          ? Effect.succeed(undefined)
+          : Effect.fail(
+              appliedStateVersionError({
+                ...issue,
+                providerId: provider,
+                operation: "applied-state.read",
+                scope: issue.appId === undefined ? "provider" : "app",
+              }),
+            );
+      },
+      appliedStateInventory: (provider) =>
+        Effect.succeed({ plans: [], unreadable: provider === plan.provider ? unreadable : [] }),
+      appliedPlansFor: () => Effect.sync(() => (applied === undefined ? [] : [applied])),
+      resolveAppliedPlan: () => Effect.sync(() => applied),
+      resolveTeardownEvidence: (lookupRoot) =>
+        Effect.sync(() => {
+          if (applied !== undefined) return { kind: "applied" as const, plan: applied };
+          const owned = ownership.filter((hints) => hints.appRoot === lookupRoot);
+          return owned.length === 0
+            ? { kind: "absent" as const }
+            : { kind: "owned" as const, ownership: owned };
+        }),
+      listResourceOwnership: (provider) =>
+        Effect.sync(() => ownership.filter((hints) => hints.providerId === provider)),
+      list: Effect.succeed([ProviderId.make("docker"), ProviderId.make("lando"), ProviderId.make("podman")]),
       capabilities: Effect.succeed(provider.capabilities),
       select: () => Effect.succeed(provider),
     }),
@@ -209,16 +307,7 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
       AppPlanner,
       AppPlanner.of({ plan: () => Effect.succeed({ ...plan, valueModel: 1 as const }) }),
     ),
-    Layer.succeed(
-      LandofileService,
-      LandofileService.of({
-        discover: Effect.succeed(
-          literalTestLandofile(
-            Schema.decodeUnknownSync(LandofileShape)({ name: "demo", runtime: 4, services: {} }),
-          ),
-        ),
-      }),
-    ),
+    Layer.succeed(RuntimeCwd, sourceRoot),
     Layer.succeed(
       Scratch.ScratchInitAppPort,
       Scratch.ScratchInitAppPort.of({ initApp: () => Promise.reject(new TypeError("unused recipe")) }),
@@ -228,7 +317,8 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
       ScratchRegistry.of({
         get: (key) => Effect.sync(() => entries.get(key)),
         list: () => Effect.sync(() => [...entries.values()]),
-        read: () => Effect.sync(() => ({ version: 2, entries: [...entries.values()] })),
+        read: () =>
+          Effect.sync(() => ({ version: SCRATCH_REGISTRY_VERSION, entries: [...entries.values()] })),
         upsert: (...write) =>
           Effect.sync(() => {
             calls.push("registry:upsert");
@@ -261,12 +351,13 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
       RouterService,
       RouterService.of({
         ...makeTestRouterService(),
-        removeRoutes: (_owner) =>
+        removeRoutes: (owner) =>
           Effect.sync(() => {
             calls.push("routes");
+            withdrawnOwnerKeys.push(owner.ownerKey);
           }).pipe(
             Effect.andThen(
-              options.routeFail
+              routeFailures-- > 0
                 ? Effect.fail(
                     new ProxyError({
                       proxyId: "test",
@@ -293,6 +384,7 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
                 }),
               )
             : Effect.sync(() => {
+                if (event._tag === "pre-scratch-destroy") stopped = false;
                 calls.push(event._tag);
                 events.push(event);
                 const app = Predicate.hasProperty(event, "app") ? event.app : undefined;
@@ -352,11 +444,13 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
     plan,
     instanceRoot,
     calls,
+    withdrawnOwnerKeys,
     events,
     rootObservations,
     removed,
     entries,
     stateStore,
+    receipt: () => applied,
     layer: Scratch.layer.pipe(Layer.provideMerge(dependencies)),
   };
 };
@@ -368,5 +462,4 @@ export const runDestroy = (fixture: Awaited<ReturnType<typeof makeFixture>>, kee
     ),
   );
 
-import { literalTestLandofile } from "../compiled-landofile.ts";
 import { testEnvironmentResolverLayer } from "../environment-values.ts";

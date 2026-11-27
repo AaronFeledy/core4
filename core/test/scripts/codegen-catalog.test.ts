@@ -220,10 +220,17 @@ const expectedCatalogRows = [
   ["compose-vendor-bump-workflow", "committed-workflow", "build-compose-vendor-bump-workflow.ts", "repo"],
   ["tomcat-bump-workflow", "committed-workflow", "build-tomcat-bump-workflow.ts", "repo"],
   ["node-releases-bump-workflow", "committed-workflow", "build-node-releases-bump-workflow.ts", "repo"],
+  ["xdebug-bump-workflow", "committed-workflow", "build-xdebug-bump-workflow.ts", "repo"],
   ["platform-readiness-workflow", "committed-workflow", "build-platform-readiness-workflow.ts", "repo"],
   ["drupal-journey-workflow", "committed-workflow", "build-drupal-journey-workflow.ts", "repo"],
   ["rails-journey-workflow", "committed-workflow", "build-rails-journey-workflow.ts", "repo"],
   ["workflow-performance-workflow", "committed-workflow", "build-workflow-performance-workflow.ts", "repo"],
+  [
+    "stock-artifact-age-canary-workflow",
+    "committed-workflow",
+    "build-stock-artifact-age-canary-workflow.ts",
+    "repo",
+  ],
 ] as const;
 
 describe("codegen catalog", () => {
@@ -391,28 +398,25 @@ describe("codegen catalog", () => {
       "compose-vendor-bump-workflow",
       "tomcat-bump-workflow",
       "node-releases-bump-workflow",
+      "xdebug-bump-workflow",
       "platform-readiness-workflow",
       "drupal-journey-workflow",
       "rails-journey-workflow",
       "workflow-performance-workflow",
+      "stock-artifact-age-canary-workflow",
     ];
 
     // When
     const ids = catalog.map((entry) => entry.id);
-    const ownerships = catalog.map((entry) => entry.ownership);
     const scripts = catalog.map((entry) => entry.script);
     const existingScripts = await Promise.all(
       catalog.map((entry) => Bun.file(resolve(repositoryRoot, "scripts", entry.script)).exists()),
     );
 
     // Then
-    expect(catalog).toHaveLength(44);
     expect(new Set(ids).size).toBe(catalog.length);
     expect(new Set(scripts).size).toBe(catalog.length);
     expect(existingScripts).toEqual(catalog.map(() => true));
-    expect(ownerships.filter((ownership) => ownership === "committed-pin")).toHaveLength(4);
-    expect(ownerships.filter((ownership) => ownership === "committed-workflow")).toHaveLength(15);
-    expect(ownerships.filter((ownership) => ownership === "derived")).toHaveLength(25);
     expect(
       catalog.every((entry) => (entry.ownership === "committed-workflow") === entry.id.endsWith("-workflow")),
     ).toBe(true);

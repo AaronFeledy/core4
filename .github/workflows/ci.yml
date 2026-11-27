@@ -8,6 +8,12 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# A new push to a pull request supersedes its running checks. Other events get
+# a group of their own, so every main commit keeps its run.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 defaults:
   run:
     shell: bash
@@ -25,6 +31,7 @@ jobs:
       profile: ${{ steps.select.outputs.profile }}
       broad: ${{ steps.select.outputs.broad }}
       reason: ${{ steps.select.outputs.reason }}
+      provider_changes: ${{ steps.select.outputs.provider_changes }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -472,7 +479,7 @@ jobs:
 
       - name: Check schema compatibility
         env:
-          LANDO_SCHEMA_COMPATIBILITY_BASE_REF: origin/${{ github.event_name == 'pull_request' && github.base_ref || 'main' }}
+          LANDO_SCHEMA_COMPATIBILITY_BASE_REF: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || 'origin/main' }}
         run: bun run check:schema-compatibility
 
       - name: Regenerate command reference
@@ -1087,7 +1094,7 @@ jobs:
           pull_image docker.io/library/redis:7
           pull_image docker.io/library/busybox:1.37
           pull_image docker.io/library/golang:1.22
-          pull_image docker.elastic.co/elasticsearch/elasticsearch:8.17.0
+          pull_image docker.elastic.co/elasticsearch/elasticsearch:8.19.25
           pull_image docker.io/getmeili/meilisearch:v1.11
           pull_image docker.io/axllent/mailpit:v1.30.1
           pull_image docker.io/library/mariadb:11.4
@@ -1095,7 +1102,7 @@ jobs:
           pull_image docker.io/library/memcached:1.6
           pull_image docker.io/library/mongo:7
           pull_image docker.io/library/mysql:8.0
-          pull_image docker.io/library/nginx:1.27
+          pull_image docker.io/library/nginx:1.30-alpine
           pull_image docker.io/opensearchproject/opensearch:2
           pull_image docker.io/library/solr:9
           pull_image docker.io/library/traefik:v3.3
@@ -2310,7 +2317,7 @@ jobs:
         run: |
           export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
           mkdir -p "$XDG_RUNTIME_DIR"
-          dist/lando setup --yes --provider=lando --skip-install-ca --skip-shell-integration --skip-file-sync
+          dist/lando setup --yes --provider=lando --skip-install-ca --skip-shell-integration --skip-file-sync ${{ matrix.suite == 'engine' && '--enable-linger --smoke' || '' }}
           echo "LANDO_CONFIG__default_provider_id=lando" >> "$GITHUB_ENV"
 
       - name: Verify managed runtime socket
@@ -2324,7 +2331,7 @@ jobs:
           echo "LANDO_TEST_PODMAN_SOCKET=$LANDO_USER_DATA_ROOT/runtime/run/podman.sock" >> "$GITHUB_ENV"
 
       - name: Gate platform readiness doctor
-        run: bun run scripts/platform-readiness-doctor.ts --binary dist/lando --report provider-diagnostics/platform-readiness-doctor.json
+        run: bun run scripts/platform-readiness-doctor.ts --binary dist/lando --report provider-diagnostics/platform-readiness-doctor.json ${{ matrix.suite == 'engine' && '--require-delegated-cgroups' || '' }}
 
       - name: Configure Docker socket
         run: |
@@ -2373,7 +2380,7 @@ jobs:
           pull_image docker.io/library/redis:7
           pull_image docker.io/library/busybox:1.37
           pull_image docker.io/library/golang:1.22
-          pull_image docker.elastic.co/elasticsearch/elasticsearch:8.17.0
+          pull_image docker.elastic.co/elasticsearch/elasticsearch:8.19.25
           pull_image docker.io/getmeili/meilisearch:v1.11
           pull_image docker.io/axllent/mailpit:v1.30.1
           pull_image docker.io/library/mariadb:11.4
@@ -2381,7 +2388,7 @@ jobs:
           pull_image docker.io/library/memcached:1.6
           pull_image docker.io/library/mongo:7
           pull_image docker.io/library/mysql:8.0
-          pull_image docker.io/library/nginx:1.27
+          pull_image docker.io/library/nginx:1.30-alpine
           pull_image docker.io/opensearchproject/opensearch:2
           pull_image docker.io/library/solr:9
           pull_image docker.io/library/traefik:v3.3
@@ -2406,6 +2413,7 @@ jobs:
           LANDO_PROVIDER_TEST_SUITE: ${{ matrix.suite }}
           LANDO_SCENARIO_E2E_BINARY: ${{ github.workspace }}/dist/lando
           LANDO_NATIVE_INIT_E2E: "1"
+          LANDO_TEST_NGINX_PRIVATE: lando
         run: |
           mkdir -p /tmp/lando-provider-test-logs
           set -o pipefail
@@ -2414,6 +2422,10 @@ jobs:
             providers)
               bun run test:selection providers-engine-parity 2>&1 | tee /tmp/lando-provider-test-logs/engine-parity.log || status=$?
               bun run test:selection providers-core-live 2>&1 | tee /tmp/lando-provider-test-logs/core-live.log || status=$?
+              if ! grep -Eq '^NGINX_ROUTE_CLI_EVIDENCE .*"privateFiles":true[,}]' /tmp/lando-provider-test-logs/core-live.log; then
+                echo "Missing private nginx route test evidence" >&2
+                status=1
+              fi
               ;;
             engine)
               bun run test:selection providers-lando 2>&1 | tee /tmp/lando-provider-test-logs/provider-lando-integration.log || status=$?
@@ -2427,12 +2439,26 @@ jobs:
               bun run test:selection providers-sqlite-integrity 2>&1 | tee /tmp/lando-provider-test-logs/sqlite-integrity.log || status=$?
               bun run test:selection providers-sqlite-borrowed-mounts 2>&1 | tee /tmp/lando-provider-test-logs/sqlite-borrowed-mounts.log || status=$?
               bun run test:selection providers-schedule 2>&1 | tee /tmp/lando-provider-test-logs/schedule.log || status=$?
+              bun run test:selection setup-elevation-terminal 2>&1 | tee /tmp/lando-provider-test-logs/setup-elevation-terminal.log || status=$?
               ;;
             services)
               bun run test:selection services-lando 2>&1 | tee /tmp/lando-provider-test-logs/service-lando-integration.log || status=$?
               ;;
             *) echo "Unknown provider test suite: $LANDO_PROVIDER_TEST_SUITE" >&2; exit 1 ;;
           esac
+          exit "$status"
+
+      - name: Run SQL Server activation regressions
+        if: ${{ matrix.suite == 'providers' && needs.selection.outputs.provider_changes == 'true' }}
+        env:
+          LANDO_SCENARIO_E2E_BINARY: ${{ github.workspace }}/dist/lando
+          LANDO_GUIDE_E2E: "1"
+        run: |
+          test -S "$LANDO_TEST_PODMAN_SOCKET"
+          set -o pipefail
+          status=0
+          bun run test:selection providers-mssql-activation 2>&1 | tee /tmp/lando-provider-test-logs/mssql-activation.log || status=$?
+          LANDO_GUIDE_SCENARIO_LIVE_OUTPUT=1 bun run scripts/test-reporters/run-guide-scenarios.ts test/scenarios/generated/guides/db-creds-apply/mssql-sa-and-database-name.test.ts 2>&1 | tee /tmp/lando-provider-test-logs/mssql-guide.log || status=$?
           exit "$status"
 
       - name: Teardown Lando runtime
@@ -2674,7 +2700,7 @@ jobs:
 
   ci:
     needs: [selection, static-checks-platform, static-checks, docs-build, schema-snapshot, bundled-codegen, library-api-tests-runner, library-api-tests, recipe-tests-runner, recipe-tests, container-helper, container-helper-arm64, build-linux-x64, runtime-bundle-linux-x64, runtime-bundle-linux-arm64, guide-scenarios-linux-x64-runner, guide-scenarios-linux-x64, guide-e2e-linux-x64-runner, guide-e2e-linux-x64, unit-tests-linux-x64-shard, unit-tests-linux-x64, test-isolation-linux-x64, process-signal-tests-darwin, perf-budget-linux-x64, runtime-bundle-win32-x64, build-darwin-arm64, guide-scenarios-darwin-arm64, provider-integration-darwin-arm64, build-darwin-x64, guide-scenarios-darwin-x64, provider-integration-darwin-x64, build-linux-arm64, guide-scenarios-linux-arm64, provider-integration-linux-arm64, provider-integration-linux-x64, provider-integration-linux-x64-runner, build-windows-x64, guide-scenarios-windows-x64, provider-integration-windows-x64, build-windows-arm64, guide-scenarios-windows-arm64, provider-integration-windows-arm64]
-    if: always()
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:

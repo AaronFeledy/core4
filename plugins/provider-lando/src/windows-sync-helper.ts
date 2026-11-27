@@ -16,6 +16,7 @@ import { ProviderUnavailableError } from "@lando/sdk/errors";
 import type { PluginStateStore } from "@lando/sdk/plugins";
 import { runProbe } from "@lando/sdk/probe";
 import { fileSyncVolumeName } from "@lando/sdk/schema";
+import { storeErrorRemediation } from "@lando/state-store";
 import { Duration, Effect, Predicate } from "effect";
 import { changeReceipt, openReceipt, stateFailure } from "./windows-sync-helper-receipt.ts";
 
@@ -77,7 +78,7 @@ const failure = (operation: string, message: string, cause?: unknown): ProviderU
     providerId: "lando",
     operation,
     message,
-    remediation: REMEDIATION,
+    remediation: storeErrorRemediation(cause, REMEDIATION),
     cause,
   });
 

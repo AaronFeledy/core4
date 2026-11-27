@@ -7,10 +7,14 @@ import type { CaRootCertificate } from "@lando/sdk/services";
 import { withAdvisoryLockUsing } from "@lando/state-store/lock";
 import { Effect } from "effect";
 
-import { hostTrustsPem } from "./host-trust.ts";
-
 import type { IssueInto } from "./issuance.ts";
-import { type MkcertContext, SETUP_REMEDIATION, caError, failureDetail } from "./mkcert-command.ts";
+import {
+  type MkcertContext,
+  NO_TRUST_STORES,
+  SETUP_REMEDIATION,
+  caError,
+  failureDetail,
+} from "./mkcert-command.ts";
 import { MKCERT_TOOL_VERSION, readInstalledMkcertStatus } from "./provision.ts";
 
 const ROOT_FILE = "rootCA.pem";
@@ -24,10 +28,11 @@ const readRootFile = (path: string): Promise<string | undefined> =>
 export const makeMkcertRoot = (
   { binDir, platform, arch, binary, privateFileAccess, runMkcert }: MkcertContext,
   issueInto: IssueInto,
+  hostTrustsPem: (pem: string) => boolean,
 ) => {
   // `mkcert -CAROOT` only prints the directory; it never creates a root.
   const caRoot: Effect.Effect<string, CaError> = Effect.gen(function* () {
-    const result = yield* runMkcert(["-CAROOT"]);
+    const result = yield* runMkcert(["-CAROOT"], NO_TRUST_STORES);
     const root = result.stdout.trim();
     if (result.exitCode !== 0 || root.length === 0) {
       return yield* Effect.fail(
@@ -71,18 +76,24 @@ export const makeMkcertRoot = (
     return { caroot, root: { certificate, trusted: hostTrustsPem(certificate) } satisfies CaRootCertificate };
   });
 
-  /** Create the shared root when `CAROOT` has none; an existing root is never replaced. */
+  /** Create the shared root when `CAROOT` has none and return its PEM; an existing root is never replaced. */
   const ensureRoot = Effect.fn("Mkcert.ensureRoot")(function* (caroot: string) {
     yield* Effect.tryPromise({
       try: () => mkdir(caroot, { recursive: true, mode: 0o700 }),
       catch: (cause) => caError(`Failed to create the mkcert CA directory ${caroot}.`, { cause }),
     });
     const createWhenMissing = Effect.gen(function* () {
-      if ((yield* readRoot(caroot)) !== undefined) return;
+      const existing = yield* readRoot(caroot);
+      if (existing !== undefined) return existing;
       // Any issuing run creates the root; the throwaway leaf goes away with its temporary directory.
       yield* issueInto(caroot, ["localhost"], async () => undefined);
+      const created = yield* readRoot(caroot);
+      if (created === undefined) {
+        return yield* Effect.fail(caError(`mkcert did not create a local CA in ${caroot}.`));
+      }
+      return created;
     });
-    yield* withAdvisoryLockUsing(privateFileAccess, {
+    return yield* withAdvisoryLockUsing(privateFileAccess, {
       wait: "operation",
       resource: "the local certificate authority",
     })(join(caroot, "lando-root"), "mkcert-root", createWhenMissing).pipe(
@@ -97,5 +108,5 @@ export const makeMkcertRoot = (
     );
   });
 
-  return { caRoot, currentRoot, ensureRoot };
+  return { caRoot, currentRoot, ensureRoot, readRoot };
 };

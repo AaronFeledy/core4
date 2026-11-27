@@ -4,6 +4,7 @@ import { StateStore } from "@lando/sdk/services";
 import * as StateStoreLayer from "@lando/state-store/service";
 import { Duration, Effect, Result, Schema } from "effect";
 import { refreshInstallRecord, resolveOwnedExecutable } from "../install/owned-executable.ts";
+import { CORE_VERSION } from "../version.ts";
 import { binarySwapFileSystem, swapBinary } from "./binary-swap.ts";
 import { CoreReplacementPreconditionSchema, guardCoreReplacement } from "./compatibility.ts";
 import { UpdatePermissionError } from "./errors.ts";
@@ -96,52 +97,52 @@ export const runWindowsReplacement = Effect.fn("Update.runWindowsReplacement")(f
   return failure === undefined;
 });
 
-export const runWindowsReplacementProcess = Effect.fn("Update.runWindowsReplacementProcess")(function* (
-  requestPath: string,
-  token: string,
-) {
-  yield* Schema.decodeUnknownEffect(Schema.String.check(Schema.isUUID()))(token);
-  const handoff = makeUpdateHandoff(yield* StateStore);
-  return yield* Effect.gen(function* () {
-    const request = yield* Effect.tryPromise(() => readFile(requestPath, "utf8")).pipe(
-      Effect.flatMap(Schema.decodeUnknownEffect(Schema.fromJsonString(RequestSchema))),
-    );
-    if (request.token !== token) return yield* Effect.fail(swapError());
-    const parentExited = yield* runProbe(
-      {
-        id: "update-parent-exit",
-        policy: { maxAttempts: 150, delay: Duration.millis(100), timeout: Duration.seconds(15) },
-        classify: { success: (dead) => (dead === true ? "green" : "yellow"), failure: () => "red" },
-      },
-      Effect.sync(() => {
-        try {
-          process.kill(request.parentPid, 0);
-          return false;
-        } catch (cause) {
-          return cause instanceof Error && "code" in cause && cause.code === "ESRCH";
-        }
-      }),
-    );
-    if (parentExited.outcome !== "green") {
-      yield* handoff.finishDeferred(request.token, {
-        tag: "UpdatePermissionError",
-        message: "Windows replacement aborted while waiting for the originating process to exit.",
-        remediation:
-          "Close other Lando processes and re-run lando update; completed plugin updates remain active.",
-      });
-      return false;
-    }
-    return yield* runWindowsReplacement(request, handoff);
-  }).pipe(
-    Effect.catch(() =>
-      handoff
-        .finishDeferred(token, {
+export const runWindowsReplacementProcess = Effect.fn("Update.runWindowsReplacementProcess")(
+  function* (requestPath: string, token: string) {
+    yield* Schema.decodeUnknownEffect(Schema.String.check(Schema.isUUID()))(token);
+    const handoff = makeUpdateHandoff(yield* StateStore);
+    return yield* Effect.gen(function* () {
+      const request = yield* Effect.tryPromise(() => readFile(requestPath, "utf8")).pipe(
+        Effect.flatMap(Schema.decodeUnknownEffect(Schema.fromJsonString(RequestSchema))),
+      );
+      if (request.token !== token) return yield* Effect.fail(swapError());
+      const parentExited = yield* runProbe(
+        {
+          id: "update-parent-exit",
+          policy: { maxAttempts: 150, delay: Duration.millis(100), timeout: Duration.seconds(15) },
+          classify: { success: (dead) => (dead === true ? "green" : "yellow"), failure: () => "red" },
+        },
+        Effect.sync(() => {
+          try {
+            process.kill(request.parentPid, 0);
+            return false;
+          } catch (cause) {
+            return cause instanceof Error && "code" in cause && cause.code === "ESRCH";
+          }
+        }),
+      );
+      if (parentExited.outcome !== "green") {
+        yield* handoff.finishDeferred(request.token, {
           tag: "UpdatePermissionError",
-          message: "Windows replacement aborted because its request could not be processed.",
+          message: "Windows replacement aborted while waiting for the originating process to exit.",
           remediation:
-            "Check the installed core version and re-run lando update; completed plugin updates remain active.",
-        })
-        .pipe(Effect.as(false)),
-    ),
-  );
-}, Effect.provide(StateStoreLayer.layer));
+            "Close other Lando processes and re-run lando update; completed plugin updates remain active.",
+        });
+        return false;
+      }
+      return yield* runWindowsReplacement(request, handoff);
+    }).pipe(
+      Effect.catch(() =>
+        handoff
+          .finishDeferred(token, {
+            tag: "UpdatePermissionError",
+            message: "Windows replacement aborted because its request could not be processed.",
+            remediation:
+              "Check the installed core version and re-run lando update; completed plugin updates remain active.",
+          })
+          .pipe(Effect.as(false)),
+      ),
+    );
+  },
+  Effect.provide(StateStoreLayer.layerWith({ writer: CORE_VERSION })),
+);

@@ -22,6 +22,8 @@ lando info
 
 `lando start` prints the app URL. `lando info` repeats it.
 
+The Landofile declares `lando wp` and `lando composer`, plus two tasks that hand WP-CLI the URL Lando publishes for `appserver`, so you don't type it. `lando wp-install` runs `wp core install --url=<site URL>` with the options you add, such as `--title`. `lando wp-replace-url <old URL>` runs `wp search-replace` to point an imported database at the local address. Both read the URL from the last `lando start`, so they need a started app.
+
 `lando destroy -y` removes the app containers and networks and keeps its named volumes. See [Keep data across stop, restart, and destroy](https://aaronfeledy.github.io/core4/guides/tutorial/app-lifecycle/#keep-data-across-stop-restart-and-destroy).
 
 For the install steps and database hosts, see [Run the WordPress recipe](/guides/recipes/wordpress-workflow/).

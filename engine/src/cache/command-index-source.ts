@@ -5,7 +5,7 @@ import { findLandofilePath } from "@lando/landofile/discovery";
 import { presentLandofileLayers } from "@lando/landofile/layers";
 import type { LandofileProvenance } from "@lando/landofile/provenance";
 import { isPathWithin } from "@lando/paths";
-import { mapFailures } from "@lando/sdk/command-result";
+import { causeRemediation, mapFailures } from "@lando/sdk/command-result";
 import { sha256Hex } from "@lando/sdk/digest";
 import { CacheError } from "@lando/sdk/errors";
 import type { LandofileShape } from "@lando/sdk/schema";
@@ -171,7 +171,7 @@ export const readDataIdentityFingerprint = Effect.fnUntraced(function* (root: st
         new CacheError({
           key: "app-command",
           message: "Could not read the folder's data identity for tooling compilation.",
-          remediation: "Check the data identity record's permissions and retry.",
+          remediation: causeRemediation(cause) ?? "Check the data identity record's permissions and retry.",
           cause,
         }),
     ),

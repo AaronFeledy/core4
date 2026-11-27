@@ -142,18 +142,41 @@ describe("compileEffectiveTooling", () => {
     });
   });
 
-  test("the lexicographically first service owns a same-tier task", () => {
-    // Given / When
-    const tooling = compileEffectiveTooling({
+  test("the lexicographically first contributor wins when the primary does not contribute the task", () => {
+    const input = {
       landofile: {},
+      primary: "web",
       services: [
+        { name: "web", tooling: { serve: { cmd: "serve" } } },
         { name: "zeta", tooling: { inspect: { cmd: "from-zeta" } } },
         { name: "alpha", tooling: { inspect: { cmd: "from-alpha" } } },
       ],
-    });
+    };
 
-    // Then
+    const tooling = compileEffectiveTooling(input);
+
     expect(tooling.inspect).toEqual({ cmd: "from-alpha", service: "alpha" });
+  });
+
+  test("the primary contributor wins collisions except for ambiguous Node manager tasks", () => {
+    const input = {
+      landofile: {},
+      primary: "web",
+      services: [
+        { name: "alpha", serviceTypeId: "node:22", tooling: { npm: { cmd: "npm" } } },
+        { name: "cli", tooling: { inspect: { cmd: "from-cli" } } },
+        {
+          name: "web",
+          serviceTypeId: "node:24",
+          tooling: { npm: { cmd: "npm" }, inspect: { cmd: "from-web" } },
+        },
+      ],
+    };
+
+    const tooling = compileEffectiveTooling(input);
+
+    expect(tooling.npm).toBeUndefined();
+    expect(tooling.inspect).toEqual({ cmd: "from-web", service: "web" });
   });
 
   test("uses ordinal ordering for non-ASCII service conflicts and output across permutations", () => {

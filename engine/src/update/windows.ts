@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 import { StateStore } from "@lando/sdk/services";
 import * as StateStoreLayer from "@lando/state-store/service";
 import { Effect } from "effect";
+import { CORE_VERSION } from "../version.ts";
 import type { CoreReplacementPrecondition } from "./compatibility.ts";
 import { type StoredUpdateResult, makeUpdateHandoff } from "./handoff.ts";
 
@@ -105,4 +106,4 @@ export const scheduleWindowsReplacement = Effect.fn("Update.scheduleWindowsRepla
 });
 
 export const defaultWindowsReplacement: UpdateWindowsReplacement = (input) =>
-  scheduleWindowsReplacement(input).pipe(Effect.provide(StateStoreLayer.layer));
+  scheduleWindowsReplacement(input).pipe(Effect.provide(StateStoreLayer.layerWith({ writer: CORE_VERSION })));

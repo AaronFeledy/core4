@@ -164,7 +164,7 @@ describe("provider-docker RuntimeProvider contract", () => {
         await Effect.runPromise(
           Effect.result(
             provider
-              .destroy({ app: aliasPlan.id }, { volumes: true })
+              .bringDown({ app: aliasPlan.id }, { containers: "remove", volumes: true })
               .pipe(Effect.provide(makeTestStateStore().layer)),
           ),
         );

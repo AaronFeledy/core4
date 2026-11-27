@@ -60,9 +60,9 @@ describe("uninstall summary", () => {
         detail: "Remove Lando-managed runtime bundles when present.",
       },
       {
-        id: "ca-trust",
-        label: "CA trust-store changes",
-        target: "Lando local CA trust entry",
+        id: "local-ca:trust",
+        label: "local CA trust",
+        target: "/home/user/.local/share/mkcert",
         destructive: false,
         status: "manual",
         detail: "Review entries; proxy token=[redacted] preserved.",
@@ -645,6 +645,8 @@ describe("setup summary via spec render", () => {
   test("decorates setup completion in lando TTY mode", () => {
     const out = setupSpec.render?.(
       {
+        dryRun: false,
+        hostChanges: [],
         providerId: "podman",
         installDir: LONG_PATH,
         fileSyncStatus: "deferred",
@@ -661,6 +663,8 @@ describe("setup summary via spec render", () => {
   test("shows the CA injection note inside the decorated frame", () => {
     const out = setupSpec.render?.(
       {
+        dryRun: false,
+        hostChanges: [],
         providerId: "podman",
         installDir: "/opt/lando",
         fileSyncStatus: "satisfied",
@@ -678,6 +682,8 @@ describe("setup summary via spec render", () => {
   test("omits the CA injection note from the decorated frame when injection is unconfigured", () => {
     const out = setupSpec.render?.(
       {
+        dryRun: false,
+        hostChanges: [],
         providerId: "podman",
         installDir: "/opt/lando",
         fileSyncStatus: "satisfied",
@@ -696,6 +702,8 @@ describe("setup summary via spec render", () => {
   test("stays a plain line when not decorated", () => {
     const out = setupSpec.render?.(
       {
+        dryRun: false,
+        hostChanges: [],
         providerId: "podman",
         installDir: "/opt/lando",
         fileSyncStatus: "installed",

@@ -4,7 +4,8 @@ import type { AbsolutePath } from "@lando/sdk/schema";
 import type { StateBucket, StateBucketSpec, StateTransition, StateWrite } from "@lando/sdk/services";
 import { planTransition } from "@lando/sdk/transitions";
 import { Clock, Effect } from "effect";
-import { type DecodedFrame, decodeFrame, encodeFrame, isCustomCodec, makeSchemaCodec } from "./codec.ts";
+import { FrameDecodeError, encodeFrame, isCustomCodec, makeSchemaCodec, readFrame } from "./codec.ts";
+import { newerStateVersionError } from "./newer-version.ts";
 
 export interface StateBucketBackend {
   readonly readBytes: (file: string, operation: string) => Effect.Effect<Uint8Array | null, StateStoreError>;
@@ -25,28 +26,23 @@ export interface StateBucketBackend {
   ) => Effect.Effect<A, E | StateStoreError>;
 }
 
-const decodeError = (operation: string, path: string, cause: unknown): StateStoreError =>
+const codecError = (operation: "get" | "set", path: string, cause: unknown): StateStoreError =>
   new StateStoreError({
     reason: "decode",
     operation,
     path,
     cause,
-    remediation: "The durable state file is corrupt; remove it or restore a backup.",
-  });
-
-const versionError = (operation: string, path: string, cause: unknown): StateStoreError =>
-  new StateStoreError({
-    reason: "version",
-    operation,
-    path,
-    cause,
-    remediation: "The durable state version could not be migrated.",
+    remediation:
+      operation === "set"
+        ? "The value could not be saved. Correct the value or the code that produced it, then retry."
+        : "The durable state file is corrupt; remove it or restore a backup.",
   });
 
 export const buildStateBucket = <A, I>(
   spec: StateBucketSpec<A, I>,
   file: string,
   backend: StateBucketBackend,
+  writer?: string,
 ): StateBucket<A> => {
   // The caller has already resolved and containment-checked this absolute path.
   const path = file as AbsolutePath;
@@ -55,6 +51,16 @@ export const buildStateBucket = <A, I>(
   const fallback: A | null = spec.default ?? null;
   const schema = makeSchemaCodec(spec.schema);
   const codec = spec.codec;
+  const discardNewer = spec.root === "userCache" || spec.onNewerVersion === "discard";
+  const newerError = (operation: string, storedVersion: number, writtenBy: string | undefined) =>
+    newerStateVersionError({
+      operation,
+      path: file,
+      storedVersion,
+      supportedVersion: spec.version,
+      reader: writer,
+      ...(writtenBy === undefined ? {} : { writtenBy }),
+    });
   const writeOptions = {
     ...(spec.mode === undefined ? {} : { mode: spec.mode }),
   };
@@ -63,7 +69,7 @@ export const buildStateBucket = <A, I>(
   const handleCorrupt = (cause: unknown): Effect.Effect<A | null, StateStoreError> => {
     switch (onCorrupt) {
       case "fail":
-        return Effect.fail(decodeError("get", file, cause));
+        return Effect.fail(codecError("get", file, cause));
       case "quarantine":
         return quarantine.pipe(Effect.andThen(Effect.succeed<A | null>(fallback)));
       case "discard":
@@ -73,7 +79,7 @@ export const buildStateBucket = <A, I>(
     }
   };
 
-  const applyVersionMismatch = (
+  const readOlderVersion = (
     payload: unknown,
     fromVersion: number,
   ): Effect.Effect<A | null, StateStoreError> => {
@@ -83,48 +89,51 @@ export const buildStateBucket = <A, I>(
     }
     return Effect.try({
       try: () => migrate(payload, fromVersion),
-      catch: (cause) => versionError("get", file, cause),
+      catch: (cause) =>
+        new StateStoreError({
+          reason: "version",
+          operation: "get",
+          path: file,
+          storedVersion: fromVersion,
+          supportedVersion: spec.version,
+          cause,
+          remediation: "The durable state version could not be migrated.",
+        }),
     });
   };
 
-  const decodeValue = (payload: unknown): Effect.Effect<A | null, StateStoreError> =>
-    schema.decode(payload).pipe(
-      Effect.map((value): A | null => value),
-      Effect.catch((cause) => handleCorrupt(cause)),
+  const readValue = (corrupt: typeof handleCorrupt): Effect.Effect<A | null, StateStoreError> =>
+    backend.readBytes(file, "get").pipe(
+      Effect.flatMap((bytes) => {
+        if (bytes === null) return Effect.succeed(fallback);
+        try {
+          const frame = readFrame(codec, bytes);
+          if (frame.version !== null && frame.version > spec.version) {
+            return discardNewer
+              ? Effect.succeed(fallback)
+              : Effect.fail(newerError("get", frame.version, frame.writtenBy));
+          }
+          const payload = frame.readPayload();
+          return frame.version !== null && frame.version !== spec.version
+            ? readOlderVersion(payload, frame.version)
+            : schema.decode(payload).pipe(Effect.catch(corrupt));
+        } catch (cause) {
+          return corrupt(cause instanceof Error ? cause : new Error("State codec decode failed.", { cause }));
+        }
+      }),
     );
-
-  const get: Effect.Effect<A | null, StateStoreError> = backend.readBytes(file, "get").pipe(
-    Effect.flatMap((bytes) => {
-      if (bytes === null) return Effect.succeed(fallback);
-      let frame: DecodedFrame;
-      try {
-        frame = decodeFrame(codec, bytes);
-      } catch (cause) {
-        return handleCorrupt(
-          cause instanceof Error ? cause : new Error("State codec decode failed.", { cause }),
-        );
-      }
-      // A custom codec is unversioned (`version: null`); framed codecs carry the
-      // stamped version and route a mismatch through `onVersionMismatch`.
-      if (frame.version !== null && frame.version !== spec.version) {
-        return applyVersionMismatch(frame.payload, frame.version);
-      }
-      return decodeValue(frame.payload);
-    }),
-    Effect.withSpan("StateBucket.get"),
-  );
 
   const writeValue = (value: A): Effect.Effect<void, StateStoreError> => {
     if (isCustomCodec(codec)) {
       return Effect.try({
         try: () => codec.encode(value),
-        catch: (cause) => decodeError("set", file, cause),
+        catch: (cause) => codecError("set", file, cause),
       }).pipe(Effect.flatMap((body) => backend.writeBytes(file, body, "set", writeOptions)));
     }
     return schema.encode(value).pipe(
-      mapFailures((cause) => decodeError("set", file, cause)),
+      mapFailures((cause) => codecError("set", file, cause)),
       Effect.flatMap((encoded) => {
-        const body = encodeFrame(codec, spec.version, encoded, value);
+        const body = encodeFrame(codec, spec.version, encoded, value, writer);
         return backend.writeBytes(file, body, "set", writeOptions);
       }),
     );
@@ -135,6 +144,31 @@ export const buildStateBucket = <A, I>(
     effect: Effect.Effect<B, E>,
   ): Effect.Effect<B, E | StateStoreError> =>
     lockMode === "advisory" ? backend.withLock(file, operation, effect) : effect;
+
+  const readForMutation = readValue(handleCorrupt);
+  const get = (
+    onCorrupt === "quarantine" && lockMode === "advisory" && !discardNewer && !isCustomCodec(codec)
+      ? readValue(() => lock("get", readForMutation))
+      : readForMutation
+  ).pipe(Effect.withSpan("StateBucket.get"));
+
+  const protectNewer = (operation: "set" | "remove"): Effect.Effect<void, StateStoreError> =>
+    discardNewer || isCustomCodec(codec)
+      ? Effect.void
+      : backend.readBytes(file, operation).pipe(
+          Effect.flatMap((bytes) => {
+            if (bytes === null) return Effect.void;
+            try {
+              const { version, writtenBy } = readFrame(codec, bytes);
+              return version !== null && version > spec.version
+                ? Effect.fail(newerError(operation, version, writtenBy))
+                : Effect.void;
+            } catch (cause) {
+              if (cause instanceof FrameDecodeError) return Effect.void;
+              throw cause;
+            }
+          }),
+        );
 
   const applyWrite = <B>(write: StateWrite<A, B>): Effect.Effect<B, StateStoreError> => {
     switch (write._tag) {
@@ -151,7 +185,7 @@ export const buildStateBucket = <A, I>(
     operation: string,
     f: (cur: A | null) => Effect.Effect<StateWrite<A, B>, E>,
   ): Effect.Effect<B, E | StateStoreError> =>
-    lock(operation, get.pipe(Effect.flatMap(f), Effect.flatMap(applyWrite)));
+    lock(operation, readForMutation.pipe(Effect.flatMap(f), Effect.flatMap(applyWrite)));
 
   const mutate = Effect.fn("StateBucket.mutate")(
     <B, E>(f: (cur: A | null) => Effect.Effect<StateWrite<A, B>, E>): Effect.Effect<B, E | StateStoreError> =>
@@ -198,10 +232,11 @@ export const buildStateBucket = <A, I>(
   );
 
   const set = Effect.fn("StateBucket.set")(
-    (value: A): Effect.Effect<void, StateStoreError> => lock("set", writeValue(value)),
+    (value: A): Effect.Effect<void, StateStoreError> =>
+      lock("set", protectNewer("set").pipe(Effect.andThen(writeValue(value)))),
   );
 
-  const remove = lock("remove", backend.remove(file));
+  const remove = lock("remove", protectNewer("remove").pipe(Effect.andThen(backend.remove(file))));
   const exists = backend.exists(file);
 
   return {

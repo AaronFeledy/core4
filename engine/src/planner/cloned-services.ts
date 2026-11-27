@@ -150,6 +150,7 @@ const clonePlannedDraft = (
     // The requested argv is the clone's whole process, so the parent's command
     // does not carry over.
     command: "drop",
+    launcherProjectUser: "drop",
     // An entrypoint without a command replaces the image ENTRYPOINT and
     // suppresses its CMD instead of appending to the parent's entrypoint.
     entrypoint:
@@ -231,6 +232,7 @@ const clonePlannedDraft = (
     // Log files belong to the parent's process. Following them would also append
     // the parent's redirect build steps after the request's own extra steps.
     logSources: { replace: [] },
+    plannedPort: "drop",
     routes: { replace: undefined },
     extensions: { replace: companionExtensions(parent.extensions ?? {}, resetStopSignal) },
     // The clone shares the parent's service-scoped stores: same files, same

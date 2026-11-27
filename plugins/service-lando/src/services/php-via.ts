@@ -99,11 +99,7 @@ export const resolvePhpVia = (value: unknown): PhpVia => {
   );
 };
 
-// Official Hub publishes PHP 8.6 as RC bookworm tags until GA. Other minors use the GA tag.
-const phpUpstreamVersion = (version: string): string => (version === "8.6" ? "8.6-rc" : version);
-
-export const phpImageFor = (version: string, via: PhpVia): string =>
-  `php:${phpUpstreamVersion(version)}-${via}-bookworm`;
+export const phpImageFor = (version: string, via: PhpVia): string => `php:${version}-${via}-bookworm`;
 
 export const phpListenPort = (via: Exclude<PhpVia, "cli">, authoredPort: number | undefined): PortNumber =>
   PortNumber.make(authoredPort ?? PHP_LISTENERS[via].port);
@@ -144,7 +140,7 @@ export const assertPhpViaKeys = (via: PhpVia, service: ServiceConfig): void => {
       `Remove allowOverride: from this ${via} service. ${VIA_REMEDIATION}`,
     );
   }
-  if (via === "cli" && service.routes !== undefined) {
+  if (via === "cli" && (service.routes?.length ?? 0) > 0) {
     throw new ServiceConfigIssue(
       ["routes"],
       "HTTP routes: are not valid for via: cli.",

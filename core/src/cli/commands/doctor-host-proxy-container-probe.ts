@@ -1,4 +1,3 @@
-import { HOST_PROXY_CONTAINER_SOCKET } from "@lando/engine/subsystems/host-proxy/transport-feature";
 import { runProbe } from "@lando/sdk/probe";
 import { AppId, CommandResultEnvelope, ServiceName } from "@lando/sdk/schema";
 import type { ExecResult, ProviderError, RuntimeProviderShape } from "@lando/sdk/services";
@@ -66,9 +65,11 @@ export const probeHostProxyContainer = Effect.fnUntraced(function* (
         { app: AppId.make(options.appId), service: ServiceName.make(service) },
         {
           command: ["/usr/local/bin/lando", "open", "--print", "--format=json"],
+          // A socket keeps the container's own LANDO_HOST_PROXY_SOCKET: a local socket and one
+          // bridged from a provider machine reach the container at different paths.
           env:
             options.target.kind === "unix-socket"
-              ? { LANDO_HOST_PROXY_SOCKET: HOST_PROXY_CONTAINER_SOCKET }
+              ? {}
               : { LANDO_HOST_PROXY_URL: options.target.containerUrl },
           stdin: "ignore",
           tty: false,

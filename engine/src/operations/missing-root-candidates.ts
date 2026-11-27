@@ -1,3 +1,4 @@
+import { type AdoptionReceipt, adoptionReceiptsFromSummary } from "@lando/container-runtime/native-ownership";
 import { isGlobalScopedVolume, volumeClassFromLabels } from "@lando/container-runtime/volume-classes";
 import { AbsolutePath, AppId, ProviderId } from "@lando/sdk/schema";
 import {
@@ -6,11 +7,12 @@ import {
   RuntimeProviderRegistry,
   StateStore,
 } from "@lando/sdk/services";
-import { Effect, Option } from "effect";
+import { Effect, Option, Result } from "effect";
 import { TeardownProvider } from "../providers/app-placement.ts";
 import { acceleratedStartInventory } from "./accelerated-start-inventory.ts";
 import { type PendingStart, digest } from "./accelerated-start-record.ts";
 import { appRootIdentityKey } from "./app-root-identity.ts";
+import { currentDataRoot, localAppliedRecord, scopeRuntimeSnapshot } from "./data-root-scope.ts";
 import type { MissingRootScan } from "./missing-app-root-schema.ts";
 
 /** Groups observed and recorded leftovers by the app root whose folder no longer exists. */
@@ -53,11 +55,57 @@ export const collectMissingAppRoots = Effect.fnUntraced(function* (
     group.runtimeObserved &&= runtimeObserved;
     return group;
   };
+  const registry = yield* RuntimeProviderRegistry;
+  const dataRoot = yield* currentDataRoot;
+  const receipts: AdoptionReceipt[] = [];
+  const scanFailures = new Map<ProviderId, typeof MissingRootScan.Type>();
+  const candidateRoots = new Set<string>();
   for (const snapshot of snapshots) {
+    for (const plan of snapshot.appliedPlans) {
+      if (plan.identity?.appRoot !== undefined) candidateRoots.add(plan.identity.appRoot);
+    }
+    for (const service of snapshot.services) {
+      if (service.appRoot !== undefined) candidateRoots.add(service.appRoot);
+    }
+    for (const volume of snapshot.volumes) {
+      if (volume.identity?.ownerRoot !== undefined) candidateRoots.add(volume.identity.ownerRoot);
+    }
+  }
+  if (registry.resourceOwnership !== undefined) {
+    for (const root of [...candidateRoots].sort()) {
+      for (const snapshot of snapshots) {
+        const ownership = yield* registry
+          .resourceOwnership(snapshot.providerId, AbsolutePath.make(root))
+          .pipe(Effect.result);
+        if (Result.isFailure(ownership)) {
+          if (scanFailures.has(snapshot.providerId)) continue;
+          scanFailures.set(snapshot.providerId, {
+            providerId: snapshot.providerId,
+            runtimeObserved: snapshot.runtimeObserved,
+            recordedState: true,
+            complete: false,
+            message: ownership.failure.message,
+            errorTag: ownership.failure._tag,
+            remediation: `Resolve the resource ownership inventory read failure. ${ownership.failure.remediation}`,
+          });
+        } else {
+          receipts.push(...adoptionReceiptsFromSummary(ownership.success));
+        }
+      }
+    }
+  }
+  for (const snapshot of snapshots.map((snapshot) =>
+    scopeRuntimeSnapshot(
+      snapshot,
+      dataRoot,
+      receipts.filter((receipt) => receipt.providerId === snapshot.providerId),
+    ),
+  )) {
     for (const plan of snapshot.appliedPlans) {
       // Teardown only targets plans by their recorded identity, so report nothing it cannot act on.
       if (
         plan.identity === undefined ||
+        !localAppliedRecord(plan, dataRoot) ||
         plan.id === "global" ||
         plan.extensions["@lando/core/scratch"] !== undefined
       )
@@ -98,8 +146,6 @@ export const collectMissingAppRoots = Effect.fnUntraced(function* (
     }
   }
   const store = yield* Effect.serviceOption(StateStore);
-  const registry = yield* RuntimeProviderRegistry;
-  const capabilityFailures = new Map<ProviderId, typeof MissingRootScan.Type>();
   const selected = yield* TeardownProvider;
   const journals = Option.isNone(store)
     ? { records: [], unreadable: [] }
@@ -107,12 +153,7 @@ export const collectMissingAppRoots = Effect.fnUntraced(function* (
   for (const { path, remediation: _remediation, ...journal } of journals.records) {
     if (journal.appId === "global" || (selected !== undefined && selected !== journal.providerId)) continue;
     // The filename binds app kind and root; scratch journals cannot claim a user root.
-    if (
-      !path.endsWith(
-        `${digest(appRootIdentityKey({ kind: "user", id: AppId.make(journal.appId), root: AbsolutePath.make(journal.appRoot) }, journal.appRoot))}.json`,
-      )
-    )
-      continue;
+    if (!path.endsWith(`${digest(appRootIdentityKey({ kind: "user" }, journal.appRoot))}.json`)) continue;
     const observed =
       snapshots.find((snapshot) => snapshot.providerId === journal.providerId)?.runtimeObserved ?? false;
     groupFor(
@@ -139,7 +180,8 @@ export const collectMissingAppRoots = Effect.fnUntraced(function* (
             Effect.map((provider) => provider.capabilities.fileSyncTargets !== "prepared-volume"),
             Effect.catch((error) => {
               const providerId = ProviderId.make(id);
-              capabilityFailures.set(providerId, {
+              if (scanFailures.has(providerId)) return Effect.succeed(false);
+              scanFailures.set(providerId, {
                 providerId,
                 runtimeObserved: snapshots.some(
                   (snapshot) => snapshot.providerId === id && snapshot.runtimeObserved,
@@ -174,7 +216,7 @@ export const collectMissingAppRoots = Effect.fnUntraced(function* (
     candidates: results.flat(),
     unreadableJournals: journals.unreadable,
     journalProviders: new Set(journals.records.map((journal) => journal.providerId)),
-    capabilityFailures,
+    scanFailures,
     identities: new Map(
       [...groups.entries()].map(([root, group]) => [root, digest([...group.observations].sort())]),
     ),

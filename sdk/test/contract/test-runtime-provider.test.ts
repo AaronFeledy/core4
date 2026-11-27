@@ -54,6 +54,83 @@ test("the in-memory provider conforms to lifecycle and data-plane contracts", as
   );
 });
 
+test("the provider contract rejects a runtime that advertises but ignores the continuation", async () => {
+  const provider = makeTestRuntimeProvider();
+  const error = await Effect.runPromise(
+    Effect.flip(
+      runProviderContract({
+        ...provider,
+        apply: (plan, { continueHealthyDependency: _ignored, ...options }) => provider.apply(plan, options),
+      }),
+    ),
+  );
+  expect(error).toMatchObject({
+    _tag: "ContractFailure",
+    assertion: "required healthy dependency continuation blocks apply",
+  });
+});
+
+test("the in-memory provider runs the continuation with the dependency running and consumer absent", async () => {
+  const provider = makeTestRuntimeProvider();
+  const web = plan.services[target.service];
+  if (web === undefined) throw new TypeError("fixture requires web");
+  const db = ServiceName.make("db");
+  const readiness = Schema.decodeUnknownSync(HealthcheckPlan)({
+    kind: "command",
+    command: ["true"],
+    intervalSeconds: 0,
+    timeoutSeconds: 1,
+    retries: 1,
+  });
+  const dependentPlan = {
+    ...plan,
+    services: {
+      [web.name]: {
+        ...web,
+        dependsOn: [{ service: db, condition: "service_healthy", required: true }],
+      },
+      [db]: { ...web, primary: false, name: db, readiness },
+    },
+  } as const;
+  const error = await Effect.runPromise(
+    Effect.scoped(
+      Effect.flip(
+        provider.apply(dependentPlan, {
+          reconcile: false,
+          executeReadinessAttempt: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
+          continueHealthyDependency: ({ consumer, dependency, containerId }) =>
+            Effect.gen(function* () {
+              expect(
+                yield* Effect.result(provider.inspect({ app: plan.id, service: consumer })),
+              ).toMatchObject({
+                _tag: "Failure",
+                failure: { _tag: "ServiceNotFoundError" },
+              });
+              expect(
+                yield* Effect.result(provider.inspect({ app: plan.id, service: dependency })),
+              ).toMatchObject({
+                _tag: "Success",
+                success: { status: "running", containerId },
+              });
+              return new ServiceStartError({
+                providerId: provider.id,
+                service: consumer,
+                operation: "test-continuation",
+                message: "Dependency could not be prepared.",
+                remediation: "Correct the dependency and retry.",
+              });
+            }),
+        }),
+      ),
+    ),
+  );
+  expect(error).toMatchObject({
+    _tag: "ServiceStartError",
+    service: target.service,
+    operation: "test-continuation",
+  });
+});
+
 test("exec collects the exact stream bytes, including its trailing newline", async () => {
   const provider = makeTestRuntimeProvider();
   const result = await Effect.runPromise(
@@ -139,7 +216,7 @@ test("apply observes only its services, preserves a running start time and isola
   expect(result.again.lastStartedAt).toEqual(result.first.lastStartedAt);
 });
 
-test.each(["start", "restart"] as const)("%s resumes a stopped container", async (operation) => {
+test("restart resumes a container that bring-down stopped", async () => {
   const provider = makeTestRuntimeProvider();
   const result = await Effect.runPromise(
     Effect.scoped(
@@ -147,9 +224,9 @@ test.each(["start", "restart"] as const)("%s resumes a stopped container", async
         yield* apply(provider);
         const first = yield* provider.inspect(target);
         yield* TestClock.adjust("1 second");
-        yield* provider.stop(target);
+        yield* provider.bringDownObserved(first, "stop");
         const stopped = yield* provider.inspect(target);
-        yield* provider[operation](target);
+        yield* provider.restart(target);
         return { first, stopped, resumed: yield* provider.inspect(target) };
       }),
     ).pipe(Effect.provide(TestClock.layer())),
@@ -191,16 +268,23 @@ test("removal requires the observed generation and destroy affects only its app"
   const provider = makeTestRuntimeProvider();
   await Effect.runPromise(Effect.scoped(apply(provider)));
   const observed = await Effect.runPromise(provider.inspect(target));
+  const containerId = observed.containerId;
+  if (containerId === undefined) throw new Error("fixture requires an observed container id");
+  const absent = { service: target.service, action: "absent" } as const;
   expect(
-    await Effect.runPromise(provider.removeObservedService({ ...observed, containerId: "other" })),
-  ).toEqual({ kind: "absent" });
-  expect(await Effect.runPromise(provider.removeObservedService(observed))).toEqual({ kind: "removed" });
-  expect(await Effect.runPromise(provider.removeObservedService(observed))).toEqual({ kind: "absent" });
+    await Effect.runPromise(provider.bringDownObserved({ ...observed, containerId: "other" }, "remove")),
+  ).toEqual(absent);
+  expect(await Effect.runPromise(provider.bringDownObserved(observed, "remove"))).toEqual({
+    service: target.service,
+    containerId,
+    action: "removed",
+  });
+  expect(await Effect.runPromise(provider.bringDownObserved(observed, "remove"))).toEqual(absent);
   await Effect.runPromise(Effect.scoped(apply(provider)));
-  expect(await Effect.runPromise(provider.removeObservedService(observed))).toEqual({ kind: "absent" });
+  expect(await Effect.runPromise(provider.bringDownObserved(observed, "remove"))).toEqual(absent);
   const other = { ...plan, id: AppId.make("other") };
   await Effect.runPromise(Effect.scoped(provider.apply(other, { reconcile: true })));
-  await Effect.runPromise(provider.destroy(target, { volumes: false }));
+  await Effect.runPromise(provider.bringDown(target, { containers: "remove", volumes: false }));
   expect((await Effect.runPromise(provider.list({}))).map((info) => info.app)).toEqual([other.id]);
 });
 

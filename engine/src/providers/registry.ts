@@ -1,5 +1,8 @@
-import { unreadableAppliedStateError } from "@lando/container-runtime/applied-state";
-import { hasResourceOwnershipRecords } from "@lando/container-runtime/provider-assembly";
+import { inventoryProtectsApp, protectedSlotError } from "@lando/container-runtime/applied-state";
+import {
+  hasResourceOwnershipRecords,
+  listResourceOwnershipRecords,
+} from "@lando/container-runtime/provider-assembly";
 import { redactProviderError } from "@lando/redaction/provider-error";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import { mapFailures } from "@lando/sdk/command-result";
@@ -9,7 +12,15 @@ import {
   ProviderUnavailableError,
 } from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
-import { AbsolutePath, type AppPlan, type AppRef, type PluginManifest, ProviderId } from "@lando/sdk/schema";
+import {
+  AbsolutePath,
+  AppId,
+  type AppPlan,
+  type AppRef,
+  type PluginManifest,
+  ProviderId,
+  appIdentityKey,
+} from "@lando/sdk/schema";
 import {
   AppPlanSanitizer,
   type AppliedPlanLookup,
@@ -28,6 +39,8 @@ import { Context, Effect, Layer, Result, Schema } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 import { bundledPluginModules } from "../composition.ts";
 import { makePublishRender } from "../lifecycle/publish-render.ts";
+import { pendingStartAtRoot } from "../operations/accelerated-start-record.ts";
+import { canonicalMissingAppRoot } from "../operations/app-mutation-lock.ts";
 import { makeLandoPluginContext } from "../plugins/context.ts";
 import { makePluginCapabilityIndex } from "../plugins/module-set.ts";
 import { GlobalConfigSources } from "../services/config.ts";
@@ -81,9 +94,24 @@ export const makeRuntimeProviderRegistry = (
           ? yield* redaction.value.forProfile("secrets", redactorOptions)
           : createStandaloneRedactor("secrets", redactorOptions);
       const redactFailure = (error: ProviderUnavailableError) => redactProviderError(error, errorRedactor);
-      const redactContributionErrors = mapFailures(redactFailure);
       const appPlanSanitizer = yield* AppPlanSanitizer;
       const stateStore = yield* StateStore;
+      const journalSlots = Effect.fnUntraced(function* (root: AbsolutePath) {
+        const reads = yield* Effect.forEach(["user", "global", "scratch"] as const, (kind) =>
+          stateStore.open(pendingStartAtRoot(kind, root)).pipe(
+            Effect.flatMap((bucket) => bucket.get),
+            Effect.result,
+          ),
+        );
+        return reads.flatMap((read) =>
+          Result.isSuccess(read) &&
+          read.success !== null &&
+          read.success.appRoot === root &&
+          read.success.phase !== "completed"
+            ? [{ provider: read.success.providerId, id: AppId.make(read.success.appId) }]
+            : [],
+        );
+      });
       const httpClient = yield* HttpClient.HttpClient;
 
       const providerManifests = pluginRegistry.list.pipe(
@@ -133,6 +161,22 @@ export const makeRuntimeProviderRegistry = (
           );
         }
 
+        if (
+          typeof contribution.appliedStateInventory !== "function" ||
+          typeof contribution.readAppliedPlanStrict !== "function"
+        ) {
+          return yield* Effect.fail(
+            redactFailure(
+              new ProviderUnavailableError({
+                providerId,
+                operation: "load-contribution",
+                message: `Runtime provider ${providerId} does not implement the required applied-state inventory and strict read callbacks.`,
+                remediation: `Update the ${module.name} plugin to a version that implements appliedStateInventory and readAppliedPlanStrict.`,
+              }),
+            ),
+          );
+        }
+
         const pluginStateRoot = yield* Schema.decodeUnknownEffect(AbsolutePath)(
           paths.pluginStateDir(module.name),
         ).pipe(
@@ -161,23 +205,23 @@ export const makeRuntimeProviderRegistry = (
           httpClient,
           ...(publishRender === undefined ? {} : { publishRender }),
         });
-        const appliedStateInventory = contribution.appliedStateInventory;
         const resourceOwnership = contribution.resourceOwnership;
         return {
           contribution: {
             ...contribution,
-            appliedPlans: (ctx) => redactContributionErrors(contribution.appliedPlans(ctx)),
-            ...(appliedStateInventory === undefined
-              ? {}
-              : {
-                  appliedStateInventory: (ctx) =>
-                    redactContributionErrors(appliedStateInventory.call(contribution, ctx)),
-                }),
+            appliedStateInventory: (ctx) =>
+              contribution
+                .appliedStateInventory(ctx)
+                .pipe(mapFailures((error) => redactProviderError(error, errorRedactor))),
+            readAppliedPlanStrict: (ctx, appId) =>
+              contribution
+                .readAppliedPlanStrict(ctx, appId)
+                .pipe(mapFailures((error) => redactProviderError(error, errorRedactor))),
             ...(resourceOwnership === undefined
               ? {}
               : {
                   resourceOwnership: (ctx, root) =>
-                    redactContributionErrors(resourceOwnership.call(contribution, ctx, root)),
+                    resourceOwnership.call(contribution, ctx, root).pipe(mapFailures(redactFailure)),
                 }),
           } satisfies typeof contribution,
           context,
@@ -211,70 +255,71 @@ export const makeRuntimeProviderRegistry = (
           (id) =>
             contributionFor(id).pipe(
               Effect.flatMap((descriptor) =>
-                makeAppliedStateProvider(id, descriptor, { makeProvider, paths }),
+                makeAppliedStateProvider(id, descriptor, { makeProvider, paths }).pipe(
+                  Effect.map((provider) => ({ ...provider, journalSlots })),
+                ),
               ),
             ),
         );
       });
 
-      const resolveAppliedPlan = Effect.fn("RuntimeProviderRegistry.resolveAppliedPlan")(
-        (root: AbsolutePath, app?: Pick<AppRef, "kind" | "id">, lookup?: AppliedPlanLookup) =>
-          appliedStateProviders.pipe(
-            Effect.flatMap((providers) => resolveAppliedPlanEvidence(root, providers, app, lookup)),
-          ),
+      const currentDataRoot = canonicalMissingAppRoot(paths.roots.userDataRoot).pipe(
+        mapFailures(
+          (cause) =>
+            new ProviderUnavailableError({
+              providerId: "runtime",
+              operation: "data-root",
+              message: "Cannot establish the current Lando data root.",
+              remediation: "Restore access to the configured Lando data root before retrying cleanup.",
+              cause,
+            }),
+        ),
       );
 
-      const resolveTeardown = Effect.fn("RuntimeProviderRegistry.resolveTeardownEvidence")(
-        (root: AbsolutePath, app?: Pick<AppRef, "kind" | "id">) =>
-          appliedStateProviders.pipe(
-            Effect.flatMap((providers) => resolveTeardownEvidence(root, providers, app)),
-          ),
-      );
+      const resolveAppliedPlan = Effect.fn("RuntimeProviderRegistry.resolveAppliedPlan")(function* (
+        root: AbsolutePath,
+        app?: Pick<AppRef, "kind" | "id">,
+        lookup?: AppliedPlanLookup,
+      ) {
+        return yield* resolveAppliedPlanEvidence(
+          root,
+          yield* appliedStateProviders,
+          app,
+          lookup,
+          yield* currentDataRoot,
+        );
+      });
+
+      const resolveTeardown = Effect.fn("RuntimeProviderRegistry.resolveTeardownEvidence")(function* (
+        root: AbsolutePath,
+        app?: Pick<AppRef, "kind" | "id">,
+      ) {
+        return yield* resolveTeardownEvidence(
+          root,
+          yield* appliedStateProviders,
+          app,
+          yield* currentDataRoot,
+        );
+      });
 
       return RuntimeProviderRegistry.of({
         appliedStateInventory: Effect.fn("RuntimeProviderRegistry.appliedStateInventory")(function* (
           providerId: ProviderId,
         ) {
           const { contribution, context } = yield* contributionFor(providerId);
-          if (contribution.appliedStateInventory === undefined)
-            return yield* Effect.fail(
-              redactFailure(
-                new ProviderUnavailableError({
-                  providerId,
-                  operation: "applied-state.list",
-                  message: `Runtime provider ${providerId} does not provide a strict applied-state inventory.`,
-                  remediation:
-                    "Update the provider plugin to support strict applied-state inventory before relying on host-wide ownership checks.",
-                }),
-              ),
-            );
           return yield* contribution
             .appliedStateInventory(context)
-            .pipe(Effect.provideService(PathsService, paths), mapFailures(redactFailure));
+            .pipe(Effect.provideService(PathsService, paths));
         }),
-        assertAppliedStateReadable: Effect.fn("RuntimeProviderRegistry.assertAppliedStateReadable")(
-          function* (plan) {
-            const { contribution, context } = yield* contributionFor(plan.provider);
-            if (contribution.appliedStateInventory === undefined) return;
-            const inventory = yield* contribution
-              .appliedStateInventory(context)
-              .pipe(Effect.provideService(PathsService, paths));
-            const issue = inventory.unreadable.find(
-              (entry) => entry.appId === undefined || entry.appId === plan.id,
-            );
-            if (issue !== undefined)
-              return yield* Effect.fail(
-                redactFailure(
-                  unreadableAppliedStateError({
-                    providerId: plan.provider,
-                    path: issue.path,
-                    layout: issue.appId === undefined ? "record" : "per-app",
-                    appId: plan.id,
-                  }),
-                ),
-              );
-          },
-        ),
+        readAppliedPlanStrict: Effect.fn("RuntimeProviderRegistry.readAppliedPlanStrict")(function* ({
+          id,
+          provider,
+        }) {
+          const { contribution, context } = yield* contributionFor(provider);
+          return yield* contribution
+            .readAppliedPlanStrict(context, id)
+            .pipe(Effect.provideService(PathsService, paths));
+        }),
         list: providerIds,
         hasRecordedOwnership: Effect.fn("RuntimeProviderRegistry.hasRecordedOwnership")((id: ProviderId) =>
           contributionFor(id).pipe(
@@ -283,18 +328,57 @@ export const makeRuntimeProviderRegistry = (
             ),
           ),
         ),
+        listResourceOwnership: Effect.fn("RuntimeProviderRegistry.listResourceOwnership")((id: ProviderId) =>
+          contributionFor(id).pipe(
+            Effect.flatMap(({ context, pluginStateRoot }) =>
+              listResourceOwnershipRecords(id, pluginStateRoot, context.stateStore).pipe(
+                mapFailures(redactFailure),
+              ),
+            ),
+          ),
+        ),
         appliedPlansFor: Effect.fn("RuntimeProviderRegistry.appliedPlansFor")(function* (
           root: AbsolutePath,
-          providerId?: ProviderId,
+          options?: { readonly providerId?: ProviderId; readonly observe?: true },
         ) {
+          const providerId = options?.providerId;
           const ids = providerId === undefined ? yield* providerIds : [providerId];
-          const plans = yield* Effect.forEach(ids, (id) =>
-            contributionFor(id).pipe(
-              Effect.flatMap(({ contribution, context }) => contribution.appliedPlans(context)),
-              Effect.provideService(PathsService, paths),
-            ),
+          const recordedSlots = yield* Effect.cached(journalSlots(root));
+          const plans = yield* Effect.forEach(
+            ids,
+            Effect.fnUntraced(function* (id) {
+              const { contribution, context } = yield* contributionFor(id);
+              const inventory = yield* contribution
+                .appliedStateInventory(context)
+                .pipe(Effect.provideService(PathsService, paths));
+              const matching = inventory.plans.filter(
+                (plan) => plan.provider === id && plan.identity?.appRoot === root,
+              );
+              if (options?.observe === true || inventory.unreadable.length === 0) return matching;
+              const ownership = yield* contribution.resourceOwnership?.(context, root) ??
+                Effect.succeed(undefined);
+              const owned =
+                ownership?.appRoot === root &&
+                ownership.providerId === id &&
+                ownership.ownerKey === appIdentityKey("owner", root)
+                  ? ownership.appIds
+                  : [];
+              const pending = (yield* recordedSlots).filter((slot) => slot.provider === id);
+              for (const appId of new Set([
+                ...owned,
+                ...matching.map((plan) => plan.id),
+                ...pending.map((slot) => slot.id),
+              ])) {
+                const issue = inventory.unreadable.find((entry) => inventoryProtectsApp(entry, appId));
+                if (issue !== undefined)
+                  return yield* Effect.fail(
+                    redactProviderError(protectedSlotError(id, issue, appId), errorRedactor),
+                  );
+              }
+              return matching;
+            }),
           );
-          return plans.flat().filter((plan) => plan.identity?.appRoot === root);
+          return plans.flat();
         }),
         capabilities: Effect.map(activeProvider, (provider) => provider.capabilities),
         select: Effect.fn("RuntimeProviderRegistry.select")(function* (target?: AppPlan | ProviderId) {

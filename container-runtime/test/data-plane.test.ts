@@ -1565,7 +1565,7 @@ describe("borrowed ephemeral mounts", () => {
       const { result, requests } = await runBorrowed(undefined, readOnly);
       expect(Exit.isSuccess(result)).toBe(true);
       const create = requests.find((request) => request.path.startsWith("/containers/create?"));
-      expect(create?.minimumApiVersion).toBeUndefined();
+      expect(create?.minimumApiVersions).toBeUndefined();
       expect(create?.body).toMatchObject({
         HostConfig: {
           Binds: [],
@@ -1576,7 +1576,7 @@ describe("borrowed ephemeral mounts", () => {
       expect(
         requests
           .filter((request) => request !== create)
-          .every((request) => request.minimumApiVersion === undefined),
+          .every((request) => request.minimumApiVersions === undefined),
       ).toBe(true);
     },
   );

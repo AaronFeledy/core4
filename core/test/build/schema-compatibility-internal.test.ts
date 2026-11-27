@@ -27,9 +27,9 @@ test("rejects internal persisted narrowing even with an exception when the versi
   const findings = compareArtifactSets(before, after, {
     exceptions: [
       {
-        surface,
+        fingerprint: compareArtifactSets(before, after, { exceptions: [] })[0]?.fingerprint ?? "",
         changeKind: "enum-narrowed",
-        path: "$.items.status",
+        locations: [{ surface, path: "$.items.status" }],
         justification: "Migrate stopping records to running.",
         persistedState: { store: "scratch-registry", version: 1 },
       },
@@ -48,9 +48,9 @@ test.each([false, true])(
     const exceptions = parseCompatibilityExceptions(
       JSON.stringify([
         {
-          surface,
+          fingerprint: compareArtifactSets(before, after, { exceptions: [] })[0]?.fingerprint,
           changeKind: "enum-narrowed",
-          path: "$.items.status",
+          locations: [{ surface, path: "$.items.status" }],
           justification: "Version 2 migrates historical stopping entries to running.",
           persistedState: { store: "scratch-registry", version: 2 },
         },
@@ -80,9 +80,9 @@ test.each([1, 2])("requires a version bump for unknown internal changes: current
   const findings = compareArtifactSets(before, after, {
     exceptions: [
       {
-        surface,
+        fingerprint: compareArtifactSets(before, after, { exceptions: [] })[0]?.fingerprint ?? "",
         changeKind: "unsupported-keyword",
-        path: "$.pattern",
+        locations: [{ surface, path: "$.pattern" }],
         justification: "Migrate historical prefix a to b.",
         persistedState: { store: "scratch-registry", version },
       },

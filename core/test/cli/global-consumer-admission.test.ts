@@ -13,6 +13,7 @@ import { globalDisable, globalEnable } from "@lando/engine/operations/global-pol
 import { rebuildApp } from "@lando/engine/operations/rebuild";
 import { restartApp } from "@lando/engine/operations/restart";
 import { startApp } from "@lando/engine/operations/start";
+import { RuntimeCwd } from "@lando/engine/runtime/cwd";
 import { ScratchRegistry } from "@lando/engine/scratch-app/registry";
 import { ScratchResourceScanner } from "@lando/engine/scratch-app/scanner";
 import * as Scratch from "@lando/engine/scratch-app/service";
@@ -20,14 +21,7 @@ import { EventDispatchControl, layerRuntime as realEventLayer } from "@lando/eng
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { PreServiceStartEvent } from "@lando/sdk/events";
-import {
-  AbsolutePath,
-  AppId,
-  type AppPlan,
-  LoadScopedLandofile,
-  ProviderId,
-  ServiceName,
-} from "@lando/sdk/schema";
+import { AbsolutePath, AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
 import {
   AppPlanner,
   BuildOrchestrator,
@@ -41,7 +35,7 @@ import {
   ShellRunner,
   StateStore,
 } from "@lando/sdk/services";
-import { makeTestRouterService } from "@lando/sdk/test";
+import { makeTestRouterService, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { makeStateStore } from "@lando/state-store/service";
 import { DateTime, Deferred, Effect, Exit, Fiber, Layer, Stream } from "effect";
@@ -184,6 +178,7 @@ const scratchLayerFor = async (
     readonly order: string[];
   },
 ) => {
+  await writeFile(join(f.plan.root, ".lando.yml"), "name: source\nruntime: 4\nservices: {}\n");
   const planner = await Effect.runPromise(AppPlanner.pipe(Effect.provide(f.layer)));
   const registry = await Effect.runPromise(RuntimeProviderRegistry.pipe(Effect.provide(f.layer)));
   const events = await Effect.runPromise(EventService.pipe(Effect.provide(f.layer)));
@@ -204,22 +199,10 @@ const scratchLayerFor = async (
               }),
       }),
     ),
-    Layer.succeed(
-      LandofileService,
-      LandofileService.of({
-        discover: Effect.succeed(
-          LoadScopedLandofile.make({
-            stage: "load-scoped",
-            document: { name: "source", runtime: 4, services: {} },
-            pendingSites: [],
-            context: { appRoot: f.plan.root, env: {} },
-          }),
-        ),
-      }),
-    ),
+    Layer.succeed(RuntimeCwd, f.plan.root),
     Layer.succeed(
       RuntimeProviderRegistry,
-      RuntimeProviderRegistry.of({
+      makeTestRuntimeProviderRegistry({
         ...registry,
         select: (target) =>
           registry.select(target).pipe(
@@ -378,37 +361,55 @@ test("selected restart rechecks policy after its pre-restart hook before stoppin
     const result = await Effect.runPromise(
       restartApp({ services: [ServiceName.make("web")] }, f.target).pipe(
         Effect.result,
-        Effect.provideService(RuntimeProviderRegistry, {
-          ...registry,
-          resolveAppliedPlan: (root) =>
-            root === f.plan.root ? Effect.succeed(f.plan) : registry.resolveAppliedPlan(root),
-          appliedPlansFor: (root, providerId) =>
-            root === f.plan.root ? Effect.succeed([f.plan]) : registry.appliedPlansFor(root, providerId),
-          select: (target) =>
-            registry.select(target).pipe(
-              Effect.map((provider) => ({
-                ...provider,
-                inspect: (target) =>
-                  target.app === f.plan.id
-                    ? Effect.succeed({
-                        app: f.plan.id,
-                        appRoot: f.plan.root,
-                        service: target.service,
-                        providerId: f.plan.provider,
-                        containerId: "owned-web",
-                        status: "running",
-                        publications: { status: "unknown" as const },
-                      })
-                    : provider.inspect(target),
-                stop: (target) =>
-                  target.app === f.plan.id
-                    ? Effect.sync(() => {
-                        stopped = true;
-                      })
-                    : provider.stop(target),
-              })),
-            ),
-        }),
+        Effect.provideService(
+          RuntimeProviderRegistry,
+          makeTestRuntimeProviderRegistry({
+            ...registry,
+            resolveAppliedPlan: (root) =>
+              root === f.plan.root ? Effect.succeed(f.plan) : registry.resolveAppliedPlan(root),
+            appliedPlansFor: (root, options) =>
+              root === f.plan.root ? Effect.succeed([f.plan]) : registry.appliedPlansFor(root, options),
+            select: (target) =>
+              registry.select(target).pipe(
+                Effect.map((provider) => ({
+                  ...provider,
+                  inspect: (target) =>
+                    target.app === f.plan.id
+                      ? Effect.succeed({
+                          app: f.plan.id,
+                          appRoot: f.plan.root,
+                          service: target.service,
+                          providerId: f.plan.provider,
+                          containerId: "owned-web",
+                          status: "running",
+                          publications: { status: "unknown" as const },
+                        })
+                      : provider.inspect(target),
+                  list: (filter) =>
+                    filter.app === f.plan.id
+                      ? Effect.succeed([
+                          {
+                            app: f.plan.id,
+                            appRoot: f.plan.identity?.appRoot ?? f.plan.root,
+                            service: ServiceName.make("web"),
+                            providerId: f.plan.provider,
+                            containerId: "owned-web",
+                            status: "running" as const,
+                            publications: { status: "unknown" as const },
+                          },
+                        ])
+                      : provider.list(filter),
+                  bringDownObserved: (observed, containers) =>
+                    observed.app === f.plan.id
+                      ? Effect.sync(() => {
+                          stopped = true;
+                          return { service: observed.service, action: "stopped" as const };
+                        })
+                      : provider.bringDownObserved(observed, containers),
+                })),
+              ),
+          }),
+        ),
         Effect.provideService(EventService, {
           ...events,
           publish: (event) =>
@@ -898,7 +899,7 @@ test("a completed sibling activation invalidates the earlier consumer scan befor
     const activationEntered = Deferred.makeUnsafe<void>();
     const releaseActivation = Deferred.makeUnsafe<void>();
     let pause = true;
-    const guarded = RuntimeProviderRegistry.of({
+    const guarded = makeTestRuntimeProviderRegistry({
       ...registry,
       appliedStateInventory: () =>
         Effect.suspend(() => {
@@ -967,14 +968,14 @@ test("policy cleanup keeps its claim until completion and refuses sibling enable
     const cleanup = Deferred.makeUnsafe<void>();
     const resume = Deferred.makeUnsafe<void>();
     let intercept = true;
-    const guarded = RuntimeProviderRegistry.of({
+    const guarded = makeTestRuntimeProviderRegistry({
       ...registry,
       select: (target) =>
         registry.select(target).pipe(
           Effect.map((provider) => ({
             ...provider,
-            removeObservedService: (observed) => {
-              const remove = provider.removeObservedService(observed);
+            bringDownObserved: (observed, containers) => {
+              const remove = provider.bringDownObserved(observed, containers);
               if (!intercept) return remove;
               intercept = false;
               return Deferred.succeed(cleanup, undefined).pipe(

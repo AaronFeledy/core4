@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { HOST_PROXY_SESSION_LABEL } from "@lando/container-runtime/labels";
+import { HOST_PROXY_CONTRACT_LABEL } from "@lando/container-runtime/labels";
 import { PortablePath, type ServicePlan, fileSyncVolumeName } from "@lando/sdk/schema";
 import {
   HOST_PROXY_CONTAINER_LANDO,
@@ -12,12 +12,12 @@ test("omits runtime host-proxy binds when the applied plan has stripped the over
   const internalMounts = [...HOST_PROXY_MOUNT_TARGETS].map((target) =>
     Object.freeze({ type: "bind" as const, source: `/host/integration${target}`, target, readOnly: true }),
   );
-  const userMount = Object.freeze({ type: "volume" as const, source: "anonymous-data", target: "/data" });
+  const userMount = Object.freeze({ type: "volume" as const, source: "a".repeat(64), target: "/data" });
   const mounts = Object.freeze({
     status: "present" as const,
     mounts: Object.freeze([...internalMounts, userMount]),
   });
-  const labels = Object.freeze({ [HOST_PROXY_SESSION_LABEL]: "session-hash" });
+  const labels = Object.freeze({ [HOST_PROXY_CONTRACT_LABEL]: "session-hash" });
 
   // When
   const { row, calls } = await runInfo(service, mounts, labels);
@@ -28,7 +28,7 @@ test("omits runtime host-proxy binds when the applied plan has stripped the over
   ]);
   expect(calls).toEqual(["select", "inspect:web"]);
   expect(mounts.mounts).toEqual([...internalMounts, userMount]);
-  expect(labels).toEqual({ [HOST_PROXY_SESSION_LABEL]: "session-hash" });
+  expect(labels).toEqual({ [HOST_PROXY_CONTRACT_LABEL]: "session-hash" });
 });
 
 test.each([...HOST_PROXY_MOUNT_TARGETS])("retains an unmarked authored user bind at %s", async (target) => {
@@ -61,7 +61,7 @@ test("matches an accelerated user bind by mountKey after an internal integration
     ...service,
     extensions: {
       ...service.extensions,
-      "@lando/core/host-proxy-transport": { sessionDigest: "0123456789abcdef" },
+      "@lando/core/host-proxy-transport": { contractDigest: "0123456789abcdef" },
     },
     mounts: [
       internalMount,
@@ -84,7 +84,7 @@ test("matches an accelerated user bind by mountKey after an internal integration
       status: "present",
       mounts: [internalMount, { type: "volume", source, target: "/workspace", readOnly: false }],
     },
-    { [HOST_PROXY_SESSION_LABEL]: "session-hash" },
+    { [HOST_PROXY_CONTRACT_LABEL]: "session-hash" },
   );
 
   // Then: one retained host-source row, with neither internal nor backing-volume rows.

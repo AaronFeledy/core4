@@ -1,8 +1,10 @@
 import { expect, test } from "bun:test";
 import { PluginContributionGraph } from "@lando/engine/plugins/contribution-graph";
+import { buildCatalog, computeEffectiveAllowlist } from "@lando/mcp/catalog";
 import { dispatchTool } from "@lando/mcp/dispatch";
-import type { McpCommandEntry } from "@lando/mcp/registry";
+import { type McpCommandEntry, validateToolInput } from "@lando/mcp/registry";
 import { RedactionService } from "@lando/redaction/service";
+import { McpToolInputError } from "@lando/sdk/errors";
 import type { ExecutableCommandSpec } from "@lando/sdk/plugins";
 import { createRedactor } from "@lando/sdk/secrets";
 import { Effect, Schema } from "effect";
@@ -45,6 +47,52 @@ test("bundled db:snapshots defaults and explicit db:export validate and list", a
   expect(result.tools).toContainEqual(
     expect.objectContaining({ id: "db:export", source: "allow", destructive: true }),
   );
+});
+
+const flagInputNames = (inputSchema: unknown): ReadonlyArray<string> => {
+  const flags = Schema.decodeUnknownSync(
+    Schema.Struct({
+      properties: Schema.Struct({
+        flags: Schema.Struct({ properties: Schema.Record(Schema.String, Schema.Unknown) }),
+      }),
+    }),
+  )(inputSchema).properties.flags.properties;
+  return Object.keys(flags);
+};
+
+test("a plugin's format and json flags read Lando's selection, so its tool rejects them as input", async () => {
+  // Given: a plugin command that declares the format and json flags Lando fills on the CLI.
+  const registry = await Effect.runPromise(
+    registryFor({
+      ...spec,
+      flags: {
+        format: { type: "string", description: "Lando's result format." },
+        json: { type: "boolean" },
+        depth: { type: "number", valueType: "integer" },
+      },
+    }),
+  );
+  const [entry] = registry.commandEntries;
+  if (entry === undefined) throw new Error("expected the fixture command");
+
+  // When: the catalog projects the tool and a client sends format anyway.
+  const catalog = buildCatalog({
+    commandEntries: registry.commandEntries,
+    effective: computeEffectiveAllowlist({ defaults: [], allow: [spec.id] }),
+  });
+  const rejected = Effect.runSync(
+    Effect.flip(
+      Effect.try({
+        try: () => validateToolInput(entry.spec, { flags: { format: "json" } }),
+        catch: (error) => error,
+      }),
+    ),
+  );
+
+  // Then: only the command's own flag is input, and format is an unknown flag.
+  expect(flagInputNames(catalog.tools[0]?.inputSchema)).toEqual(["depth"]);
+  expect(rejected).toBeInstanceOf(McpToolInputError);
+  expect(rejected).toMatchObject({ path: "flags.format" });
 });
 
 test("external mcpAllowed commands need explicit allowance", async () => {

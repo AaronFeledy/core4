@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { makeLandoPaths } from "@lando/paths";
-import { GlobalAppError, ProviderUnavailableError } from "@lando/sdk/errors";
+import { GlobalAppError, appliedStateVersionError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
@@ -31,7 +31,7 @@ import {
   RuntimeProviderRegistry,
   type ServiceRuntimeInfo,
 } from "@lando/sdk/services";
-import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRouterService, TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { DateTime, Effect, Layer, Queue, Schema, Stream } from "effect";
 
@@ -56,7 +56,7 @@ import { makeTestStateStore } from "../../src/testing/state-store.ts";
 const metadata = { runtime: 4 as const, resolvedAt: DateTime.makeUnsafe(0), source: "warm-test" };
 
 test.each(["cold", "warm"] as const)(
-  "%s ensure rejects unreadable applied state before accepting services",
+  "%s ensure rejects newer applied state before accepting services",
   async (path) => {
     await withFixture(async (f) => {
       if (path === "warm") await f.ensure();
@@ -69,9 +69,12 @@ test.each(["cold", "warm"] as const)(
       expect(result).toMatchObject({
         _tag: "Failure",
         failure: {
-          _tag: "ProviderUnavailableError",
+          _tag: "AppliedStateVersionError",
           providerId: "lando",
           operation: "applied-state.read",
+          storedVersion: 11,
+          supportedVersion: 10,
+          scope: "app",
         },
       });
       expect(f.calls.apply).toBe(applied);
@@ -92,7 +95,13 @@ test.each(["running", "exited"] as const)(
       f.setLegacyBridge();
       const sibling = f.runtimes.get("sibling");
       if (sibling === undefined) throw new Error("Missing sibling");
-      const { status: _status, health: _health, exitCode: _exitCode, ...identity } = sibling;
+      const {
+        status: _status,
+        health: _health,
+        healthCheckedAt: _healthCheckedAt,
+        exitCode: _exitCode,
+        ...identity
+      } = sibling;
       f.runtimes.set("sibling", { ...identity, status });
       const result = await f.ensure(["app"]);
       expect(result.servicesStarted.map((service) => service.name).sort()).toEqual(
@@ -181,11 +190,11 @@ const makeFixture = async (directory: string) => {
     get capabilities() {
       return capabilities;
     },
-    removeObservedService: (observation: ServiceRuntimeInfo) =>
+    bringDownObserved: (observation: ServiceRuntimeInfo) =>
       Effect.sync(() => {
         removed.push(observation.service);
         runtimes.delete(observation.service);
-        return { kind: "removed" as const };
+        return { service: observation.service, action: "removed" as const };
       }),
     list: () =>
       Effect.sync(() => {
@@ -231,25 +240,27 @@ const makeFixture = async (directory: string) => {
         });
       }),
   };
-  const registry = RuntimeProviderRegistry.of({
-    assertAppliedStateReadable: () =>
+  const registry = makeTestRuntimeProviderRegistry({
+    readAppliedPlanStrict: () =>
       Effect.suspend(() =>
         unreadable
           ? Effect.fail(
-              new ProviderUnavailableError({
+              appliedStateVersionError({
                 providerId: "lando",
                 operation: "applied-state.read",
-                message: "Global applied state is unreadable.",
-                remediation: "Restore the global applied state, then run `lando global:start`.",
+                path: "/state/applied-plans/global.json",
+                storedVersion: 11,
+                supportedVersion: 10,
+                scope: "app",
+                appId: "global",
               }),
             )
-          : Effect.void,
+          : Effect.succeed(applied),
       ),
     appliedStateInventory: () =>
       Effect.succeed({ plans: applied === undefined ? [] : [applied], unreadable: [] }),
     appliedPlansFor: () => Effect.succeed(applied === undefined ? [] : [applied]),
     resolveAppliedPlan: () => Effect.succeed(applied),
-    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
     list: Effect.succeed([providerId]),
     capabilities: Effect.sync(() => capabilities),
     select: () => Effect.succeed(provider),
@@ -526,7 +537,13 @@ for (const change of [
         if (runtime === undefined) throw new Error("expected dependency");
         if (change === "identity") f.runtimes.set("dependency", { ...runtime, containerId: "replacement" });
         else {
-          const { health: _health, exitCode: _exitCode, status: _status, ...fields } = runtime;
+          const {
+            health: _health,
+            healthCheckedAt: _healthCheckedAt,
+            exitCode: _exitCode,
+            status: _status,
+            ...fields
+          } = runtime;
           f.runtimes.set("dependency", { ...fields, status: "exited" });
         }
       }
@@ -535,6 +552,30 @@ for (const change of [
     });
   });
 }
+
+test.each([
+  ["none", "starting", 1],
+  ["none", "unhealthy", 1],
+  ["lando", "starting", 2],
+  ["native", "starting", 2],
+  ["native", "unhealthy", 2],
+] as const)(
+  "native health forces the cold path only when something schedules it (serviceHealth %s, health %s)",
+  async (serviceHealth, health, applies) => {
+    await withFixture(async (f) => {
+      // Given a provider whose native health is scheduled, or not, and a warm record
+      f.setCapabilities({ ...TestRuntimeProvider.capabilities, serviceHealth });
+      await f.ensure();
+      const runtime = f.runtimes.get("dependency");
+      if (runtime?.status !== "running") throw new Error("expected a running dependency");
+      // When the engine reports a not-yet-healthy state
+      f.runtimes.set("dependency", { ...runtime, health });
+      await f.ensure();
+      // Then health nothing schedules never forces the cold path
+      expect(f.calls.apply).toBe(applies);
+    });
+  },
+);
 
 test("a pre-start hook source mutation rejects warm reuse without applying or publishing success", async () => {
   await withFixture(async (f) => {
@@ -951,7 +992,7 @@ test("cold ensure does not publish success when policy changes during readiness"
       ensureGlobalServicesRunning({ services: ["app"] }).pipe(
         Effect.provideService(
           RuntimeProviderRegistry,
-          RuntimeProviderRegistry.of({ ...registry, select: () => Effect.succeed(observed) }),
+          makeTestRuntimeProviderRegistry({ ...registry, select: () => Effect.succeed(observed) }),
         ),
         Effect.provide(f.layer),
         Effect.result,

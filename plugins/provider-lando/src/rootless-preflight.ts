@@ -10,6 +10,7 @@ import {
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { Effect } from "effect";
 
+import { resolveProcessUserName } from "./user-manager.ts";
 import { hasHostSystemd } from "./user-systemd-session.ts";
 
 const PROVIDER_ID = "lando";
@@ -74,7 +75,7 @@ const rootlessPrerequisiteCopy: Record<RootlessPrerequisite, RootlessPrerequisit
   "xdg-runtime-dir": {
     message: "Rootless Podman requires a private runtime directory base for your session.",
     remediation:
-      "Ensure /run/user/$(id -u) exists, is owned by your user, and has mode 0700 (no group/other bits), or export XDG_RUNTIME_DIR to a directory with the same properties, then rerun `lando setup`.",
+      "Ensure /run/user/$(id -u) exists, is owned by your user, and has mode 0700, or export XDG_RUNTIME_DIR to a directory with the same properties, then rerun `lando setup`.",
   },
 };
 
@@ -229,18 +230,13 @@ export const hasCgroupsV2Delegation = (
 ): boolean => {
   if (uid === undefined || uid.length === 0) return false;
 
-  const userSlice = join(cgroupRoot, "user.slice");
-  // No systemd user hierarchy: Lando's managed runtime uses cgroupfs and does
-  // not need user-session controller delegation.
-  if (!existsSync(userSlice)) return true;
+  // Only a running user manager has controllers to delegate. Without one the managed runtime
+  // launches outside a delegated scope (doctor reports it), and setup plans lingering instead.
+  const managerCgroup = join(cgroupRoot, "user.slice", `user-${uid}.slice`, `user@${uid}.service`);
+  if (!existsSync(managerCgroup)) return true;
 
   try {
-    return (
-      readFileSync(
-        join(userSlice, `user-${uid}.slice`, `user@${uid}.service`, "cgroup.controllers"),
-        "utf8",
-      ).trim().length > 0
-    );
+    return readFileSync(join(managerCgroup, "cgroup.controllers"), "utf8").trim().length > 0;
   } catch {
     return false;
   }
@@ -275,7 +271,7 @@ export const makeSystemRootlessProbes = (
   seams: RootlessRuntimeBaseSeams = {},
 ): RootlessProbes => ({
   probe: () => {
-    const user = env.USER;
+    const user = resolveProcessUserName(env);
     const subuid =
       typeof user === "string" && user.length > 0
         ? probeSubordinateIdFile("/etc/subuid", user)

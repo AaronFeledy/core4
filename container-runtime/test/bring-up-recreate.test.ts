@@ -12,7 +12,7 @@ import {
 import { Cause, DateTime, Effect, Exit, Schema } from "effect";
 import { CREATE_CONFIG_LABEL } from "../src/create-fingerprint.ts";
 import type { EngineHttpRequest, EngineHttpResponse, PodmanApiClient } from "../src/engine-api.ts";
-import { HOST_PROXY_TRANSPORT_EXTENSION_KEY } from "../src/labels.ts";
+import { HOST_PROXY_TRANSPORT_EXTENSION_KEY, VOLUME_INSTANCE_LABEL } from "../src/labels.ts";
 import { ownedNetworkInspection } from "./network-inspection-fixture.ts";
 import { APPLY_REMEDIATION, bringUp, commonContainerLabels } from "./support/service-creation.ts";
 
@@ -27,28 +27,21 @@ const metadata = {
 };
 const containerName = "lando-recreate-ports--web";
 
-const hostProxySessionDigestOf = (session: string): string => sha256Hex(session).slice(0, 16);
-const trustedHostProxyExtension = (session: string): ServicePlan["extensions"] => ({
-  [HOST_PROXY_TRANSPORT_EXTENSION_KEY]: { sessionDigest: hostProxySessionDigestOf(session) },
+const hostProxyContractDigestOf = (contract: string): string => sha256Hex(contract).slice(0, 16);
+const trustedHostProxyExtension = (contract: string): ServicePlan["extensions"] => ({
+  [HOST_PROXY_TRANSPORT_EXTENSION_KEY]: { contractDigest: hostProxyContractDigestOf(contract) },
 });
+const hostProxyContainerDir = "/home/user/run/app/container";
 const hostProxyOverlayMounts = (sources: {
-  readonly socket: string;
-  readonly credentials: string;
+  readonly containerDir: string;
   readonly shim?: string;
 }): ServicePlan["mounts"] => {
-  const shim = sources.shim ?? "/home/user/session/lando-shim";
+  const shim = sources.shim ?? "/home/user/run/app/lando";
   return [
     {
       type: "bind" as const,
-      source: sources.socket,
-      target: PortablePath.make("/run/lando/host-proxy.sock"),
-      readOnly: true,
-      realization: "passthrough" as const,
-    },
-    {
-      type: "bind" as const,
-      source: sources.credentials,
-      target: PortablePath.make("/run/lando/host-proxy/credentials"),
+      source: sources.containerDir,
+      target: PortablePath.make("/run/lando/host-proxy"),
       readOnly: true,
       realization: "passthrough" as const,
     },
@@ -62,7 +55,7 @@ const hostProxyOverlayMounts = (sources: {
   ];
 };
 const hostProxyRuntimeEnv = {
-  LANDO_HOST_PROXY_SOCKET: "/run/lando/host-proxy.sock",
+  LANDO_HOST_PROXY_SOCKET: "/run/lando/host-proxy/sock",
   LANDO_HOST_PROXY_TRANSPORT: "unix-socket",
   LANDO_HOST_PROXY_DEPTH: "0",
 } as const;
@@ -165,6 +158,7 @@ const makeFakeApi = (input: {
   readonly failStartWithBindRejection?: boolean;
   readonly existingLabels?: Readonly<Record<string, string>>;
   readonly existingPlan?: AppPlan;
+  readonly existingVolumeLabels?: Readonly<Record<string, Readonly<Record<string, string>>>>;
   readonly additionalMounts?: ReadonlyArray<{
     readonly Type: string;
     readonly Source: string;
@@ -185,6 +179,7 @@ const makeFakeApi = (input: {
 }) => {
   const calls: EngineHttpRequest[] = [];
   let exists = input.containerExists ?? true;
+  let removedOriginal = false;
   let running = input.running ?? true;
   let hostPort = input.existingHostPort ?? "18080";
   let failNextStart = input.failStartWithBindRejection === true;
@@ -204,6 +199,13 @@ const makeFakeApi = (input: {
         calls.push(request);
         if (request.method === "GET" && request.path.startsWith("/containers/json?")) {
           return { status: 200, body: "[]" };
+        }
+        if (request.method === "GET" && request.path.startsWith("/volumes/")) {
+          const name = decodeURIComponent(request.path.slice("/volumes/".length));
+          const labels = input.existingVolumeLabels?.[name];
+          return removedOriginal || labels === undefined
+            ? { status: 404, body: "{}" }
+            : { status: 200, body: JSON.stringify({ Name: name, Labels: labels }) };
         }
         const containerMatch = request.path.match(/^\/containers\/([^/?]+)(?:\/([^?]+))?/u);
         const name = containerMatch === null ? "" : decodeURIComponent(containerMatch[1] ?? "");
@@ -254,6 +256,7 @@ const makeFakeApi = (input: {
           name === (input.existingNativeId ?? input.existingContainerName ?? containerName)
         ) {
           if (input.deleteStatus === 204) {
+            removedOriginal = true;
             exists = false;
             running = false;
           }
@@ -288,16 +291,12 @@ const createCalls = (calls: ReadonlyArray<EngineHttpRequest>): ReadonlyArray<Eng
   calls.filter((call) => call.method === "POST" && call.path.startsWith("/containers/create"));
 
 test.each([false, true])(
-  "host-proxy session rotation cleans anonymous volumes and preserves named mounts (changed=%s)",
+  "a host-proxy contract change cleans anonymous volumes and preserves named mounts (changed=%s)",
   async (changed) => {
     const base = planWithHostPort(18080);
     const original = base.services[serviceName];
     if (original === undefined) throw new Error("Missing service");
-    const sessionSources = {
-      socket: "/home/user/session/host-proxy.sock",
-      credentials: "/home/user/session/credentials",
-      shim: "/home/user/session/lando-shim",
-    } as const;
+    const sessionSources = { containerDir: hostProxyContainerDir } as const;
     const previous: ServicePlan = {
       ...original,
       environment: { ...hostProxyRuntimeEnv },
@@ -310,23 +309,18 @@ test.each([false, true])(
         },
         ...hostProxyOverlayMounts(sessionSources),
       ],
-      extensions: trustedHostProxyExtension("previous-session"),
+      extensions: trustedHostProxyExtension("previous-contract"),
     };
     const desired: ServicePlan = {
       ...previous,
-      extensions: trustedHostProxyExtension(changed ? "next-session" : "previous-session"),
+      extensions: trustedHostProxyExtension(changed ? "next-contract" : "previous-contract"),
     };
     const planned = { ...base, services: { [serviceName]: desired } };
     const fake = makeFakeApi({
       deleteStatus: 204,
       existingPlan: { ...base, services: { [serviceName]: previous } },
       existingMounts: [
-        { Type: "bind", Source: sessionSources.socket, Destination: "/run/lando/host-proxy.sock" },
-        {
-          Type: "bind",
-          Source: sessionSources.credentials,
-          Destination: "/run/lando/host-proxy/credentials",
-        },
+        { Type: "bind", Source: sessionSources.containerDir, Destination: "/run/lando/host-proxy" },
       ],
       existingNetworks: ["recreate-ports-network"],
       networkExists: true,
@@ -351,7 +345,7 @@ test.each([false, true])(
   },
 );
 
-test("upgrades a legacy env-only host-proxy container by recreating it under the credentials-file overlay", async () => {
+test("upgrades a legacy env-only host-proxy container by recreating it under the contract overlay", async () => {
   // Given a running container planned under the old SESSION/TOKEN env overlay (socket only, no credentials).
   const base = planWithHostPort(18080);
   const original = base.services[serviceName];
@@ -377,11 +371,8 @@ test("upgrades a legacy env-only host-proxy container by recreating it under the
   const upgraded: ServicePlan = {
     ...original,
     environment: { ...hostProxyRuntimeEnv },
-    mounts: hostProxyOverlayMounts({
-      socket: "/home/user/session/host-proxy.sock",
-      credentials: "/home/user/session/credentials",
-    }),
-    extensions: trustedHostProxyExtension("legacy-session"),
+    mounts: hostProxyOverlayMounts({ containerDir: hostProxyContainerDir }),
+    extensions: trustedHostProxyExtension("current-contract"),
   };
   const planned = { ...base, services: { [serviceName]: upgraded } };
   const fake = makeFakeApi({
@@ -390,7 +381,7 @@ test("upgrades a legacy env-only host-proxy container by recreating it under the
     // Old builds may still show an env-derived session label on the running container.
     existingLabels: {
       ...commonContainerLabels(base, legacy),
-      "dev.lando.host-proxy-session": hostProxySessionDigestOf("legacy-session"),
+      "dev.lando.host-proxy-session": hostProxyContractDigestOf("legacy-session"),
     },
     existingMounts: [
       {
@@ -402,18 +393,13 @@ test("upgrades a legacy env-only host-proxy container by recreating it under the
     existingNetworks: ["recreate-ports-network"],
     networkExists: true,
   });
-  // When bring-up applies the credentials-file overlay shared by podman and docker providers.
+  // When bring-up applies the contract overlay shared by podman and docker providers.
   const result = await Effect.runPromise(bringUp(planned, { api: fake.api, ctx, reconcile: false }));
-  // Then the stale env-only container is replaced once (missing credentials bind / config drift).
+  // Then the stale env-only container is replaced once (missing contract label / config drift).
   expect(result.changed).toBe(true);
   expect(createCalls(fake.calls)).toHaveLength(1);
   expect(createCalls(fake.calls)[0]?.body).toMatchObject({
-    HostConfig: {
-      Binds: expect.arrayContaining([
-        "/home/user/session/host-proxy.sock:/run/lando/host-proxy.sock:ro",
-        "/home/user/session/credentials:/run/lando/host-proxy/credentials:ro",
-      ]),
-    },
+    HostConfig: { Binds: expect.arrayContaining([`${hostProxyContainerDir}:/run/lando/host-proxy:ro`]) },
   });
 });
 
@@ -816,30 +802,25 @@ describe("Podman publish-port recreate", () => {
     );
   });
 
-  test("recreates an existing stopped container when a host-proxy bind source changes", async () => {
+  test("recreates an existing stopped container when its host-proxy contract changes", async () => {
     const base = planWithHostPort(18080);
     const service = base.services[serviceName];
     if (service === undefined) throw new Error("Test service is missing.");
-    const desired: ServicePlan = {
+    const overlay = (containerDir: string, contract: string): ServicePlan => ({
       ...service,
       environment: { ...hostProxyRuntimeEnv },
-      mounts: hostProxyOverlayMounts({
-        socket: "/home/user/new/host-proxy.sock",
-        credentials: "/home/user/session/credentials",
-      }),
-      extensions: trustedHostProxyExtension("bind-session"),
+      mounts: hostProxyOverlayMounts({ containerDir }),
+      extensions: trustedHostProxyExtension(contract),
+    });
+    const plan: AppPlan = {
+      ...base,
+      services: { [serviceName]: overlay("/home/user/new/container", "new") },
     };
-    const plan: AppPlan = { ...base, services: { [serviceName]: desired } };
     const fake = makeFakeApi({
       deleteStatus: 204,
-      existingPlan: plan,
+      existingPlan: { ...base, services: { [serviceName]: overlay("/home/user/old/container", "old") } },
       existingMounts: [
-        { Type: "bind", Source: "/home/user/old/host-proxy.sock", Destination: "/run/lando/host-proxy.sock" },
-        {
-          Type: "bind",
-          Source: "/home/user/session/credentials",
-          Destination: "/run/lando/host-proxy/credentials",
-        },
+        { Type: "bind", Source: "/home/user/old/container", Destination: "/run/lando/host-proxy" },
       ],
       existingNetworks: ["recreate-ports-network"],
       networkExists: true,
@@ -852,48 +833,10 @@ describe("Podman publish-port recreate", () => {
     expect(fake.calls.some((call) => call.method === "DELETE" && call.path.startsWith("/containers/"))).toBe(
       true,
     );
-    expect(
-      fake.calls.find((call) => call.method === "POST" && call.path.startsWith("/containers/create"))?.body,
-    ).toMatchObject({
-      HostConfig: {
-        Binds: expect.arrayContaining([
-          "/home/user/new/host-proxy.sock:/run/lando/host-proxy.sock:ro",
-          "/home/user/session/credentials:/run/lando/host-proxy/credentials:ro",
-        ]),
-      },
+    expect(createCalls(fake.calls)[0]?.body).toMatchObject({
+      HostConfig: { Binds: expect.arrayContaining(["/home/user/new/container:/run/lando/host-proxy:ro"]) },
     });
   });
-
-  for (const [label, existingMounts] of [
-    ["missing metadata", undefined],
-    ["empty mount list", []],
-  ] as const) {
-    test(`recreates a container when its host-proxy socket mount has ${label}`, async () => {
-      const base = planWithHostPort(18080);
-      const service = base.services[serviceName];
-      if (service === undefined) throw new Error("Test service is missing.");
-      const desired: ServicePlan = {
-        ...service,
-        environment: { ...hostProxyRuntimeEnv },
-        mounts: hostProxyOverlayMounts({
-          socket: "/home/user/new/host-proxy.sock",
-          credentials: "/home/user/session/credentials",
-        }),
-        extensions: trustedHostProxyExtension("missing-mount-session"),
-      };
-      const plan: AppPlan = { ...base, services: { [serviceName]: desired } };
-      const fake = makeFakeApi({
-        deleteStatus: 204,
-        existingPlan: plan,
-        ...(existingMounts === undefined ? {} : { existingMounts: [...existingMounts] }),
-        existingNetworks: ["recreate-ports-network"],
-        networkExists: true,
-      });
-      const result = await Effect.runPromise(bringUp(plan, { api: fake.api, ctx }));
-      expect(result.changed).toBe(true);
-      expect(createCalls(fake.calls)).toHaveLength(1);
-    });
-  }
 
   test("recreates when a gpg relay directory source changes", async () => {
     // Given
@@ -928,7 +871,7 @@ describe("Podman publish-port recreate", () => {
     expect(createCalls(fake.calls)).toHaveLength(1);
   });
 
-  test("does not compare unrelated bind sources without a host-proxy session", async () => {
+  test("does not compare unrelated bind sources without a host-proxy contract", async () => {
     const base = planWithHostPort(18080);
     const service = base.services[serviceName];
     if (service === undefined) throw new Error("Test service is missing.");
@@ -958,32 +901,22 @@ describe("Podman publish-port recreate", () => {
     expect(result.changed).toBe(false);
     expect(createCalls(fake.calls)).toHaveLength(0);
   });
-  test("reuses an existing container when its host-proxy bind sources are unchanged", async () => {
+  test("reuses an existing container when its host-proxy contract is unchanged", async () => {
     const base = planWithHostPort(18080);
     const service = base.services[serviceName];
     if (service === undefined) throw new Error("Test service is missing.");
     const desired: ServicePlan = {
       ...service,
       environment: { ...hostProxyRuntimeEnv },
-      mounts: hostProxyOverlayMounts({
-        socket: "/home/user/new/host-proxy.sock",
-        credentials: "/home/user/session/credentials",
-      }),
-      extensions: trustedHostProxyExtension("stable-session"),
+      mounts: hostProxyOverlayMounts({ containerDir: hostProxyContainerDir }),
+      extensions: trustedHostProxyExtension("stable-contract"),
     };
     const plan: AppPlan = { ...base, services: { [serviceName]: desired } };
 
     const fake = makeFakeApi({
       deleteStatus: 204,
       existingPlan: plan,
-      existingMounts: [
-        { Type: "bind", Source: "/home/user/new/host-proxy.sock", Destination: "/run/lando/host-proxy.sock" },
-        {
-          Type: "bind",
-          Source: "/home/user/session/credentials",
-          Destination: "/run/lando/host-proxy/credentials",
-        },
-      ],
+      existingMounts: [{ Type: "bind", Source: hostProxyContainerDir, Destination: "/run/lando/host-proxy" }],
       existingNetworks: ["recreate-ports-network"],
       networkExists: true,
     });
@@ -1178,16 +1111,27 @@ test("reports a host-port recovery replacement of a container that existed befor
   expect(result.services).toEqual({ web: { action: "replaced", reason: "host-port" } });
 });
 
-test("lists only anonymous volumes of the replaced container that no planned mount covers", async () => {
+test("reports uncovered engine-named volumes only if inspect finds no Lando creation labels", async () => {
   const base = volumePlan();
   const service = base.services[serviceName];
   if (service === undefined) throw new Error("Test service is missing.");
   const fake = makeFakeApi({
     deleteStatus: 204,
     existingLabels: commonContainerLabels(base, service),
+    existingVolumeLabels: { ["a".repeat(64)]: {}, ["b".repeat(64)]: { [VOLUME_INSTANCE_LABEL]: "created" } },
     existingMounts: [
-      { Type: "volume", Source: "data", Destination: "/data" },
-      { Type: "volume", Source: "anonymous-1", Destination: "/var/lib/anonymous" },
+      { Type: "volume", Name: "data", Source: "data", Destination: "/data" },
+      { Type: "volume", Name: "a".repeat(64), Source: "anonymous-1", Destination: "/var/lib/anonymous" },
+      { Type: "volume", Name: "b".repeat(64), Source: "named-hex", Destination: "/var/lib/named-hex" },
+      { Type: "volume", Name: "c".repeat(64), Source: "unverified", Destination: "/var/lib/unverified" },
+      { Type: "volume", Source: "/engine/volumes/unknown", Destination: "/var/lib/unknown" },
+      // A named volume the plan no longer mounts survives the replacement.
+      {
+        Type: "volume",
+        Name: "lando-app--web--shadow--app-vendor-64784057",
+        Source: "lando-app--web--shadow--app-vendor-64784057",
+        Destination: "/app/vendor",
+      },
       { Type: "bind", Source: "/host/cache", Destination: "/cache" },
     ],
     networkExists: true,

@@ -10,6 +10,7 @@
  */
 
 import type {
+  CommandSpec,
   DatabaseConnection,
   Environment,
   EnvironmentValue,
@@ -19,6 +20,7 @@ import type {
   VolumeMountPlan,
 } from "@lando/sdk/schema";
 import type {
+  LauncherCommandOptions,
   ServiceAppMountIntent,
   ServiceBuildStepIntent,
   ServiceFeatureDefinition,
@@ -69,6 +71,7 @@ type DraftExternalOptionalServicePlanKey =
   | "pullPolicy"
   | "scanner"
   | "logSources"
+  | "plannedPort"
   | "connection"
   | "nonSqlCreds"
   | "sqlite"
@@ -123,6 +126,8 @@ export interface DraftServicePlan {
   primary: boolean;
   artifact?: ServicePlan["artifact"];
   command?: ServicePlan["command"];
+  /** Opt-in from the last command writer, not a property of the argv. */
+  launcherProjectUser?: true | undefined;
   entrypoint?: ServicePlan["entrypoint"];
   init?: boolean;
   environment: Record<string, EnvironmentValue>;
@@ -149,6 +154,15 @@ export interface DraftServicePlan {
   hostAliases: Array<ServicePlan["hostAliases"][number]>;
   provenance?: ServicePlan["provenance"];
 }
+
+export const writeServiceCommand = (
+  draft: DraftServicePlan,
+  command: CommandSpec,
+  options?: Pick<LauncherCommandOptions, "projectUser">,
+): void => {
+  draft.command = Array.isArray(command) ? [...command] : command;
+  draft.launcherProjectUser = options?.projectUser;
+};
 
 /** Deterministic metadata stamped on every composed plan (no wall-clock). */
 export const deterministicMetadata: ServicePlan["metadata"] = {

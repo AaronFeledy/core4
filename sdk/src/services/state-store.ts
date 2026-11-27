@@ -32,9 +32,8 @@ export type StateCodec<A, _I> =
     };
 
 /**
- * Upgrades durable data whose on-disk `version` is older than the bucket's
- * declared `version`, given the raw decoded payload and the version it was
- * written at.
+ * Receives only older envelope versions, with the raw payload and the version
+ * it was written at. Never called for a newer envelope.
  */
 export type StateMigrator<A> = (raw: unknown, fromVersion: number) => A;
 
@@ -47,6 +46,7 @@ interface StateBucketFields<A, I> {
   readonly namespace?: string;
   readonly key: string;
   readonly schema: Schema.Codec<A, I>;
+  /** Positive integer up to 0xFFFFFFFF, the binary envelope's maximum. */
   readonly version: number;
   readonly codec?: StateCodec<A, I>;
   /** Exact permissions applied to each atomic replacement, after umask. */
@@ -58,6 +58,8 @@ export interface DurableStateBucketSpec<A, I> extends StateBucketFields<A, I> {
   readonly root: DurableStateRoot;
   readonly onCorrupt?: "discard" | "quarantine" | "fail";
   readonly onVersionMismatch?: "discard" | StateMigrator<A>;
+  /** Defaults to fail. Only use discard for regenerable state. */
+  readonly onNewerVersion?: "fail" | "discard";
   readonly default?: NoInfer<A>;
 }
 
@@ -70,6 +72,8 @@ export interface CacheStateBucketSpec<A, I> extends StateBucketFields<A, I> {
   readonly default: NoInfer<A>;
   readonly onCorrupt?: "discard" | "quarantine";
   readonly onVersionMismatch?: "discard";
+  /** Newer envelopes always read as absent in a cache bucket. */
+  readonly onNewerVersion?: "discard";
 }
 
 export type StateBucketSpec<A, I> = DurableStateBucketSpec<A, I> | CacheStateBucketSpec<A, I>;
@@ -97,6 +101,8 @@ export interface StateTransition<A, State extends string, Operation extends stri
  * `update`, `modify`, `mutate`, and `transition` read and write under the bucket's
  * lock (cross-process when the bucket is `advisory`-locked); `mutate` and
  * `transition` skip the write when nothing changes and can remove the file.
+ * A durable framed bucket protects newer envelopes from reads and mutations
+ * unless its spec explicitly opts into discarding them.
  */
 export interface StateBucket<A> {
   readonly path: AbsolutePath;

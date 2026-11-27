@@ -52,6 +52,7 @@ export const applyCiSelection = (workflow: string): string => {
       profile: \${{ steps.select.outputs.profile }}
       broad: \${{ steps.select.outputs.broad }}
       reason: \${{ steps.select.outputs.reason }}
+      provider_changes: \${{ steps.select.outputs.provider_changes }}
     steps:
 ${setup}
       - name: Select CI profile
@@ -65,7 +66,7 @@ ${selected}
     needs: [selection, ${Object.keys(CI_JOB_TIERS)
       .filter((id) => id !== "bun-install-isolated-experiment")
       .join(", ")}]
-    if: always()
+    if: \${{ !cancelled() }}
     runs-on: ${LINUX_X64_TEST_RUNNER}
     timeout-minutes: 5
 ${ciResultSteps}`;

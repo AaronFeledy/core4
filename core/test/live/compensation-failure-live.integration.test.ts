@@ -145,8 +145,6 @@ test.skipIf(!liveEnabled)(
       faulted = false;
     };
     try {
-      // mkdtemp creates 0700; nginx reads the bind-mounted webroot as an unprivileged user.
-      await chmod(appRoot, 0o755);
       await Bun.write(join(appRoot, "index.html"), marker);
       await Bun.write(join(appRoot, ".lando.yml"), landofile([initialHostname]));
       const started = await lando(appRoot, ["start", "--format=json"]);

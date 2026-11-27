@@ -17,6 +17,7 @@ export const withProviderErrorRedaction = (
   const {
     appliedPlans,
     cleanupOwnedResources,
+    planHostChanges,
     ensureReady,
     occupiedPublishPorts,
     matchingPublishPorts,
@@ -30,8 +31,10 @@ export const withProviderErrorRedaction = (
     suspend,
     quiesceForFileSync,
     listVolumeSnapshots,
+    adoptDataRoot,
     inspectResourceNames,
     observeVolume,
+    observeBoundVolume,
     adoptVolume,
   } = runtime;
   const adapters = {
@@ -43,8 +46,10 @@ export const withProviderErrorRedaction = (
           cleanupOwnedResources: (root, options) =>
             effect(cleanupOwnedResources.call(runtime, root, options)),
         }),
-    planSetup: (options) => effect(runtime.planSetup(options)),
-    setup: (plan, options) => effect(runtime.setup(plan, options)),
+    ...(planHostChanges === undefined
+      ? {}
+      : { planHostChanges: (options) => effect(planHostChanges.call(runtime, options)) }),
+    setup: (options) => effect(runtime.setup(options)),
     ...(ensureReady === undefined ? {} : { ensureReady: effect(ensureReady) }),
     getStatus: effect(runtime.getStatus),
     getVersions: effect(runtime.getVersions),
@@ -80,8 +85,6 @@ export const withProviderErrorRedaction = (
       ? {}
       : { disposeFileSyncTargets: (plan) => effect(disposeFileSyncTargets.call(runtime, plan)) }),
     apply: (plan, options) => effect(runtime.apply(plan, options)),
-    start: (target) => effect(runtime.start(target)),
-    stop: (target) => effect(runtime.stop(target)),
     restart: (target) => effect(runtime.restart(target)),
     ...(resume === undefined
       ? {}
@@ -90,8 +93,8 @@ export const withProviderErrorRedaction = (
       ? {}
       : { suspend: (target, identity) => effect(suspend.call(runtime, target, identity)) }),
     waitForExit: (target, options) => effect(runtime.waitForExit(target, options)),
-    destroy: (target, options) => effect(runtime.destroy(target, options)),
-    removeObservedService: (observed) => effect(runtime.removeObservedService(observed)),
+    bringDown: (target, options) => effect(runtime.bringDown(target, options)),
+    bringDownObserved: (observed, containers) => effect(runtime.bringDownObserved(observed, containers)),
     ...(quiesceForFileSync === undefined
       ? {}
       : { quiesceForFileSync: (target) => effect(quiesceForFileSync.call(runtime, target)) }),
@@ -115,12 +118,21 @@ export const withProviderErrorRedaction = (
     ) => effect(runtime.restoreVolume(spec, options)),
     listVolumes: (filter) => effect(runtime.listVolumes(filter)),
     locateVolume: (ref) => effect(runtime.locateVolume(ref)),
+    ...(adoptDataRoot === undefined
+      ? {}
+      : { adoptDataRoot: (plan, witness) => effect(adoptDataRoot.call(runtime, plan, witness)) }),
     ...(inspectResourceNames === undefined
       ? {}
       : { inspectResourceNames: (query) => effect(inspectResourceNames.call(runtime, query)) }),
     ...(observeVolume === undefined
       ? {}
       : { observeVolume: (target, destination) => effect(observeVolume.call(runtime, target, destination)) }),
+    ...(observeBoundVolume === undefined
+      ? {}
+      : {
+          observeBoundVolume: (target, destination) =>
+            effect(observeBoundVolume.call(runtime, target, destination)),
+        }),
     ...(adoptVolume === undefined
       ? {}
       : { adoptVolume: (target, destination) => effect(adoptVolume.call(runtime, target, destination)) }),

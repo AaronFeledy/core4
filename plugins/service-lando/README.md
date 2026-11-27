@@ -141,9 +141,9 @@ Adding or removing a canonical `type:` changes the service catalog; versions
 within an existing entry follow upstream releases. What the bundled catalog
 does and does not cover:
 
-- PHP ships 8.1-8.6. Official Hub currently publishes 8.6 as RC bookworm tags.
-  PHP uses explicit `webroot:` and `allowOverride:` parameters. Its WordPress
-  preset installs WP-CLI on stock images without changing the webroot.
+- PHP ships 8.1-8.6 on the official Hub bookworm tags. PHP uses explicit
+  `webroot:` and `allowOverride:` parameters. Its WordPress preset installs
+  WP-CLI on stock images without changing the webroot.
 - `go:<version>` accepts only `framework: none`. There are no Go framework
   presets (Echo, Fiber, Gin, Chi).
 - There are no standalone Drupal, Laravel, or Symfony service types. Those

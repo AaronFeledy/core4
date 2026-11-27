@@ -76,7 +76,13 @@ test("delayed readiness shows waiting services and completes their rows independ
       );
       yield* TestClock.adjust("100 millis");
       expect(byTag(harness.events, "task.tree.start")).toMatchObject([
-        { parentId, children: [`${parentId}:web`, `${parentId}:slow`] },
+        {
+          parentId,
+          children: [
+            { id: `${parentId}:web`, label: "Wait for web" },
+            { id: `${parentId}:slow`, label: "Wait for slow" },
+          ],
+        },
       ]);
       yield* TestClock.adjust("900 millis");
       expect(byTag(harness.events, "task.complete").map((event) => event.taskId)).toEqual([

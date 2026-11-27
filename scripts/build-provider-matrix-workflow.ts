@@ -11,7 +11,11 @@ import { landoRootlessPrereqSteps } from "./build-ci-workflow.ts";
 import { renderInstallDockerCeLatestStep } from "./ci-docker-install.ts";
 import { LINUX_X64_TEST_RUNNER } from "./ci-platforms.ts";
 import { renderAssertPodman6Step, renderInstallPodman6Step } from "./ci-podman-install.ts";
-import { PROVIDER_ACCEPTANCE_CELLS, type ProviderAcceptanceCellPlan } from "./provider-matrix-plan.ts";
+import {
+  DOCKER_LATEST_ASSERTED_CHECK_IDS,
+  PROVIDER_ACCEPTANCE_CELLS,
+  type ProviderAcceptanceCellPlan,
+} from "./provider-matrix-plan.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 const OUTPUT = resolve(REPO_ROOT, ".github/workflows/provider-matrix.yml");
@@ -237,14 +241,16 @@ ${renderInstallDockerCeLatestStep({ condition: "matrix.cell == 'docker-engine-li
         run: |
           bun run scripts/provider-matrix-acceptance.ts --cell '\${{ matrix.cell }}' --report-dir provider-matrix-reports
 
-      - name: Assert Docker latest exec creates 0644 files
+      - name: Assert Docker latest feature checks passed
         if: \${{ matrix.cell == 'docker-engine-linux-latest' }}
         run: |
           bun -e '
             const report = await Bun.file("provider-matrix-reports/docker-engine-linux-latest.json").json();
-            const check = report.checks.find((entry) => entry.id === "exec-umask-mode");
-            if (check?.outcome !== "passed") {
-              throw new Error("exec-umask-mode " + (check?.outcome ?? "missing"));
+            for (const id of ${JSON.stringify(DOCKER_LATEST_ASSERTED_CHECK_IDS)}) {
+              const check = report.checks.find((entry) => entry.id === id);
+              if (check?.outcome !== "passed" || !/^\\s*[1-9]\\d* pass\\s*$/mu.test(Bun.stripANSI(check.evidence.stderr))) {
+                throw new Error(id + " did not report a passing test (" + (check?.outcome ?? "missing") + ")");
+              }
             }
           '
 
@@ -300,7 +306,20 @@ on:
   pull_request:
     paths:
       - container-runtime/**
+      - core/test/live/nginx-route-cli-live.integration.test.ts
+      - core/test/live/route-cli-live-support.ts
+      - engine/src/planner/endpoints.ts
+      - engine/src/planner/home.ts
+      - engine/src/planner/project-user.ts
+      - engine/src/planner/service-artifact.ts
+      - engine/src/services/app-feature-mutations.ts
+      - engine/src/services/draft.ts
+      - engine/src/services/extends.ts
+      - engine/src/services/extra-args-launcher.ts
       - plugins/provider-docker/**
+      - plugins/service-lando/src/services/default-images.ts
+      - plugins/service-lando/src/services/nginx*
+      - plugins/service-lando/src/services/static.ts
       - scripts/provider-matrix*
       - scripts/build-provider-matrix-workflow.ts
       - .github/workflows/provider-matrix.yml

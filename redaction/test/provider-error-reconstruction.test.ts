@@ -9,7 +9,7 @@ import { createStandaloneRedactor } from "../src/service.ts";
 const canary = "authoritative-provider-canary";
 const text = { message: canary, remediation: canary };
 const base = { ...text, providerId: canary, operation: canary, details: { [canary]: canary }, cause: canary };
-const setup = { ...text, providerId: ProviderId.make(canary), change: "install-uidmap" as const };
+const setup = { ...text, providerId: ProviderId.make(canary) };
 const errors = [
   new Errors.ProviderUnavailableError(base),
   new Errors.ProviderConfigError(base),
@@ -56,9 +56,6 @@ const errors = [
     target: "service",
     role: "readiness",
   }),
-  new Errors.ProviderSetupConsentDeniedError(setup),
-  new Errors.ProviderSetupPrivilegeUnavailableError(setup),
-  new Errors.ProviderSetupProvisioningError({ ...setup, stage: "install", stderr: canary, cause: canary }),
   new Errors.ProviderSetupUnsupportedHostError({
     ...setup,
     prerequisite: canary,
@@ -83,6 +80,26 @@ test.each(errors)("reconstructs $_tag without credential fields or nested cause"
 test("rejects unknown tags and incomplete provider-shaped objects", () => {
   expect(isProviderError({ ...base, _tag: "UntrustedError" })).toBe(false);
   expect(isProviderError({ _tag: "ProviderUnavailableError", message: canary })).toBe(false);
+});
+
+test("preserves the writer when rebuilding a protected-state error with a redacted path", () => {
+  const redactor = createStandaloneRedactor("secrets", { authoritativeTokens: [canary] });
+  const error = Errors.appliedStateVersionError({
+    providerId: "lando",
+    operation: "applied-state.read",
+    path: `/state/${canary}.json`,
+    storedVersion: 12,
+    supportedVersion: 11,
+    writtenBy: "4.15.0",
+    reader: "4.14.0",
+    scope: "provider",
+  });
+
+  expect(taggedErrorJson(redactProviderError(error, redactor))).toMatchObject({
+    _tag: "AppliedStateVersionError",
+    path: "/state/[redacted].json",
+    writtenBy: "4.15.0",
+  });
 });
 
 test("preserves and redacts ArtifactBuildError build context", () => {

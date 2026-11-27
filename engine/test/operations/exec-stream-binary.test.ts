@@ -3,10 +3,11 @@ import { RedactionService, createStandaloneRedactor, makeRedactionService } from
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import * as RendererOutput from "@lando/renderer/output";
 import * as RendererRuntime from "@lando/renderer/runtime";
-import { Effect, Exit, Layer, Option, Stream } from "effect";
+import { StreamFrameSink, type StreamFrameSinkFrame, collectExecStream } from "@lando/sdk/services";
+import { Cause, Effect, Exit, Layer, Option, Stream } from "effect";
 
-import { collectExecStream } from "../../src/operations/exec-stream.ts";
-import { StreamFrameSink, type StreamFrameSinkFrame } from "../../src/operations/stream-frame-sink.ts";
+const missingExit = new TypeError("unobserved exit");
+const fallback = { failure: () => missingExit };
 
 const identityRedaction = Layer.succeed(
   RedactionService,
@@ -49,6 +50,7 @@ describe("collectExecStream binary frames", () => {
           { exitCode: 0 },
         ]),
         Option.some(sink),
+        fallback,
       ),
     );
 
@@ -75,7 +77,7 @@ describe("collectExecStream binary frames", () => {
     };
 
     // When
-    await Effect.runPromise(collectExecStream(Stream.fromIterable([{ exitCode: 0 }]), Option.some(sink)));
+    await Effect.runPromise(collectExecStream(Stream.make({ exitCode: 0 }), Option.some(sink), fallback));
 
     // Then
     expect(flushed).toBe(0);
@@ -94,11 +96,14 @@ describe("collectExecStream binary frames", () => {
 
     // When
     const exit = await Effect.runPromiseExit(
-      collectExecStream(Stream.fail("injected-stream-failure"), Option.some(sink)),
+      collectExecStream(Stream.fail("injected-stream-failure"), Option.some(sink), {
+        ...fallback,
+        signal: AbortSignal.abort(),
+      }),
     );
 
     // Then
-    expect(Exit.isFailure(exit)).toBe(true);
+    expect(exit).toEqual(Exit.fail("injected-stream-failure"));
     expect(flushed).toBe(0);
   });
 
@@ -119,6 +124,7 @@ describe("collectExecStream binary frames", () => {
             Stream.concat(Stream.fail("injected-stream-failure")),
           ),
           Option.some(sink),
+          fallback,
         );
       }).pipe(Effect.provide(layer)),
     );
@@ -145,6 +151,7 @@ describe("collectExecStream binary frames", () => {
           { exitCode: 0 },
         ]),
         Option.some(sink),
+        fallback,
       ),
     );
 
@@ -166,6 +173,7 @@ describe("collectExecStream binary frames", () => {
           { exitCode: 0 },
         ]),
         Option.none(),
+        fallback,
       ),
     );
 
@@ -178,9 +186,45 @@ describe("collectExecStream binary frames", () => {
     const sink = StreamFrameSink.of({ emit: () => Effect.void });
     // When
     const result = await Effect.runPromise(
-      collectExecStream(Stream.make({ exitCode: 7 }), live ? Option.some(sink) : Option.none()),
+      collectExecStream(Stream.make({ exitCode: 7 }), live ? Option.some(sink) : Option.none(), {
+        ...fallback,
+        signal: AbortSignal.abort(),
+      }),
     );
     // Then
     expect(result).toEqual(live ? { exitCode: 7 } : { exitCode: 7, stdout: "", stderr: "" });
+  });
+
+  test.each([false, true])("fails on output-only EOF, live=%s", async (live) => {
+    const payload = new Uint8Array([0xff, 0x00]);
+    const frames: StreamFrameSinkFrame[] = [];
+    let flushed = false;
+    const sink = {
+      emit: (frame: StreamFrameSinkFrame) => Effect.sync(() => frames.push(frame)),
+      flush: () =>
+        Effect.sync(() => {
+          flushed = true;
+        }),
+    };
+    const exit = await Effect.runPromiseExit(
+      collectExecStream(
+        Stream.make({ kind: "stdout", chunk: payload }),
+        live ? Option.some(sink) : Option.none(),
+        fallback,
+      ),
+    );
+    expect(exit).toEqual(Exit.fail(missingExit));
+    expect(frames).toEqual(live ? [{ _tag: "stdout", chunk: payload, kind: "bytes" }] : []);
+    expect(flushed).toBe(false);
+  });
+
+  test.each([
+    { stream: Stream.empty, signal: AbortSignal.abort() },
+    { stream: Stream.fromEffect(Effect.interrupt) },
+  ])("preserves interruption without an exit", async ({ stream, signal }) => {
+    const exit = await Effect.runPromiseExit(
+      collectExecStream(stream, Option.none(), { ...fallback, signal }),
+    );
+    expect(Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause)).toBe(true);
   });
 });

@@ -70,6 +70,13 @@ describe("sveltekit decomposition", () => {
           cmd: [":node-local", "svelte-kit"],
           wrapper: true,
         },
+        dev: {
+          service: "web",
+          description: "Run the Vite dev server on the address Lando publishes.",
+          cmd: [":node-local", "vite", "dev", "--host", "0.0.0.0", "--port", "5173", "--strictPort"],
+          env: { __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS: "{{ services.web.hostname }}" },
+          wrapper: true,
+        },
       },
     });
     expect<unknown>(result.fragment).toEqual({

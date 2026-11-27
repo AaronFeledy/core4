@@ -279,7 +279,7 @@ describe("Mutagen process client", () => {
     }
   });
 
-  test("unknown ledger versions block creation without touching daemon sessions or durable state", async () => {
+  test("newer ledger envelope versions block creation without touching daemon sessions or durable state", async () => {
     const stateDir = await mkdtemp(join(tmpdir(), "lando-mutagen-unknown-ledger-"));
     try {
       const stateStore = makePluginStateStore(
@@ -305,7 +305,15 @@ describe("Mutagen process client", () => {
       if (Exit.isFailure(ownership)) {
         const failure = Cause.findErrorOption(ownership.cause);
         expect(failure._tag).toBe("Some");
-        if (failure._tag === "Some") expect(failure.value.message).toContain("unknown version");
+        if (failure._tag === "Some") {
+          expect(failure.value.remediation).toMatch(/newer Lando|upgrade/i);
+          expect(failure.value.remediation).not.toMatch(/corrupt|remove the|move it aside/i);
+          expect(failure.value.cause).toMatchObject({
+            reason: "newer-version",
+            storedVersion: 99,
+            supportedVersion: 1,
+          });
+        }
       }
       expect(Exit.isFailure(await Effect.runPromiseExit(client.create({ name, spec })))).toBe(true);
       expect(Exit.isFailure(await Effect.runPromiseExit(client.list))).toBe(true);

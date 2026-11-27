@@ -122,6 +122,14 @@ describe("stop summary line", () => {
     expect(renderStopAppResult({ app: "shop", outcome: "unchanged", servicesStopped: [] })).toBe(
       "unchanged: shop - no services",
     );
+    expect(
+      renderStopAppResult({
+        app: "shop",
+        outcome: "stopped",
+        servicesStopped: ["redis"],
+        servicesKeptRunning: ["web"],
+      }),
+    ).toBe("stopped: shop - redis; still running: web");
   });
 
   test("follows each stopped service with its observed exit code in the original order", () => {
@@ -233,9 +241,18 @@ describe("destroy and global summary lines", () => {
       outcome: "stopped",
       materialized: true,
       servicesStopped: ["ssh-agent"],
+      containers: [{ service: "ssh-agent", containerId: "ssh-agent-container", action: "stopped" }],
       shutdownObservations: [observation],
     });
     expect(renderGlobalStopResult(stop)).toBe("stopped: global - ssh-agent (exit 0)");
+    expect(
+      renderGlobalStopResult({
+        ...stop,
+        outcome: "unchanged",
+        servicesStopped: [],
+        containers: [{ service: ServiceName.make("ssh-agent"), action: "already-stopped" }],
+      }),
+    ).toBe("unchanged: global - already stopped: ssh-agent");
     const destroy = Schema.decodeUnknownSync(GlobalDestroyResultSchema)({
       app: "global",
       outcome: "destroyed",

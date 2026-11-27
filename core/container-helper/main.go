@@ -60,6 +60,6 @@ func dispatch(argv0 string, args []string, streams helperIO) int {
 			return runProbeTCP(args[1:], streams)
 		}
 	}
-	fmt.Fprintln(streams.stderr, "Usage: lando [args...] (host-proxy client) | lando-container-helper exec-run -- <argv> | lando-container-helper log-file | lando-container-helper probe-http --url <url> --timeout <seconds> | lando-container-helper probe-tcp --host <host> --port <port> --timeout <seconds> | lando-create-project <package> [<version>] [--no-scripts] | lando-drupal-scaffold [<major>] | lando-drupal-cms-scaffold | lando-drupal-contrib-sync <type> <project> <constraint>")
+	fmt.Fprintln(streams.stderr, "Usage: lando [args...] (host-proxy client) | lando-container-helper exec-run -- <argv> | lando-container-helper log-file | lando-container-helper probe-http --url <url> --timeout <seconds> | lando-container-helper probe-tcp --host <host> --port <port> --timeout <seconds> | lando-create-project <package> [<version>] [--no-scripts] | "+drupalScaffoldUsage+" | "+drupalCmsScaffoldUsage+" | lando-drupal-contrib-sync <type> <project> <constraint>")
 	return 64
 }

@@ -220,7 +220,7 @@ describe("cold-start regression: no events dropped before first task.tree.start"
         _tag: "task.tree.start",
         parentId: "build-app",
         label: "Building",
-        children: ["a"],
+        children: [{ id: "a", label: "a" }],
         timestamp: "2026-05-19T12:00:00.000Z",
       });
       const childStart = Schema.decodeUnknownSync(TaskStartEvent)({

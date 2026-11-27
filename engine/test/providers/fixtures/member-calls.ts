@@ -1,5 +1,5 @@
 import { PortablePath, ProviderId, type VolumeSnapshotRef } from "@lando/sdk/schema";
-import type { ProviderError, RuntimeProviderShape } from "@lando/sdk/services";
+import type { HostChangeApplyError, ProviderError, RuntimeProviderShape } from "@lando/sdk/services";
 import { Effect, type Scope, Stream } from "effect";
 import type { ProviderErrorMember } from "../../../src/providers/output-policy.ts";
 import { plan, target } from "./error-registry.ts";
@@ -21,14 +21,16 @@ const snapshot: VolumeSnapshotRef = {
   format: "native",
 };
 const destination = PortablePath.make("/data");
-type Invoke = (provider: RuntimeProviderShape) => Effect.Effect<unknown, ProviderError, Scope.Scope>;
+type Invoke = (
+  provider: RuntimeProviderShape,
+) => Effect.Effect<unknown, ProviderError | HostChangeApplyError, Scope.Scope>;
 
 export const memberCalls = {
   isAvailable: (p) => p.isAvailable,
   appliedPlans: (p) => required(p.appliedPlans),
   cleanupOwnedResources: (p) => required(p.cleanupOwnedResources)(plan.root, { volumes: false }),
-  planSetup: (p) => p.planSetup({ force: false }),
-  setup: (p) => p.setup({ providerId: plan.provider, changes: [] }, { force: false }),
+  planHostChanges: (p) => required(p.planHostChanges)({ force: false }),
+  setup: (p) => p.setup({ force: false }),
   ensureReady: (p) => required(p.ensureReady),
   getStatus: (p) => p.getStatus,
   getVersions: (p) => p.getVersions,
@@ -66,20 +68,16 @@ export const memberCalls = {
   quiesceRetainedFileSync: (p) => required(p.quiesceRetainedFileSync)(plan),
   disposeFileSyncTargets: (p) => required(p.disposeFileSyncTargets)(plan),
   apply: (p) => p.apply(plan, { reconcile: true }),
-  start: (p) => p.start(target),
-  stop: (p) => p.stop(target),
   restart: (p) => p.restart(target),
   resume: (p) => required(p.resume)(target, identity),
   suspend: (p) => required(p.suspend)(target, identity),
   waitForExit: (p) => p.waitForExit(target),
-  destroy: (p) => p.destroy(target, { volumes: false }),
-  removeObservedService: (p) =>
-    p.removeObservedService({
-      ...target,
-      providerId: plan.provider,
-      status: "running",
-      publications: { status: "unknown" },
-    }),
+  bringDown: (p) => p.bringDown(target, { containers: "remove", volumes: false }),
+  bringDownObserved: (p) =>
+    p.bringDownObserved(
+      { ...target, providerId: plan.provider, status: "running", publications: { status: "unknown" } },
+      "remove",
+    ),
   quiesceForFileSync: (p) => required(p.quiesceForFileSync)(target),
   readAppEnvironment: (p) => p.readAppEnvironment(target, {}),
   exec: (p) => p.exec(target, command),
@@ -97,8 +95,11 @@ export const memberCalls = {
   restoreVolume: (p) => p.restoreVolume({ snapshot, target: volume, expectedTargetGeneration: "generation" }),
   listVolumes: (p) => p.listVolumes({}),
   locateVolume: (p) => p.locateVolume(volume),
+  adoptDataRoot: (p) => required(p.adoptDataRoot)(plan, () => Effect.succeed(undefined)),
   inspectResourceNames: (p) => required(p.inspectResourceNames)({ kind: "volume", limit: 1 }),
   observeVolume: (p) => required(p.observeVolume)(target, destination),
+  observeBoundVolume: (p) =>
+    required(p.observeBoundVolume)({ ...target, expectedContainerId: "native-id" }, destination),
   adoptVolume: (p) => required(p.adoptVolume)(target, destination),
   removeVolume: (p) => p.removeVolume(volume, "generation"),
   copyToService: (p) => p.copyToService(target, { sourcePath: plan.root, targetPath: destination }),

@@ -19,7 +19,7 @@ import { toolingRunHelp } from "./tooling-run-help";
 const FORMAT_FLAG_LABEL = "--format";
 const placementFooter = (
   tail: "none" | "command" | "all",
-  command: { readonly resultFormats?: ReadonlyArray<OptInResultFormat> },
+  command: { readonly advertisedFormats?: ReadonlyArray<OptInResultFormat> },
   name: string,
 ): string => {
   const labels = landoFlagFooterLabels().map((label) =>
@@ -59,7 +59,7 @@ export type CommandHelpSpec = {
   readonly examples?: ReadonlyArray<string>;
   readonly usage?: string;
   readonly strict?: boolean;
-  readonly resultFormats?: ReadonlyArray<OptInResultFormat>;
+  readonly advertisedFormats?: ReadonlyArray<OptInResultFormat>;
 };
 
 export type CommandHelpEntry = {
@@ -188,7 +188,7 @@ export const renderCommandUsage = (
 
 export const renderCommandHelpFlags = (command: {
   readonly flags?: CommandHelpSpec["flags"];
-  readonly resultFormats?: ReadonlyArray<OptInResultFormat>;
+  readonly advertisedFormats?: ReadonlyArray<OptInResultFormat>;
 }): ReadonlyArray<string> => {
   const entries = Object.entries(formatFlagDefsForCommand(command))
     .filter(([name]) => !UNIVERSAL_FORMAT_FLAG_NAMES.has(name))

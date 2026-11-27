@@ -20,13 +20,14 @@ export const makeAppliedStateProvider = Effect.fnUntraced(function* (
   const runtime = yield* Effect.cached(services.makeProvider(descriptor));
   return {
     id,
-    ...(contribution.appliedStateInventory === undefined
-      ? {}
-      : {
-          appliedStateInventory: contribution
-            .appliedStateInventory(context)
-            .pipe(Effect.provideService(PathsService, services.paths)),
-        }),
+    // Inventory is required on RuntimeProviderContribution; registry load already validates that.
+    appliedStateInventory: contribution
+      .appliedStateInventory(context)
+      .pipe(Effect.provideService(PathsService, services.paths)),
+    readAppliedPlanStrict: (appId: Parameters<typeof contribution.readAppliedPlanStrict>[1]) =>
+      contribution
+        .readAppliedPlanStrict(context, appId)
+        .pipe(Effect.provideService(PathsService, services.paths)),
     ...(resourceOwnership === undefined
       ? {}
       : {
@@ -35,9 +36,6 @@ export const makeAppliedStateProvider = Effect.fnUntraced(function* (
     canCleanupOwnedResources: runtime.pipe(
       Effect.map((provider) => provider.cleanupOwnedResources !== undefined),
     ),
-    appliedPlans: contribution
-      .appliedPlans(context)
-      .pipe(Effect.provideService(PathsService, services.paths)),
     isAvailable: runtime.pipe(
       Effect.flatMap((provider) =>
         observeRuntime(provider).pipe(

@@ -379,8 +379,7 @@ describe("provider-lando ensureRuntime factory wiring", () => {
     await withRuntimeProvider(
       events,
       async (provider, tempDir) => {
-        const setupPlan = await Effect.runPromise(provider.planSetup({ force: false }));
-        await runScoped(provider.setup(setupPlan, { force: false }));
+        await runScoped(provider.setup({ force: false }));
         expect(new Uint8Array(await readFile(join(tempDir, "bin", "catatonit")))).toEqual(
           new Uint8Array(catatonitFixture().elf),
         );

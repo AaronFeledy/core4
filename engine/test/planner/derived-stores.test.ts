@@ -10,6 +10,7 @@ import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";
 import { literalTestLandofile } from "../compiled-landofile.ts";
+import { pathsServiceLayer } from "../paths-service.ts";
 
 const plan = async (name: string, services: Record<string, unknown>) => {
   const root = await mkdtemp(join(tmpdir(), "lando-derived-store-"));
@@ -21,7 +22,9 @@ const plan = async (name: string, services: Record<string, unknown>) => {
       ).pipe(
         Effect.provide(
           AppPlannerLayer.layer.pipe(
-            Layer.provide(Layer.mergeAll(PluginRegistryLayer.layer, BunFileSystem.layer)),
+            Layer.provide(
+              Layer.mergeAll(PluginRegistryLayer.layer, BunFileSystem.layer, pathsServiceLayer()),
+            ),
           ),
         ),
       ),
@@ -136,7 +139,11 @@ test("rejects incompatible definitions within one service rather than keeping th
 
 test.each([
   ["home", { type: "node:22", user: "root", appMount: false }, "lando-app--web--home--root-3177abf4"],
-  ["shadow", { type: "node:22", home: false }, "lando-app--web--shadow--app-vendor-64784057"],
+  [
+    "shadow",
+    { type: "compose", image: "alpine", home: false, appMount: { target: "/app", excludes: ["vendor"] } },
+    "lando-app--web--shadow--app-vendor-64784057",
+  ],
   ["catalog", { type: "mariadb", home: false, appMount: false }, "lando-app--web--mariadb-data"],
 ] as const)(
   "rejects an explicit app-scoped store that reuses a service-scoped %s store",

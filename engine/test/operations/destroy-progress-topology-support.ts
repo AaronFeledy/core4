@@ -13,7 +13,6 @@ import {
   ProviderId,
   ServiceName,
   type ServicePlan,
-  type VolumeInfo,
 } from "@lando/sdk/schema";
 import {
   AppPlanner,
@@ -28,7 +27,7 @@ import {
   StateStore,
   type StateStoreShape,
 } from "@lando/sdk/services";
-import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRouterService, TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { DateTime, Effect, Layer, Schema, Stream } from "effect";
 import { destroyAppForTarget } from "../../src/operations/destroy.ts";
@@ -96,10 +95,11 @@ export const makeHarness = (
     readonly router?: typeof RouterService.Service;
     readonly fileSync?: typeof FileSyncEngine.Service;
     readonly stateStore?: StateStoreShape;
-    readonly volumes?: ReadonlyArray<VolumeInfo>;
+    readonly volumeProvider?: Pick<RuntimeProviderShape, "listVolumes" | "locateVolume">;
     readonly appliedFileSyncState?: "missing" | "ordinary" | "accelerated" | "unknown";
     readonly appliedFileSyncSessions?: ReadonlyArray<FileSyncSessionSpec>;
     readonly appliedFileSyncEngineId?: string;
+    readonly list?: RuntimeProviderShape["list"];
   } = {},
 ) => {
   const events: LandoEvent[] = [];
@@ -107,11 +107,26 @@ export const makeHarness = (
   const provider: RuntimeProviderShape = {
     ...TestRuntimeProvider,
     id: "lando",
-    destroy: () =>
+    bringDown: () =>
       (options.destroyEffect ?? Effect.void).pipe(
-        Effect.as({ kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } }),
+        Effect.as({ kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } }),
       ),
-    listVolumes: () => Effect.succeed(options.volumes ?? []),
+    list:
+      options.list ??
+      (() =>
+        Effect.succeed(
+          Object.values(plan.services).map((service) => ({
+            app: plan.id,
+            appRoot: plan.root,
+            service: service.name,
+            providerId,
+            status: "running" as const,
+            containerId: `cid-${String(service.name)}`,
+            publications: { status: "unknown" as const },
+          })),
+        )),
+    listVolumes: options.volumeProvider?.listVolumes ?? (() => Effect.succeed([])),
+    locateVolume: options.volumeProvider?.locateVolume ?? TestRuntimeProvider.locateVolume,
     ...(options.appliedFileSyncState === undefined
       ? {}
       : {
@@ -154,12 +169,8 @@ export const makeHarness = (
     ),
     Layer.succeed(
       RuntimeProviderRegistry,
-      RuntimeProviderRegistry.of({
-        appliedPlansFor: () => Effect.succeed([]),
-        resolveAppliedPlan: () => Effect.succeed(undefined),
-        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+      makeTestRuntimeProviderRegistry({
         list: Effect.succeed([providerId]),
-        capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
         select: () => Effect.succeed(provider),
       }),
     ),

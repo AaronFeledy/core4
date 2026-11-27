@@ -1,5 +1,4 @@
 import { resolveProxyDefaultDomain } from "@lando/engine/config/proxy-default-domain";
-import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
 import { RuntimeCwd } from "@lando/engine/runtime/cwd";
 import type { EventCommandExecutorInput } from "@lando/engine/services/event-command-executor";
 import { EventCommandExecutor } from "@lando/engine/services/event-command-executor";
@@ -15,8 +14,9 @@ import {
   failureOutcomeFromCause,
 } from "@lando/sdk/command-result";
 import { RENDERER_CAPABILITIES_NONE } from "@lando/sdk/renderer";
-import { Renderer } from "@lando/sdk/services";
-import { Cause, Context, Effect, Layer } from "effect";
+import { InteractionService, Renderer, StreamFrameSink } from "@lando/sdk/services";
+import { Cause, Context, Effect, Layer, Option } from "effect";
+import { nonInteractiveView } from "../interaction/service";
 import { CliInvocation } from "../runtime/invocation-context";
 import { BuiltInCommandCatalog } from "./built-in-command-catalog-service";
 import { type BuiltInCommandEntry, embeddingExemptErrorForCommand } from "./built-in-command-registry";
@@ -140,11 +140,19 @@ export const makeEventCommandExecutor = (
         const baseRenderer = yield* Renderer;
         const renderer = resolved.silent === true ? silentRenderer : baseRenderer;
 
-        const operation = target.spec.run(input).pipe(Effect.provideService(RuntimeCwd, resolved.cwd));
+        const hostInteraction = yield* Effect.serviceOption(InteractionService);
+        const withCwd = target.spec.run(input).pipe(Effect.provideService(RuntimeCwd, resolved.cwd));
+        // A nested command reuses the host's service; a non-interactive dispatch must not prompt.
+        const operation =
+          Option.isSome(hostInteraction) && input.interaction !== "interactive"
+            ? withCwd.pipe(
+                Effect.provideService(InteractionService, nonInteractiveView(hostInteraction.value)),
+              )
+            : withCwd;
         const inCwd = target.spec.namespace === "app" ? withResolvedCwd(resolved.cwd, operation) : operation;
         const streamingMode =
           target.kind !== "built-in"
-            ? undefined
+            ? target.spec.streamingMode
             : typeof target.spec.streamingMode === "function"
               ? target.spec.streamingMode(input)
               : target.spec.streamingMode;

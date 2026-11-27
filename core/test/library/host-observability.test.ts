@@ -14,7 +14,7 @@ import { ProviderId } from "@lando/core/schema";
 import { RouterService, RuntimeProvider, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
 import { Logger as LandoLogger } from "@lando/sdk/services";
-import { TestRouterService } from "@lando/sdk/test";
+import { TestRouterService, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import {
   Cause,
   Effect,
@@ -32,13 +32,8 @@ const testProviderLayers = [
   Layer.succeed(RuntimeProvider, RuntimeProvider.of(TestRuntimeProvider)),
   Layer.succeed(
     RuntimeProviderRegistry,
-    RuntimeProviderRegistry.of({
-      resolveAppliedPlan: () => Effect.succeed(undefined),
-      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-      appliedPlansFor: () => Effect.succeed([]),
+    makeTestRuntimeProviderRegistry({
       list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
-      capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-      select: () => Effect.succeed(TestRuntimeProvider),
     }),
   ),
   Layer.succeed(RouterService, RouterService.of(TestRouterService)),
@@ -244,12 +239,8 @@ describe("embedding-host observability", () => {
         Layer.succeed(RuntimeProvider, RuntimeProvider.of(dyingProvider)),
         Layer.succeed(
           RuntimeProviderRegistry,
-          RuntimeProviderRegistry.of({
-            resolveAppliedPlan: () => Effect.succeed(undefined),
-            resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-            appliedPlansFor: () => Effect.succeed([]),
+          makeTestRuntimeProviderRegistry({
             list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
-            capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
             select: () => Effect.succeed(dyingProvider),
           }),
         ),

@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { makePrepareUninstallCleanup } from "@lando/engine/install/uninstall-discovery";
 import {
   type DiscoveredApp,
   buildUninstallPlan,
@@ -75,34 +76,37 @@ const makeRoots = () => {
     root,
     userDataRoot,
     userCacheRoot,
-    cgroupsDelegatePath: join(root, "delegate.conf"),
     shellProfilePath: join(root, ".profile"),
   };
 };
 
 const sandboxCliExtras = (root: string) => ({
   _userConfRoot: join(root, "conf"),
-  _cgroupsDelegatePath: join(root, "delegate.conf"),
   _shellProfilePath: join(root, ".profile"),
 });
 
 const sandboxUninstallIo = (root: string) => ({
   userConfRoot: join(root, "conf"),
-  cgroupsDelegatePath: join(root, "delegate.conf"),
   shellProfilePath: join(root, ".profile"),
   listDiscoveredApps: async () => [],
 });
 
-const withoutHostRuntimes = async <T>(fn: () => Promise<T>): Promise<T> => {
-  const previousPath = process.env.PATH;
-  process.env.PATH = "/no-such-lando-runtime-path";
-  try {
-    return await fn();
-  } finally {
-    if (previousPath === undefined) Reflect.deleteProperty(process.env, "PATH");
-    else process.env.PATH = previousPath;
-  }
+const noManagedRuntime = async () => {
+  throw Object.assign(new Error("not installed"), { code: "ENOENT" });
 };
+const offlinePreparation = makePrepareUninstallCleanup(
+  [
+    {
+      providerId: "podman",
+      purge: () =>
+        Effect.succeed({ kind: "skipped", endpoint: "/unreachable.sock", reason: "Connection refused" }),
+    },
+  ],
+  noManagedRuntime,
+  "linux",
+);
+
+const uninstallOffline = (input: unknown) => uninstall(uninstallOptionsFromInput(input, offlinePreparation));
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
@@ -210,20 +214,23 @@ describe("meta:uninstall", () => {
       keepData: false,
       purge: true,
     });
+    expect(uninstallOptionsFromInput({ flags: { purge: true } })).not.toHaveProperty("undo");
+    expect(
+      uninstallOptionsFromInput({ flags: { purge: true, undo: ["provider-lando:enable-linger", "all"] } })
+        .undo,
+    ).toEqual(["provider-lando:enable-linger", "all"]);
     const readText = (path: string) => `text:${path}`;
     const writeText = async () => {};
     const terminateRuntimeBinProcesses = async () => {};
     expect(
       uninstallOptionsFromInput({
         flags: { yes: true },
-        _cgroupsDelegatePath: "/tmp/sandbox/delegate.conf",
         _shellProfilePath: "/tmp/sandbox/.profile",
         _readText: readText,
         _writeText: writeText,
         _terminateRuntimeBinProcesses: terminateRuntimeBinProcesses,
       }),
     ).toMatchObject({
-      cgroupsDelegatePath: "/tmp/sandbox/delegate.conf",
       shellProfilePath: "/tmp/sandbox/.profile",
       readText,
       writeText,
@@ -255,18 +262,17 @@ describe("meta:uninstall", () => {
       expect(output).toContain("managed provider machines");
       expect(output).toContain("Mutagen binary");
       expect(output).toContain("Mutagen agents");
-      expect(output).toContain("CA trust-store changes");
       expect(output).toContain("global app state");
       expect(output).toContain("caches");
       expect(output).toContain("installed binary");
-      expect(output).toContain("cgroups delegation drop-in");
+      // Host-global changes such as the cgroups drop-in are their plugins' steps, not built-ins.
+      expect(result.steps.some((step) => step.id === "cgroups-delegate")).toBe(false);
       expect(output).toContain("shell entries");
       expect(output).toContain("user data root");
       expect(output).toContain("user cache root");
       expect(result.steps.find((step) => step.id === "installed-binary")?.status).toBe("skipped");
       expect(output).toContain("Preserved by --keep-data");
 
-      expect(output).toContain("manual remediation");
       expect(result.steps.find((step) => step.id === "managed-provider-runtime")).toMatchObject({
         status: "skipped",
       });
@@ -620,7 +626,6 @@ describe("meta:uninstall", () => {
         flags: { "dry-run": true },
         _userDataRoot: String.raw`C:\Users\me\AppData\Local\lando`,
         _userCacheRoot: String.raw`C:\Users\me\AppData\Local\lando-cache`,
-        _cgroupsDelegatePath: String.raw`C:\Users\me\AppData\Local\lando\delegate.conf`,
         _shellProfilePath: String.raw`C:\Users\me\AppData\Local\lando\.profile`,
         _exists: () => true,
       }),
@@ -1201,15 +1206,13 @@ describe("meta:uninstall", () => {
       const userConfRoot = join(root, "conf");
       mkdirSync(userConfRoot, { recursive: true });
 
-      const result = await withoutHostRuntimes(() =>
-        Effect.runPromise(
-          metaUninstallSpec.run({
-            flags: { yes: true, purge: true },
-            _userDataRoot: userDataRoot,
-            _userCacheRoot: userCacheRoot,
-            ...sandboxCliExtras(root),
-          }),
-        ),
+      const result = await Effect.runPromise(
+        uninstallOffline({
+          flags: { yes: true, purge: true },
+          _userDataRoot: userDataRoot,
+          _userCacheRoot: userCacheRoot,
+          ...sandboxCliExtras(root),
+        }),
       );
 
       expect(result.failed).toBe(false);
@@ -1247,15 +1250,13 @@ describe("meta:uninstall", () => {
         }),
       );
 
-      const result = await withoutHostRuntimes(() =>
-        Effect.runPromise(
-          metaUninstallSpec.run({
-            flags: { yes: true, purge: true },
-            _userDataRoot: userDataRoot,
-            _userCacheRoot: userCacheRoot,
-            ...sandboxCliExtras(root),
-          }),
-        ),
+      const result = await Effect.runPromise(
+        uninstallOffline({
+          flags: { yes: true, purge: true },
+          _userDataRoot: userDataRoot,
+          _userCacheRoot: userCacheRoot,
+          ...sandboxCliExtras(root),
+        }),
       );
 
       expect(result.failed).toBe(false);
@@ -1270,14 +1271,14 @@ describe("meta:uninstall", () => {
     }
   });
 
-  test("purge fails closed when apps are recorded but no runtime is available", async () => {
+  test("purge reports an unreachable host even when apps are recorded", async () => {
     const { root, userDataRoot, userCacheRoot } = makeRoots();
     try {
       mkdirSync(userDataRoot, { recursive: true });
       mkdirSync(userCacheRoot, { recursive: true });
       const userConfRoot = join(root, "conf");
       mkdirSync(userConfRoot, { recursive: true });
-      const appsDir = join(userDataRoot, "providers", "provider-lando", "apps");
+      const appsDir = join(userDataRoot, "providers", "provider-podman", "apps");
       mkdirSync(appsDir, { recursive: true });
       writeFileSync(
         join(appsDir, "recorded-app.json"),
@@ -1291,26 +1292,23 @@ describe("meta:uninstall", () => {
         }),
       );
 
-      const result = await withoutHostRuntimes(() =>
-        Effect.runPromise(
-          metaUninstallSpec.run({
-            flags: { yes: true, purge: true },
-            _userDataRoot: userDataRoot,
-            _userCacheRoot: userCacheRoot,
-            ...sandboxCliExtras(root),
-          }),
-        ),
+      const result = await Effect.runPromise(
+        uninstallOffline({
+          flags: { yes: true, purge: true },
+          _userDataRoot: userDataRoot,
+          _userCacheRoot: userCacheRoot,
+          ...sandboxCliExtras(root),
+        }),
       );
 
-      expect(result.failed).toBe(true);
+      expect(result.failed).toBe(false);
       const runningAppsStep = result.steps.find((step) => step.id === "running-apps");
-      expect(runningAppsStep?.status).toBe("user-owned");
-      expect(runningAppsStep?.outcome).toBe("failed");
-      expect(runningAppsStep?.error).toContain("Cannot verify");
-      expect(runningAppsStep?.error).toContain("neither docker nor podman");
-      expect(existsSync(userDataRoot)).toBe(true);
-      expect(existsSync(userCacheRoot)).toBe(true);
-      expect(existsSync(userConfRoot)).toBe(true);
+      expect(runningAppsStep?.status).toBe("owned");
+      expect(runningAppsStep?.outcome).toBe("completed");
+      expect(runningAppsStep?.detail).toContain("no engine answered at /unreachable.sock");
+      expect(existsSync(userDataRoot)).toBe(false);
+      expect(existsSync(userCacheRoot)).toBe(false);
+      expect(existsSync(userConfRoot)).toBe(false);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -1420,7 +1418,6 @@ describe("meta:uninstall", () => {
           _userDataRoot: userDataRoot,
           _userCacheRoot: userCacheRoot,
           _userConfRoot: join(root, "conf"),
-          _cgroupsDelegatePath: join(root, "delegate.conf"),
           _listDiscoveredApps: async () => [],
           _exists: (path: string) => (path === root || path.startsWith(`${root}/`)) && existsSync(path),
         }),

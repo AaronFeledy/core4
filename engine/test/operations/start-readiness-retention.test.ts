@@ -15,7 +15,7 @@ import {
   RouterService,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
-import { TestFileSyncEngine, TestRouterService } from "@lando/sdk/test";
+import { TestFileSyncEngine, TestRouterService, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Cause, DateTime, Deferred, Effect, Exit, Fiber, Scope, Stream } from "effect";
 import * as composition from "../../src/composition.ts";
 import { readJournal } from "../../src/operations/accelerated-start-journal.ts";
@@ -219,18 +219,21 @@ for (const phase of phases) {
           },
           { scope },
         ).pipe(
-          Effect.provideService(RuntimeProviderRegistry, {
-            ...harness.runtimeProviderRegistry,
-            select: () =>
-              Effect.succeed({
-                ...provider,
-                capabilities: { ...provider.capabilities, agentSocket: { delivery: "bind-directory" } },
-                exec: () =>
-                  phase === "gpg-home" && outcome === "interrupt"
-                    ? Deferred.succeed(entered, undefined).pipe(Effect.andThen(Effect.never))
-                    : Effect.succeed({ exitCode: phase === "gpg-home" ? 1 : 0, stdout: "", stderr: "" }),
-              }),
-          }),
+          Effect.provideService(
+            RuntimeProviderRegistry,
+            makeTestRuntimeProviderRegistry({
+              ...harness.runtimeProviderRegistry,
+              select: () =>
+                Effect.succeed({
+                  ...provider,
+                  capabilities: { ...provider.capabilities, agentSocket: { delivery: "bind-directory" } },
+                  exec: () =>
+                    phase === "gpg-home" && outcome === "interrupt"
+                      ? Deferred.succeed(entered, undefined).pipe(Effect.andThen(Effect.never))
+                      : Effect.succeed({ exitCode: phase === "gpg-home" ? 1 : 0, stdout: "", stderr: "" }),
+                }),
+            }),
+          ),
           Effect.provideService(BuildOrchestrator, {
             build: (plan) => Effect.succeed(plan),
             buildApp: () => (phase === "app-build" ? gate(errors["app-build"]) : Effect.void),

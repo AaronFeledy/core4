@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { rmSync } from "node:fs";
 import { RuntimeProviderRegistry } from "@lando/sdk/services";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect } from "effect";
 import { destroyApp } from "../../src/operations/destroy.ts";
 import { rebuildApp } from "../../src/operations/rebuild.ts";
@@ -29,16 +30,19 @@ test.each(["stop", "destroy", "restart", "rebuild"] as const)(
               return yield* rebuildApp({ services: [web.name] }, target);
           }
         }).pipe(
-          Effect.provideService(RuntimeProviderRegistry, {
-            ...harness.runtimeProviderRegistry,
-            select: () =>
-              Effect.succeed({
-                ...base,
-                ensureReady: Effect.sync(() => {
-                  preparations++;
+          Effect.provideService(
+            RuntimeProviderRegistry,
+            makeTestRuntimeProviderRegistry({
+              ...harness.runtimeProviderRegistry,
+              select: () =>
+                Effect.succeed({
+                  ...base,
+                  ensureReady: Effect.sync(() => {
+                    preparations++;
+                  }),
                 }),
-              }),
-          }),
+            }),
+          ),
           Effect.provide(harness.layer),
           Effect.result,
         ),

@@ -9,7 +9,9 @@ tags: [docs, service, php, ownership]
 
 On Linux, the default `lando` provider (managed rootless Podman), the `podman` provider, and a local rootful `docker` engine make files your PHP service writes into the app mount belong to your host user. Composer, your editor, and PHP's web workers can share those files without `chown`.
 
-Lando calls the container account mapped to your host user the **project user**. Stock PHP services declare `www-data` (UID and GID `33`). [Adminer](./adminer.mdx#open-and-edit-a-sqlite-file) declares `adminer` (UID `100`, GID `101`) when it mounts your source to open SQLite files. Rootless Podman uses a keep-id user namespace, which leaves the account's IDs unchanged in the container and makes its writes belong to you on the host. Rootful Podman and rootful Docker instead renumber the account to your host UID and GID in the image Lando builds. Neither case changes your host UID. This applies to user apps whose services mount the app source. Database services, services without that mount, scratch apps, and the global app do not gain a project user.
+Lando calls the container account mapped to your host user the **project user**. Stock PHP services declare `www-data` (UID and GID `33`). [Adminer](./adminer.mdx#open-and-edit-a-sqlite-file) declares `adminer` (UID `100`, GID `101`) when it mounts your source to open SQLite files. Stock [nginx](./nginx.mdx#serve-files-only-you-can-read) and [static nginx](./static.mdx) map the `nginx` worker so it can read your private files. The nginx master still starts as root by default.
+
+Rootless Podman uses a keep-id user namespace, which leaves the account's IDs unchanged in the container and makes its writes belong to you on the host. Rootful Podman and rootful Docker instead renumber the account to your host UID and GID in the image Lando builds. Neither case changes your host UID. This applies to user apps whose services mount the app source. Database services, services without that mount, scratch apps, and the global app do not gain a project user.
 
 Rootless Docker maps only container root to the host user, so it cannot map a non-root `www-data`. A Docker daemon with `userns-remap`, a remote endpoint, and macOS or Windows engines do not realize a project user either. [Run `lando info`](#see-the-services-project-user) to see which case applies to a service.
 
@@ -25,7 +27,7 @@ lando app:config:lint --format=json
 
 In the terminal view, `lando info` shows a `project user` row with the account name and its `uid:gid` when the plan realizes one. On a provider that cannot map it, the row gives the reason instead.
 
-In JSON, each service has `projectUser` (`name`, `uid`, `gid`) when realized. It has `projectUserExplanation` with a `state` of `opted-out`, `provider-unsupported`, `unresolved`, or `not-applicable` and a `detail` sentence when no project user is realized. `lando app:config:lint` warns for `opted-out` and `provider-unsupported`. These commands show the plan, not the identity an older running container was created with.
+In JSON, each service has `projectUser` (`name`, `uid`, `gid`) when realized. It has `projectUserExplanation` with a `state` of `opted-out`, `provider-unsupported`, `unresolved`, or `not-applicable` and a `detail` sentence when no project user is realized. For a service Lando has already applied, `lando info` reports the applied identity, even if you have edited the Landofile since then. For an unapplied service, it reports the planned identity. `lando app:config:lint` checks the desired plan and warns for `opted-out` and `provider-unsupported`.
 
 After upgrading Lando, run `lando start` to apply the new plan. In a running stock PHP service named `appserver`, check the command identity and home with:
 
@@ -50,17 +52,17 @@ lando exec appserver --user root -- id
 
 The main process keeps its own identity. In stock PHP Apache services the master stays root and its `www-data` workers use the mapping; PHP-FPM workers also run as `www-data`. Artifact build steps, healthchecks, readiness probes, and database processes keep their existing identities. A scheduled job without `user:` keeps its parent process's identity, so set `user: www-data` on a PHP job that should write as that account. Generated administrative tooling, such as the Xdebug toggle, explicitly runs as root.
 
-For stock PHP, the persisted home follows the project user to `/var/www` even while the Apache master remains root. Root processes keep the image's home. See [Keep a service home across rebuilds](./home-and-host.mdx) for home overrides and persistence.
+For stock PHP, the persisted home follows the project user to `/var/www` even while the Apache master remains root. Lando doesn't persist nginx's worker cache directory as a home. Root processes keep the image's home. See [Keep a service home across rebuilds](./home-and-host.mdx) for home overrides and persistence.
 
 ## Directories Lando creates before start
 
 A container runtime creates a missing mount point itself, as an account that is neither you nor the project user. Lando gets there first. Before it creates a service's containers, it creates these paths on the host, as your host user, when they sit inside your app directory and don't exist yet:
 
 - The service's working directory.
-- Each nested mount point, such as the empty `vendor` and `node_modules` directories that a service volume covers.
+- Each nested mount point, such as the empty `node_modules` directory that a Node service's volume covers.
 - A file you mount into the app, created empty, along with its parent directories.
 
-That's why a fresh `web/` or `public/` webroot belongs to you, and why the empty `vendor` and `node_modules` directories in your app are yours to keep or delete.
+That's why a fresh `web/` or `public/` webroot belongs to you, and why the empty `node_modules` directory in your app is yours to keep or delete.
 
 Lando only fills in what's missing. It never changes the owner or mode of a path that already exists, and it creates nothing outside your app directory.
 
@@ -80,9 +82,11 @@ To select an identity explicitly, `projectUser` accepts a numeric pair such as `
 
 A custom `image:` or Compose `build.context` has no declared account metadata, so use a numeric pair for it. On a rootful engine, the numeric `projectUser` must also be the service's numeric `user:` pair. Lando then creates the container as your host ids, which gives the configured user the same ownership it had, now mapped to you. Without that matching `user:` pair, planning fails rather than guess which account to replace. The account must be usable in your image. Lando does not guess a home path for a numeric identity with no declared home. Set `home.path` if you need to retain a known home there.
 
-On a rootful engine, a numeric `projectUser` other than the declared `www-data` ids fails planning: there is no catalog account to renumber. Use `www-data` or `33:33`, or set `projectUser: false` to keep the container identity.
+On a rootful engine with a catalog image, use the declared account name or its numeric pair. Lando can renumber that account, but it can't select an unrelated account from a numeric pair. For stock PHP, use `www-data` or `33:33`, or set `projectUser: false` to keep the container identity.
 
-When `projectUser` is omitted, an authored service `user:` that is a numeric pair or the type's declared name supplies the project identity. Otherwise, the type's declared project user applies. An authored root identity resolves to no project user. `projectUser` controls file ownership and user-command defaults. `user:` controls the main process.
+When `projectUser` is omitted, an authored numeric `user:` pair takes precedence. The provider still decides if it can map that pair. Otherwise Lando can use the service type's declared project user. For stock nginx and `static:nginx`, the default only applies with Lando's launcher and when the process user is unset or named `nginx`. An authored root identity resolves to no implicit project user. `projectUser` controls file ownership and user-command defaults. `user:` controls the main process.
+
+On a rootful engine, if the host UID or GID is `0`, Lando skips nginx's implicit worker default rather than renumbering the account. This doesn't waive the host ID check for an explicit `projectUser` request.
 
 An explicit project-user identity on an unsupported provider fails planning before builds or service changes. Leave the key unset to keep the automatic platform behavior, or use `false` to opt out. Run `lando app:config:lint` after editing the Landofile and `lando start` to apply a valid change.
 

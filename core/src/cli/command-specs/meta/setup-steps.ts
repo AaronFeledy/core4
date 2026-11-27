@@ -66,7 +66,18 @@ export class ShellProfileIntegrationError extends Schema.TaggedError<ShellProfil
   "ShellProfileIntegrationError",
   {
     message: Schema.String,
+    path: Schema.String,
     stderr: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
+  },
+) {}
+
+/** Lando's roots hold root-owned entries, so setup would fail later with generic write errors. */
+export class RootOwnedLandoFilesError extends Schema.TaggedError<RootOwnedLandoFilesError>()(
+  "RootOwnedLandoFilesError",
+  {
+    message: Schema.String,
+    paths: Schema.Array(Schema.String),
     remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
@@ -96,11 +107,15 @@ export const makeSetupReadinessRecorder = (
   selectedProviderId: string,
   redaction?: RedactionServiceShape,
   sourceEnv: Readonly<Record<string, string | undefined>> = process.env,
+  /** Write nothing until `start`, as when setup must first give root-owned roots back. */
+  deferred = false,
 ): AccumulatingSetupReadinessRecorder => {
   const readinessSteps: SetupReadinessStep[] = [];
   let providerId = selectedProviderId;
   let runtimeServiceReadiness: SetupReadinessRuntimeService | null | undefined;
+  let started = !deferred;
   const persist = (status: SetupReadinessSummary["status"]) => {
+    if (!started) return Effect.void;
     const write = writeSetupReadiness(userDataRoot, providerId, {
       status,
       steps: readinessSteps,
@@ -155,7 +170,10 @@ export const makeSetupReadinessRecorder = (
     });
   });
   return {
-    start: Effect.suspend(() => persist("in-progress")),
+    start: Effect.suspend(() => {
+      started = true;
+      return persist("in-progress");
+    }),
     finish: (exit) => {
       if (Exit.isSuccess(exit)) return persist(completedSetupReadinessStatus(readinessSteps));
       const cancelled =

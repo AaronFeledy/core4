@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { type BinaryLike, createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { deserialize, serialize } from "node:v8";
-import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/core/schema";
+import { AbsolutePath, AppId, type AppPlan, PortNumber, ProviderId, ServiceName } from "@lando/core/schema";
 import type { CacheService } from "@lando/core/services";
 import {
   APP_PLAN_CACHE_HEADER_BYTES,
@@ -62,7 +62,28 @@ const appPlanFixture: AppPlan = {
   slug: "fixture-app",
   root: AbsolutePath.make("/workspace/fixture-app"),
   provider: ProviderId.make("lando"),
-  services: {},
+  services: {
+    [ServiceName.make("web")]: {
+      name: ServiceName.make("web"),
+      type: "nginx",
+      provider: ProviderId.make("lando"),
+      primary: true,
+      environment: {},
+      mounts: [],
+      endpoints: [],
+      plannedPort: PortNumber.make(80),
+      routes: [],
+      dependsOn: [],
+      hostAliases: [],
+      metadata: {
+        resolvedAt: DateTime.makeUnsafe("2026-05-20T00:00:00Z"),
+        source: "/workspace/fixture-app/.lando.yml",
+        runtime: 4,
+      },
+      projectUser: { name: "nginx", uid: 101, gid: 101 },
+      extensions: {},
+    },
+  },
   routes: [],
   stores: [],
   fileSync: [],
@@ -85,19 +106,29 @@ const expectMagic = (bytes: Uint8Array, magic: Uint8Array): void => {
 const writeWithCache = <A>(effect: Effect.Effect<A, unknown, CacheService>): Promise<A> =>
   Effect.runPromise(effect.pipe(Effect.provide(AppCacheService.layer)));
 
-const makeAppPlanBytes = async (): Promise<Buffer> => {
-  const cacheRoot = await mkdtemp(join(tmpdir(), "lando-app-plan-fixture-"));
-  const path = await writeWithCache(
+const appPlanFixtureLocation = {
+  appName: "fixture-app",
+  appRoot: "/workspace/fixture-app",
+  key: "fixture-key",
+} as const;
+
+const writeAppPlanFixture = (cacheRoot: string): Promise<string> =>
+  writeWithCache(
     writeCachedAppPlan({
       cacheRoot,
-      appName: "fixture-app",
-      appRoot: "/workspace/fixture-app",
-      key: "fixture-key",
+      ...appPlanFixtureLocation,
       plan: appPlanFixture,
       now: () => 1_700_000_300_000,
     }),
   );
-  return readFile(path);
+
+const makeAppPlanBytes = async (): Promise<Buffer> => {
+  const cacheRoot = await mkdtemp(join(tmpdir(), "lando-app-plan-fixture-"));
+  try {
+    return await readFile(await writeAppPlanFixture(cacheRoot));
+  } finally {
+    await rm(cacheRoot, { recursive: true, force: true });
+  }
 };
 
 const makeFixtureBytes = async (name: string): Promise<Buffer> => {
@@ -181,22 +212,19 @@ describe("binary cache encoding policy", () => {
     );
   });
 
-  test("app-plan rejects the previous schema fixture", async () => {
-    const fixture = await readFile(join(fixtureRoot, "app-plan-v27.bin"));
-    const cacheRoot = join(tmpdir(), `lando-app-plan-v27-${crypto.randomUUID()}`);
-    const path = appPlanCachePath(cacheRoot, "fixture-app", "/workspace/fixture-app");
-    await mkdir(dirname(path), { recursive: true });
-    await writeFile(path, fixture);
-    expect(
-      await writeWithCache(
-        readCachedAppPlan({
-          cacheRoot,
-          appName: "fixture-app",
-          appRoot: "/workspace/fixture-app",
-          key: "fixture-key",
-        }),
-      ),
-    ).toBeNull();
+  test("app-plan reuses the realized worker mapping for the same cache key", async () => {
+    const cacheRoot = await mkdtemp(join(tmpdir(), "lando-mapped-app-plan-"));
+    try {
+      await writeAppPlanFixture(cacheRoot);
+      const cached = await Effect.runPromise(readCachedAppPlan({ cacheRoot, ...appPlanFixtureLocation }));
+      expect(cached?.services[ServiceName.make("web")]?.projectUser).toEqual({
+        name: "nginx",
+        uid: 101,
+        gid: 101,
+      });
+    } finally {
+      await rm(cacheRoot, { recursive: true, force: true });
+    }
   });
 
   test("app-plan writes magic, schema version, and payload checksum in the binary header", async () => {

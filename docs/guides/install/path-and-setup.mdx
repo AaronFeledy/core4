@@ -77,4 +77,56 @@ lando setup --provider=docker
 
 `--yes` consents to confirmation and privileged host changes. It does not switch providers. See [Pick a container provider](../setup/provider-selection.mdx).
 
+## Preview what setup changes
+
+`--dry-run` shows the host changes setup would make, the exact commands it would run, and whether sudo would need your password. It changes nothing: it never prompts, downloads nothing, and writes no configuration:
+
+```sh
+lando setup --dry-run
+```
+
+Pass the flags you plan to use, such as `lando setup --dry-run --yes --enable-linger`, to see what that run would do. With `--format=json`, `result.changes` lists each change with the `approval` saying what a real run with those flags in the same terminal would do with it: `approved` (applies it without asking), `will-ask` (asks you), `will-skip` (skips a recommended change and warns), `blocked` (stops before changing anything, because a required change has no approval), or `not-offered` (cannot offer it, such as a change only a terminal run without `--yes` asks about). `approvedBy` lists the flags that approve the change in a run that cannot ask, such as `--yes` or `--enable-linger`; it is empty for a change only a terminal can approve. `result.elevation.state` says how a real run would get administrator access, for example `will-prompt` in a terminal or `required` when the run cannot ask.
+
+The preview lists the provider's changes, trusting the local CA in the system store, and, on Linux, the router's port helper. `--format=json` shows the helper's exact install script; the text view summarizes the script by its size and digest.
+
+<Guide>
+  <Scenario id="setup-dry-run-changes-nothing" render>
+    <Step name="dry-run">
+      <Run command="lando setup --dry-run --skip-provider --skip-proxy --skip-install-ca --format=json" expectExit={0} />
+      <Verify command="lando setup --dry-run --skip-provider --skip-proxy --skip-install-ca --format=json" expect={{ stdout: { regex: "dryRun.:true" } }} />
+      <Verify command="lando setup --dry-run --skip-provider --skip-proxy --skip-install-ca --format=json" expect={{ stdout: { regex: "changes.:\\[\\]" } }} />
+      <Verify command="lando setup --dry-run --skip-provider --skip-proxy --skip-install-ca --format=json" expect={{ stdout: { regex: "state.:.not-needed" } }} />
+    </Step>
+  </Scenario>
+</Guide>
+
+## When setup needs administrator access
+
+Run `lando setup` as yourself, never with `sudo`. A few steps change the system, and setup asks for administrator access itself before the first one runs:
+
+- installing the `uidmap` package and adding subordinate user and group IDs for your account on Linux
+- letting your systemd user manager delegate cgroup controllers, and enabling lingering when no user manager runs for you
+- trusting Lando's local certificate authority in the system trust store
+- installing the helper that serves ports 80 and 443 on Linux
+- giving back Lando files that belong to root, on Linux and WSL
+
+Before setup changes anything, it plans every host change (the provider's, trusting the local CA, and the router's helper) and asks you once to approve them, listing each one. Lingering gets its own question (see below). Then setup tells you what it needs, and `sudo` asks for your password with its own prompt. It asks once per run, however many steps change the system: setup keeps sudo's credentials fresh while it works (a long runtime download does not outlast them) and tells sudo to forget them when it finishes, unless you already had them from your own `sudo -v`. Progress keeps rendering after the prompt. Lando never asks for or sees the password. If you run `sudo lando ...` against your own Lando files, Lando refuses and asks you to rerun without `sudo`, because files it wrote as root would break your later runs. If root-owned files are already there, from an older version or a command that ran as root, setup on Linux and WSL lists giving them back as its first host change, with the exact command it runs, and does it before writing anything once you approve. On macOS, for files under a directory you do not own, and for a hard link (a root-owned file with a second name, possibly outside Lando's files), setup stops before it asks anything with `RootOwnedLandoFilesError` and the command for each path instead: `sudo chown` to give a path back, or `rm -f` to remove a hard link, which Lando creates again if it needs it. If the repair leaves anything behind, such as a hard link inside a directory it gave back, setup stops with the same error and commands before it goes further. See [Fix Lando files owned by root](../subsystems/doctor-walkthrough.mdx#fix-lando-files-owned-by-root).
+
+Without a terminal (`--no-interactive`, a CI job, or an agent), setup cannot prompt. Before it changes anything, it stops with `PrivilegeCredentialsRequiredError` unless one of these is true:
+
+- you ran `sudo -v` in the same terminal shortly before, so sudo still has your credentials
+- `SUDO_ASKPASS` names a program that prints the password
+- sudo needs no password for your user, as on hosted CI runners
+
+Without a terminal, setup approves its host changes only with `--yes`. Without it, a required change, such as installing the uidmap package, stops setup with `HostChangeConsentRequiredError`, which names `--yes`, before anything changes; the recommended ones, such as trusting the local CA, are skipped with a warning. On macOS, trusting the CA also needs you to approve macOS's own dialog, so use `--skip-install-ca` when no desktop session is available.
+
+```sh
+sudo -v
+lando setup --yes --no-interactive
+```
+
+`--no-interactive` on its own approves no privileged change; add `--yes` for that. Enabling lingering keeps a systemd user manager running after you log out and after a reboot, so `--yes` does not approve it either. Setup asks about it separately in a terminal; in automation, pass `--enable-linger`. When your session has a runtime directory (`/run/user/<uid>` or `XDG_RUNTIME_DIR`), lingering is recommended: without it, setup skips lingering and says how to enable it later. When your session has none, as on a host you reach only through `su` or a service account, the managed runtime cannot start without lingering, so setup requires it. In a terminal its question says so, and answering no stops setup with `HostChangeDeclinedError`. A run with `--yes` but without `--enable-linger`, or any run that cannot ask, stops with `HostChangeConsentRequiredError`. Its remediation names `--enable-linger`, the `sudo loginctl enable-linger <user>` command, and logging in through a session with pam_systemd, such as a desktop or SSH login. Either way setup stops before it downloads or changes anything, and `lando setup --dry-run --yes --no-interactive` lists lingering as `required` and `blocked`, with `--enable-linger` in its `approvedBy`.
+
+Setup writes the PATH block to your shell profile as you, never as root. It picks `LANDO_SHELL_PROFILE` when set, otherwise the profile for your `$SHELL`. If it cannot write that file, setup fails with `ShellProfileIntegrationError` naming the path, and leaves the file alone.
+
 `lando shellenv` prints a profile snippet for the current shell. Use `--shell=powershell` in PowerShell or `--shell=posix` in a POSIX shell. A manually installed compiled binary adds its own directory when there is no install record. An installer-managed copy uses the verified directory from its install record. The profile commands above keep your chosen directory first on PATH.

@@ -12,9 +12,13 @@ import { Effect, Layer } from "effect";
 import {
   CONTAINER_HELPER_COMMANDS,
   CONTAINER_HELPER_FILE,
+  CONTAINER_HELPER_PROFILE_HOOK,
+  CONTAINER_HELPER_PROFILE_STUB,
   containerHelperCommandEnginePath,
   containerHelperCommandMount,
   containerHelperCommandShim,
+  containerHelperProfileHookPath,
+  containerHelperProfileStubPath,
 } from "../container-helper.ts";
 
 import { containerHelperNotices } from "./notices.ts";
@@ -82,6 +86,54 @@ const fromFile = async (target: ContainerHelperTarget, path: string): Promise<Co
   return value;
 };
 
+/**
+ * Delivers helper bytes from the digest-addressed cache, writing them once. Source
+ * and compiled modes both deliver from here, so command shims and the profile hook
+ * are published next to the cached copy and never into the checkout's build output.
+ */
+const deliverFromCache = async (
+  target: ContainerHelperTarget,
+  cacheRoot: string,
+  digest: string,
+  load: () => Promise<Uint8Array>,
+): Promise<ContainerHelperArtifact> => {
+  const path = join(cacheRoot, `linux-${target.arch}`, digest, CONTAINER_HELPER_FILE);
+  const cached = await fromFileIfPresent(target, path);
+  if (cached?.digest === digest) {
+    await chmod(dirname(dirname(path)), 0o755);
+    return cached;
+  }
+  const bytes = await load();
+  if (sha256Hex(bytes) !== digest) throw new HelperResolveFailure("Container helper failed its checksum.");
+  await mkdir(dirname(path), { recursive: true, mode: 0o755 });
+  await chmod(dirname(path), 0o755);
+  await chmod(dirname(dirname(path)), 0o755);
+  const staging = `${path}.lando-stage.${process.pid}.${randomUUID()}`;
+  try {
+    await writeFile(staging, bytes, { flag: "wx", mode: 0o755 });
+    await chmod(staging, 0o755);
+    await rename(staging, path);
+  } finally {
+    await rm(staging, { force: true });
+  }
+  return artifact(target, path, bytes);
+};
+
+/**
+ * Delivers a helper read from disk, a source build or `LANDO_CONTAINER_HELPER_DIR`,
+ * the way compiled mode delivers the embedded one: both directories are inputs.
+ */
+const deliverContainerHelperFile = (
+  input: ContainerHelperArtifact,
+  cacheRoot: string,
+): Promise<ContainerHelperArtifact> =>
+  deliverFromCache(
+    input.target,
+    cacheRoot,
+    input.digest,
+    async () => new Uint8Array(await readFile(input.path)),
+  );
+
 const fromSourceBuild = async (target: ContainerHelperTarget): Promise<ContainerHelperArtifact> => {
   await containerHelperNotices(join(CONTAINER_HELPER_SOURCE_ROOT, "dist"));
   const recorded = await readIfPresent(CONTAINER_HELPER_SOURCE_DIGEST_PATH);
@@ -110,58 +162,56 @@ export const extractEmbeddedContainerHelper = async (input: {
   const match = matches[0];
   if (matches.length !== 1 || match === undefined)
     throw new HelperResolveFailure("Expected exactly one embedded container helper for this architecture.");
-  const path = join(input.cacheRoot, `linux-${input.target.arch}`, match.digest, CONTAINER_HELPER_FILE);
-  const cached = await fromFileIfPresent(input.target, path);
-  if (cached?.digest === match.digest) {
-    await chmod(dirname(dirname(path)), 0o755);
-    return cached;
-  }
-  const bytes = gunzipSync(new Uint8Array(await match.file.arrayBuffer()));
-  if (sha256Hex(bytes) !== match.digest)
-    throw new HelperResolveFailure("Embedded container helper failed its checksum.");
-  await mkdir(dirname(path), { recursive: true, mode: 0o755 });
-  await chmod(dirname(path), 0o755);
-  await chmod(dirname(dirname(path)), 0o755);
-  const staging = `${path}.lando-stage.${process.pid}.${randomUUID()}`;
-  try {
-    await writeFile(staging, bytes, { flag: "wx", mode: 0o755 });
-    await chmod(staging, 0o755);
-    await rename(staging, path);
-  } finally {
-    await rm(staging, { force: true });
-  }
-  return artifact(input.target, path, bytes);
+  return deliverFromCache(input.target, input.cacheRoot, match.digest, async () => {
+    const bytes = gunzipSync(new Uint8Array(await match.file.arrayBuffer()));
+    if (sha256Hex(bytes) !== match.digest)
+      throw new HelperResolveFailure("Embedded container helper failed its checksum.");
+    return bytes;
+  });
 };
 
 const publishContainerHelperCommand = async (helper: ContainerHelperArtifact): Promise<void> => {
   const [first] = CONTAINER_HELPER_COMMANDS;
+  const hook = containerHelperProfileHookPath(helper);
   for (const directory of [
     dirname(containerHelperCommandMount(helper, first)),
     dirname(containerHelperCommandEnginePath(helper, first)),
+    dirname(hook),
   ]) {
     await mkdir(directory, { recursive: true, mode: 0o755 });
     await chmod(directory, 0o755);
   }
   for (const name of CONTAINER_HELPER_COMMANDS) {
-    await publishContainerHelperShim(containerHelperCommandMount(helper, name), name);
+    await publishHelperFile(containerHelperCommandMount(helper, name), {
+      content: containerHelperCommandShim(name),
+      mode: 0o755,
+    });
     await publishContainerHelperEngine(helper, name);
   }
   await publishContainerHelperEngine(helper, CONTAINER_HELPER_FILE);
+  await publishHelperFile(containerHelperProfileStubPath(helper), {
+    content: CONTAINER_HELPER_PROFILE_STUB,
+    mode: 0o644,
+  });
+  await publishHelperFile(hook, { content: CONTAINER_HELPER_PROFILE_HOOK, mode: 0o644 });
 };
 
 /**
- * The shim is immutable content at a stable path, so it publishes only when it is
- * missing or was written by an older format; a running container keeps an
- * identical copy.
+ * Each file lives at a fixed path and publishes only when it is missing or holds
+ * other bytes, through an atomic rename. Shims and the profile stub never change
+ * content, so a running container keeps an identical copy; the profile hook body
+ * changes in place, and containers source the new body at their next login.
  */
-const publishContainerHelperShim = async (path: string, name: string): Promise<void> => {
-  const content = containerHelperCommandShim(name);
+const publishHelperFile = async (
+  path: string,
+  file: { readonly content: string; readonly mode: number },
+): Promise<void> => {
   const existing = await readIfPresent(path);
-  if (existing !== undefined && new TextDecoder().decode(existing) === content) return;
+  if (existing !== undefined && new TextDecoder().decode(existing) === file.content) return;
   const staging = `${path}.lando-stage.${process.pid}.${randomUUID()}`;
   try {
-    await writeFile(staging, content, { flag: "wx", mode: 0o755 });
-    await chmod(staging, 0o755);
+    await writeFile(staging, file.content, { flag: "wx", mode: file.mode });
+    await chmod(staging, file.mode);
     await rename(staging, path);
   } finally {
     await rm(staging, { force: true });
@@ -208,7 +258,7 @@ const unavailable = (target: ContainerHelperTarget, cause: unknown, standalone: 
     message: causeMessage(cause),
     remediation: standalone
       ? "Reinstall Lando. Its embedded container helper is missing or damaged."
-      : "Run `bun run --filter='@lando/core' build:container-helper` to build it with Lando, or point LANDO_CONTAINER_HELPER_DIR at prebuilt binaries.",
+      : "Run `bun run bootstrap` to restore the helper built for these sources from the per-user cache, or `bun run bootstrap --build-helper` to build it with Lando, or point LANDO_CONTAINER_HELPER_DIR at prebuilt binaries.",
     ...(cause instanceof HelperResolveFailure ? {} : { cause }),
   });
 
@@ -216,7 +266,8 @@ const unavailable = (target: ContainerHelperTarget, cause: unknown, standalone: 
  * Resolves the helper executable for a container target:
  * `LANDO_CONTAINER_HELPER_DIR/linux-<arch>/lando-container-helper` when set, the
  * embedded copy in a compiled binary, otherwise the source build in
- * `core/container-helper/dist` (which must match the current sources).
+ * `core/container-helper/dist` (which must match the current sources). Every
+ * source is delivered from the digest-addressed cache under `cacheRoot`.
  */
 export const resolveContainerHelper = (
   target: ContainerHelperTarget,
@@ -231,17 +282,22 @@ export const resolveContainerHelper = (
   return Effect.tryPromise({
     try: async () => {
       const override = (input.env ?? process.env)[CONTAINER_HELPER_DIR_ENV];
+      const cacheRoot = input.cacheRoot ?? makeLandoPaths().toolDownloadsDir("container-helper");
       let artifact: ContainerHelperArtifact;
       if (override !== undefined && override.length > 0) {
-        artifact = await fromFile(target, resolve(override, `linux-${target.arch}`, CONTAINER_HELPER_FILE));
+        const built = await fromFile(
+          target,
+          resolve(override, `linux-${target.arch}`, CONTAINER_HELPER_FILE),
+        );
+        artifact = await deliverContainerHelperFile(built, cacheRoot);
       } else if (standalone) {
         artifact = await extractEmbeddedContainerHelper({
           target,
           files: input.embeddedFiles ?? embeddedFiles(),
-          cacheRoot: input.cacheRoot ?? makeLandoPaths().toolDownloadsDir("container-helper"),
+          cacheRoot,
         });
       } else {
-        artifact = await fromSourceBuild(target);
+        artifact = await deliverContainerHelperFile(await fromSourceBuild(target), cacheRoot);
       }
       await publishContainerHelperCommand(artifact);
       return artifact;

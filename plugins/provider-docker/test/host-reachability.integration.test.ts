@@ -9,7 +9,7 @@ import { makePluginStateStore } from "@lando/engine/plugins/context-state";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import { makeDockerApiClient, makeRuntimeProvider } from "@lando/provider-docker";
 import { runProbe } from "@lando/sdk/probe";
-import { AbsolutePath } from "@lando/sdk/schema";
+import { AbsolutePath, landoSharedNetworkName } from "@lando/sdk/schema";
 import { Duration, Effect, Schema } from "effect";
 import { planHostProbe, hostProbeService as service } from "./host-reachability-fixture.ts";
 import { ownerOnlyFileAccess } from "./private-file-access.ts";
@@ -22,7 +22,6 @@ test.skipIf(dockerHost === undefined)(
     // Given: a conflicting authored alias, custom addresses, and a unique host listener.
     const token = crypto.randomUUID();
     const name = `host-tcp-${token}`;
-    const sharedNetworkName = `host-tcp-shared-${token}`;
     const stateDir = await mkdtemp(join(tmpdir(), "lando-host-tcp-"));
     const listener = Bun.listen({
       hostname: "0.0.0.0",
@@ -59,22 +58,12 @@ test.skipIf(dockerHost === undefined)(
           ),
         }),
       );
-      const planned = await Effect.runPromise(planHostProbe(name, provider.capabilities));
-      const networking = planned.networking;
-      if (networking === undefined) throw new Error("planned probe networking missing");
+      const plan = await Effect.runPromise(planHostProbe(name, provider.capabilities));
+      // The shared network is named after this test process's isolated data root.
+      const sharedNetworkName = landoSharedNetworkName(plan);
+      if (sharedNetworkName === undefined) throw new Error("planned probe shared network missing");
       const request = api.request;
       if (request === undefined) throw new Error("Docker API request transport missing");
-      // Only the shared network name is overridden for concurrent-run isolation.
-      const plan = {
-        ...planned,
-        networking: {
-          ...networking,
-          sharedNetworkMembership: {
-            name: sharedNetworkName,
-            aliases: networking.sharedNetworkMembership?.aliases ?? {},
-          },
-        },
-      };
       try {
         // When: the real planner output goes through the provider's create path.
         await Effect.runPromise(Effect.scoped(provider.apply(plan, { reconcile: true })));
@@ -153,7 +142,7 @@ test.skipIf(dockerHost === undefined)(
         try {
           await Effect.runPromise(
             provider
-              .destroy({ app: plan.id, plan }, { volumes: true })
+              .bringDown({ app: plan.id, plan }, { containers: "remove", volumes: true })
               .pipe(Effect.provide(makeTestStateStore().layer)),
           );
         } finally {

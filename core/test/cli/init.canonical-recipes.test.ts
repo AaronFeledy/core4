@@ -59,7 +59,7 @@ const CANONICAL_CASES: ReadonlyArray<CanonicalCase> = [
       { name: "appserver", type: "php:8.3" },
       { name: "database", type: "mariadb" },
     ],
-    expectedTooling: ["wp", "composer"],
+    expectedTooling: ["wp", "wp-install", "wp-replace-url", "composer"],
   },
   {
     recipe: "laravel",
@@ -115,7 +115,7 @@ const CANONICAL_CASES: ReadonlyArray<CanonicalCase> = [
       { name: "appserver", type: "php:8.3" },
       { name: "database", type: "mariadb:11.4" },
     ],
-    expectedTooling: ["drush", "composer", "phpcs", "phpcbf", "phpstan", "drupal-scaffold"],
+    expectedTooling: ["drush", "composer", "phpcs", "phpcbf", "phpstan"],
   },
   {
     recipe: "drupal-cms",
@@ -124,15 +124,7 @@ const CANONICAL_CASES: ReadonlyArray<CanonicalCase> = [
       { name: "appserver", type: "php:8.3" },
       { name: "database", type: "mariadb:11.4" },
     ],
-    expectedTooling: [
-      "drush",
-      "composer",
-      "phpcs",
-      "phpcbf",
-      "phpstan",
-      "drupal-cms-scaffold",
-      "drupal-cms-install",
-    ],
+    expectedTooling: ["drush", "composer", "phpcs", "phpcbf", "phpstan", "drupal-cms-install"],
   },
   {
     recipe: "drupal-contrib",
@@ -184,13 +176,13 @@ const CANONICAL_CASES: ReadonlyArray<CanonicalCase> = [
     recipe: "astro",
     answers: { name: "astro-app", node: "lts", database: "none" },
     expectedServices: [{ name: "web", type: "node:lts" }],
-    expectedTooling: ["astro"],
+    expectedTooling: ["astro", "dev"],
   },
   {
     recipe: "sveltekit",
     answers: { name: "svelte-app", node: "lts", adapter: "node", database: "none" },
     expectedServices: [{ name: "web", type: "node:lts" }],
-    expectedTooling: ["svelte"],
+    expectedTooling: ["svelte", "dev"],
   },
   {
     recipe: "nextjs",

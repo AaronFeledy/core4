@@ -10,6 +10,7 @@ import { PrivateFileAccessService } from "@lando/state-store/private-file-access
 import { makeStateStore } from "@lando/state-store/service";
 import { Effect, Option, Result, Schema } from "effect";
 import { HostMaintenanceRegistry, teardownHostMaintainers } from "../runtime/host-maintenance.ts";
+import { CORE_VERSION } from "../version.ts";
 import { type GlobalStopError, type GlobalStopServices, globalStop } from "./global-stop.ts";
 import {
   PoweroffAppResultSchema,
@@ -234,7 +235,7 @@ const stopManagedRuntimeService: Effect.Effect<
   const privateFileAccess = yield* PrivateFileAccessService;
   const platform = normalizeHostPlatform();
   const paths = makeLandoPaths({ userDataRoot, platform });
-  const stateStore = makeStateStore({ privateFileAccess, roots: paths.roots });
+  const stateStore = makeStateStore({ privateFileAccess, roots: paths.roots, writer: CORE_VERSION });
   const result = yield* teardownHostMaintainers(service.value, {
     paths,
     platform,

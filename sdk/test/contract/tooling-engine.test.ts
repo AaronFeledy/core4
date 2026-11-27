@@ -117,7 +117,6 @@ const makeRecordingProvider = (
     platform: "linux",
     capabilities: stubCapabilities,
     isAvailable: Effect.succeed(true),
-    planSetup: () => Effect.die("not used"),
     setup: () => Effect.void,
     getStatus: Effect.succeed({ state: "running" as const }),
     getVersions: Effect.succeed({ provider: "0.0.0" }),
@@ -126,12 +125,11 @@ const makeRecordingProvider = (
     removeArtifact: () => Effect.succeed({ kind: "absent" as const }),
     listArtifacts: () => Effect.succeed([]),
     apply: () => Effect.succeed({ changed: false }),
-    start: () => Effect.void,
-    stop: () => Effect.void,
     restart: () => Effect.void,
     waitForExit: () => Effect.succeed({ exitCode: 0 }),
-    destroy: () => Effect.succeed({ kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } }),
-    removeObservedService: () => Effect.succeed({ kind: "absent" as const }),
+    bringDown: () =>
+      Effect.succeed({ kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } }),
+    bringDownObserved: (observed) => Effect.succeed({ service: observed.service, action: "absent" as const }),
     readAppEnvironment: () => Effect.succeed([]),
     exec: (_target, command) => {
       const index = calls.length;

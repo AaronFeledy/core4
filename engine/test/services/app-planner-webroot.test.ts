@@ -8,11 +8,12 @@ import {
 } from "@lando/sdk/schema";
 import { AppPlanner, PluginRegistry, type ServiceType } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { Cause, Effect, Exit, Option, Schema } from "effect";
+import { Cause, Effect, Exit, Layer, Option, Schema } from "effect";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import { composeExtendedServiceType } from "../../src/services/extends.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";
 import { compileTestLandofile } from "../compiled-landofile.ts";
+import { pathsServiceLayer } from "../paths-service.ts";
 
 const APP_ROOT = process.cwd();
 const plan = (service: typeof ServiceConfig.Encoded) => {
@@ -25,7 +26,7 @@ const plan = (service: typeof ServiceConfig.Encoded) => {
     const planner = yield* AppPlanner;
     const compiled = yield* compileTestLandofile(landofile, APP_ROOT);
     return yield* planner.plan(compiled, TestRuntimeProvider.capabilities);
-  }).pipe(Effect.provide(AppPlannerLayer.layer));
+  }).pipe(Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))));
 };
 
 test.each([

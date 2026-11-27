@@ -1,7 +1,7 @@
 import { withAgentContextEnv } from "@lando/engine/config/agent-env";
 import { resolveAgentEnvForwardAllowlist } from "@lando/engine/config/agent-env-policy";
 import { execServiceCommand } from "@lando/engine/operations/exec";
-import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
+import { UnobservedServiceExit } from "@lando/engine/operations/exec-stream-drain";
 import {
   acquireScratchAppWithPlan,
   detachScratchApp,
@@ -29,6 +29,7 @@ import {
   RuntimeProviderRegistry,
   type ScratchAppService,
   type StateStore,
+  StreamFrameSink,
 } from "@lando/sdk/services";
 import { Effect, Option, Schema } from "effect";
 import { CliInvocation } from "../../runtime/invocation-context";
@@ -182,7 +183,7 @@ export const scratchRun = Effect.fn("ScratchRun.run")(function* (
       // Chunks stream before the result exists, so forwarded values must reach sinks already built.
       const redaction = yield* Effect.serviceOption(RedactionService);
       if (Option.isSome(redaction)) yield* redaction.value.registerValues(redactionTokensFromEnv(env));
-      const cliTextOutput = options.hostIo === "cli" && options.envelopeFormat !== true;
+      const cliTextOutput = options.hostIo === "cli" && options.machineFormat !== true;
       if (cliTextOutput) yield* finishCommandProgress();
       const sink = yield* Effect.serviceOption(StreamFrameSink);
       const execute = execServiceCommand(
@@ -197,11 +198,13 @@ export const scratchRun = Effect.fn("ScratchRun.run")(function* (
         mapFailures(
           (cause) =>
             new ScratchAppError({
-              message: `Unable to run ${options.command.join(" ")} in scratch app ${handle.id}.`,
+              message: `Unable to complete the command in scratch app ${handle.id}.`,
               operation: "run",
               cause,
               remediation:
-                "Fix the command failure inside the scratch app, then rerun `lando run -- <command>`.",
+                cause instanceof UnobservedServiceExit
+                  ? cause.remediation
+                  : "Fix the command failure inside the scratch app, then rerun `lando run -- <command>`.",
             }),
         ),
       );

@@ -34,7 +34,7 @@ describe("buildFailureRemediation", () => {
 
   test("ends a user remediation with the logs --build command", () => {
     const text = buildFailureRemediation(
-      "Inspect the build transcript, fix the step, and rebuild.",
+      "Inspect the build transcript, fix the step, then run lando start.",
       buildRemediationSuffix("user", "web", "/tmp/build.log"),
     );
 

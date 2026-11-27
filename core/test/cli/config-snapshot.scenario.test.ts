@@ -102,11 +102,13 @@ test("repair commands remain available under invalid config and notification pro
       "certificate-authority",
       "debugger-host",
       "global-app",
+      "lando-roots",
       "legacy-snapshot-catalogs",
       "missing-app-roots",
       "network-trust",
       "orphaned-volume-snapshots",
       "provider",
+      "state-compatibility",
       "subsystems",
     ]);
     expect(report.checks.find((check: { readonly section: string }) => check.section === "mcp")?.status).toBe(

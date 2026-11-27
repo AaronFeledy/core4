@@ -12,7 +12,6 @@ import {
   SSH_AGENT_HOST_DIRECTORY,
   SSH_AGENT_HOST_SOCKET,
   SSH_AGENT_SOCKET,
-  SSH_AGENT_VOLUME,
 } from "./socket.ts";
 
 export const createSshAgentServiceConfig = (paths = makeLandoPaths()): ServiceConfig => {
@@ -63,7 +62,7 @@ export const createSshAgentServiceConfig = (paths = makeLandoPaths()): ServiceCo
           : [`exec socat UNIX-LISTEN:${SSH_AGENT_SOCKET},fork,mode=0666 UNIX-CONNECT:/tmp/ssh-agent.sock`]),
       ].join(" && "),
     ],
-    storage: [{ store: SSH_AGENT_VOLUME, target: SSH_AGENT_DIRECTORY, scope: "app" }],
+    storage: [SSH_AGENT_DIRECTORY],
     mounts: [
       ...(publishesHostSocket
         ? [

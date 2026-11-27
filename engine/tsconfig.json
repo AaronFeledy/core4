@@ -23,6 +23,9 @@
       "path": "../container-runtime"
     },
     {
+      "path": "../data-mover"
+    },
+    {
       "path": "../landofile"
     },
     {

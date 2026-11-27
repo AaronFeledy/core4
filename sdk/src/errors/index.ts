@@ -17,6 +17,7 @@ export * from "./global.ts";
 export * from "./gpg.ts";
 export * from "./guide.ts";
 export * from "./healthcheck.ts";
+export * from "./host-change.ts";
 export * from "./host-proxy.ts";
 export * from "./http-client.ts";
 export * from "./interaction.ts";
@@ -29,6 +30,7 @@ export * from "./managed-file.ts";
 export * from "./mcp.ts";
 export * from "./open.ts";
 export * from "./plugin.ts";
+export * from "./privilege.ts";
 export * from "./process.ts";
 export * from "./provider.ts";
 export * from "./recipe.ts";
@@ -42,6 +44,7 @@ export * from "./shell.ts";
 export * from "./sql.ts";
 export * from "./ssh.ts";
 export * from "./state-store.ts";
+export * from "./state-version-remediation.ts";
 export * from "./tool.ts";
 export {
   ToolingCommandLookupError,

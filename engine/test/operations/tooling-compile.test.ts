@@ -253,16 +253,16 @@ describe("compileToolingInvocations", () => {
     expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "ToolingCompileError" } });
   });
 
-  test("rejects the drupal-scaffold composer.json deletion reproducer", () => {
-    // Given
+  test("rejects argv when the folded task forbids arguments", () => {
+    // Given a task that declares arguments: false (the composer.json deletion reproducer shape).
     const task = { cmd: "echo", arguments: false as const };
 
     // When
     const result = Effect.runSync(
       Effect.result(
         compileToolingInvocations({
-          name: "drupal-scaffold",
-          lookupKey: "drupal-scaffold",
+          name: "no-args",
+          lookupKey: "no-args",
           task,
           source,
           input: { _tag: "RawArgv", argv: ["composer.json"] },
@@ -273,7 +273,7 @@ describe("compileToolingInvocations", () => {
     // Then
     expect(result).toMatchObject({
       _tag: "Failure",
-      failure: { _tag: "ToolingInputError", tool: "drupal-scaffold" },
+      failure: { _tag: "ToolingInputError", tool: "no-args" },
     });
   });
 });

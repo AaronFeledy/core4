@@ -1,12 +1,15 @@
 import { describe, expect, test } from "bun:test";
 
-import { skippedFamilyNotices } from "../../../scripts/check-schema-compatibility.ts";
+import { compareArtifactSets, skippedFamilyNotices } from "../../../scripts/check-schema-compatibility.ts";
 import {
   type CompatibilityException,
+  type CompatibilityFinding,
   type JsonSchema,
   acceptCompatibilityExceptions,
   classifySchemaChange,
 } from "../../../scripts/schema-compatibility/classifier.ts";
+import { parseCompatibilityExceptions } from "../../../scripts/schema-compatibility/exceptions.ts";
+import { suggestCompatibilityExceptions } from "../../../scripts/schema-compatibility/suggest-exceptions.ts";
 
 const objectSchema = (
   properties: Readonly<Record<string, JsonSchema>>,
@@ -17,6 +20,21 @@ const objectSchema = (
   required,
   additionalProperties: false,
 });
+
+const reviewed = (
+  surface: string,
+  findings: ReadonlyArray<CompatibilityFinding>,
+  justification: string,
+): CompatibilityException => {
+  const [only] = findings;
+  if (only === undefined || findings.length !== 1) throw new Error("expected exactly one finding");
+  return {
+    fingerprint: only.fingerprint,
+    changeKind: only.changeKind,
+    locations: [{ surface, path: only.path }],
+    justification,
+  };
+};
 
 describe("schema compatibility classifier", () => {
   test.each([false, true, { type: "string" }] satisfies readonly (boolean | JsonSchema)[])(
@@ -237,12 +255,7 @@ describe("schema compatibility classifier", () => {
       "output",
     );
     const exceptions: ReadonlyArray<CompatibilityException> = [
-      {
-        surface: "command:app:info",
-        changeKind: "property-removed",
-        path: "$.port",
-        justification: "The command never populated this field.",
-      },
+      reviewed("command:app:info", findings, "The command never populated this field."),
     ];
 
     const accepted = acceptCompatibilityExceptions("command:app:info", findings, exceptions);
@@ -250,6 +263,86 @@ describe("schema compatibility classifier", () => {
     expect(accepted).toEqual([
       expect.objectContaining({ accepted: true, justification: exceptions[0]?.justification }),
     ]);
+    expect(acceptCompatibilityExceptions("command:app:list", findings, exceptions)[0]?.accepted).toBe(false);
+  });
+
+  test("requires review for a different narrowing at an already accepted path", () => {
+    // Given a reviewed narrowing of mode from a|b|c to a|b.
+    const mode = (values: readonly string[]) => objectSchema({ mode: { type: "string", enum: values } });
+    const first = classifySchemaChange(mode(["a", "b", "c"]), mode(["a", "b"]), "input");
+    const exceptions = [reviewed("schema:Config", first, "Nothing ever wrote c.")];
+    expect(acceptCompatibilityExceptions("schema:Config", first, exceptions)[0]?.accepted).toBe(true);
+
+    // When a later change narrows the same path again.
+    const second = classifySchemaChange(mode(["a", "b"]), mode(["a"]), "input");
+
+    // Then the old review does not cover it.
+    expect(second).toEqual([expect.objectContaining({ changeKind: "enum-narrowed", path: "$.mode" })]);
+    expect(acceptCompatibilityExceptions("schema:Config", second, exceptions)[0]?.accepted).toBe(false);
+  });
+
+  test("one reviewed change covers every listed surface embedding the same subschema", () => {
+    // Given one endpoint subschema change reported on two embedding surfaces.
+    const endpoint = (port: JsonSchema) => objectSchema({ port });
+    const embed = (port: JsonSchema) => ({ type: "array", items: endpoint(port) });
+    const before = { type: "number" };
+    const after = { anyOf: [{ type: "number" }, { type: "string", pattern: "^[0-9]+$" }] };
+    const artifacts = (port: JsonSchema) =>
+      new Map(
+        ["schema:Proxy", "schema:Mailpit", "schema:Varnish"].map((surface) => [
+          surface,
+          { surface, polarity: "strict" as const, schema: objectSchema({ endpoints: embed(port) }) },
+        ]),
+      );
+    const unreviewed = compareArtifactSets(artifacts(before), artifacts(after), { exceptions: [] });
+
+    // When the printed suggestion lists two of them and is recorded.
+    const [suggestion] = suggestCompatibilityExceptions(
+      unreviewed.filter((entry) => entry.surface !== "schema:Varnish"),
+      [],
+    );
+    if (suggestion === undefined) throw new Error("expected a suggestion");
+    const exceptions = [{ ...suggestion, justification: "Ports accept numeric strings." }];
+    const findings = compareArtifactSets(artifacts(before), artifacts(after), { exceptions });
+
+    // Then one entry accepts both listed surfaces, and the unlisted one still needs review.
+    expect(suggestion.locations).toEqual([
+      { surface: "schema:Mailpit", path: "$.endpoints.items.port.anyOf" },
+      { surface: "schema:Proxy", path: "$.endpoints.items.port.anyOf" },
+    ]);
+    expect(findings.map(({ surface, accepted }) => [surface, accepted])).toEqual([
+      ["schema:Mailpit", true],
+      ["schema:Proxy", true],
+      ["schema:Varnish", false],
+    ]);
+  });
+
+  test("prints a ready-to-paste entry that merges new locations into an existing review", () => {
+    // Given a recorded review and an unreviewed second surface with the same change.
+    const findings = classifySchemaChange(
+      objectSchema({ name: { type: "string" }, port: { type: "number" } }),
+      objectSchema({ name: { type: "string" } }),
+      "output",
+    );
+    const existing = reviewed("command:app:info", findings, "The command never populated this field.");
+    const located = ["command:app:info", "command:app:list"].flatMap((surface) =>
+      acceptCompatibilityExceptions(surface, findings, [existing]).map((entry) => ({ ...entry, surface })),
+    );
+
+    // When suggestions are built for what remains unreviewed.
+    const suggestions = suggestCompatibilityExceptions(located, [existing]);
+
+    // Then the suggestion replaces the entry with both locations, and a new change needs a justification.
+    expect(suggestions).toEqual([
+      {
+        ...existing,
+        locations: [...existing.locations, { surface: "command:app:list", path: "$.port" }],
+      },
+    ]);
+    const fresh = suggestCompatibilityExceptions(located, []);
+    expect(fresh.map((entry) => entry.justification)).toEqual([""]);
+    expect(() => parseCompatibilityExceptions(JSON.stringify(fresh), "fixture")).toThrow();
+    expect(parseCompatibilityExceptions(JSON.stringify(suggestions), "fixture")).toEqual(suggestions);
   });
 
   test("counts every current surface skipped when a base artifact family is unavailable", () => {

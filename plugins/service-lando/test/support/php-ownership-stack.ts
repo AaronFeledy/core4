@@ -8,6 +8,7 @@ import * as Planner from "@lando/engine/services/planner";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import { loadAuthoredDocuments } from "@lando/landofile/root-compile";
+import { makeLandoPaths } from "@lando/paths";
 import { bringDown, bringUp, makePodmanApiClient, layer as providerLayer } from "@lando/provider-lando";
 import { emitLandofileYaml } from "@lando/sdk/landofile";
 import {
@@ -17,7 +18,7 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
-import { AppPlanner, RuntimeProvider } from "@lando/sdk/services";
+import { AppPlanner, PathsService, RuntimeProvider } from "@lando/sdk/services";
 import { Effect, Layer, Schema } from "effect";
 import * as ServiceLando from "../../src/index.ts";
 import { acquireTempAppRoot, writeFixture } from "./live-app-scope.ts";
@@ -56,9 +57,9 @@ export type PhpFixture = {
   readonly dockerfile?: string;
 };
 
-export const planPhpFixture = Effect.fn("PhpAcceptance.plan")(function* (
+export const planOwnershipFixture = Effect.fn("ServiceOwnership.plan")(function* (
   root: string,
-  fixture: { readonly id: string; readonly service: PhpFixture["service"] },
+  fixture: { readonly id: string; readonly services: Readonly<Record<string, PhpFixture["service"]>> },
   capabilities: ProviderCapabilities,
 ) {
   const authored = Schema.decodeUnknownSync(LandofileShape)({
@@ -66,7 +67,7 @@ export const planPhpFixture = Effect.fn("PhpAcceptance.plan")(function* (
     runtime: 4,
     provider: "lando",
     router: { enabled: false },
-    services: { web: { type: "php:8.3", via: "apache", port: 8080, certs: false, ...fixture.service } },
+    services: fixture.services,
   });
   yield* writeFixture(root, ".lando.yml", emitLandofileYaml(Schema.encodeSync(LandofileShape)(authored)));
   const file = join(root, ".lando.yml");
@@ -75,12 +76,26 @@ export const planPhpFixture = Effect.fn("PhpAcceptance.plan")(function* (
     { appRoot: root, file },
   );
   return yield* Effect.flatMap(AppPlanner, (planner) => planner.plan(loaded, capabilities)).pipe(
-    Effect.provide(Planner.layer),
+    Effect.provide(Planner.layer.pipe(Layer.provide(Layer.succeed(PathsService, makeLandoPaths())))),
     Effect.provide(
       Layer.mergeAll(ServiceLando.services, Registry.layerWith({}, [ServiceLando.plugin]), FileSystem.layer),
     ),
   );
 });
+
+export const planPhpFixture = (
+  root: string,
+  fixture: { readonly id: string; readonly service: PhpFixture["service"] },
+  capabilities: ProviderCapabilities,
+) =>
+  planOwnershipFixture(
+    root,
+    {
+      id: fixture.id,
+      services: { web: { type: "php:8.3", via: "apache", port: 8080, certs: false, ...fixture.service } },
+    },
+    capabilities,
+  );
 
 export const acquirePhpStack = Effect.fn("PhpAcceptance.acquire")(function* (
   socketPath: string,

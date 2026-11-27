@@ -1,5 +1,5 @@
+import { resolveAppliedGlobalService } from "@lando/container-runtime/applied-global-service";
 import { redactString, standaloneSecretsRedactor } from "@lando/container-runtime/redact";
-import { sameRealpath } from "@lando/paths";
 import { mapFailures } from "@lando/sdk/command-result";
 import {
   CaError,
@@ -16,9 +16,7 @@ import {
   EventService,
   FileSystem,
   GlobalAppService,
-  InteractionService,
   PathsService,
-  PrivilegeService,
   ProcessRunner,
   RouterService,
   type RouterServiceShape,
@@ -67,6 +65,7 @@ import { advertisedRouterBindAddress, normalizeRouterBindAddress } from "./route
 import { type AuthorityPorts, DEFAULT_AUTHORITY_PORTS, authoritiesFor } from "./routing.ts";
 import { writeSecretAtomic } from "./secret-file.ts";
 import { isSocketProxyInstalled, stopSockets } from "./socket-proxy-install.ts";
+import { planSocketHelper, socketHelperProposal } from "./socket-proxy-plan.ts";
 import { liveSocketProxy } from "./socket-proxy-setup.ts";
 import { observeTraefikState, persistedStatus } from "./status.ts";
 import { normalizeDefaultDomain, removeAllCertificates, removeAppCertificates } from "./tls.ts";
@@ -225,15 +224,11 @@ const mapStartupRevalidationError = (cause: unknown): ProxyError | RouterWatcher
 
 const resolveLiveSocketProxy = Effect.gen(function* () {
   const paths = yield* Effect.serviceOption(PathsService);
-  const privilege = yield* Effect.serviceOption(PrivilegeService);
   const processRunner = yield* Effect.serviceOption(ProcessRunner);
-  const interaction = yield* Effect.serviceOption(InteractionService);
   if (paths._tag === "None") return undefined;
   return liveSocketProxy({
     userDataRoot: paths.value.roots.userDataRoot,
-    privilege: privilege._tag === "Some" ? privilege.value : undefined,
     processRunner: processRunner._tag === "Some" ? processRunner.value : undefined,
-    interaction: interaction._tag === "Some" ? interaction.value : undefined,
   });
 });
 
@@ -305,17 +300,12 @@ export const makeTraefikRouterService = (
     ...RouterService.of({
       ...ROUTER_IDENTITY,
       observeRoutes: makeRouteObserver(dependencies, pendingReload),
+      // Only a recorded acquisition proves the ports; a guessed default could name the wrong port.
       routeAuthorities: Effect.fn("RouterService.routeAuthorities")(function* (routes) {
         const acquisition = yield* readAcquisitionState(dependencies.fileSystem, dependencies.paths);
-        return authoritiesFor(
-          routes,
-          acquisition === undefined
-            ? DEFAULT_AUTHORITY_PORTS
-            : {
-                http: acquisition.httpPort,
-                https: acquisition.httpsPort,
-              },
-        );
+        return acquisition === undefined
+          ? []
+          : authoritiesFor(routes, { http: acquisition.httpPort, https: acquisition.httpsPort });
       }),
       prepare: Effect.fn("RouterService.prepare")(
         (config) =>
@@ -344,6 +334,21 @@ export const makeTraefikRouterService = (
             : mapped;
         }),
       ),
+      planHostChanges: Effect.fn("RouterService.planHostChanges")(
+        function* (config) {
+          const socketProxy = yield* resolveSocketProxy(dependencies);
+          if (socketProxy === undefined) return [];
+          const planning = {
+            ...dependencies,
+            socketProxy: { ...socketProxy, intent: "configure" as const },
+            ...(config.router === undefined ? {} : { router: routerListsFromConfig(config.router) }),
+            ...(config.routerPin === undefined ? {} : { routerPin: routerPinFromConfig(config.routerPin) }),
+          };
+          const plan = yield* planSocketHelper(planning);
+          return plan === undefined ? [] : [socketHelperProposal(planning, plan)];
+        },
+        mapFailures((cause) => proxyError("host-change planning", cause)),
+      ),
       setup: Effect.fn("RouterService.setup")(
         (config, options) =>
           guardRouterMutation(
@@ -366,7 +371,7 @@ export const makeTraefikRouterService = (
                         socketProxy: {
                           ...socketProxy,
                           intent,
-                          ...(options?.autoApprove === true ? { autoApprove: true as const } : {}),
+                          ...(options?.hostChanges === undefined ? {} : { hostChanges: options.hostChanges }),
                         },
                       }),
                   ...(config.router === undefined ? {} : { router: routerListsFromConfig(config.router) }),
@@ -537,36 +542,23 @@ export const layer = (stateStore: PluginStateStore) =>
                 onNone: () => ({}),
                 onSome: (registry) => ({
                   readTraefikState: Effect.fn("TraefikRouter.readTraefikState")(function* () {
-                    const provider = yield* registry.select(yield* globalApp.providerId);
-                    if (!(yield* provider.isAvailable)) return "unknown" as const;
-                    if ((yield* provider.getStatus).state === "idle") return "stopped" as const;
-                    const root = (yield* globalApp.paths).root;
-                    const services = yield* provider.list({
-                      app: AppId.make("global"),
-                      includeUnplanned: true,
-                    });
-                    const owned = services.find(
-                      (service) =>
-                        service.app === "global" &&
-                        service.service === "traefik" &&
-                        service.providerId === provider.id &&
-                        service.appRoot !== undefined &&
-                        sameRealpath(service.appRoot, root),
+                    const appRoot = (yield* globalApp.paths).root;
+                    const owned = yield* resolveAppliedGlobalService(
+                      registry,
+                      { appRoot, dataRoot: paths.roots.userDataRoot },
+                      ServiceName.make("traefik"),
                     );
-                    return owned === undefined
-                      ? ("stopped" as const)
-                      : owned.status === "running"
-                        ? ("running" as const)
-                        : ("stopped" as const);
+                    return owned?.observed.status === "running" ? ("running" as const) : ("stopped" as const);
                   }),
                   readTraefikPublications: Effect.fn("TraefikRouter.readTraefikPublications")(function* () {
-                    const provider = yield* registry.select(yield* globalApp.providerId);
-                    const service = yield* provider.inspect({
-                      app: AppId.make("global"),
-                      service: ServiceName.make("traefik"),
-                    });
-                    return service.status === "running"
-                      ? service.publications
+                    const appRoot = (yield* globalApp.paths).root;
+                    const owned = yield* resolveAppliedGlobalService(
+                      registry,
+                      { appRoot, dataRoot: paths.roots.userDataRoot },
+                      ServiceName.make("traefik"),
+                    );
+                    return owned?.observed.status === "running"
+                      ? owned.observed.publications
                       : { status: "unknown" as const };
                   }),
                   readTraefikLogs: Effect.fn("TraefikRouter.readTraefikLogs")(function* () {

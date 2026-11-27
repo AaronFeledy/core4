@@ -127,10 +127,11 @@ export const prepareSupersededRealizations = Effect.fn("AppOperation.prepareSupe
           yield* disposal.quiesceRetained;
           const quiesced = yield* disposal.dispose;
           observations.push(quiesced.shutdownObservations);
-          yield* cleanupAppWorkers(app);
-          const outcome = yield* provider.destroy(
+          yield* cleanupAppWorkers(app, "retire");
+          const outcome = yield* provider.bringDown(
             { app: old.id, plan: old },
             {
+              containers: "remove",
               volumes: execution.volumes === true,
               purgeCaches: execution.purgeCaches === true,
               removeState: true,
@@ -138,11 +139,12 @@ export const prepareSupersededRealizations = Effect.fn("AppOperation.prepareSupe
           );
           observations.push(outcome.shutdownObservations);
           switch (outcome.kind) {
-            case "destroyed":
+            case "removed":
               skipped.push(...(outcome.skipped ?? []));
               for (const service of Object.values(old.services).reverse()) servicesRemoved.add(service.name);
               volumesRemoved = addVolumeRemovalCounts(volumesRemoved, outcome.volumesRemoved);
               break;
+            case "stopped":
             case "no-op":
               break;
             default: {
@@ -161,7 +163,7 @@ export const prepareSupersededRealizations = Effect.fn("AppOperation.prepareSupe
             MessageWarnEvent.make({
               body:
                 execution.narration === "teardown"
-                  ? `Retired ${old.name}: ${outcome.kind === "destroyed" ? "removed its containers and networks" : "no runtime resources remained"}; ${outcome.kind === "destroyed" && outcome.volumesRemoved.data > 0 ? "removed its named data volumes" : "kept its named data volumes"}${outcome.kind === "destroyed" && outcome.volumesRemoved.cache > 0 ? " and removed its cache volumes" : ""}.`
+                  ? `Retired ${old.name}: ${outcome.kind === "removed" ? "removed its containers and networks" : "no runtime resources remained"}; ${outcome.kind === "removed" && outcome.volumesRemoved.data > 0 ? "removed its named data volumes" : "kept its named data volumes"}${outcome.kind === "removed" && outcome.volumesRemoved.cache > 0 ? " and removed its cache volumes" : ""}.`
                   : carriesData
                     ? `${old.name} is now ${target.plan.name}: removed the containers and networks of ${old.name}. Its data carries over to ${target.plan.name}.`
                     : `${old.name} is now ${target.plan.name}: removed the containers and networks of ${old.name} and kept its named volumes: ${retained.length === 0 ? "none" : retained.join(", ")}.`,

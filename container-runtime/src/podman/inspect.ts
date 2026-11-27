@@ -18,22 +18,14 @@ import { APP_ROOT_LABEL } from "../labels.ts";
 import { containerOwnershipLabels } from "../native-ownership.ts";
 import { serviceContainerName } from "../plan.ts";
 import { redactDetails, redactorFor, withApiReason } from "../redact.ts";
-import { runObservationFromInspectState } from "../run-observation.ts";
+import { type EngineContainerState, runObservationFromInspectState } from "../run-observation.ts";
 import { inspectContainerLabels } from "./bring-up-recreate.ts";
 import { mountObservationFromInspect } from "./inspect-mounts.ts";
 
 interface ContainerInspect {
   readonly Id?: string;
   readonly Image?: string;
-  readonly State?: {
-    readonly Health?: { readonly Status?: string };
-    readonly Running?: boolean;
-    readonly Paused?: boolean;
-    readonly Restarting?: boolean;
-    readonly Status?: string;
-    readonly StartedAt?: string;
-    readonly ExitCode?: number;
-  };
+  readonly State?: EngineContainerState;
   readonly NetworkSettings?: {
     readonly Ports?: Record<string, Array<{ readonly HostIp?: string; readonly HostPort?: string }> | null>;
   };

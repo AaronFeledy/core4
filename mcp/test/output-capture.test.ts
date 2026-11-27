@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { commandCompletionFromExitCode } from "@lando/sdk/command-result";
 import { createRedactor } from "@lando/sdk/secrets";
+import { StreamFrameSink } from "@lando/sdk/services";
 import { Effect, Fiber, Layer, Schema } from "effect";
 import { DEFAULT_OUTPUT_BYTES, OutputCapture } from "../src/output-capture";
 import { testAppGenerations } from "../src/testing.ts";

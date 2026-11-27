@@ -4,13 +4,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { LandofileValidationError } from "@lando/core/errors";
 import { LandofileShape, type ProviderCapabilities } from "@lando/core/schema";
-import { AppPlanner } from "@lando/core/services";
+import { AppPlanner, PathsService } from "@lando/core/services";
 import * as AppCacheService from "@lando/engine/cache/service";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
+import { makeLandoPaths } from "@lando/paths";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Cause, Effect, Exit, Layer, Option, Schema } from "effect";
+import { literalLandofile } from "../_support/value-contracts.ts";
 
 const configCapabilities: ProviderCapabilities = {
   ...TestRuntimeProvider.capabilities,
@@ -39,10 +41,15 @@ const withAppRoot = async <A>(run: (appRoot: string) => Promise<A>): Promise<A> 
 };
 
 const plannerLayer = AppPlannerLayer.layer.pipe(
-  Layer.provide(Layer.mergeAll(AppCacheService.layer, BunFileSystem.layer, PluginRegistryLayer.layer)),
+  Layer.provide(
+    Layer.mergeAll(
+      AppCacheService.layer,
+      BunFileSystem.layer,
+      PluginRegistryLayer.layer,
+      Layer.succeed(PathsService, makeLandoPaths()),
+    ),
+  ),
 );
-
-import { literalLandofile } from "../_support/value-contracts.ts";
 
 const plan = (landofile: typeof LandofileShape.Type) =>
   Effect.runPromise(

@@ -97,6 +97,27 @@ describe("CertificateAuthority contract", () => {
     }
   });
 
+  test.each(["setup", "trustStores"] as const)(
+    "runCaContract fails, without a defect, an authority whose %s report is not a list",
+    async (member) => {
+      // Given: a plugin built outside TypeScript that reports its stores as no list at all
+      const ca = makeTestCertificateAuthority();
+      const malformed =
+        member === "setup"
+          ? { ...ca, setup: () => Effect.succeed({ trustStores: undefined as unknown as [] }) }
+          : { ...ca, trustStores: Effect.succeed(undefined as unknown as []) };
+      // When
+      const exit = await Effect.runPromiseExit(runCaContract(malformed));
+      // Then
+      expect(Exit.isFailure(exit) && exit.cause.reasons.every((reason) => reason._tag === "Fail")).toBe(true);
+      if (Exit.isFailure(exit)) {
+        expect(exit.cause.reasons[0]?._tag === "Fail" && exit.cause.reasons[0].error).toBeInstanceOf(
+          ContractFailure,
+        );
+      }
+    },
+  );
+
   test("runCaContract fails an authority whose root disagrees with the root it signs with", async () => {
     // Given: an authority that signs with rootA and says so on each issuance, but reports rootB as its root
     const drifted = {

@@ -48,7 +48,7 @@ export const failedAppStepDisposition = (
   const detail = failure.kind === "typed" ? taggedErrorJson(failure.error).message : undefined;
   return {
     outcome: "failed",
-    summary: detail ?? `${appStep.step.id} ${Cause.hasInterruptsOnly(cause) ? "interrupted" : "failed"}`,
+    summary: detail ?? `${appStep.subject} ${Cause.hasInterruptsOnly(cause) ? "interrupted" : "failed"}`,
     durationMs,
   };
 };
@@ -75,51 +75,58 @@ export const appStepDisposition = (
   appStep: AppStep,
   outcome: AppStepOutcome,
 ): AppStepDisposition => {
-  const { step } = appStep;
+  const { step, subject } = appStep;
   switch (outcome._tag) {
     case "blocked": {
       const blockedBy = outcome.labels.join(", ");
-      const message = `Build step ${step.id} for service ${String(step.service)} did not run: blocked by ${blockedBy}${outcome.detail === undefined ? "" : `: ${outcome.detail}`}.`;
+      const reason = `blocked by ${blockedBy}${outcome.detail === undefined ? "" : `: ${outcome.detail}`}`;
+      const message = `Build step ${step.id} for service ${String(step.service)} did not run: ${reason}.`;
       return {
         outcome: "blocked",
-        summary: message,
+        summary: `${subject} did not run: ${reason}`,
         durationMs: 0,
         failure: new BuildStepFailedError({
           step,
           message,
-          remediation: `Resolve the blocking failures (${blockedBy}), then rebuild step ${step.id}.`,
+          remediation: `Resolve the blocking failures (${blockedBy}), then run lando start.`,
         }),
       };
     }
     case "reused":
-      return { outcome: "succeeded", summary: `${step.id} cached`, durationMs: 0 };
+      return { outcome: "succeeded", summary: `${subject} cached`, durationMs: 0 };
     case "ran": {
       const { result, attempt } = outcome;
       const failure = result.providerFailure;
-      if (failure === undefined && (result.exitCode === undefined || result.exitCode === 0))
-        return { outcome: "succeeded", summary: `${step.id} complete`, durationMs: result.durationMs };
+      if (result.exitCode === 0)
+        return { outcome: "succeeded", summary: `Built ${subject}`, durationMs: result.durationMs };
+      const { command: _, ...stepReference } = step;
+      const unobserved = result.failureOrigin === "unobserved-exit";
       const kind = buildAppKind(input.plan);
       const baseRemediation =
         kind === "scratch"
-          ? `Fix step ${step.id}, and rebuild.`
-          : `Inspect the build transcript at ${attempt.transcriptPath}, fix step ${step.id}, and rebuild.`;
+          ? `Fix step ${step.id}, then run lando start.`
+          : `Inspect the build transcript at ${attempt.transcriptPath}, fix step ${step.id}, then run lando start.`;
       return {
         outcome: "failed",
-        summary: `${step.id} failed`,
+        summary: `${subject} failed`,
         durationMs: result.durationMs,
         failure: new BuildStepFailedError({
-          step,
+          step: unobserved ? stepReference : step,
           transcriptPath: attempt.transcriptPath,
           ...(result.exitCode === undefined ? {} : { exitCode: result.exitCode }),
           ...(result.outputTail === undefined ? {} : { outputTail: result.outputTail }),
           ...(failure === undefined ? {} : { cause: failure }),
           message:
             failure === undefined
-              ? appStepExitMessage(step, result.exitCode ?? 0)
+              ? appStepExitMessage(step, result.exitCode)
               : appStepProviderFailureMessage(step, failure.message),
           remediation: buildFailureRemediation(
             failure?.remediation ?? baseRemediation,
-            buildRemediationSuffix(kind, String(step.service), undefined),
+            buildRemediationSuffix(
+              kind,
+              String(step.service),
+              unobserved ? attempt.transcriptPath : undefined,
+            ),
           ),
         }),
       };

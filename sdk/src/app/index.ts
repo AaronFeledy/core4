@@ -129,6 +129,7 @@ export type {
   InfoAppAgentEnv,
   InfoAppHostProxy,
   InfoAppResult,
+  InfoAppliedStateIssue,
   LandofileEventsOutcome,
   RebuildAppResult,
   RestartAppResult,
@@ -176,7 +177,7 @@ import type {
 import type { UserLandofileError } from "../services/landofile.ts";
 import type { AppPlannerError, BuildAppError, BuildError } from "../services/planner.ts";
 import type { LogChunk, ProviderError, ProviderSelectionError } from "../services/provider.ts";
-import type { ScratchAcquireInput, ScratchHandle } from "../services/scratch.ts";
+import type { ScratchAcquireInput, ScratchAppService, ScratchHandle } from "../services/scratch.ts";
 
 /**
  * The union of every Effect service tag a fully-bootstrapped app-tier Lando
@@ -290,10 +291,16 @@ export type StartAppError =
   | StateStoreError
   | VolumeOperationError;
 
-// biome-ignore lint/complexity/noBannedTypes: stop has no extra options beyond start today.
-export type StopAppOptions = {};
+export interface StopAppOptions {
+  /**
+   * Stop only these planned services. Unknown or empty names fail with `ServiceNotFoundError`;
+   * an omitted or empty list stops the whole app.
+   */
+  readonly services?: ReadonlyArray<ServiceName>;
+}
 
 export type StopAppError =
+  | ProxyApplyError
   | ProxyError
   | Lando3LandofileDetected
   | LandofileDialectMixError
@@ -641,5 +648,5 @@ export interface LandoRuntime {
   ) => Effect.Effect<ScratchHandle, ScratchAcquireError, Scope.Scope>;
   readonly run: <A, E, R>(
     program: Effect.Effect<A, E, R>,
-  ) => Effect.Effect<A, E, Exclude<R, LandoRuntimeServices>>;
+  ) => Effect.Effect<A, E, Exclude<R, LandoRuntimeServices | ScratchAppService>>;
 }

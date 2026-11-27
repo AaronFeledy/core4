@@ -9,11 +9,11 @@ import {
   IMAGES,
   ListEnvelope,
   LogsEnvelope,
-  RunEnvelope,
   SCHEDULE_ZONE_ABBREVIATIONS,
   StopEnvelope,
   cells,
   decodeLastLine,
+  decodeRunFrames,
   expectSuccess,
   infoFor,
   landofile,
@@ -56,9 +56,9 @@ for (const cell of cells) {
               await runCli(cell, appRoot, ["schedule:run", job, "--format=json"]),
               `lando schedule:run ${job} on ${cell.label} (${image})`,
             );
-            const envelope = decodeLastLine(RunEnvelope, run.stdout, `schedule:run ${job}`);
-            expect(envelope.ok, `schedule:run ${job} must succeed`).toBe(true);
-            return envelope.result.stdout.trim().split("\n");
+            const frames = decodeRunFrames(run.stdout, `schedule:run ${job}`);
+            expect(frames.envelope.ok, `schedule:run ${job} must succeed`).toBe(true);
+            return frames.stdout.trim().split("\n");
           };
 
           const inherited = await timerIdentity("tick", "scheduled");
@@ -196,22 +196,22 @@ for (const cell of cells) {
             await runCli(cell, appRoot, ["schedule:run", "yearly", "--format=json"]),
             "lando schedule:run yearly",
           );
-          const yearlyEnvelope = decodeLastLine(RunEnvelope, yearly.stdout, "schedule:run yearly");
+          const yearlyRun = decodeRunFrames(yearly.stdout, "schedule:run yearly");
+          const yearlyEnvelope = yearlyRun.envelope;
           expect(yearlyEnvelope.ok, "schedule:run yearly must report success").toBe(true);
           expect(yearlyEnvelope.result.service, "the yearly result must identify its parent service").toBe(
             "web",
           );
           expect(yearlyEnvelope.result.exitCode, "the yearly job must exit successfully").toBe(0);
-          expect(yearlyEnvelope.result.stdout, "the yearly result must retain job stdout").toContain(
-            "yearly-ran",
-          );
+          expect(yearlyRun.stdout, "the yearly job's stdout must stream as frames").toContain("yearly-ran");
 
           const failing = await runCli(cell, appRoot, ["schedule:run", "failing", "--format=json"]);
           expect(failing.exitCode, `failing job should exit 3\n${failing.stdout}\n${failing.stderr}`).toBe(3);
-          const failingEnvelope = decodeLastLine(RunEnvelope, failing.stdout, "schedule:run failing");
+          const failingRun = decodeRunFrames(failing.stdout, "schedule:run failing");
+          const failingEnvelope = failingRun.envelope;
           expect(failingEnvelope.ok, "schedule:run failing must report failure").toBe(false);
           expect(failingEnvelope.result.exitCode, "the failed result must retain exit code 3").toBe(3);
-          expect(failingEnvelope.result.stdout, "the failed result must retain stdout").toContain(
+          expect(failingRun.stdout, "the failed job's stdout must stream as frames").toContain(
             "failing-stdout",
           );
           expect(failingEnvelope.error?.exitCode, "the error envelope must retain the job exit code").toBe(3);

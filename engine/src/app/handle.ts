@@ -29,6 +29,7 @@ import type { Context } from "effect";
 import { DateTime, Effect, Stream } from "effect";
 import type { ResolvedAppTarget } from "../landofile/app-resolution.ts";
 import type { LogsAppLine } from "../operations/logs.ts";
+import { requestedStopServices } from "../operations/stop-selection.ts";
 import { provideRuntime } from "../runtime/observability.ts";
 import type { AppLifecycle } from "./lifecycle.ts";
 import type { AppOperations } from "./operations.ts";
@@ -117,8 +118,17 @@ export const makeAppHandle = (
           Effect.onError(() => lifecycle.discardStaged(scope)),
         );
     }, lifecycle.serialize),
+    // A selected stop leaves the managed scope open: running siblings still hold its workers and sessions.
     stop: (options?: StopAppOptions) =>
-      lifecycle.serialize(ops.stopApp(options, target, lifecycle.closeCurrent).pipe(provide)),
+      lifecycle.serialize(
+        ops
+          .stopApp(
+            options,
+            target,
+            requestedStopServices(options) === undefined ? lifecycle.closeCurrent : undefined,
+          )
+          .pipe(provide),
+      ),
     restart: Effect.fn("App.restart")(function* (options?: RestartAppOptions) {
       if (options?.services !== undefined && options.services.length > 0) {
         return yield* ops.restartApp(options, target).pipe(provide);

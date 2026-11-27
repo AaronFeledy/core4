@@ -47,7 +47,7 @@ The public API is Effect-native only. There is no Promise facade, synchronous wr
 | `@lando/core/docs/components` | Executable-guide JSX/Astro runtime and AST helpers (§19.3); unstable, outside the semver-stable set. |
 | `@lando/core/docs/redactions` | Canonical transcript redactions (§19.6); unstable, outside the semver-stable set. |
 
-The removed `@lando/core/oclif` adapter is not public. Anything not listed above is internal and MAY change between patch versions. Public schema types are inferred from schemas; parallel hand-written public types MUST NOT be introduced. App-handle operation results (`StartAppResult`, `StopAppResult`, `RestartAppResult`, `RebuildAppResult`, `DestroyAppResult`, `InfoAppResult`, `ExecAppResult`, `ToolingResult`, `ShareStopAppResult`, and the app remote results) are Effect Schemas exported from `@lando/sdk/schema` and registered in `publicSchemaRegistry`; `@lando/sdk/app` re-exports their inferred types, and the matching CLI commands use the same schemas as their `resultSchema`. The renderer, event, subscriber, and plugin-context additions named in §8.9 and §9 remain additive compatibility-governed SDK surfaces. The remote-sync design keeps data movement in `RemoteSource`/`Dataset` and application-code movement in `CodeSync` (§10.12).
+The removed `@lando/core/oclif` adapter is not public. Anything not listed above is internal and MAY change between patch versions. Public schema types are inferred from schemas; parallel hand-written public types MUST NOT be introduced. App-handle operation results (`StartAppResult`, `StopAppResult`, `RestartAppResult`, `RebuildAppResult`, `DestroyAppResult`, `InfoAppResult`, `ExecAppResult`, `ToolingResult`, `ShareStopAppResult`, and the app remote results) are Effect Schemas exported from `@lando/sdk/schema` and registered in `publicSchemaRegistry`; `@lando/sdk/app` re-exports their inferred types, and the matching CLI commands use the same schemas as their `resultSchema`. The renderer, event, subscriber, and plugin-context contracts named in §8.9 and §9 are compatibility-governed SDK surfaces once released; before release they may change shape with no compatibility decoder, persisted-state migration, or deprecation cycle. The remote-sync design keeps data movement in `RemoteSource`/`Dataset` and application-code movement in `CodeSync` (§10.12).
 
 Embedders consume the same structured diagnostic coordinates: route conflict paths and files (§6.6), ownership and recipe compile path segments (§8.11.1, §8.8), and the raw selector string on a Landofile write failure (§8.11.1). The unreleased replacements are listed in §18.1.
 
@@ -63,9 +63,10 @@ Required behavior:
 - Bootstrap MUST follow §3.2 through the selected level and emit the same lifecycle events as the CLI.
 - The outer `Scope` owns all runtime resources and teardown.
 - Host overrides MAY replace only §4 pluggable abstractions and take precedence over defaults.
+- Scratch bootstrap MUST construct scratch services against the already acquired host overrides. A routed scratch MUST use the same selected `RouterService` instance for global-consumer admission, publication, and withdrawal on destroy or failed acquisition. The runtime MUST NOT reacquire the host router layer for the scratch tier.
 - Library defaults are `bootstrap: app`, `silent` logging, `json` rendering, non-interactive prompts, host-provided plugins only, telemetry enabled unless disabled, and no signal handlers. App bootstrap requires an authoritative cwd. Unanswered non-interactive prompts fail fast (§8.10.3).
 
-`openLandoRuntime(options)` acquires one runtime in the caller’s scope and returns retained methods `app`, `scratch`, and `run`. It MUST NOT reacquire the runtime per call.
+`openLandoRuntime(options)` acquires one runtime in the caller’s scope and returns retained methods `app`, `scratch`, and `run`. It MUST NOT reacquire the runtime per call. Scratch acquisition, whether configured through the `scratch` option or requested through `runtime.scratch`, MUST use the runtime's captured cwd, never a later ambient `process.cwd()`, for default fork Landofile discovery and for cwd-derived scratch mounts. The retained `run` provides `ScratchAppService`, and its requirement type discharges that service along with the runtime services.
 
 Construction and requirement types MUST reflect the requested tier (§22.2). Hosts invoke `openExecutionSession` through `runtime.run`, whose existing Effect-provision meaning is unchanged.
 
@@ -78,7 +79,7 @@ The returned opaque, SDK-published `App` handle captures app identity and runtim
 | `App` member | Contract |
 |---|---|
 | `id`, `ref`, `root`, `plan` | Stable app identity, root, and planned state. |
-| `start`, `stop`, `restart`, `rebuild`, `destroy` | Typed lifecycle operations. |
+| `start`, `stop`, `restart`, `rebuild`, `destroy` | Typed lifecycle operations. `stop` takes `StopAppOptions.services`: omitted or an empty list (`services: []`) stops the whole app, as for `start`, `restart`, and `rebuild`; a nonempty list is a selected stop (§6.15), whose result carries `servicesKeptRunning`; an unknown or empty name fails with `ServiceNotFoundError` before mutation. |
 | `info` | Typed app and service information. |
 | `exec`, `tooling`, `logs` | Scoped execution and streaming operations. |
 | `share`, `shareList`, `shareStop` | Scoped or detached tunnel operations (§10.2.2). |
@@ -119,7 +120,7 @@ Bootstrap, event order, payload schemas, subscriber priorities, and subscriber f
 - `makeLandoRuntime` returns a scoped Layer and MUST run under a scope-bearing context.
 - Provider connections, watchers, streams, listeners, and plugin handles belong to that scope and finalize in LIFO order.
 - Interruption MUST propagate through provider operations and finalize acquisition-local work. Interrupting an individual `App` operation MUST NOT close its owning runtime or current managed scope; closing the outer runtime scope finalizes the resources it owns.
-- An `App` handle owns a child scope for managed start-state resources. `stop`, `restart`, `destroy`, or outer runtime closure ends it. Repeated managed starts converge resources, but init and lifecycle hooks run on every invocation (§6.15). A failed or interrupted managed start keeps the current managed scope and the resources it established (§6.7); the handle retries by converging on them. Only unused staged scopes are discarded before ownership transfer; acquisition-local incomplete resources finalize without releasing app-owned resources.
+- An `App` handle owns a child scope for managed start-state resources. Whole-app `stop`, `restart`, `destroy`, or outer runtime closure ends it. A selected `stop({ services })` keeps it open, because running siblings still hold its workers and sessions. Repeated managed starts converge resources, but init and lifecycle hooks run on every invocation (§6.15). A failed or interrupted managed start keeps the current managed scope and the resources it established (§6.7); the handle retries by converging on them. Only unused staged scopes are discarded before ownership transfer; acquisition-local incomplete resources finalize without releasing app-owned resources.
 - Configured scratch apps are materialized in runtime scope and destroyed when it closes (§21). Imperatively acquired scratches retain their returned scope contract.
 - Session closure leaves borrowed App ownership unchanged; owned environments and processes follow §22.3 and §22.5.
 

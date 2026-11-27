@@ -1,12 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { StreamFrameSink, type StreamFrameSinkFrame } from "@lando/engine/operations/stream-frame-sink";
 import * as LandoEventService from "@lando/engine/services/event-service";
 import { RedactionService } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import * as RendererOutput from "@lando/renderer/output";
 import * as RendererRuntime from "@lando/renderer/runtime";
 import { MessageInfoEvent } from "@lando/sdk/events";
-import { EventService } from "@lando/sdk/services";
+import { EventService, StreamFrameSink, type StreamFrameSinkFrame } from "@lando/sdk/services";
 import { Context, DateTime, Effect, Layer, Stream } from "effect";
 
 const frames = [

@@ -69,7 +69,11 @@ import {
   printRootHelpPage,
   rejectUnknownHelpFlags,
 } from "./run-help";
-import { dispatchPluginUnavailable, tryPluginOwnedCommand } from "./run-plugin-owned-command";
+import {
+  dispatchPluginUnavailable,
+  pluginRequestsPayloadStdout,
+  tryPluginOwnedCommand,
+} from "./run-plugin-owned-command";
 import { preCommandOutputMode, renderPreCommandFailure } from "./spec/command-boundary";
 import { resolveTopLevelAliases } from "./spec/command-spec";
 import { refuseToolingInvocation } from "./tooling-refusal";
@@ -79,7 +83,6 @@ import { unavailableToolingError } from "./tooling-unavailable";
 import { setActiveTrace } from "./trace-selection";
 import { unknownCommandError } from "./unknown-command-error";
 
-export { renderCompiledDoctorReport } from "./cli-adapters/app-lifecycle";
 export { normalizeCompiledCommandArgv } from "./compiled-normalize";
 export { compiledCommandInputFromArgv };
 
@@ -218,10 +221,12 @@ const runCompiledCli = async (
     }
   }
   const commandAbsent = owner.kind === "none" && tokens.argv.length === 0 && split.controls.length === 0;
+  const payloadStdout = owner.kind === "plugin" && pluginRequestsPayloadStdout(owner.row.spec, tokens);
   if (
     await applyInvocationSelections(split.globals, context, configGlobals, {
       protocolStdout: owner.kind === "built-in" && owner.entry.spec.id === "meta:mcp",
       commandAbsent,
+      payloadStdout,
       ...(toolingOwnership === undefined ? {} : { ownership: toolingOwnership }),
     })
   )
@@ -237,6 +242,8 @@ const runCompiledCli = async (
   };
 
   if (owner.kind === "help") {
+    // Help produces only text, json, and yaml; table and ndjson are refused with exit 2.
+    if (await rejectUnsupportedResultFormat("cli:help", {}, { context })) return;
     if (hostProxy !== undefined) {
       const target = tokens.argv.find((arg) => !arg.startsWith("-"));
       if (target === undefined || tokens.argv.includes("--all")) throw hostProxyDenied("cli:help");
@@ -269,7 +276,7 @@ const runCompiledCli = async (
     return;
   }
 
-  if (await rejectJsonControlConflicts(context)) return;
+  if (await rejectJsonControlConflicts(context, payloadStdout)) return;
 
   if (hostProxy === undefined && split.help && head.commandId !== undefined && isHelpTopic(head.commandId)) {
     await dispatchHelpTarget(head.commandId, catalog, signal);

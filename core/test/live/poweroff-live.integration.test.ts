@@ -124,7 +124,7 @@ const containers = Schema.decodeUnknownSync(
 );
 
 test.skipIf(!liveEnabled)(
-  "poweroff stops active apps with their hooks, removes scratch and orphan resources, and continues after a failed stop",
+  "poweroff stops active apps with their hooks, stops orphaned roots in place, removes scratch, and continues after a failed stop",
   async () => {
     // The managed socket is tied to the test data root provisioned by the live job.
     for (const key of ["LANDO_USER_DATA_ROOT", "LANDO_USER_CONF_ROOT", "LANDO_USER_CACHE_ROOT"] as const) {
@@ -169,6 +169,7 @@ test.skipIf(!liveEnabled)(
       `routes-${appIdentityKey("owner", c.root)}.yml`,
     );
     let scratchId: string | undefined;
+    let scratchRoot: string | undefined;
     const poweroff = async () => {
       const [listed, scratches, observed] = await Promise.all([
         listApps(root),
@@ -179,7 +180,7 @@ test.skipIf(!liveEnabled)(
       const owned = (id: string, appRoot: string) =>
         [a, b, c, d].some((fixture) => fixture.id === id && fixture.root === appRoot) ||
         (id === "global" && appRoot === globalRoot) ||
-        (id === scratchId && appRoot === b.root);
+        (id === scratchId && appRoot === scratchRoot);
       // Poweroff only touches active apps, scratch apps, and live containers, so a stopped leftover
       // record from an earlier suite is not a hazard. The socket inventory catches paused or created
       // containers that list reports as stopped.
@@ -208,9 +209,10 @@ test.skipIf(!liveEnabled)(
       await prepare(b, { hook: { event: "post-stop", cmd: appendHook("b", bLog) } });
       await prepare(c, { routed: true });
       await start(b);
+      const scratchesBefore = new Set((await listScratch(root)).map(({ id }) => id));
       cleanup.push(async () => {
         for (const scratch of await listScratch(root)) {
-          if (scratch.id === scratchId || scratch.app.root === b.root) {
+          if (!scratchesBefore.has(scratch.id)) {
             await cli(root, ["scratch:destroy", scratch.id, "--yes"]);
           }
         }
@@ -219,7 +221,9 @@ test.skipIf(!liveEnabled)(
         await cli(b.root, ["scratch:start", "--fork", "--detach", "--isolate=cwd"]),
       ).result.handle;
       scratchId = scratch.id;
-      expect(scratch.app.root).toBe(b.root);
+      // A cwd fork binds b's tree but owns its resources under its own instance root.
+      scratchRoot = await realpath(join(paths.scratchDir, scratch.id, "root"));
+      expect(String(scratch.app.root)).toBe(scratchRoot);
       await start(a);
       await start(c);
       await cli(b.root, ["stop"]);
@@ -254,7 +258,9 @@ test.skipIf(!liveEnabled)(
       expect(result.apps.some(({ appId }) => appId === b.id)).toBe(false);
       expect(await hookCount(bLog)).toBe(bBefore);
       expect(result.apps.find(({ appId }) => appId === c.id)).toMatchObject({ outcome: "stopped" });
-      expect(await containerInventory(`${APP_ROOT_LABEL}=${c.root}`)).toEqual([]);
+      expect((await containerInventory(`${APP_ROOT_LABEL}=${c.root}`)).map(({ State }) => State)).toEqual([
+        "exited",
+      ]);
       expect(await volume()).toBe(`${c.id}-data`);
       expect(await Bun.file(routeFile).exists()).toBe(false);
       expect(result.apps.find(({ appId }) => appId === scratch.id)).toMatchObject({ outcome: "destroyed" });

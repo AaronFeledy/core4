@@ -1,4 +1,4 @@
-import { chmod, lstat, mkdir } from "node:fs/promises";
+import { chmod, lstat } from "node:fs/promises";
 import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { dirname } from "node:path";
@@ -10,7 +10,7 @@ import {
 } from "@lando/sdk/errors";
 import { Effect } from "effect";
 
-import { verifyHostProxyRunDirectory } from "./run-directory.ts";
+import { ensureHostProxyContainerDirectory, verifyHostProxyContainerDirectory } from "./run-directory.ts";
 import type { HostProxyRunLandoSessionOptions, HostProxySessionPaths } from "./transport-session.ts";
 
 export interface HostProxyListenResult {
@@ -67,7 +67,8 @@ const unixSocketUnavailable = (socketPath: string, cause: unknown): HostProxyTra
   new HostProxyTransportUnavailableError({
     message: causeMessage(cause),
     socketPath,
-    remediation: "Ensure the app run directory is owned by you, is not a symlink, and has mode 0700.",
+    remediation:
+      "Ensure the app run directory is owned by you, is not a symlink, and has mode 0700, and that its container directory has mode 0711.",
   });
 
 export const closeListeningServer = (server: Server): Promise<void> =>
@@ -92,7 +93,7 @@ const lockDownUnixSocket = async (socketPath: string, chmodSocket: typeof chmod 
   // Yield so a concurrent unlink/replace is visible before we publish the session.
   await waitImmediate();
   const info = await lstat(socketPath);
-  await verifyHostProxyRunDirectory(dirname(socketPath));
+  await verifyHostProxyContainerDirectory(dirname(socketPath));
   if (!info.isSocket() || (info.mode & 0o777) !== 0o666 || info.uid !== process.getuid?.()) {
     throw new Error(`Host-proxy socket at ${socketPath} is not an owned mode-0666 unix socket.`);
   }
@@ -118,13 +119,10 @@ export const listenHostProxyServer = Effect.fnUntraced(function* (
   chmodSocket: typeof chmod = chmod,
 ): Effect.fn.Return<HostProxyListenResult, HostProxySocketStaleError | HostProxyTransportUnavailableError> {
   if (paths.transport === "unix-socket" && paths.socketPath !== undefined) {
-    const directory = dirname(paths.socketPath);
+    const socketPath = paths.socketPath;
     yield* Effect.tryPromise({
-      try: async () => {
-        await mkdir(directory, { recursive: true, mode: 0o700 });
-        await verifyHostProxyRunDirectory(directory);
-      },
-      catch: (cause) => unixSocketUnavailable(paths.socketPath ?? directory, cause),
+      try: () => ensureHostProxyContainerDirectory(paths.stateDir),
+      catch: (cause) => unixSocketUnavailable(socketPath, cause),
     });
   }
   return yield* Effect.callback<

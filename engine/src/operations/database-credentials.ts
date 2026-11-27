@@ -1,6 +1,7 @@
 import { captureCommandOutput } from "@lando/container-runtime/command-output";
 import { classifyCredentialLiterals, planCredentialClassification } from "@lando/redaction/plan-values";
 import { RedactionService } from "@lando/redaction/service";
+import { withDeadline } from "@lando/sdk/command-result";
 import {
   type DatabaseClientCheckState,
   type DatabaseClientCreds,
@@ -17,6 +18,7 @@ import {
 } from "@lando/sdk/schema";
 import type { EnvironmentValueResolverSession, ExecChunk, RuntimeProviderShape } from "@lando/sdk/services";
 import { Duration, Effect, Option, Ref, Result, Stream } from "effect";
+import { settleOrdinaryFailure } from "../lifecycle/failure-compensation.ts";
 
 export type DatabaseLogin = "app" | "root";
 
@@ -169,7 +171,9 @@ const registerCredentialRedaction = Effect.fnUntraced(function* (
   yield* redaction.value.registerValues(tiers.substring);
   yield* redaction.value.registerValues(tiers.wholeToken, { match: "whole-token" });
   if (typeof password === "string") return;
-  const resolved = yield* Effect.result(session.resolveEnvironment({ LANDO_DB_CREDENTIAL_CHECK: password }));
+  const resolved = yield* settleOrdinaryFailure(
+    session.resolveEnvironment({ LANDO_DB_CREDENTIAL_CHECK: password }),
+  );
   if (Result.isFailure(resolved)) return;
   const value = resolved.success.LANDO_DB_CREDENTIAL_CHECK;
   if (value === undefined || value.length === 0) return;
@@ -179,30 +183,34 @@ const registerCredentialRedaction = Effect.fnUntraced(function* (
 const checkLogin = Effect.fnUntraced(function* (input: DatabaseCredentialCheckInput, check: LoginCheck) {
   const { creds, ...identity } = check;
   const spec = databaseLocalCheck(check.family, creds);
-  const resolved = yield* Effect.result(input.session.resolveEnvironment(spec.environment));
+  const resolved = yield* settleOrdinaryFailure(input.session.resolveEnvironment(spec.environment));
   if (Result.isFailure(resolved))
     return { ...identity, state: "unverified" } satisfies DatabaseCredentialOutcome;
   yield* registerCredentialRedaction(input.plan, creds.password, input.session);
   // Classification needs the bytes the client wrote, but redaction has already rewritten the
   // diagnostic tail. This bounded copy exists only to classify: the verdict leaves, the text does not.
   const raw = rawDiagnosticTail();
-  const captured = yield* captureCommandOutput(
-    input.provider
-      .execStream(
-        { app: input.plan.id, service: ServiceName.make(check.service), plan: input.plan },
-        { command: spec.argv, env: resolved.success },
-      )
-      .pipe(Stream.tap((chunk) => Effect.sync(() => raw.observe(chunk)))),
-    { stdout: "discard", failure: (evidence) => evidence },
+  const work = settleOrdinaryFailure(
+    captureCommandOutput(
+      input.provider
+        .execStream(
+          { app: input.plan.id, service: ServiceName.make(check.service), plan: input.plan },
+          { command: spec.argv, env: resolved.success },
+        )
+        .pipe(Stream.tap((chunk) => Effect.sync(() => raw.observe(chunk)))),
+      { stdout: "discard", preserveDefects: true, failure: (evidence) => evidence },
+    ),
   ).pipe(
-    Effect.map((result): CapturedCheck => ({ exitCode: result.exitCode, stderr: "" })),
-    Effect.catch((evidence) =>
-      Effect.succeed<CapturedCheck>({ exitCode: evidence.exitCode, stderr: evidence.stderrTail ?? "" }),
+    Effect.map(
+      (result): CapturedCheck =>
+        Result.isSuccess(result)
+          ? { exitCode: result.success.exitCode, stderr: "" }
+          : { exitCode: result.failure.exitCode, stderr: result.failure.stderrTail ?? "" },
     ),
     Effect.scoped,
-    Effect.timeoutOption(Duration.millis(spec.timeoutMs + CAPTURE_GRACE_MS)),
   );
-  if (Option.isNone(captured))
+  const captured = yield* withDeadline(work, Duration.millis(spec.timeoutMs + CAPTURE_GRACE_MS));
+  if (captured._tag === "TimedOut")
     return { ...identity, state: "unverified", detail: "timed out" } satisfies DatabaseCredentialOutcome;
   const state =
     captured.value.exitCode === undefined
@@ -222,8 +230,7 @@ const checkLogin = Effect.fnUntraced(function* (input: DatabaseCredentialCheckIn
 /**
  * Run one authenticated local check per observed database service, plus the MySQL/MariaDB
  * administrator login when the connection carries one. Callers pass only the services whose
- * answer can have changed. A failed or unavailable check is reported as `unverified`; this
- * effect never fails app start.
+ * answer can have changed. Ordinary negative observations stay verdicts; exceptional causes propagate.
  */
 export const checkDatabaseCredentials = Effect.fn("DatabaseCredentials.check")(function* (
   input: DatabaseCredentialCheckInput,
@@ -238,14 +245,17 @@ export const checkDatabaseCredentials = Effect.fn("DatabaseCredentials.check")(f
   // Each finished check records its own verdict, so an expiring budget cannot discard a
   // rejection another check already proved. Unfinished checks stay explicitly unproven.
   const finished = yield* Ref.make<ReadonlyMap<number, DatabaseCredentialOutcome>>(new Map());
-  yield* Effect.forEach(
-    checks,
-    (check, index) =>
-      checkLogin(input, check).pipe(
-        Effect.tap((outcome) => Ref.update(finished, (current) => new Map(current).set(index, outcome))),
-      ),
-    { concurrency: CHECK_CONCURRENCY },
-  ).pipe(Effect.timeoutOption(Duration.millis(input.budgetMs ?? DEFAULT_BUDGET_MS)));
+  yield* withDeadline(
+    Effect.forEach(
+      checks,
+      (check, index) =>
+        checkLogin(input, check).pipe(
+          Effect.tap((outcome) => Ref.update(finished, (current) => new Map(current).set(index, outcome))),
+        ),
+      { concurrency: CHECK_CONCURRENCY, discard: true },
+    ),
+    Duration.millis(input.budgetMs ?? DEFAULT_BUDGET_MS),
+  );
   const recorded = yield* Ref.get(finished);
   return checks.map(
     (check, index): DatabaseCredentialOutcome =>
@@ -261,13 +271,13 @@ export const checkDatabaseCredentials = Effect.fn("DatabaseCredentials.check")(f
   );
 });
 
-const guideUrl = (family: DatabaseFamily): string =>
+export const databaseCredentialGuide = (family: DatabaseFamily): string =>
   `https://docs.lando.dev/guides/services/${family}#recover-when-credentials-dont-match`;
 
-/** One recovery sentence shared by start warnings, readiness remediation, and doctor. */
+/** Doctor observes an already applied app; activation advises retrying the current selection. */
 export const databaseCredentialRemediation = (
   family: DatabaseFamily,
   state: Exclude<DatabaseClientCheckState, "accepted" | "unverified">,
   service = "<svc>",
 ): string =>
-  `${state === "database-missing" ? "Check that creds.database names the database you intend to use. " : ""}If you edited creds, run \`lando start\`. If you rotated a referenced secret without changing the Landofile, or the running database drifted, run \`lando restart --service ${service}\`. To inspect a repair, run \`lando db:creds:apply --service ${service}\`, then add \`--yes\` to apply. See ${guideUrl(family)}.`;
+  `${state === "database-missing" ? "Check that creds.database names the database you intend to use. " : ""}If you edited creds, run \`lando start\`. If you rotated a referenced secret without changing the Landofile, or the running database drifted, run \`lando restart --service ${service}\`. To inspect a repair, run \`lando db:creds:apply --service ${service}\`, then add \`--yes\` to apply. See ${databaseCredentialGuide(family)}.`;

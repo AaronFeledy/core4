@@ -113,9 +113,10 @@ export const rotateChangedFileSync = Effect.fn("AppOperation.rotateChangedFileSy
       yield* disposal.quiesceRetained;
       yield* disposal.dispose;
       // The completed disposal marker survives a failure here. Retry retires state without restarting writers.
-      yield* oldProvider.destroy(
+      yield* oldProvider.bringDown(
         { app: old.id, plan: old },
         {
+          containers: "remove",
           volumes: false,
           purgeCaches: false,
           removeState: true,

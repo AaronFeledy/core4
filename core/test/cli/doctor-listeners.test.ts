@@ -9,7 +9,6 @@ import {
   DoctorReportSchema,
   makeDoctorReport,
   renderDoctorReport,
-  renderDoctorReportAsNdjson,
 } from "../../src/cli/commands/doctor-report.ts";
 import {
   listenerOutput,
@@ -19,7 +18,7 @@ import {
   tcpTable,
   withListenerApp,
 } from "./doctor-listeners-fixture.ts";
-import { collectRuntimeDoctor as doctorReport } from "./doctor-report-fixture";
+import { collectRuntimeDoctor as doctorReport, renderDoctorReportAsNdjson } from "./doctor-report-fixture";
 
 const collect = () => listenerDoctorChecks({ budgetMs: 5000, redact: (value) => value });
 

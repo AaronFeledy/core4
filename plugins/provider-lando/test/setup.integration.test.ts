@@ -149,8 +149,7 @@ describe("provider-lando setup", () => {
     );
 
     try {
-      const plan = await Effect.runPromise(provider.planSetup({ force: false }));
-      await Effect.runPromise(Effect.scoped(provider.setup(plan, { force: false })));
+      await Effect.runPromise(Effect.scoped(provider.setup({ force: false })));
 
       const versions = await Effect.runPromise(provider.getVersions);
       expect(versions.runtime).toBe("6.0.2");
@@ -308,16 +307,9 @@ describe("provider-lando setup", () => {
         }),
       );
 
-      const plan = await Effect.runPromise(
-        provider.planSetup({
-          force: false,
-          runtimeBundleUrl: "https://example.invalid/custom-runtime.zip",
-          runtimeBundleSha256: "a".repeat(64),
-        }),
-      );
       const exit = await Effect.runPromiseExit(
         provider
-          .setup(plan, {
+          .setup({
             force: false,
             runtimeBundleUrl: "https://example.invalid/custom-runtime.zip",
             runtimeBundleSha256: "a".repeat(64),
@@ -371,9 +363,7 @@ describe("provider-lando setup", () => {
             providerSocketPath: join(stateDir, "podman.sock"),
           }),
         );
-
-        const plan = await Effect.runPromise(provider.planSetup({ force: false }));
-        const exit = await Effect.runPromiseExit(provider.setup(plan, { force: false }).pipe(Effect.scoped));
+        const exit = await Effect.runPromiseExit(provider.setup({ force: false }).pipe(Effect.scoped));
 
         expect(fetchedUrl).toContain("lando-runtime-win32-x64.zip");
         expect(calls).toEqual([]);
@@ -439,11 +429,11 @@ describe("provider-lando setup", () => {
       expect(treeStart?.parentId).toBe("provider-setup");
       expect(treeStart?.label).toBe("Setting up Lando runtime");
       expect(treeStart?.mode).toBe("list");
-      expect((treeStart?.children ?? []) as ReadonlyArray<string>).toEqual([
-        "bundle",
-        "podman",
-        "socket",
-        "state",
+      expect(treeStart?.children).toEqual([
+        { id: "bundle", label: "Verify runtime bundle" },
+        { id: "podman", label: "Detect Podman" },
+        { id: "socket", label: "Probe Podman API" },
+        { id: "state", label: "Persist setup state" },
       ]);
 
       const started = captured.filter((event) => event._tag === "task.start");
@@ -497,7 +487,7 @@ describe("provider-lando setup", () => {
     );
 
     const treeStart = captured[0];
-    expect((treeStart?.children ?? []) as ReadonlyArray<string>).toEqual(["podman"]);
+    expect(treeStart?.children).toEqual([{ id: "podman", label: "Detect Podman" }]);
 
     const startedIds = captured
       .filter((event) => event._tag === "task.start")
@@ -550,10 +540,10 @@ describe("provider-lando setup", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     expect(events.captured.find((event) => event._tag === "task.tree.start")?.children).toEqual([
-      "podman",
-      "prerequisites",
-      "launch",
-      "readiness",
+      { id: "podman", label: "Detect Podman" },
+      { id: "prerequisites", label: "Provision and preflight runtime prerequisites" },
+      { id: "launch", label: "Launch managed runtime" },
+      { id: "readiness", label: "Verify managed runtime readiness" },
     ]);
     expect(events.ids("task.start")).toEqual(["podman", "prerequisites"]);
     expect(events.ids("task.fail")).toEqual(["prerequisites"]);
@@ -618,8 +608,8 @@ describe("provider-lando setup", () => {
 
       expect(Exit.isFailure(exit)).toBe(true);
       expect(events.captured.find((event) => event._tag === "task.tree.start")?.children).toEqual([
-        "podman",
-        "helpers",
+        { id: "podman", label: "Detect Podman" },
+        { id: "helpers", label: "Prepare runtime helpers" },
       ]);
       expect(events.ids("task.complete")).toEqual(["podman"]);
       expect(events.ids("task.fail")).toEqual(["helpers"]);
@@ -654,11 +644,11 @@ describe("provider-lando setup", () => {
 
       expect(Exit.isFailure(exit)).toBe(true);
       expect(events.captured.find((event) => event._tag === "task.tree.start")?.children).toEqual([
-        "podman",
-        "prerequisites",
-        "helpers",
-        "launch",
-        "readiness",
+        { id: "podman", label: "Detect Podman" },
+        { id: "prerequisites", label: "Provision and preflight runtime prerequisites" },
+        { id: "helpers", label: "Prepare runtime helpers" },
+        { id: "launch", label: "Launch managed runtime" },
+        { id: "readiness", label: "Verify managed runtime readiness" },
       ]);
       expect(events.ids("task.start")).toEqual(["podman", "prerequisites", "helpers"]);
       expect(events.ids("task.fail")).toEqual(["helpers"]);
@@ -918,7 +908,7 @@ describe("provider-lando setup", () => {
     );
 
     const treeStart = captured[0];
-    expect((treeStart?.children ?? []) as ReadonlyArray<string>).toContain("machine");
+    expect(treeStart?.children).toContainEqual({ id: "machine", label: "Ensure Podman machine" });
 
     const completedIds = captured
       .filter((event) => event._tag === "task.complete")
@@ -991,7 +981,7 @@ describe("provider-lando setup runtime bundle extraction", () => {
         setupProviderLando({
           platform: "linux",
           podmanCommand: podmanCommand("podman version 6.0.2"),
-          runtimeBundleDownloader: downloaderFor(archiveBytes, "2.0.0"),
+          runtimeBundleDownloader: downloaderFor(archiveBytes, "0.0.2"),
           runtimeBinDir,
           skipSocketProbe: true,
           managedRuntimeSetup: (progress) =>
@@ -1001,7 +991,7 @@ describe("provider-lando setup runtime bundle extraction", () => {
         }),
       );
 
-      expect(observedVersion).toBe("2.0.0");
+      expect(observedVersion).toBe("0.0.2");
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -1229,14 +1219,14 @@ describe("provider-lando setup runtime bundle extraction", () => {
             ping: Effect.succeed(undefined),
           },
           podmanCommand: podmanCommand("podman version 6.0.2"),
-          runtimeBundleDownloader: downloaderFor(v1, "1.0.0"),
+          runtimeBundleDownloader: downloaderFor(v1, "0.0.1"),
           managedRuntimeSetup: () => Effect.void,
           runtimeBinDir,
         });
 
       await Effect.runPromise(setupV1());
       const markerPath = join(runtimeBinDir, ".runtime-installed-version");
-      expect((await readFile(markerPath, "utf8")).trim()).toBe("1.0.0");
+      expect((await readFile(markerPath, "utf8")).trim()).toBe("0.0.1");
       const firstMtime = statSync(markerPath).mtimeMs;
 
       await Effect.runPromise(setupV1());
@@ -1255,7 +1245,7 @@ describe("provider-lando setup runtime bundle extraction", () => {
             ping: Effect.succeed(undefined),
           },
           podmanCommand: podmanCommand("podman version 6.0.2"),
-          runtimeBundleDownloader: downloaderFor(v2, "2.0.0"),
+          runtimeBundleDownloader: downloaderFor(v2, "0.0.2"),
           managedRuntimeSetup: () => Effect.void,
           runtimeBinDir,
         }),
@@ -1263,7 +1253,7 @@ describe("provider-lando setup runtime bundle extraction", () => {
 
       expect(existsSync(join(runtimeBinDir, "old-only"))).toBe(false);
       expect(existsSync(join(runtimeBinDir, "new-only"))).toBe(true);
-      expect((await readFile(markerPath, "utf8")).trim()).toBe("2.0.0");
+      expect((await readFile(markerPath, "utf8")).trim()).toBe("0.0.2");
     } finally {
       await rm(runtimeBinDir, { recursive: true, force: true });
     }

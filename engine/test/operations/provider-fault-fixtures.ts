@@ -39,24 +39,18 @@ export const providerFaults = {
   }),
   ProviderConfigError: new Errors.ProviderConfigError(fields),
   ProviderInternalError: new Errors.ProviderInternalError(fields),
-  ProviderSetupConsentDeniedError: new Errors.ProviderSetupConsentDeniedError({
-    ...fields,
-    change: "install-uidmap",
-  }),
-  ProviderSetupPrivilegeUnavailableError: new Errors.ProviderSetupPrivilegeUnavailableError({
-    ...fields,
-    change: "install-uidmap",
-  }),
-  ProviderSetupProvisioningError: new Errors.ProviderSetupProvisioningError({
-    ...fields,
-    change: "install-uidmap",
-    stage: "install",
-  }),
   ProviderSetupUnsupportedHostError: new Errors.ProviderSetupUnsupportedHostError({
     ...fields,
     prerequisite: "supported-host",
   }),
   ProviderUnavailableError: new Errors.ProviderUnavailableError(fields),
+  AppliedStateVersionError: new Errors.AppliedStateVersionError({
+    ...fields,
+    path: "/applied.json",
+    storedVersion: 11,
+    supportedVersion: 10,
+    scope: "app",
+  }),
   ServiceExecError: new Errors.ServiceExecError({ ...fields, service: "web" }),
   ServiceNotFoundError: new Errors.ServiceNotFoundError({ ...fields, service: "web" }),
   ServiceStartError: new Errors.ServiceStartError({ ...fields, service: "web" }),

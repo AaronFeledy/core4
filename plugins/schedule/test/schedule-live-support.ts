@@ -1,6 +1,6 @@
 import { expect } from "bun:test";
 import { resolve } from "node:path";
-import { InfoAppResult } from "@lando/sdk/schema";
+import { InfoAppResult, StreamFrame } from "@lando/sdk/schema";
 import { Schema } from "effect";
 
 import { ScheduleListResult, ScheduleRunResult as ScheduleRunResultSchema } from "../src/schemas.ts";
@@ -99,6 +99,33 @@ export const decodeLastLine = <A>(schema: Schema.Codec<A>, stdout: string, what:
   } catch (error) {
     throw new Error(`${what} did not return the expected JSON envelope: ${line}\n${String(error)}`);
   }
+};
+
+/**
+ * `schedule:run` streams live, so `--format=json` is a frame sequence: the job's
+ * output frames, then exactly one terminal `result` frame.
+ */
+export const decodeRunFrames = (stdout: string, what: string) => {
+  const frames = stdout
+    .trim()
+    .split("\n")
+    .map((line) => {
+      try {
+        return Schema.decodeUnknownSync(Schema.fromJsonString(StreamFrame))(line);
+      } catch (error) {
+        throw new Error(`${what} did not return stream frames: ${line}\n${String(error)}`);
+      }
+    });
+  const terminal = frames.at(-1);
+  expect(
+    frames.filter((frame) => frame._tag === "result"),
+    `${what} must end in exactly one result frame`,
+  ).toHaveLength(1);
+  if (terminal?._tag !== "result") throw new Error(`${what} did not end in a result frame`);
+  return {
+    envelope: Schema.decodeUnknownSync(RunEnvelope)(terminal.envelope),
+    stdout: frames.flatMap((frame) => (frame._tag === "stdout" ? [frame.chunk] : [])).join(""),
+  };
 };
 
 export const InfoEnvelope = Schema.Struct({ ok: Schema.Literal(true), result: InfoAppResult });
@@ -229,7 +256,9 @@ export const landofile = (input: {
     IDLE_COMMAND,
     '    user: "1001"',
     "    home: false",
-    "    appMount: /app",
+    "    appMount:",
+    "      target: /app",
+    "      excludes: [vendor]",
     "    environment:",
     `      TZ: ${SCHEDULE_ZONE}`,
     "    ports:",

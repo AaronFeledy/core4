@@ -10,11 +10,11 @@ import { defaultGlobalServiceModuleLoader } from "@lando/engine/services/global-
 import * as AppPlannerLayer from "@lando/engine/services/planner";
 import { parseLandofile } from "@lando/landofile/parser";
 import { loadAuthoredDocuments } from "@lando/landofile/root-compile";
+import { makeLandoPaths } from "@lando/paths";
 import { LandofileShape, ServiceName } from "@lando/sdk/schema";
-import { AppPlanner, GlobalAppService } from "@lando/sdk/services";
+import { AppPlanner, GlobalAppService, PathsService } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect, Layer, Schema } from "effect";
-
 import { withCwd, withEnvVar } from "../_support/temp-cwd.ts";
 
 test("the generated global Landofile preserves the real router services' route opt-out", async () => {
@@ -73,7 +73,15 @@ test("the generated global Landofile preserves the real router services' route o
           Effect.runPromise(
             Effect.flatMap(AppPlanner, (planner) =>
               planner.plan(compiled, TestRuntimeProvider.capabilities),
-            ).pipe(Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(PluginRegistryLayer.layer)))),
+            ).pipe(
+              Effect.provide(
+                AppPlannerLayer.layer.pipe(
+                  Layer.provide(
+                    Layer.mergeAll(PluginRegistryLayer.layer, Layer.succeed(PathsService, makeLandoPaths())),
+                  ),
+                ),
+              ),
+            ),
           ),
         [root],
       );

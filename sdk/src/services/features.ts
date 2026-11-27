@@ -219,7 +219,7 @@ export interface ServiceFeatureContext {
   setCerts(certs: CertificatePlan): void;
   /** Set the service entrypoint. */
   setEntrypoint(entrypoint: CommandSpec): void;
-  /** An argv launcher can opt into appending materialized extraArgs. */
+  /** Set the command and declare which launcher defaults it supports. */
   setCommand(command: CommandSpec, options?: LauncherCommandOptions): void;
   /** Set native container init intent. Authored init takes precedence. */
   setInit(init: boolean): void;
@@ -233,9 +233,11 @@ export interface ServiceFeatureContext {
 
 export interface LauncherCommandOptions {
   /** Pure validation of the authored suffix. Return the first reserved argument, if any. */
-  readonly extraArgs: (
+  readonly extraArgs?: (
     args: readonly string[],
   ) => { readonly index: number; readonly remediation: string } | undefined;
+  /** This command uses the catalog project account with the image's own entrypoint. */
+  readonly projectUser?: true;
 }
 
 /**

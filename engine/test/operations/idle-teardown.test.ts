@@ -61,11 +61,11 @@ test.each(
             actions.push("cleanup");
             return { servicesRemoved: [], networksRemoved: 1, volumesRemoved: { data: 0, cache: 0 } };
           }),
-        destroy: () =>
+        bringDown: () =>
           Effect.sync(() => {
             if (!running) throw new Error("destroy needs readiness");
             actions.push("destroy");
-            return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
+            return { kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } };
           }),
       };
       const harness = makeHarness({
@@ -228,10 +228,10 @@ test.each(stoppedProviderFixtures)(
       inspectAppliedFileSync: stoppedProviderInspection(fixture, () => false),
       appliedPlans: Effect.succeed([plan]),
       runtimeOnline: Effect.succeed(false),
-      destroy: () =>
+      bringDown: () =>
         Effect.sync(() => {
           actions.push("destroy");
-          return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
+          return { kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } };
         }),
     };
     const harness = makeHarness({

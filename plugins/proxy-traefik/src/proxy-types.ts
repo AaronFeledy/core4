@@ -4,8 +4,7 @@ import type { PortNumber, PublicationObservation, ServiceName, StartedService } 
 import type {
   CertificateAuthorityShape,
   EventService,
-  InteractionService,
-  PrivilegeService,
+  HostChangeApplier,
   ProcessRunner,
 } from "@lando/sdk/services";
 import type { Context, Effect } from "effect";
@@ -59,13 +58,10 @@ export interface SocketProxyDependencies {
   readonly exists: (path: string) => Effect.Effect<boolean>;
   readonly readText: (path: string) => Effect.Effect<string, unknown>;
   readonly processRunner: Context.Service.Shape<typeof ProcessRunner>;
-  readonly privilege: Context.Service.Shape<typeof PrivilegeService>;
-  readonly interaction?: Pick<Context.Service.Shape<typeof InteractionService>, "confirm" | "isInteractive">;
-  readonly autoApprove?: boolean;
-  /** setup intent: ensure (default, start path) never replaces foreign; configure may. */
+  /** setup intent: ensure (default, start path) never installs or replaces a helper; configure may. */
   readonly intent?: "configure" | "ensure";
-  /** Ports this data root already owns (provider proof), for missing-root hop free checks. */
-  readonly ownedRouterPorts?: ReadonlySet<number>;
+  /** The run's approved host changes; only `configure` applies the helper change from it. */
+  readonly hostChanges?: HostChangeApplier;
   readonly probeBind?: (host: string, port: number) => Effect.Effect<BindOutcome>;
   readonly serviceType?: SocketProxyServiceType;
   readonly probeForward?: (

@@ -49,7 +49,7 @@ import { endpointsForRoutes, resolveRoute } from "./endpoint-routes.ts";
 import { LOG_SOURCES_EXTENSION_KEY, servicePlanFromDraft } from "./extensions.ts";
 import { collectFileSyncEntries } from "./file-sync.ts";
 import { type GitHostCheck, readGitDirectories, worktreeGitMounts } from "./git-host-checks.ts";
-import { applyServiceHome } from "./home.ts";
+import { applyServiceHome, homeIntentForArtifact } from "./home.ts";
 import { deriveMountOverlays, prepareServiceMounts, realizeServiceMounts } from "./mounts.ts";
 import { encodeServicePlan } from "./plan-decode.ts";
 import {
@@ -94,6 +94,7 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
   readonly appId: ReturnType<typeof AppId.make>;
   readonly appRoot: string;
   readonly appSlug: string;
+  readonly nativeSlug?: string;
   readonly dataSlug?: string;
   readonly appName: string;
   readonly appKind?: "user" | "global" | "scratch";
@@ -133,7 +134,6 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
       authored,
       authoredStorage,
       draft,
-      homeIntent,
       logSources,
       routes: authoredRoutes,
       extensions,
@@ -193,6 +193,10 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
     const storageOwnership = (draft.storageOwnership ?? []).filter((tree) => volumeTargets.has(tree.target));
     const redirectSteps = redirectLogSourceBuildSteps({ logSources, base: draft.base });
     const appMount = serviceAppMount(preparedMounts.servicePlan);
+    const artifactIntent = resolveServiceArtifact(preparedMounts.servicePlan, entry, input.manifests);
+    if (artifactIntent instanceof ServiceTypeError)
+      return yield* servicePlanError({ appRoot: input.appRoot, serviceName: name, cause: artifactIntent });
+    const homeIntent = homeIntentForArtifact(entry.homeIntent, artifactIntent.artifact);
     // A clone is a companion of its parent and shares its namespace mapping:
     // the mapping is independent of the clone's own process user and home
     // decision, so reuse the parent's resolution instead of re-deriving one
@@ -209,6 +213,12 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
         capabilities: input.providerCapabilities,
         authored: draft.normalizedConfig.projectUser,
         authoredUser: draft.normalizedConfig.user,
+        stockLauncher:
+          draft.launcherProjectUser === true &&
+          draft.entrypoint === undefined &&
+          draft.normalizedConfig.command === undefined &&
+          draft.normalizedConfig.entrypoint === undefined,
+        processUser: draft.user,
         appSourceMounted: appMount !== undefined,
         identity: homeIntent.identity,
         host: input.host,
@@ -227,9 +237,6 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
         ? {}
         : { projectUserExplanation: projectUserResolution.explanation }),
     };
-    const artifactIntent = resolveServiceArtifact(preparedMounts.servicePlan, entry, input.manifests);
-    if (artifactIntent instanceof ServiceTypeError)
-      return yield* servicePlanError({ appRoot: input.appRoot, serviceName: name, cause: artifactIntent });
     const withEnvironment = environments.prepare(
       {
         ...artifactIntent,
@@ -413,6 +420,7 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
       ...planned,
       environment: sortRecord(planned.environment),
       ...(logSources.length === 0 ? {} : { logSources }),
+      ...(entry.plannedPort === undefined ? {} : { plannedPort: entry.plannedPort }),
     };
 
     const withArtifact = resolveServiceArtifact(servicePlan, entry, input.manifests);

@@ -133,8 +133,10 @@ describe("ci workflow", () => {
       "rails-journey.yml",
       "release.yml",
       "runtime-bundle.yml",
+      "stock-artifact-age-canary.yml",
       "tomcat-bump.yml",
       "workflow-performance.yml",
+      "xdebug-bump.yml",
     ]);
   });
 
@@ -235,7 +237,10 @@ describe("ci workflow", () => {
     expect(providerContracts).toContain('              docker pull "$image"');
     expect(providerContracts).toContain("      - name: Run structured provider acceptance cell");
     expect(providerContracts).toContain("        if: always()");
-    expect(providerContracts).toContain("      - name: Assert Docker latest exec creates 0644 files");
+    expect(providerContracts).toContain("      - name: Assert Docker latest feature checks passed");
+    expect(providerContracts).toContain(
+      '            for (const id of ["exec-umask-mode","health-start-interval","nginx-private-checkout"]) {',
+    );
     expect(providerContracts).toContain("        if: ${{ matrix.cell == 'docker-engine-linux-latest' }}");
     expect(providerContracts).toContain(
       "          bun run scripts/provider-matrix-acceptance.ts --cell '${{ matrix.cell }}' --report-dir provider-matrix-reports",
@@ -513,6 +518,18 @@ describe("ci workflow", () => {
     );
   });
 
+  test("cancels superseded pull request runs without grouping other events", async () => {
+    const workflow = await readWorkflow();
+    const concurrency = findIndentedBlock(workflow, "concurrency");
+
+    expect(concurrency).toContain("  group: ci-${{ github.event.pull_request.number || github.run_id }}");
+    expect(concurrency).toContain("  cancel-in-progress: ${{ github.event_name == 'pull_request' }}");
+    // A cancelled run must not start the summary job: it would fail on cancelled needs and invite a rerun.
+    expect(findIndentedBlock(findIndentedBlock(workflow, "jobs"), "ci", 2)).toContain(
+      "    if: ${{ !cancelled() }}",
+    );
+  });
+
   test("runs static checks for pushes and pull requests to main", async () => {
     const workflow = await readWorkflow();
     const triggers = findIndentedBlock(workflow, "on");
@@ -689,7 +706,7 @@ describe("ci workflow", () => {
           fetch-depth: 0`);
     expect(schemaSnapshot).toContain("      - name: Check schema compatibility");
     expect(schemaSnapshot).toContain(
-      "          LANDO_SCHEMA_COMPATIBILITY_BASE_REF: origin/${{ github.event_name == 'pull_request' && github.base_ref || 'main' }}",
+      "          LANDO_SCHEMA_COMPATIBILITY_BASE_REF: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || 'origin/main' }}",
     );
     expect(findIndentedBlock(findIndentedBlock(workflow, "on"), "pull_request", 2)).not.toContain(
       "branches:",
@@ -1361,16 +1378,22 @@ describe("ci workflow", () => {
       );
       const runBlock = step.split("        run: |\n")[1];
       if (runBlock === undefined) throw new Error("Missing integration command dispatcher");
-      const script = runBlock.replace(/^ {10}/gm, "");
       const root = await mkdtemp(join(tmpdir(), "lando-ci-provider-suites-"));
       try {
-        const runSuite = async (suite: string, bunExit = 0) => {
-          const receipt = join(root, `${suite}-${bunExit}.txt`);
-          const stream = join(root, `${suite}-${bunExit}-stream.txt`);
+        const script = runBlock.replace(/^ {10}/gm, "").replaceAll("/tmp/lando-provider-test-logs", root);
+        const runSuite = async (suite: string, bunExit = 0, privateNginxEvidence = true) => {
+          const receipt = join(root, `${suite}-${bunExit}-${privateNginxEvidence}.txt`);
+          const stream = join(root, `${suite}-${bunExit}-${privateNginxEvidence}-stream.txt`);
           const stubs = [
-            "mkdir() { :; }",
-            'tee() { cat >> "$TEST_STREAM"; }',
-            'bun() { printf "%s\\n" "$*" >> "$TEST_RECEIPT"; echo "simulated Bun stderr" >&2; return "${TEST_BUN_EXIT_CODE:-0}"; }',
+            'tee() { command tee "$@" >> "$TEST_STREAM"; }',
+            `bun() {
+              printf "%s\\n" "$*" >> "$TEST_RECEIPT"
+              echo "simulated Bun stderr" >&2
+              if [[ "$*" == "run test:selection providers-core-live" && "$TEST_PRIVATE_NGINX" == true ]]; then
+                echo 'NGINX_ROUTE_CLI_EVIDENCE {"privateFiles":true}'
+              fi
+              return "$TEST_BUN_EXIT_CODE"
+            }`,
           ].join("\n");
           const proc = Bun.spawn(["/bin/bash", "-e", "-o", "pipefail", "-c", `${stubs}\n${script}`], {
             cwd: root,
@@ -1380,6 +1403,7 @@ describe("ci workflow", () => {
               TEST_RECEIPT: receipt,
               TEST_STREAM: stream,
               TEST_BUN_EXIT_CODE: String(bunExit),
+              TEST_PRIVATE_NGINX: String(privateNginxEvidence),
             },
             stdout: "ignore",
             stderr: "pipe",
@@ -1415,6 +1439,7 @@ describe("ci workflow", () => {
           "run test:selection providers-sqlite-integrity",
           "run test:selection providers-sqlite-borrowed-mounts",
           "run test:selection providers-schedule",
+          "run test:selection setup-elevation-terminal",
         ]);
         const services = await runSuite("services");
         expect(services.status).toBe(0);
@@ -1423,6 +1448,8 @@ describe("ci workflow", () => {
         expect(failed.status).toBe(23);
         expect(failed.commands).toEqual(providerCommands);
         expect(failed.stream).toContain("simulated Bun stderr");
+        const missingEvidence = await runSuite("providers", 0, false);
+        expect(missingEvidence.status).toBe(1);
         const unknown = await runSuite("unknown");
         expect(unknown.status).toBe(1);
         expect(unknown.commands).toEqual([]);

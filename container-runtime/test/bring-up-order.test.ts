@@ -302,7 +302,7 @@ const makePodmanApi = (
       return supervisedRequest(input);
     },
   });
-  return { api, requests, ids, failedStartNames, execCommands };
+  return { api, requests, ids, running, failedStartNames, execCommands };
 };
 
 /** True when bring-up started `containerName`, by planned name or by its native id. */
@@ -346,6 +346,95 @@ test("starts a service_healthy dependency and probes it before starting the depe
   expect(dbExec).toBeGreaterThan(dbStart);
   expect(webStart).toBeGreaterThan(dbExec);
   expect(execCommands).toEqual([["pg_isready"]]);
+});
+
+test("continues only green edges before actual starts, preserving a running consumer on failure", async () => {
+  const initial = planWithDependency(dependentNames.web, true);
+  const web = initial.services[dependentNames.web];
+  if (web === undefined) throw new TypeError("Missing web");
+  const plan: AppPlan = {
+    ...initial,
+    services: {
+      ...initial.services,
+      [web.name]: { ...web, environment: { CONFIG_CHANGED: "true" } },
+      [dependentNames.cache]: {
+        ...servicePlan(dependentNames.cache, false),
+        dependsOn: [{ service: dbName, condition: "service_healthy", required: false }],
+      },
+    },
+  };
+  const webContainer = "lando-bring-up-order-app--web";
+  const dbContainer = "lando-bring-up-order-app--db";
+  const cacheContainer = "lando-bring-up-order-app--cache";
+  const fake = makePodmanApi(0, [webContainer, dbContainer], [], [webContainer, dbContainer]);
+  const error = await Effect.runPromise(
+    Effect.flip(
+      bringUp(plan, {
+        api: fake.api,
+        ctx,
+        ...supervisedExecFixtureOptions(fake.api),
+        continueHealthyDependency: ({ consumer, dependency, containerId }) =>
+          Effect.sync(() => {
+            expect(fake.execCommands).toEqual([["pg_isready"]]);
+            expect({ dependency, containerId }).toEqual({
+              dependency: dbName,
+              containerId: `id-${dbContainer}-original`,
+            });
+            return new ServiceStartError({
+              providerId: ctx.providerId,
+              operation: "test-continuation",
+              service: consumer,
+              message: "Cannot prepare the dependency.",
+              remediation: "Correct the dependency and retry.",
+            });
+          }),
+      }),
+    ),
+  );
+  expect(error).toMatchObject({
+    _tag: "ServiceStartError",
+    service: web.name,
+    operation: "test-continuation",
+  });
+  expect(fake.running.has(webContainer)).toBe(true);
+  expect(fake.ids.get(webContainer)).toBe(`id-${webContainer}-original`);
+  expect(requestStarted(fake.requests, dbContainer, fake.ids)).toBe(false);
+  expect(fake.running.has(cacheContainer)).toBe(true);
+});
+
+test("does not continue a green edge for a kept consumer, even if the dependency started", async () => {
+  const plan = planWithDependency(dependentNames.web, true);
+  const webContainer = "lando-bring-up-order-app--web";
+  const dbContainer = "lando-bring-up-order-app--db";
+  const fake = makePodmanApi(0, [webContainer, dbContainer], [], [webContainer]);
+  const applied = await Effect.runPromise(
+    bringUp(plan, {
+      api: fake.api,
+      ctx,
+      ...supervisedExecFixtureOptions(fake.api),
+      continueHealthyDependency: () => Effect.die(new Error("kept consumer has no start to continue")),
+    }),
+  );
+  expect(applied.services?.[dependentNames.web]?.action).toBe("kept");
+  expect(applied.services?.[dbName]?.action).toBe("started");
+});
+
+test("aborting a running optional continuation interrupts apply before starting the consumer", async () => {
+  const plan = planWithDependency(dependentNames.cache, false);
+  const fake = makePodmanApi(0);
+  const controller = new AbortController();
+  const exit = await Effect.runPromiseExit(
+    bringUp(plan, {
+      api: fake.api,
+      ctx,
+      ...supervisedExecFixtureOptions(fake.api),
+      signal: controller.signal,
+      continueHealthyDependency: () =>
+        Effect.sync(() => controller.abort()).pipe(Effect.andThen(Effect.never)),
+    }),
+  );
+  expect(Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause)).toBe(true);
+  expect(fake.running.has("lando-bring-up-order-app--cache")).toBe(false);
 });
 
 test("internal health probes work without supervision assets", async () => {
@@ -601,6 +690,76 @@ for (const scenario of ["completed", "dead", "replacement"] as const) {
     expect(requestStarted(fake.requests, "lando-bring-up-order-app--web", fake.ids)).toBe(
       scenario === "completed",
     );
+  });
+}
+
+for (const rerun of [0, 1] as const) {
+  test(`a kept job container that stop left exited runs again before its completion gate opens: exit ${rerun}`, async () => {
+    // Given the job container a stop kept, still showing its previous run's successful exit
+    const base = planWithDependency(dependentNames.web, true);
+    const web = base.services[dependentNames.web];
+    if (web === undefined) throw new Error("Expected dependent service");
+    const plan = {
+      ...base,
+      services: {
+        ...base.services,
+        [web.name]: {
+          ...web,
+          dependsOn: [
+            { service: dbName, condition: "service_completed_successfully" as const, required: true },
+          ],
+        },
+      },
+    };
+    const name = "lando-bring-up-order-app--db";
+    const fake = makePodmanApi(0, [name]);
+    const request = fake.api.request;
+    if (request === undefined) throw new Error("Expected request transport");
+    const keptId = fake.ids.get(name);
+    let exitCode = 0;
+    let started = false;
+    let waitedFor: string | undefined;
+    // When start brings it up again and this run exits with `rerun`
+    const result = await Effect.runPromise(
+      Effect.result(
+        bringUp(plan, {
+          ctx,
+          api: {
+            ...fake.api,
+            request: (input) => {
+              if (input.path.endsWith("/wait")) {
+                waitedFor = input.path.split("/").at(-2);
+                exitCode = rerun;
+                return Effect.succeed({ status: 200, body: String(rerun) });
+              }
+              if (input.path === `/containers/${keptId}/start` || input.path === `/containers/${name}/start`)
+                started = true;
+              return request(input).pipe(
+                Effect.map((response) => {
+                  if (input.path !== `/containers/${name}/json` || response.status !== 200) return response;
+                  return {
+                    ...response,
+                    body: JSON.stringify({
+                      ...JSON.parse(response.body),
+                      State:
+                        started && waitedFor === undefined
+                          ? { Running: true, Status: "running" }
+                          : { Running: false, Status: "exited", ExitCode: exitCode },
+                    }),
+                  };
+                }),
+              );
+            },
+          },
+        }),
+      ),
+    );
+    // Then the kept container is started in place and the gate follows only this run's exit
+    expect(started).toBe(true);
+    expect(fake.requests.some((path) => path === `POST /containers/create?name=${name}`)).toBe(false);
+    expect(waitedFor).toBe(keptId);
+    expect(Result.isSuccess(result)).toBe(rerun === 0);
+    expect(requestStarted(fake.requests, "lando-bring-up-order-app--web", fake.ids)).toBe(rerun === 0);
   });
 }
 

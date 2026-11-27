@@ -10,19 +10,13 @@ import {
 } from "../../../commands/meta/global-config-result";
 import { runGlobalConfig } from "../../../config-command-runtime.ts";
 import type { LandoCommandSpec } from "../../../spec/command-base";
-import { formatFlag, specFlagsOf } from "../../../spec/input-coercion";
+import { commandResultFormatAmong } from "../../../spec/input-coercion";
 import { Args } from "../../../spec/metadata";
-import {
-  formatFlag as configFormatFlag,
-  dryRunFlag,
-  editorFlag,
-  pathFlag,
-  typeFlag,
-} from "../../config-flags";
+import { dryRunFlag, editorFlag, pathFlag, typeFlag } from "../../config-flags";
 import { configWriteOptionsFromInput } from "../../config-write-input";
 
 export const globalConfigFormatFromInput = (input: unknown): "json" | "table" =>
-  formatFlag(specFlagsOf(input), ["json", "table"], "table");
+  commandResultFormatAmong(input, ["json", "table"], "table");
 
 export const globalConfigOptionsFromInput = (input: unknown): GlobalConfigOptions => {
   if (typeof input !== "object" || input === null) return {};
@@ -34,7 +28,7 @@ export const metaGlobalConfigSpec: LandoCommandSpec<GlobalConfigResult> = {
   resultSchema: GlobalConfigResultSchema,
   redactionTokens: configRedactionTokens,
   id: "meta:global:config",
-  resultFormats: ["table"],
+  rendersTable: true,
   summary: "Read or write the host-level global Lando app Landofile stack.",
   description: "Read or write the host-level global Lando app Landofile stack.",
   namespace: "meta",
@@ -51,7 +45,6 @@ export const metaGlobalConfigSpec: LandoCommandSpec<GlobalConfigResult> = {
     value: Args.string({ description: "Value for set.", required: false }),
   },
   flags: {
-    format: configFormatFlag,
     type: typeFlag,
     path: pathFlag,
     editor: editorFlag,

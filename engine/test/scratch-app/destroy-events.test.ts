@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
-import { access, lstat, mkdir, writeFile } from "node:fs/promises";
+import { access, lstat, mkdir, realpath, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { AbsolutePath, AppId, AppPlan, ServiceName } from "@lando/sdk/schema";
+import { AbsolutePath, AppId, AppPlan, ServiceName, appIdentityKey } from "@lando/sdk/schema";
 import { ScratchAppService, StateStore } from "@lando/sdk/services";
 import { makeStateStore } from "@lando/state-store/service";
 import { Effect, Schema } from "effect";
@@ -174,6 +174,23 @@ test.each(["provider", "route"] as const)(
   },
 );
 
+test("a destroy that fails after its provider phase keeps the applied receipt for the retry", async () => {
+  // Given a scratch known only by its applied receipt, whose first route withdrawal fails.
+  await withDestroyFixture({ skipDesiredPlan: true, appliedPlan: true, routeFail: "once" }, async (f) => {
+    // When destroy fails partway and is retried.
+    await expect(runDestroy(f)).rejects.toThrow();
+    const receiptAfterFailure = f.receipt();
+    await runDestroy(f);
+    // Then the receipt outlives the failure, so the retry still tears down the recovered plan.
+    expect(receiptAfterFailure).toMatchObject({ id: f.id });
+    expect(f.calls.filter((call) => call === "destroy:true")).toHaveLength(2);
+    expect(f.calls.filter((call) => call === "forget")).toHaveLength(1);
+    expect(f.calls.lastIndexOf("routes")).toBeLessThan(f.calls.indexOf("forget"));
+    expect(f.receipt()).toBeUndefined();
+    expect(f.entries.size).toBe(0);
+  });
+});
+
 test("pending-cleanup write failure preserves the original provider failure", async () => {
   // Given a provider teardown failure and an unavailable registry writer.
   await withDestroyFixture({ fail: true, registryFail: true }, async (f) => {
@@ -332,6 +349,41 @@ test("GC recovers the applied plan when the desired cache misses an old frame", 
   });
 });
 
+test("GC reaps a scratch whose only trace is its provider ownership inventory", async () => {
+  // Given an inventory under a scratch's managed root that no registry entry, workspace, or plan
+  // knows, beside a source app inventory that recorded a scratch before scratches had their own root.
+  await withDestroyFixture({ ownershipOnly: true }, async (f) => {
+    const gc = (prune: boolean) =>
+      Effect.runPromise(
+        Effect.flatMap(ScratchAppService, (s) => s.gc({ prune })).pipe(Effect.provide(f.layer)),
+      );
+    // When GC prunes, then looks again.
+    const pruned = await gc(true);
+    const after = await gc(false);
+    // Then only the managed root's scratch is a candidate, its reap releases the inventory, and
+    // nothing is left to find.
+    expect(pruned).toMatchObject({ candidates: [f.id], reaped: [f.id], errors: [] });
+    expect(f.calls).toContain(`cleanup:${f.id}:releaseCaches=true`);
+    expect(f.events.find((event) => event._tag === "post-destroy")).toMatchObject({ evidence: "inventory" });
+    expect(after.candidates).toEqual([]);
+  });
+});
+
+test.each(["app", "provider"] as const)(
+  "scratch destroy preserves the workspace and registry when the offline %s receipt is newer",
+  async (scope) => {
+    await withDestroyFixture({ skipDesiredPlan: true, offlineNewerReceipt: scope }, async (f) => {
+      await expect(runDestroy(f)).rejects.toMatchObject({
+        _tag: "ScratchAppError",
+        cause: { _tag: "AppliedStateVersionError", storedVersion: 11 },
+      });
+      await access(f.instanceRoot);
+      expect(f.entries.has(f.id)).toBe(true);
+      expect(f.events.map((event) => event._tag)).not.toContain("pre-scratch-destroy");
+    });
+  },
+);
+
 test("destroy falls back to orphan cleanup when desired and applied plans both miss", async () => {
   // Given no desired cache and no applied plan.
   await withDestroyFixture({ skipDesiredPlan: true, orphan: false }, async (f) => {
@@ -346,5 +398,35 @@ test("destroy falls back to orphan cleanup when desired and applied plans both m
       retainedArtifacts: { snapshots: "unknown-owner" },
     });
     expect(f.entries.size).toBe(0);
+  });
+});
+
+const planlessOwnerCases: ReadonlyArray<
+  readonly [
+    string,
+    { readonly cwd?: boolean; readonly orphan?: boolean },
+    ReadonlyArray<"legacy" | "managed">,
+  ]
+> = [
+  ["a managed scratch withdraws its instance-root owner", {}, ["managed"]],
+  ["a historical scratch withdraws its scratch-id owner", { cwd: true }, ["legacy"]],
+  ["an unregistered scratch withdraws both owners", { orphan: true }, ["legacy", "managed"]],
+];
+
+test.each(planlessOwnerCases)("planless destroy: %s", async (_label, options, expected) => {
+  // Given neither a desired nor an applied plan records the route owner.
+  await withDestroyFixture({ skipDesiredPlan: true, ...options }, async (f) => {
+    const owners = {
+      legacy: appIdentityKey("owner", `scratch:${f.id}`),
+      managed: appIdentityKey("owner", await realpath(join(f.instanceRoot, "root"))),
+    };
+    // An unregistered scratch is only reaped by poweroff or GC.
+    await Effect.runPromise(
+      Effect.flatMap(ScratchAppService, (scratch) =>
+        scratch.destroy(f.id, options.orphan === true ? { reason: "poweroff" } : {}),
+      ).pipe(Effect.provide(f.layer)),
+    );
+    // Then routes are withdrawn from the owner that published them.
+    expect(f.withdrawnOwnerKeys).toEqual(expected.map((layout) => owners[layout]));
   });
 });

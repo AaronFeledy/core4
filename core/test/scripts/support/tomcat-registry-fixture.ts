@@ -55,11 +55,14 @@ export const tomcatRegistryFixture = async (failure?: RegistryFailure) => {
     replies.set(`https://api.github.com/repos/apache/tomcat/git/ref/tags/${pin.version}`, {
       body: JSON.stringify({ object: { sha: pin.upstreamCommit, type: "commit" } }),
     });
-    replies.set(`https://raw.githubusercontent.com/apache/tomcat/${pin.upstreamCommit}/conf/server.xml`, {
-      body: failure === "shape" ? "<Server/>" : original.configs[major],
-    });
+    replies.set(
+      `https://api.github.com/repos/apache/tomcat/contents/conf/server.xml?ref=${pin.upstreamCommit}`,
+      { body: failure === "shape" ? "<Server/>" : original.configs[major] },
+    );
   }
-  const request: TomcatFetch = async (url) => {
+  const authorizations: Array<readonly [url: string, authorization: string | null]> = [];
+  const request: TomcatFetch = async (url, init) => {
+    authorizations.push([url, new Headers(init?.headers).get("authorization")]);
     if (failure === "network") return new Response("unavailable", { status: 503 });
     const reply = replies.get(url);
     if (reply === undefined) throw new TypeError(`Unexpected fixture URL: ${url}`);
@@ -74,6 +77,7 @@ export const tomcatRegistryFixture = async (failure?: RegistryFailure) => {
     snapshot: { pins: { schemaVersion: 1 as const, majors: pins }, configs: original.configs },
     request,
     replies,
+    authorizations,
   };
 };
 

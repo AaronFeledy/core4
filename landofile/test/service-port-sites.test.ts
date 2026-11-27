@@ -22,6 +22,7 @@ test.each([
   [{ command: ["server", self] }, ["command", 1]],
   [{ entrypoint: self }, ["entrypoint"]],
   [{ entrypoint: ["server", self] }, ["entrypoint", 1]],
+  [{ environment: { PORT: self } }, ["environment", "PORT"]],
   [{ healthcheck: self }, ["healthcheck", "command"]],
   [{ healthcheck: { test: ["CMD", "probe", self] } }, ["healthcheck", "command", 1]],
   [{ readiness: { test: ["CMD-SHELL", self] } }, ["readiness", "command"]],
@@ -32,7 +33,6 @@ test.each([
 test.each([
   [{ port: self }, ["port"]],
   [{ type: self }, ["type"]],
-  [{ environment: { PORT: self } }, ["environment", "PORT"]],
   [{ healthcheck: { test: [self, "probe"] } }, ["healthcheck", "test", 0]],
   [{ command: "{{ service.name }}" }, ["command"]],
   [{ command: '{{ service["port"] }}' }, ["command"]],

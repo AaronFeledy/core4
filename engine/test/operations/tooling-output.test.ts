@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
+import { StreamFrameSink, createCollectingStreamFrameSink } from "@lando/sdk/services";
 import { Effect } from "effect";
-import { StreamFrameSink, createCollectingStreamFrameSink } from "../../src/operations/stream-frame-sink.ts";
 import { withToolingOutput } from "../../src/operations/tooling-output.ts";
 
 for (const live of [false, true]) {

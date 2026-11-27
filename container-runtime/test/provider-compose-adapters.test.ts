@@ -44,6 +44,7 @@ describe("provider compose adapters", () => {
       read: () => Stream.fail(failure),
       readText: () => Effect.fail(failure),
       write: () => Effect.fail(failure),
+      append: () => Effect.fail(failure),
       writeAtomic: () => Effect.fail(failure),
       exists: () => Effect.succeed(false),
       stat: () => Effect.fail(failure),

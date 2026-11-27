@@ -13,6 +13,7 @@ import {
 import type { FileSyncEngineShape } from "@lando/sdk/services";
 import { type StateStoreShape, physicalVolumeLockKey } from "@lando/sdk/services";
 import { startChildTaskId } from "@lando/sdk/task-progress";
+import { makeTestRuntimeProvider } from "@lando/sdk/test";
 import { DateTime, Effect, Exit, Fiber, Schema, Stream } from "effect";
 import { destroyAppForTarget } from "../../src/operations/destroy.ts";
 import { withProjectEvents } from "../../src/planner/effective-events.ts";
@@ -31,6 +32,7 @@ import {
   makeHarness,
   plan,
   runDestroyTarget,
+  web,
 } from "./destroy-progress-topology-support.ts";
 
 const availableFileSync = (): FileSyncEngineShape => ({
@@ -141,7 +143,7 @@ describe("destroy progress topology", () => {
           { evidence: "retained", outcome: "destroyed" },
         ]);
         expect(byTag(harness.events, "task.tree.start")).toHaveLength(1);
-        expect(byTag(harness.events, "task.tree.start")[0]?.children).toEqual(
+        expect(byTag(harness.events, "task.tree.start")[0]?.children.map((child) => child.id)).toEqual(
           ["file-sync", "provider", "host-proxy", "routes"].map((id) =>
             startChildTaskId(destroyTreeId(retainedTarget.app.id), id),
           ),
@@ -198,9 +200,9 @@ describe("destroy progress topology", () => {
       parentId,
       label: "Destroy test-destroy",
       children: [
-        startChildTaskId(parentId, "provider"),
-        startChildTaskId(parentId, "host-proxy"),
-        startChildTaskId(parentId, "routes"),
+        { id: startChildTaskId(parentId, "provider"), label: "Destroy services" },
+        { id: startChildTaskId(parentId, "host-proxy"), label: "Clean host-proxy state" },
+        { id: startChildTaskId(parentId, "routes"), label: "Remove routes" },
       ],
     });
     expect(result.app).toBe("test-destroy");
@@ -217,7 +219,7 @@ describe("destroy progress topology", () => {
     const parentId = destroyTreeId(String(plan.id));
     const treeStart = byTag(harness.events, "task.tree.start");
     expect(treeStart).toHaveLength(1);
-    const children = treeStart[0]?.children ?? [];
+    const children = treeStart[0]?.children.map((child) => child.id) ?? [];
     expect(children).not.toContain(startChildTaskId(parentId, "file-sync"));
     expect(children).not.toContain(startChildTaskId(parentId, "snapshots"));
   });
@@ -237,7 +239,7 @@ describe("destroy progress topology", () => {
     // Then
     const parentId = destroyTreeId(String(plan.id));
     const fileSyncId = startChildTaskId(parentId, "file-sync");
-    expect(byTag(harness.events, "task.tree.start")[0]?.children[0]).toBe(fileSyncId);
+    expect(byTag(harness.events, "task.tree.start")[0]?.children[0]?.id).toBe(fileSyncId);
     expect(byTag(harness.events, "task.complete").map((event) => event.taskId)).toContain(fileSyncId);
   });
 
@@ -530,8 +532,8 @@ describe("destroy progress topology", () => {
     // Then
     const parentId = destroyTreeId(String(plan.id));
     expect(byTag(harness.events, "task.tree.start")[0]?.children).toEqual([
-      startChildTaskId(parentId, "provider"),
-      startChildTaskId(parentId, "host-proxy"),
+      { id: startChildTaskId(parentId, "provider"), label: "Destroy services" },
+      { id: startChildTaskId(parentId, "host-proxy"), label: "Clean host-proxy state" },
     ]);
     const warnings = byTag(harness.events, "message.warn");
     expect(warnings).toHaveLength(1);
@@ -618,7 +620,7 @@ describe("destroy progress topology", () => {
     const parentId = destroyTreeId(String(plan.id));
     const snapshots = startChildTaskId(parentId, "snapshots");
     const provider = startChildTaskId(parentId, "provider");
-    const children = byTag(harness.events, "task.tree.start")[0]?.children ?? [];
+    const children = byTag(harness.events, "task.tree.start")[0]?.children.map((child) => child.id) ?? [];
     expect(children.indexOf(snapshots)).toBeGreaterThanOrEqual(0);
     expect(children.indexOf(snapshots)).toBeLessThan(children.indexOf(provider));
     const completed = byTag(harness.events, "task.complete").map((event) => event.taskId);
@@ -641,9 +643,11 @@ describe("destroy progress topology", () => {
     // Then
     const parentId = destroyTreeId(String(plan.id));
     const snapshotId = startChildTaskId(parentId, "snapshots");
-    expect(byTag(defaultHarness.events, "task.tree.start")[0]?.children).not.toContain(snapshotId);
-    expect(byTag(purgeHarness.events, "task.tree.start")[0]?.children).not.toContain(snapshotId);
-    expect(byTag(volumesHarness.events, "task.tree.start")[0]?.children).not.toContain(snapshotId);
+    for (const harness of [defaultHarness, purgeHarness, volumesHarness]) {
+      expect(byTag(harness.events, "task.tree.start")[0]?.children.map((child) => child.id)).not.toContain(
+        snapshotId,
+      );
+    }
     expect(byTag(volumesHarness.events, "task.complete").map((event) => event.taskId)).not.toContain(
       snapshotId,
     );
@@ -651,6 +655,29 @@ describe("destroy progress topology", () => {
 
   test("holds the physical-volume lock while destroying volumes", async () => {
     // Given: a provider volume with durable physical identity.
+    const volumeProvider = makeTestRuntimeProvider();
+    const store = { app: plan.id, store: "database", scope: "service" } as const;
+    await Effect.runPromise(
+      Effect.scoped(
+        volumeProvider.apply(
+          {
+            ...plan,
+            services: {
+              [web.name]: {
+                ...web,
+                mounts: [
+                  { type: "volume", store: store.store, target: PortablePath.make("/data"), readOnly: false },
+                ],
+              },
+            },
+          },
+          { reconcile: false },
+        ),
+      ),
+    );
+    const locator = await Effect.runPromise(volumeProvider.locateVolume(store));
+    expect(locator.presence).toBe("present");
+    const volumeLockKey = physicalVolumeLockKey(locator.coordinationKey);
     const baseStateStore = makeTestStateStore().service;
     const lockKeys: string[] = [];
     let lockHeld = false;
@@ -660,25 +687,19 @@ describe("destroy progress topology", () => {
         Effect.acquireUseRelease(
           Effect.sync(() => {
             lockKeys.push(key);
-            lockHeld = true;
+            if (key === volumeLockKey) lockHeld = true;
           }),
           () => body,
           () =>
             Effect.sync(() => {
-              lockHeld = false;
+              if (key === volumeLockKey) lockHeld = false;
             }),
         ),
     };
     let destroyObservedLock = false;
     const harness = makeHarness({
       stateStore,
-      volumes: [
-        {
-          ref: { app: plan.id, store: "database", scope: "service" },
-          instanceId: "volume-instance-1",
-          provenance: "known",
-        },
-      ],
+      volumeProvider,
       destroyEffect: Effect.sync(() => {
         destroyObservedLock = lockHeld;
       }),
@@ -689,7 +710,7 @@ describe("destroy progress topology", () => {
 
     // Then: provider mutation occurs while holding the shared physical-volume lock.
     expect(destroyObservedLock).toBe(true);
-    expect(lockKeys).toEqual([physicalVolumeLockKey(JSON.stringify(["endpoint:test", "database"]))]);
+    expect(lockKeys).toEqual([volumeLockKey]);
     expect(lockHeld).toBe(false);
   });
 

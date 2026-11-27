@@ -142,7 +142,7 @@ const startWithDatabase = async (options: {
         },
       }),
     providerOverrides: {
-      observeVolume: ({ service }) => volume(desired, service),
+      observeBoundVolume: ({ service }) => volume(desired, service),
       execStream: (_target, spec) => {
         calls.push(spec);
         return matched();
@@ -235,7 +235,7 @@ test("a start checks only the database services whose answer can change", async 
         services: { [alpha.name]: { action: "kept" }, [beta.name]: { action: "started" } },
       }),
     providerOverrides: {
-      observeVolume: ({ service }) => volume(desired, service),
+      observeBoundVolume: ({ service }) => volume(desired, service),
       execStream: (target, spec) => {
         if (checkCalls([spec]).length > 0) checked.push(String(target.service));
         return matched();
@@ -269,7 +269,7 @@ const selectedOperationWithDatabase = async (operation: typeof restartApp | type
     plannedApp: desired,
     apply: () => Effect.succeed({ changed: true, services: { [dbName]: { action: "started" } } }),
     providerOverrides: {
-      observeVolume: ({ service }) => volume(desired, service),
+      observeBoundVolume: ({ service }) => volume(desired, service),
       execStream: (_target, spec) => {
         calls.push(spec);
         return matched();

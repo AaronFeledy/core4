@@ -6,21 +6,17 @@ import {
   scratchListFormatFromInput,
 } from "../../../commands/scratch";
 import type { LandoCommandSpec } from "../../../spec/command-base";
-import { Flags } from "../../../spec/metadata";
 
 export const appsScratchListSpec: LandoCommandSpec<ReadonlyArray<ScratchSummary>> = {
   resultSchema: ScratchListResultSchema,
   id: "apps:scratch:list",
-  resultFormats: ["table"],
+  rendersTable: true,
   mcpAllowed: true,
   summary: "List scratch Lando apps.",
   namespace: "apps",
   topLevelAlias: "scratch:list",
   aliases: ["scratch:list"],
   bootstrap: "scratch",
-  flags: {
-    format: Flags.string({ description: "Output format.", default: "table" }),
-  },
   run: () => scratchList(),
   render: (result, input, ctx) => renderScratchListResult(result, scratchListFormatFromInput(input), ctx),
 };

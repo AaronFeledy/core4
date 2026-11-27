@@ -1,0 +1,8 @@
+name: home-and-host-host-proxy-command
+services:
+  tools:
+    image: alpine:3.20
+    command: sleep infinity
+    mounts:
+      - source: ./hostbin/xdg-open
+        target: /usr/local/bin/xdg-open

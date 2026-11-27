@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import * as sdkErrors from "@lando/sdk/errors";
 import type { ServiceName } from "@lando/sdk/schema";
-import { makeTestCertificateAuthority } from "@lando/sdk/test";
+import { makeTestCertificateAuthority, makeTestPrivilegeService } from "@lando/sdk/test";
 import { Cause, Effect, type Exit } from "effect";
 import { buildTraefikServiceConfig } from "../src/global-services/traefik.ts";
 import {
@@ -27,6 +27,7 @@ import {
 import { SOCKET_UNIT_PATHS } from "../src/socket-proxy-units.ts";
 import { socketProxyControlCommands } from "./_support/socket-proxy-commands.ts";
 import { makeAckStore } from "./observe-routes-fixture.ts";
+import { type ApprovingDependencies, withApprovedHelper } from "./socket-helper-approval.ts";
 
 const LOOPBACK = LOOPBACK_HOST;
 const HTTP_TRY_LIST = DEFAULT_HTTP_TRY_LIST;
@@ -86,9 +87,9 @@ const unusedRunner = {
   },
 };
 
-const unusedPrivilege = {
+const unusedPrivilege = makeTestPrivilegeService({
   elevate: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
-};
+});
 
 const memoryFiles = () => {
   const files = new Map<string, string>();
@@ -257,7 +258,6 @@ const makeDeps = (
     exists: () => Effect.succeed(false),
     readText: () => Effect.fail(new Error("missing")),
     processRunner: unusedRunner,
-    privilege: unusedPrivilege,
     classifyOverride,
   },
   ...extra,
@@ -290,31 +290,33 @@ describe("persistPortAcquisition reuse", () => {
     };
     const dependencies = makeDeps(store, override);
     const decision = await Effect.runPromise(
-      persistPortAcquisition({
-        ...dependencies,
-        globalApp: {
-          ...dependencies.globalApp,
-          ownedPublishPorts: () => Effect.fail(new Error("provider unavailable")),
-        },
-        socketProxy: {
-          user: "test",
-          userDataRoot: USER_DATA_ROOT,
-          hasHostSystemd: () => true,
-          autoApprove: true,
-          exists: (path) => Effect.succeed(store.files.has(path)),
-          readText: (path) => Effect.succeed(store.files.get(path) ?? ""),
-          processRunner: unusedRunner,
-          privilege: {
-            elevate: (command) =>
-              Effect.sync(() => {
-                calls.push(command[2] ?? "");
-                return { exitCode: 0, stdout: "", stderr: "" };
-              }),
+      Effect.flatMap(
+        withApprovedHelper({
+          ...dependencies,
+          globalApp: {
+            ...dependencies.globalApp,
+            ownedPublishPorts: () => Effect.fail(new Error("provider unavailable")),
           },
-          classifyOverride: override,
-          probeForward: () => Effect.succeed({ kind: "success" }),
-        },
-      }),
+          socketProxy: {
+            user: "test",
+            userDataRoot: USER_DATA_ROOT,
+            hasHostSystemd: () => true,
+            exists: (path) => Effect.succeed(store.files.has(path)),
+            readText: (path) => Effect.succeed(store.files.get(path) ?? ""),
+            processRunner: unusedRunner,
+            privilege: makeTestPrivilegeService({
+              elevate: (command) =>
+                Effect.sync(() => {
+                  calls.push(command[2] ?? "");
+                  return { exitCode: 0, stdout: "", stderr: "" };
+                }),
+            }),
+            classifyOverride: override,
+            probeForward: () => Effect.succeed({ kind: "success" }),
+          },
+        }),
+        persistPortAcquisition,
+      ),
     );
     expect(decision.mode).toBe("socket-helper");
     expect(readJson(store.files).bindHttpPort).toBe(48080);
@@ -1022,7 +1024,6 @@ describe("persistPortAcquisition helper-owned preferred ports", () => {
         readText: (path: string) =>
           store.files.has(path) ? Effect.succeed(store.files.get(path) ?? "") : Effect.fail(new Error(path)),
         processRunner: unusedRunner,
-        privilege: unusedPrivilege,
         classifyOverride,
         probeForward: () => Effect.succeed({ kind: "success" as const }),
       },
@@ -1055,8 +1056,8 @@ describe("persistPortAcquisition helper-owned preferred ports", () => {
       const dependencies = makeDeps(store, override);
       const probed: number[] = [];
       const commands: string[][] = [];
-      const decision = await Effect.runPromise(
-        persistPortAcquisition({
+      const configured = await Effect.runPromise(
+        withApprovedHelper({
           ...dependencies,
           probeBind: (_host, port) =>
             Effect.sync(() => {
@@ -1081,7 +1082,7 @@ describe("persistPortAcquisition helper-owned preferred ports", () => {
                   return { exitCode: 0, stdout: "", stderr: "" };
                 }),
             },
-            privilege: {
+            privilege: makeTestPrivilegeService({
               elevate: (command) =>
                 Effect.sync(() => {
                   commands.push([...command]);
@@ -1092,18 +1093,23 @@ describe("persistPortAcquisition helper-owned preferred ports", () => {
                   }
                   return { exitCode: 0, stdout: "", stderr: "" };
                 }),
-            },
+            }),
             classifyOverride: override,
             probeForward: () => Effect.succeed({ kind: "success" }),
           },
         }),
       );
-      expect(probed).toEqual([60900, 60943]);
+      probed.length = 0;
+      commands.length = 0;
+      const decision = await Effect.runPromise(persistPortAcquisition(configured));
+      // Applying an approved retarget re-checks the same targets before it writes anything.
+      expect(probed).toEqual(owned ? [60900, 60943] : [60900, 60943, 60900, 60943]);
       expect(decision.mode).toBe("socket-helper");
       expect(readJson(store.files).bindHttpPort).toBe(owned ? 60900 : 38080);
       expect(store.files.get(OWNED_UNIT_PATHS[1])).toContain(`127.0.0.1:${owned ? 60900 : 38080}`);
+      // The retarget rewrites the helper in place; nothing stops it first.
       expect(commands.flatMap(socketProxyControlCommands).map((command) => command[0])).toEqual(
-        owned ? [] : ["stop", "start"],
+        owned ? [] : ["start"],
       );
     },
   );
@@ -1133,7 +1139,6 @@ describe("persistPortAcquisition helper-owned preferred ports", () => {
         readText: (path: string) =>
           store.files.has(path) ? Effect.succeed(store.files.get(path) ?? "") : Effect.fail(new Error(path)),
         processRunner: unusedRunner,
-        privilege: unusedPrivilege,
         classifyOverride,
         probeForward: () => Effect.succeed({ kind: "success" as const }),
       },
@@ -1150,7 +1155,7 @@ describe("persistPortAcquisition helper-owned preferred ports", () => {
   });
 
   test.each(["refused", "exhausted"] as const)(
-    "stops stale owned forwarding before falling back when helper repair is %s",
+    "falls back when helper repair is %s, leaving the helper serving until the approved change rewrites it",
     async (reason) => {
       const store = memoryFiles();
       seedOwnedHelperUnits(store.files, { http: 60900, https: 60943 });
@@ -1178,52 +1183,52 @@ describe("persistPortAcquisition helper-owned preferred ports", () => {
       const controlled: (readonly string[])[] = [];
       const elevations: (readonly string[])[] = [];
       const decision = await Effect.runPromise(
-        persistPortAcquisition({
-          ...dependencies,
-          probeBind: () => Effect.succeed(bind("EADDRINUSE")),
-          socketProxy: {
-            user: "test",
-            userDataRoot: USER_DATA_ROOT,
-            hasHostSystemd: () => true,
-            exists: (path) => Effect.succeed(store.files.has(path)),
-            readText: (path) => Effect.succeed(store.files.get(path) ?? ""),
-            processRunner: {
-              ...unusedRunner,
-              run: (input) =>
-                Effect.sync(() => {
-                  controlled.push(input.args);
-                  return { exitCode: 0, stdout: "", stderr: "" };
-                }),
+        Effect.flatMap(
+          withApprovedHelper({
+            ...dependencies,
+            probeBind: () => Effect.succeed(bind("EADDRINUSE")),
+            socketProxy: {
+              user: "test",
+              userDataRoot: USER_DATA_ROOT,
+              hasHostSystemd: () => true,
+              exists: (path) => Effect.succeed(store.files.has(path)),
+              readText: (path) => Effect.succeed(store.files.get(path) ?? ""),
+              processRunner: {
+                ...unusedRunner,
+                run: (input) =>
+                  Effect.sync(() => {
+                    controlled.push(input.args);
+                    return { exitCode: 0, stdout: "", stderr: "" };
+                  }),
+              },
+              privilege: makeTestPrivilegeService({
+                elevate: (command) =>
+                  Effect.sync(() => {
+                    elevations.push(command);
+                    return { exitCode: 1, stdout: "", stderr: "refused" };
+                  }),
+              }),
+              classifyOverride: selected,
+              probeForward: () => Effect.succeed({ kind: "failure" }),
             },
-            privilege: {
-              elevate: (command) =>
-                Effect.sync(() => {
-                  elevations.push(command);
-                  return { exitCode: 1, stdout: "", stderr: "refused" };
-                }),
-            },
-            classifyOverride: selected,
-            probeForward: () => Effect.succeed({ kind: "failure" }),
-          },
-        }),
+          }),
+          persistPortAcquisition,
+        ),
       );
       expect(decision.mode).toBe("occupied-hop");
-      expect(controlled.flatMap(socketProxyControlCommands)).toEqual([
-        [
-          "stop",
-          "lando-proxy-http.socket",
-          "lando-proxy-http.service",
-          "lando-proxy-https.socket",
-          "lando-proxy-https.service",
-        ],
-      ]);
-      expect(elevations).toHaveLength(reason === "refused" ? 1 : 0);
+      // Nothing stops the helper: the approved change retargets it in place, as root, and with no
+      // hops left setup plans no change, so the helper keeps serving.
+      expect(controlled.flatMap(socketProxyControlCommands)).toEqual([]);
+      expect(elevations.map((command) => command[2]?.includes("systemctl try-restart"))).toEqual(
+        reason === "refused" ? [true] : [],
+      );
       expect(readJson(store.files).helperInstalled).toBe(true);
       expect(readJson(store.files).socketsActive).toBe(false);
     },
   );
 
-  test("fails closed when an owned helper with foreign hops cannot be stopped", async () => {
+  /** An owned helper on 80/443 whose hops point at ports this data root cannot use. */
+  const ownedHelperElsewhere = (runResult: { readonly exitCode: number }) => {
     const store = memoryFiles();
     seedOwnedHelperUnits(store.files, { http: 60900, https: 60943 });
     const override = overrideFor({
@@ -1234,38 +1239,74 @@ describe("persistPortAcquisition helper-owned preferred ports", () => {
       httpUnit: "lando-proxy-http",
       httpsUnit: "lando-proxy-https",
     });
-    const dependencies = makeDeps(store, override);
+    const controlled: (readonly string[])[] = [];
     const elevations: (readonly string[])[] = [];
-    const exit = await Effect.runPromiseExit(
-      persistPortAcquisition({
-        ...dependencies,
-        probeBind: () => Effect.succeed(bind("EADDRINUSE")),
-        socketProxy: {
-          user: "test",
-          userDataRoot: USER_DATA_ROOT,
-          hasHostSystemd: () => true,
-          exists: (path) => Effect.succeed(store.files.has(path)),
-          readText: (path) => Effect.succeed(store.files.get(path) ?? ""),
-          processRunner: {
-            ...unusedRunner,
-            run: () => Effect.succeed({ exitCode: 1, stdout: "", stderr: "refused" }),
-          },
-          privilege: {
-            elevate: (command) =>
-              Effect.sync(() => {
-                elevations.push(command);
-                return { exitCode: 1, stdout: "", stderr: "refused" };
-              }),
-          },
-          classifyOverride: override,
-          probeForward: () => Effect.succeed({ kind: "failure" }),
+    const dependencies: ApprovingDependencies = {
+      ...makeDeps(store, override),
+      probeBind: () => Effect.succeed(bind("EADDRINUSE")),
+      socketProxy: {
+        user: "test",
+        userDataRoot: USER_DATA_ROOT,
+        hasHostSystemd: () => true,
+        exists: (path) => Effect.succeed(store.files.has(path)),
+        readText: (path) => Effect.succeed(store.files.get(path) ?? ""),
+        processRunner: {
+          ...unusedRunner,
+          run: (input) =>
+            Effect.sync(() => {
+              controlled.push(input.args);
+              return { exitCode: runResult.exitCode, stdout: "", stderr: "refused" };
+            }),
         },
-      }),
+        privilege: makeTestPrivilegeService({
+          elevate: (command) =>
+            Effect.sync(() => {
+              elevations.push(command);
+              return { exitCode: 1, stdout: "", stderr: "refused" };
+            }),
+        }),
+        classifyOverride: override,
+        probeForward: () => Effect.succeed({ kind: "failure" }),
+      },
+    };
+    return { store, dependencies, controlled, elevations };
+  };
+
+  test("setup retargets an owned helper only through the approved change, never a separate stop", async () => {
+    // Given an owned helper on other hops, setup approved to retarget it, and a polkit grant that
+    // refuses every unprivileged start or stop.
+    const { dependencies, controlled, elevations } = ownedHelperElsewhere({ exitCode: 1 });
+
+    // When the router acquires its ports.
+    const decision = await Effect.runPromise(
+      Effect.flatMap(withApprovedHelper(dependencies), persistPortAcquisition),
     );
-    expect(failureTag(exit)).toBe("ProxyError");
+
+    // Then nothing stopped the helper, and root ran only the planned install script, which
+    // retargets it in place.
+    expect(controlled.flatMap(socketProxyControlCommands)).toEqual([]);
     expect(elevations).toHaveLength(1);
-    expect(elevations.flatMap(socketProxyControlCommands).map((command) => command[0])).toEqual(["stop"]);
-    expect(store.files.has(acquisitionStateFile(paths))).toBe(false);
+    expect(elevations[0]?.[2]).toContain(
+      "systemctl try-restart lando-proxy-http.service lando-proxy-https.service",
+    );
+    expect(elevations.flatMap(socketProxyControlCommands).map((command) => command[0])).toEqual(["start"]);
+    expect(decision.mode).not.toBe("socket-helper");
+  });
+
+  test("lando start leaves an owned helper on other hops serving and says how to point it here", async () => {
+    // Given an owned helper on 80/443 whose hops this data root cannot use, at `lando start`.
+    const { store, dependencies, controlled, elevations } = ownedHelperElsewhere({ exitCode: 0 });
+    const units = new Map([...store.files].filter(([path]) => path.startsWith("/etc/")));
+
+    // When the router acquires its ports with the default `ensure` intent.
+    const decision = await Effect.runPromise(persistPortAcquisition(dependencies));
+
+    // Then nothing stops or rewrites the helper, nothing elevates, and the notice names setup.
+    expect(elevations).toEqual([]);
+    expect(controlled.flatMap(socketProxyControlCommands)).toEqual([]);
+    expect(new Map([...store.files].filter(([path]) => path.startsWith("/etc/")))).toEqual(units);
+    expect(decision.mode).not.toBe("socket-helper");
+    expect(decision.notices.join(" ")).toContain("Lando leaves it running and keeps its fallback ports");
   });
 
   test("Given truncated systemd-socket- comm with lando-proxy units on 80/443, When persisting, Then advertised ports are 80/443", async () => {
@@ -1289,7 +1330,6 @@ describe("persistPortAcquisition helper-owned preferred ports", () => {
         readText: (path: string) =>
           store.files.has(path) ? Effect.succeed(store.files.get(path) ?? "") : Effect.fail(new Error(path)),
         processRunner: unusedRunner,
-        privilege: unusedPrivilege,
         classifyOverride,
         probeForward: () => Effect.succeed({ kind: "success" as const }),
       },
@@ -1378,12 +1418,13 @@ describe("persistPortAcquisition EACCES helper install", () => {
         privilege: unusedPrivilege,
         classifyOverride,
         probeForward: () => Effect.succeed({ kind: "success" as const }),
-        autoApprove: true,
       },
     });
 
-    // When: persist installs the socket helper.
-    const decision = await Effect.runPromise(persistPortAcquisition(deps));
+    // When: persist installs the approved socket helper.
+    const decision = await Effect.runPromise(
+      Effect.flatMap(withApprovedHelper(deps), persistPortAcquisition),
+    );
 
     // Then: advertised 80/443, Traefik backends stay on 38080/38443 not 8080/8443.
     expect(decision.mode).toBe("socket-helper");
@@ -1441,16 +1482,8 @@ describe("persistPortAcquisition EACCES helper install", () => {
                 return { exitCode: 0, stdout: "", stderr: "" };
               }),
           },
-          privilege: {
-            elevate: () =>
-              Effect.sync(() => {
-                mutations.push("elevate");
-                return { exitCode: 0, stdout: "", stderr: "" };
-              }),
-          },
           classifyOverride,
           probeForward: () => Effect.succeed({ kind: "success" as const }),
-          autoApprove: true,
         },
       });
 

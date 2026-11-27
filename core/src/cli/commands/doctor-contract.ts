@@ -7,7 +7,7 @@
  */
 
 import { ConfigError } from "@lando/sdk/errors";
-import { AgentSocketDelivery, ConfigLintViolation } from "@lando/sdk/schema";
+import { AgentSocketDelivery, ConfigLintViolation, TrustStoreStatus } from "@lando/sdk/schema";
 import { Schema } from "effect";
 
 /** Report section ids in display and collection order. */
@@ -22,6 +22,8 @@ export const DOCTOR_SECTION_IDS = [
   "global-app",
   "mcp",
   "accelerated-starts",
+  "lando-roots",
+  "state-compatibility",
   "missing-app-roots",
   "orphaned-volume-snapshots",
   "legacy-snapshot-catalogs",
@@ -114,6 +116,14 @@ export const SshAgentPostureDetails = Schema.Struct({
 });
 export type SshAgentPostureDetails = typeof SshAgentPostureDetails.Type;
 
+/** Every host trust store the selected certificate authority manages, as `lando doctor` inspected it. */
+export const CertificateTrustDetails = Schema.Struct({
+  trustStores: Schema.Array(TrustStoreStatus).annotate({
+    description: "Each managed trust store and whether it contains the local CA root.",
+  }),
+});
+export type CertificateTrustDetails = typeof CertificateTrustDetails.Type;
+
 export const DoctorRecovery = Schema.Literals(["automatic", "manual"]);
 export type DoctorRecovery = typeof DoctorRecovery.Type;
 
@@ -137,7 +147,12 @@ export const DoctorFinding = Schema.Struct({
   // A report holds data, not error instances: the boundary's redacted copy drops an
   // Error's non-enumerable `message`, so a `ConfigError` is carried in its encoded form.
   details: Schema.optionalKey(
-    Schema.Union([SshAgentPostureDetails, ConfigLintViolation, Schema.toEncoded(ConfigError)]),
+    Schema.Union([
+      SshAgentPostureDetails,
+      CertificateTrustDetails,
+      ConfigLintViolation,
+      Schema.toEncoded(ConfigError),
+    ]),
   ),
 });
 export type DoctorFinding = typeof DoctorFinding.Type;

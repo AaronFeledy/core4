@@ -11,7 +11,12 @@ import {
 } from "@lando/container-runtime/volume-ownership";
 import { LANDO_SHARED_CROSS_APP_NETWORK } from "@lando/sdk/schema";
 import { UninstallResourceCleanupError } from "./uninstall-cleanup-error.ts";
-import { type RuntimeExec, type UninstallRuntime, runUninstallRuntime } from "./uninstall-runtime.ts";
+import {
+  type RuntimeExec,
+  type UninstallRuntime,
+  type UninstallRuntimeSeams,
+  runUninstallRuntime,
+} from "./uninstall-runtime.ts";
 
 const lines = (text: string) =>
   text
@@ -27,20 +32,20 @@ const candidateLabels = {
 export const cleanupUninstallResources = async (
   exec: RuntimeExec,
   runtime: UninstallRuntime,
-): Promise<void> => {
+  seams: UninstallRuntimeSeams = {},
+): Promise<string> => {
   const removed: string[] = [];
   const retained: string[] = [];
   const failed: string[] = [];
-  const run = (args: readonly string[]) => runUninstallRuntime(exec, runtime, { args, timeout: 60_000 });
+  const run = (args: readonly string[]) =>
+    runUninstallRuntime(exec, runtime, { args, timeout: 60_000 }, seams);
   try {
     for (const kind of ["container", "network", "volume"] as const) {
-      const candidates = new Set<string>();
-      for (const label of candidateLabels[kind]) {
-        const args = kind === "container" ? ["ps", "-a"] : [kind, "ls"];
-        const format = kind === "volume" ? "{{.Name}}" : "{{.ID}}";
-        const result = await run([...args, "--filter", `label=${label}`, "--format", format]);
-        for (const ref of lines(result.stdout)) candidates.add(ref);
-      }
+      const args = kind === "container" ? ["ps", "-a"] : [kind, "ls"];
+      const format = kind === "volume" ? "{{.Name}}" : "{{.ID}}";
+      const list = async (label: string) =>
+        lines((await run([...args, "--filter", `label=${label}`, "--format", format])).stdout);
+      const candidates = new Set((await Promise.all(candidateLabels[kind].map(list))).flat());
       const seen = new Set<string>();
       for (const ref of candidates) {
         const resource = `${runtime.cmd} ${kind} ${ref}`;
@@ -107,4 +112,5 @@ export const cleanupUninstallResources = async (
       remediation:
         "Inspect retained or failed resources and recover their data before retrying purge. Managed storage and uninstall state must be preserved.",
     });
+  return removed.length === 0 ? "" : `Removed ${removed.length} resources from the Lando-managed runtime.`;
 };

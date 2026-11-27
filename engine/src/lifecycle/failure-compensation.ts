@@ -1,7 +1,22 @@
-import { mergeFailure } from "@lando/sdk/command-result";
-import { Cause, Effect, Exit } from "effect";
+import { mergeFailure, unscopedFailureReason } from "@lando/sdk/command-result";
+import type { FailureRole } from "@lando/sdk/schema";
+import { Cause, Effect, Exit, Result } from "effect";
 
 export { mergeFailure };
+
+/** Reify only ordinary failures; preserve exceptional reasons and their roles. */
+export const settleOrdinaryFailure = <A, E, R>(
+  effect: Effect.Effect<A, E, R>,
+): Effect.Effect<Result.Result<A, E>, E, R> =>
+  effect.pipe(
+    Effect.map(Result.succeed),
+    Effect.catchCause((cause) => {
+      const reason = unscopedFailureReason(cause);
+      return reason !== undefined && Cause.isFailReason(reason)
+        ? Effect.succeed(Result.fail(reason.error))
+        : Effect.failCause(cause);
+    }),
+  );
 
 export const mapFailureErrors =
   <E, E2>(map: (error: E) => E2) =>
@@ -26,12 +41,13 @@ export const runAllAndMergeFailures = Effect.fn("Lifecycle.runAllAndMergeFailure
 export const compensateFailure = <A, E, R, CleanupError, CleanupServices>(
   effect: Effect.Effect<A, E, R>,
   cleanup: Effect.Effect<void, CleanupError, CleanupServices>,
+  role: FailureRole = "rollback",
 ): Effect.Effect<A, E | CleanupError, R | CleanupServices> =>
   Effect.matchCauseEffect(effect, {
     onSuccess: Effect.succeed,
     onFailure: (failureCause) =>
       Effect.matchCauseEffect(cleanup, {
         onSuccess: () => Effect.failCause(failureCause),
-        onFailure: (cleanupCause) => Effect.failCause(mergeFailure(failureCause, cleanupCause, "rollback")),
+        onFailure: (cleanupCause) => Effect.failCause(mergeFailure(failureCause, cleanupCause, role)),
       }),
   });

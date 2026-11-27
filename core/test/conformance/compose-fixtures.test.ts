@@ -13,7 +13,7 @@ import {
   type ProviderCapabilities,
   ServiceName,
 } from "@lando/core/schema";
-import { AppPlanner } from "@lando/core/services";
+import { AppPlanner, PathsService } from "@lando/core/services";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
@@ -25,6 +25,7 @@ import {
 import { parseLandofile } from "@lando/landofile/parser";
 import { loadAuthoredDocuments } from "@lando/landofile/root-compile";
 import { loadLandofileFile } from "@lando/landofile/service";
+import { makeLandoPaths } from "@lando/paths";
 import { composeServiceDispositions } from "@lando/sdk/landofile";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Cause, Effect, Exit, Layer, Schema } from "effect";
@@ -83,7 +84,9 @@ const fixtureCases: ReadonlyArray<FixtureCase> = await Promise.all(
 );
 
 const registryLayer = PluginRegistryLayer.layerWith({ app: false, user: false });
-const plannerLayer = AppPlannerLayer.layer.pipe(Layer.provide(BunFileSystem.layer));
+const plannerLayer = AppPlannerLayer.layer.pipe(
+  Layer.provide(Layer.mergeAll(BunFileSystem.layer, Layer.succeed(PathsService, makeLandoPaths()))),
+);
 const nativeCapabilities: ProviderCapabilities = {
   ...TestRuntimeProvider.capabilities,
   composeSpec: "native",
@@ -139,12 +142,20 @@ const planLandofile = (
 ) =>
   Effect.flatMap(compileFixture(landofile, root), (compiled) =>
     Effect.flatMap(AppPlanner, (planner) => planner.plan(compiled, capabilities)),
-  ).pipe(Effect.provide(plannerLayer), Effect.provide(registryLayer), Effect.runPromise);
+  ).pipe(
+    Effect.provide(plannerLayer.pipe(Layer.provide(Layer.succeed(PathsService, makeLandoPaths())))),
+    Effect.provide(registryLayer),
+    Effect.runPromise,
+  );
 
 const planLandofileExit = (landofile: LandofileShape, root: string, capabilities: ProviderCapabilities) =>
   Effect.flatMap(compileFixture(landofile, root), (compiled) =>
     Effect.flatMap(AppPlanner, (planner) => planner.plan(compiled, capabilities)),
-  ).pipe(Effect.provide(plannerLayer), Effect.provide(registryLayer), Effect.runPromiseExit);
+  ).pipe(
+    Effect.provide(plannerLayer.pipe(Layer.provide(Layer.succeed(PathsService, makeLandoPaths())))),
+    Effect.provide(registryLayer),
+    Effect.runPromiseExit,
+  );
 
 const asComposeLandofile = (landofile: LandofileShape): LandofileShape => ({
   ...landofile,

@@ -7,7 +7,7 @@ import { launcherAuthority, primaryPortSelector, servicePortEndpoints } from "./
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { tcpProbe } from "./_tcp-probe.ts";
 
-const DEFAULT_IMAGE = "valkey/valkey:8";
+export const DEFAULT_IMAGE = "valkey/valkey:8";
 export const VALKEY_LISTENER = {
   port: 6379,
   daemon: "Valkey",

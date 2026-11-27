@@ -1,4 +1,3 @@
-import { ProxyError } from "@lando/sdk/errors";
 import { Effect } from "effect";
 import { occupiedHopNotices } from "./occupied-port-warning.ts";
 import {
@@ -37,11 +36,14 @@ import {
   classifySocketProxy,
   isSocketProxyInstalled,
   readAnyHelperHopTargets,
-  stopSockets,
 } from "./socket-proxy-install.ts";
+import { SOCKET_HELPER_CHANGE } from "./socket-proxy-plan.ts";
 import { resolveNeedsHelper } from "./socket-proxy-setup.ts";
 
 export { AcquisitionState, readAcquisitionState, writeAcquisitionState } from "./port-acquisition-record.ts";
+
+const OWNED_HELPER_ELSEWHERE_NOTICE =
+  "Lando's port helper forwards ports 80 and 443 to ports this Lando cannot use, so Lando leaves it running and keeps its fallback ports. `lando setup` or `lando doctor --fix` points it here, after asking.";
 
 const isOurPreferredHolder = (probe: {
   readonly holder?: string;
@@ -126,28 +128,24 @@ export const persistPortAcquisition = Effect.fn("TraefikRouter.persistPortAcquis
           ),
         ].filter((notice) => notice.length > 0)
       : [];
-  const repairOwnedHelper =
+  const ownedHelperOnOtherHops =
     helperOwnership.kind === "owned" && helperInstalled && helperOwnsPreferred(probed);
+  // Only the approved helper change retargets it, in place, so only setup or `lando doctor --fix`
+  // with that approval touches it. Anything else, `lando start` above all, leaves it serving and
+  // keeps the fallback ports.
+  const helperApproved =
+    dependencies.socketProxy?.intent === "configure" &&
+    dependencies.socketProxy.hostChanges?.approved(SOCKET_HELPER_CHANGE) !== undefined;
+  const repairOwnedHelper = ownedHelperOnOtherHops && helperApproved;
+  if (canUseHelper && ownedHelperOnOtherHops && !helperApproved) {
+    helperFallbackNotices = [...helperFallbackNotices, OWNED_HELPER_ELSEWHERE_NOTICE];
+  }
   if (
     canUseHelper &&
     (!helperForeign || configureForeign) &&
     (preferredEacces(probed) || repairOwnedHelper || configureForeign) &&
     dependencies.socketProxy !== undefined
   ) {
-    if (repairOwnedHelper) {
-      const stopped = yield* stopSockets(dependencies.socketProxy);
-      if (stopped.kind === "failed") {
-        return yield* Effect.fail(
-          new ProxyError({
-            proxyId: "traefik",
-            message:
-              "The owned socket helper forwards to ports this data root cannot use and could not be stopped.",
-            remediation:
-              "Allow Lando to stop its helper, or run `sudo systemctl stop lando-proxy-http.socket lando-proxy-https.socket lando-proxy-http.service lando-proxy-https.service`, then retry.",
-          }),
-        );
-      }
-    }
     const backendOccupied = [...Object.entries(probed.httpBinds), ...Object.entries(probed.httpsBinds)]
       .filter(([, bind]) => bind.kind === "EADDRINUSE")
       .map(([port]) => Number(port));
@@ -168,16 +166,10 @@ export const persistPortAcquisition = Effect.fn("TraefikRouter.persistPortAcquis
       catch: (error) => error,
     }).pipe(Effect.result);
     if (hops._tag === "Success") {
-      const resolved = yield* resolveNeedsHelper(
-        {
-          ...dependencies.socketProxy,
-          ownedRouterPorts: ownedBackends,
-        },
-        {
-          httpTarget: hops.success.bindHttpPort,
-          httpsTarget: hops.success.bindHttpsPort,
-        },
-      );
+      const resolved = yield* resolveNeedsHelper(dependencies.socketProxy, {
+        httpTarget: hops.success.bindHttpPort,
+        httpsTarget: hops.success.bindHttpsPort,
+      });
       helperInstalled = resolved.helperInstalled;
       if (resolved.decision.mode === "socket-helper" && resolved.socketsActive) {
         const decision = { ...resolved.decision, fingerprint: lists.fingerprint };

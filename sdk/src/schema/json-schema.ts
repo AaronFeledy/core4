@@ -179,6 +179,7 @@ import {
   InfoAppAgentEnv,
   InfoAppHostProxy,
   InfoAppResult,
+  InfoAppliedStateIssue,
   LandofileEventsOutcome,
   RebuildAppResult,
   RestartAppResult,
@@ -320,6 +321,7 @@ import {
   FileSyncPolicyReason,
   FileSyncServicePolicy,
 } from "./file-sync-policy.ts";
+import { HostChange, HostChangeOutcome, HostChangePlanEntry } from "./host-change.ts";
 import {
   HostEventCmdStep,
   HostEventCommandStep,
@@ -464,7 +466,6 @@ import {
   ServiceProjectUser,
 } from "./primitives.ts";
 import { PromptSpec } from "./prompt.ts";
-import { ProviderSetupPlan } from "./provider-setup.ts";
 import {
   AppRouteOwner,
   ProxyApplyResult,
@@ -551,9 +552,10 @@ import { ServiceLauncherMarker, ServiceLaunchers } from "./service-launchers.ts"
 import { MountObservation, ObservedMount, ServiceInfoMount } from "./service-mount.ts";
 import { GeneratedCertificateEndpoint } from "./service-resolution.ts";
 import {
-  DestroyOutcome,
+  BringDownOutcome,
+  ContainerBringDownReceipt,
   FileSyncQuiesceResult,
-  ObservedServiceRemoval,
+  ObservedBringDown,
   ServiceShutdownObservation,
 } from "./service-shutdown.ts";
 import {
@@ -582,6 +584,7 @@ import {
   ToolingInvocationInput,
 } from "./tooling-input.ts";
 import { ToolingRunSummary, ToolingRunTarget } from "./tooling-run-summary.ts";
+import { TrustStoreChange, TrustStoreState, TrustStoreStatus } from "./trust-store.ts";
 import {
   ShareStopAppResult,
   TunnelCapabilities,
@@ -757,7 +760,9 @@ const basePublicSchemaRegistry = schemaRegistry({
   BuildStep,
   AppPlan,
   AppliedAppPlan,
-  ProviderSetupPlan,
+  HostChange,
+  HostChangePlanEntry,
+  HostChangeOutcome,
   ServicePlan,
   ServiceHomePlan,
   AppMountInput,
@@ -966,8 +971,9 @@ const basePublicSchemaRegistry = schemaRegistry({
   ServiceInfoLogSource,
   ServiceShutdownObservation,
   FileSyncQuiesceResult,
-  DestroyOutcome,
-  ObservedServiceRemoval,
+  BringDownOutcome,
+  ContainerBringDownReceipt,
+  ObservedBringDown,
   StartedService,
   LandofileEventsOutcome,
   StartAppResult,
@@ -979,6 +985,7 @@ const basePublicSchemaRegistry = schemaRegistry({
   BuiltImageCleanup,
   DestroyAppOutcome,
   InfoAppAgentEnv,
+  InfoAppliedStateIssue,
   InfoAppHostProxy,
   InfoAppResult,
   ExecAppResult,
@@ -1164,6 +1171,9 @@ const basePublicSchemaRegistry = schemaRegistry({
   CommandResultFormat,
   FailureRole,
   CommandWarning,
+  TrustStoreState,
+  TrustStoreStatus,
+  TrustStoreChange,
   CommandResultEnvelope,
   CommandCompletion,
   CommandOutput,
@@ -1326,8 +1336,10 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   FileSyncQuiesceResult: "File sync writer quiescence receipt with optional shutdown observations.",
   FileSyncDisposalPhase:
     "Durable app file-sync disposal progress, including restartable drain and resumed cleanup.",
-  DestroyOutcome: "Provider destroy receipt with optional shutdown observations.",
-  ObservedServiceRemoval: "Exact observed-container removal receipt with optional shutdown observations.",
+  BringDownOutcome:
+    "Provider bring-down receipt with per-container actions and optional shutdown observations.",
+  ContainerBringDownReceipt: "What a provider bring-down did to one owned service container.",
+  ObservedBringDown: "Exact observed-container bring-down receipt with optional shutdown observations.",
   ServiceContainerChange:
     "What apply did to one service container, with the replacement reason and any anonymous volumes lost.",
   StartedService: "Service startup result with scoped connection evidence.",
@@ -2345,7 +2357,6 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "ProviderCapabilities.routeProvider",
   "ProviderCapabilities.serviceExec",
   "ProviderCapabilities.serviceFileCopy",
-  "ProviderCapabilities.serviceHealth",
   "ProviderCapabilities.serviceLogs",
   "ProviderCapabilities.serviceLogSources",
   "ProviderCapabilities.sharedCrossAppNetwork",
@@ -2463,7 +2474,6 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "TaskTreeCompleteEvent.summary",
   "TaskTreeCompleteEvent.timestamp",
   "TaskTreeStartEvent._tag",
-  "TaskTreeStartEvent.children",
   "TaskTreeStartEvent.label",
   "TaskTreeStartEvent.mode",
   "TaskTreeStartEvent.parentId",

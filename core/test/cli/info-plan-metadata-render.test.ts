@@ -38,3 +38,14 @@ test("escapes control characters in artifact and user details", () => {
     expect(text).not.toContain("forged\t");
   }
 });
+
+test("shows the service URL as its own field and detail row", () => {
+  const info = result(service("web", undefined, { url: "https://web.demo.lndo.site:38443/api" }));
+  expect(buildInfoSummary(info).sections[0]?.rows[0]?.fields).toContainEqual({
+    label: "URL",
+    value: "https://web.demo.lndo.site:38443/api",
+  });
+  const plain = renderInfoAppResult(info);
+  expect(plain).toContain("web\turl\thttps://web.demo.lndo.site:38443/api");
+  expect(plain.split("\n")[1]).toBe("service\tstate\tHost\tApp Network");
+});

@@ -1,4 +1,8 @@
-import { type CommandOutputFailure, captureCommandOutput } from "@lando/container-runtime/command-output";
+import {
+  type CommandOutputFailure,
+  type CommandOutputLive,
+  captureCommandOutput,
+} from "@lando/container-runtime/command-output";
 import { DataTransferError } from "@lando/sdk/errors";
 import type { ExecChunk } from "@lando/sdk/services";
 import { Effect, type Stream } from "effect";
@@ -28,10 +32,12 @@ export const checkedTransferCommand = Effect.fnUntraced(function* <E, R>(
   command: Stream.Stream<ExecChunk, E, R>,
   operation: string,
   authoritativeTokens?: Iterable<string>,
+  live?: CommandOutputLive,
 ) {
   return yield* captureCommandOutput(command, {
     stdout: "discard",
     authoritativeTokens,
+    ...(live === undefined ? {} : { live }),
     failure: (evidence) => serviceCommandFailure(operation, evidence.exitCode, evidence.stderrTail, evidence),
   });
 });

@@ -111,7 +111,19 @@ Prefer no extra dependency? Split `os.environ["DATABASE_URL"]` with `urllib.pars
 
 `lando info` lists the user and database name and redacts the password. `lando exec web -- printenv DATABASE_URL` masks the credentials in what it prints, `postgresql://[redacted]@database:5432/django-demo`. Django inside `web` still reads the real value.
 
-Also set `ALLOWED_HOSTS` so the proxy hostname is accepted (for a local demo, `ALLOWED_HOSTS = ['*']` is fine).
+Django also rejects requests for hostnames it doesn't know. Pass it the hostname Lando publishes for `web`. Add this line to the `environment` block under `services.web` in `.lando.yml`:
+
+```yaml
+DJANGO_ALLOWED_HOSTS: "{{ service.hostname }}"
+```
+
+Then read it in `config/settings.py`:
+
+```python
+ALLOWED_HOSTS = [os.environ["DJANGO_ALLOWED_HOSTS"]]
+```
+
+Lando fills in the value when it creates the container, so run `lando start` to apply it. The hostname follows the app's route, and Django still rejects every other host. See [Read a service's public URL](../landofile/expressions.mdx#read-a-services-public-url).
 
 ```sh
 lando django migrate --noinput
@@ -195,6 +207,26 @@ Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. They re
     <Step name="cleanup">
       <Cleanup />
       <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+  <Scenario id="allowed-hosts-binding" render={false} reason="Check that the scaffolded web service accepts its own published hostname in environment">
+    <Step name="bind-allowed-hosts">
+      <Run runtime="library" displayCode="lando app:config:lint --format=json" code={`{
+const init = yield* context.runCli("lando init . --recipe django --name=django-allowed-hosts --yes");
+expect(init.exitCode, init.stdout).toBe(0);
+const file = Bun.file(join(context.testDir, ".lando.yml"));
+const scaffold = yield* Effect.promise(() => file.text());
+const anchor = "      DJANGO_SETTINGS_MODULE: config.settings";
+expect(scaffold).toContain(anchor);
+yield* Effect.promise(() => Bun.write(file, scaffold.replace(anchor, "      DJANGO_ALLOWED_HOSTS: \"{{ service.hostname }}\"\n" + anchor)));
+const lint = yield* context.runCli("lando app:config:lint --format=json");
+expect(lint.exitCode, lint.stdout).toBe(0);
+expect(JSON.parse(lint.stdout).result).toMatchObject({ valid: true, violations: [] });
+const refresh = yield* context.runCli("lando app:cache:refresh --format=json");
+expect(refresh.exitCode, refresh.stdout).toBe(0);
+const config = yield* context.runCli("lando app:config --format=json");
+expect(JSON.parse(config.stdout).result.landofile.services.web.environment.DJANGO_ALLOWED_HOSTS).toBe("{{ service.hostname }}");
+}`} />
     </Step>
   </Scenario>
   <Scenario id="celery-config" render={false} reason="Check the Celery command and the one app-scoped environment store">

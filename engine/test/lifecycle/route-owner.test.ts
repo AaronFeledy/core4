@@ -44,23 +44,29 @@ describe("routeOwnerFromPlan", () => {
 
 describe("routeOwnerFromScratch", () => {
   test("cwd scratch plans and their source have distinct route owners", () => {
-    // Given: two scratch instances materializing the same cwd source root
     const cwd = AbsolutePath.make("/home/user/project");
     const source = { id: AppId.make("source"), root: cwd, extensions: {} };
-
-    // When
-    const scratch = {
+    const legacy = {
       ...source,
       id: AppId.make("scratch-a-111111"),
       extensions: { [SCRATCH_EXTENSION_KEY]: { id: "scratch-a-111111" } },
     };
-    const ownerA = routeOwnerFromPlan(scratch);
+    const managedRoot = AbsolutePath.make("/data/scratch/scratch-a-111111/root");
+    const managed = {
+      id: AppId.make("scratch-a-111111"),
+      root: managedRoot,
+      identity: planAppIdentity({ root: managedRoot }),
+      extensions: {
+        [SCRATCH_EXTENSION_KEY]: { id: "scratch-a-111111", projectRoot: cwd },
+      },
+    };
     const ownerB = routeOwnerFromScratch("scratch-b-222222");
 
-    // Then
-    expect(ownerA.ownerKey).not.toBe(ownerB.ownerKey);
-    expect(ownerA.ownerKey).not.toBe(routeOwnerFromPlan(source).ownerKey);
-    expect(ownerA).toEqual(routeOwnerFromScratch(scratch.id));
+    expect(routeOwnerFromPlan(legacy)).toEqual(routeOwnerFromScratch(legacy.id));
+    expect(routeOwnerFromPlan(legacy).ownerKey).not.toBe(routeOwnerFromPlan(source).ownerKey);
+    expect(routeOwnerFromPlan(legacy).ownerKey).not.toBe(ownerB.ownerKey);
+    expect(routeOwnerFromPlan(managed).ownerKey).toBe(planAppIdentity(managed).ownerKey);
+    expect(routeOwnerFromPlan(managed).ownerKey).not.toBe(routeOwnerFromPlan(source).ownerKey);
   });
 
   test("destroy without a cached plan withdraws scratch routes while preserving source routes", async () => {

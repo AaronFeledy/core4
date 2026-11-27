@@ -20,7 +20,7 @@ test.skipIf(process.platform !== "linux" || process.getuid?.() !== 0 || setpriv 
     const root = await mkdtemp(join(tmpdir(), "lando-nonroot-proxy-"));
     const directory = join(root, "private");
     const exposed = join(root, "service.sock");
-    const socketPath = join(directory, "proxy.sock");
+    const socketPath = join(directory, "container", "proxy.sock");
     const server = createServer((request, response) => {
       response.writeHead(request.headers.authorization === "Bearer test-capability" ? 200 : 401);
       response.end("host callback");
@@ -33,6 +33,7 @@ test.skipIf(process.platform !== "linux" || process.getuid?.() !== 0 || setpriv 
           server,
           {
             stateDir: directory,
+            containerDir: join(directory, "container"),
             socketPath,
             shimPath: join(directory, "lando"),
             platform: "linux",

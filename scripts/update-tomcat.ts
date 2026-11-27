@@ -30,12 +30,13 @@ export const readTomcatSnapshot = async (directory: string): Promise<TomcatSnaps
 export const prepareTomcatUpdate = async (
   previous: TomcatSnapshot,
   request: TomcatFetch,
+  githubToken?: string,
 ): Promise<TomcatSnapshot> => {
   const candidates = await Promise.all(
     TOMCAT_MAJORS.map(async (major) => {
       validateTomcatPair(major, previous.pins.majors[major], previous.configs[major]);
       const image = await resolveTomcatImage(major, request);
-      const { xml, ...baseline } = await resolveTomcatBaseline(image.version, request);
+      const { xml, ...baseline } = await resolveTomcatBaseline(image.version, request, githubToken);
       const pin = { ...image, ...baseline };
       validateTomcatPair(major, pin, xml);
       return { major, pin, xml };
@@ -111,9 +112,13 @@ export const reportTomcatUpdate = (previous: TomcatSnapshot, candidate: TomcatSn
   return lines.join("\n");
 };
 
-export const updateTomcat = async (directory: string, request: TomcatFetch = tomcatFetch) => {
+export const updateTomcat = async (
+  directory: string,
+  request: TomcatFetch = tomcatFetch,
+  githubToken?: string,
+) => {
   const previous = await readTomcatSnapshot(directory);
-  const candidate = await prepareTomcatUpdate(previous, request);
+  const candidate = await prepareTomcatUpdate(previous, request, githubToken);
   const changed = JSON.stringify(previous) !== JSON.stringify(candidate);
   const report = reportTomcatUpdate(previous, candidate);
   if (changed) {
@@ -131,7 +136,11 @@ if (import.meta.main) {
     process.stdout.write(`${usage}\n`);
   } else {
     if (args.length !== 0) throw new TypeError(usage);
-    const result = await updateTomcat(resolve(import.meta.dirname, "../plugins/service-lando/tomcat"));
+    const result = await updateTomcat(
+      resolve(import.meta.dirname, "../plugins/service-lando/tomcat"),
+      tomcatFetch,
+      process.env.GITHUB_TOKEN || process.env.GH_TOKEN || undefined,
+    );
     process.stdout.write(result.report);
   }
 }

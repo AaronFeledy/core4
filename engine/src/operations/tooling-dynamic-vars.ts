@@ -6,10 +6,9 @@ import { mapFailures } from "@lando/sdk/command-result";
 import { ToolingCompileError, ToolingExecError } from "@lando/sdk/errors";
 import type { AppPlan } from "@lando/sdk/schema";
 import { createRedactor, isSecretEnvName } from "@lando/sdk/secrets";
-import { type RuntimeProvider, RuntimeProviderRegistry } from "@lando/sdk/services";
+import { type RuntimeProvider, RuntimeProviderRegistry, StreamFrameSink } from "@lando/sdk/services";
 import { Deferred, Effect } from "effect";
 import type { DynamicToolingVarResolver } from "../tooling/step-runner.ts";
-import { StreamFrameSink } from "./stream-frame-sink.ts";
 import { type CompileToolingInput, executeToolingInvocations, stepInvocation } from "./tooling-compile.ts";
 import type { AdmittedToolingInput } from "./tooling-input-admission.ts";
 
@@ -151,7 +150,6 @@ export const makeDynamicToolingVarResolver = (input: {
       const decoder = new TextDecoder();
       return parts.map((part) => decoder.decode(part, { stream: true })).join("") + decoder.decode();
     };
-    if (input.options.signal?.aborted) return yield* Effect.interrupt;
     if (bytes > 65536) return yield* Effect.fail(overflowError());
     if (result.exitCode !== 0) {
       const diagnostic = sensitive

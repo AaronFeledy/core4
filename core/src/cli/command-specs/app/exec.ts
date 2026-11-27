@@ -11,10 +11,16 @@ import { Effect } from "effect";
 import { CliInvocation } from "../../../runtime/invocation-context";
 import { renderExecAppResult } from "../../commands/exec";
 import { attachExecHostIo, withInheritedStdinRawMode } from "../../exec-host-io";
-import { isEnvelopeResultFormat } from "../../format-flags";
+import { isMachineResultFormat } from "../../format-flags";
 import { type LandoCommandSpec, extractSpecAbortSignal } from "../../spec/command-base";
 import { extractSpecParsedArgv } from "../../spec/command-boundary";
-import { booleanFlag, specArgsOf, specFlagsOf, stringFlag } from "../../spec/input-coercion";
+import {
+  booleanFlag,
+  commandResultFormat,
+  specArgsOf,
+  specFlagsOf,
+  stringFlag,
+} from "../../spec/input-coercion";
 import { Args, Flags } from "../../spec/metadata";
 
 export const execInputUsesCliHostIo = (input: unknown): boolean =>
@@ -68,7 +74,6 @@ export const execSpec: LandoCommandSpec<ExecAppResult, ExecAppError, ExecAppServ
   run: Effect.fn("ExecCommand.run")(function* (input: unknown) {
     const invocation = yield* CliInvocation;
     const flags = specFlagsOf(input);
-    const format = stringFlag(flags, "format");
     const user = stringFlag(flags, "user");
     const service = stringFlag(flags, "service");
     const cwd = stringFlag(flags, "cwd");
@@ -80,7 +85,7 @@ export const execSpec: LandoCommandSpec<ExecAppResult, ExecAppError, ExecAppServ
         : Array.isArray(namedCommand)
           ? namedCommand.filter((arg): arg is string => typeof arg === "string")
           : [];
-    const envelope = (format !== undefined && isEnvelopeResultFormat(format)) || booleanFlag(flags, "json");
+    const machine = isMachineResultFormat(commandResultFormat(input));
     const signal = extractSpecAbortSignal(input);
     const base = {
       ...(signal === undefined ? {} : { signal }),
@@ -100,11 +105,11 @@ export const execSpec: LandoCommandSpec<ExecAppResult, ExecAppError, ExecAppServ
     if (!isStdioRendererIO(invocation.io))
       return yield* execApp({
         ...base,
-        tty: !envelope && invocation.io.stdoutIsTTY === true,
-        interactive: !envelope && booleanFlag(flags, "interactive"),
+        tty: !machine && invocation.io.stdoutIsTTY === true,
+        interactive: !machine && booleanFlag(flags, "interactive"),
         ...(invocation.io.stdin === undefined ? {} : { stdinStream: invocation.io.stdin }),
       });
-    if (envelope) return yield* execApp(attachExecHostIo({ ...base, tty: false, interactive: false }));
+    if (machine) return yield* execApp(attachExecHostIo({ ...base, tty: false, interactive: false }));
     const interactive = booleanFlag(flags, "interactive");
     const attached = attachExecHostIo({ ...base, tty: invocation.io.stdoutIsTTY === true, interactive });
     return yield* withInheritedStdinRawMode(attached.tty === true && interactive, execApp(attached));

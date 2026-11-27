@@ -125,6 +125,14 @@ describe("SDK public-surface snapshot", () => {
       publicSurface.serviceFeatureContextMembers.map(normalizeSignature).sort(),
     );
   });
+  test("matches the app-feature command writer signature", () => {
+    const member = interfaces
+      .get("AppFeatureServiceMutators")
+      ?.members.find((entry) => entry.name?.getText() === "setCommand");
+    expect(normalizeSignature(member?.getText() ?? "")).toBe(
+      normalizeSignature(publicSurface.appFeatureSetCommand),
+    );
+  });
   test("matches endpoint declaration signatures and excludes apply-time endpoint mutation", () => {
     for (const [name, signature] of Object.entries(publicSurface.featureEndpointDeclarations)) {
       const member = interfaces

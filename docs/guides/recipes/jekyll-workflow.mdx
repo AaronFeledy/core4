@@ -50,7 +50,7 @@ lando bundle install
 
 `jekyll new` rewrites the Gemfile (Minima theme, `jekyll-feed`, and friends). `--skip-bundle` stops it from running Bundler on its own, so `lando bundle install` is what lands those gems before you build or serve.
 
-Bundler installs gems into `vendor/bundle/` in your app (the service sets `BUNDLE_PATH`). Keep it out of git; the `.gitignore` that `jekyll new` writes already lists `vendor`. `lando destroy` leaves `vendor/bundle/` in place.
+Bundler installs gems into `vendor/bundle/` (the service sets `BUNDLE_PATH`). That directory is a volume that belongs to the service, so the gems don't appear in your project directory. Anything else under `vendor/` is ordinary project content. `lando destroy` leaves the gems in place.
 
 Confirm a one-off build:
 

@@ -23,7 +23,13 @@ import type {
   EngineHttpResponse,
   ProviderErrorContext,
 } from "../engine-api.ts";
-import { missingApi, missingService, parseEngineJson } from "../engine-errors.ts";
+import {
+  missingApi,
+  missingService,
+  parseEngineJson,
+  serviceContainerAbsent,
+  serviceNotRunning,
+} from "../engine-errors.ts";
 import { serviceContainerName } from "../plan.ts";
 import { httpResponseDetails, redactDetails, redactorFor } from "../redact.ts";
 import { makeAttachDecoder as makeRuntimeAttachDecoder } from "../streams.ts";
@@ -172,6 +178,12 @@ const createExec = Effect.fnUntraced(function* (
     },
   });
 
+  // Docker and Podman answer exec create on a container that is not running with 409, and on
+  // one that does not exist with 404.
+  if (response.status === 409)
+    return yield* Effect.fail(serviceNotRunning(session.ctx, session.service.name, "not-running"));
+  if (response.status === 404)
+    return yield* Effect.fail(serviceContainerAbsent(session.ctx, session.service.name));
   if (response.status < 200 || response.status >= 300) {
     yield* Effect.fail(
       execFailure(session, {

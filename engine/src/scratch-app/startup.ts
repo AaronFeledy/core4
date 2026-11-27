@@ -1,25 +1,18 @@
-import { mapFailures } from "@lando/sdk/command-result";
-import {
-  AppPlacementError,
-  RouteUrlBindingError,
-  ScratchAppError,
-  ServiceNotReadyError,
-} from "@lando/sdk/errors";
-import type { AbsolutePath, AppPlan, RouterConfig } from "@lando/sdk/schema";
+import { causeRemediation, mapFailures } from "@lando/sdk/command-result";
+import { AppPlacementError, RouteUrlBindingError, ScratchAppError } from "@lando/sdk/errors";
+import type { AppPlan, RouterConfig } from "@lando/sdk/schema";
 import {
   EnvironmentValueResolver,
-  type FileSystem,
+  RouterService,
   type RouterServiceShape,
   StateStore,
 } from "@lando/sdk/services";
-import { Cause, type Context, Effect, Exit } from "effect";
+import { Effect } from "effect";
 import { applyActivation } from "../lifecycle/activation-apply.ts";
 import { prepareRouteUrlBindings } from "../lifecycle/route-url-bindings.ts";
 import type { PreparedCertificates } from "../lifecycle/service-certificates.ts";
 import { completeStartup } from "../lifecycle/startup-completion.ts";
-import { HeldAppLockKeys } from "../operations/app-mutation-lock.ts";
 import {
-  type GlobalConsumerAdmissionServices,
   requiresGlobalConsumerAdmission,
   withGlobalConsumerAdmission,
 } from "../operations/global-consumer-admission.ts";
@@ -30,9 +23,6 @@ import {
   prepareDebuggerOverlay,
   projectDebuggerOverlay,
 } from "../subsystems/start-overlay-registry.ts";
-import type { makeScratchReaper } from "./destroy.ts";
-import type { makeScratchLifecycleLock } from "./lifecycle-lock.ts";
-import type { ScratchRegistry } from "./registry.ts";
 
 export const applyScratchStartup = Effect.fn("ScratchApp.applyStartup")(function* (
   request: {
@@ -46,8 +36,7 @@ export const applyScratchStartup = Effect.fn("ScratchApp.applyStartup")(function
     readonly provider: PreparedRuntimeProvider;
     readonly environmentResolver: typeof EnvironmentValueResolver.Service;
     readonly stateStore: typeof StateStore.Service;
-    readonly router?: RouterServiceShape;
-    readonly admissionContext?: Context.Context<GlobalConsumerAdmissionServices>;
+    readonly router: RouterServiceShape;
   },
 ) {
   const { id, plan } = request;
@@ -65,7 +54,7 @@ export const applyScratchStartup = Effect.fn("ScratchApp.applyStartup")(function
           : new ScratchAppError({
               operation: "start",
               message: cause.message,
-              remediation: cause.remediation,
+              remediation: causeRemediation(cause) ?? "Repair the router and retry scratch startup.",
               cause,
             }),
       ),
@@ -86,7 +75,9 @@ export const applyScratchStartup = Effect.fn("ScratchApp.applyStartup")(function
             operation: "start",
             message: `Unable to start scratch app ${id}.`,
             cause,
-            remediation: "Run `lando doctor`, fix the provider failure, then retry scratch start.",
+            remediation:
+              causeRemediation(cause) ??
+              "Run `lando doctor`, fix the provider failure, then retry scratch start.",
           }),
       ),
     );
@@ -95,34 +86,30 @@ export const applyScratchStartup = Effect.fn("ScratchApp.applyStartup")(function
       routeUrls,
       provider: services.provider,
       plan: runtimePlan,
+      id,
       services: Object.values(runtimePlan.services).map((service) => service.name),
-      ...(services.router === undefined ? {} : { router: services.router }),
+      router: services.router,
       ...(request.landofileRouter === undefined ? {} : { landofileRouter: request.landofileRouter }),
     }).pipe(
       mapFailures((cause) =>
-        cause instanceof AppPlacementError || cause instanceof RouteUrlBindingError
+        // Route publication failures arrive already named as such; only readiness failures remain.
+        cause instanceof AppPlacementError ||
+        cause instanceof RouteUrlBindingError ||
+        cause instanceof ScratchAppError
           ? cause
           : new ScratchAppError({
               operation: "start",
               message: `Unable to ready scratch app ${id}.`,
               cause,
               remediation:
-                cause.remediation ?? "Wait for services to become healthy, or run `lando doctor` and retry.",
+                causeRemediation(cause) ??
+                "Wait for services to become healthy, or run `lando doctor` and retry.",
             }),
       ),
     );
     return applied.credentialChanges;
   });
   if (!requiresGlobalConsumerAdmission(plan)) return yield* activate;
-  if (services.admissionContext === undefined)
-    return yield* Effect.fail(
-      new ScratchAppError({
-        operation: "start",
-        message: `Global service admission is unavailable for scratch app ${id}.`,
-        remediation:
-          "Provide the global runtime services when constructing ScratchAppService before starting dependent scratch applications.",
-      }),
-    );
   return yield* withGlobalConsumerAdmission(
     {
       plan,
@@ -130,7 +117,7 @@ export const applyScratchStartup = Effect.fn("ScratchApp.applyStartup")(function
     },
     activate,
   ).pipe(
-    Effect.provide(services.admissionContext),
+    Effect.provideService(RouterService, services.router),
     mapFailures((cause) =>
       cause instanceof AppPlacementError ||
       cause instanceof ScratchAppError ||
@@ -141,85 +128,9 @@ export const applyScratchStartup = Effect.fn("ScratchApp.applyStartup")(function
             message: `Required global services could not be admitted for scratch app ${id}.`,
             cause,
             remediation:
+              causeRemediation(cause) ??
               "Inspect global service policy and restore the required services before retrying scratch startup.",
           }),
     ),
   );
 });
-
-/** Transfer acquisition ownership to the successful scope without an interruptible gap. */
-export const withScratchAcquisition = <A, E, R>(
-  effect: Effect.Effect<A, E, R>,
-  request: {
-    readonly id: string;
-    readonly plan: AppPlan;
-    readonly instanceRoot: AbsolutePath;
-    readonly keepOnFailure: boolean;
-    readonly detached: boolean;
-  },
-  services: {
-    readonly registry: typeof ScratchRegistry.Service;
-    readonly fileSystem: typeof FileSystem.Service;
-    readonly reap: Effect.Success<typeof makeScratchReaper>;
-    readonly retainedIds: ReadonlySet<string>;
-    readonly withLock: Effect.Success<typeof makeScratchLifecycleLock>;
-  },
-) =>
-  Effect.uninterruptibleMask((restore) =>
-    Effect.gen(function* () {
-      const { id, plan, instanceRoot } = request;
-      // Only the task-owned instance root is reaped, never the possibly shared source plan.root.
-      const cleanup = (reason: "scope-close" | "acquire-failure") =>
-        services
-          .reap({ id, plan, instanceRoot, reason })
-          .pipe(
-            Effect.catchCause((cause) =>
-              Effect.logWarning(`Unable to reap scratch app ${id} during cleanup: ${Cause.pretty(cause)}`),
-            ),
-          );
-      const result = yield* restore(effect).pipe(
-        mapFailures((error) => {
-          if (!(error instanceof ScratchAppError) || !(error.cause instanceof ServiceNotReadyError))
-            return error;
-          return new ScratchAppError({
-            operation: error.operation,
-            message: `${error.message} ${error.cause.message}`,
-            remediation: request.keepOnFailure
-              ? (error.cause.remediation ??
-                "Inspect the retained scratch instance, fix the source Landofile, then retry.")
-              : "Correct the source Landofile and retry scratch acquisition. Use --keep-on-failure to retain a failing instance for inspection.",
-            cause: error.cause,
-          });
-        }),
-        Effect.onExit((exit) =>
-          Exit.isFailure(exit) && !request.keepOnFailure ? cleanup("acquire-failure") : Effect.void,
-        ),
-      );
-      if (!request.detached) {
-        yield* Effect.addFinalizer(() =>
-          services
-            .withLock(
-              { id, instanceRoot },
-              services.registry.get(id).pipe(
-                Effect.catch(() => Effect.succeed(undefined)),
-                Effect.flatMap((entry) =>
-                  entry !== undefined
-                    ? Effect.succeed(!entry.detached)
-                    : services.fileSystem.exists(instanceRoot).pipe(Effect.catch(() => Effect.succeed(true))),
-                ),
-                Effect.flatMap((owned) =>
-                  owned && !services.retainedIds.has(id) ? cleanup("scope-close") : Effect.void,
-                ),
-              ),
-            )
-            .pipe(
-              Effect.provideService(HeldAppLockKeys, new Set()),
-              Effect.catchCause((cause) =>
-                Effect.logWarning(`Unable to reap scratch app ${id} during cleanup: ${Cause.pretty(cause)}`),
-              ),
-            ),
-        );
-      }
-      return result;
-    }),
-  );

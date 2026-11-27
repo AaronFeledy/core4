@@ -7,6 +7,7 @@ import { loadLandofileLayers } from "@lando/landofile/service";
 import { createStandaloneRedactor } from "@lando/redaction/service";
 import type { ConfigTranslateError, RecipeDecomposeError } from "@lando/sdk/errors";
 import type { RecipeDecomposeInput } from "@lando/sdk/schema";
+import { PortablePath, ServiceName } from "@lando/sdk/schema";
 import type { ConfigTranslatorShape } from "@lando/sdk/services";
 import { Effect } from "effect";
 import { DRUPAL_CMS_PHP_INI_TARGET } from "../../src/recipes/builtin/drupal-cms/php-config.ts";
@@ -82,7 +83,15 @@ describe("the decomposed drupal Landofile on the native load path", () => {
       const routes = services.appserver?.routes as ReadonlyArray<Record<string, unknown>>;
       const drupalVersion = drupalDefaults.drupal;
       if (typeof drupalVersion !== "string") throw new TypeError("Expected a Drupal version default");
-      expect(tooling["drupal-scaffold"]?.cmd).toBe(`lando-drupal-scaffold ${drupalVersion}`);
+      const appserverBuild = services.appserver?.build as {
+        app?: ReadonlyArray<{ run?: string; user?: string }>;
+      };
+      expect(appserverBuild?.app).toEqual([
+        { run: `lando-drupal-scaffold ${drupalVersion} "$LANDO_WEBROOT" --testing=false` },
+      ]);
+      expect(appserverBuild?.app).toHaveLength(1);
+      expect(appserverBuild?.app?.[0]).not.toHaveProperty("user");
+      expect(tooling["drupal-scaffold"]).toBeUndefined();
       expect(tooling.drush?.wrapper).toBe(true);
       expect(tooling.composer?.wrapper).toBe(true);
       expect(tooling.phpcs?.wrapper).toBe(true);
@@ -96,19 +105,72 @@ describe("the decomposed drupal Landofile on the native load path", () => {
 
   test("carries a nondefault drupal major into the resolved scaffold command", async () => {
     await withEncodedApp({ ...drupalDefaults, drupal: "10", php: "8.4" }, async (appRoot) => {
+      await writeFile(
+        join(appRoot, ".lando.local.yml"),
+        "recipe:\n  options:\n    drupal: '11'\n    testing: true\n",
+      );
       // When
       const landofile = await Effect.runPromise(loadLandofileLayers(appRoot, join(appRoot, ".lando.yml")));
 
       // Then
       const tooling = landofile.document.tooling as Record<string, Record<string, unknown>>;
       const services = landofile.document.services as Record<string, Record<string, unknown>>;
-      expect(tooling["drupal-scaffold"]?.cmd).toBe("lando-drupal-scaffold 10");
+      const appserverBuild = services.appserver?.build as {
+        app?: ReadonlyArray<{ run?: string; user?: string }>;
+      };
+      expect(appserverBuild?.app).toEqual([
+        { run: 'lando-drupal-scaffold 10 "$LANDO_WEBROOT" --testing=false' },
+      ]);
+      expect(tooling["drupal-scaffold"]).toBeUndefined();
+      expect(tooling.phpunit).toBeUndefined();
       expect(services.appserver?.type).toBe("php:8.4");
     });
   });
 });
 
 describe("the decomposed Drupal CMS Landofile on the native load path", () => {
+  test("connects PHPUnit and Chrome through the relocated nginx site", async () => {
+    await withEncodedApp(
+      {
+        ...drupalCmsDefaults,
+        webroot: "docroot",
+        webserver: "nginx",
+        database: "postgres:16",
+        testing: true,
+      },
+      async (appRoot) => {
+        await writeFile(join(appRoot, ".lando.local.yml"), "recipe:\n  options:\n    testing: false\n");
+        const { document } = await Effect.runPromise(
+          loadLandofileLayers(appRoot, join(appRoot, ".lando.yml")),
+        );
+        const appserverBuild = document.services?.[ServiceName.make("appserver")]?.build as {
+          app?: ReadonlyArray<{ run?: string; user?: string }>;
+          artifact?: ReadonlyArray<unknown>;
+        };
+        expect(appserverBuild?.app).toEqual([
+          { run: 'lando-drupal-cms-scaffold "$LANDO_WEBROOT" --testing=true' },
+        ]);
+        expect(appserverBuild?.artifact).toEqual([
+          { run: "apt-get update && apt-get install -y --no-install-recommends git", user: "root" },
+        ]);
+        expect(document.tooling?.["drupal-cms-scaffold"]).toBeUndefined();
+        expect(document.tooling?.phpunit?.cmd).toEqual([
+          "/app/vendor/bin/phpunit",
+          "-c",
+          "/app/docroot/core",
+        ]);
+        expect(document.services?.[ServiceName.make("edge")]?.webroot).toBe(PortablePath.make("docroot"));
+        expect(document.services?.[ServiceName.make("chrome")]?.image).toStartWith(
+          "selenium/standalone-chromium:",
+        );
+        expect(document.services?.[ServiceName.make("appserver")]?.environment).toMatchObject({
+          SIMPLETEST_BASE_URL: "http://edge:{{ services.edge.port }}",
+          BROWSERTEST_OUTPUT_DIRECTORY: "/app/docroot/sites/simpletest/browser_output",
+        });
+      },
+      true,
+    );
+  });
   test("loads the scaffold command, PHP mount, and database configuration", async () => {
     await withEncodedApp(
       { ...drupalCmsDefaults },
@@ -116,7 +178,21 @@ describe("the decomposed Drupal CMS Landofile on the native load path", () => {
         const landofile = await Effect.runPromise(loadLandofileLayers(appRoot, join(appRoot, ".lando.yml")));
         const tooling = landofile.document.tooling as Record<string, Record<string, unknown>>;
         const services = landofile.document.services as Record<string, Record<string, unknown>>;
-        expect(tooling["drupal-cms-scaffold"]?.cmd).toBe("lando-drupal-cms-scaffold");
+        const appserverBuild = services.appserver?.build as {
+          app?: ReadonlyArray<{ run?: string; user?: string }>;
+          artifact?: ReadonlyArray<unknown>;
+        };
+        expect(appserverBuild?.app).toEqual([
+          { run: 'lando-drupal-cms-scaffold "$LANDO_WEBROOT" --testing=false' },
+        ]);
+        expect(appserverBuild?.app).toHaveLength(1);
+        expect(appserverBuild?.app?.[0]).not.toHaveProperty("user");
+        expect(appserverBuild?.artifact).toEqual([
+          { run: "apt-get update && apt-get install -y --no-install-recommends git", user: "root" },
+        ]);
+        expect(tooling["drupal-cms-scaffold"]).toBeUndefined();
+        expect(services.chrome).toBeUndefined();
+        expect(tooling.phpunit).toBeUndefined();
         expect(tooling.drush?.wrapper).toBe(true);
         expect(tooling.composer?.wrapper).toBe(true);
         expect(tooling.phpstan?.wrapper).toBe(true);
@@ -171,7 +247,6 @@ describe("the decomposed Drupal contrib Landofile on the native load path", () =
       expect(services.appserver?.webroot).toBe("/app/web");
       expect(services.appserver?.appMount).toEqual({
         target: "/app/web/themes/custom/hello_theme",
-        includes: ["vendor", "node_modules", "tmp"],
       });
       expect(services.chrome?.type).toBe("compose");
       expect(services.chrome?.image).toBe("selenium/standalone-chromium:155.0-20261010");

@@ -10,22 +10,20 @@ import { RedactionService, makeRedactionService } from "@lando/redaction/service
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { GlobalConfig, ProviderId, StreamFrame } from "@lando/sdk/schema";
 import { ConfigService, PathsService, PluginRegistry, RuntimeProviderRegistry } from "@lando/sdk/services";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect, Layer, Schema } from "effect";
 import { metaDoctorSpec } from "../../src/cli/command-specs/meta/doctor.ts";
 import { resilientDoctorReport } from "../../src/cli/commands/doctor-bootstrap.ts";
 import type { DoctorReport } from "../../src/cli/commands/doctor-contract.ts";
 import { DoctorReportSchema } from "../../src/cli/commands/doctor-contract.ts";
-import { renderDoctorReportAsNdjson } from "../../src/cli/commands/doctor-render-ndjson.ts";
 import { buildDoctorReportSummary, renderDoctorReport } from "../../src/cli/commands/doctor-render-text.ts";
 import { doctorCompletion, makeDoctorReport } from "../../src/cli/commands/doctor-report.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 import { resources } from "../../src/mcp-resources.ts";
+import { renderDoctorReportAsNdjson } from "./doctor-report-fixture";
 
 const registryFor = (provider: typeof TestRuntimeProvider) =>
-  RuntimeProviderRegistry.of({
-    resolveAppliedPlan: () => Effect.succeed(undefined),
-    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-    appliedPlansFor: () => Effect.succeed([]),
+  makeTestRuntimeProviderRegistry({
     list: Effect.succeed([ProviderId.make(provider.id)]),
     capabilities: Effect.succeed(provider.capabilities),
     select: () => Effect.succeed(provider),
@@ -97,8 +95,8 @@ describe("doctor regressions", () => {
       expect(renderDoctorReport(report)).toContain("global-config: fail");
       expect(() => Schema.encodeSync(DoctorReportSchema)(report)).not.toThrow();
 
-      // The renderer boundary hands NDJSON a redacted copy of the report; the
-      // ConfigError evidence must survive it as data.
+      // The renderer boundary redacts doctor's NDJSON report frames; the
+      // ConfigError evidence must survive that as data.
       const io = createBufferedRendererIO();
       await runWithRendererHandling(Effect.succeed(report), {
         runtime: Layer.succeed(RedactionService, RedactionService.of(makeRedactionService())),
@@ -106,9 +104,10 @@ describe("doctor regressions", () => {
         resultFormat: "ndjson",
         command: "meta:doctor",
         resultSchema: DoctorReportSchema,
+        ...(metaDoctorSpec.ndjsonReport === undefined ? {} : { ndjsonReport: metaDoctorSpec.ndjsonReport }),
         io,
-        render: (value) => renderDoctorReportAsNdjson(value),
         formatError: ({ error }) => String(error),
+        setExitCode: () => undefined,
       });
       const frames = io
         .stdout()

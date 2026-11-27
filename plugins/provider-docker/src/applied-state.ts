@@ -7,11 +7,4 @@ import {
 const store = makeAppliedPlanStore({ providerId: "docker", layout: "per-app" });
 
 export { appliedPlanPath, appliedPlansDir };
-export const {
-  listAppliedPlans,
-  listObservedPlans,
-  loadAppliedPlan,
-  loadAppliedPlanStrict,
-  persistAppliedPlan,
-  removeAppliedPlan,
-} = store;
+export const { listAppliedPlans, loadAppliedPlanStrict, persistAppliedPlan, removeAppliedPlan } = store;

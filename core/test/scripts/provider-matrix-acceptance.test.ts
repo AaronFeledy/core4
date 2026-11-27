@@ -182,6 +182,8 @@ describe("provider matrix acceptance reporting", () => {
       "storage-lifecycle",
       "sdk-provider-contract",
       "exec-umask-mode",
+      "health-start-interval",
+      "nginx-private-checkout",
     ]);
     expect(cell.checks.find((check) => check.id === "exec-umask-mode")).toEqual({
       id: "exec-umask-mode",

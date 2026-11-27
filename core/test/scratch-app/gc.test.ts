@@ -27,10 +27,11 @@ import * as BunFileSystem from "@lando/engine/services/file-system";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
 import * as BunProcessRunner from "@lando/engine/services/process-runner";
 import * as EnvSecretStore from "@lando/engine/services/secret-store";
+import { layerUnavailable } from "@lando/engine/subsystems/proxy/api";
 import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService } from "@lando/redaction/service";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import * as StateStoreLayer from "@lando/state-store/service";
 import { makeStateStore } from "@lando/state-store/service";
@@ -156,11 +157,9 @@ const makeLayer = (
     removeArtifact: () => Effect.succeed({ kind: "absent" as const }),
     listArtifacts: () => Effect.succeed([]),
     apply: () => die("apply"),
-    start: () => die("start"),
-    stop: () => die("stop"),
     restart: () => die("restart"),
     waitForExit: () => Effect.succeed({ exitCode: 0 }),
-    destroy: () => die("destroy"),
+    bringDown: () => die("destroy"),
     exec: () => die("exec"),
     execStream: () => Stream.die("scratch gc test provider should not call execStream"),
     run: () => die("run"),
@@ -185,10 +184,7 @@ const makeLayer = (
   const eventLive = LandoEventService.layer.pipe(Layer.provide(redactionLive));
   const registryLive = Layer.succeed(
     RuntimeProviderRegistry,
-    RuntimeProviderRegistry.of({
-      resolveAppliedPlan: () => Effect.succeed(undefined),
-      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-      appliedPlansFor: () => Effect.succeed([]),
+    makeTestRuntimeProviderRegistry({
       list: Effect.succeed([providerId]),
       capabilities: Effect.succeed(capabilities),
       select: () => Effect.succeed(provider),
@@ -207,6 +203,7 @@ const makeLayer = (
     }),
   );
   const scratchDeps = Layer.mergeAll(
+    layerUnavailable,
     PrivateFileAccessService.layer,
     stateStoreLayer,
     environmentResolverLayer(),
@@ -252,6 +249,7 @@ const registryEntry = (dataRoot: string, id: string): ScratchRegistryEntry => ({
   detached: false,
   ownerPid: 999_999_999,
   rootPath: join(dataRoot, "scratch", id, "root"),
+  layout: "managed",
   status: "running",
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-01-01T00:00:00.000Z",

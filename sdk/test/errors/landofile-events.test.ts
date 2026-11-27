@@ -93,3 +93,31 @@ test("tooling failures carry event runtime errors so bracket failures keep their
     "LandofileEventInvocationDepthError",
   ]);
 });
+
+test("a step refused before it started carries located issues and no exit code across the wire", () => {
+  // Given a step Lando refused while resolving a value it reads
+  const refused = new errors.LandofileEventStepFailedError({
+    message: "Event pre-start step 1 did not run: services.web.url is not available during pre-start.",
+    event: "pre-start",
+    index: 0,
+    kind: "cmd",
+    outputTail: "",
+    issues: [
+      {
+        rule: "landofile.tooling",
+        reason: "event-phase",
+        path: ["events", "pre-start", 0, "cmd"],
+        message: "services.web.url is not available during pre-start.",
+      },
+    ],
+    omittedIssueCount: 0,
+    remediation: "Read the URL in a post-start step.",
+  });
+  // When
+  const decoded = Schema.decodeUnknownSync(errors.LandofileEventStepFailedError)(
+    Schema.encodeSync(errors.LandofileEventStepFailedError)(refused),
+  );
+  // Then
+  expect(decoded).toEqual(refused);
+  expect(decoded).not.toHaveProperty("exitCode");
+});

@@ -1,9 +1,20 @@
-import { CommandResultEnvelope } from "@lando/sdk/schema";
+import { CommandResultEnvelope, StreamFrame } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
 
 export const decodeInfoCliEnvelope = Schema.decodeUnknownSync(Schema.fromJsonString(CommandResultEnvelope), {
   onExcessProperty: "error",
 });
+
+const decodeStreamFrame = Schema.decodeUnknownSync(Schema.fromJsonString(StreamFrame), {
+  onExcessProperty: "error",
+});
+
+/** The envelope of a live command's `--format=json` output: the terminal `result` frame, its last line. */
+export const decodeResultFrameEnvelope = (text: string): CommandResultEnvelope => {
+  const frame = decodeStreamFrame(text.trimEnd().split("\n").at(-1) ?? "");
+  if (frame._tag !== "result") throw new Error(`The last frame is ${frame._tag}, not result:\n${text}`);
+  return frame.envelope;
+};
 
 export const runFixtureCli = (
   command: readonly string[],

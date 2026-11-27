@@ -9,20 +9,22 @@ import { GlobalServiceCapabilityError } from "@lando/sdk/errors";
 import {
   type AppPlan,
   GlobalConfig,
-  LANDO_SHARED_CROSS_APP_NETWORK,
   LandofileShape,
   PluginManifest,
   type ProviderCapabilities,
   ProviderId,
   ServiceConfig,
   ServiceName,
+  landoSharedCrossAppNetworkName,
 } from "@lando/sdk/schema";
 import { AppPlanner, ConfigService } from "@lando/sdk/services";
-import { Effect, Schema } from "effect";
+import { Effect, Layer, Schema } from "effect";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import { HostProviderOverride } from "../../src/providers/host-provider.ts";
 import { validateGlobalServiceContributions } from "../../src/services/global-services.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";
+import { planLiteralTestLandofile, planTestLandofile } from "../compiled-landofile.ts";
+import { pathsServiceLayer, testPaths } from "../paths-service.ts";
 
 const traefikGlobalManifest = Schema.decodeSync(PluginManifest)({
   name: "@lando/proxy-traefik",
@@ -78,6 +80,7 @@ const baseCapabilities = (overrides: Partial<ProviderCapabilities>): ProviderCap
   ...overrides,
 });
 
+const sharedCrossAppNetworkName = () => landoSharedCrossAppNetworkName(testPaths().roots.userDataRoot);
 const planApp = (
   landofileInput: Record<string, unknown>,
   capabilities: ProviderCapabilities,
@@ -85,7 +88,7 @@ const planApp = (
   const landofile = Schema.decodeUnknownSync(LandofileShape)(landofileInput);
   return Effect.runPromise(
     Effect.flatMap(AppPlanner, (planner) => planTestLandofile(planner, landofile, capabilities)).pipe(
-      Effect.provide(AppPlannerLayer.layer),
+      Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
       Effect.provide(PluginRegistryLayer.layer),
       Effect.provideService(HostProviderOverride, ProviderId.make("lando")),
     ),
@@ -235,7 +238,7 @@ describe("per-app NetworkingPlan + cross-app reachability", () => {
   test("emits a per-app bridge plus shared cross-app membership for a service app", async () => {
     const plan = await planUserApp(baseCapabilities({ sharedCrossAppNetwork: true }));
     expect(plan.networking?.perAppBridge?.name).toBe("lando-shop");
-    expect(plan.networking?.sharedNetworkMembership?.name).toBe(LANDO_SHARED_CROSS_APP_NETWORK);
+    expect(plan.networking?.sharedNetworkMembership?.name).toBe(sharedCrossAppNetworkName());
     expect(plan.networking?.sharedNetworkMembership?.aliases[ServiceName.make("web")]).toEqual([
       "web.shop.internal",
     ]);
@@ -269,7 +272,7 @@ describe("per-app NetworkingPlan + cross-app reachability", () => {
     ]);
 
     for (const plan of [shop, blog, global]) {
-      expect(plan.networking?.sharedNetworkMembership?.name).toBe(LANDO_SHARED_CROSS_APP_NETWORK);
+      expect(plan.networking?.sharedNetworkMembership?.name).toBe(sharedCrossAppNetworkName());
     }
 
     expect(shop.networking?.sharedNetworkMembership?.aliases[ServiceName.make("web")]).toEqual([
@@ -289,7 +292,7 @@ describe("per-app NetworkingPlan + cross-app reachability", () => {
     const sharedNames = new Set(
       [shop, blog, global].map((plan) => plan.networking?.sharedNetworkMembership?.name),
     );
-    expect(sharedNames).toEqual(new Set([LANDO_SHARED_CROSS_APP_NETWORK]));
+    expect(sharedNames).toEqual(new Set([sharedCrossAppNetworkName()]));
 
     expect(canReachSharedAlias(global, [shop, blog], "web.shop.internal")).toBe(true);
     expect(canReachSharedAlias(global, [shop, blog], "web.blog.internal")).toBe(true);
@@ -311,8 +314,6 @@ describe("per-app NetworkingPlan + cross-app reachability", () => {
     });
   });
 });
-
-import { planLiteralTestLandofile, planTestLandofile } from "../compiled-landofile.ts";
 
 test.each(["127.0.0.1", "192.0.2.24", "0.0.0.0", "::"])(
   "plans Traefik %s publication through the provider request",
@@ -344,7 +345,7 @@ test.each(["127.0.0.1", "192.0.2.24", "0.0.0.0", "::"])(
       Effect.flatMap(AppPlanner, (planner) =>
         planLiteralTestLandofile(planner, landofile, providerLandoCapabilitiesForPlatform("linux")),
       ).pipe(
-        Effect.provide(AppPlannerLayer.layer),
+        Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(pathsServiceLayer()))),
         Effect.provide(PluginRegistryLayer.layer),
         Effect.provideService(HostProviderOverride, ProviderId.make("lando")),
       ),

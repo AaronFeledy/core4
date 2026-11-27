@@ -81,6 +81,7 @@ export const sidebar = [
           { label: "Run the Drupal recipe", slug: "guides/recipes/drupal-workflow" },
           { label: "Run the Drupal CMS recipe", slug: "guides/recipes/drupal-cms-workflow" },
           { label: "Run the Drupal contrib recipe", slug: "guides/recipes/drupal-contrib-workflow" },
+          { label: "Copy a production Drupal database", slug: "guides/recipes/drupal-production-copy" },
           { label: "Run the Joomla recipe", slug: "guides/recipes/joomla-workflow" },
           { label: "Run a Craft CMS site on LAMP", slug: "guides/recipes/craft-workflow" },
           { label: "Run a TYPO3 site on LAMP", slug: "guides/recipes/typo3-workflow" },
@@ -120,7 +121,7 @@ export const sidebar = [
           { label: "Export traces", slug: "guides/cli/export-traces" },
           { label: "Start a scratch app from a recipe", slug: "guides/scratch/scratch-from-recipe" },
           { label: "Run a command in a disposable scratch", slug: "guides/scratch/disposable-tool-runner" },
-          { label: "Fork the current app into a scratch", slug: "guides/scratch/fork-existing-app" },
+          { label: "Fork an existing app into a scratch", slug: "guides/scratch/fork-existing-app" },
           { label: "List scratch apps", slug: "guides/scratch/list-and-info" },
           {
             label: "Mount the working directory into a scratch",

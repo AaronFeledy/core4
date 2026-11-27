@@ -1,6 +1,12 @@
 import { mapFailures } from "@lando/sdk/command-result";
-import { ProviderUnavailableError } from "@lando/sdk/errors";
-import { type AppId, type OwnedResourcesCleanupResult, noVolumesRemoved } from "@lando/sdk/schema";
+import { ProviderUnavailableError, StateStoreError } from "@lando/sdk/errors";
+import {
+  type AbsolutePath,
+  type AppId,
+  type OwnedResourcesCleanupResult,
+  type PhysicalVolumeLockTier,
+  noVolumesRemoved,
+} from "@lando/sdk/schema";
 import { type ProviderError, StateStore } from "@lando/sdk/services";
 import { withPhysicalVolumeLocks } from "@lando/state-store/volume-lock";
 import { Context, Effect, Option, Schema } from "effect";
@@ -17,6 +23,7 @@ import { NativeVolumeSchema, volumeCoordinationKey } from "./native-volume-ident
 import type { VolumeSelectorClass } from "./podman/volume-prune.ts";
 import { redactDetails, redactorFor, withApiReason } from "./redact.ts";
 import { removeAllStaleVolumeHolders } from "./stale-data-helpers.ts";
+import { retireDeletedVolumeReceipt } from "./teardown-volume-receipts.ts";
 import { hasSharedCacheOwnership } from "./volume-ownership.ts";
 
 export interface TeardownVolumeRuntime {
@@ -31,6 +38,8 @@ export interface VolumeDeletion {
   readonly name: string;
   readonly volumeClass: VolumeSelectorClass;
   readonly shared: boolean;
+  readonly ownerRoot: AbsolutePath;
+  readonly tier?: PhysicalVolumeLockTier | undefined;
   readonly matches: (labels: Readonly<Record<string, string>>) => boolean;
 }
 
@@ -78,7 +87,7 @@ export const snapshotVolumeDeletion = Effect.fnUntraced(function* (
   const labels = listedLabels ?? (yield* inspect(runtime, deletion.name));
   if (labels === undefined) return { kind: "absent" } as const;
   const generation = labels[VOLUME_INSTANCE_LABEL];
-  if (!generation || !deletion.matches(labels)) return { kind: "unverified" } as const;
+  if (!generation || !deletion.matches(labels)) return { kind: "unverified", labels } as const;
   const key = yield* volumeCoordinationKey(
     { ...runtime, api: runtime, providerId: runtime.ctx.providerId },
     deletion.name,
@@ -152,6 +161,13 @@ export const skippedVolume = (volume: VolumeDeletion, reason: string): SkippedVo
   reason,
 });
 
+/** The skip fields that keep a protecting failure's tag and remediation in machine output. */
+export const protectedSkip = (error: {
+  readonly _tag: string;
+  readonly message: string;
+  readonly remediation: string;
+}) => ({ reason: error.message, errorTag: error._tag, remediation: error.remediation });
+
 export const deleteVolumeSnapshot = Effect.fnUntraced(function* (
   runtime: TeardownVolumeRuntime,
   snapshot: ReadonlyArray<VolumeDeletionCandidate>,
@@ -168,20 +184,28 @@ export const deleteVolumeSnapshot = Effect.fnUntraced(function* (
       );
     return withPhysicalVolumeLocks(
       state.value,
-      candidates.map(({ key, name }) => ({ key, name, mode: "exclusive", resource: `volume ${name}` })),
+      candidates.map(({ key, name, tier }) => ({
+        key,
+        name,
+        mode: "exclusive",
+        resource: `volume ${name}`,
+        ...(tier === undefined ? {} : { tier }),
+      })),
       Effect.forEach(
         candidates,
         (candidate) =>
           deleteCandidate(runtime, candidate).pipe(
             Effect.tap((outcome) =>
-              Effect.sync(() => {
+              Effect.gen(function* () {
                 switch (outcome) {
                   case "removed":
                     volumesRemoved[candidate.volumeClass] += 1;
                     retired.add(candidate.name);
+                    yield* retireDeletedVolumeReceipt(state.value, candidate);
                     break;
                   case "absent":
                     retired.add(candidate.name);
+                    yield* retireDeletedVolumeReceipt(state.value, candidate);
                     break;
                   case "changed":
                     skipped.push(skippedVolume(candidate, "volume changed after enumeration"));
@@ -200,11 +224,16 @@ export const deleteVolumeSnapshot = Effect.fnUntraced(function* (
   const appVolumes = snapshot.filter((candidate) => !candidate.shared);
   if (appVolumes.length > 0)
     yield* work(appVolumes).pipe(
-      mapFailures((error) =>
-        error._tag === "StateStoreError"
-          ? teardownVolumeFailure(runtime.ctx, `Could not acquire the volume locks: ${error.message}`)
-          : error,
-      ),
+      mapFailures((error) => {
+        if (!(error instanceof StateStoreError)) return error;
+        return new ProviderUnavailableError({
+          providerId: runtime.ctx.providerId,
+          operation: "bringDown.volume",
+          message: `Could not acquire the volume locks: ${error.message}`,
+          remediation: error.reason === "newer-version" ? error.remediation : runtime.ctx.remediation,
+          cause: error,
+        });
+      }),
     );
   // Shared cache contention must not prevent app-volume cleanup or another cache's purge.
   for (const candidate of snapshot

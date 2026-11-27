@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-const lintPackageArguments = "drupal/coder phpstan/phpstan mglaman/phpstan-drupal phpstan/extension-installer"
+const lintPackageArguments = "drupal/coder:^8.3 || ^9.0 phpstan/phpstan:^1.12 || ^2.0 mglaman/phpstan-drupal:^1.2 || ^2.0 phpstan/extension-installer:^1.4"
 
 func assertDrupalLintOutputs(t *testing.T, root string) {
 	t.Helper()
@@ -32,7 +32,7 @@ func TestDrupalScaffoldKeepsProjectAndUserLintConfigs(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if code := fixture.run(t, "drupal-scaffold", "11"); code != 0 {
+	if code := fixture.run(t, "drupal-scaffold", "11", "web", "--testing=false"); code != 0 {
 		t.Fatalf("drupal-scaffold exited %d: %s", code, fixture.stderr.String())
 	}
 
@@ -45,8 +45,8 @@ func TestDrupalScaffoldsRefuseToPromoteNonexecutableLintTool(t *testing.T) {
 		name, command string
 		args          []string
 	}{
-		{"drupal", "drupal-scaffold", []string{"11"}},
-		{"cms", "drupal-cms-scaffold", nil},
+		{"drupal", "drupal-scaffold", []string{"11", "web", "--testing=false"}},
+		{"cms", "drupal-cms-scaffold", []string{"web", "--testing=false"}},
 	} {
 		t.Run(recipe.name, func(t *testing.T) {
 			fixture := newScaffoldFixture(t, map[string]string{

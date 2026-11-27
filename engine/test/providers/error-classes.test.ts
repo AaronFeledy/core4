@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import {
+  AppliedStateVersionError,
   ArtifactBuildError,
   ArtifactTransferError,
   EnvironmentValueResolutionError,
@@ -9,9 +10,6 @@ import {
   ProviderCapabilityError,
   ProviderConfigError,
   ProviderInternalError,
-  ProviderSetupConsentDeniedError,
-  ProviderSetupPrivilegeUnavailableError,
-  ProviderSetupProvisioningError,
   ProviderSetupUnsupportedHostError,
   ProviderUnavailableError,
   SecretNotFoundError,
@@ -96,6 +94,16 @@ const cases = {
     }),
   ),
   ProviderUnavailableError: errorCase(ProviderUnavailableError, new ProviderUnavailableError(errorFields)),
+  AppliedStateVersionError: errorCase(
+    AppliedStateVersionError,
+    new AppliedStateVersionError({
+      ...errorFields,
+      path: canary,
+      storedVersion: 11,
+      supportedVersion: 10,
+      scope: "app",
+    }),
+  ),
   ProviderCapabilityError: errorCase(
     ProviderCapabilityError,
     new ProviderCapabilityError({
@@ -123,24 +131,6 @@ const cases = {
     ArtifactTransferError,
     new ArtifactTransferError({ ...errorFields, artifactRef: canary }),
   ),
-  ProviderSetupConsentDeniedError: errorCase(
-    ProviderSetupConsentDeniedError,
-    new ProviderSetupConsentDeniedError({ ...setupFields, change: "install-uidmap" }),
-  ),
-  ProviderSetupPrivilegeUnavailableError: errorCase(
-    ProviderSetupPrivilegeUnavailableError,
-    new ProviderSetupPrivilegeUnavailableError({ ...setupFields, change: "provision-subuid" }),
-  ),
-  ProviderSetupProvisioningError: errorCase(
-    ProviderSetupProvisioningError,
-    new ProviderSetupProvisioningError({
-      ...setupFields,
-      change: "provision-subgid",
-      stage: "install",
-      exitCode: 7,
-      stderr: canary,
-    }),
-  ),
   ProviderSetupUnsupportedHostError: errorCase(
     ProviderSetupUnsupportedHostError,
     new ProviderSetupUnsupportedHostError({
@@ -160,13 +150,13 @@ test.each(Object.entries(cases))(
   "%s reconstruction preserves its schema and yieldability",
   async (_tag, { original, encode }) => {
     // Given
-    const provider = { ...TestRuntimeProvider, start: () => Effect.fail(original) };
+    const provider = { ...TestRuntimeProvider, restart: () => Effect.fail(original) };
     // When
     const result = await Effect.runPromise(
       Effect.gen(function* () {
         yield* (yield* RedactionService).registerValues([canary]);
         const selected = yield* (yield* RuntimeProviderRegistry).select(plan);
-        return yield* Effect.result(selected.start(target));
+        return yield* Effect.result(selected.restart(target));
       }).pipe(Effect.provide(registryLayer(provider))),
     );
     // Then

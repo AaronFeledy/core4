@@ -1,8 +1,7 @@
 import { expect, test } from "bun:test";
 import { EventEmitter } from "node:events";
-import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
 import { createBufferedRendererIO } from "@lando/renderer/io";
-import { EventService, Renderer } from "@lando/sdk/services";
+import { EventService, Renderer, StreamFrameSink } from "@lando/sdk/services";
 import { Effect, Layer, Option, Schema } from "effect";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 
@@ -66,7 +65,7 @@ for (const mode of ["lando", "plain", "json", "verbose"] as const) {
                 _tag: "task.tree.start",
                 parentId: "tooling:gen",
                 label: "Generating",
-                children: ["tooling:gen:exec"],
+                children: [{ id: "tooling:gen:exec", label: "tooling:gen:exec" }],
                 timestamp: "2026-06-04T00:00:00.000Z",
               });
               yield* events.publish({

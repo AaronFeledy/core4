@@ -38,8 +38,16 @@ const isDoctorSelf = (check: unknown): boolean => isRecord(check) && check.name 
 const isPassingSetupReadiness = (check: unknown): boolean =>
   isRecord(check) && check.name === "setup-readiness" && check.status === "pass";
 
+const confirmsDelegatedCgroups = (check: unknown): boolean =>
+  isRecord(check) &&
+  check.name === "managed-runtime-container-cgroups" &&
+  check.status === "pass" &&
+  isRecord(check.context) &&
+  check.context.servicePlacement === "delegated";
+
 export const classifyPlatformReadinessDoctorResult = (
   result: PlatformReadinessDoctorCommandResult,
+  { requireDelegatedCgroups = false }: { readonly requireDelegatedCgroups?: boolean } = {},
 ): PlatformReadinessDoctorClassification => {
   if (result.exitCode !== 0) {
     return failed(`Doctor exited with code ${result.exitCode}.`);
@@ -73,6 +81,9 @@ export const classifyPlatformReadinessDoctorResult = (
   if (!checks.some(isPassingSetupReadiness)) {
     return failed("Doctor report did not include a passing setup-readiness check.");
   }
+  if (requireDelegatedCgroups && !checks.some(confirmsDelegatedCgroups)) {
+    return failed("Doctor did not confirm the managed runtime is running in a delegated cgroup.");
+  }
 
   return { outcome: "passed", exitCode: 0 };
 };
@@ -80,6 +91,7 @@ export const classifyPlatformReadinessDoctorResult = (
 interface CliOptions {
   readonly binary: string;
   readonly report: string;
+  readonly requireDelegatedCgroups: boolean;
 }
 
 class PlatformReadinessDoctorArgumentError extends Error {
@@ -94,10 +106,14 @@ const parseCliOptions = (args: readonly string[]): CliOptions => {
   const report = valueAfter(args, "--report");
   if (binary === undefined || report === undefined) {
     throw new PlatformReadinessDoctorArgumentError(
-      "Usage: platform-readiness-doctor.ts --binary <path> --report <path>",
+      "Usage: platform-readiness-doctor.ts --binary <path> --report <path> [--require-delegated-cgroups]",
     );
   }
-  return { binary: resolve(binary), report: resolve(report) };
+  return {
+    binary: resolve(binary),
+    report: resolve(report),
+    requireDelegatedCgroups: args.includes("--require-delegated-cgroups"),
+  };
 };
 
 const main = async (args: readonly string[]): Promise<void> => {
@@ -110,7 +126,7 @@ const main = async (args: readonly string[]): Promise<void> => {
     new Response(proc.stderr).text(),
   ]);
   const result = { exitCode, stdout, stderr } satisfies PlatformReadinessDoctorCommandResult;
-  const classification = classifyPlatformReadinessDoctorResult(result);
+  const classification = classifyPlatformReadinessDoctorResult(result, options);
   const report = {
     schemaVersion: 1,
     id: "platform-readiness-doctor",

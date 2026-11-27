@@ -1,9 +1,9 @@
 import {
   GPG_AGENT_OVERLAY_LABEL,
-  HOST_PROXY_SESSION_LABEL,
+  HOST_PROXY_CONTRACT_LABEL,
   SSH_AGENT_OVERLAY_LABEL,
   containerIntegrationLabels,
-  hostProxySessionDigest,
+  hostProxyContractDigest,
 } from "@lando/container-runtime/labels";
 import {
   AGENT_SOCKET_CONTAINER_DIR,
@@ -55,8 +55,8 @@ export const projectServiceMounts = (
 ): readonly ServiceInfoMount[] | undefined => {
   const observation = runtime?.mounts;
   const hostProxyActive =
-    hostProxySessionDigest(service.extensions) !== undefined ||
-    runtime?.labels?.[HOST_PROXY_SESSION_LABEL] !== undefined;
+    hostProxyContractDigest(service.extensions) !== undefined ||
+    runtime?.labels?.[HOST_PROXY_CONTRACT_LABEL] !== undefined;
   const integrationLabels = containerIntegrationLabels(service.environment);
   const sshAgentActive =
     integrationLabels[SSH_AGENT_OVERLAY_LABEL] === "true" ||

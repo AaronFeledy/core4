@@ -9,7 +9,7 @@ import {
   plannedFileSyncSessions,
 } from "@lando/sdk/schema";
 import { type FileSyncEngineShape, RuntimeProviderRegistry } from "@lando/sdk/services";
-import { TestFileSyncEngine } from "@lando/sdk/test";
+import { TestFileSyncEngine, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { DateTime, Effect, Layer } from "effect";
 import { FileSyncResolver } from "../../src/plugins/file-sync-resolver.ts";
 import { acceleratedPlan, app } from "./accelerated-start-recovery-support.ts";
@@ -238,7 +238,7 @@ export const rotationHarness = Effect.fnUntraced(function* (
         cleanedPlans.push(plan);
         yield* trip("targets");
       }),
-    destroy: (selector: Parameters<typeof base.destroy>[0], opts: Parameters<typeof base.destroy>[1]) =>
+    bringDown: (selector: Parameters<typeof base.bringDown>[0], opts: Parameters<typeof base.bringDown>[1]) =>
       Effect.gen(function* () {
         calls.push("retire");
         if (selector.plan !== oldPlan || opts.volumes || opts.purgeCaches || opts.removeState !== true)
@@ -246,7 +246,7 @@ export const rotationHarness = Effect.fnUntraced(function* (
         yield* trip("retire");
         applied = undefined;
         yield* trip("retire-after");
-        return { kind: "destroyed" as const, volumesRemoved: { data: 0, cache: 0 } };
+        return { kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } };
       }),
     prepareFileSyncTargets: (plan: AppPlan) =>
       Effect.gen(function* () {
@@ -293,14 +293,17 @@ export const rotationHarness = Effect.fnUntraced(function* (
   });
   const layer = Layer.mergeAll(
     harness.layer,
-    Layer.succeed(RuntimeProviderRegistry, {
-      ...harness.runtimeProviderRegistry,
-      select: () => Effect.succeed(provider),
-      resolveAppliedPlan: (_root, _app, lookup) =>
-        lookup === "exact"
-          ? Effect.sync(() => applied)
-          : Effect.die("file-sync rotation must ask for the exact app"),
-    }),
+    Layer.succeed(
+      RuntimeProviderRegistry,
+      makeTestRuntimeProviderRegistry({
+        ...harness.runtimeProviderRegistry,
+        select: () => Effect.succeed(provider),
+        resolveAppliedPlan: (_root, _app, lookup) =>
+          lookup === "exact"
+            ? Effect.sync(() => applied)
+            : Effect.die("file-sync rotation must ask for the exact app"),
+      }),
+    ),
     Layer.succeed(FileSyncResolver, resolver),
   );
   return {

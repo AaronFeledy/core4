@@ -112,7 +112,7 @@ If `lando start` stops with `dependency gate keycloak:healthy was not satisfied`
 
 Run `lando info` and open the `keycloak` URL with `/admin/` on the end, for example `https://keycloak.keycloak-demo.lndo.site/admin/`. Sign in as `admin` with the password from the Landofile, then switch to the `demo` realm to manage clients and users. If the browser warns about the certificate, see [Trust local HTTPS certificates](../subsystems/certificates-mkcert.mdx).
 
-Keycloak keeps its database inside the container, and `lando stop` and `lando restart` remove the container. Each start imports `realm/demo-realm.json` into a fresh database, so users and clients you add in the console last until the next stop or restart. Put the ones you want to keep in the realm file, then run `lando restart` to load it.
+Keycloak keeps its database inside the container. `lando stop` and `lando restart` keep the container, so users and clients you add in the console are still there after the next start. `--import-realm` skips a realm that already exists, so an edit to `realm/demo-realm.json` takes effect only in a fresh database: run `lando rebuild -y` to load it. Rebuild and `lando destroy` replace the container and discard what you added in the console, so put anything you want to keep in the realm file.
 
 ## Get a token from your app
 
@@ -171,7 +171,7 @@ If Keycloak exits before it is ready and won't restart, `lando start` stops wait
 
 ## Check the plan
 
-The `happy-path` scenario checks the resolved image, endpoint, readiness probe, URL references, and dependency gate. The `login` scenario starts the app, checks that the proxy serves Keycloak and that `lando info` reports its URL, opens the admin console through the proxy, lists `alice` with `kcadm.sh`, and runs `check-token.mjs`. The `startup-failure` scenario breaks a Keycloak option, sees `lando start` fail with Keycloak's exit and log, then restores it. The `console-changes-reset` scenario checks that a user added with `kcadm.sh` is gone after `lando stop` and `lando start`.
+The `happy-path` scenario checks the resolved image, endpoint, readiness probe, URL references, and dependency gate. The `login` scenario starts the app, checks that the proxy serves Keycloak and that `lando info` reports its URL, opens the admin console through the proxy, lists `alice` with `kcadm.sh`, and runs `check-token.mjs`. The `startup-failure` scenario breaks a Keycloak option, sees `lando start` fail with Keycloak's exit and log, then restores it. The `console-changes-survive` scenario checks that a user added with `kcadm.sh` is still there after `lando stop` and `lando start` and after `lando restart`, and is gone after `lando rebuild`.
 
 <Guide>
   <Scenario id="happy-path" render>
@@ -248,7 +248,7 @@ The `happy-path` scenario checks the resolved image, endpoint, readiness probe, 
     </Step>
   </Scenario>
 
-  <Scenario id="console-changes-reset" layer="e2e" render={false} reason="Tripwire for #2535: lando stop removes the Keycloak container, so console changes are gone on the next start">
+  <Scenario id="console-changes-survive" layer="e2e" render={false} reason="Console changes survive stop and start and a bare restart because both keep the Keycloak container (#2535)">
     <Step name="scaffold">
       <UseFixture name="keycloak-demo" />
     </Step>
@@ -262,6 +262,14 @@ The `happy-path` scenario checks the resolved image, endpoint, readiness probe, 
     <Step name="stop-and-start">
       <Run command="lando stop" />
       <Verify command="lando start" expect={{ stdout: { regex: "ready: keycloak-demo" } }} />
+      <Verify command="lando exec keycloak -- /opt/keycloak/bin/kcadm.sh get users -r demo --fields username --no-config --server http://localhost:8080 --realm master --user admin --password local-development-only" expect={{ stdout: { regex: "\"username\" : \"carol\"" } }} />
+    </Step>
+    <Step name="restart">
+      <Verify command="lando restart" expect={{ stdout: { regex: "restarted: keycloak-demo" } }} />
+      <Verify command="lando exec keycloak -- /opt/keycloak/bin/kcadm.sh get users -r demo --fields username --no-config --server http://localhost:8080 --realm master --user admin --password local-development-only" expect={{ stdout: { regex: "\"username\" : \"carol\"" } }} />
+    </Step>
+    <Step name="rebuild-resets">
+      <Verify command="lando rebuild -y" expect={{ stdout: { regex: "rebuilt: keycloak-demo" } }} />
       <Verify command="lando exec keycloak -- /opt/keycloak/bin/kcadm.sh get users -r demo --fields username --no-config --server http://localhost:8080 --realm master --user admin --password local-development-only" expect={{ stdout: { regex: "\"username\" : \"alice\"", not: { regex: "carol" } } }} />
     </Step>
     <Step name="cleanup">

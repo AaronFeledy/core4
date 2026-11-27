@@ -2,6 +2,7 @@ import { Effect, Schema } from "effect";
 
 import { ListenerObservation } from "../schema/listener-observation.ts";
 import { AbsolutePath, ProviderId } from "../schema/primitives.ts";
+import { newerStateRemediation, sanitizeStateWriter } from "./state-version-remediation.ts";
 
 const Remediation = Schema.NonEmptyString.check(Schema.isPattern(/\S/u));
 // Schema.Json's Codec view erases constructor input to unknown; recover its JSON input view.
@@ -30,6 +31,51 @@ export class ProviderUnavailableError extends Schema.TaggedError<ProviderUnavail
   "ProviderUnavailableError",
   ProviderErrorBase,
 ) {}
+
+export class AppliedStateVersionError extends Schema.TaggedError<AppliedStateVersionError>()(
+  "AppliedStateVersionError",
+  {
+    providerId: Schema.String,
+    operation: Schema.String,
+    path: Schema.String,
+    storedVersion: Schema.Int,
+    supportedVersion: Schema.Int,
+    writtenBy: Schema.optionalKey(
+      Schema.String.annotate({ description: "Lando version that wrote the applied state, when recorded." }),
+    ),
+    scope: Schema.Literals(["app", "provider"]),
+    appId: Schema.optionalKey(Schema.String),
+    message: Schema.String,
+    remediation: Remediation,
+    cause: Schema.optional(Schema.Unknown),
+  },
+) {}
+
+export const appliedStateVersionError = ({
+  reader,
+  remediation,
+  writtenBy,
+  ...input
+}: Pick<
+  typeof AppliedStateVersionError.Type,
+  | "providerId"
+  | "operation"
+  | "path"
+  | "storedVersion"
+  | "supportedVersion"
+  | "scope"
+  | "appId"
+  | "cause"
+  | "writtenBy"
+> & { readonly reader?: string; readonly remediation?: string }): AppliedStateVersionError => {
+  const writer = sanitizeStateWriter(writtenBy);
+  return new AppliedStateVersionError({
+    ...input,
+    ...(writer === undefined ? {} : { writtenBy: writer }),
+    message: `A newer Lando wrote applied state file "${input.path}" with applied-state version ${input.storedVersion}; this Lando supports version ${input.supportedVersion}. Lando cannot safely change the affected runtime resources.${input.scope === "provider" ? " This file protects every app on this provider." : ""}`,
+    remediation: remediation ?? newerStateRemediation({ ...input, writtenBy: writer, reader }),
+  });
+};
 
 export class ProviderCapabilityError extends Schema.TaggedError<ProviderCapabilityError>()(
   "ProviderCapabilityError",
@@ -150,55 +196,12 @@ const ProviderSetupErrorBase = {
   remediation: Remediation,
 };
 
-export class ProviderSetupConsentDeniedError extends Schema.TaggedError<ProviderSetupConsentDeniedError>()(
-  "ProviderSetupConsentDeniedError",
-  {
-    ...ProviderSetupErrorBase,
-    change: Schema.Literals([
-      "install-uidmap",
-      "provision-subuid",
-      "provision-subgid",
-      "provision-cgroups-delegation",
-    ]),
-  },
-) {}
-
 export class ProviderSetupUnsupportedHostError extends Schema.TaggedError<ProviderSetupUnsupportedHostError>()(
   "ProviderSetupUnsupportedHostError",
   {
     ...ProviderSetupErrorBase,
     prerequisite: Schema.String,
     host: Schema.optional(Schema.Struct({ id: Schema.String, versionId: Schema.String })),
-  },
-) {}
-
-export class ProviderSetupPrivilegeUnavailableError extends Schema.TaggedError<ProviderSetupPrivilegeUnavailableError>()(
-  "ProviderSetupPrivilegeUnavailableError",
-  {
-    ...ProviderSetupErrorBase,
-    change: Schema.Literals([
-      "install-uidmap",
-      "provision-subuid",
-      "provision-subgid",
-      "provision-cgroups-delegation",
-    ]),
-  },
-) {}
-
-export class ProviderSetupProvisioningError extends Schema.TaggedError<ProviderSetupProvisioningError>()(
-  "ProviderSetupProvisioningError",
-  {
-    ...ProviderSetupErrorBase,
-    change: Schema.Literals([
-      "install-uidmap",
-      "provision-subuid",
-      "provision-subgid",
-      "provision-cgroups-delegation",
-    ]),
-    stage: Schema.Literals(["update", "install", "verify", "provision", "reload"]),
-    exitCode: Schema.optional(Schema.Number),
-    stderr: Schema.optional(Schema.String),
-    cause: Schema.optional(Schema.Unknown),
   },
 ) {}
 

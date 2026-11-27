@@ -1,8 +1,16 @@
+# Every `bun` command run from the repo root refuses preserved symlinks before loading workspace code.
+preload = ["./scripts/preserve-symlinks-preload.ts"]
+
 [install]
 linker = "hoisted"
 
 [test]
-preload = ["./scripts/require-derived-codegen-preload.ts", "./scripts/test-preload.ts"]
+preload = [
+  "./scripts/require-derived-codegen-preload.ts",
+  "./scripts/preserve-symlinks-preload.ts",
+  "./scripts/test-preload.ts",
+  "./scripts/test-preload-teardown.ts",
+]
 include = [
   "core/test/**/*.test.ts",
   "engine/test/**/*.test.ts",

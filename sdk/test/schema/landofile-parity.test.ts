@@ -150,6 +150,10 @@ const AUTHORING_PUBLISHED_GAPS = new Map<string, string>([
     "docs/guides/expressions/fixtures/expressions-service-port-misuse/.lando.yml",
     "Self-port scope admission requires parsed member and destination checks.",
   ],
+  [
+    "docs/guides/expressions/fixtures/expressions-url-tooling-refused/.lando.yml",
+    "Public service URL admission requires parsed member and destination checks.",
+  ],
   ["notice-removal-not-after-since", "JSON Schema cannot compare the removeIn and since versions."],
   [
     "planner-boolean",
@@ -192,6 +196,10 @@ const SKIPPED = [
   {
     suffix: ".lando.local.ts",
     reason: "TypeScript overlay program, not a canonical YAML Landofile document.",
+  },
+  {
+    suffix: ".lando.user.ts",
+    reason: "TypeScript user override, not a canonical YAML Landofile document.",
   },
   { suffix: ".lando.base.yml", reason: "Partial base layer, not a canonical Landofile document." },
   { suffix: ".lando.local.yml", reason: "Partial overlay layer, not a canonical Landofile document." },
@@ -308,7 +316,8 @@ const inputInvalid = [
 const structuralFixtureOverrides = new Map([
   ["docs/guides/expressions/fixtures/expressions-typed-values/.lando.yml", false],
   ["docs/guides/config-views/fixtures/layered/.lando.yml", false],
-  ["docs/guides/expressions/fixtures/expressions-service-port-misuse/.lando.yml", true],
+  // Structurally valid; load-time public URL admission refuses it.
+  ["docs/guides/expressions/fixtures/expressions-url-tooling-refused/.lando.yml", true],
 ]);
 
 async function loadCorpus() {

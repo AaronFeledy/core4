@@ -1,5 +1,6 @@
 import {
   type HealthcheckPlan,
+  type ProviderCapabilities,
   type ServiceInfo,
   type ServicePlan,
   effectiveReadiness,
@@ -41,16 +42,45 @@ const describeProbe = (
   configPath: ["services", String(service.name), field],
 });
 
+type HealthState = NonNullable<ServiceInfo["health"]>["state"];
+
+/**
+ * Native health as evidence: an explicit `none` check is not monitored, and a check nothing
+ * schedules (`serviceHealth: "none"`) stays at whatever the engine last recorded, so it is unknown.
+ */
+const nativeHealthState = (
+  service: ServicePlan,
+  runtimeHealth: HealthState | undefined,
+  serviceHealth: ProviderCapabilities["serviceHealth"],
+): HealthState => {
+  if (service.healthcheck?.kind === "none") return "not-monitored";
+  switch (serviceHealth) {
+    case "none":
+      return "unknown";
+    case "native":
+    case "lando":
+      return runtimeHealth ?? "unknown";
+    default:
+      return serviceHealth satisfies never;
+  }
+};
+
 export const projectServiceObservation = (
   service: ServicePlan,
   observed: ObservedService,
+  serviceHealth: ProviderCapabilities["serviceHealth"],
 ): Pick<ServiceInfo, "status" | "health" | "readiness"> => {
   const { runtime } = observed;
   const readiness = effectiveReadiness(service);
+  const healthState = nativeHealthState(service, runtime.health, serviceHealth);
+  const observedVerdict = healthState !== "unknown" && healthState !== "not-monitored";
   return {
     status: serviceStateOf(runtime, observed.state === "completed"),
     health: {
-      state: service.healthcheck?.kind === "none" ? "not-monitored" : (runtime.health ?? "unknown"),
+      state: healthState,
+      ...(observedVerdict && runtime.healthCheckedAt !== undefined
+        ? { checkedAt: runtime.healthCheckedAt }
+        : {}),
       ...(service.healthcheck === undefined
         ? {}
         : { check: describeProbe(service.healthcheck, service, "healthcheck") }),

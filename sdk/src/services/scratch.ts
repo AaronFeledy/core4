@@ -1,4 +1,4 @@
-import { Context, type Effect, type Scope } from "effect";
+import { Context, type Effect, Schema, type Scope } from "effect";
 
 import type {
   AppPlacementError,
@@ -10,7 +10,13 @@ import type {
   ScratchIsolationConflictError,
   ScratchSourceUnresolvedError,
 } from "../errors/index.ts";
-import type { AbsolutePath, AppRef, IsolateMode } from "../schema/index.ts";
+import {
+  type AbsolutePath,
+  type AppRef,
+  type IsolateMode,
+  ProxyAuthority,
+  ServiceName,
+} from "../schema/index.ts";
 
 export interface ScratchAppPaths {
   readonly base: AbsolutePath;
@@ -20,6 +26,14 @@ export interface ScratchAppPaths {
 }
 
 export type ScratchSource = { readonly kind: "fork" } | { readonly kind: "recipe"; readonly ref: string };
+
+export type ScratchAcquireSource =
+  | {
+      readonly kind: "fork";
+      /** Existing directory to discover from. Relative paths resolve against the runtime's cwd. */
+      readonly path?: string;
+    }
+  | Extract<ScratchSource, { readonly kind: "recipe" }>;
 
 /**
  * Opt-in to mounting the host current working directory ($PWD) into the
@@ -34,7 +48,7 @@ export interface ScratchMountCwd {
 type ScratchAcquireIsolationMode = IsolateMode | "none";
 
 export interface ScratchAcquireInput {
-  readonly source: ScratchSource;
+  readonly source: ScratchAcquireSource;
   readonly detached: boolean;
   readonly name?: string;
   readonly answers?: Record<string, string>;
@@ -77,7 +91,7 @@ export type ScratchLifetimeStatus = "attached" | "detached" | "orphan";
 export interface ScratchSummary {
   readonly id: string;
   readonly app: AppRef;
-  /** Where the scratch app came from — a fork of the cwd app or a recipe. */
+  /** Whether the scratch app came from a fork or a recipe. */
   readonly source: ScratchSource;
   /** Isolation mode the scratch app was started in (`full` | `baked` | `cwd`). */
   readonly mode: IsolateMode;
@@ -119,15 +133,24 @@ export interface ScratchServiceEndpoints {
   }>;
 }
 
+export const ScratchPublishedRoute = Schema.Struct({
+  ...ProxyAuthority.fields,
+  service: ServiceName.annotate({ description: "Scratch service receiving requests to this URL." }),
+  url: Schema.String.annotate({
+    description: "Published route URL, including any nonstandard port and path prefix.",
+  }),
+});
+export type ScratchPublishedRoute = typeof ScratchPublishedRoute.Type;
+
 /**
- * Full inspection of a single scratch app: the same fields as a
- * `ScratchSummary` plus the realized mount points, network membership, and
- * per-service endpoints read from the cached plan.
+ * Full scratch inspection: summary, cached mount/network/endpoint details,
+ * and, when the scratch declares enabled routes, the routes the router confirms.
  */
 export interface ScratchInfo extends ScratchSummary {
   readonly mounts: ReadonlyArray<ScratchMountPoint>;
   readonly network: ScratchNetworkMembership;
   readonly endpoints: ReadonlyArray<ScratchServiceEndpoints>;
+  readonly routes?: ReadonlyArray<ScratchPublishedRoute>;
 }
 
 export interface ScratchStartOptions {

@@ -4,12 +4,13 @@ import {
   annotateFailureRole,
   commandFailureCause,
   failureDefectCause,
+  mapDefectCause,
   mapFailureCause,
   mergeFailure,
 } from "@lando/sdk/command-result";
 import { ProcessTimeoutError } from "@lando/sdk/errors";
 import type { FailureRole } from "@lando/sdk/schema";
-import type { ExecChunk, ProcessStreamEvent, ProviderError } from "@lando/sdk/services";
+import type { ExecChunk, ProcessStreamEvent, ProviderError, StreamFrameSinkShape } from "@lando/sdk/services";
 import { Cause, Effect, Exit, Pull, Result, Scope, Stream } from "effect";
 
 export type CommandOutputReason = "exit" | "protocol" | "provider" | "timeout" | "stdout-limit";
@@ -25,6 +26,20 @@ interface CommandOutputOptions<E> {
   readonly authoritativeTokens?: Iterable<string> | undefined;
   readonly stdout?: "forward" | "discard";
   readonly stdoutLimit?: number;
+  /** Propagate defects with their payload discarded instead of projecting them as command failures. */
+  readonly preserveDefects?: boolean;
+  /**
+   * The invocation's live sink for a user-visible command: stderr chunks are
+   * emitted as they arrive, still feeding the failure tail. Stdout stays the
+   * caller's payload or control data and never reaches the sink.
+   */
+  readonly live?: CommandOutputLive;
+}
+
+/** Where a user-visible command's stderr streams while it runs, with the service that produced it. */
+export interface CommandOutputLive {
+  readonly sink: StreamFrameSinkShape;
+  readonly service?: string;
 }
 
 /** Observe an existing stream through EOF. Payload stdout is forwarded without decoding or copying. */
@@ -50,37 +65,57 @@ export const commandOutputStream = <E, R, E2>(
         };
         const failure = (reason: CommandOutputReason) =>
           makeFailure({ reason, exitCode, stderrTail: tail.finish() });
-        const output = source.pipe(
-          Stream.map((event) => {
-            if ("exitCode" in event) {
-              if (terminal || !Number.isFinite(event.exitCode) || !Number.isInteger(event.exitCode)) {
-                protocol = true;
-              } else {
-                exitCode = event.exitCode;
-              }
-              terminal = true;
-              return Result.fail(undefined);
-            }
-            if (terminal) {
+        const observe = (event: ExecChunk | ProcessStreamEvent) => {
+          if ("exitCode" in event) {
+            if (terminal || !Number.isFinite(event.exitCode) || !Number.isInteger(event.exitCode)) {
               protocol = true;
+            } else {
+              exitCode = event.exitCode;
+            }
+            terminal = true;
+            return Result.fail(undefined);
+          }
+          if (terminal) {
+            protocol = true;
+            return Result.fail(undefined);
+          }
+          if (event.kind === "stderr") {
+            tail.write(event.chunk);
+            return Result.fail(undefined);
+          }
+          if (options.stdout === "discard") return Result.fail(undefined);
+          if (options.stdoutLimit !== undefined) {
+            if (event.chunk.length > options.stdoutLimit - stdoutBytes) {
+              overflow = true;
               return Result.fail(undefined);
             }
-            if (event.kind === "stderr") {
-              tail.write(event.chunk);
-              return Result.fail(undefined);
-            }
-            if (options.stdout === "discard") return Result.fail(undefined);
-            if (options.stdoutLimit !== undefined) {
-              if (event.chunk.length > options.stdoutLimit - stdoutBytes) {
-                overflow = true;
-                return Result.fail(undefined);
-              }
-              stdoutBytes += event.chunk.length;
-            }
-            return overflow ? Result.fail(undefined) : Result.succeed(event.chunk);
-          }),
-          Stream.filterMap((value) => value),
-        );
+            stdoutBytes += event.chunk.length;
+          }
+          return overflow ? Result.fail(undefined) : Result.succeed(event.chunk);
+        };
+        const live = options.live;
+        const output = (
+          live === undefined
+            ? source.pipe(Stream.map(observe))
+            : source.pipe(
+                Stream.mapEffect((event) => {
+                  // Only stderr before the exit status is the command's own output.
+                  const chunk =
+                    !terminal && !("exitCode" in event) && event.kind === "stderr" ? event.chunk : undefined;
+                  const next = observe(event);
+                  return chunk === undefined || chunk.length === 0
+                    ? Effect.succeed(next)
+                    : live.sink
+                        .emit({
+                          _tag: "stderr",
+                          kind: "bytes",
+                          chunk,
+                          ...(live.service === undefined ? {} : { service: live.service }),
+                        })
+                        .pipe(Effect.as(next));
+                }),
+              )
+        ).pipe(Stream.filterMap((value) => value));
         const completed = Stream.fromEffect(
           Effect.suspend(() => {
             const reason =
@@ -97,7 +132,10 @@ export const commandOutputStream = <E, R, E2>(
         const sanitize = (cause: Cause.Cause<unknown>, includeCompletion = true): Cause.Cause<E2> => {
           let cleanupOnly = true;
           let mappedFailure = false;
-          const safe = mapFailureCause(commandFailureCause(cause), (error, role) => {
+          const safeCause = options.preserveDefects
+            ? mapDefectCause(cause, () => "Command output failed unexpectedly.")
+            : commandFailureCause(cause);
+          const safe = mapFailureCause(safeCause, (error, role) => {
             mappedFailure = true;
             if (role !== "cleanup") cleanupOnly = false;
             if (owned.has(error as E2)) return error as E2;

@@ -3,6 +3,7 @@ import { hostEventsShellConfigError } from "@lando/engine/config/global-config";
 import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
 import { RuntimeLayerFactory } from "@lando/engine/runtime/runtime-layer-factory";
 import * as LandoConfigService from "@lando/engine/services/config";
+import { CORE_VERSION } from "@lando/engine/version";
 import { ConfigError } from "@lando/sdk/errors";
 import * as StateStore from "@lando/state-store/service";
 import { Context, Effect, Layer, Option, Result, Schema, type Scope } from "effect";
@@ -103,9 +104,9 @@ const collectResilientDoctorReport = Effect.fnUntraced(function* (
       const dnsLayer = Option.isSome(resolver)
         ? Layer.succeed(HostDnsResolver, resolver.value)
         : HostDnsResolver.layer;
-      const support = yield* Layer.build(Layer.merge(StateStore.layer, dnsLayer)).pipe(
-        Effect.provide(configResult.success),
-      );
+      const support = yield* Layer.build(
+        Layer.merge(StateStore.layerWith({ writer: CORE_VERSION }), dnsLayer),
+      ).pipe(Effect.provide(configResult.success));
       const configContext = Context.merge(configResult.success, support);
       contexts = { config: configContext };
       const hostEventsError = hostEventsShellConfigError(
@@ -113,7 +114,8 @@ const collectResilientDoctorReport = Effect.fnUntraced(function* (
         snapshot.paths.configFile,
       );
       initialChecks.push(withSection("global-config", globalConfigFinding(hostEventsError, redact)));
-      if (selectedDoctorSections(table, options).some(wantsDoctorRuntime)) {
+      const selected = selectedDoctorSections(table, options);
+      if (selected.some(wantsDoctorRuntime)) {
         const runtimeLayerFactory = yield* RuntimeLayerFactory;
         const runtime = runtimeLayerFactory.make(
           cliRuntimeOptions({ bootstrap: "provider", telemetry: false, plugins: { policy: "discovery" } }),
@@ -131,6 +133,25 @@ const collectResilientDoctorReport = Effect.fnUntraced(function* (
         if (built.self !== undefined) initialChecks.push(built.self);
         if (built.value !== undefined)
           contexts = { config: configContext, runtime: Context.merge(configContext, built.value) };
+      }
+      if (contexts.runtime === undefined && selected.some(({ id }) => id === "state-compatibility")) {
+        const factory = yield* RuntimeLayerFactory;
+        const inventory = factory.makeProviderInventory?.(
+          cliRuntimeOptions({ bootstrap: "plugins", telemetry: false, plugins: { policy: "discovery" } }),
+          snapshot,
+        );
+        if (inventory !== undefined) {
+          const built = yield* isolateDoctorSection({
+            section: "state-compatibility",
+            probe: "applied-state-inventory",
+            effect: Layer.build(inventory).pipe(Effect.provide(configContext)),
+            fallback: undefined,
+            budgetMs,
+            redact,
+          });
+          if (built.self !== undefined) initialChecks.push(built.self);
+          if (built.value !== undefined) contexts = { config: Context.merge(configContext, built.value) };
+        }
       }
     }
   }

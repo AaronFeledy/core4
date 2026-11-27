@@ -12,6 +12,7 @@ import {
   TaskDetailEvent,
   TaskFailEvent,
   TaskStartEvent,
+  type TaskTreeChild,
   TaskTreeCompleteEvent,
   TaskTreeStartEvent,
 } from "../events/task.ts";
@@ -28,7 +29,7 @@ const publishEvent = (
 export interface TreeStartArgs {
   readonly parentId: string;
   readonly label: string;
-  readonly children: ReadonlyArray<string>;
+  readonly children: ReadonlyArray<TaskTreeChild>;
   readonly mode?: "list" | "grid";
 }
 

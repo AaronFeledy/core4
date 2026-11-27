@@ -4,13 +4,15 @@ import { tmpdir } from "node:os";
 import { delimiter, dirname, join, resolve } from "node:path";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { createPayloadRedactor } from "@lando/sdk/secrets";
-import { EventService, type LandoEvent, ShellRunner } from "@lando/sdk/services";
-import { Effect, Exit, Layer, Queue, Stream } from "effect";
 import {
+  EventService,
+  type LandoEvent,
+  ShellRunner,
   StreamFrameSink,
   type StreamFrameSinkFrame,
   createCollectingStreamFrameSink,
-} from "../../src/operations/stream-frame-sink.ts";
+} from "@lando/sdk/services";
+import { Effect, Exit, Layer, Queue, Stream } from "effect";
 import { landoLauncher } from "../../src/services/bun-command-env.ts";
 import * as BunShellRunner from "../shell-runner.ts";
 
@@ -138,9 +140,8 @@ test("terminal host IO inherits input but routes output through the live sink", 
     await writeFile(scriptPath, "echo -n 'name? '\necho to-stderr 1>&2\ncat\n");
     const helper = `
       import { Effect } from "effect";
-      import { ShellRunner } from "@lando/sdk/services";
+      import { ShellRunner, StreamFrameSink } from "@lando/sdk/services";
       import { layer } from ${JSON.stringify(runnerPath)};
-      import { StreamFrameSink } from ${JSON.stringify(resolve(import.meta.dirname, "../../src/operations/stream-frame-sink.ts"))};
       const result = await Effect.runPromise(Effect.flatMap(ShellRunner, shell =>
         shell.runScript(${JSON.stringify(scriptPath)}, { hostIo: "terminal" })
       ).pipe(Effect.provide(layer(() => { throw new TypeError("unused interactive IO"); })),

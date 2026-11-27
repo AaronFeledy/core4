@@ -19,14 +19,15 @@ import {
   ProviderId,
   StreamFrame,
 } from "@lando/sdk/schema";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { type Context, Effect, Layer, Schema } from "effect";
 import { metaDoctorSpec } from "../../src/cli/command-specs/meta/doctor.ts";
 import type { DoctorSectionResult } from "../../src/cli/commands/doctor.ts";
 import { type DoctorOptions, doctor } from "../../src/cli/commands/doctor.ts";
 import { type DoctorCheck, DoctorNdjsonResultSchema } from "../../src/cli/commands/doctor-contract.ts";
-import { renderDoctorReportAsNdjson } from "../../src/cli/commands/doctor-render-ndjson.ts";
 import { renderDoctorReport } from "../../src/cli/commands/doctor-render-text.ts";
 import { makeDoctorReport } from "../../src/cli/commands/doctor-report.ts";
+import { renderDoctorReportAsNdjson } from "./doctor-report-fixture";
 
 const asReport = (result: DoctorSectionResult) =>
   makeDoctorReport({
@@ -81,10 +82,7 @@ const resultEnvelope = (ndjson: string) => {
 };
 
 const buildRegistry = (provider: typeof TestRuntimeProvider) =>
-  RuntimeProviderRegistry.of({
-    resolveAppliedPlan: () => Effect.succeed(undefined),
-    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-    appliedPlansFor: () => Effect.succeed([]),
+  makeTestRuntimeProviderRegistry({
     list: Effect.succeed([ProviderId.make(provider.id)]),
     capabilities: Effect.succeed(provider.capabilities),
     select: () => Effect.succeed(provider),
@@ -755,12 +753,8 @@ describe("meta:doctor command", () => {
       try {
         const socket = "/run/user/1000/podman/podman.sock";
         await writeProviderLandoState(dataRoot, socket);
-        const registry = RuntimeProviderRegistry.of({
-          resolveAppliedPlan: () => Effect.succeed(undefined),
-          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-          appliedPlansFor: () => Effect.succeed([]),
+        const registry = makeTestRuntimeProviderRegistry({
           list: Effect.succeed([ProviderId.make("podman")]),
-          capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
           select: () => Effect.die("provider-podman should not be constructed when conflict is pre-detected"),
         });
         const result = await Effect.runPromise(

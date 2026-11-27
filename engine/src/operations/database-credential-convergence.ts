@@ -36,12 +36,27 @@ const resolveTarget = Effect.fn("DatabaseConvergence.resolveTarget")(function* (
   const registry = yield* RuntimeProviderRegistry;
   const planner = yield* AppPlanner;
   const landofile = yield* resolver.load(request.root).pipe(mapFailures(() => rejected));
+  const discovered = yield* registry.resolveAppliedPlan(request.root, undefined, "exact").pipe(
+    mapFailures((error) => {
+      switch (error._tag) {
+        case "AppliedStateVersionError":
+          return error;
+        case "ProviderUnavailableError":
+          return error.operation === "applied-state.read" ? error : rejected;
+        default:
+          return rejected;
+      }
+    }),
+  );
+  if (discovered === undefined) return yield* unavailable;
   const plan = yield* registry
-    .resolveAppliedPlan(request.root, undefined, "exact")
-    .pipe(mapFailures(() => rejected));
+    .readAppliedPlanStrict(discovered)
+    .pipe(mapFailures((error) => (error._tag === "NoProviderInstalledError" ? rejected : error)));
   if (plan === undefined) return yield* unavailable;
   const identity = planAppIdentity(plan);
   if (
+    plan.id !== discovered.id ||
+    plan.provider !== discovered.provider ||
     landofile.context.appRoot !== request.root ||
     identity.appRoot !== request.root ||
     (landofile.document.provider !== undefined && landofile.document.provider !== plan.provider)

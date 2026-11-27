@@ -1,8 +1,8 @@
 import { RedactionService } from "@lando/redaction/service";
+import { causeRemediation } from "@lando/sdk/command-result";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { type ProviderId, StopAppResult } from "@lando/sdk/schema";
 import { Effect, Option, Schema } from "effect";
-import { taggedErrorRemediation } from "../providers/managed.ts";
 
 const PoweroffAppKind = Schema.Literals(["user", "scratch", "global"]);
 const PoweroffAppOutcome = Schema.Literals(["stopped", "unchanged", "destroyed", "skipped"]);
@@ -57,7 +57,7 @@ const failureMessage = (error: unknown): string => {
 };
 
 const failureRemediation = (error: unknown): string =>
-  taggedErrorRemediation(error) ?? "Resolve the reported failure for this app, then retry `lando poweroff`.";
+  causeRemediation(error) ?? "Resolve the reported failure for this app, then retry `lando poweroff`.";
 
 const redacted = Effect.fnUntraced(function* (text: string) {
   const redaction = yield* Effect.serviceOption(RedactionService);
@@ -107,15 +107,6 @@ export const providerInventoryFailure = (providerId: string, error: unknown) => 
   providerId,
   error,
 });
-
-export const unreadableAppliedState = (providerId: ProviderId, count: number) =>
-  new ProviderUnavailableError({
-    providerId,
-    operation: "applied-state.list",
-    message: `${count} applied-state records could not be read.`,
-    remediation:
-      "Restore a readable applied-state record from a trusted backup or remove the corrupt file, then retry `lando poweroff`.",
-  });
 
 export const unobservedRuntimeError = (providerId: ProviderId) =>
   new ProviderUnavailableError({

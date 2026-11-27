@@ -15,9 +15,12 @@ import {
 import { TestRuntimeProvider } from "@lando/core/testing";
 import { makeLandoPaths } from "@lando/paths";
 import type { LandoRuntime } from "@lando/sdk/app";
-import { TestRouterService } from "@lando/sdk/test";
-import { Effect, Layer, Option, Schema } from "effect";
-import { withCwd } from "../_support/temp-cwd.ts";
+import {
+  TestRouterService,
+  makeTestPrivilegeService,
+  makeTestRuntimeProviderRegistry,
+} from "@lando/sdk/test";
+import { Effect, Layer, Schema } from "effect";
 
 const Registry = Schema.Struct({ data: Schema.Array(Schema.Struct({ id: Schema.String })) });
 
@@ -35,8 +38,8 @@ const providerLayers = () => {
       TestRuntimeProvider.apply(plan, options).pipe(
         Effect.tap(() => Effect.sync(() => void plans.set(plan.root, options?.recordedPlan ?? plan))),
       ),
-    destroy: (target, options) =>
-      TestRuntimeProvider.destroy(target, options).pipe(
+    bringDown: (target, options) =>
+      TestRuntimeProvider.bringDown(target, options).pipe(
         Effect.tap(() =>
           Effect.sync(() => {
             if (options.removeState !== false && target.plan !== undefined) plans.delete(target.plan.root);
@@ -77,14 +80,16 @@ const providerLayers = () => {
     Layer.succeed(RuntimeProvider, provider),
     Layer.succeed(
       PrivilegeService,
-      PrivilegeService.of({
-        elevate: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
-      }),
+      PrivilegeService.of(
+        makeTestPrivilegeService({
+          elevate: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
+        }),
+      ),
     ),
     Layer.succeed(RouterService, RouterService.of({ ...TestRouterService, id: "traefik" })),
     Layer.succeed(
       RuntimeProviderRegistry,
-      RuntimeProviderRegistry.of({
+      makeTestRuntimeProviderRegistry({
         resolveAppliedPlan: (root) => Effect.sync(() => plans.get(root)),
         resolveTeardownEvidence: (root) =>
           Effect.sync(() => {
@@ -131,20 +136,16 @@ const fixture = async () => {
   expect(paths.roots.userCacheRoot).not.toBe(ambient.roots.userCacheRoot);
   expect(paths.roots.userConfRoot).not.toBe(ambient.roots.userConfRoot);
   const layers = providerLayers();
+  // The process cwd stays elsewhere: the runtime's cwd alone must locate the app.
   const run = <A, E>(use: (runtime: LandoRuntime) => Effect.Effect<A, E>) =>
-    withCwd(
-      appRoot,
-      () =>
-        Effect.runPromise(
-          Effect.scoped(
-            openLandoRuntime({
-              cwd: appRoot,
-              config,
-              plugins: { policy: "bundled-only", layers },
-            }).pipe(Effect.flatMap(use)),
-          ),
-        ),
-      [base],
+    Effect.runPromise(
+      Effect.scoped(
+        openLandoRuntime({
+          cwd: appRoot,
+          config,
+          plugins: { policy: "bundled-only", layers },
+        }).pipe(Effect.flatMap(use)),
+      ),
     );
   return {
     appRoot,
@@ -212,7 +213,7 @@ describe("cache wipe library contract", () => {
     await f.wipe();
     const result = await f.run((runtime) =>
       Effect.gen(function* () {
-        const scratch = Option.getOrThrow(yield* runtime.run(Effect.serviceOption(ScratchAppService)));
+        const scratch = yield* runtime.run(ScratchAppService);
         const listed = yield* scratch.list();
         const info = yield* scratch.info(handle.id);
         const paths = yield* scratch.paths(handle.id);

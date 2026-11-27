@@ -92,8 +92,8 @@ test("keeps the real default tools/list within discovery budgets and accepts doc
   expect(tools.map((tool) => tool.name)).toContain("db:snapshots");
   expect(tools.map((tool) => tool.name)).toContain("schedule:list");
   // Every tool advertises the per-call appPath selector
-  // (about 130 bytes each), and start and restart results list the services removed from the
-  // Landofile (about 220 bytes each).
+  // (about 130 bytes each), start and restart results list the services removed from the
+  // Landofile (about 220 bytes each), and stop --service lists servicesKeptRunning.
   expect(Buffer.byteLength(JSON.stringify({ jsonrpc: "2.0", id: 2, result: catalog }))).toBeLessThan(93_000);
   for (const tool of tools) {
     expect(Buffer.byteLength(JSON.stringify(tool.outputSchema)), tool.name).toBeLessThan(9_000);

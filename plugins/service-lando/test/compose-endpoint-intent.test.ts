@@ -1,10 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
+import { makeLandoPaths } from "@lando/paths";
 import { linuxMvpCapabilities } from "@lando/provider-lando";
 import { LandofileShape, ServiceName } from "@lando/sdk/schema";
-import { AppPlanner } from "@lando/sdk/services";
-import { Cause, Effect, Exit, Option, Schema } from "effect";
+import { AppPlanner, PathsService } from "@lando/sdk/services";
+import { Cause, Effect, Exit, Layer, Option, Schema } from "effect";
 import { COMPOSE_FEATURE_ID, composeServiceFeature, composeServiceType } from "../src/services/compose.ts";
 import { compileTestLandofile } from "./support/compiled-landofile.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
@@ -76,7 +77,12 @@ describe("compose endpoint intent", () => {
     const exit = await Effect.runPromiseExit(
       Effect.flatMap(AppPlanner, (planner) =>
         planner.plan(compileTestLandofile(landofile), linuxMvpCapabilities),
-      ).pipe(Effect.provide(AppPlannerLayer.layer), Effect.provide(PluginRegistryLayer.layer)),
+      ).pipe(
+        Effect.provide(
+          AppPlannerLayer.layer.pipe(Layer.provide(Layer.succeed(PathsService, makeLandoPaths()))),
+        ),
+        Effect.provide(PluginRegistryLayer.layer),
+      ),
     );
 
     // Then

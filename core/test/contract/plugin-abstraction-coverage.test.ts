@@ -173,7 +173,10 @@ const COVERAGE_MANIFEST: ReadonlyArray<CoverageEntry> = [
     makeExport: "makeDoctorCheckContractSuite",
     runExport: "runDoctorCheckContractSuite",
     defaultPolicy: "built-in",
-    invocationFiles: ["core/test/cli/doctor-check-contract.test.ts"],
+    invocationFiles: [
+      "core/test/cli/doctor-check-contract.test.ts",
+      "plugins/provider-lando/test/managed-runtime-current-check.test.ts",
+    ],
   },
   {
     abstraction: "TunnelService",

@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { ProviderId } from "@lando/sdk/schema";
 import { BuildOrchestrator, RuntimeProviderRegistry, ToolingEngine } from "@lando/sdk/services";
+import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect } from "effect";
 import { CommandWarnings, makeCommandWarnings } from "../../src/landofile/command-warnings.ts";
 import { startApp } from "../../src/operations/start.ts";
@@ -60,15 +61,18 @@ for (const providerId of ["lando", "docker", "custom-runtime"]) {
                   trace.push("warning");
                 }).pipe(Effect.andThen(warnings.add(warning))),
             }),
-            Effect.provideService(RuntimeProviderRegistry, {
-              ...harness.runtimeProviderRegistry,
-              select: () =>
-                Effect.succeed({
-                  ...selectedProvider,
-                  id: providerId,
-                  capabilities: { ...selectedProvider.capabilities, rootless },
-                }),
-            }),
+            Effect.provideService(
+              RuntimeProviderRegistry,
+              makeTestRuntimeProviderRegistry({
+                ...harness.runtimeProviderRegistry,
+                select: () =>
+                  Effect.succeed({
+                    ...selectedProvider,
+                    id: providerId,
+                    capabilities: { ...selectedProvider.capabilities, rootless },
+                  }),
+              }),
+            ),
             Effect.provideService(BuildOrchestrator, {
               build: (appPlan) =>
                 Effect.sync(() => {

@@ -17,6 +17,7 @@ import {
   TestRouterService,
   TestRuntimeProvider,
   makeTestRouterService,
+  makeTestRuntimeProviderRegistry,
   makeTestSshService,
 } from "@lando/sdk/test";
 // allow: SIZE_OK — Existing cross-subsystem recovery suite; keep its shared fixtures intact for this SSH-only change.
@@ -24,6 +25,7 @@ import { Effect, Layer } from "effect";
 import { inputDoctorOptions } from "../../src/cli/command-specs/meta/doctor.ts";
 import type { DoctorSectionResult } from "../../src/cli/commands/doctor-contract.ts";
 import { HostDnsResolver } from "../../src/cli/commands/doctor-host-dns.ts";
+import type { DoctorSectionRun } from "../../src/cli/commands/doctor-host-fix.ts";
 import { renderDoctorReport } from "../../src/cli/commands/doctor-render-text.ts";
 import { makeDoctorReport } from "../../src/cli/commands/doctor-report.ts";
 import {
@@ -31,7 +33,7 @@ import {
   subsystemDoctor,
   subsystemFailureDiagnostic,
 } from "../../src/cli/commands/doctor-subsystems.ts";
-import { DefaultSubsystemDoctorLayer } from "./doctor-subsystem-fixture.ts";
+import { DefaultSubsystemDoctorLayer, doctorPathsLayer } from "./doctor-subsystem-fixture.ts";
 
 test("doctor --fix skips idle global router and sidecar readiness", async () => {
   const provider = {
@@ -43,8 +45,7 @@ test("doctor --fix skips idle global router and sidecar readiness", async () => 
     subsystemDoctor({ fix: true, sshAgent: { globalConfig: { sshAgent: { sidecar: true } } } }).pipe(
       Effect.provideService(
         RuntimeProviderRegistry,
-        RuntimeProviderRegistry.of({
-          list: Effect.succeed([]),
+        makeTestRuntimeProviderRegistry({
           capabilities: Effect.succeed(provider.capabilities),
           appliedPlansFor: () => Effect.die("not requested"),
           resolveAppliedPlan: () => Effect.die("not requested"),
@@ -60,6 +61,7 @@ test("doctor --fix skips idle global router and sidecar readiness", async () => 
         ...makeTestSshService(),
         setup: () => Effect.die("must not start sidecar"),
       }),
+      Effect.provide(doctorPathsLayer),
     ),
   );
   expect(result.checks.find((check) => check.name === "router")).toBeUndefined();
@@ -68,6 +70,16 @@ test("doctor --fix skips idle global router and sidecar readiness", async () => 
   );
   expect(result.checks.find((check) => check.name === "ssh")?.context.fixOutcome).toBeUndefined();
 });
+
+/** What doctor does once its progress tree has closed: run each deferred fix in its finding's place. */
+const applyFixes = async (result: DoctorSectionRun): Promise<DoctorSectionRun> => {
+  let checks = result.checks;
+  for (const fix of result.fixes ?? []) {
+    const findings = await Effect.runPromise(fix.run);
+    checks = [...checks.filter((check) => check.name !== fix.check), ...findings];
+  }
+  return { ...result, checks };
+};
 
 for (const fix of [false, true])
   describe(`doctor on an idle global provider (fix: ${fix})`, () => {
@@ -81,8 +93,7 @@ for (const fix of [false, true])
         subsystemDoctor({ fix }).pipe(
           Effect.provideService(
             RuntimeProviderRegistry,
-            RuntimeProviderRegistry.of({
-              list: Effect.succeed([]),
+            makeTestRuntimeProviderRegistry({
               capabilities: Effect.succeed(provider.capabilities),
               appliedPlansFor: () => Effect.die("not requested"),
               resolveAppliedPlan: () => Effect.die("not requested"),
@@ -91,6 +102,7 @@ for (const fix of [false, true])
             }),
           ),
           Effect.provideService(RouterService, router),
+          Effect.provide(doctorPathsLayer),
         ),
       );
     };
@@ -328,7 +340,11 @@ describe("doctor --fix recovery", () => {
       }),
     );
     const layer = Layer.mergeAll(DefaultSubsystemDoctorLayer, stoppedTraefik);
-    const result = await Effect.runPromise(subsystemDoctor({ fix: true }).pipe(Effect.provide(layer)));
+    const inspected = await Effect.runPromise(subsystemDoctor({ fix: true }).pipe(Effect.provide(layer)));
+    // The section only inspects; the router setup waits for doctor's fix phase.
+    expect(setupCalls).toBe(0);
+    expect(inspected.fixes?.map(({ check }) => check)).toEqual(["router"]);
+    const result = await applyFixes(inspected);
     const proxy = result.checks.find((c) => c.name === "router");
 
     expect(setupCalls).toBe(1);
@@ -399,7 +415,9 @@ describe("doctor --fix recovery", () => {
       }),
     );
     const layer = Layer.mergeAll(DefaultSubsystemDoctorLayer, recoverableProxy);
-    const result = await Effect.runPromise(subsystemDoctor({ fix: true }).pipe(Effect.provide(layer)));
+    const result = await applyFixes(
+      await Effect.runPromise(subsystemDoctor({ fix: true }).pipe(Effect.provide(layer))),
+    );
     const proxy = result.checks.find((c) => c.name === "router");
 
     expect(proxy?.status).toBe("pass");
@@ -432,7 +450,9 @@ describe("doctor --fix recovery", () => {
       }),
     );
     const layer = Layer.mergeAll(DefaultSubsystemDoctorLayer, secretErrorProxy);
-    const result = await Effect.runPromise(subsystemDoctor({ fix: true }).pipe(Effect.provide(layer)));
+    const result = await applyFixes(
+      await Effect.runPromise(subsystemDoctor({ fix: true }).pipe(Effect.provide(layer))),
+    );
     const proxy = result.checks.find((c) => c.name === "router");
     expect(proxy?.context.fixError).toContain("API_TOKEN=[redacted]");
     expect(proxy?.context.fixError).toContain("DATABASE_PASSWORD=[redacted]");

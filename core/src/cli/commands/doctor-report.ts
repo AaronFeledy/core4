@@ -9,7 +9,9 @@ import type {
   DoctorSectionId,
   DoctorSkip,
 } from "./doctor-contract";
+import type { DoctorDeferredFix, DoctorSectionRun } from "./doctor-host-fix";
 import {
+  DOCTOR_SECTION_LABELS,
   type DoctorSectionOutcome,
   checksOutcome,
   doctorTreeSummary,
@@ -29,20 +31,26 @@ import { resolveSecretsRedactor } from "./secrets-redactor";
 
 export type { DoctorReport } from "./doctor-contract";
 export { DoctorReportSchema } from "./doctor-contract";
-export { renderDoctorReportAsNdjson } from "./doctor-render-ndjson";
 export { type DoctorRenderOptions, buildDoctorReportSummary, renderDoctorReport } from "./doctor-render-text";
 export { doctorCompletion, makeDoctorReport, summarizeDoctorChecks } from "./doctor-report-model";
+
+/** A section's deferred fix, attributed to its report section. */
+interface DoctorSectionFix extends DoctorDeferredFix {
+  readonly section: DoctorSectionId;
+}
 
 export interface DoctorSectionOutput {
   readonly checks: ReadonlyArray<DoctorSectionFinding>;
   readonly skipped: ReadonlyArray<DoctorSkip>;
   readonly provider?: DoctorProvider;
+  readonly fixes: ReadonlyArray<DoctorSectionFix>;
 }
 
-const stampSection = (section: DoctorSectionId, result: DoctorSectionResult): DoctorSectionOutput => ({
+const stampSection = (section: DoctorSectionId, result: DoctorSectionRun): DoctorSectionOutput => ({
   checks: result.checks.map((finding) => ({ section, ...finding })),
   skipped: (result.skipped ?? []).map((skip) => ({ section, ...skip })),
   ...(result.provider === undefined ? {} : { provider: result.provider }),
+  fixes: (result.fixes ?? []).map((fix) => ({ section, ...fix })),
 });
 
 const runDoctorSection = <R>(
@@ -74,7 +82,7 @@ export interface CollectDoctorReportInput {
 }
 
 const unavailable = (id: DoctorSectionId, reason: string): Effect.Effect<DoctorSectionOutput> =>
-  Effect.succeed({ checks: [], skipped: [{ section: id, reason }] });
+  Effect.succeed({ checks: [], skipped: [{ section: id, reason }], fixes: [] });
 
 const collectSection = (
   spec: DoctorSection,
@@ -131,7 +139,8 @@ const collectWithTree = Effect.fnUntraced(function* (input: CollectDoctorReportI
   const configChecks = initial.filter((check) => check.section === "global-config");
   const configRow: ReadonlyArray<DoctorSectionId> = configChecks.length === 0 ? [] : ["global-config"];
   const tree = yield* makeDoctorTree([...configRow, ...enabled.map((spec) => spec.id)]);
-  return yield* Effect.gen(function* () {
+  const fixes: DoctorSectionFix[] = [];
+  const inspected = yield* Effect.gen(function* () {
     yield* tree.start;
     if (configChecks.length > 0) {
       yield* tree.startTask("global-config");
@@ -148,6 +157,7 @@ const collectWithTree = Effect.fnUntraced(function* (input: CollectDoctorReportI
       if (spec.id === "provider") provider = output.provider;
       checks.push(...output.checks);
       skipped.push(...output.skipped);
+      fixes.push(...output.fixes);
       // Findings recorded before collection (a provider-bootstrap self check) settle their section's row too.
       const prior = initial.filter((check) => check.section === spec.id);
       yield* settleDoctorSection(
@@ -158,12 +168,36 @@ const collectWithTree = Effect.fnUntraced(function* (input: CollectDoctorReportI
     }
     const report = makeDoctorReport({ provider, checks, skipped });
     yield* tree.close(doctorTreeSummary(report.summary));
-    return report;
+    return { report, provider };
   }).pipe(Effect.onInterrupt(() => tree.settleInterrupt("doctor · interrupted")));
+  if (fixes.length === 0) return inspected.report;
+  // Fixes that ask run once the tree has closed, so their questions own the terminal.
+  let fixed: ReadonlyArray<DoctorSectionFinding> = checks;
+  for (const fix of fixes) {
+    const findings = (yield* fix.run).map((finding) => ({ section: fix.section, ...finding }));
+    fixed = replaceFindings(fixed, fix, findings);
+  }
+  return makeDoctorReport({ provider: inspected.provider, checks: fixed, skipped });
 });
 
-const sectionOutcomeFor = (id: DoctorSectionId, output: DoctorSectionOutput): DoctorSectionOutcome => {
+/** `fix`'s findings take the place of the ones it settles, keeping the report's order. */
+const replaceFindings = (
+  checks: ReadonlyArray<DoctorSectionFinding>,
+  fix: DoctorSectionFix,
+  findings: ReadonlyArray<DoctorSectionFinding>,
+): ReadonlyArray<DoctorSectionFinding> => {
+  const settles = (check: DoctorSectionFinding) => check.section === fix.section && check.name === fix.check;
+  const at = checks.findIndex(settles);
+  const kept = checks.filter((check) => !settles(check));
+  const index = at === -1 ? kept.length : at;
+  return [...kept.slice(0, index), ...findings, ...kept.slice(index)];
+};
+
+const sectionOutcomeFor = (
+  id: DoctorSectionId,
+  output: Pick<DoctorSectionOutput, "checks" | "skipped">,
+): DoctorSectionOutcome => {
   if (output.checks.length === 0 && output.skipped.length > 0)
-    return { summary: `${id} · skipped`, skipped: true };
+    return { summary: `${DOCTOR_SECTION_LABELS[id]} · skipped`, skipped: true };
   return checksOutcome(id, output.checks);
 };

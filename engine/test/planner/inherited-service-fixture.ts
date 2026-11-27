@@ -10,6 +10,7 @@ import * as Registry from "../../src/plugins/registry.ts";
 import { composeExtendedServiceType } from "../../src/services/extends.ts";
 import * as Planner from "../../src/services/planner.ts";
 import { compileTestLandofile } from "../compiled-landofile.ts";
+import { pathsServiceLayer } from "../paths-service.ts";
 
 export const inheritedServiceRegistry = (
   parentId: string,
@@ -68,4 +69,7 @@ export const planInherited = (
     const plan = yield* planner.plan(landofile, TestRuntimeProvider.capabilities);
     const serviceType = yield* registry.loadServiceType(`derived-${parent}`);
     return { plan, serviceType };
-  }).pipe(Effect.provide(Planner.layer), Effect.provide(inheritedServiceRegistry(parent)));
+  }).pipe(
+    Effect.provide(Planner.layer.pipe(Layer.provide(pathsServiceLayer()))),
+    Effect.provide(inheritedServiceRegistry(parent)),
+  );

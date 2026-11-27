@@ -2,13 +2,7 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "noEmit": true,
-    "rootDir": "../..",
-    "paths": {
-      "@lando/core": ["../src/index.ts"],
-      "@lando/core/*": ["../src/*/index.ts"],
-      "@lando/paths": ["../../paths/src/paths.ts"],
-      "@lando/paths/*": ["../../paths/src/*.ts"]
-    }
+    "rootDir": "../.."
   },
   "include": ["./**/*.ts"],
   "references": [{ "path": ".." }]

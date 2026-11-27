@@ -42,7 +42,7 @@ const treeStart = (parentId: string, children: ReadonlyArray<string>): LandoEven
     _tag: "task.tree.start",
     parentId,
     label: parentId,
-    children,
+    children: children.map((id) => ({ id, label: id })),
     timestamp: ts,
   });
 

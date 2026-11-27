@@ -1,4 +1,3 @@
-import { rm } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { RootOverrides } from "@lando/paths";
 import { makeLandoPaths } from "@lando/paths";
@@ -17,7 +16,9 @@ import {
   DetachedWorkerStartupError,
 } from "../detached-worker/process.ts";
 import { isOwnerOnlyRecordFile } from "../detached-worker/state-file.ts";
+import { hostProxyContainerGeneration, resetHostProxyRunDirectory } from "./run-directory.ts";
 import type { HostProxyRunLandoSession, HostProxyTransportKind } from "./transport.ts";
+import { checkHostProxySocketPath, sessionPaths } from "./transport-session.ts";
 import type { HostProxyShimTarget } from "./transport-shim.ts";
 import {
   type HostProxyWorkerSpawner,
@@ -68,16 +69,26 @@ export const startDetachedHostProxyWorker = Effect.fn("HostProxy.startDetachedWo
     redaction._tag === "Some"
       ? yield* redaction.value.forProfile("secrets", redactorOptions)
       : createStandaloneRedactor("secrets", redactorOptions);
+  const landoPaths = makeLandoPaths(options.paths);
+  const workerPaths = { ...landoPaths.roots, platform: landoPaths.platform };
+  // The worker would refuse this path only after the old worker is gone and behind a masked
+  // bootstrap failure; refusing it here keeps the running worker and the actionable reason.
+  yield* checkHostProxySocketPath(
+    sessionPaths({
+      app: options.app,
+      paths: workerPaths,
+      ...(options.hostGatewayName === undefined ? {} : { hostGatewayName: options.hostGatewayName }),
+    }),
+  );
   return yield* withWorkerRecordLock(
     options.app,
     options.paths,
     Effect.fnUntraced(function* (claim) {
-      const landoPaths = makeLandoPaths(options.paths);
       const publish = options.publish ?? (() => Effect.void);
       const input = {
         app: { kind: options.app.kind, id: options.app.id, root: options.app.root },
         plan: Schema.encodeUnknownSync(AppPlan)(options.plan),
-        paths: { ...landoPaths.roots, platform: landoPaths.platform },
+        paths: workerPaths,
         shimArtifactPath: options.shimArtifactPath,
         ...(options.shimTarget === undefined ? {} : { shimTarget: options.shimTarget }),
         ...(options.hostGatewayName === undefined ? {} : { hostGatewayName: options.hostGatewayName }),
@@ -94,7 +105,7 @@ export const startDetachedHostProxyWorker = Effect.fn("HostProxy.startDetachedWo
           ),
         }),
       );
-      return yield* acquireWorker({
+      const session = yield* acquireWorker({
         claim,
         reuse: reuseHostProxyWorker(options, configDigest),
         publish,
@@ -160,9 +171,9 @@ export const startDetachedHostProxyWorker = Effect.fn("HostProxy.startDetachedWo
                             claim: closing,
                             owned: isOwnerOnlyRecordFile(closing.path, options.privateFileAccess),
                             shutdown: Effect.promise(() => worker.terminate()),
-                            remove: Effect.promise(() =>
-                              rm(dirname(closing.path), { recursive: true, force: true }),
-                            ),
+                            // Closing a session leaves its containers running; they keep the
+                            // container-facing directory.
+                            remove: Effect.promise(() => resetHostProxyRunDirectory(dirname(closing.path))),
                           });
                         }),
                         options.privateFileAccess,
@@ -209,6 +220,19 @@ export const startDetachedHostProxyWorker = Effect.fn("HostProxy.startDetachedWo
             ),
           ),
       });
+      // Containers bind the container-facing directory itself, so its generation, not its path,
+      // decides whether they still reach this session.
+      const runDir = dirname(claim.path);
+      const containerGeneration = yield* Effect.tryPromise({
+        try: () => hostProxyContainerGeneration(runDir),
+        catch: () =>
+          new HostProxyTransportUnavailableError({
+            message: "Cannot read the generation of the host-proxy container directory.",
+            socketPath: runDir,
+            remediation: "Start the app again so Lando can recreate its host-proxy session.",
+          }),
+      });
+      return { ...session, containerGeneration };
     }),
     options.privateFileAccess,
   ).pipe(

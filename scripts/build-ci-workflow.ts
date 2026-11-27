@@ -1,4 +1,8 @@
 import { resolve } from "node:path";
+import {
+  ELASTICSEARCH_DEFAULT_IMAGE,
+  NGINX_DEFAULT_IMAGE,
+} from "@lando/service-lando/services/default-images";
 import nodeReleases from "../plugins/service-lando/node/releases.json" with { type: "json" };
 import { setupBunSteps } from "./_bun-workflow.ts";
 import { applyCiSelection, ciResultSteps } from "./_ci-selection-workflow.ts";
@@ -427,7 +431,10 @@ const nodeImagePullLines = nodeReleases.releases
   .map((entry) => `          pull_image docker.io/library/node:${entry.major}`)
   .join("\n");
 
-const landoRuntimeBundleSetupSteps = `      - name: Download current-commit Linux x64 runtime bundle
+const landoRuntimeBundleSetupSteps = (mode: "provider-matrix" | "standard"): string => {
+  const engineFlags = (flags: string): string =>
+    mode === "provider-matrix" ? ` \${{ matrix.suite == 'engine' && '${flags}' || '' }}` : "";
+  return `      - name: Download current-commit Linux x64 runtime bundle
         uses: ${pinnedAction("actions/download-artifact")}
         with:
           name: runtime-bundle-linux-x64-current
@@ -468,7 +475,7 @@ const landoRuntimeBundleSetupSteps = `      - name: Download current-commit Linu
         run: |
           export XDG_RUNTIME_DIR="\${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
           mkdir -p "$XDG_RUNTIME_DIR"
-          dist/lando setup --yes --provider=lando --skip-install-ca --skip-shell-integration --skip-file-sync
+          dist/lando setup --yes --provider=lando --skip-install-ca --skip-shell-integration --skip-file-sync${engineFlags("--enable-linger --smoke")}
           echo "LANDO_CONFIG__default_provider_id=lando" >> "$GITHUB_ENV"
 
       - name: Verify managed runtime socket
@@ -482,7 +489,7 @@ const landoRuntimeBundleSetupSteps = `      - name: Download current-commit Linu
           echo "LANDO_TEST_PODMAN_SOCKET=$LANDO_USER_DATA_ROOT/runtime/run/podman.sock" >> "$GITHUB_ENV"
 
       - name: Gate platform readiness doctor
-        run: bun run scripts/platform-readiness-doctor.ts --binary dist/lando --report provider-diagnostics/platform-readiness-doctor.json
+        run: bun run scripts/platform-readiness-doctor.ts --binary dist/lando --report provider-diagnostics/platform-readiness-doctor.json${engineFlags("--require-delegated-cgroups")}
 
       - name: Configure Docker socket
         run: |
@@ -523,7 +530,7 @@ ${nodeImagePullLines}
           pull_image docker.io/library/redis:7
           pull_image docker.io/library/busybox:1.37
           pull_image docker.io/library/golang:1.22
-          pull_image docker.elastic.co/elasticsearch/elasticsearch:8.17.0
+          pull_image ${ELASTICSEARCH_DEFAULT_IMAGE}
           pull_image docker.io/getmeili/meilisearch:v1.11
           pull_image docker.io/axllent/mailpit:v1.30.1
           pull_image docker.io/library/mariadb:11.4
@@ -531,7 +538,7 @@ ${nodeImagePullLines}
           pull_image docker.io/library/memcached:1.6
           pull_image docker.io/library/mongo:7
           pull_image docker.io/library/mysql:8.0
-          pull_image docker.io/library/nginx:1.27
+          pull_image docker.io/library/${NGINX_DEFAULT_IMAGE}
           pull_image docker.io/opensearchproject/opensearch:2
           pull_image docker.io/library/solr:9
           pull_image docker.io/library/traefik:v3.3
@@ -542,6 +549,7 @@ ${nodeImagePullLines}
           docker_pull_image docker.io/library/mariadb:11.4
           docker_pull_image ${dataHelperImageRef}
           docker_pull_image ${sqliteHelperImageRef}`;
+};
 
 // Each selection runs even after an earlier one fails, so one run reports every failing selection;
 // the step exits with the last failing selection's status.
@@ -551,10 +559,16 @@ const laneRuns = (runs: readonly (readonly [TestSelectionId, string])[]): string
   runs.map(([id, log]) => laneRun(id, log)).join("\n");
 // `core/test/live` alone takes about 20 minutes, so the suites that drive the engine
 // directly get their own lane to keep each lane under its timeout cap.
-const providerLaneRuns = laneRuns([
-  ["providers-engine-parity", "engine-parity"],
-  ["providers-core-live", "core-live"],
-]);
+const providerLaneRuns =
+  laneRuns([
+    ["providers-engine-parity", "engine-parity"],
+    ["providers-core-live", "core-live"],
+  ]) +
+  `
+              if ! grep -Eq '^NGINX_ROUTE_CLI_EVIDENCE .*"privateFiles":true[,}]' /tmp/lando-provider-test-logs/core-live.log; then
+                echo "Missing private nginx route test evidence" >&2
+                status=1
+              fi`;
 const engineLaneRuns = laneRuns([
   ["providers-lando", "provider-lando-integration"],
   ["providers-docker", "provider-docker-integration"],
@@ -567,6 +581,7 @@ const engineLaneRuns = laneRuns([
   ["providers-sqlite-integrity", "sqlite-integrity"],
   ["providers-sqlite-borrowed-mounts", "sqlite-borrowed-mounts"],
   ["providers-schedule", "schedule"],
+  ["setup-elevation-terminal", "setup-elevation-terminal"],
 ]);
 
 const landoRuntimeLiveTestSteps = `      - name: Run provider integration tests
@@ -574,6 +589,7 @@ const landoRuntimeLiveTestSteps = `      - name: Run provider integration tests
           LANDO_PROVIDER_TEST_SUITE: \${{ matrix.suite }}
           LANDO_SCENARIO_E2E_BINARY: \${{ github.workspace }}/dist/lando
           LANDO_NATIVE_INIT_E2E: "1"
+          LANDO_TEST_NGINX_PRIVATE: lando
         run: |
           mkdir -p /tmp/lando-provider-test-logs
           set -o pipefail
@@ -590,6 +606,19 @@ ${laneRun("services-lando", "service-lando-integration")}
               ;;
             *) echo "Unknown provider test suite: $LANDO_PROVIDER_TEST_SUITE" >&2; exit 1 ;;
           esac
+          exit "$status"
+
+      - name: Run SQL Server activation regressions
+        if: \${{ matrix.suite == 'providers' && needs.selection.outputs.provider_changes == 'true' }}
+        env:
+          LANDO_SCENARIO_E2E_BINARY: \${{ github.workspace }}/dist/lando
+          LANDO_GUIDE_E2E: "1"
+        run: |
+          test -S "$LANDO_TEST_PODMAN_SOCKET"
+          set -o pipefail
+          status=0
+          ${testSelectionCommand("providers-mssql-activation")} 2>&1 | tee /tmp/lando-provider-test-logs/mssql-activation.log || status=$?
+          LANDO_GUIDE_SCENARIO_LIVE_OUTPUT=1 bun run scripts/test-reporters/run-guide-scenarios.ts test/scenarios/generated/guides/db-creds-apply/mssql-sa-and-database-name.test.ts 2>&1 | tee /tmp/lando-provider-test-logs/mssql-guide.log || status=$?
           exit "$status"
 
       - name: Teardown Lando runtime
@@ -623,7 +652,7 @@ ${landoManagedPodmanTeardownCommands}
               > provider-diagnostics/managed-podman-service.log 2>&1 || true
           fi`;
 
-const landoProviderIntegrationSteps = `${landoRootlessPrereqSteps}\n\n${landoRuntimeBundleSetupSteps}\n\n${contractProviderTestSteps}\n\n${landoRuntimeLiveTestSteps}`;
+const landoProviderIntegrationSteps = `${landoRootlessPrereqSteps}\n\n${landoRuntimeBundleSetupSteps("provider-matrix")}\n\n${contractProviderTestSteps}\n\n${landoRuntimeLiveTestSteps}`;
 
 const linuxRuntimeBundleCacheMiss = "steps.runtime-bundle-cache.outputs.cache-hit != 'true'";
 
@@ -816,7 +845,7 @@ const guideScenarioLiveOutputEnv = `          LANDO_GUIDE_SCENARIO_LIVE_OUTPUT: 
 
 export const linuxGuideE2eProviderSetupSteps = `${landoRootlessPrereqSteps}
 
-${landoRuntimeBundleSetupSteps}`;
+${landoRuntimeBundleSetupSteps("standard")}`;
 
 const linuxGuideScenarioE2eSteps = `      - name: Download Linux x64 binary artifact
         uses: ${pinnedAction("actions/download-artifact")}
@@ -992,6 +1021,12 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# A new push to a pull request supersedes its running checks. Other events get
+# a group of their own, so every main commit keeps its run.
+concurrency:
+  group: ci-\${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: \${{ github.event_name == 'pull_request' }}
+
 defaults:
   run:
     shell: bash
@@ -1036,7 +1071,7 @@ ${codegenStep}
 
       - name: Check schema compatibility
         env:
-          LANDO_SCHEMA_COMPATIBILITY_BASE_REF: origin/\${{ github.event_name == 'pull_request' && github.base_ref || 'main' }}
+          LANDO_SCHEMA_COMPATIBILITY_BASE_REF: \${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || 'origin/main' }}
         run: bun run check:schema-compatibility
 
       - name: Regenerate command reference

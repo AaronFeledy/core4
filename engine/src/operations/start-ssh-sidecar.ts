@@ -4,6 +4,7 @@ import type { AppId } from "@lando/sdk/schema";
 import { EventService, type SshService } from "@lando/sdk/services";
 import { makeTaskTree, runWithTaskTree } from "@lando/sdk/task-progress";
 import { type Context, Duration, Effect, Option } from "effect";
+import { probeSshAgent } from "../subsystems/ssh-agent/agent-probe.ts";
 import type { AgentRelayUpstream } from "../subsystems/ssh-agent/relay.ts";
 import {
   SSH_SIDECAR_READINESS_POLICY,
@@ -13,10 +14,25 @@ import {
 } from "../subsystems/ssh-agent/session.ts";
 import { startSshSidecarTreeId } from "./start-progress.ts";
 
+export const sidecarSocketReachable = (upstream: AgentRelayUpstream) =>
+  Effect.tryPromise({
+    try: () => probeSshAgent(upstream, { timeoutMs: 2_000 }),
+    catch: (cause) => cause,
+  }).pipe(
+    Effect.as(true),
+    Effect.catch(() => Effect.succeed(false)),
+  );
+
 export const startSshSidecar = Effect.fnUntraced(function* (
   input: { readonly appId: AppId; readonly appName?: string },
   ssh: Context.Service.Shape<typeof SshService>,
-  upstream: AgentRelayUpstream | { readonly _tag: "volume"; readonly volume: string },
+  delivery:
+    | AgentRelayUpstream
+    | { readonly _tag: "volume"; readonly volume: string }
+    | Effect.Effect<
+        AgentRelayUpstream | { readonly _tag: "volume"; readonly volume: string },
+        SshAgentUnavailableError
+      >,
 ) {
   const events = yield* EventService;
   return yield* runWithTaskTree(
@@ -48,6 +64,15 @@ export const startSshSidecar = Effect.fnUntraced(function* (
             }),
           ),
         );
+        const upstream = Effect.isEffect(delivery) ? yield* delivery : delivery;
+        if (
+          Effect.isEffect(delivery) &&
+          upstream._tag === "unix" &&
+          (yield* sidecarSocketReachable(upstream))
+        ) {
+          yield* tree.completeTask("start");
+          return upstream;
+        }
         const { state, detail } = yield* awaitRuntimeSshAgent(
           upstream._tag === "volume" ? runtimeSshAgentCheck : sidecarSocketCheck(upstream),
         );
@@ -67,7 +92,7 @@ export const startSshSidecar = Effect.fnUntraced(function* (
             }),
           );
         yield* tree.completeTask("start");
-        return upstream;
+        return Effect.isEffect(delivery) && upstream._tag === "volume" ? yield* delivery : upstream;
       }),
     {
       success: "SSH agent sidecar ready",
