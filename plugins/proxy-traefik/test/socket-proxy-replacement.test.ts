@@ -6,8 +6,8 @@ import type {
   ProcessRunner,
   ProcessSpawnOptions,
 } from "@lando/sdk/services";
+import { makeTestPrivilegeService } from "@lando/sdk/test";
 import { type Context, Effect } from "effect";
-
 import type { SocketProxyDependencies } from "../src/proxy-types.ts";
 import { socketProxyPolkitHeader, socketProxyUnitHeader } from "../src/socket-proxy-helper.ts";
 import { POLKIT_RULE_PATH, PROXYD_CANDIDATES, SOCKET_UNIT_PATHS } from "../src/socket-proxy-install.ts";
@@ -49,14 +49,13 @@ const makePrivilege = (
 } => {
   const calls: Array<ReadonlyArray<string>> = [];
   return {
-    service: {
-      ensureCredentials: () => Effect.void,
+    service: makeTestPrivilegeService({
       elevate: (command) =>
         Effect.sync(() => {
           calls.push([...command]);
           return typeof result === "function" ? result(command) : result;
         }),
-    },
+    }),
     calls: () => [...calls],
   };
 };

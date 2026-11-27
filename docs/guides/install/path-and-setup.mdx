@@ -86,7 +86,7 @@ Run `lando setup` as yourself, never with `sudo`. A few steps change the system,
 - trusting Lando's local certificate authority in the system trust store
 - installing the helper that serves ports 80 and 443 on Linux
 
-In a terminal, setup tells you what it needs, then `sudo` asks for your password with its own prompt. Lando never asks for or sees the password. If you run `sudo lando ...` against your own Lando files, Lando refuses and asks you to rerun without `sudo`, because files it wrote as root would break your later runs.
+In a terminal, setup tells you what it needs, then `sudo` asks for your password with its own prompt. It asks once per run, however many steps change the system: setup keeps sudo's credentials fresh while it works (a long runtime download does not outlast them) and tells sudo to forget them when it finishes, unless you already had them from your own `sudo -v`. Progress keeps rendering after the prompt. Lando never asks for or sees the password. If you run `sudo lando ...` against your own Lando files, Lando refuses and asks you to rerun without `sudo`, because files it wrote as root would break your later runs.
 
 Without a terminal (`--no-interactive`, a CI job, or an agent), setup cannot prompt. Before it changes anything, it stops with `PrivilegeCredentialsRequiredError` unless one of these is true:
 

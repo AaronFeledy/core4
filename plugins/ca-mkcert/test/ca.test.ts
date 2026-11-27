@@ -171,6 +171,34 @@ describe("mkcert CertificateAuthority setup", () => {
     });
   });
 
+  test("mkcert -install runs with the terminal handed over, since its own sudo may prompt", async () => {
+    await withCa({}, async ({ runner, ca }) => {
+      // Given a session whose sudo keeps no ticket, so mkcert's own sudo asks on the terminal.
+      const lent: string[] = [];
+      const installs = () => runner.calls().filter((call) => call.args[0] === "-install").length;
+      const base = makeFakePrivilege().service;
+      const privilege: typeof base = {
+        ...base,
+        openSession: () =>
+          Effect.succeed({
+            transport: "uncached",
+            elevate: () => Effect.die("mkcert never runs as root"),
+            lendTerminal: (body) =>
+              Effect.sync(() => void lent.push(`lend after ${installs()} installs`)).pipe(
+                Effect.andThen(body),
+                Effect.ensuring(Effect.sync(() => void lent.push(`return after ${installs()} installs`))),
+              ),
+          }),
+      };
+
+      // When setup trusts the root.
+      await Effect.runPromise(ca.setup({ force: false, privilege }));
+
+      // Then mkcert ran inside the handoff, so no live progress draws over its prompt.
+      expect(lent).toEqual(["lend after 0 installs", "return after 1 installs"]);
+    });
+  });
+
   test("a run that cannot get credentials fails before mkcert -install", async () => {
     const denied = new PrivilegeCredentialsRequiredError({
       purpose: "trust the local CA",

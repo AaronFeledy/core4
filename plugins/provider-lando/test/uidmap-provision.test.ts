@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { makeTestPrivilegeService } from "@lando/sdk/test";
 import { Effect } from "effect";
-
 import {
   applyApprovedPrerequisitePlan,
   inspectPrerequisiteSetupPlan,
@@ -73,15 +73,14 @@ describe("uidmap provider setup", () => {
     // Given
     let installed = false;
     const commands: ReadonlyArray<string>[] = [];
-    const privilege = {
-      ensureCredentials: () => Effect.void,
+    const privilege = makeTestPrivilegeService({
       elevate: (command: ReadonlyArray<string>) =>
         Effect.sync(() => {
           commands.push(command);
           if (command.includes("install")) installed = true;
           return { exitCode: 0, stdout: "", stderr: "" };
         }),
-    };
+    });
     const plan = Effect.runSync(
       inspectPrerequisiteSetupPlan({
         platform: "linux",
@@ -156,14 +155,13 @@ describe("subordinate ID account", () => {
       await Effect.runPromise(
         applyApprovedPrerequisitePlan(plan, {
           probes: missingSubid,
-          privilege: {
-            ensureCredentials: () => Effect.void,
+          privilege: makeTestPrivilegeService({
             elevate: (command: ReadonlyArray<string>) =>
               Effect.sync(() => {
                 commands.push(command);
                 return { exitCode: 0, stdout: "", stderr: "" };
               }),
-          },
+          }),
           user: envUser,
           userManager,
         }),

@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { PrivilegeCredentialsRequiredError, ProviderSetupPrivilegeUnavailableError } from "@lando/sdk/errors";
 import { ProviderId, type ProviderSetupPlan } from "@lando/sdk/schema";
+import { makeTestPrivilegeService } from "@lando/sdk/test";
 import { Cause, Duration, Effect, Exit } from "effect";
-
 import {
   applyApprovedPrerequisitePlan,
   inspectPrerequisiteSetupPlan,
@@ -57,14 +57,13 @@ const recordingPrivilege = (exitCodeFor: (command: ReadonlyArray<string>) => num
   const commands: string[] = [];
   return {
     commands,
-    service: {
-      ensureCredentials: () => Effect.void,
+    service: makeTestPrivilegeService({
       elevate: (command: ReadonlyArray<string>) =>
         Effect.sync(() => {
           commands.push(command.join(" "));
           return { exitCode: exitCodeFor(command), stdout: "", stderr: "" };
         }),
-    },
+    }),
   };
 };
 
@@ -260,7 +259,7 @@ describe("applying lingering", () => {
     const exit = await Effect.runPromiseExit(
       applyApprovedPrerequisitePlan(plan(), {
         probes: readyProbes,
-        privilege: { ensureCredentials: () => Effect.void, elevate: () => Effect.fail(denied) },
+        privilege: makeTestPrivilegeService({ elevate: () => Effect.fail(denied) }),
         user: "dev",
         hasSystemd: true,
       }),

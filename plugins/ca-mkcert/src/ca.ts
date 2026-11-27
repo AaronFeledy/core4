@@ -160,19 +160,26 @@ export const makeMkcertCertificateAuthority = (
   };
 
   /**
-   * mkcert asks sudo for the system store itself on POSIX, so the credential check runs first:
-   * a run that cannot prompt fails before mkcert starts, and an interactive run has handed the
-   * terminal to sudo. Windows has no POSIX check; mkcert's own Security Warning handles it.
+   * mkcert asks sudo for the system store itself on POSIX, so an administrator session stays open
+   * around it: a run that cannot prompt fails before mkcert starts, and mkcert's own sudo finds
+   * the session's ticket. When it finds none (sudo keeps no ticket, or it lapsed), mkcert's sudo
+   * prompts on the terminal, so mkcert runs with the terminal handed over like the session's own
+   * prompt. Windows has no POSIX session; mkcert's own Security Warning handles it.
    */
   const installTrust = Effect.fn("CertificateAuthority.installTrust")(function* (
     root: string,
     privilege: CaSetupOptions["privilege"],
   ): Effect.fn.Return<void, CaError | PrivilegeError> {
-    if (platform !== "win32" && privilege !== undefined) {
-      yield* privilege.ensureCredentials("trust Lando's local certificate authority in the system store");
-    }
     // Only the system store: Lando writes the browser databases itself.
-    const attempt = yield* runMkcert(["-install"], { CAROOT: root, TRUST_STORES: "system" });
+    const install = runMkcert(["-install"], { CAROOT: root, TRUST_STORES: "system" });
+    const attempt =
+      platform !== "win32" && privilege !== undefined
+        ? yield* Effect.scoped(
+            privilege
+              .openSession("trust Lando's local certificate authority in the system store")
+              .pipe(Effect.flatMap((session) => session.lendTerminal?.(install) ?? install)),
+          )
+        : yield* install;
     if (attempt.exitCode !== 0) return yield* Effect.fail(trustInstallError(attempt, root));
   });
 

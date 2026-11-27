@@ -218,8 +218,11 @@ export const installSocketProxy = Effect.fn("SocketProxy.installSocketProxy")(fu
       ? { priorOwnerRoot: ownership.ownerRoot }
       : {}),
   });
-  return yield* input.privilege.ensureCredentials(SOCKET_PROXY_INSTALL_PURPOSE).pipe(
-    Effect.andThen(input.privilege.elevate(["/bin/sh", "-c", script])),
+  return yield* Effect.scoped(
+    input.privilege
+      .openSession(SOCKET_PROXY_INSTALL_PURPOSE)
+      .pipe(Effect.flatMap((session) => session.elevate(["/bin/sh", "-c", script]))),
+  ).pipe(
     Effect.map(mapElevatedInstall),
     Effect.catch((error: PrivilegeError) =>
       Effect.succeed<SocketProxyInstallOutcome>({

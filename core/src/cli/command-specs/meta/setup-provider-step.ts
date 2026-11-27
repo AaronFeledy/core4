@@ -92,12 +92,12 @@ export const runProviderSetupStep = Effect.fn("SetupCommand.runProviderSetupStep
   }).pipe(Effect.tapError((cause) => recorder.recordFailure("provider", cause)));
   const approvedPlan = authorized.plan;
   for (const change of authorized.skipped) yield* warnSkippedChange(change);
-  // Ask for administrator access once, after consent and before the runtime download and the
+  // Open the run's administrator session after consent and before the runtime download and the
   // first privileged change, so a run that cannot get it fails before mutating anything.
   if (approvedPlan.changes.length > 0 && privilegeOptions.privilege !== undefined) {
-    yield* privilegeOptions.privilege
-      .ensureCredentials(approvedPlan.changes.map(providerSetupChangePurpose).join(", "))
-      .pipe(Effect.tapError((cause) => recorder.recordFailure("provider", cause)));
+    yield* Effect.scoped(
+      privilegeOptions.privilege.openSession(approvedPlan.changes.map(providerSetupChangePurpose).join(", ")),
+    ).pipe(Effect.tapError((cause) => recorder.recordFailure("provider", cause)));
   }
   yield* Effect.scoped(
     provider.setup(approvedPlan, {

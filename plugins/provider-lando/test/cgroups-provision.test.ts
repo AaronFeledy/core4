@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { ProviderSetupProvisioningError, ProviderSetupUnsupportedHostError } from "@lando/sdk/errors";
 import { ProviderId } from "@lando/sdk/schema";
+import { makeTestPrivilegeService } from "@lando/sdk/test";
 import { Cause, Effect, Exit } from "effect";
-
 import {
   applyApprovedPrerequisitePlan,
   inspectPrerequisiteSetupPlan,
@@ -57,14 +57,13 @@ describe("cgroups delegation setup", () => {
 
   test("does not run systemctl when applying a leftover drop-in plan on a tini host", async () => {
     const commands: ReadonlyArray<string>[] = [];
-    const privilege = {
-      ensureCredentials: () => Effect.void,
+    const privilege = makeTestPrivilegeService({
       elevate: (command: ReadonlyArray<string>) =>
         Effect.sync(() => {
           commands.push(command);
           return { exitCode: 0, stdout: "", stderr: "" };
         }),
-    };
+    });
 
     const exit = await Effect.runPromiseExit(
       applyApprovedPrerequisitePlan(

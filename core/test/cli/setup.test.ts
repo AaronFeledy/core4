@@ -57,6 +57,7 @@ import { FileSystem, PathsService } from "@lando/sdk/services";
 import {
   TestFileSyncEngine,
   makeTestCertificateAuthority,
+  makeTestPrivilegeService,
   makeTestRouterService,
   makeTestRuntimeProviderRegistry,
   makeTestSshService,
@@ -405,13 +406,13 @@ describe("meta:setup command", () => {
       message: "this run cannot ask for a password",
       remediation: "Run `sudo -v`, or set `SUDO_ASKPASS`.",
     });
-    const privilege = {
-      ensureCredentials: (purpose: string) =>
+    const privilege = makeTestPrivilegeService({
+      elevate: () => Effect.die("no privileged command may run"),
+      open: (purpose: string) =>
         Effect.sync(() => void order.push(`credentials: ${purpose}`)).pipe(
           Effect.andThen(Effect.fail(denied)),
         ),
-      elevate: () => Effect.die("no privileged command may run"),
-    };
+    });
 
     // When
     const exit = await Effect.runPromiseExit(
@@ -1619,17 +1620,16 @@ describe("meta:setup command", () => {
   });
 
   test.skipIf(process.platform === "win32")(
-    "threads PrivilegeService into provider and CA setup and writes the shell profile as the user",
+    "threads one run-scoped PrivilegeService into provider and CA setup and writes the shell profile as the user",
     async () => {
       const elevated: ReadonlyArray<string>[] = [];
-      const privilege = {
-        ensureCredentials: () => Effect.void,
+      const privilege = makeTestPrivilegeService({
         elevate: (command: ReadonlyArray<string>) =>
           Effect.sync(() => {
             elevated.push([...command]);
             return { exitCode: 0, stdout: "", stderr: "" };
           }),
-      };
+      });
       const providerSetupOptions: unknown[] = [];
       const caSetupOptions: unknown[] = [];
       const provider = {
@@ -1670,8 +1670,11 @@ describe("meta:setup command", () => {
           ),
         );
 
-        expect(providerSetupOptions).toEqual([expect.objectContaining({ privilege })]);
-        expect(caSetupOptions).toEqual([expect.objectContaining({ privilege })]);
+        // Both stages share the run's one administrator session, not the host service itself.
+        const providerPrivilege = Reflect.get(Object(providerSetupOptions[0]), "privilege");
+        expect(providerPrivilege).toBeDefined();
+        expect(providerPrivilege).not.toBe(privilege);
+        expect(Reflect.get(Object(caSetupOptions[0]), "privilege")).toBe(providerPrivilege);
         // The profile is the user's file: written without elevation, owned by the user.
         expect(elevated).toEqual([]);
         const content = await readFile(profile, "utf-8");
@@ -1691,14 +1694,13 @@ describe("meta:setup command", () => {
     const home = await mkdtemp(join(tmpdir(), "lando-setup-profile-skip-"));
     const profile = join(home, ".profile");
     const elevated: ReadonlyArray<string>[] = [];
-    const privilege = {
-      ensureCredentials: () => Effect.void,
+    const privilege = makeTestPrivilegeService({
       elevate: (command: ReadonlyArray<string>) =>
         Effect.sync(() => {
           elevated.push([...command]);
           return { exitCode: 0, stdout: "", stderr: "" };
         }),
-    };
+    });
     const provider = {
       ...TestRuntimeProvider,
       id: "lando",
@@ -1748,14 +1750,13 @@ describe("meta:setup command", () => {
           select: () => Effect.succeed(provider),
         });
         let elevations = 0;
-        const privilege = {
-          ensureCredentials: () => Effect.void,
+        const privilege = makeTestPrivilegeService({
           elevate: () =>
             Effect.sync(() => {
               elevations += 1;
               return { exitCode: 0, stdout: "", stderr: "" };
             }),
-        };
+        });
 
         // When setup attempts shell profile integration.
         const exit = await Effect.runPromiseExit(
