@@ -31,6 +31,7 @@ import {
   nginxDefaultSiteRemovalBuildStep,
   nginxLauncherCommand,
   stockNginxIdentity,
+  stockNginxLauncherOptions,
 } from "./nginx-config.ts";
 import { PHP_FPM_PORT, phpListenPort } from "./php-via.ts";
 import { defaultNginxStaticCommand } from "./static.ts";
@@ -181,6 +182,7 @@ const applyNginxFeature = (ctx: ServiceFeatureContext): void => {
             service.uploadDirs,
           )
         : defaultNginxStaticCommand(webroot, port, service.user),
+      stockNginxLauncherOptions,
     );
   } else {
     ctx.setListenerAuthority(launcherAuthority(NGINX_LISTENER, port));
@@ -234,6 +236,7 @@ const applyNginxPhpFpmWire = (ctx: AppFeatureContext): void => {
     mutator.addBuildStep(nginxDefaultSiteRemovalBuildStep());
     mutator.setCommand(
       phpFastcgiCommand(backend, webroot, { listen, fpm }, service.user, service.uploadDirs),
+      stockNginxLauncherOptions,
     );
   });
 };

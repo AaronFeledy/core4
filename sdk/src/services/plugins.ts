@@ -183,8 +183,8 @@ export interface ServiceImageIdentity {
    * ships no such principal.
    */
   readonly projectUser?: ServiceProjectUser;
-  /** Use the implicit catalog account only with the generated launcher. */
-  readonly projectUserDefault?: "launcher";
+  /** Require a command that opts into the catalog account and this stock image. */
+  readonly projectUserDefault?: { readonly launcherImage: string };
   /** Principals whose passwd home the image does not create or give to that user.
    * Lando creates and owns it in a root build step so a fresh home store seeds correctly. */
   readonly preparedHomes?: ReadonlyArray<string>;

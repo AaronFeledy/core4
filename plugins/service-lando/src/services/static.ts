@@ -27,6 +27,7 @@ import {
   nginxDefaultSiteRemovalBuildStep,
   nginxLauncherCommand,
   stockNginxIdentity,
+  stockNginxLauncherOptions,
 } from "./nginx-config.ts";
 
 export const SUPPORTED_STATIC_SERVERS = ["nginx", "caddy"] as const;
@@ -160,7 +161,7 @@ const applyStaticFeature = (ctx: ServiceFeatureContext): void => {
       ctx.setCommand(service.command);
       ctx.setListenerAuthority(launcherAuthority(STATIC_LISTENERS.nginx, port));
     } else {
-      ctx.setCommand(defaultNginxStaticCommand(docRoot, port, service.user));
+      ctx.setCommand(defaultNginxStaticCommand(docRoot, port, service.user), stockNginxLauncherOptions);
     }
   }
   applyAuthoredProcessFields(ctx, ["user"]);

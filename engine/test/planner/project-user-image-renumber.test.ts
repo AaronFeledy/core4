@@ -48,7 +48,7 @@ const input = (overrides: Partial<ResolveProjectUserInput> = {}): ResolveProject
   capabilities: capabilities(),
   authored: undefined,
   authoredUser: undefined,
-  authoredLauncher: false,
+  stockLauncher: true,
   processUser: undefined,
   appSourceMounted: true,
   identity: phpIdentity,
@@ -155,7 +155,7 @@ describe("image renumbering with a launcher-scoped account", () => {
     defaultUser: "root",
     homes: { root: "/root" },
     projectUser: { name: "worker", uid: 120, gid: 121 },
-    projectUserDefault: "launcher",
+    projectUserDefault: { launcherImage: "worker:1" },
   } satisfies ServiceImageIdentity;
 
   test.each([
@@ -169,11 +169,11 @@ describe("image renumbering with a launcher-scoped account", () => {
     ],
     [
       "explicit name on a replacement launcher",
-      { authored: "worker", authoredLauncher: true, authoredUser: "120:121" },
+      { authored: "worker", stockLauncher: false, authoredUser: "120:121" },
       1000,
       1000,
     ],
-    ["explicit pair on a replacement launcher", { authored: "120:121", authoredLauncher: true }, 1000, 1000],
+    ["explicit pair on a replacement launcher", { authored: "120:121", stockLauncher: false }, 1000, 1000],
   ] satisfies ReadonlyArray<readonly [string, Partial<ResolveProjectUserInput>, number, number]>)(
     "maps the account for %s",
     (_label, overrides, uid, gid) => {
@@ -196,9 +196,9 @@ describe("image renumbering with a launcher-scoped account", () => {
     ],
     [
       "replacement launcher with the worker pair",
-      { authoredLauncher: true, authoredUser: "120:121", host: { uid: "120", gid: "121" } },
+      { stockLauncher: false, authoredUser: "120:121", host: { uid: "120", gid: "121" } },
     ],
-    ["replacement launcher with an unrelated pair", { authoredLauncher: true, authoredUser: "1000:1000" }],
+    ["replacement launcher with an unrelated pair", { stockLauncher: false, authoredUser: "1000:1000" }],
   ] satisfies ReadonlyArray<readonly [string, Partial<ResolveProjectUserInput>]>)(
     "does not renumber the account for %s",
     (_label, overrides) => {

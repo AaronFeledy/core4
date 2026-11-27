@@ -121,7 +121,7 @@ describe("composeExtendedServiceType", () => {
         defaultUser: "mysql",
         homes: { mysql: "/var/lib/mysql", root: "/root" },
         projectUser: { name: "mysql", uid: 999, gid: 999 },
-        projectUserDefault: "launcher",
+        projectUserDefault: { launcherImage: "mariadb:10.11" },
       },
     });
     const child = makeType("drupal-mariadb", { extends: "mariadb" });
@@ -133,7 +133,7 @@ describe("composeExtendedServiceType", () => {
       defaultUser: "mysql",
       homes: { mysql: "/var/lib/mysql", root: "/root" },
       projectUser: { name: "mysql", uid: 999, gid: 999 },
-      projectUserDefault: "launcher",
+      projectUserDefault: { launcherImage: "mariadb:10.11" },
     });
   });
 
@@ -159,7 +159,10 @@ describe("composeExtendedServiceType", () => {
   test.each([
     {},
     { projectUser: { name: "drupal", uid: 120, gid: 121 } },
-    { projectUser: { name: "drupal", uid: 120, gid: 121 }, projectUserDefault: "launcher" },
+    {
+      projectUser: { name: "drupal", uid: 120, gid: 121 },
+      projectUserDefault: { launcherImage: "drupal/mariadb:10.11" },
+    },
   ] satisfies ReadonlyArray<Pick<ServiceImageIdentity, "projectUser" | "projectUserDefault">>)(
     "merges homes while taking only the child identity's project-user policy (%j)",
     async (projectUserPolicy) => {
@@ -168,7 +171,7 @@ describe("composeExtendedServiceType", () => {
           defaultUser: "mysql",
           homes: { mysql: "/var/lib/mysql", root: "/root" },
           projectUser: { name: "mysql", uid: 999, gid: 999 },
-          projectUserDefault: "launcher",
+          projectUserDefault: { launcherImage: "mariadb:10.11" },
           preparedHomes: ["mysql"],
         },
       });

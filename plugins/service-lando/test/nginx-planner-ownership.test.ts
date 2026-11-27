@@ -3,6 +3,7 @@ import { buildProviderCapabilities } from "@lando/container-runtime/capabilities
 import { createConfigFingerprint } from "@lando/container-runtime/create-fingerprint";
 import { ServiceName } from "@lando/sdk/schema";
 import { Effect } from "effect";
+import { STOCK_NGINX_IMAGE } from "../src/services/nginx-config.ts";
 import { acquireTempAppRoot } from "./support/live-app-scope.ts";
 import { planOwnershipFixture, requireWeb } from "./support/php-ownership-stack.ts";
 
@@ -34,7 +35,7 @@ const plan = (
           id: "nginx-ownership",
           services: {
             web: { type: "nginx", ...service },
-            ...(options.fpm ? { [fpm]: { type: "php:8.3", via: "fpm" } } : {}),
+            ...(options.fpm ? { [fpm]: { type: "php:8.3", via: "fpm", port: 9070 } } : {}),
           },
         },
         { ...capabilities, projectUserMapping: options.mapping ?? "userns-keep-id" },
@@ -59,13 +60,16 @@ describe("stock nginx ownership through AppPlanner", () => {
 
   test("maps the nginx edge and PHP worker separately", async () => {
     const planned = await plan({ backend: "fpm" }, { fpm: true });
-    expect(requireWeb(planned).projectUser).toEqual(worker);
+    const web = requireWeb(planned);
+    expect(web.command?.[2]).toContain("fastcgi_pass fpm:9070;");
+    expect(web.projectUser).toEqual(worker);
     expect(planned.services[fpm]?.projectUser).toEqual({ name: "www-data", uid: 33, gid: 33 });
   });
 
   test.each([
     ["Caddy", { type: "static:caddy" }, "unresolved"],
     ["custom image", { image: "nginx:1.27-alpine" }, "unresolved"],
+    ["explicit unversioned image equal to stock", { image: STOCK_NGINX_IMAGE }, "unresolved"],
     ["replacement build", { build: { context: "." } }, "unresolved"],
     ["authored command", { command: ["nginx", "-g", "daemon off;"] }, "unresolved"],
     ["authored entrypoint", { type: "static:nginx", entrypoint: ["custom-entrypoint"] }, "unresolved"],

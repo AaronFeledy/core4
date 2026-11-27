@@ -39,8 +39,8 @@ export interface ResolveProjectUserInput {
   readonly authored: ServiceConfig["projectUser"];
   /** Authored process `user:`; features and defaults do not participate. */
   readonly authoredUser: string | undefined;
-  /** Whether an authored command or entrypoint replaces the launcher. */
-  readonly authoredLauncher: boolean;
+  /** The final command opted in and still uses the stock image's entrypoint. */
+  readonly stockLauncher: boolean;
   /** Composed process user, used to check launcher-scoped defaults. */
   readonly processUser: string | undefined;
   /** Whether the finalized mounts include the app-source bind. */
@@ -158,12 +158,12 @@ const resolveImageRenumber = (
   namedNumeric: ServiceProjectUser | undefined,
 ): CapabilityError | ResolvedProjectUser => {
   const declared = input.identity?.projectUser;
-  const launcherPolicy = !explicit && input.identity?.projectUserDefault === "launcher";
+  const launcherPolicy = !explicit && input.identity?.projectUserDefault !== undefined;
   const launcherNumeric = launcherPolicy ? namedNumeric : undefined;
   const processUser = input.processUser;
   if (
     launcherNumeric !== undefined &&
-    (input.authoredLauncher ||
+    (!input.stockLauncher ||
       !sameNumericIds(declared, launcherNumeric) ||
       (processUser !== undefined && !sameNumericIds(configuredNumericUser(processUser), launcherNumeric)))
   )
@@ -338,8 +338,8 @@ export const resolveProjectUser = (
     if (numericCandidate !== undefined) {
       candidate = numericCandidate;
     } else if (
-      input.identity?.projectUserDefault !== "launcher" ||
-      (!input.authoredLauncher &&
+      input.identity?.projectUserDefault === undefined ||
+      (input.stockLauncher &&
         (authored === undefined || authored === declared?.name) &&
         (processUser === undefined || processUser === declared?.name))
     ) {

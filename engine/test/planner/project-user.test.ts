@@ -46,7 +46,7 @@ const input = (overrides: Partial<ResolveProjectUserInput> = {}): ResolveProject
   capabilities: capabilities(),
   authored: undefined,
   authoredUser: undefined,
-  authoredLauncher: false,
+  stockLauncher: true,
   processUser: undefined,
   appSourceMounted: true,
   identity: phpIdentity,
@@ -197,7 +197,7 @@ describe("launcher-scoped project-user defaults", () => {
     defaultUser: "root",
     homes: { root: "/root" },
     projectUser: worker,
-    projectUserDefault: "launcher",
+    projectUserDefault: { launcherImage: "worker:1" },
   } satisfies ServiceImageIdentity;
   const numericWorker = { name: "120", uid: 120, gid: 121 };
   const otherNumeric = { name: "500", uid: 500, gid: 501 };
@@ -207,9 +207,9 @@ describe("launcher-scoped project-user defaults", () => {
     ["generated launcher with the worker name", { authoredUser: "worker" }, worker],
     ["generated launcher with the worker pair", { authoredUser: "120:121" }, numericWorker],
     ["generated launcher with another numeric user", { authoredUser: "500:501" }, otherNumeric],
-    ["custom launcher with numeric user", { authoredLauncher: true, authoredUser: "500:501" }, otherNumeric],
-    ["explicit name with a replacement launcher", { authoredLauncher: true, authored: "worker" }, worker],
-    ["explicit pair with custom launcher", { authoredLauncher: true, authored: "500:501" }, otherNumeric],
+    ["custom launcher with numeric user", { stockLauncher: false, authoredUser: "500:501" }, otherNumeric],
+    ["explicit name with a replacement launcher", { stockLauncher: false, authored: "worker" }, worker],
+    ["explicit pair with custom launcher", { stockLauncher: false, authored: "500:501" }, otherNumeric],
   ] satisfies ReadonlyArray<readonly [string, Partial<ResolveProjectUserInput>, typeof worker]>)(
     "maps the selected identity for %s",
     (_label, overrides, expected) => {
@@ -218,8 +218,8 @@ describe("launcher-scoped project-user defaults", () => {
   );
 
   test.each([
-    ["replacement launcher", { authoredLauncher: true }, "unresolved"],
-    ["custom launcher with worker user", { authoredLauncher: true, authoredUser: "worker" }, "unresolved"],
+    ["replacement launcher", { stockLauncher: false }, "unresolved"],
+    ["custom launcher with worker user", { stockLauncher: false, authoredUser: "worker" }, "unresolved"],
     ["different named user", { authoredUser: "another" }, "unresolved"],
     ["different effective user", { authoredUser: "worker", processUser: "another" }, "unresolved"],
     ["opt-out", { authored: false }, "opted-out"],

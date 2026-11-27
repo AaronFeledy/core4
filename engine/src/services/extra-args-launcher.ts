@@ -5,11 +5,12 @@ import type {
   ServiceFeatureDefinition,
 } from "@lando/sdk/services";
 import { Effect } from "effect";
-import type { DraftServicePlan } from "./draft.ts";
+import { type DraftServicePlan, writeServiceCommand } from "./draft.ts";
 
-export interface ExtraArgsLauncher extends LauncherCommandOptions {
+export interface ExtraArgsLauncher {
   readonly command: readonly string[];
   readonly entrypoint?: NonNullable<ServicePlan["entrypoint"]>;
+  readonly extraArgs: NonNullable<LauncherCommandOptions["extraArgs"]>;
 }
 
 export const captureExtraArgsLauncher = (
@@ -29,8 +30,8 @@ export const captureExtraArgsLauncher = (
     ) {
       let launcher: Omit<ExtraArgsLauncher, "entrypoint"> | undefined;
       yield* apply((command, options) => {
-        draft.command = Array.isArray(command) ? [...command] : command;
-        if (options === undefined || typeof command === "string") return;
+        writeServiceCommand(draft, command, options);
+        if (options?.extraArgs === undefined || typeof command === "string") return;
         const snapshot = [...command];
         if (features?.has(feature)) launcher = { command: snapshot, extraArgs: options.extraArgs };
       });

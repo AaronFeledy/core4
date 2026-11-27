@@ -1,14 +1,19 @@
-import type { ServiceBuildStepIntent, ServiceImageIdentity } from "@lando/sdk/services";
+import type {
+  LauncherCommandOptions,
+  ServiceBuildStepIntent,
+  ServiceImageIdentity,
+} from "@lando/sdk/services";
 import { ServiceConfigIssue } from "./_feature-helpers.ts";
 
 export const STOCK_NGINX_IMAGE = "nginx:1.26-alpine";
+export const stockNginxLauncherOptions = { projectUser: true } as const satisfies LauncherCommandOptions;
 
 // The worker's passwd home, /var/cache/nginx, must not become a home store.
 export const stockNginxIdentity: ServiceImageIdentity = {
   defaultUser: "root",
   homes: { root: "/root" },
   projectUser: { name: "nginx", uid: 101, gid: 101 },
-  projectUserDefault: "launcher",
+  projectUserDefault: { launcherImage: STOCK_NGINX_IMAGE },
 };
 
 /**
