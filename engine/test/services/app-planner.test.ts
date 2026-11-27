@@ -5040,7 +5040,7 @@ describe("AppPlannerLayer.layer", () => {
         const exit = await planExit({
           name: "myapp",
           runtime: 4,
-          services: { [ServiceName.make("db")]: { type: "mariadb:10.11", home: false } },
+          services: { [ServiceName.make("db")]: { type: "mariadb:10.6", home: false } },
         });
         const failure = expectSomeFailure(exit);
         expect(failure).toBeInstanceOf(LandofileValidationError);
@@ -5049,7 +5049,7 @@ describe("AppPlannerLayer.layer", () => {
           expect(failure.issues.map((issue) => formatValidationIssuePath(issue.path))).toEqual([
             "services.db.type",
           ]);
-          expect(failure.message).toContain("Supported versions: 11.4");
+          expect(failure.message).toContain("Supported versions: 10.11, 11.4, 11.8");
         }
       });
     });

@@ -960,7 +960,7 @@
     },
     {
       "fixture": "docs/guides/mariadb/fixtures/mariadb-pinned",
-      "digest": "7503029971fb65dd2458143ed26bf48b91cba665e1ed85965eceab794cab2c82"
+      "digest": "0ea743cad841a47ddd32a4279198092b045b25a185900d809d4fdbe4b11b585f"
     },
     {
       "fixture": "docs/guides/mcp/fixtures/named-inputs",

@@ -39,14 +39,39 @@ test("keeps an authored MariaDB auto-upgrade opt-out", async () => {
   expect(plan.environment.MARIADB_AUTO_UPGRADE).toBe("0");
 });
 
+test.each(["mariadb:11.4", "mariadb:10.6", `mariadb@sha256:${"a".repeat(64)}`])(
+  "plans the downgrade guard without replacing the entrypoint for %s",
+  async (image) => {
+    const plan = await planMariadb({ image, port: 4306 });
+    expect(plan.command).toEqual([
+      "sh",
+      "-c",
+      expect.any(String),
+      "lando-mariadb",
+      "mariadbd",
+      "--port=4306",
+    ]);
+    expect(plan.entrypoint).toBeUndefined();
+  },
+);
+
 test.each([
-  "mariadb:11.4",
-  "mariadb:10.11",
-  "docker.io/library/mariadb:11.8",
-  `mariadb@sha256:${"a".repeat(64)}`,
-])("plans the downgrade guard without replacing the entrypoint for %s", async (image) => {
-  const plan = await planMariadb({ image, port: 4306 });
-  expect(plan.command).toEqual(["sh", "-c", expect.any(String), "lando-mariadb", "mariadbd", "--port=4306"]);
+  { service: { type: "mariadb:10.11" }, ref: "mariadb:10.11" },
+  { service: { type: "mariadb:11.8" }, ref: "mariadb:11.8" },
+  { service: { image: "docker.io/library/mariadb:11.8" }, ref: "docker.io/library/mariadb:11.8" },
+])("plans the catalog launcher with extraArgs for $ref", async ({ service, ref }) => {
+  const extraArg = "--max-connections=10";
+  const plan = await planMariadb({ ...service, extraArgs: [extraArg] });
+  expect(plan.artifact).toEqual({ kind: "ref", ref });
+  expect(plan.command).toEqual([
+    "sh",
+    "-c",
+    expect.any(String),
+    "lando-mariadb",
+    "mariadbd",
+    "--port=3306",
+    extraArg,
+  ]);
   expect(plan.entrypoint).toBeUndefined();
 });
 
@@ -75,7 +100,7 @@ test.each(["--port=3307", "-P3307", "--defaults-file=/tmp/my.cnf"])(
 
 test("rejects extraArgs for an official noncatalog tag", async () => {
   await expect(
-    planMariadb({ image: "mariadb:10.11", extraArgs: ["--max-connections=10"] }),
+    planMariadb({ image: "mariadb:10.6", extraArgs: ["--max-connections=10"] }),
   ).rejects.toMatchObject({
     _tag: "LandofileValidationError",
     issues: [expect.objectContaining({ path: ["services", "db", "extraArgs"] })],

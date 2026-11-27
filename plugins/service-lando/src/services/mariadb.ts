@@ -32,9 +32,13 @@ import { assertListenerConfig, primaryPortSelector, servicePortEndpoints } from 
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { addServerConfigMount } from "./_volume-helpers.ts";
 
-const DEFAULT_IMAGE = "mariadb:11.4";
-const VERSIONS = ["11.4"] as const;
-const ARTIFACTS = { "11.4": DEFAULT_IMAGE } as const;
+const VERSIONS = ["10.11", "11.4", "11.8"] as const;
+const ARTIFACTS = {
+  "10.11": "mariadb:10.11",
+  "11.4": "mariadb:11.4",
+  "11.8": "mariadb:11.8",
+} as const;
+const DEFAULT_IMAGE = ARTIFACTS["11.4"];
 const CATALOG_IMAGES = Object.values(ARTIFACTS);
 export const MARIADB_LISTENER = {
   port: 3306,
