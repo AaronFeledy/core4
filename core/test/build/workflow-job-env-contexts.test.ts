@@ -128,7 +128,14 @@ describe("workflow job-level env contexts", () => {
     expect(prCells).toEqual(["docker-engine-linux-latest"]);
     expect(paths).toEqual([
       "container-runtime/**",
+      "core/test/live/nginx-route-cli-live.integration.test.ts",
+      "core/test/live/route-cli-live-support.ts",
+      "engine/src/planner/endpoints.ts",
+      "engine/src/planner/project-user.ts",
+      "engine/src/services/extends.ts",
       "plugins/provider-docker/**",
+      "plugins/service-lando/src/services/nginx*",
+      "plugins/service-lando/src/services/static.ts",
       "scripts/provider-matrix*",
       "scripts/build-provider-matrix-workflow.ts",
       ".github/workflows/provider-matrix.yml",

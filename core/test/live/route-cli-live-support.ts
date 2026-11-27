@@ -26,15 +26,21 @@ export const prerequisite = !isScannerLiveEligible()
       ? "Install curl in the live-test environment."
       : undefined;
 
+const rootlessPodmanInfo = Schema.Struct({
+  host: Schema.Struct({ security: Schema.Struct({ rootless: Schema.Literal(true) }) }),
+});
+
 // Call only after the prerequisite has confirmed the opted-in managed socket.
-export const managedLinuxMapsProjectUser = async (): Promise<boolean> => {
+export const managedLinuxMapsProjectUser = async (requireExplicitRootless = false): Promise<boolean> => {
   if (process.platform !== "linux") return false;
-  const capabilities = await Effect.runPromise(
-    introspectProviderCapabilities(makePodmanApiClient(managedProviderSocketPath), "linux").pipe(
-      Effect.timeout("5 seconds"),
-    ),
-  );
-  return capabilities.projectUserMapping === "userns-keep-id";
+  const api = makePodmanApiClient(managedProviderSocketPath);
+  // Capability introspection assumes rootless when older engines omit the fact. CI needs proof.
+  const mapsProjectUser = requireExplicitRootless
+    ? api.info.pipe(Effect.map(Schema.is(rootlessPodmanInfo)))
+    : introspectProviderCapabilities(api, "linux").pipe(
+        Effect.map((capabilities) => capabilities.projectUserMapping === "userns-keep-id"),
+      );
+  return Effect.runPromise(mapsProjectUser.pipe(Effect.timeout("5 seconds")));
 };
 
 export const infoEnvelope = Schema.fromJsonString(

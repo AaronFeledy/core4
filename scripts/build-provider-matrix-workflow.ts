@@ -248,8 +248,8 @@ ${renderInstallDockerCeLatestStep({ condition: "matrix.cell == 'docker-engine-li
             const report = await Bun.file("provider-matrix-reports/docker-engine-linux-latest.json").json();
             for (const id of ${JSON.stringify(DOCKER_LATEST_ASSERTED_CHECK_IDS)}) {
               const check = report.checks.find((entry) => entry.id === id);
-              if (check?.outcome !== "passed") {
-                throw new Error(id + " " + (check?.outcome ?? "missing"));
+              if (check?.outcome !== "passed" || !/^\\s*[1-9]\\d* pass\\s*$/mu.test(Bun.stripANSI(check.evidence.stderr))) {
+                throw new Error(id + " did not report a passing test (" + (check?.outcome ?? "missing") + ")");
               }
             }
           '
@@ -306,7 +306,14 @@ on:
   pull_request:
     paths:
       - container-runtime/**
+      - core/test/live/nginx-route-cli-live.integration.test.ts
+      - core/test/live/route-cli-live-support.ts
+      - engine/src/planner/endpoints.ts
+      - engine/src/planner/project-user.ts
+      - engine/src/services/extends.ts
       - plugins/provider-docker/**
+      - plugins/service-lando/src/services/nginx*
+      - plugins/service-lando/src/services/static.ts
       - scripts/provider-matrix*
       - scripts/build-provider-matrix-workflow.ts
       - .github/workflows/provider-matrix.yml

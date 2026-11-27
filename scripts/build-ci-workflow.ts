@@ -550,10 +550,16 @@ const laneRuns = (runs: readonly (readonly [TestSelectionId, string])[]): string
   runs.map(([id, log]) => laneRun(id, log)).join("\n");
 // `core/test/live` alone takes about 20 minutes, so the suites that drive the engine
 // directly get their own lane to keep each lane under its timeout cap.
-const providerLaneRuns = laneRuns([
-  ["providers-engine-parity", "engine-parity"],
-  ["providers-core-live", "core-live"],
-]);
+const providerLaneRuns =
+  laneRuns([
+    ["providers-engine-parity", "engine-parity"],
+    ["providers-core-live", "core-live"],
+  ]) +
+  `
+              if ! grep -Eq '^NGINX_ROUTE_CLI_EVIDENCE .*"privateFiles":true[,}]' /tmp/lando-provider-test-logs/core-live.log; then
+                echo "Missing private nginx route test evidence" >&2
+                status=1
+              fi`;
 const engineLaneRuns = laneRuns([
   ["providers-lando", "provider-lando-integration"],
   ["providers-docker", "provider-docker-integration"],
@@ -573,6 +579,7 @@ const landoRuntimeLiveTestSteps = `      - name: Run provider integration tests
           LANDO_PROVIDER_TEST_SUITE: \${{ matrix.suite }}
           LANDO_SCENARIO_E2E_BINARY: \${{ github.workspace }}/dist/lando
           LANDO_NATIVE_INIT_E2E: "1"
+          LANDO_TEST_NGINX_PRIVATE: lando
         run: |
           mkdir -p /tmp/lando-provider-test-logs
           set -o pipefail
