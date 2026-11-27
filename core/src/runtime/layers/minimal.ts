@@ -118,7 +118,7 @@ export type MinimalBootstrapServices = Layer.Success<ReturnType<typeof makeMinim
  * an app contribution generation builds its plugin-dependent tiers over the host's event bus,
  * config, and redaction services instead of constructing a second set.
  */
-export interface MinimalBootstrapLayerInputs extends BootstrapLayerInputs {
+export interface MinimalBootstrapLayerInputs<R = unknown> extends BootstrapLayerInputs<R> {
   readonly minimalContext?: Context.Context<MinimalBootstrapServices> | undefined;
 }
 
