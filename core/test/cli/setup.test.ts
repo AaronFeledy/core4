@@ -489,6 +489,180 @@ describe("meta:setup command", () => {
     }
   });
 
+  describe.skipIf(process.platform !== "linux" || process.getuid?.() === 0)(
+    "giving root-owned files back",
+    () => {
+      /**
+       * A real data root under a directory the user owns, where `setup` reports root ownership until
+       * the walker (run through the session) "gives it back", optionally leaving one path behind.
+       */
+      const fixture = async (
+        options: {
+          readonly leftover?: boolean;
+          /** A root-owned hard link beside the repairable directory. */
+          readonly hardLink?: boolean;
+          readonly report?: (userDataRoot: string) => string;
+        } = {},
+      ) => {
+        const base = await mkdtemp(join(tmpdir(), "lando-setup-repair-"));
+        const userDataRoot = join(base, "data");
+        await mkdir(join(userDataRoot, "setup"), { recursive: true });
+        const rootOwned = new Set([join(userDataRoot, "setup")]);
+        const hardLink = join(userDataRoot, "linked");
+        if (options.hardLink === true) await writeFile(hardLink, "");
+        const real = Effect.runSync(
+          Effect.gen(function* () {
+            return yield* FileSystem;
+          }).pipe(Effect.provide(BunFileSystem.layer)),
+        );
+        const fileSystem = FileSystem.of({
+          ...real,
+          lstat: (path) =>
+            Effect.map(real.lstat(path), (stat) => {
+              if (options.hardLink === true && path === hardLink) return { ...stat, uid: 0, nlink: 2 };
+              if (rootOwned.has(path)) return { ...stat, uid: 0 };
+              // The host's temp directory may be group-writable, which the walker would refuse.
+              return base.startsWith(`${path}/`) ? { ...stat, mode: (stat.mode ?? 0) & ~0o022 } : stat;
+            }),
+        });
+        const order: string[] = [];
+        const elevated: ReadonlyArray<string>[] = [];
+        const privilege = makeTestPrivilegeService({
+          elevate: (argv) =>
+            Effect.sync(() => {
+              elevated.push([...argv]);
+              order.push("repair");
+              if (!options.leftover) rootOwned.clear();
+              const report = options.report?.(userDataRoot) ?? '{"changed":1,"skipped":[],"incomplete":[]}';
+              return { exitCode: 0, stdout: `${report}\n`, stderr: "" };
+            }),
+        });
+        const provider = {
+          ...TestRuntimeProvider,
+          id: "lando",
+          setup: () => Effect.sync(() => void order.push("provider")),
+        };
+        const registry = makeTestRuntimeProviderRegistry({
+          list: Effect.succeed([ProviderId.make("lando")]),
+          capabilities: Effect.succeed(provider.capabilities),
+          select: () => Effect.succeed(provider),
+        });
+        const run = (flags: Readonly<Record<string, unknown>>) =>
+          Effect.runPromiseExit(
+            setupSpec
+              .run({
+                installDir: "/opt/lando",
+                flags: {
+                  "skip-proxy": true,
+                  "skip-install-ca": true,
+                  "skip-shell-integration": true,
+                  ...flags,
+                },
+              })
+              .pipe(
+                Effect.provideService(PathsService, makeLandoPaths({ userDataRoot })),
+                Effect.provideService(FileSystem, fileSystem),
+                Effect.provide(buildSetupLayersWithPrivilege(registry, privilege, { userDataRoot })),
+              ),
+          );
+        return { base, userDataRoot, hardLink, run, order, elevated };
+      };
+
+      test("a hard link stops setup at planning with only its own command, before asking or changing anything", async () => {
+        const { base, hardLink, run, order, elevated } = await fixture({ hardLink: true });
+        try {
+          for (const flags of [{ "dry-run": true }, { yes: true, "no-interactive": true }]) {
+            const exit = await run(flags);
+
+            const failure = Exit.isFailure(exit) ? Cause.findErrorOption(exit.cause) : undefined;
+            const error = failure?._tag === "Some" ? failure.value : undefined;
+            expect(error).toBeInstanceOf(RootOwnedLandoFilesError);
+            if (!(error instanceof RootOwnedLandoFilesError)) return;
+            expect(error.paths).toEqual([hardLink]);
+            expect(error.remediation).toContain(`\`rm -f '${hardLink}'\``);
+            expect(error.remediation).not.toContain("chown");
+          }
+          expect(order).toEqual([]);
+          expect(elevated).toEqual([]);
+        } finally {
+          await rm(base, { recursive: true, force: true });
+        }
+      });
+
+      test("what the walker leaves on purpose stops setup with its command before later stages", async () => {
+        const left = (root: string) => join(root, "setup", "linked");
+        const { base, userDataRoot, run, order } = await fixture({
+          report: (root) =>
+            `{"changed":1,"skipped":[{"path":"${left(root)}","reason":"hard-link"}],"incomplete":[]}`,
+        });
+        try {
+          const exit = await run({ yes: true, "no-interactive": true });
+
+          const failure = Exit.isFailure(exit) ? Cause.findErrorOption(exit.cause) : undefined;
+          const error = failure?._tag === "Some" ? failure.value : undefined;
+          expect(error).toBeInstanceOf(RootOwnedLandoFilesError);
+          if (!(error instanceof RootOwnedLandoFilesError)) return;
+          expect(error.paths).toEqual([left(userDataRoot)]);
+          expect(error.message).toContain("Lando gave back what it safely could");
+          expect(error.remediation).toContain(`\`rm -f '${left(userDataRoot)}'\``);
+          expect(order).toEqual(["repair"]);
+        } finally {
+          await rm(base, { recursive: true, force: true });
+        }
+      });
+
+      test("the dry run lists the repair first, with the exact walker command", async () => {
+        const { base, userDataRoot, run, elevated } = await fixture();
+        try {
+          const exit = await run({ "dry-run": true });
+
+          if (!Exit.isSuccess(exit) || !exit.value.dryRun) throw new Error("expected a plan");
+          const [first] = exit.value.changes;
+          expect(String(first?.change.id)).toBe("core:repair-root-ownership");
+          expect(first?.change.steps[0]?.argv).toContain("__internal:repair-root-ownership");
+          expect(first?.change.steps[0]?.argv).toContain(join(userDataRoot, "setup"));
+          expect(elevated).toEqual([]);
+        } finally {
+          await rm(base, { recursive: true, force: true });
+        }
+      });
+
+      test("--yes gives them back before anything writes the roots, then runs the rest of setup", async () => {
+        const { base, userDataRoot, run, order, elevated } = await fixture();
+        try {
+          const exit = await run({ yes: true, "no-interactive": true });
+
+          if (!Exit.isSuccess(exit)) throw new Error(`expected setup to finish: ${Cause.pretty(exit.cause)}`);
+          expect(order).toEqual(["repair", "provider"]);
+          expect(elevated[0]).toContain("__internal:repair-root-ownership");
+          expect(
+            applied(exit.value).hostChanges.map(({ id, outcome }) => [String(id), outcome]),
+          ).toContainEqual(["core:repair-root-ownership", "applied"]);
+          expect(existsSync(setupReadinessPath(userDataRoot))).toBe(true);
+        } finally {
+          await rm(base, { recursive: true, force: true });
+        }
+      });
+
+      test("files still root-owned after the repair stop setup with their commands", async () => {
+        const { base, userDataRoot, run, order } = await fixture({ leftover: true });
+        try {
+          const exit = await run({ yes: true, "no-interactive": true });
+
+          const failure = Exit.isFailure(exit) ? Cause.findErrorOption(exit.cause) : undefined;
+          const error = failure?._tag === "Some" ? failure.value : undefined;
+          expect(error).toBeInstanceOf(RootOwnedLandoFilesError);
+          if (!(error instanceof RootOwnedLandoFilesError)) return;
+          expect(error.paths).toEqual([join(userDataRoot, "setup")]);
+          expect(error.message).toContain("Lando gave back what it safely could");
+          expect(order).toEqual(["repair"]);
+        } finally {
+          await rm(base, { recursive: true, force: true });
+        }
+      });
+    },
+  );
+
   test("passes runtime-bundle-url through to provider setup", async () => {
     const setupOptions: Array<{ readonly force: boolean; readonly runtimeBundleUrl?: string }> = [];
     const provider = {

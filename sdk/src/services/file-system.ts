@@ -14,6 +14,10 @@ export interface FileStat {
   readonly uid?: number;
   /** Owning group id where the host reports one (POSIX). */
   readonly gid?: number;
+  /** Permission and type bits where the host reports them (POSIX `st_mode`). */
+  readonly mode?: number;
+  /** Hard-link count where the host reports one (POSIX `st_nlink`). */
+  readonly nlink?: number;
 }
 
 export class FileSystem extends Context.Service<

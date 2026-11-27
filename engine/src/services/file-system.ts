@@ -100,6 +100,8 @@ const stat = async (path: string): Promise<FileStat> => {
       isDirectory: stats.isDirectory(),
       uid: stats.uid,
       gid: stats.gid,
+      mode: stats.mode,
+      nlink: stats.nlink,
     };
   } catch (cause) {
     if (codeFrom(cause) === "ENOENT") {
@@ -120,6 +122,8 @@ const lstat = async (path: string): Promise<FileStat> => {
       isSymbolicLink: stats.isSymbolicLink(),
       uid: stats.uid,
       gid: stats.gid,
+      mode: stats.mode,
+      nlink: stats.nlink,
     };
   } catch (cause) {
     if (codeFrom(cause) === "ENOENT") {

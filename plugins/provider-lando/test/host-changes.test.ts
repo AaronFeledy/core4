@@ -237,6 +237,36 @@ describe("cgroups delegation and lingering", () => {
       persistent: true,
       requirement: "recommended",
     });
+    // With a runtime directory, a run that declines lingering still starts; the drop-in planned
+    // with lingering follows it.
+    expect(lacking.map(({ change }) => change.requirement)).toEqual(["recommended", "recommended"]);
+  });
+
+  test("lingering, and the drop-in it needs, are required when the session has no runtime directory", () => {
+    const planned = plan({
+      probes: probes({ hasXdgRuntimeDir: false }),
+      userManager: managerHost({ running: () => false, unit: lackingDelegation }),
+    });
+
+    expect(planned.map(({ change }) => [change.id, change.requirement])).toEqual([
+      [PREREQUISITE_CHANGES.delegation, "required"],
+      [PREREQUISITE_CHANGES.linger, "required"],
+    ]);
+    const linger = planned[1]?.change;
+    expect(linger).toMatchObject({ consent: "separate", optInFlag: "enable-linger" });
+    expect(linger?.reason).toContain("cannot start");
+    expect(linger?.reason).toContain("pam_systemd");
+  });
+
+  test("a drop-in planned under a running manager stays required", () => {
+    const planned = plan({
+      probes: probes({ cgroupsV2Delegated: false }),
+      userManager: managerHost({ running: () => true }),
+    });
+
+    expect(planned.map(({ change }) => [change.id, change.requirement])).toEqual([
+      [PREREQUISITE_CHANGES.delegation, "required"],
+    ]);
   });
 
   test("an existing drop-in the loaded unit does not apply fails closed instead of lingering", () => {

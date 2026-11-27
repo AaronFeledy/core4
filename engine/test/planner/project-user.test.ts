@@ -5,7 +5,7 @@ import type { ProviderCapabilities } from "@lando/sdk/schema";
 import { ProviderId } from "@lando/sdk/schema";
 import type { ServiceImageIdentity } from "@lando/sdk/services";
 
-import { resolveProjectUser } from "../../src/planner/project-user.ts";
+import { type ResolveProjectUserInput, resolveProjectUser } from "../../src/planner/project-user.ts";
 
 const baseCapabilities = buildProviderCapabilities({
   bindMounts: true,
@@ -37,8 +37,8 @@ const phpIdentity: ServiceImageIdentity = {
   preparedHomes: ["www-data"],
 };
 
-const input = (overrides: Record<string, unknown> = {}) => ({
-  appKind: "user" as const,
+const input = (overrides: Partial<ResolveProjectUserInput> = {}): ResolveProjectUserInput => ({
+  appKind: "user",
   serviceName: "web",
   serviceTypeLabel: "php:8.3",
   appRoot: "/tmp/app",
@@ -46,6 +46,8 @@ const input = (overrides: Record<string, unknown> = {}) => ({
   capabilities: capabilities(),
   authored: undefined,
   authoredUser: undefined,
+  stockLauncher: true,
+  processUser: undefined,
   appSourceMounted: true,
   identity: phpIdentity,
   ...overrides,
@@ -186,6 +188,48 @@ describe("resolveProjectUser applicability", () => {
     expect(
       explanationOf(resolveProjectUser(input({ authored: "www-data", appSourceMounted: false }))).state,
     ).toBe("not-applicable");
+  });
+});
+
+describe("launcher-scoped project-user defaults", () => {
+  const worker = { name: "worker", uid: 120, gid: 121 };
+  const identity = {
+    defaultUser: "root",
+    homes: { root: "/root" },
+    projectUser: worker,
+    projectUserDefault: { launcherImage: "worker:1" },
+  } satisfies ServiceImageIdentity;
+  const numericWorker = { name: "120", uid: 120, gid: 121 };
+  const otherNumeric = { name: "500", uid: 500, gid: 501 };
+
+  test.each([
+    ["generated launcher with no user", {}, worker],
+    ["generated launcher with the worker name", { authoredUser: "worker" }, worker],
+    ["generated launcher with the worker pair", { authoredUser: "120:121" }, numericWorker],
+    ["generated launcher with another numeric user", { authoredUser: "500:501" }, otherNumeric],
+    ["custom launcher with numeric user", { stockLauncher: false, authoredUser: "500:501" }, otherNumeric],
+    ["explicit name with a replacement launcher", { stockLauncher: false, authored: "worker" }, worker],
+    ["explicit pair with custom launcher", { stockLauncher: false, authored: "500:501" }, otherNumeric],
+  ] satisfies ReadonlyArray<readonly [string, Partial<ResolveProjectUserInput>, typeof worker]>)(
+    "maps the selected identity for %s",
+    (_label, overrides, expected) => {
+      expect(resolveProjectUser(input({ identity, ...overrides }))).toEqual({ projectUser: expected });
+    },
+  );
+
+  test.each([
+    ["replacement launcher", { stockLauncher: false }, "unresolved"],
+    ["custom launcher with worker user", { stockLauncher: false, authoredUser: "worker" }, "unresolved"],
+    ["different named user", { authoredUser: "another" }, "unresolved"],
+    ["different effective user", { authoredUser: "worker", processUser: "another" }, "unresolved"],
+    ["opt-out", { authored: false }, "opted-out"],
+    [
+      "unsupported provider",
+      { capabilities: capabilities({ projectUserMapping: "unsupported" }) },
+      "provider-unsupported",
+    ],
+  ] as const)("explains the absence of mapping for %s", (_label, overrides, state) => {
+    expect(explanationOf(resolveProjectUser(input({ identity, ...overrides }))).state).toBe(state);
   });
 });
 

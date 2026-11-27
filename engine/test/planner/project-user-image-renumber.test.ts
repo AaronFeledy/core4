@@ -9,6 +9,7 @@ import { ProviderId } from "@lando/sdk/schema";
 import type { ServiceImageIdentity } from "@lando/sdk/services";
 
 import {
+  type ResolveProjectUserInput,
   projectUserRenumberStep,
   projectUserRenumberStepId,
   resolveProjectUser,
@@ -38,8 +39,8 @@ const phpIdentity: ServiceImageIdentity = {
 
 const host = { uid: "1000", gid: "1000" };
 
-const input = (overrides: Record<string, unknown> = {}) => ({
-  appKind: "user" as const,
+const input = (overrides: Partial<ResolveProjectUserInput> = {}): ResolveProjectUserInput => ({
+  appKind: "user",
   serviceName: "web",
   serviceTypeLabel: "php:8.3",
   appRoot: "/tmp/app",
@@ -47,6 +48,8 @@ const input = (overrides: Record<string, unknown> = {}) => ({
   capabilities: capabilities(),
   authored: undefined,
   authoredUser: undefined,
+  stockLauncher: true,
+  processUser: undefined,
   appSourceMounted: true,
   identity: phpIdentity,
   host,
@@ -145,6 +148,84 @@ describe("resolveProjectUser image renumbering", () => {
       ),
     ).toEqual({ projectUser: { name: "www-data", uid: 33, gid: 33 } });
   });
+});
+
+describe("image renumbering with a launcher-scoped account", () => {
+  const identity = {
+    defaultUser: "root",
+    homes: { root: "/root" },
+    projectUser: { name: "worker", uid: 120, gid: 121 },
+    projectUserDefault: { launcherImage: "worker:1" },
+  } satisfies ServiceImageIdentity;
+
+  test.each([
+    ["generated launcher", {}, 1000, 1000],
+    ["generated launcher with a named process user", { authoredUser: "worker" }, 1000, 1000],
+    [
+      "numeric process already running as the host ids",
+      { authoredUser: "120:121", host: { uid: "120", gid: "121" } },
+      120,
+      121,
+    ],
+    [
+      "explicit name on a replacement launcher",
+      { authored: "worker", stockLauncher: false, authoredUser: "120:121" },
+      1000,
+      1000,
+    ],
+    ["explicit pair on a replacement launcher", { authored: "120:121", stockLauncher: false }, 1000, 1000],
+  ] satisfies ReadonlyArray<readonly [string, Partial<ResolveProjectUserInput>, number, number]>)(
+    "maps the account for %s",
+    (_label, overrides, uid, gid) => {
+      expect(resolveProjectUser(input({ identity, ...overrides }))).toEqual({
+        projectUser: { name: "worker", uid, gid },
+      });
+    },
+  );
+
+  test.each([
+    ["numeric user whose process would keep its old ids", { authoredUser: "120:121" }],
+    [
+      "numeric user where just the group would change",
+      { authoredUser: "120:121", host: { uid: "120", gid: "1000" } },
+    ],
+    ["different numeric user even if it matches the host ids", { authoredUser: "1000:1000" }],
+    [
+      "different effective process user despite matching authored and host ids",
+      { authoredUser: "120:121", processUser: "other", host: { uid: "120", gid: "121" } },
+    ],
+    [
+      "replacement launcher with the worker pair",
+      { stockLauncher: false, authoredUser: "120:121", host: { uid: "120", gid: "121" } },
+    ],
+    ["replacement launcher with an unrelated pair", { stockLauncher: false, authoredUser: "1000:1000" }],
+  ] satisfies ReadonlyArray<readonly [string, Partial<ResolveProjectUserInput>]>)(
+    "does not renumber the account for %s",
+    (_label, overrides) => {
+      const result = resolveProjectUser(input({ identity, ...overrides }));
+      expect("explanation" in result ? result.explanation?.state : undefined).toBe("provider-unsupported");
+    },
+  );
+
+  test.each(["uid", "gid"] as const)("skips the default when host %s is zero", (id) => {
+    const result = resolveProjectUser(input({ identity, host: { ...host, [id]: "0" } }));
+    expect(result).toEqual({
+      explanation: { state: "provider-unsupported", explicit: false, detail: expect.any(String) },
+    });
+  });
+
+  test.each([
+    ["named projectUser", { authored: "worker" }],
+    ["numeric projectUser", { authored: "120:121" }],
+    ["eligible numeric process user", { authoredUser: "120:121" }],
+  ] satisfies ReadonlyArray<readonly [string, Partial<ResolveProjectUserInput>]>)(
+    "still refuses %s when renumbering would use host root",
+    (_label, overrides) => {
+      expect(
+        resolveProjectUser(input({ identity, host: { ...host, uid: "0" }, ...overrides })),
+      ).toBeInstanceOf(CapabilityError);
+    },
+  );
 });
 
 describe("projectUserRenumberStep", () => {

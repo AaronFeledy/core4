@@ -16,7 +16,6 @@ import type {
 import { Effect, Schema } from "effect";
 import { UNSUPPORTED_LAUNCHER_EXTRA_ARGS_REMEDIATION } from "./_extra-args.ts";
 import {
-  rootIdentity,
   serviceFeatureApply,
   serviceFeatureValidateEffective,
   serviceTypeResolve,
@@ -28,7 +27,12 @@ import { resolveWebroot } from "./_webroot.ts";
 import { NGINX_DEFAULT_IMAGE } from "./default-images.ts";
 import { landoErrorPagesBuildStep, nginxErrorPageConfigLines } from "./http-errors.ts";
 import { nginxHiddenPathConfigLines } from "./http-hidden-paths.ts";
-import { nginxDefaultSiteRemovalBuildStep, nginxLauncherCommand } from "./nginx-config.ts";
+import {
+  nginxDefaultSiteRemovalBuildStep,
+  nginxLauncherCommand,
+  stockNginxIdentity,
+  stockNginxLauncherOptions,
+} from "./nginx-config.ts";
 import { PHP_FPM_PORT, phpListenPort } from "./php-via.ts";
 import { defaultNginxStaticCommand } from "./static.ts";
 import { uploadDirRegex } from "./upload-dirs.ts";
@@ -178,6 +182,7 @@ const applyNginxFeature = (ctx: ServiceFeatureContext): void => {
             service.uploadDirs,
           )
         : defaultNginxStaticCommand(webroot, port, service.user),
+      stockNginxLauncherOptions,
     );
   } else {
     ctx.setListenerAuthority(launcherAuthority(NGINX_LISTENER, port));
@@ -231,6 +236,7 @@ const applyNginxPhpFpmWire = (ctx: AppFeatureContext): void => {
     mutator.addBuildStep(nginxDefaultSiteRemovalBuildStep());
     mutator.setCommand(
       phpFastcgiCommand(backend, webroot, { listen, fpm }, service.user, service.uploadDirs),
+      stockNginxLauncherOptions,
     );
   });
 };
@@ -256,11 +262,7 @@ export const nginxServiceType: ServiceType = {
     "nginx",
     "Put flags in command: or configure the generated server block through type settings.",
   ),
-  // Verified /etc/passwd in nginx:1.30-alpine (linux/amd64), config:
-  // sha256:d5f49e5ab196322ceaca86fd802279f6ace122b19c43fa67d80b029f23936f53.
-  // nginx:x:101:101:nginx:/var/cache/nginx:/sbin/nologin
-  // Its passwd home is a cache directory, intentionally excluded from home persistence.
-  identity: rootIdentity(),
+  identity: stockNginxIdentity,
   schema: Schema.Unknown,
   resolve: (input) =>
     serviceTypeResolve("nginx", "Failed to resolve nginx", () => {

@@ -50,7 +50,10 @@ const change = (id: string, overrides: Partial<HostChange> = {}): HostChange => 
 });
 
 /** A provider that plans a standard and a separately approved change and applies what it is handed. */
-const fixture = (stateStore?: TestStateStore) => {
+const fixture = (
+  stateStore?: TestStateStore,
+  lingerRequirement: "required" | "recommended" = "recommended",
+) => {
   const counts = { setup: 0, opened: 0, elevated: 0, probes: 0, trusted: 0 };
   const proposals: ReadonlyArray<HostChangeProposal> = [
     {
@@ -77,7 +80,7 @@ const fixture = (stateStore?: TestStateStore) => {
         consent: "separate",
         optInFlag: "enable-linger",
         persistent: true,
-        requirement: "recommended",
+        requirement: lingerRequirement,
       }),
       apply: (steps) => steps.run("run").pipe(Effect.as({ changed: true })),
     },
@@ -273,6 +276,29 @@ describe("lando setup host-change consent", () => {
       { id: "provider-lando:enable-linger", outcome: "declined" },
     ]);
     expect([counts.opened, counts.setup, counts.elevated]).toEqual([1, 1, 1]);
+  });
+
+  test("required lingering stops --yes without --enable-linger before any credentials, setup, or download", async () => {
+    const { counts, run } = fixture(undefined, "required");
+
+    const preview = succeeded((await run({ "dry-run": true, yes: true })).exit);
+    const { exit } = await run({ yes: true, "no-interactive": true });
+
+    expect(
+      preview.dryRun
+        ? preview.changes.map(({ change: planned, approval }) => [planned.requirement, approval])
+        : [],
+    ).toEqual([
+      ["required", "approved"],
+      ["required", "blocked"],
+    ]);
+    const error = Exit.isFailure(exit) ? Cause.findErrorOption(exit.cause) : undefined;
+    const failure = error?._tag === "Some" ? error.value : undefined;
+    expect(failure).toBeInstanceOf(HostChangeConsentRequiredError);
+    expect(failure instanceof HostChangeConsentRequiredError ? failure.flags : []).toEqual([
+      "--enable-linger",
+    ]);
+    expect([counts.opened, counts.setup, counts.elevated]).toEqual([0, 0, 0]);
   });
 
   test("records each change it made so uninstall can undo it", async () => {

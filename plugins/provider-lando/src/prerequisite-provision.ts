@@ -136,8 +136,11 @@ export const planPrerequisiteHostChanges = Effect.fnUntraced(function* (
   }
 
   // No user manager: plan lingering and the drop-in only when the unit is confirmed to lack
-  // delegation. The running-manager checks below do not apply.
+  // delegation. The running-manager checks below do not apply. Without a usable runtime
+  // directory the runtime cannot start at all, so lingering (and the drop-in it needs) is
+  // required, and a run that does not approve it stops here, before any download.
   const account = input.userManager?.account();
+  const lingerRequirement = probeResults.hasXdgRuntimeDir ? "recommended" : "required";
   if (
     input.userManager !== undefined &&
     account !== undefined &&
@@ -157,9 +160,9 @@ export const planPrerequisiteHostChanges = Effect.fnUntraced(function* (
           }),
         );
       }
-      proposals.push(delegationChange(false, pathExists));
+      proposals.push(delegationChange(false, pathExists, lingerRequirement));
     }
-    proposals.push(lingerChange(account, input.userManager, input.managerWaitPolicy));
+    proposals.push(lingerChange(account, input.userManager, input.managerWaitPolicy, lingerRequirement));
   } else if (!probeResults.cgroupsV2Delegated) {
     if (!hasSystemd) {
       return yield* Effect.fail(

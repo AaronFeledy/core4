@@ -120,16 +120,16 @@ sudo systemctl daemon-reload
 lando setup
 ```
 
-**No systemd user manager (headless servers, SSH without a login session, CI runners):** rerun `lando setup` in a terminal and approve enabling lingering, or run:
+**No systemd user manager (headless servers, SSH without a login session, CI runners):** rerun `lando setup` in a terminal and approve enabling lingering, pass `--enable-linger`, or run:
 
 ```bash
 loginctl enable-linger $USER
 lando setup
 ```
 
-Lingering keeps your user manager running after logout and reboot. It also creates `/run/user/<uid>`.
+Lingering keeps your user manager running after logout and reboot. It also creates `/run/user/<uid>`. When your session has no runtime directory, setup requires lingering: it stops with `HostChangeConsentRequiredError` (or `HostChangeDeclinedError` when you answer no) before it downloads anything, and names these options. Logging in through a session with pam_systemd, such as a desktop or SSH login, also creates the directory.
 
-**Missing private runtime directory base:** setup reports `Rootless Podman requires a private runtime directory base for your session.` The managed runtime needs `/run/user/<uid>` to exist, be owned by you, and have mode 0700 (no group or other bits), or an `XDG_RUNTIME_DIR` with the same properties. Logging out and back in usually recreates `/run/user/<uid>`. If your session manager does not, create a directory you own and export it:
+**Missing private runtime directory base:** on a host without systemd, setup reports `Rootless Podman requires a private runtime directory base for your session.` The managed runtime needs `/run/user/<uid>` to exist, be owned by you, and have mode 0700 (no group or other bits), or an `XDG_RUNTIME_DIR` with the same properties. Logging out and back in usually recreates `/run/user/<uid>`. If your session manager does not, create a directory you own and export it:
 
 ```bash
 install -d -m 0700 "$HOME/.lando-runtime"

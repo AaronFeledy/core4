@@ -8,6 +8,7 @@
  * environments (no `SUDO_UID`, or roots owned by root) keep working.
  *
  * Cold path: only Node built-ins, no Effect or SDK imports.
+ * The internal root-ownership repair route runs before this guard.
  */
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { dirname, isAbsolute, relative, sep } from "node:path";

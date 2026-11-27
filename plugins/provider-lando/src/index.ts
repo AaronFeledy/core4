@@ -897,21 +897,26 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
           privateRuntimeDir: undefined,
         })
       : undefined;
+    const managedCapabilities =
+      !shouldProbeCapabilities &&
+      canEnsure &&
+      managedServiceSpec !== undefined &&
+      delegatedScopeHost !== undefined
+        ? managedResourceControl({
+            platform,
+            host: delegatedScopeHost,
+            pidPath: options.providerPidPath,
+            spec: managedServiceSpec,
+            serviceRunner,
+            podmanApi,
+          }).pipe(
+            Effect.map((control) => withResourceControl(mvpProviderCapabilities(platform, arch), control)),
+          )
+        : undefined;
     const baseCapabilities =
       shouldProbeCapabilities && podmanApi !== undefined
         ? introspectProviderCapabilities(podmanApi, platform)
-        : canEnsure && managedServiceSpec !== undefined && delegatedScopeHost !== undefined
-          ? managedResourceControl({
-              platform,
-              host: delegatedScopeHost,
-              pidPath: options.providerPidPath,
-              spec: managedServiceSpec,
-              serviceRunner,
-              podmanApi,
-            }).pipe(
-              Effect.map((control) => withResourceControl(mvpProviderCapabilities(platform, arch), control)),
-            )
-          : Effect.succeed(mvpProviderCapabilities(platform, arch));
+        : (managedCapabilities ?? Effect.succeed(mvpProviderCapabilities(platform, arch)));
     // Only the managed Linux service can be vouched for; an external socket keeps `serviceHealth: none`.
     const { runtimeRunDir, providerPidPath } = options;
     const capabilities =
@@ -1740,14 +1745,16 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
                           )
                         : Effect.succeed(false);
                     if (smokeEnabled) {
+                      // Setup can start a user manager and relaunch the runtime after bootstrap.
+                      const smokeCapabilities =
+                        managedCapabilities === undefined ? resolvedCapabilities : yield* managedCapabilities;
                       yield* progress.run(
                         "smoke",
                         Effect.scoped(
                           runSmokeReadinessProbe({
                             podmanApi,
                             resourceLimits:
-                              resolvedCapabilities.composeKnobs?.supported.includes("deploy.resources") ===
-                              true,
+                              smokeCapabilities.composeKnobs?.supported.includes("deploy.resources") === true,
                             // Judged on the runtime setup just installed and launched, which must
                             // also have acknowledged that it schedules checks.
                             scheduledHealth: yield* setupScheduledHealth,
@@ -2055,7 +2062,7 @@ export const manifest = Schema.decodeSync(PluginManifest)({
         {
           name: "enable-linger",
           description:
-            "Approve enabling systemd lingering when no systemd user manager runs for you. It stays enabled across logout and reboot; --yes does not approve it.",
+            "Approve enabling systemd lingering when no systemd user manager runs for you; setup cannot finish without it when your session has no runtime directory. It stays enabled across logout and reboot; --yes does not approve it.",
           type: "boolean",
         },
       ],

@@ -124,6 +124,7 @@
     "setUser(user: string): void",
     "setWorkingDirectory(path: PortablePath): void"
   ],
+  "appFeatureSetCommand": "setCommand(command: CommandSpec, options?: Pick<LauncherCommandOptions, \"projectUser\">): void",
   "featureEffectiveValidation": "readonly validateEffective?: (ctx: ServiceEndpointContext) => Effect.Effect<ServiceFeatureValidationResult, ServiceFeatureError>",
   "serviceTypePlannedPort": "readonly plannedPort?: (service: Pick<ServiceConfig, \"port\" | \"framework\" | \"via\" | \"type\">) => PortNumber | undefined",
   "featureEndpointDeclarations": {

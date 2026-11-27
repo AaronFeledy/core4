@@ -2411,6 +2411,7 @@ jobs:
           LANDO_PROVIDER_TEST_SUITE: ${{ matrix.suite }}
           LANDO_SCENARIO_E2E_BINARY: ${{ github.workspace }}/dist/lando
           LANDO_NATIVE_INIT_E2E: "1"
+          LANDO_TEST_NGINX_PRIVATE: lando
         run: |
           mkdir -p /tmp/lando-provider-test-logs
           set -o pipefail
@@ -2419,6 +2420,10 @@ jobs:
             providers)
               bun run test:selection providers-engine-parity 2>&1 | tee /tmp/lando-provider-test-logs/engine-parity.log || status=$?
               bun run test:selection providers-core-live 2>&1 | tee /tmp/lando-provider-test-logs/core-live.log || status=$?
+              if ! grep -Eq '^NGINX_ROUTE_CLI_EVIDENCE .*"privateFiles":true[,}]' /tmp/lando-provider-test-logs/core-live.log; then
+                echo "Missing private nginx route test evidence" >&2
+                status=1
+              fi
               ;;
             engine)
               bun run test:selection providers-lando 2>&1 | tee /tmp/lando-provider-test-logs/provider-lando-integration.log || status=$?
@@ -2432,6 +2437,7 @@ jobs:
               bun run test:selection providers-sqlite-integrity 2>&1 | tee /tmp/lando-provider-test-logs/sqlite-integrity.log || status=$?
               bun run test:selection providers-sqlite-borrowed-mounts 2>&1 | tee /tmp/lando-provider-test-logs/sqlite-borrowed-mounts.log || status=$?
               bun run test:selection providers-schedule 2>&1 | tee /tmp/lando-provider-test-logs/schedule.log || status=$?
+              bun run test:selection setup-elevation-terminal 2>&1 | tee /tmp/lando-provider-test-logs/setup-elevation-terminal.log || status=$?
               ;;
             services)
               bun run test:selection services-lando 2>&1 | tee /tmp/lando-provider-test-logs/service-lando-integration.log || status=$?
