@@ -16,9 +16,7 @@ import {
   EventService,
   FileSystem,
   GlobalAppService,
-  InteractionService,
   PathsService,
-  PrivilegeService,
   ProcessRunner,
   RouterService,
   type RouterServiceShape,
@@ -67,6 +65,7 @@ import { advertisedRouterBindAddress, normalizeRouterBindAddress } from "./route
 import { type AuthorityPorts, DEFAULT_AUTHORITY_PORTS, authoritiesFor } from "./routing.ts";
 import { writeSecretAtomic } from "./secret-file.ts";
 import { isSocketProxyInstalled, stopSockets } from "./socket-proxy-install.ts";
+import { planSocketHelper, socketHelperProposal } from "./socket-proxy-plan.ts";
 import { liveSocketProxy } from "./socket-proxy-setup.ts";
 import { observeTraefikState, persistedStatus } from "./status.ts";
 import { normalizeDefaultDomain, removeAllCertificates, removeAppCertificates } from "./tls.ts";
@@ -225,15 +224,11 @@ const mapStartupRevalidationError = (cause: unknown): ProxyError | RouterWatcher
 
 const resolveLiveSocketProxy = Effect.gen(function* () {
   const paths = yield* Effect.serviceOption(PathsService);
-  const privilege = yield* Effect.serviceOption(PrivilegeService);
   const processRunner = yield* Effect.serviceOption(ProcessRunner);
-  const interaction = yield* Effect.serviceOption(InteractionService);
   if (paths._tag === "None") return undefined;
   return liveSocketProxy({
     userDataRoot: paths.value.roots.userDataRoot,
-    privilege: privilege._tag === "Some" ? privilege.value : undefined,
     processRunner: processRunner._tag === "Some" ? processRunner.value : undefined,
-    interaction: interaction._tag === "Some" ? interaction.value : undefined,
   });
 });
 
@@ -339,6 +334,21 @@ export const makeTraefikRouterService = (
             : mapped;
         }),
       ),
+      planHostChanges: Effect.fn("RouterService.planHostChanges")(
+        function* (config) {
+          const socketProxy = yield* resolveSocketProxy(dependencies);
+          if (socketProxy === undefined) return [];
+          const planning = {
+            ...dependencies,
+            socketProxy: { ...socketProxy, intent: "configure" as const },
+            ...(config.router === undefined ? {} : { router: routerListsFromConfig(config.router) }),
+            ...(config.routerPin === undefined ? {} : { routerPin: routerPinFromConfig(config.routerPin) }),
+          };
+          const plan = yield* planSocketHelper(planning);
+          return plan === undefined ? [] : [socketHelperProposal(planning, plan)];
+        },
+        mapFailures((cause) => proxyError("host-change planning", cause)),
+      ),
       setup: Effect.fn("RouterService.setup")(
         (config, options) =>
           guardRouterMutation(
@@ -361,7 +371,7 @@ export const makeTraefikRouterService = (
                         socketProxy: {
                           ...socketProxy,
                           intent,
-                          ...(options?.autoApprove === true ? { autoApprove: true as const } : {}),
+                          ...(options?.hostChanges === undefined ? {} : { hostChanges: options.hostChanges }),
                         },
                       }),
                   ...(config.router === undefined ? {} : { router: routerListsFromConfig(config.router) }),

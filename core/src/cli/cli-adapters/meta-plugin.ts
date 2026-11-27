@@ -13,6 +13,7 @@ import { Layer } from "effect";
 import { type CliInvocationContext, processInvocationContext } from "../../runtime/invocation-context";
 import { makeLandoGenerationRuntime, makeLandoRuntime } from "../../runtime/layer";
 import type { BuiltInCommandCatalog } from "../built-in-command-catalog-service";
+import { suspendCommandProgress } from "../command-progress";
 import { shellenvSpec } from "../command-specs/meta/shellenv";
 import { uninstallOptionsFromInput } from "../command-specs/meta/uninstall";
 import { dispatchMcpCommand, mcpFlagsFromParsed } from "../commands/meta/mcp";
@@ -49,9 +50,10 @@ export const runMetaUninstall = async (
     uninstall(uninstallOptionsFromInput(input, prepare)),
     Layer.mergeAll(
       PrivateFileAccessService.layer,
-      HostPrivilegeService.layer({ hasTerminal: hostHasPromptTerminal }).pipe(
-        Layer.provide(BunProcessRunner.layer),
-      ),
+      HostPrivilegeService.layer({
+        handoff: { suspend: suspendCommandProgress },
+        hasTerminal: hostHasPromptTerminal,
+      }).pipe(Layer.provide(BunProcessRunner.layer)),
       makeHostMaintenanceRegistryLayer(modules),
     ),
     (value, renderContext) => renderUninstallResult(value, renderContext, context.setExitCode),

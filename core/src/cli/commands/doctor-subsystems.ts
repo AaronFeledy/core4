@@ -1,10 +1,11 @@
 import { unavailableRouterReason } from "@lando/engine/subsystems/proxy/api";
 import { type PathsService, RouterService, SshService } from "@lando/sdk/services";
 import { Effect, Option } from "effect";
-import type { DoctorFinding, DoctorSectionResult } from "./doctor-contract";
+import type { DoctorFinding } from "./doctor-contract";
 import { idleGlobalProvider } from "./doctor-global-runtime";
 import { HostDnsResolver } from "./doctor-host-dns";
 import { buildHostDnsCheck } from "./doctor-host-dns-check";
+import type { DoctorSectionRun } from "./doctor-host-fix";
 import { buildProxyCheck } from "./doctor-proxy-check";
 import { type SshAgentDoctorOptions, sshAgentPostureCheck } from "./doctor-ssh-agent";
 
@@ -24,7 +25,7 @@ export interface SubsystemDoctorOptions {
 
 export const subsystemDoctor = Effect.fn("DoctorSubsystems.check")(function* (
   options: SubsystemDoctorOptions = {},
-): Effect.fn.Return<DoctorSectionResult, never, PathsService> {
+): Effect.fn.Return<DoctorSectionRun, never, PathsService> {
   const fix = options.fix === true;
   const proxy = Option.getOrUndefined(yield* Effect.serviceOption(RouterService));
   const ssh = Option.getOrUndefined(yield* Effect.serviceOption(SshService));
@@ -33,10 +34,11 @@ export const subsystemDoctor = Effect.fn("DoctorSubsystems.check")(function* (
 
   // Router selection is host-side metadata, so an unselectable router is reported even when idle.
   const routerUnavailable = proxy !== undefined && unavailableRouterReason(proxy) !== undefined;
-  const proxyChecks =
+  const proxyCheck =
     proxy === undefined || (idleProvider !== undefined && !routerUnavailable)
-      ? []
-      : [yield* buildProxyCheck(proxy, fix)];
+      ? undefined
+      : yield* buildProxyCheck(proxy, fix);
+  const proxyChecks = proxyCheck === undefined ? [] : [proxyCheck.finding];
   const sshChecks =
     ssh === undefined
       ? []
@@ -53,6 +55,7 @@ export const subsystemDoctor = Effect.fn("DoctorSubsystems.check")(function* (
     : [yield* buildHostDnsCheck(fix).pipe(Effect.provideService(HostDnsResolver, resolver.value))];
 
   return {
+    ...(proxyCheck?.fix === undefined ? {} : { fixes: [proxyCheck.fix] }),
     checks: [
       ...proxyChecks,
       ...sshChecks.flatMap((check): ReadonlyArray<DoctorFinding> => {

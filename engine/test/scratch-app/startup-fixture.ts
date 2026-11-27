@@ -136,7 +136,7 @@ const makeFixture = async (
   const provider: RuntimeProviderShape = {
     ...TestRuntimeProvider,
     setup: () => Effect.die("Host setup is forbidden in scratch startup tests"),
-    planSetup: () => Effect.die("Host setup planning is forbidden in scratch startup tests"),
+    planHostChanges: () => Effect.die("Host setup planning is forbidden in scratch startup tests"),
     apply: (plan, options) =>
       Effect.sync(() => {
         applied.push(plan);

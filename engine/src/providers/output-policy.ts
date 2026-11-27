@@ -34,7 +34,7 @@ export const providerMemberPolicy = {
   isAvailable: ["lifecycle", "effect"],
   appliedPlans: ["metadata", "effect"],
   cleanupOwnedResources: ["lifecycle", "effect"],
-  planSetup: ["lifecycle", "effect"],
+  planHostChanges: ["lifecycle", "effect"],
   setup: ["lifecycle", "effect"],
   ensureReady: ["lifecycle", "effect"],
   getStatus: ["metadata", "effect"],

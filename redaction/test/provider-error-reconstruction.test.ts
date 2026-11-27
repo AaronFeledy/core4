@@ -9,7 +9,7 @@ import { createStandaloneRedactor } from "../src/service.ts";
 const canary = "authoritative-provider-canary";
 const text = { message: canary, remediation: canary };
 const base = { ...text, providerId: canary, operation: canary, details: { [canary]: canary }, cause: canary };
-const setup = { ...text, providerId: ProviderId.make(canary), change: "install-uidmap" as const };
+const setup = { ...text, providerId: ProviderId.make(canary) };
 const errors = [
   new Errors.ProviderUnavailableError(base),
   new Errors.ProviderConfigError(base),
@@ -56,9 +56,6 @@ const errors = [
     target: "service",
     role: "readiness",
   }),
-  new Errors.ProviderSetupConsentDeniedError(setup),
-  new Errors.ProviderSetupPrivilegeUnavailableError(setup),
-  new Errors.ProviderSetupProvisioningError({ ...setup, stage: "install", stderr: canary, cause: canary }),
   new Errors.ProviderSetupUnsupportedHostError({
     ...setup,
     prerequisite: canary,

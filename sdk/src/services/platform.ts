@@ -33,6 +33,7 @@ import type {
   ServiceName,
 } from "../schema/index.ts";
 import type { AppId } from "../schema/primitives.ts";
+import type { HostChangeApplier, HostChangeProposal } from "./host-change.ts";
 
 export class RouterService extends Context.Service<
   RouterService,
@@ -46,11 +47,22 @@ export class RouterService extends Context.Service<
       void,
       AppPlacementError | ProxySetupError | RouterPortsExhausted | RouterPortPinMismatch
     >;
+    /**
+     * Inspect the host read-only and propose the host changes the router needs (a privileged port
+     * helper). Never mutates the host, starts services, or prompts. Absent means none.
+     */
+    readonly planHostChanges?: (
+      config: ProxyConfig,
+    ) => Effect.Effect<ReadonlyArray<HostChangeProposal>, ProxyError>;
+    /**
+     * `configure` (setup) applies approved planned host changes through `hostChanges`; `ensure`
+     * (app start) never installs or replaces a host helper, and only starts one it already owns.
+     */
     readonly setup: (
       config: ProxyConfig,
       options?: {
         readonly intent?: "configure" | "ensure";
-        readonly autoApprove?: boolean;
+        readonly hostChanges?: HostChangeApplier;
         /** Rescan host ports instead of reusing the persisted pair; set only by explicit `lando setup`. */
         readonly reacquirePorts?: boolean;
       },

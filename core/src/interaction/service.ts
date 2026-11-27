@@ -5,6 +5,10 @@
  * published `InteractionService` Effect interface. `PromptIO` is an internal
  * Live-layer detail here, not the public prompting surface.
  *
+ * A batch that reads the terminal first takes it from the command's live progress
+ * (`suspendCommandProgress`): a drawn task tree holds stdin in raw mode, so a
+ * line-mode answer would never arrive and Ctrl-C would not reach the prompt.
+ *
  * Renderer-boundary carve-out: this module owns the Live-layer stdin reader
  * and the no-renderer fallback writer. Prompt output
  * routes through `Renderer.output.stderr` whenever a `Renderer` is
@@ -46,6 +50,7 @@ import {
 } from "@lando/sdk/services";
 import { Cause, type Context, Effect, Layer, Option, Redacted, Semaphore } from "effect";
 
+import { suspendCommandProgress } from "../cli/command-progress.ts";
 import {
   type ChoicesCommandRunner,
   type CollectPromptsOptions,
@@ -370,7 +375,10 @@ export const makeInteractionService = (deps: InteractionServiceDeps = {}): Inter
       ...(chrome === undefined ? {} : { chrome }),
       ...(driver === undefined ? {} : { interactiveDriver: driver }),
     };
-    return yield* promptLock.withPermits(1)(runEngine(collect, rendererOption));
+    const engine = runEngine(collect, rendererOption);
+    const reads =
+      gate.interactive && tty && !gate.yes && specs.some(({ name }) => answers[name] === undefined);
+    return yield* promptLock.withPermits(1)(reads ? suspendCommandProgress(engine) : engine);
   });
 
   const promptAll = Effect.fn("InteractionService.promptAll")(

@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { PodmanApiClient } from "@lando/container-runtime/engine-api";
 
 import { ProviderUnavailableError } from "@lando/sdk/errors";
-import type { ProviderError } from "@lando/sdk/services";
+import type { HostChangeApplyError, ProviderError } from "@lando/sdk/services";
 import { Cause, Effect, Exit } from "effect";
 import {
   MINIMUM_PODMAN_VERSION,
@@ -23,7 +23,7 @@ const podmanApi = (version: string): PodmanApiClient => ({
 const runSetup = (options: SetupOptions) => Effect.runPromiseExit(setupProviderLando(options));
 
 const expectVersionRejection = (
-  exit: Exit.Exit<unknown, ProviderError>,
+  exit: Exit.Exit<unknown, ProviderError | HostChangeApplyError>,
   expected: { readonly version: string; readonly source: string },
 ) => {
   expect(Exit.isFailure(exit)).toBe(true);

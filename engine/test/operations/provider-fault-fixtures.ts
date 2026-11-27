@@ -39,19 +39,6 @@ export const providerFaults = {
   }),
   ProviderConfigError: new Errors.ProviderConfigError(fields),
   ProviderInternalError: new Errors.ProviderInternalError(fields),
-  ProviderSetupConsentDeniedError: new Errors.ProviderSetupConsentDeniedError({
-    ...fields,
-    change: "install-uidmap",
-  }),
-  ProviderSetupPrivilegeUnavailableError: new Errors.ProviderSetupPrivilegeUnavailableError({
-    ...fields,
-    change: "install-uidmap",
-  }),
-  ProviderSetupProvisioningError: new Errors.ProviderSetupProvisioningError({
-    ...fields,
-    change: "install-uidmap",
-    stage: "install",
-  }),
   ProviderSetupUnsupportedHostError: new Errors.ProviderSetupUnsupportedHostError({
     ...fields,
     prerequisite: "supported-host",

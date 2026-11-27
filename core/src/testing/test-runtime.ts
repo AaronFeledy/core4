@@ -614,9 +614,11 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
       }),
   });
 
+  const elevated = Effect.succeed({ exitCode: 0, stdout: "", stderr: "" });
   const privilegeService = PrivilegeService.of({
-    ensureCredentials: () => Effect.void,
-    elevate: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
+    credentialStatus: Effect.succeed({ state: "root" }),
+    openSession: () => Effect.succeed({ transport: "direct", elevate: () => elevated }),
+    elevate: () => elevated,
   });
 
   const secretStoreService = SecretStore.of({

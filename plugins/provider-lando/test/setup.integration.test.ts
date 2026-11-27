@@ -149,8 +149,7 @@ describe("provider-lando setup", () => {
     );
 
     try {
-      const plan = await Effect.runPromise(provider.planSetup({ force: false }));
-      await Effect.runPromise(Effect.scoped(provider.setup(plan, { force: false })));
+      await Effect.runPromise(Effect.scoped(provider.setup({ force: false })));
 
       const versions = await Effect.runPromise(provider.getVersions);
       expect(versions.runtime).toBe("6.0.2");
@@ -308,16 +307,9 @@ describe("provider-lando setup", () => {
         }),
       );
 
-      const plan = await Effect.runPromise(
-        provider.planSetup({
-          force: false,
-          runtimeBundleUrl: "https://example.invalid/custom-runtime.zip",
-          runtimeBundleSha256: "a".repeat(64),
-        }),
-      );
       const exit = await Effect.runPromiseExit(
         provider
-          .setup(plan, {
+          .setup({
             force: false,
             runtimeBundleUrl: "https://example.invalid/custom-runtime.zip",
             runtimeBundleSha256: "a".repeat(64),
@@ -371,9 +363,7 @@ describe("provider-lando setup", () => {
             providerSocketPath: join(stateDir, "podman.sock"),
           }),
         );
-
-        const plan = await Effect.runPromise(provider.planSetup({ force: false }));
-        const exit = await Effect.runPromiseExit(provider.setup(plan, { force: false }).pipe(Effect.scoped));
+        const exit = await Effect.runPromiseExit(provider.setup({ force: false }).pipe(Effect.scoped));
 
         expect(fetchedUrl).toContain("lando-runtime-win32-x64.zip");
         expect(calls).toEqual([]);

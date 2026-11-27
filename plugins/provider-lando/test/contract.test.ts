@@ -1040,9 +1040,7 @@ describe("provider-lando RuntimeProvider contract", () => {
         }
       }
     }
-
-    const plan = await Effect.runPromise(provider.planSetup({ force: false }));
-    const setupExit = await Effect.runPromiseExit(provider.setup(plan, { force: false }).pipe(Effect.scoped));
+    const setupExit = await Effect.runPromiseExit(provider.setup({ force: false }).pipe(Effect.scoped));
     expect(Exit.isFailure(setupExit)).toBe(true);
     if (Exit.isFailure(setupExit)) {
       const failure = Cause.findErrorOption(setupExit.cause);

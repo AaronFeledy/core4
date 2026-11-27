@@ -20,7 +20,7 @@ export const failingProvider = (): Required<RuntimeProviderShape> => {
     isAvailable: Effect.fail(availabilityError),
     appliedPlans: fail(),
     cleanupOwnedResources: fail,
-    planSetup: fail,
+    planHostChanges: fail,
     setup: fail,
     ensureReady: fail(),
     getStatus: fail(),

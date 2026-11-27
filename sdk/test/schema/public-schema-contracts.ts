@@ -64,7 +64,9 @@ export const PUBLIC_SCHEMA_CONTRACT_FIXTURES = {
   SecretStoreContribution: "sdk/test/schema/plugin-secret-stores.test.ts",
   LayerMergeRule: "sdk/test/schema/landofile-merge-rules.test.ts",
   HostTerminal: "sdk/test/schema/host-terminal.test.ts",
-  ProviderSetupPlan: "sdk/test/schema/provider-setup-plan.test.ts",
+  HostChange: "sdk/test/schema/host-change.test.ts",
+  HostChangePlanEntry: "sdk/test/schema/host-change.test.ts",
+  HostChangeOutcome: "sdk/test/schema/host-change.test.ts",
   AppMountInput: "sdk/test/schema/named-contract-examples.test.ts",
   MountInput: "sdk/test/schema/named-contract-examples.test.ts",
   StorageInput: "sdk/test/schema/named-contract-examples.test.ts",
@@ -749,6 +751,57 @@ const fixtureOverrides: Partial<Record<JsonSchemaName, unknown>> = {
   ServiceLaunchers: { ":local-bin2": ["env", "NAME=value"] },
   ScheduleJob: { name: "tick", every: "@hourly", run: "true" },
   ScheduleConfig: [{ name: "tick", every: "@hourly", run: "true" }],
+  HostChange: {
+    id: "provider-lando:enable-linger",
+    owner: "@lando/provider-lando",
+    stage: "provider",
+    summary: "Enable lingering for dev",
+    reason: "No systemd user manager runs for dev.",
+    consent: "separate",
+    optInFlag: "enable-linger",
+    persistent: true,
+    requirement: "recommended",
+    steps: [
+      {
+        id: "enable",
+        summary: "Enable",
+        argv: ["/usr/bin/loginctl", "enable-linger", "dev"],
+        privileged: true,
+        when: "always",
+      },
+    ],
+    undo: { _tag: "manual", detail: "Run loginctl disable-linger dev." },
+  },
+  HostChangePlanEntry: {
+    change: {
+      id: "provider-lando:enable-linger",
+      owner: "@lando/provider-lando",
+      stage: "provider",
+      summary: "Enable lingering for dev",
+      reason: "No systemd user manager runs for dev.",
+      consent: "separate",
+      optInFlag: "enable-linger",
+      persistent: true,
+      requirement: "recommended",
+      steps: [
+        {
+          id: "enable",
+          summary: "Enable",
+          argv: ["/usr/bin/loginctl", "enable-linger", "dev"],
+          privileged: true,
+          when: "always",
+        },
+      ],
+      undo: { _tag: "manual", detail: "Run loginctl disable-linger dev." },
+    },
+    approval: "will-skip",
+    approvedBy: ["--enable-linger"],
+  },
+  HostChangeOutcome: {
+    id: "provider-lando:enable-linger",
+    outcome: "applied",
+    inputs: { write: "0000000000000000000000000000000000000000000000000000000000000000" },
+  },
 };
 
 export const publicSchemaHappyPathFixture = (schemaName: JsonSchemaName): unknown => {

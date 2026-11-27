@@ -2,7 +2,6 @@ import { Effect, Schema } from "effect";
 
 import { ListenerObservation } from "../schema/listener-observation.ts";
 import { AbsolutePath, ProviderId } from "../schema/primitives.ts";
-import { ProviderSetupHostChangeTag } from "../schema/provider-setup.ts";
 import { newerStateRemediation, sanitizeStateWriter } from "./state-version-remediation.ts";
 
 const Remediation = Schema.NonEmptyString.check(Schema.isPattern(/\S/u));
@@ -197,41 +196,12 @@ const ProviderSetupErrorBase = {
   remediation: Remediation,
 };
 
-export class ProviderSetupConsentDeniedError extends Schema.TaggedError<ProviderSetupConsentDeniedError>()(
-  "ProviderSetupConsentDeniedError",
-  {
-    ...ProviderSetupErrorBase,
-    change: ProviderSetupHostChangeTag,
-  },
-) {}
-
 export class ProviderSetupUnsupportedHostError extends Schema.TaggedError<ProviderSetupUnsupportedHostError>()(
   "ProviderSetupUnsupportedHostError",
   {
     ...ProviderSetupErrorBase,
     prerequisite: Schema.String,
     host: Schema.optional(Schema.Struct({ id: Schema.String, versionId: Schema.String })),
-  },
-) {}
-
-export class ProviderSetupPrivilegeUnavailableError extends Schema.TaggedError<ProviderSetupPrivilegeUnavailableError>()(
-  "ProviderSetupPrivilegeUnavailableError",
-  {
-    ...ProviderSetupErrorBase,
-    change: ProviderSetupHostChangeTag,
-    cause: Schema.optional(Schema.Unknown),
-  },
-) {}
-
-export class ProviderSetupProvisioningError extends Schema.TaggedError<ProviderSetupProvisioningError>()(
-  "ProviderSetupProvisioningError",
-  {
-    ...ProviderSetupErrorBase,
-    change: ProviderSetupHostChangeTag,
-    stage: Schema.Literals(["update", "install", "verify", "provision", "reload"]),
-    exitCode: Schema.optional(Schema.Number),
-    stderr: Schema.optional(Schema.String),
-    cause: Schema.optional(Schema.Unknown),
   },
 ) {}
 
