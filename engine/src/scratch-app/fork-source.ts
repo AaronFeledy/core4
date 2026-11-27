@@ -24,7 +24,7 @@ export const scratchIsolationConflict = (input: Pick<ScratchAcquireInput, "mount
       })
     : undefined;
 
-export const scratchForkDirectory = Effect.fnUntraced(function* (cwd: string, path: string) {
+const scratchForkDirectory = Effect.fnUntraced(function* (cwd: string, path: string) {
   if (path.trim().length === 0) {
     return yield* new ScratchAppError({
       operation: "acquire",
@@ -86,7 +86,7 @@ const directoryIdentity = Effect.fnUntraced(function* (path: string) {
   return { canonical, id: `${info.dev}:${info.ino}` };
 });
 
-type AdmittedFork = {
+export type AdmittedFork = {
   readonly root: string;
   readonly discovery: typeof OperationDiscovery.Service;
   readonly verify: Effect.Effect<void, ScratchAppError>;
@@ -101,7 +101,11 @@ export class ScratchForkSource extends Context.Service<
   }
 >()("@lando/engine/ScratchForkSource") {}
 
-const admitFork = Effect.fnUntraced(function* (cwd: string, path: string) {
+export const admitScratchFork = Effect.fnUntraced(function* (
+  cwd: string,
+  path: string,
+  omitLocalOverrides: boolean,
+) {
   const paths = yield* PathsService;
   const requested = yield* scratchForkDirectory(cwd, path);
   const directory = yield* directoryIdentity(requested);
@@ -114,7 +118,7 @@ const admitFork = Effect.fnUntraced(function* (cwd: string, path: string) {
     directory.canonical,
     Effect.gen(function* () {
       const discovery = yield* OperationDiscovery;
-      const { appRoot } = yield* findDiscoveredLandofilePath().pipe(
+      const { appRoot } = yield* findDiscoveredLandofilePath(undefined, { omitLocalOverrides }).pipe(
         mapFailures((cause) => scratchForkLoadFailure(requested, cause)),
       );
       return { discovery, appRoot };
@@ -141,12 +145,15 @@ const admitFork = Effect.fnUntraced(function* (cwd: string, path: string) {
 export const scratchForkSourceLayer = (
   cwd: string,
   source: ForkSource,
+  omitLocalOverrides = false,
 ): Layer.Layer<never, never, FileSystem | PathsService> => {
   const { path } = source;
   if (path === undefined) return Layer.empty;
   return Layer.effectContext(
     Effect.gen(function* () {
-      const admission = yield* Ref.make(yield* Effect.result(admitFork(cwd, path)));
+      const admission = yield* Ref.make(
+        yield* Effect.result(admitScratchFork(cwd, path, omitLocalOverrides)),
+      );
       const current = Effect.gen(function* () {
         const admitted = yield* Ref.get(admission);
         if (Result.isFailure(admitted)) return undefined;

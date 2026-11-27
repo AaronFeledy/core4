@@ -61,6 +61,9 @@ export const landofileLayerPaths = (
     typescriptPath: join(appRoot, `${position.basename}.ts`),
   }));
 
+export const isLocalOverrideLayer = ({ layer }: LandofileLayerPosition): boolean =>
+  layer === "local" || layer === "user";
+
 const fileExists = (path: string): Effect.Effect<boolean> => Effect.promise(() => Bun.file(path).exists());
 
 /** Whether the YAML and TypeScript forms of one layer exist, as `[yaml, typescript]`. */
@@ -72,9 +75,11 @@ export const landofileLayerFormsPresent = (position: {
 
 export const presentLandofileLayers = Effect.fn("Landofile.presentLayers")(function* (
   appRoot: string,
+  options?: { readonly omitLocalOverrides?: boolean },
 ): Effect.fn.Return<ReadonlyArray<PresentLandofileLayer>, LandofileFormConflictError> {
   const present: PresentLandofileLayer[] = [];
   for (const position of landofileLayerPaths(appRoot)) {
+    if (options?.omitLocalOverrides && isLocalOverrideLayer(position)) continue;
     const { yamlPath, typescriptPath } = position;
     const [yamlExists, typescriptExists] = yield* landofileLayerFormsPresent(position);
     if (yamlExists && typescriptExists) {

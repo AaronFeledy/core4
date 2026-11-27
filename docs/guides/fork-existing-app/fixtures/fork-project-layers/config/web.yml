@@ -1,0 +1,6 @@
+services:
+  web:
+    type: compose
+    image: alpine
+    primary: true
+    endpoints: [http:8000]

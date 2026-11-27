@@ -7,7 +7,7 @@ import { PathsService } from "@lando/sdk/services";
 import { Effect, Layer } from "effect";
 import { PluginContributionGraph } from "../../src/plugins/contribution-graph.ts";
 import { scratchForkSourceLayer } from "../../src/scratch-app/fork-source.ts";
-import { loadScratchForkLandofile } from "../../src/scratch-app/landofile.ts";
+import { selectScratchForkSource } from "../../src/scratch-app/landofile.ts";
 import { layer as fileSystemLayer } from "../../src/services/file-system.ts";
 
 const writeApp = async (root: string, marker: string) => {
@@ -58,9 +58,16 @@ test.each(["excluded", "replaced"] as const)(
         Effect.gen(function* () {
           const graph = yield* PluginContributionGraph;
           return yield* Effect.flip(
-            loadScratchForkLandofile(
+            selectScratchForkSource(
               { cwd, source, graph },
-              Effect.die("A refused source must never reach the Landofile loader."),
+              {
+                full: true,
+                noLocalOverrides: undefined,
+                inputs: {
+                  ports: { resolveUserCacheRoot: () => cwd, resolveUserIncludesDir: () => cwd, sources: {} },
+                  templates: { modules: [] },
+                },
+              },
             ),
           );
         }).pipe(

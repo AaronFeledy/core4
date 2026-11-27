@@ -69,7 +69,7 @@ export const appsScratchStartSpec: LandoCommandSpec<ScratchStartResult> = {
     }),
     "no-local-overrides": Flags.boolean({
       default: false,
-      description: "Remove local and user Landofile overrides from a fully isolated fork.",
+      description: "Ignore local and user Landofile layers when forking an app.",
     }),
     "no-hostname-suffix": Flags.boolean({
       default: false,

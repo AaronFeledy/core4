@@ -5,6 +5,7 @@
  * imports (host shell-out, network fetch, host filesystem access outside the
  * app root), and bounds module evaluation with a configurable timeout.
  */
+import { isBuiltin } from "node:module";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
 import { normalizeHostPlatform } from "@lando/paths";
 import {
@@ -16,6 +17,7 @@ import {
 import { Clock, Duration, Effect, Predicate } from "effect";
 import { importAuthorModule, missingPackageRemediation } from "./author-modules.ts";
 import type { EnvironmentRecorder } from "./environment-dependencies.ts";
+import { assertUnderRoot } from "./include-guard.ts";
 import { hostExpressionEnvironment } from "./recipe-expressions.ts";
 
 export const DEFAULT_TS_TIMEOUT_MS = 5000;
@@ -276,6 +278,7 @@ export interface LoadLandofileTsOptions {
   readonly appRoot: string;
   readonly content: string;
   readonly timeoutMs?: number;
+  readonly contained?: boolean;
   /**
    * Captured host environment. When `environmentRecorder` is set, `ctx.env` is
    * its read-only view so factory reads are tracked; otherwise a frozen copy of
@@ -324,10 +327,47 @@ const readsAmbientEnvironment = async (
   return false;
 };
 
+const assertContainedImports = async (
+  input: Pick<LoadLandofileTsOptions, "filePath" | "appRoot" | "content">,
+): Promise<void> => {
+  const { hostModules } = await import("./host-module-table.ts");
+  const seen = new Set([input.filePath]);
+  const visit = async (filePath: string, content: string): Promise<void> => {
+    for (const { path } of scanImports(content)) {
+      if (Object.hasOwn(hostModules, path)) continue;
+      const resolved = Bun.resolveSync(path, dirname(filePath));
+      if (isBuiltin(resolved)) continue;
+      const physical = await assertUnderRoot(input.appRoot, resolved, path);
+      if (seen.has(physical)) continue;
+      seen.add(physical);
+      if (/\.(?:[cm]?[jt]s|[jt]sx)$/u.test(physical)) await visit(physical, await Bun.file(physical).text());
+    }
+  };
+  await visit(input.filePath, input.content);
+};
+
 export const loadLandofileTs = Effect.fnUntraced(function* (
   options: LoadLandofileTsOptions,
 ): Effect.fn.Return<unknown, LandofileSandboxError | LandofileTimeoutError | LandofileParseError> {
-  yield* sandboxScan(options.filePath, options.appRoot, options.content);
+  const physical = options.contained
+    ? yield* Effect.tryPromise({
+        try: () => assertUnderRoot(options.appRoot, options.filePath, options.filePath),
+        catch: (cause) => violationFor(options.filePath, options.filePath, causeMessage(cause)),
+      })
+    : options.filePath;
+  yield* sandboxScan(physical, options.appRoot, options.content);
+  if (options.contained)
+    yield* Effect.tryPromise({
+      // Bun resolves dependencies of a symlinked module relative to its physical target.
+      try: () => assertContainedImports({ ...options, filePath: physical }),
+      catch: (cause) =>
+        new LandofileSandboxError({
+          message: `Cannot load a copied Landofile module at ${options.filePath}: ${causeMessage(cause)}`,
+          filePath: options.filePath,
+          violation: causeMessage(cause),
+          remediation: "Keep Landofile module files and project imports inside the copied app.",
+        }),
+    });
   // Reads that bypass ctx.env cannot be recorded, so the load depends on the whole environment.
   // A module graph Lando cannot analyze counts as reading the environment.
   if (

@@ -2,14 +2,12 @@ import { LandofileNotFoundError } from "@lando/sdk/errors";
 import { LandofileService, ManagedFileTransactionGuard, StateStore } from "@lando/sdk/services";
 import { Effect, Layer } from "effect";
 import { compileLandofileFile } from "./file-compile.ts";
-import { createIncludeResolutionSession } from "./include-session.ts";
 import { presentLandofileLayers, representativeLandofileLayer } from "./layers.ts";
 import { type LandofileLoadContext, ensureConsistentRoot } from "./load-context.ts";
-import { finalizeLandofileRootLayers, mergeLandofileRootLayers } from "./merge-validate.ts";
+import { compileLandofileRoot, mergeLandofileRootLayers } from "./merge-validate.ts";
 import { discoverForOperation, discoveryCwd } from "./operation-discovery.ts";
 import type { LandofileLoadScope } from "./pipeline/materialize.ts";
 import type { LandofileRuntimeInputs } from "./ports.ts";
-import { evaluateLandofileRootLayers } from "./root-compile.ts";
 
 export { LandofileService } from "@lando/sdk/services";
 export { finishLoadStage } from "./load-failures.ts";
@@ -25,10 +23,11 @@ export { prepareLandofileSource, resolveLandofileSourceExpressions } from "./sou
 
 export const findDiscoveredLandofilePath = Effect.fn("Landofile.findDiscoveredPath")(function* (
   cwd?: string,
+  selection?: Parameters<typeof presentLandofileLayers>[1],
 ) {
   const result = yield* discoverForOperation(cwd);
   if (result.kind === "found") {
-    const layer = representativeLandofileLayer(yield* presentLandofileLayers(result.directory));
+    const layer = representativeLandofileLayer(yield* presentLandofileLayers(result.directory, selection));
     if (layer !== undefined) return { filePath: layer.filePath, appRoot: result.directory };
   }
   let reason: string;
@@ -79,10 +78,15 @@ const makeDiscoverLandofile = Effect.fn("LandofileService.discover")(function* (
   yield* ensureConsistentRoot(cwd, inputs);
   const discovered = yield* findDiscoveredLandofilePath();
   if (discovered.appRoot !== cwd) yield* ensureConsistentRoot(discovered.appRoot, inputs);
-  const session = yield* createIncludeResolutionSession({ appRoot: discovered.appRoot, ...inputs });
-  const evaluated = yield* evaluateLandofileRootLayers(discovered.appRoot, { session, inputs });
-  return yield* finalizeLandofileRootLayers(evaluated, discovered.filePath, inputs);
-}, Effect.scoped);
+  return yield* compileLandofileRoot(discovered.appRoot, discovered.filePath, { inputs });
+});
+
+export { assertReadableRoot } from "./load-context.ts";
+export {
+  compileSelectedLandofileRoot,
+  projectSelectedLandofileRootName,
+  selectLandofileRoot,
+} from "./selected-root.ts";
 
 export const layer = (inputs: LandofileRuntimeInputs) =>
   Layer.effect(

@@ -9,7 +9,6 @@ import {
   ConfigService,
   EventService,
   type LandoEvent,
-  LandofileService,
   PathsService,
   RouterService,
   type RouterServiceShape,
@@ -21,6 +20,7 @@ import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { makeStateStore } from "@lando/state-store/service";
 import { Effect, Layer, Schema, Stream } from "effect";
+import { RuntimeCwd } from "../../src/runtime/cwd.ts";
 import {
   SCRATCH_REGISTRY_VERSION,
   ScratchRegistry,
@@ -31,7 +31,6 @@ import { ScratchResourceScanner } from "../../src/scratch-app/scanner.ts";
 import * as Scratch from "../../src/scratch-app/service.ts";
 import * as FileSystem from "../../src/services/file-system.ts";
 import { layerUnavailable } from "../../src/subsystems/proxy/api.ts";
-import { literalTestLandofile } from "../compiled-landofile.ts";
 import { testEnvironmentResolverLayer } from "../environment-values.ts";
 import { emptySnapshotsLayer } from "../operations/data-mover-support.ts";
 import { plan, web } from "../operations/start-progress-topology-support.ts";
@@ -96,6 +95,7 @@ const makeFixture = async (
 ) => {
   const sourceRoot = AbsolutePath.make(join(root, "source"));
   await mkdir(sourceRoot);
+  await writeFile(join(sourceRoot, ".lando.yml"), "name: source\nruntime: 4\nservices: {}\n");
   await writeFile(join(sourceRoot, "keep.txt"), "source survives");
   const entries = new Map<string, ScratchRegistryEntry>();
   const events: LandoEvent[] = [];
@@ -208,21 +208,7 @@ const makeFixture = async (
           ),
       }),
     ),
-    Layer.succeed(
-      LandofileService,
-      LandofileService.of({
-        discover: Effect.succeed(
-          literalTestLandofile(
-            {
-              name: "source",
-              runtime: 4,
-              services: {},
-            },
-            sourceRoot,
-          ),
-        ),
-      }),
-    ),
+    Layer.succeed(RuntimeCwd, sourceRoot),
     Layer.succeed(
       Scratch.ScratchInitAppPort,
       Scratch.ScratchInitAppPort.of({
