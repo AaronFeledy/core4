@@ -7,6 +7,7 @@ import {
   ServiceStartError,
 } from "../errors/index.ts";
 import {
+  type AppPlan,
   type BringDownOutcome,
   type ContainerBringDownReceipt,
   LANDO_DATA_ROOT_LABEL,
@@ -14,11 +15,25 @@ import {
   type ServiceName,
   type ServicePlan,
   effectiveReadiness,
+  planDataId,
 } from "../schema/index.ts";
-import type { RuntimeProviderShape, ServiceRuntimeFields, ServiceSelector } from "../services/index.ts";
+import type {
+  ApplyOptions,
+  RuntimeProviderShape,
+  ServiceRuntimeFields,
+  ServiceSelector,
+} from "../services/index.ts";
 import { TEST_PROVIDER_ID } from "./_shared.ts";
+import { makeTestProviderServiceVolumes } from "./provider-service-volumes.ts";
+
+type ApplyTestProviderContainers = (
+  plan: AppPlan,
+  options: ApplyOptions,
+  environments: ReadonlyMap<string, Readonly<Record<string, string>>>,
+) => ReturnType<RuntimeProviderShape["apply"]>;
 
 export const makeTestProviderContainers = () => {
+  const volumes = makeTestProviderServiceVolumes();
   const containers = new Map<
     string,
     ServiceRuntimeFields & {
@@ -55,8 +70,8 @@ export const makeTestProviderContainers = () => {
         lastStartedAt: DateTime.toDateUtc(DateTime.makeUnsafe(now)),
       });
     });
-  const apply: RuntimeProviderShape["apply"] = Effect.fn("TestRuntimeProvider.applyContainers")(
-    function* (plan, options) {
+  const apply: ApplyTestProviderContainers = Effect.fn("TestRuntimeProvider.applyContainers")(
+    function* (plan, options, environments) {
       for (const service of Object.values(plan.services)) {
         const probe = effectiveReadiness(service);
         if (
@@ -126,6 +141,7 @@ export const makeTestProviderContainers = () => {
         const now = yield* Clock.currentTimeMillis;
         if (current === undefined) generation += 1;
         const containerId = current?.containerId ?? `test-container-${generation}`;
+        volumes.attach({ plan, service, containerId, environment: environments.get(service.name) });
         const completesOnStart = completes.has(service.name);
         changed ||= current?.status !== "running";
         containers.set(key(target), {
@@ -178,12 +194,14 @@ export const makeTestProviderContainers = () => {
         const receipt = { service: container.service, containerId: container.containerId };
         if (options.containers === "remove") {
           containers.delete(id);
+          volumes.forget(container.containerId);
           receipts.push({ ...receipt, action: "removed" });
         } else if (container.status === "running") {
           containers.set(id, { ...container, status: "exited" });
           receipts.push({ ...receipt, action: "stopped" });
         } else receipts.push({ ...receipt, action: "already-stopped" });
       }
+      if (options.volumes) volumes.purge(target.plan === undefined ? target.app : planDataId(target.plan));
       if (receipts.length === 0 && target.plan === undefined)
         return { kind: "no-op", reason: "no-applied-plan" };
       return options.containers === "remove"
@@ -215,6 +233,7 @@ export const makeTestProviderContainers = () => {
         );
       if (disposition === "remove") {
         containers.delete(id);
+        volumes.forget(containerId);
         return Effect.succeed({ service, containerId, action: "removed" });
       }
       if (current.status !== "running")
@@ -223,6 +242,7 @@ export const makeTestProviderContainers = () => {
       return Effect.succeed({ service, containerId, action: "stopped" });
     });
   return {
+    volumes,
     apply,
     inspect,
     restart,

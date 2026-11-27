@@ -57,6 +57,7 @@ import {
   utf8,
 } from "./_shared.ts";
 import { makeTestProviderContainers } from "./provider-containers.ts";
+import { testVolumeLocator } from "./provider-service-volumes.ts";
 
 export interface ProviderDataPlaneContractInput {
   readonly providerName?: string;
@@ -512,8 +513,7 @@ const volumeInfo = (ref: VolumeRef, labels?: Readonly<Record<string, string>> | 
   instanceId: testVolumeGeneration,
   provenance: "known",
   identity: {
-    coordinationKey: JSON.stringify(["endpoint:test", ref.store]),
-    nativeName: ref.store,
+    ...testVolumeLocator(ref),
     generation: testVolumeGeneration,
     ownerRoot: testVolumeRoot,
     origin: "created",
@@ -567,7 +567,7 @@ const runTestEphemeral = Effect.fnUntraced(function* (
  * artifacts, and applied environments, so independent tests do not share provider state.
  */
 export const makeTestRuntimeProvider = (): RuntimeProviderShape => {
-  const containers = makeTestProviderContainers();
+  const { volumes, apply: applyContainers, ...containers } = makeTestProviderContainers();
   const testVolumeBytes = new Map<string, Uint8Array>();
   const testVolumeArchives = new Map<string, Uint8Array>();
   const testSnapshotBytes = new Map<
@@ -642,7 +642,8 @@ export const makeTestRuntimeProvider = (): RuntimeProviderShape => {
       ).pipe(
         Effect.flatMap((environments) =>
           Effect.sync(() => {
-            testAppliedEnvironments.set(plan.id, new Map(environments));
+            const resolved = new Map(environments);
+            testAppliedEnvironments.set(plan.id, resolved);
             let changed = false;
             // Planned file binds (Compose config grants compile to read-only binds) expose their bytes.
             for (const service of Object.values(plan.services)) {
@@ -655,13 +656,13 @@ export const makeTestRuntimeProvider = (): RuntimeProviderShape => {
                 changed = true;
               }
             }
-            return { changed };
+            return { changed, environments: resolved };
           }),
         ),
         Effect.flatMap((result) =>
-          containers
-            .apply(plan, options)
-            .pipe(Effect.map((applied) => ({ changed: result.changed || applied.changed }))),
+          applyContainers(plan, options, result.environments).pipe(
+            Effect.map((applied) => ({ changed: result.changed || applied.changed })),
+          ),
         ),
       ),
     waitForExit: (_target) => Effect.succeed({ exitCode: 0 }),
@@ -718,7 +719,14 @@ export const makeTestRuntimeProvider = (): RuntimeProviderShape => {
       const exitChunk: ExecChunk = { exitCode: 0 };
 
       return Stream.unwrap(
-        containers.inspect(target, "exec").pipe(Effect.as(Stream.make(stdoutChunk, exitChunk))),
+        containers
+          .inspect(target, "exec")
+          .pipe(
+            Effect.map(
+              ({ containerId }) =>
+                volumes.probe(target, containerId, command) ?? Stream.make(stdoutChunk, exitChunk),
+            ),
+          ),
       );
     },
     run: (spec) => runTestEphemeral(testVolumeBytes, spec),
@@ -859,11 +867,11 @@ export const makeTestRuntimeProvider = (): RuntimeProviderShape => {
               ),
             ];
       }),
-    locateVolume: (ref) =>
-      Effect.succeed({
-        coordinationKey: JSON.stringify(["endpoint:test", ref.store]),
-        nativeName: ref.store,
-      }),
+    locateVolume: (ref) => Effect.succeed(testVolumeLocator(ref)),
+    observeBoundVolume: (target, destination) =>
+      containers
+        .inspect(target)
+        .pipe(Effect.flatMap(({ containerId }) => volumes.observe(target, containerId, destination))),
     exportVolume: (ref) =>
       Stream.sync(() => cloneBytes(testVolumeArchives.get(volumeKey(ref)) ?? emptyVolumeArchive())),
     importVolume: (spec) =>
