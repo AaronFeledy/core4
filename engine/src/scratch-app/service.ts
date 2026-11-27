@@ -10,7 +10,7 @@ import { sha256Hex } from "@lando/sdk/digest";
 import {
   AppPlacementError,
   type DebuggerHostUnavailableError,
-  LandofileVersionConstraintError,
+  type LandofileVersionConstraintError,
   type RouteUrlBindingError,
   ScratchAppError,
   type ScratchAppNotFoundError,
@@ -49,6 +49,7 @@ import {
   type ScratchMountPoint,
   type ScratchNetworkMembership,
   type ScratchServiceEndpoints,
+  type ScratchSource,
   type ScratchSummary,
   StateStore,
 } from "@lando/sdk/services";
@@ -71,6 +72,7 @@ import {
 import { publishStartWarnings } from "../operations/start-warnings.ts";
 import { resolveAppIdentity } from "../planner/app-identity.ts";
 import { validateAppPlan } from "../planner/plan-decode.ts";
+import { PluginContributionGraph } from "../plugins/contribution-graph.ts";
 import { ensureAppPlacement } from "../providers/app-placement.ts";
 import { prepareProvider } from "../providers/prepared.ts";
 import { RuntimeCwd } from "../runtime/cwd.ts";
@@ -89,7 +91,7 @@ import {
   scratchPathsFor,
   stampScratchExtension,
 } from "./identity.ts";
-import { decodeScratchLandofile } from "./landofile.ts";
+import { decodeScratchLandofile, loadScratchForkLandofile } from "./landofile.ts";
 import { makeScratchLifecycleLock } from "./lifecycle-lock.ts";
 import { applyMountCwd, isolateScratchMounts } from "./mount-isolation.ts";
 import { openScratchPlan } from "./plan.ts";
@@ -224,14 +226,6 @@ export const resolveScratchAcquireIsolation = (input: ScratchAcquireInput): Isol
     input.isolate ?? (input.mountCwd !== undefined ? "cwd" : input.source.kind === "fork" ? "full" : "baked")
   );
 };
-
-const scratchForkUnresolvedError = (): ScratchSourceUnresolvedError =>
-  new ScratchSourceUnresolvedError({
-    message: "Unable to resolve scratch source fork.",
-    source: "fork",
-    attempts: [],
-    remediation: "Run `lando apps:scratch:start --fork` from a directory containing a Landofile.",
-  });
 
 const causeRecord = (cause: unknown): Record<string, unknown> | undefined =>
   typeof cause === "object" && cause !== null ? (cause as Record<string, unknown>) : undefined;
@@ -370,7 +364,7 @@ const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
 
 const makeRegistryEntry = Effect.fnUntraced(function* (input: {
   readonly id: string;
-  readonly source: ScratchAcquireInput["source"];
+  readonly source: ScratchSource;
   readonly isolate: ScratchRegistryEntry["isolate"];
   readonly detached: boolean;
   readonly rootPath: string;
@@ -475,6 +469,7 @@ const makeScratchAppService = Effect.fnUntraced(function* (
   const scratchRegistry = yield* ScratchRegistry;
   const dataMover = yield* DataMover;
   const buildOrchestrator = yield* Effect.serviceOption(BuildOrchestrator);
+  const pluginGraph = Option.getOrUndefined(yield* Effect.serviceOption(PluginContributionGraph));
   const initAppPort = yield* ScratchInitAppPort;
   const reapScratch = yield* makeScratchReaper;
   const router = yield* RouterService;
@@ -743,14 +738,23 @@ const makeScratchAppService = Effect.fnUntraced(function* (
   const acquireFork = Effect.fn("ScratchAppService.acquireFork")(function* (
     input: ScratchAcquireInput,
     hostCwd: string,
+    sourcePath: string | undefined,
   ) {
-    const landofile = yield* resolution
-      .loadUserLandofile(landofileService)
-      .pipe(
-        mapFailures((cause) =>
-          cause instanceof LandofileVersionConstraintError ? cause : scratchForkUnresolvedError(),
-        ),
-      );
+    const landofile = yield* loadScratchForkLandofile(
+      { path: sourcePath, cwd: hostCwd },
+      resolution.loadUserLandofile(landofileService),
+    ).pipe(Effect.provideService(FileSystem, fileSystem));
+    if (sourcePath !== undefined && pluginGraph?.matchesAppPluginSelection !== undefined) {
+      const appRoot = landofile.context.appRoot;
+      if (!(yield* pluginGraph.matchesAppPluginSelection(appRoot))) {
+        return yield* scratchAppError(
+          "acquire",
+          `Cannot fork the app at ${appRoot} from ${hostCwd}: its plugin selection differs from this runtime's.`,
+          undefined,
+          "Run the fork from the source app, or acquire a runtime with a plugin selection that matches the source app.",
+        );
+      }
+    }
     const capabilities = yield* providerRegistry.capabilities.pipe(
       mapFailures((cause) =>
         scratchAppError("acquire", "Unable to resolve provider capabilities for the scratch app.", cause),
@@ -769,7 +773,7 @@ const makeScratchAppService = Effect.fnUntraced(function* (
     const isolate = resolveScratchAcquireIsolation(input);
     const registryEntry = yield* makeRegistryEntry({
       id: scratchId,
-      source: input.source,
+      source: { kind: "fork" },
       isolate,
       detached: input.detached,
       shareGlobalStorage: input.shareGlobalStorage ?? false,
@@ -792,18 +796,15 @@ const makeScratchAppService = Effect.fnUntraced(function* (
             appRoot: isolate === "full" ? scratchPaths.root : landofile.context.appRoot,
           },
         };
-        const planForkPlan =
+        const planning = planner.plan(forkLandofile, capabilities, { kind: "scratch" });
+        const copy = copyAppRoot(sourcePlan.root, scratchPaths.root, input);
+        // The data mover resolves its permitted app root from the discovery cwd first.
+        const materialize = sourcePath === undefined ? copy : withDiscoveryCwd(sourcePlan.root, copy);
+        const planFork =
           isolate === "full"
-            ? copyAppRoot(String(sourcePlan.root), String(scratchPaths.root), input).pipe(
-                Effect.andThen(
-                  withDiscoveryCwd(
-                    scratchPaths.root,
-                    planner.plan(forkLandofile, capabilities, { kind: "scratch" }),
-                  ),
-                ),
-              )
-            : planner.plan(forkLandofile, capabilities, { kind: "scratch" });
-        const forkPlan = yield* planForkPlan.pipe(
+            ? materialize.pipe(Effect.andThen(withDiscoveryCwd(scratchPaths.root, planning)))
+            : planning;
+        const forkPlan = yield* planFork.pipe(
           mapFailures((cause) =>
             cause instanceof ScratchAppError
               ? cause
@@ -840,7 +841,7 @@ const makeScratchAppService = Effect.fnUntraced(function* (
     const scratchPaths = yield* paths(scratchId);
     const registryEntry = yield* makeRegistryEntry({
       id: scratchId,
-      source: input.source,
+      source: { kind: "recipe", ref: recipeRef },
       isolate: resolveScratchAcquireIsolation(input),
       detached: input.detached,
       shareGlobalStorage: input.shareGlobalStorage ?? false,
@@ -927,7 +928,7 @@ const makeScratchAppService = Effect.fnUntraced(function* (
       return yield* withDiscoveryCwd(
         hostCwd,
         input.source.kind === "fork"
-          ? acquireFork(input, hostCwd)
+          ? acquireFork(input, hostCwd, input.source.path)
           : acquireRecipe(input, input.source.ref, hostCwd),
       );
     });

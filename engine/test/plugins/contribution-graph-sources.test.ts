@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -62,6 +62,60 @@ describe("plugin contribution source merge", () => {
       );
       // Then
       expect(plugins).toMatchObject([{ source: "app", manifest }]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("rejects a rebound plugin package link even when the manifest and registry path match", async () => {
+    const root = await mkdtemp(join(tmpdir(), "lando-graph-rebound-"));
+    try {
+      const manifest = { name: "@example/linked", version: "1.0.0", api: 4 };
+      const first = join(root, "first");
+      const second = join(root, "second");
+      const path = join(root, "plugin-link");
+      for (const target of [first, second]) {
+        await mkdir(target);
+        await writeFile(join(target, "package.json"), JSON.stringify({ landoPlugin: manifest }));
+      }
+      await symlink(first, path, "junction");
+      const cwd = join(root, "invocation");
+      const source = join(root, "source");
+      for (const app of [cwd, source]) {
+        const registry = join(app, ".lando", "plugins");
+        await mkdir(registry, { recursive: true });
+        await writeFile(join(app, ".lando.yml"), "name: comparison\n");
+        await writeFile(
+          join(registry, "registry.json"),
+          JSON.stringify({ [manifest.name]: { name: manifest.name, version: manifest.version, path } }),
+        );
+      }
+      const layer = PluginContributionGraph.layer<never>(
+        {
+          cwd,
+          layers: [],
+          manifests: [],
+          externalImports: true,
+          discovery: { bundled: false, system: false, user: false, app: true, disable: [] },
+        },
+        [],
+      ).pipe(Layer.provide(Layer.succeed(PathsService, makeLandoPaths())));
+      const matches = await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const graph = yield* PluginContributionGraph;
+            if (graph.matchesAppPluginSelection === undefined)
+              throw new Error("Expected app plugin discovery.");
+            expect(yield* graph.matchesAppPluginSelection(source)).toBe(true);
+            yield* Effect.promise(async () => {
+              await unlink(path);
+              await symlink(second, path, "junction");
+            });
+            return yield* graph.matchesAppPluginSelection(source);
+          }).pipe(Effect.provide(layer)),
+        ),
+      );
+      expect(matches).toBe(false);
     } finally {
       await rm(root, { recursive: true, force: true });
     }

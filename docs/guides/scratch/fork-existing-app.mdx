@@ -6,21 +6,19 @@ timeout: 60000
 tags: [docs, scratch, fork]
 ---
 
-# Fork the current app into a scratch
+# Fork an existing app into a scratch
 
-From an app root, run `lando scratch --fork` to start a scratch using that app's
+From inside an app, run `lando scratch --fork` to start a scratch using that app's
 Landofile. By default the fork works on its own copy of your project, so its
 edits never touch your files. It creates separate containers and does not stop
-or rename the original app. Outside an app root, the command fails before
-creating a scratch.
+or rename the original app.
 
 ```sh
 lando scratch --fork --detach
 ```
 
 After startup succeeds, run `lando scratch:list` to find the fork's id and use
-`lando scratch:info <id>` to inspect it. `--fork` is a boolean flag, not
-`--fork=<app>`.
+`lando scratch:info <id>` to inspect it.
 
 ## Start the fork
 
@@ -37,21 +35,44 @@ If cleanup fails, Lando reports the scratch id without replacing the original st
 
 `--name` sets the base of the generated id (`scratch-<base>-<6hex>`), so `--name review` gives an id like `scratch-review-3f9a1c`. Lando shortens the base to at most 25 characters. The source Landofile is not rewritten. Scratch commands that take an id also accept that name; see [Inspect one scratch](./list-and-info.mdx#inspect-one-scratch).
 
+## Fork an app from another directory
+
+From a workspace directory with a Lando app in `site`, run:
+
+```sh
+lando scratch --fork --source site --detach
+```
+
+Pass `--source` with `--fork`. Relative paths start from the directory where
+you run the command. Give Lando an existing directory, not a Landofile.
+Lando looks for the Landofile there and then in its parent directories, so a
+subdirectory of `site` works too. If Lando can't find an app from that
+directory, it fails without creating a scratch.
+
+The fork uses the plugins already selected for the command or embedding
+runtime. When app-local plugin discovery is enabled, Lando refuses an explicit
+source whose effective plugin selection differs. It does not load the source
+app's plugins to compare the selections.
+
 ## Choose a copy or a shared tree
 
 By default a fork uses `--isolate=full`: Lando copies your project into the scratch's own directory under the user data root and mounts that copy. Edits inside the fork stay in the copy, and edits to your project after startup don't reach the fork. The copy skips `.git/`, `node_modules/`, `vendor/`, `.lando/cache/`, and `.DS_Store`; see [Control a full fork copy](./mount-and-share-flags.mdx#control-a-full-fork-copy) for more exclusions.
 
-To work on the same files from both apps instead, share the directory you run the command from:
+To skip the copy, share the directory you run the command from:
 
 ```sh
 lando scratch --fork --detach --isolate=cwd
 ```
 
-With `--isolate=cwd` (or `--mount-cwd`), Lando copies nothing and code edits show up in both apps.
+With `--isolate=cwd` (or `--mount-cwd`), Lando copies nothing. Edits in the
+mounted directory affect your host files. If you also pass `--source`, it
+selects the Landofile but does not change which directory is mounted.
+Use `--mount-cwd=<target>` to bind the working directory at one path in the
+primary service instead of rebasing the app-relative mounts.
 
 ## What stays separate
 
-The fork gets its own scratch id, slug, containers, and per-app bridge (`lando-<scratch-id>`). Starting it does not stop or rename the current app.
+The fork gets its own scratch id, slug, containers, and per-app bridge (`lando-<scratch-id>`).
 
 Service DNS uses the scratch slug (`web.<scratch-id>.internal`).
 
@@ -79,6 +100,44 @@ To materialize a recipe instead of forking the app, use [Start a scratch app fro
 - [List scratch apps](./list-and-info.mdx)
 
 <Guide>
+  <Scenario id="fork-from-source-path" render={false} reason="Check that an explicit source selects the app from outside its tree">
+    <Step name="fork-the-site">
+      <UseFixture name="fork-source-workspace" />
+      <Run command="lando scratch --fork --source site --detach --format=json" capture={{ name: "scratchId", json: "handle.id" }} />
+      <Verify command="lando scratch:info {{capture:scratchId}} --format=json" expect={{ stdout: { regex: "\"id\":\\s*\"scratch-fork-source-guide-[a-f0-9]{6}\"" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando scratch:destroy {{capture:scratchId}}" />
+    </Step>
+  </Scenario>
+  <Scenario id="fork-source-mounts-working-directory" render={false} reason="Check that explicit source selection does not change the CLI working-directory mount">
+    <Step name="fork-with-working-directory-mount">
+      <UseFixture name="fork-source-workspace" />
+      <Run command="lando scratch --fork --source site --mount-cwd=/caller --detach --format=json" capture={{ name: "scratchId", json: "handle.id" }} />
+      <Verify command="lando scratch:info {{capture:scratchId}} --format=json" expect={{ stdout: { regex: "\"target\":\\s*\"/caller\",\\s*\"source\":\\s*\"[^\"]*[\\\\/]fork-source-workspace\"" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando scratch:destroy {{capture:scratchId}}" />
+    </Step>
+  </Scenario>
+  <Scenario id="reject-invalid-fork-sources" render={false} reason="Reject invalid explicit paths without falling back to an enclosing app">
+    <Step name="reject-invalid-source-paths">
+      <UseFixture name="fork-source-workspace" />
+      <Run command="lando scratch --fork --source site/missing --detach --format=json" expectExit={1} />
+      <Verify errorTag="ScratchAppError" expect={{ regex: "\"operation\":\\s*\"acquire\"" }} />
+      <Run command="lando scratch --fork --source site/.lando.yml --detach --format=json" expectExit={1} />
+      <Verify errorTag="ScratchAppError" expect={{ regex: "\"operation\":\\s*\"acquire\"" }} />
+      <Run command={'lando scratch --fork --source=" " --detach --format=json'} expectExit={1} />
+      <Verify errorTag="ScratchAppError" expect={{ regex: "\"operation\":\\s*\"acquire\"" }} />
+      <Run command="lando scratch --fork --source . --detach --format=json" expectExit={1} />
+      <Verify errorTag="ScratchAppError" expect={{ regex: "\"operation\":\\s*\"acquire\"[\\s\\S]*\"_tag\":\\s*\"LandofileNotFoundError\"" }} />
+      <Run command="lando scratch --from lamp --source site --detach --format=json" expectExit={1} />
+      <Verify errorTag="ScratchSourceUnresolvedError" />
+      <Verify command="lando scratch:list --format=json" expect={{ stdout: { regex: "\"result\":\\s*\\[\\s*\\]" } }} />
+    </Step>
+  </Scenario>
   <Scenario id="fork-start-flags" tags={["scenario"]} render={false} reason="Verify fork and cleanup flags without acquiring a scratch app">
     <Step name="check-fork-flags">
       <Run command="lando scratch:start --help" />

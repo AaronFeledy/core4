@@ -24,7 +24,11 @@ import { loadInstalledPluginImplementation } from "./installed-plugin-loader.ts"
 
 export { pluginCommandCandidates } from "./command-contributions.ts";
 
-import { PluginManifestResolution, resolvePluginManifests } from "./manifest-resolution.ts";
+import {
+  PluginManifestResolution,
+  resolvePluginManifests,
+  samePluginSelection,
+} from "./manifest-resolution.ts";
 import { type ManifestDiagnostic, selectPluginManifests } from "./manifest-selection.ts";
 import { type PluginCapabilityIndexError, makePluginCapabilityIndex } from "./module-set.ts";
 import { type DiscoveredPlugin, systemPluginsFromModules } from "./plugin-discovery.ts";
@@ -69,6 +73,8 @@ export interface PluginContributionGraphShape {
   readonly certificateAuthorities: ReadonlyArray<GraphCertificateAuthorityCandidate>;
   readonly commands: ReadonlyArray<GraphCommandCandidate>;
   readonly hostContext: Context.Context<never>;
+  /** Present only for runtime graphs with app-local discovery enabled. Never imports candidate plugins. */
+  readonly matchesAppPluginSelection?: (appRoot: string) => Effect.Effect<boolean>;
 }
 
 /**
@@ -154,15 +160,18 @@ export class PluginContributionGraph extends Context.Service<
         const suppliedResolution = Option.isSome(resolutionOption)
           ? resolutionOption
           : Context.getOption(rawContext, PluginManifestResolution);
+        const discoverAppPlugins = policy.externalImports && policy.discovery.app;
+        const resolveAt = (cwd: string) =>
+          resolvePluginManifests({
+            bundled,
+            explicit,
+            directories: pluginSelectionDirectories(policy, paths, undefined),
+            ...(discoverAppPlugins ? { cwd } : {}),
+            disable: policy.discovery.disable,
+          });
         const selected = Option.isSome(suppliedResolution)
           ? suppliedResolution.value
-          : yield* resolvePluginManifests({
-              bundled,
-              explicit,
-              directories: pluginSelectionDirectories(policy, paths, undefined),
-              ...(policy.externalImports && policy.discovery.app ? { cwd: policy.cwd } : {}),
-              disable: policy.discovery.disable,
-            });
+          : yield* resolveAt(policy.cwd);
         const diagnostics = [...validationDiagnostics, ...selected.diagnostics].slice(0, 100);
         const loadedPlugins = yield* Effect.forEach(
           [
@@ -219,6 +228,15 @@ export class PluginContributionGraph extends Context.Service<
           commands: resolvedCommands.commands,
           diagnostics: [...diagnostics, ...resolvedCommands.diagnostics].slice(0, 100),
           hostContext: rawContext,
+          ...(discoverAppPlugins
+            ? {
+                matchesAppPluginSelection: (appRoot) =>
+                  resolveAt(appRoot).pipe(
+                    Effect.map((candidate) => samePluginSelection(selected.plugins, candidate.plugins)),
+                    Effect.provideService(PathsService, paths),
+                  ),
+              }
+            : {}),
         };
         return PluginContributionGraph.of(graph);
       }),

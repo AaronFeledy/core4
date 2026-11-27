@@ -45,6 +45,7 @@ import { SCRATCH_STATUS_TONES, summaryToneFromTable } from "./service-summary";
 export interface ScratchStartOptions {
   readonly fork?: boolean;
   readonly from?: string;
+  readonly source?: string;
   readonly detach?: boolean;
   readonly name?: string;
   readonly answers?: Record<string, string>;
@@ -206,6 +207,7 @@ export const scratchStartOptionsFromInput = (input: unknown): ScratchStartOption
   return {
     fork: flags.fork === true,
     ...(typeof flags.from === "string" ? { from: flags.from } : {}),
+    ...(typeof flags.source === "string" ? { source: flags.source } : {}),
     detach: flags.detach === true,
     ...(typeof flags.name === "string" ? { name: flags.name } : {}),
     answers,
@@ -233,12 +235,16 @@ export const scratchIdFromInput = (input: unknown): string => stringFlag(specArg
 export const scratchListFormatFromInput = (input: unknown): ScratchListFormat =>
   commandResultFormatAmong(input, ["json", "table"], "table");
 
-const unresolvedSource = (message: string, source: string): ScratchSourceUnresolvedError =>
+const unresolvedSource = (
+  message: string,
+  source: string,
+  remediation = "Pass exactly one of --fork or --from <recipe-ref>.",
+): ScratchSourceUnresolvedError =>
   new ScratchSourceUnresolvedError({
     message,
     source,
     attempts: [],
-    remediation: "Pass exactly one of --fork or --from <recipe-ref>.",
+    remediation,
   });
 
 const validateScratchId = (id: string): Effect.Effect<string, ScratchAppIdInvalidError> => {
@@ -260,10 +266,18 @@ export const scratchStart = Effect.fn("Scratch.start")(function* (
   const from = options.from?.trim();
   const hasRecipe = from !== undefined && from.length > 0;
 
+  if (!hasFork && options.source !== undefined) {
+    return yield* unresolvedSource(
+      "apps:scratch:start --source <path> requires --fork.",
+      hasRecipe ? `recipe:${from}` : "none",
+      "Pass --fork with --source <path>, or drop --source.",
+    );
+  }
   if (hasFork === hasRecipe) {
     const source = hasFork && hasRecipe ? `fork+recipe:${from}` : "none";
-    return yield* Effect.fail(
-      unresolvedSource("apps:scratch:start requires exactly one of --fork or --from <recipe-ref>.", source),
+    return yield* unresolvedSource(
+      "apps:scratch:start requires exactly one of --fork or --from <recipe-ref>.",
+      source,
     );
   }
 
@@ -283,7 +297,9 @@ export const scratchStart = Effect.fn("Scratch.start")(function* (
         });
   const answers = { ...fileAnswers, ...(options.answers ?? {}) };
   const acquireBase = {
-    source: hasFork ? ({ kind: "fork" } as const) : ({ kind: "recipe", ref: from ?? "" } as const),
+    source: hasFork
+      ? ({ kind: "fork", ...(options.source === undefined ? {} : { path: options.source }) } as const)
+      : ({ kind: "recipe", ref: from ?? "" } as const),
     ...(options.name === undefined ? {} : { name: options.name }),
     ...(Object.keys(answers).length === 0 ? {} : { answers }),
     ...(options.yes === undefined ? {} : { yes: options.yes }),

@@ -1,4 +1,7 @@
+import { realpath } from "node:fs/promises";
+import { join } from "node:path";
 import { findAppRoot } from "@lando/landofile/discovery";
+import { canonicalJson } from "@lando/sdk/digest";
 import { Context, Effect } from "effect";
 import { loadInstalledPluginManifest } from "./installed-plugin-loader.ts";
 import { inspectInstalledPluginRegistry } from "./installed-registry.ts";
@@ -8,6 +11,7 @@ import {
   type PluginManifestSource,
   selectPluginManifests,
 } from "./manifest-selection.ts";
+import { packageRootPath } from "./plugin-module-path.ts";
 
 export interface ManifestResolutionInput {
   readonly bundled: readonly PluginManifestEntry[];
@@ -19,10 +23,8 @@ export interface ManifestResolutionInput {
 
 export const resolvePluginManifests = Effect.fnUntraced(function* (input: ManifestResolutionInput) {
   const directories = [...input.directories];
-  if (input.cwd !== undefined) {
-    const root = yield* findAppRoot(input.cwd);
-    if (root !== undefined) directories.push({ source: "app", path: `${root}/.lando/plugins` });
-  }
+  const appRoot = input.cwd === undefined ? undefined : yield* findAppRoot(input.cwd);
+  if (appRoot !== undefined) directories.push({ source: "app", path: join(appRoot, ".lando", "plugins") });
   const sources: PluginManifestEntry[][] = [[...input.bundled]];
   const diagnostics: ManifestDiagnostic[] = [];
   for (const directory of directories) {
@@ -38,12 +40,16 @@ export const resolvePluginManifests = Effect.fnUntraced(function* (input: Manife
     for (const entry of Object.values(inspection.registry)) {
       const result = yield* Effect.result(
         Effect.tryPromise({
-          try: () => loadInstalledPluginManifest(entry.path),
+          try: async () => {
+            // Pin the package used to read the manifest and later import its implementation.
+            const path = await realpath(packageRootPath(entry.path));
+            const manifest = await loadInstalledPluginManifest(path);
+            return { manifest, source: directory.source, path };
+          },
           catch: (cause) => cause,
         }),
       );
-      if (result._tag === "Success")
-        plugins.push({ manifest: result.success, source: directory.source, path: entry.path });
+      if (result._tag === "Success") plugins.push(result.success);
       else
         diagnostics.push({
           _tag: "PluginManifestError",
@@ -60,10 +66,31 @@ export const resolvePluginManifests = Effect.fnUntraced(function* (input: Manife
     sources.map((source) => source.filter((plugin) => plugin.source !== "app")),
     input.disable,
   ).plugins;
-  return { ...selected, globalPlugins, diagnostics: [...diagnostics, ...selected.diagnostics].slice(0, 100) };
+  return {
+    ...selected,
+    globalPlugins,
+    diagnostics: [...diagnostics, ...selected.diagnostics].slice(0, 100),
+  };
 });
 
 export type ResolvedPluginManifests = Effect.Success<ReturnType<typeof resolvePluginManifests>>;
+
+/** Selection order matters: when different plugins provide the same command, the first one wins. */
+export const samePluginSelection = (
+  loaded: ResolvedPluginManifests["plugins"],
+  candidate: ResolvedPluginManifests["plugins"],
+): boolean =>
+  loaded.length === candidate.length &&
+  loaded.every(({ source, path, manifest }, index) => {
+    const other = candidate[index];
+    return (
+      other !== undefined &&
+      source === other.source &&
+      path === other.path &&
+      canonicalJson(manifest) === canonicalJson(other.manifest)
+    );
+  });
+
 export class PluginManifestResolution extends Context.Service<
   PluginManifestResolution,
   ResolvedPluginManifests

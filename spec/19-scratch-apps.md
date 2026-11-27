@@ -54,6 +54,10 @@ The entire scratch tree MUST be excluded from cwd discovery. After resource dest
 
 `apps:scratch:start --fork [--source <path>]` copies the resolved source app root; without `--source`, standard cwd discovery applies (§7.1).
 
+An explicit source, `source: { kind: "fork", path }` in the library, MUST be an existing directory. Relative paths resolve against the invocation cwd (the retained runtime's `cwd` for library calls). Standard discovery starts at that directory and may find the Landofile in a parent. An absent app at an explicit source fails with `ScratchAppError` and operation `acquire`. The path is acquisition input only; it does not change the cwd used for mounts (§21.7) or appear in scratch source summaries.
+
+An explicit fork uses the acquiring runtime's plugin graph (§9.7, §16.10). When app-local plugin discovery is enabled, Lando MUST verify that an explicit source would select the same effective plugins under that runtime's policy. Compare manifests without importing source plugins. A mismatch fails with `ScratchAppError` and operation `acquire` before planning, provider actions, copying, or scratch registration.
+
 - Materialization is a content copy, not a hardlink or CoW overlay (§21.15).
 - `--exclude` and `scratch.fork.excludes:` add bounded ignore patterns. Generated and dependency-heavy paths are excluded by default.
 - All included Landofile layers and the lockfile are copied; merge and include resolution then run against the scratch root.
