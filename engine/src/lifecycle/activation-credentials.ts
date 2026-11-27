@@ -80,7 +80,9 @@ export const makeActivationCredentialWorker = Effect.fn("Activation.makeCredenti
           details: { service: consumer.name, dependency: target.service.name },
           message: `Cannot start ${consumer.name}: preparing credentials for database ${target.service.name} requires ${missing}.`,
           remediation:
-            "Use a runtime and provider that support database credential convergence, then retry the same command with the same selection.",
+            missing === "credentialConvergenceContext"
+              ? "Supply PathsService and RedactionService in the activation context, then retry the same command with the same selection."
+              : "Use a runtime and provider that support database credential convergence, then retry the same command with the same selection.",
         });
       }
     }

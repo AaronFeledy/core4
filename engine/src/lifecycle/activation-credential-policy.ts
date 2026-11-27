@@ -90,7 +90,7 @@ export const credentialGateFailure = (
       return {
         reason: "unsupported-target",
         detail: unprovenBuildDetail,
-        guidance: "Use the catalog image or restore the verified catalog build.",
+        guidance: "Use the bundled catalog image.",
       };
     case "failed":
       return result.failure;
