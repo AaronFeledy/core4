@@ -30,7 +30,8 @@ lando scratch:start --fork --detach
 
 `--from` takes a recipe reference. Bundled recipes include `lamp`, `lemp`, `wordpress`, `drupal`, and `drupal-cms`. There is no `--recipe` flag on this command.
 
-`--fork` uses the current app's Landofile as the scratch source. You must be in an app root.
+`--fork` uses the current app's Landofile by default. To select another app, see
+[Fork an app from another directory](./fork-existing-app.mdx#fork-an-app-from-another-directory).
 
 `--yes` accepts recipe prompt defaults. `--answer key=value` (repeatable) fills prompts. `--option` is an alias for `--answer`.
 

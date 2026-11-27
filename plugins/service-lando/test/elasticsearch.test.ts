@@ -65,7 +65,7 @@ describe("elasticsearch ServiceType", () => {
       expect(plan.type).toBe("elasticsearch");
       expect(plan.artifact).toEqual({
         kind: "ref",
-        ref: "docker.elastic.co/elasticsearch/elasticsearch:8.17.0",
+        ref: "docker.elastic.co/elasticsearch/elasticsearch:8.19.25",
       });
       expect(plan.command).toBeUndefined();
       const volumes = plan.mounts.filter((mount) => mount.type === "volume");

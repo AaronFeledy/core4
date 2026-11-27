@@ -92,6 +92,7 @@ const committedWorkflowPolicies = [
   { id: "platform-readiness-workflow", path: ".github/workflows/platform-readiness.yml" },
   { id: "drupal-journey-workflow", path: ".github/workflows/drupal-journey.yml" },
   { id: "rails-journey-workflow", path: ".github/workflows/rails-journey.yml" },
+  { id: "stock-artifact-age-canary-workflow", path: ".github/workflows/stock-artifact-age-canary.yml" },
 ] as const;
 
 const isCodegenCatalogModule = (value: unknown): value is CodegenCatalogModule =>

@@ -1,10 +1,11 @@
 import type { CommandContribution, PluginManifest } from "@lando/sdk/schema";
+import type { PluginPackageRoot } from "./plugin-module-path.ts";
 
 export type PluginManifestSource = "bundled" | "system" | "user" | "app" | "explicit";
 export interface PluginManifestEntry {
   readonly manifest: PluginManifest;
   readonly source: PluginManifestSource;
-  readonly path?: string;
+  readonly packageRoot?: PluginPackageRoot;
 }
 export interface CommandProvenance {
   readonly pluginName: string;

@@ -1,4 +1,5 @@
 import type { ProcessSpawnOptions } from "@lando/sdk/services";
+import { processCancellation } from "./process-cancellation.ts";
 
 interface BunFileSink {
   write: (chunk: string | Uint8Array) => number | Promise<number>;
@@ -9,9 +10,42 @@ interface BunFileSink {
 export const pipedOutput = (stream: unknown): ReadableStream<Uint8Array> | undefined =>
   stream instanceof ReadableStream ? stream : undefined;
 
-export const readText = (stream: unknown): Promise<string> => {
+export const readProcessText = async (
+  stream: unknown,
+  signal: AbortSignal,
+  countPrivateBytes?: (chunk: Uint8Array) => void,
+): Promise<string> => {
   const piped = pipedOutput(stream);
-  return piped === undefined ? Promise.resolve("") : new Response(piped).text();
+  if (piped === undefined) return "";
+  const reader = piped.getReader();
+  const chunks: Uint8Array[] = [];
+  let abandoned = false;
+  const cancel = () => {
+    abandoned = true;
+    // Cancelling releases outstanding reads even if a descendant still holds the write end.
+    void reader.cancel().catch(() => undefined);
+  };
+  if (signal.aborted) cancel();
+  else signal.addEventListener("abort", cancel, { once: true });
+  try {
+    while (true) {
+      const next = await reader.read();
+      if (next.done) break;
+      countPrivateBytes?.(next.value);
+      chunks.push(next.value);
+    }
+  } catch (cause) {
+    cancel();
+    throw cause;
+  } finally {
+    signal.removeEventListener("abort", cancel);
+    reader.releaseLock();
+  }
+  // A forced reader close is not EOF. Never return dropped output as a completed result.
+  if (abandoned) throw processCancellation;
+  return new TextDecoder("utf-8", { ignoreBOM: countPrivateBytes !== undefined }).decode(
+    Buffer.concat(chunks),
+  );
 };
 
 const isBrokenPipe = (cause: unknown): boolean =>

@@ -121,6 +121,7 @@ const makeRuntime = (
     readonly planServices?: ReadonlyArray<PlannedService>;
     readonly protection?: AppliedStateVersionError;
     readonly recordedRoot?: AbsolutePath;
+    readonly omitExit?: boolean;
   } = {},
 ) => {
   const execs: Array<{ readonly target: ExecTarget; readonly command: ProviderCommandSpec }> = [];
@@ -137,6 +138,7 @@ const makeRuntime = (
           { kind: "stdout", chunk: encoder.encode("job-stdout\n") },
           ...(failed ? [{ kind: "stderr" as const, chunk: encoder.encode("job-stderr\n") }] : []),
         ];
+        if (options.omitExit === true) return Stream.fromIterable(output);
         // The job exits only after its output was consumed, as a running process would.
         const exit = Stream.fromEffect(
           Effect.sync((): ExecChunk => {
@@ -252,6 +254,16 @@ describe("schedule:run", () => {
     ]);
     expect(result).toEqual({ service: "web", name: "fail", exitCode: 3 });
     expect(spec.streamingMode, "the spec must declare live output so the CLI provides the sink").toBe("live");
+  });
+
+  test("preserves live output but fails without an observed job exit", async () => {
+    const runtime = makeRuntime({ omitExit: true });
+    await expect(runtime.runLive("ok")).rejects.toMatchObject({
+      _tag: "ServiceExecError",
+      service: "web-schedule",
+    });
+    expect(runtime.order).toEqual(["frame:stdout"]);
+    expect(runtime.execs).toHaveLength(1);
   });
 
   test("executes in the sidecar that runs the job, without a user or cwd override", async () => {

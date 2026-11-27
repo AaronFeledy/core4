@@ -20,7 +20,7 @@ import {
 } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
-const DEFAULT_IMAGE = "localstack/localstack:4.14.0";
+export const DEFAULT_IMAGE = "localstack/localstack:4.14.0";
 export const DEFAULT_PORT = 4566;
 const DEFAULT_DNS_PORT = 53;
 export const LOCALSTACK_LISTENER = {

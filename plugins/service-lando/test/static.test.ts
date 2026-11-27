@@ -108,7 +108,7 @@ describe("static ServiceType", () => {
     const plan = await composeStaticPlan({ type: "static" });
 
     expect(plan.type).toBe("static:nginx");
-    expect(plan.artifact).toEqual({ kind: "ref", ref: "nginx:1.26-alpine" });
+    expect(plan.artifact).toEqual({ kind: "ref", ref: "nginx:1.30-alpine" });
     expect(plan.environment).toMatchObject({
       LANDO: "ON",
       LANDO_APP_NAME: "myapp",

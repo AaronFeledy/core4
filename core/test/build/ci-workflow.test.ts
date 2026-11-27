@@ -133,6 +133,7 @@ describe("ci workflow", () => {
       "rails-journey.yml",
       "release.yml",
       "runtime-bundle.yml",
+      "stock-artifact-age-canary.yml",
       "tomcat-bump.yml",
       "workflow-performance.yml",
       "xdebug-bump.yml",

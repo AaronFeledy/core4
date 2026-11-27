@@ -98,7 +98,7 @@
     "justification": "The meta:setup result becomes a union discriminated by dryRun: `lando setup --dry-run` returns the planned host changes (each with its exact commands and, when a step reads input, the manual commands a person can run instead), what this run would do with each (`approval`: approved, will-ask, will-skip, blocked, or not-offered) and the flags that approve it without a terminal (`approvedBy`), and how a run would get administrator access (`elevation`), while a finished setup adds dryRun: false and one hostChanges outcome per planned change, with the digest of any input a step piped to root. Consumers that read a finished setup keep every field they read before."
   },
   {
-    "fingerprint": "sha256:7a4ac03bb521aef2c5c7b2bd0aa9eaec770639a936aec97deadb942b42573fdf",
+    "fingerprint": "sha256:e6fc8e5eea3ef67e2e0ccaa76dcd1e51aa3149709f9e21430f0f3a4bedaca28f",
     "changeKind": "surface-removed",
     "locations": [
       {

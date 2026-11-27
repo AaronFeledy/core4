@@ -12,6 +12,7 @@ import {
   SHARD_RUNTIME_FLAGS,
   TEST_TIMINGS_FILE,
   collectShardedTestFiles,
+  runUnitTestCommand,
   testFileArguments,
 } from "./test-shards.ts";
 
@@ -35,11 +36,6 @@ interface RefreshOptions {
   readonly repoRoot: string;
   readonly runTests: (cmd: ReadonlyArray<string>, cwd: string) => Promise<number>;
 }
-
-const runTests = async (cmd: ReadonlyArray<string>, cwd: string): Promise<number> => {
-  const proc = Bun.spawn({ cmd: [...cmd], cwd, stdout: "inherit", stderr: "inherit" });
-  return await proc.exited;
-};
 
 const validateCandidate = (contents: string, files: ReadonlyArray<string>): void => {
   let candidate: unknown;
@@ -99,6 +95,6 @@ if (import.meta.main) {
   process.exitCode = await refreshTestTimings({
     files: await collectShardedTestFiles(),
     repoRoot: REPO_ROOT,
-    runTests,
+    runTests: runUnitTestCommand,
   });
 }

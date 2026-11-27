@@ -23,6 +23,7 @@ import {
 } from "@lando/sdk/services";
 import { type PrivateFileAccess, PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Context, Effect, Layer, Option } from "effect";
+import { UnobservedProcessExit } from "../operations/exec-stream-drain.ts";
 import { bunShellDialectIssues, bunShellScriptIssue, describeBunShellIssue } from "./bun-shell-dialect.ts";
 import {
   type CapturedHostExecutionContext,
@@ -51,7 +52,7 @@ const shellError = (
 ): ShellExecError =>
   new ShellExecError({
     message: cause instanceof Error ? cause.message : `Shell command failed: ${command}`,
-    command,
+    command: cause instanceof UnobservedProcessExit ? cause.cmd : command,
     ...(options?.cwd === undefined ? {} : { cwd: options.cwd }),
     ...(output?.exitCode === undefined ? {} : { exitCode: output.exitCode }),
     ...(output?.stdout === undefined ? {} : { stdout: output.stdout }),
@@ -123,19 +124,16 @@ const shellEventShape = (command: string, options: ShellCommandOptions | undefin
 });
 
 const redactShellError = (redactor: Redactor, error: ShellExecError, capture: boolean) =>
-  Effect.sync(
-    () =>
-      new ShellExecError({
-        message: redactor.redactString(error.message),
-        command: redactor.redactString(error.command),
-        ...(error.cwd === undefined ? {} : { cwd: redactor.redactString(error.cwd) }),
-        ...(error.exitCode === undefined ? {} : { exitCode: error.exitCode }),
-        ...(error.stdout === undefined ? {} : { stdout: redactor.redactString(error.stdout) }),
-        ...(error.stderr === undefined ? {} : { stderr: redactor.redactString(error.stderr) }),
-        ...(capture ? {} : { cause: redactor.redactValue(error.cause) }),
-        remediation: redactor.redactString(error.remediation),
-      }),
-  );
+  new ShellExecError({
+    message: redactor.redactString(error.message),
+    command: redactor.redactString(error.command),
+    ...(error.cwd === undefined ? {} : { cwd: redactor.redactString(error.cwd) }),
+    ...(error.exitCode === undefined ? {} : { exitCode: error.exitCode }),
+    ...(error.stdout === undefined ? {} : { stdout: redactor.redactString(error.stdout) }),
+    ...(error.stderr === undefined ? {} : { stderr: redactor.redactString(error.stderr) }),
+    ...(capture ? {} : { cause: redactor.redactValue(error.cause) }),
+    remediation: redactor.redactString(error.remediation),
+  });
 
 /** `Column N: <problem>` for a command or `path:line:col: <problem>` for a script, with its fix. */
 interface DialectRejection {
@@ -201,24 +199,24 @@ const execWithEvents = Effect.fn("ShellRunner.exec")(function* <Options extends 
   // Text Bun Shell would misread or reject never starts, so a command can't half-run on a parse gap.
   const rejected = yield* rejection;
   if (rejected !== undefined)
-    return yield* redactShellError(
-      redactor,
-      new ShellExecError({
-        ...rejected,
-        command,
-        ...(snapshot?.cwd === undefined ? {} : { cwd: snapshot.cwd }),
-      }),
-      snapshot?.capture === true,
-    ).pipe(Effect.flatMap(Effect.fail));
+    return yield* Effect.fail(
+      redactShellError(
+        redactor,
+        new ShellExecError({
+          ...rejected,
+          command,
+          ...(snapshot?.cwd === undefined ? {} : { cwd: snapshot.cwd }),
+        }),
+        snapshot?.capture === true,
+      ),
+    );
   if (snapshot?.capture !== true)
     yield* publishRedactedShellEvent(redactor, {
       _tag: "pre-shell-exec",
       ...shellEventShape(command, snapshot),
     });
   const result = yield* execute(snapshot, context).pipe(
-    Effect.catch((error) =>
-      Effect.flatMap(redactShellError(redactor, error, snapshot?.capture === true), Effect.fail),
-    ),
+    mapFailures((error) => redactShellError(redactor, error, snapshot?.capture === true)),
   );
   if (snapshot?.capture !== true)
     yield* publishRedactedShellEvent(redactor, {

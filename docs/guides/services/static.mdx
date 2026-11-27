@@ -7,7 +7,7 @@ tags: [docs, static, service]
 
 # Serve a static site
 
-Add `type: static` under `services` in `.lando.yml`. That defaults to the nginx variant. Lando pulls `nginx:1.26-alpine` and listens on `80`. The webroot defaults to `.`, resolving to the app root at `/app`, and the app source is mounted read-only. The server can't mutate your repository:
+Add `type: static` under `services` in `.lando.yml`. That defaults to the nginx variant. Lando pulls `nginx:1.30-alpine` and listens on `80`. The webroot defaults to `.`, resolving to the app root at `/app`, and the app source is mounted read-only. The server can't mutate your repository:
 
 ```yaml
 name: static-demo

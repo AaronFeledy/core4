@@ -43,13 +43,13 @@ export interface SelectedStopEvidence {
   /** An unfinished accelerated start, which owns the sessions a stop would quiesce. */
   readonly journal: PendingStart | undefined;
   readonly rootExists: boolean;
-  /** `unrecorded`: containers or ownership records exist without an applied plan. */
+  /** `unrecorded`: containers exist without an applied plan; retained data alone is `none`. */
   readonly record: "applied" | "unrecorded" | "none";
 }
 
 /**
  * The one rule set that refuses a selected stop. An unfinished start refuses first, for every
- * resolution, and names the command that finishes it. A missing app folder or resources without
+ * resolution, and names the command that finishes it. A missing app folder or containers without
  * an applied record refuse next: without applied route definitions, selected stop cannot tell
  * which routes to keep. Anything else may proceed.
  */

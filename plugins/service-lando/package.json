@@ -19,7 +19,8 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./php-internals": "./src/php-internals.ts"
+    "./php-internals": "./src/php-internals.ts",
+    "./services/default-images": "./src/services/default-images.ts"
   },
   "files": [
     "./src",

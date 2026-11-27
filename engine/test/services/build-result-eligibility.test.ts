@@ -41,13 +41,25 @@ test("dispatch of another key retires historical app eligibility without losing 
   } as const;
   await Effect.runPromise(
     Effect.gen(function* () {
-      for (const buildKey of ["a", "b", "c", "d", "e"]) {
+      for (const buildKey of ["a", "b", "c"]) {
         yield* recordBuildResult(bucket, {
           ...app,
           buildKey,
           transcriptPath: AbsolutePath.make(`/tmp/${buildKey}.log`),
         });
       }
+      const { exitCode: _, ...unverified } = app;
+      yield* recordBuildResult(bucket, {
+        ...unverified,
+        buildKey: "missing-exit",
+        transcriptPath: AbsolutePath.make("/tmp/missing-exit.log"),
+      });
+      yield* recordBuildResult(bucket, {
+        ...app,
+        buildKey: "nonzero-exit",
+        exitCode: 7,
+        transcriptPath: AbsolutePath.make("/tmp/nonzero-exit.log"),
+      });
       yield* recordBuildResult(bucket, {
         ...app,
         step: "web:app:sibling",
@@ -65,9 +77,7 @@ test("dispatch of another key retires historical app eligibility without losing 
   const after = (await Effect.runPromise(bucket.get)) ?? [];
   expect(after).toHaveLength(6);
   expect(after).toMatchObject(before ?? []);
-  for (const buildKey of ["a", "b", "c", "d", "e"]) {
-    expect(findCompleteBuildResult(after, { ...app, buildKey })).toBeUndefined();
-  }
+  expect(after.filter((entry) => entry.invalidated).map((entry) => entry.buildKey)).toEqual(["a", "b", "c"]);
   expect(
     findCompleteBuildResult(after, { ...app, step: "web:app:sibling", buildKey: "sibling" }),
   ).toMatchObject({ step: "web:app:sibling", buildKey: "sibling", containerId: "native-1" });
