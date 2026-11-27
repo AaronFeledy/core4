@@ -7,6 +7,7 @@ import type {
 } from "@lando/container-runtime/engine-api";
 import { installSupervisedExecFixture } from "@lando/container-runtime/testing/exec-supervision";
 import { installNonCompensatingExecUmask } from "@lando/container-runtime/testing/exec-umask";
+import { missingContainerStream } from "@lando/container-runtime/testing/missing-container";
 import {
   type VolumeArchiveSnapshot,
   makeVolumeArchiveFakeState,
@@ -342,6 +343,10 @@ const makeFakeApi = () => {
         return Stream.fromIterable([attachFrame(1, "exec-ok\n")]);
       }
       if (request.path.includes("/logs?")) {
+        const name = decodeURIComponent(
+          request.path.slice("/containers/".length, request.path.indexOf("/logs?")),
+        );
+        if (!existing.has(name)) return missingContainerStream("lando", request, name);
         return Stream.fromIterable([
           attachFrame(1, "2026-05-17T12:00:00.000Z ready\n"),
           attachFrame(1, "2026-05-17T12:00:00.000Z lando-contract-split-"),

@@ -10,6 +10,7 @@ import {
   collectExecStream,
 } from "@lando/sdk/services";
 import { Effect, Option } from "effect";
+import { processExitUnobserved } from "../operations/exec-stream-drain.ts";
 import {
   type CapturedHostExecutionContext,
   captureScopedHostExecutionContext,
@@ -76,7 +77,10 @@ export const streamArgvCommand = Effect.fnUntraced(function* (
               ...event,
               _tag: "pre-process-exec",
             });
-            const result = yield* collectExecStream(runner.streamWithExit(request), sink);
+            const result = yield* collectExecStream(runner.streamWithExit(request), sink, {
+              signal: options.signal,
+              failure: processExitUnobserved,
+            });
             const output = {
               exitCode: result.exitCode,
               stdout: redactor.redactString(result.stdout ?? ""),
@@ -135,7 +139,10 @@ export const streamBunScript = Effect.fnUntraced(function* (
     (runner, request) =>
       options?.capture === true
         ? runner.run(request)
-        : collectExecStream(runner.streamWithExit(request), sink),
+        : collectExecStream(runner.streamWithExit(request), sink, {
+            signal: options?.signal,
+            failure: processExitUnobserved,
+          }),
     { ...output.context, env: { ...output.context.env, BUN_BE_BUN: "1" } },
   );
   const result = yield* output.redaction === undefined
@@ -174,7 +181,10 @@ export const streamBunCommand = Effect.fnUntraced(function* (
       (runner, request) =>
         options?.capture === true
           ? runner.run(request)
-          : collectExecStream(runner.streamWithExit(request), execution.sink),
+          : collectExecStream(runner.streamWithExit(request), execution.sink, {
+              signal: options?.signal,
+              failure: processExitUnobserved,
+            }),
       { ...execution.context, env: { ...execution.context.env, BUN_BE_BUN: "1" } },
     ),
   );

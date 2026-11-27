@@ -6,6 +6,7 @@ import { type AdoptionReceipt, dataRootRefusal, decideDataRootOwnership } from "
 import { VOLUME_INSTANCE_LABEL } from "./labels.ts";
 import type { makeResourceOwnershipStore } from "./resource-ownership.ts";
 import { ownershipFailure } from "./resource-ownership-inventory.ts";
+import { retireAbsentVolumeReceipt } from "./teardown-volume-receipts.ts";
 import {
   type SkippedVolume,
   type TeardownVolumeRuntime,
@@ -16,7 +17,7 @@ import {
   snapshotVolumeDeletion,
 } from "./teardown-volumes.ts";
 import { STORAGE_SCOPE_LABEL, volumeClassFromLabels } from "./volume-classes.ts";
-import { ownedVolumeLockTier, volumeOwnershipLabels } from "./volume-ownership.ts";
+import { GLOBAL_CACHE_OWNER, ownedVolumeLockTier, volumeOwnershipLabels } from "./volume-ownership.ts";
 
 type Inventory = NonNullable<
   Effect.Success<ReturnType<ReturnType<typeof makeResourceOwnershipStore>["load"]>>
@@ -51,6 +52,10 @@ export const planInventoryVolumeDeletions = Effect.fnUntraced(function* (input: 
     const dataRoot = input.userDataRoot ?? resource.dataRoot;
     if (options.appIds !== undefined && !options.appIds.includes(resource.appId)) continue;
     const shared = resource.volumeScope === "global" && resource.volumeClass === "cache";
+    if (shared && options.releaseCaches === true && options.purgeCaches !== true) {
+      yield* input.store.retire(root, resource);
+      continue;
+    }
     const retainedGlobal =
       resource.volumeScope === "global" &&
       resource.volumeClass === "data" &&
@@ -61,12 +66,10 @@ export const planInventoryVolumeDeletions = Effect.fnUntraced(function* (input: 
           receipt.appId === resource.appId &&
           receipt.dataRoot === dataRoot,
       );
-    if (
+    const covered =
       !retainedGlobal &&
       coverage?.provider === resource.providerId &&
-      (shared || coverage.app === resource.appId)
-    )
-      continue;
+      (shared || coverage.app === resource.appId);
     if (
       !(resource.volumeClass === "cache"
         ? options.purgeCaches
@@ -91,6 +94,7 @@ export const planInventoryVolumeDeletions = Effect.fnUntraced(function* (input: 
       name: resource.nativeName,
       volumeClass: resource.volumeClass,
       shared,
+      ownerRoot: shared ? GLOBAL_CACHE_OWNER : root,
       tier: ownedVolumeLockTier(resource.appId, shared),
       matches: (labels: Readonly<Record<string, string>>) =>
         shared
@@ -137,15 +141,22 @@ export const planInventoryVolumeDeletions = Effect.fnUntraced(function* (input: 
     );
     switch (observed.kind) {
       case "absent":
+        // A shared cache's receipt belongs to its class owner, and another app may recreate the
+        // volume outside this app's lock, so only an app volume's leftover receipt is retired.
         if (shared) yield* input.store.retire(root, resource).pipe(Effect.catch(() => Effect.void));
-        else yield* input.store.retire(root, resource);
+        else {
+          yield* retireAbsentVolumeReceipt(volumeRuntime, root, resource.nativeName);
+          yield* input.store.retire(root, resource);
+        }
         break;
       case "candidate":
+        if (covered) break;
         if (!candidates.some((candidate) => candidate.key === observed.candidate.key))
           candidates.push(observed.candidate);
         volumeRecords.push(resource);
         break;
       case "unverified":
+        if (covered) break;
         if (shared) skipped.push(skippedVolume(volume, "shared cache ownership could not be verified"));
         else {
           const labels: Readonly<Record<string, string>> = observed.labels;

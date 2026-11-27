@@ -31,7 +31,7 @@ import {
   type ToolingInvocation,
 } from "@lando/sdk/services";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
-import { Clock, Effect, Option, Result } from "effect";
+import { Effect, Option, Result } from "effect";
 import { resolveAgentEnvForwardAllowlist } from "../config/agent-env-policy.ts";
 import { readProxyDefaultDomain } from "../config/proxy-default-domain.ts";
 import {
@@ -51,7 +51,7 @@ import { runBunShellTooling } from "./tooling-bun-script.ts";
 import { withToolingOutput } from "./tooling-output.ts";
 import { resolveToolingPlan } from "./tooling-plan.ts";
 import { prepareToolingInvocation } from "./tooling-prepare.ts";
-import { beginLiveToolingTree } from "./tooling-progress.ts";
+import { withLiveToolingTree } from "./tooling-progress.ts";
 
 export interface RunToolingOptions {
   readonly name: string;
@@ -228,13 +228,7 @@ export const runTooling = Effect.fn("AppOperation.tooling")(function* (
   }
 
   const events = yield* Effect.serviceOption(EventService);
-  const progressEvents = Option.getOrUndefined(events);
-  const liveTree =
-    progressEvents === undefined ? undefined : beginLiveToolingTree(progressEvents, options.name);
-  if (liveTree !== undefined) yield* liveTree.start;
-
-  const startedAt = yield* Clock.currentTimeMillis;
-  const exit = yield* Effect.result(
+  const result = yield* withLiveToolingTree(
     withToolingOutput(
       runBracketedInvocations({
         plan,
@@ -243,16 +237,12 @@ export const runTooling = Effect.fn("AppOperation.tooling")(function* (
         invocations,
         requiresProvider: requiresProvider(compiled.normalized),
         redactionTokens,
+        ...(options.signal === undefined ? {} : { signal: options.signal }),
       }),
     ),
+    Option.getOrUndefined(events),
+    options.name,
   );
-  const durationMs = (yield* Clock.currentTimeMillis) - startedAt;
-  if (liveTree !== undefined) {
-    const exitCode = exit._tag === "Success" ? exit.success.exitCode : 1;
-    yield* liveTree.finish(exitCode, durationMs);
-  }
-  if (exit._tag === "Failure") return yield* Effect.fail(exit.failure);
-  const result = exit.success;
   const inputRedactor = createRedactor("secrets", { values: compiled.redactionTokens });
 
   return {

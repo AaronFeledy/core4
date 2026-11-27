@@ -12,6 +12,7 @@ import {
   LANDO_DATA_ROOT_LABEL,
   type LoadScopedLandofile,
   type ServiceName,
+  planAppIdentity,
 } from "@lando/sdk/schema";
 import {
   ConfigService,
@@ -240,6 +241,7 @@ export const observeWarmGlobalServices = Effect.fnUntraced(
     services: ReadonlyArray<ServiceName>,
   ) {
     const inventory = yield* provider.list({ app: record.plan.id, includeUnplanned: true });
+    const ownerRoot = planAppIdentity(record.plan).appRoot;
     const observed = new Map<string, ServiceRuntimeInfo>();
     for (const service of services) {
       const expected = record.identities.get(service);
@@ -247,7 +249,7 @@ export const observeWarmGlobalServices = Effect.fnUntraced(
       const owner = inventory.find(
         (row) =>
           row.app === record.plan.id &&
-          row.appRoot === record.plan.root &&
+          row.appRoot === ownerRoot &&
           row.labels?.[LANDO_DATA_ROOT_LABEL] === record.plan.identity?.dataRoot &&
           row.providerId === record.plan.provider &&
           row.service === service &&

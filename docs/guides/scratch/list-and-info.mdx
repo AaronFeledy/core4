@@ -57,6 +57,20 @@ lando scratch:info <id> --format json
 
 `lando scratch:info` is the alias of `apps:scratch:info`. The id is required.
 
+If you started the scratch with `--name`, you can pass that name instead of the
+id. `scratch:info`, `scratch:logs`, `scratch:stop`, and `scratch:destroy` look
+for an exact id first, then for the one scratch whose id was built from that
+name:
+
+```sh
+lando scratch --fork --name review --detach
+lando scratch:info review
+```
+
+When two scratches were started with the same name, the command fails with
+`ScratchAppNotFoundError` and lists their ids in `suggestions`. Pass one of
+those ids instead.
+
 Info repeats the list fields, then prints `root`, the per-app bridge (and the shared network when the scratch joined it), each mount (service, target, source, kind, read-only), and endpoints grouped by service.
 
 Under `routes`, look for the URLs the router confirms for this scratch. The
@@ -80,6 +94,26 @@ URL does not imply the service behind it is healthy.
     <Step name="cleanup">
       <Cleanup />
       <Run command="lando scratch:destroy {{capture:scratchId}}" />
+      <Run command="lando destroy -y --volumes" />
+    </Step>
+  </Scenario>
+  <Scenario id="address-by-name" render={false} reason="Prove id-addressed scratch commands accept the --name a scratch was started with and refuse to guess between two">
+    <Step name="fork">
+      <UseFixture name="scratch-info-web" />
+      <Run command="lando scratch:start --fork --name solo --detach --format=json" />
+      <Run command="lando scratch:start --fork --name review --detach --format=json" capture={{ name: "firstReviewId", json: "handle.id" }} />
+      <Run command="lando scratch:start --fork --name review --detach --format=json" capture={{ name: "secondReviewId", json: "handle.id" }} />
+    </Step>
+    <Step name="address">
+      <Verify command="lando scratch:info solo --format=json" expect={{ stdout: { regex: "\"id\":\\s*\"scratch-solo-[0-9a-f]{6}\"" } }} />
+      <Verify command="lando scratch:destroy review -y --format=json" expectExit={1} expect={{ stdout: { regex: "\"_tag\":\\s*\"ScratchAppNotFoundError\"[\\s\\S]*\"suggestions\":\\s*\\[\\s*\"scratch-review-[0-9a-f]{6}\",\\s*\"scratch-review-[0-9a-f]{6}\"\\s*\\]" } }} />
+      <Run command="lando scratch:destroy solo -y" />
+      <Verify command="lando scratch:list --format=json" expect={{ stdout: { regex: "^(?![\\s\\S]*scratch-solo-)[\\s\\S]*scratch-review-[\\s\\S]*scratch-review-" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando scratch:destroy {{capture:firstReviewId}} -y" />
+      <Run command="lando scratch:destroy {{capture:secondReviewId}} -y" />
       <Run command="lando destroy -y --volumes" />
     </Step>
   </Scenario>

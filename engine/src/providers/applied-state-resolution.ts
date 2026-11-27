@@ -1,6 +1,7 @@
 import { realpath } from "node:fs/promises";
 import { isAbsolute, relative } from "node:path";
 import { inventoryProtectsApp, protectedSlotError } from "@lando/container-runtime/applied-state";
+import { PROVIDER_LABEL } from "@lando/container-runtime/labels";
 import { adoptionReceiptsFromSummary } from "@lando/container-runtime/native-ownership";
 import { AppResolveError, AppliedStateVersionError, ProviderUnavailableError } from "@lando/sdk/errors";
 import {
@@ -26,6 +27,7 @@ import { Effect, Result } from "effect";
 import { localAppliedRecord, scopeRuntimeSnapshot } from "../operations/data-root-scope.ts";
 import { matchesAppPlanIdentity } from "./app-plan-identity.ts";
 import { refuseContradictoryOrphans } from "./orphan-ownership-refusal.ts";
+import { unrecordedWorkloadRefusal } from "./unrecorded-workloads.ts";
 
 export type AppliedStateProvider = Pick<
   RuntimeProviderShape,
@@ -61,13 +63,13 @@ const runtimeEvidence = (provider: AppliedStateProvider, filter: ListFilter, tea
   );
 };
 
-const orphanRefusal = new AppResolveError({
-  message: "Runtime resources remain without matching applied app state.",
-  reason: "mismatch",
-  detail: "provider-resources",
-  remediation:
-    "Restore the matching applied state or remove the orphaned provider resources before retrying teardown.",
-});
+const misattributedOwnershipRefusal = (providerId: string, root: AbsolutePath) =>
+  new AppResolveError({
+    message: `The ${providerId} ownership record for ${root} was written for a different app root or provider.`,
+    reason: "mismatch",
+    detail: "provider-resources",
+    remediation: `Remove resource-ownership/${appIdentityKey("owner", root)}.json from the ${providerId} provider's state directory in Lando's data root, then retry.`,
+  });
 
 /**
  * Groups every runtime resource recorded against `root` by the provider that holds it and the app
@@ -107,6 +109,9 @@ const groupOrphans = (
     }
     for (const volume of observed.volumes) {
       if (volume.identity?.ownerRoot !== root) continue;
+      // A runtime reachable through two providers reports its volumes to both; the labelled one owns them.
+      const labelled = volume.labels?.[PROVIDER_LABEL];
+      if (labelled !== undefined && labelled !== provider.id) continue;
       groupFor(provider.id, volume.ref.app).volumes.push(volume);
     }
   });
@@ -144,7 +149,7 @@ const gatherProviderInventory = (provider: AppliedStateProvider) =>
                 message: `Provider ${provider.id} supplied applied state attributed to ${plan.provider}.`,
                 reason: "mismatch",
                 detail: "applied-state-provider",
-                remediation: "Remove the mismatched applied state before retrying teardown.",
+                remediation: `Remove ${provider.id}'s applied state that names ${plan.provider}, then retry.`,
               }),
             ),
       ).pipe(Effect.map((plans) => ({ ...inventory, plans }))),
@@ -190,7 +195,7 @@ const collectEvidence = Effect.fn("RuntimeProviderRegistry.collectEvidence")(fun
         message: "No runtime provider can confirm applied app state.",
         reason: "not-found",
         detail: "provider-evidence",
-        remediation: "Install or enable a runtime provider before retrying teardown.",
+        remediation: "Run lando setup to install a runtime provider, then retry.",
       }),
     );
   }
@@ -283,7 +288,9 @@ const collectEvidence = Effect.fn("RuntimeProviderRegistry.collectEvidence")(fun
         hints.ownerKey !== appIdentityKey("owner", lookupRoot) ||
         hints.providerId !== provider.id
       )
-        return yield* Effect.fail(orphanRefusal);
+        return yield* Effect.fail(
+          misattributedOwnershipRefusal(provider?.id ?? hints.providerId, lookupRoot),
+        );
     }
     const inventories = rawInventories.map((hints): ResourceOwnership | undefined => {
       if (hints === undefined) return undefined;
@@ -346,8 +353,8 @@ const collectEvidence = Effect.fn("RuntimeProviderRegistry.collectEvidence")(fun
     const observations = yield* Effect.forEach(observedProviders, (provider) =>
       runtimeEvidence(
         provider,
-        // Without a plan, runtime labels can be the only link between a protected slot and this root.
-        teardown || protectedProviders.has(provider.id) ? { includeUnplanned: true } : {},
+        // Without a plan, runtime labels are the only link between this root and its containers.
+        { includeUnplanned: true },
         teardown && selected === undefined && ownershipHints.some((hint) => hint.providerId === provider.id),
       ).pipe(
         Effect.map((snapshot) =>
@@ -382,6 +389,17 @@ const collectEvidence = Effect.fn("RuntimeProviderRegistry.collectEvidence")(fun
       isProtected,
     });
     const groups = candidates.filter((group) => !isProtected(group.providerId, group.appId));
+    if (!teardown) {
+      const refusal = unrecordedWorkloadRefusal({
+        root: lookupRoot,
+        app,
+        groups,
+        ownership: ownershipHints,
+        observed: new Set(observedProviders.filter((_, i) => evidence[i]?.runtimeObserved).map((p) => p.id)),
+      });
+      if (refusal !== undefined) return yield* Effect.fail(refusal);
+      return { kind: "absent" as const };
+    }
     return groups.length > 0
       ? { kind: "orphans" as const, groups, ...owned }
       : ownershipHints.length > 0
@@ -405,9 +423,11 @@ export const resolveTeardownEvidence = (
   collectEvidence(root, providers, "exact", app, true, dataRoot);
 
 /**
- * Fail-closed applied-state resolution for every non-teardown caller: orphaned runtime resources
- * are a refusal, never a teardown target. `"ancestor"` answers a working directory inside an app;
- * `"exact"` answers only for the app root the caller already resolved.
+ * Applied-state resolution for every non-teardown caller. With no matching plan the root is not
+ * applied unless workloads may still run there (`unrecordedWorkloadRefusal`): a destroy that kept
+ * data volumes resolves like an app that never started. It never launches a runtime or writes.
+ * `"ancestor"` answers a working directory inside an app; `"exact"` answers only for the app root
+ * the caller already resolved.
  */
 export const resolveAppliedPlanEvidence = (
   root: AbsolutePath,
@@ -417,15 +437,15 @@ export const resolveAppliedPlanEvidence = (
   dataRoot?: string,
 ): Effect.Effect<AppPlan | undefined, AppResolveError | ProviderError> =>
   collectEvidence(root, providers, lookup, app, false, dataRoot).pipe(
-    Effect.flatMap((evidence) => {
+    Effect.map((evidence) => {
       switch (evidence.kind) {
         case "applied":
-          return Effect.succeed(evidence.plan);
+          return evidence.plan;
+        // Non-teardown collection has already refused every root with unrecorded workloads.
         case "orphans":
         case "owned":
-          return Effect.fail(orphanRefusal);
         case "absent":
-          return Effect.succeed(undefined);
+          return undefined;
         default: {
           const exhaustive: never = evidence;
           return exhaustive;
