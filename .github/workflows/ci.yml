@@ -2436,6 +2436,7 @@ jobs:
               bun run test:selection providers-sqlite-integrity 2>&1 | tee /tmp/lando-provider-test-logs/sqlite-integrity.log || status=$?
               bun run test:selection providers-sqlite-borrowed-mounts 2>&1 | tee /tmp/lando-provider-test-logs/sqlite-borrowed-mounts.log || status=$?
               bun run test:selection providers-schedule 2>&1 | tee /tmp/lando-provider-test-logs/schedule.log || status=$?
+              bun run test:selection setup-elevation-terminal 2>&1 | tee /tmp/lando-provider-test-logs/setup-elevation-terminal.log || status=$?
               ;;
             services)
               bun run test:selection services-lando 2>&1 | tee /tmp/lando-provider-test-logs/service-lando-integration.log || status=$?

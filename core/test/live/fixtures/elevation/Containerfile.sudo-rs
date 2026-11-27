@@ -1,0 +1,16 @@
+# Ubuntu 26.04, whose default sudo is sudo-rs, for setup-elevation-pty-live.integration.test.ts.
+# Images are pinned to multi-arch index digests (resolved with `podman pull` and checked against
+# the registry). Renovate does not cover test paths: bump these digests by hand, and keep the Bun
+# tag equal to .bun-version.
+FROM docker.io/library/ubuntu:26.04@sha256:d66b366dac61b575bee2aef07e9c26e8070096fbe84a3d4d3eb0da069b5d76db
+
+RUN apt-get update \
+  && DEBIAN_FRONTEND=noninteractive apt-get install --yes --no-install-recommends ca-certificates sudo-rs util-linux \
+  && rm -rf /var/lib/apt/lists/* \
+  && sudo --version | grep -q '^sudo-rs '
+
+COPY --from=docker.io/oven/bun:1.4.3-debian@sha256:923bedb355f7746666659f71e724998159a5c8c54bd1cb1030e1975a0698415b /usr/local/bin/bun /usr/local/bin/bun
+
+# A password and the distro's `%sudo ALL=(ALL:ALL) ALL` rule: every sudo run authenticates.
+RUN useradd --create-home --shell /bin/bash --groups sudo landotest \
+  && echo 'landotest:lando-test-pw' | chpasswd
