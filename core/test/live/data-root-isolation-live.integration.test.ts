@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
-import { chmod, mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -204,7 +204,6 @@ describe.serial("two Lando data roots on one host", () => {
         const secondRuntimeDir = runtimeDirOf(second);
         const secondPause = pausePid(secondRuntimeDir);
         await mkdir(join(app, "public"), { recursive: true });
-        await chmod(app, 0o755);
         await Bun.write(join(app, "public/index.html"), body);
         await Bun.write(
           join(app, ".lando.yml"),

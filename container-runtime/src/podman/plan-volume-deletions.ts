@@ -1,4 +1,4 @@
-import { type AppPlan, LANDO_DATA_ROOT_LABEL, planDataId } from "@lando/sdk/schema";
+import { type AppPlan, LANDO_DATA_ROOT_LABEL, planAppIdentity, planDataId } from "@lando/sdk/schema";
 import { Effect, Option, Schema } from "effect";
 import { type AdoptionReceipt, dataRootRefusal, decideDataRootOwnership } from "../data-root-ownership.ts";
 import { STORE_LABEL, VOLUME_INSTANCE_LABEL } from "../labels.ts";
@@ -22,6 +22,7 @@ import {
   volumeClassFromLabels,
 } from "../volume-classes.ts";
 import {
+  GLOBAL_CACHE_OWNER,
   coherentVolumeOwnership,
   isGlobalCacheStore,
   ownedVolumeLockTier,
@@ -65,6 +66,7 @@ export const planVolumeDeletions = Effect.fnUntraced(function* (
       name: store.name,
       volumeClass,
       shared,
+      ownerRoot: shared ? GLOBAL_CACHE_OWNER : planAppIdentity(plan).appRoot,
       tier: ownedVolumeLockTier(plan.id, shared),
       matches: (labels) =>
         shared
@@ -91,6 +93,7 @@ export const planVolumeDeletions = Effect.fnUntraced(function* (
       name,
       volumeClass,
       shared: false,
+      ownerRoot: planAppIdentity(plan).appRoot,
       tier: ownedVolumeLockTier(plan.id, false),
       matches: (fresh: Readonly<Record<string, string>>) =>
         matchesApp(name, fresh) &&

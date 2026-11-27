@@ -103,6 +103,37 @@ If none of these supplies an artifact, planning fails before provider work with
 type, and contributing plugin when known. Set `image:` or Compose `build:` in the
 Landofile, or fix your type's requested features, then rerun `lando start`.
 
+### Limit a project-user default to your launcher
+
+If your launcher uses an account from a known image, declare the account in the
+service type's `identity` and set `projectUserDefault.launcherImage` to the same
+stock ref your feature supplies:
+
+```ts
+const stockImage = "example/my-server:1";
+const identity = {
+  defaultUser: "root",
+  homes: { root: "/root" },
+  projectUser: { name: "worker", uid: 1001, gid: 1001 },
+  projectUserDefault: { launcherImage: stockImage },
+} as const;
+```
+
+Use `identity` on the service type. In the feature's `apply` callback, set the
+artifact and opt in when writing the command:
+
+```ts
+ctx.setArtifact({ kind: "ref", ref: stockImage });
+ctx.setCommand(["my-server", "--foreground"], { projectUser: true });
+```
+
+The final artifact must match the stock ref, and the last `setCommand` call
+across service and app features must opt in. A later call without the option
+relinquishes the default even if it writes identical arguments. Keep the image
+entrypoint. An authored command or a replacement entrypoint prevents the default.
+See [project-user mapping](../services/file-ownership.mdx) for provider and
+process-user requirements.
+
 ## Declare a feature's endpoints
 
 Put listener declarations in `declareEndpoints`, not `apply`. Config lint runs

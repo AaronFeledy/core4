@@ -31,6 +31,8 @@ CLI discovery precedence, from earliest to latest, is bundled plugins, system pl
 
 App-local plugins are trusted host code and do not receive a separate execution prompt. `pluginDirs:` are local-only. Explicit `plugins:` resolve during app materialization, install into an app-scoped store, and lock in `.lando.lock.yml` (§7.7.4). Routine startup MUST use the locked local copy and MUST NOT contact the source unless the lock changes, the cache is missing or corrupt, or the user explicitly updates it.
 
+An explicit source on a top-level native scratch fork selects the source app's local registry under the same policy as invoking a command inside that app (§21.4.1). The caller's app-local registry does not participate, even if the source is refused. This neither grants install trust nor authorizes retargeting a retained runtime.
+
 Library runtimes discover nothing by default and independently opt into bundled, system, user, and app sources (§16.4). Enabling all four produces CLI-equivalent discovery.
 
 ### 9.4 Manifest schema

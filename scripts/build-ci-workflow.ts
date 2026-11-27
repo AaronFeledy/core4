@@ -1,4 +1,8 @@
 import { resolve } from "node:path";
+import {
+  ELASTICSEARCH_DEFAULT_IMAGE,
+  NGINX_DEFAULT_IMAGE,
+} from "@lando/service-lando/services/default-images";
 import nodeReleases from "../plugins/service-lando/node/releases.json" with { type: "json" };
 import { setupBunSteps } from "./_bun-workflow.ts";
 import { applyCiSelection, ciResultSteps } from "./_ci-selection-workflow.ts";
@@ -526,14 +530,14 @@ ${nodeImagePullLines}
           pull_image docker.io/library/redis:7
           pull_image docker.io/library/busybox:1.37
           pull_image docker.io/library/golang:1.22
-          pull_image docker.elastic.co/elasticsearch/elasticsearch:8.17.0
+          pull_image ${ELASTICSEARCH_DEFAULT_IMAGE}
           pull_image docker.io/getmeili/meilisearch:v1.11
           pull_image docker.io/axllent/mailpit:v1.30.1
           pull_image docker.io/library/mariadb:11.4
           pull_image docker.io/library/memcached:1.6
           pull_image docker.io/library/mongo:7
           pull_image docker.io/library/mysql:8.0
-          pull_image docker.io/library/nginx:1.27
+          pull_image docker.io/library/${NGINX_DEFAULT_IMAGE}
           pull_image docker.io/opensearchproject/opensearch:2
           pull_image docker.io/library/solr:9
           pull_image docker.io/library/traefik:v3.3
@@ -554,10 +558,16 @@ const laneRuns = (runs: readonly (readonly [TestSelectionId, string])[]): string
   runs.map(([id, log]) => laneRun(id, log)).join("\n");
 // `core/test/live` alone takes about 20 minutes, so the suites that drive the engine
 // directly get their own lane to keep each lane under its timeout cap.
-const providerLaneRuns = laneRuns([
-  ["providers-engine-parity", "engine-parity"],
-  ["providers-core-live", "core-live"],
-]);
+const providerLaneRuns =
+  laneRuns([
+    ["providers-engine-parity", "engine-parity"],
+    ["providers-core-live", "core-live"],
+  ]) +
+  `
+              if ! grep -Eq '^NGINX_ROUTE_CLI_EVIDENCE .*"privateFiles":true[,}]' /tmp/lando-provider-test-logs/core-live.log; then
+                echo "Missing private nginx route test evidence" >&2
+                status=1
+              fi`;
 const engineLaneRuns = laneRuns([
   ["providers-lando", "provider-lando-integration"],
   ["providers-docker", "provider-docker-integration"],
@@ -578,6 +588,7 @@ const landoRuntimeLiveTestSteps = `      - name: Run provider integration tests
           LANDO_PROVIDER_TEST_SUITE: \${{ matrix.suite }}
           LANDO_SCENARIO_E2E_BINARY: \${{ github.workspace }}/dist/lando
           LANDO_NATIVE_INIT_E2E: "1"
+          LANDO_TEST_NGINX_PRIVATE: lando
         run: |
           mkdir -p /tmp/lando-provider-test-logs
           set -o pipefail

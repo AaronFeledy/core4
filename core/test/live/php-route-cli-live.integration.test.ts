@@ -10,6 +10,7 @@ import {
   decodeStart,
   infoEnvelope,
   liveProvider,
+  managedLinuxMapsProjectUser,
   mkcertRootCertificatePath,
   prerequisite,
   run,
@@ -81,10 +82,12 @@ describe.serial("compiled CLI managed PHP routing", () => {
           global.services.find((service) => service.service === "traefik"),
           `The inherited roots must contain the installed managed global Traefik app; this test never runs setup. Provider: ${liveProvider}.`,
         ).toMatchObject({ provider: "lando" });
-        await chmod(root, 0o755);
-        await mkdir(join(root, "sub"), { mode: 0o755 });
-        await mkdir(join(root, "appdir"), { mode: 0o755 });
-        await mkdir(join(root, "force"), { mode: 0o755 });
+        const privateFiles = liveProvider === "lando" && (await managedLinuxMapsProjectUser());
+        const directoryMode = privateFiles ? 0o700 : 0o755;
+        if (!privateFiles && process.platform !== "win32") await chmod(root, directoryMode);
+        await mkdir(join(root, "sub"), { mode: directoryMode });
+        await mkdir(join(root, "appdir"), { mode: directoryMode });
+        await mkdir(join(root, "force"), { mode: directoryMode });
         const schemePhp = [
           "<?php",
           "header('Content-Type: application/json');",
@@ -120,6 +123,7 @@ describe.serial("compiled CLI managed PHP routing", () => {
         ].join("\n");
         const files = {
           "scheme.php": schemePhp,
+          "sub/asset.txt": name,
           ".htaccess": htaccess,
           "force/.htaccess": forceHtaccess,
           "force/scheme.php": schemePhp,
@@ -154,7 +158,7 @@ describe.serial("compiled CLI managed PHP routing", () => {
         };
         for (const [path, bytes] of Object.entries(files)) {
           await Bun.write(join(root, path), bytes);
-          await chmod(join(root, path), 0o644);
+          if (process.platform !== "win32") await chmod(join(root, path), privateFiles ? 0o600 : 0o644);
         }
         const routeUrl = (
           service:
@@ -250,6 +254,11 @@ describe.serial("compiled CLI managed PHP routing", () => {
               redirect,
             });
             if (serviceName === "edge") {
+              const asset = await request(root, new URL("/sub/asset.txt", httpsUrl), { caPath });
+              expect(asset).toMatchObject({ status: 200, body: name });
+              const missingScript = await request(root, new URL("/missing.php", httpsUrl), { caPath });
+              expect(missingScript.status).toBe(404);
+              evidence.push({ assetStatus: asset.status, missingScriptStatus: missingScript.status });
               // Router ingress replaces a spoofed client protocol header.
               const spoofed = await request(root, new URL("/scheme.php", httpUrl), {
                 caPath,
@@ -299,7 +308,7 @@ describe.serial("compiled CLI managed PHP routing", () => {
           }
           console.log(
             "PHP_ROUTE_CLI_EVIDENCE",
-            JSON.stringify({ name, root, binary, startMs, routes: evidence }),
+            JSON.stringify({ name, root, binary, privateFiles, startMs, routes: evidence }),
           );
         } finally {
           await cli(root, ["destroy", "--volumes", "--yes"], 90_000);

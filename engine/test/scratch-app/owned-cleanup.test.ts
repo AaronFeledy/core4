@@ -1,10 +1,25 @@
 import { expect, test } from "bun:test";
-import { AbsolutePath, AppId, ProviderId, ServiceName, appIdentityKey, planDataId } from "@lando/sdk/schema";
+import {
+  makeOwnedResourcesCleanup,
+  makeResourceOwnershipStore,
+} from "@lando/container-runtime/provider-assembly";
+import {
+  AbsolutePath,
+  AppId,
+  type AppPlan,
+  ProviderId,
+  ServiceName,
+  appIdentityKey,
+  planAppIdentity,
+  planDataId,
+} from "@lando/sdk/schema";
 import { RuntimeProviderRegistry, StateStore } from "@lando/sdk/services";
 import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
+import { makePluginStateStore } from "@lando/state-store/plugin";
 import { makeTestStateStore } from "@lando/state-store/testing";
 import { volumeInitialization } from "@lando/state-store/volume-initialization";
 import { DateTime, Effect } from "effect";
+import { SCRATCH_EXTENSION_KEY } from "../../src/scratch-app/identity.ts";
 import { cleanupScratchOwnedState } from "../../src/scratch-app/owned-cleanup.ts";
 
 const root = AbsolutePath.make("/data/scratch/scratch-cwd-111111/root");
@@ -90,4 +105,79 @@ test("cleanupScratchOwnedState retires only a proven-absent volume generation an
   volumeExists = false;
   await Effect.runPromise(provide(cleanupScratchOwnedState({ plan, provider, keepVolumes: false })));
   expect(await Effect.runPromise(initialization.read)).toBeNull();
+});
+
+test("cleanupScratchOwnedState releases a pre-#2731 cwd scratch's shared cache member from its source app's inventory (#2743)", async () => {
+  // Given a source app inventory that also records a cwd scratch's data volume and shared cache.
+  const sourceRoot = AbsolutePath.make("/apps/source");
+  const providerId = ProviderId.make("test");
+  const stateStore = makeTestStateStore();
+  const store = makeResourceOwnershipStore(
+    providerId,
+    makePluginStateStore(stateStore.service, AbsolutePath.make("/state"), {
+      enforce: async () => undefined,
+      verify: async () => undefined,
+    }),
+  );
+  const planAt = (id: string, stores: AppPlan["stores"], extensions: AppPlan["extensions"]): AppPlan => ({
+    id: AppId.make(id),
+    name: id,
+    slug: id,
+    provider: providerId,
+    root: sourceRoot,
+    identity: planAppIdentity({ root: sourceRoot }),
+    services: {},
+    routes: [],
+    stores,
+    fileSync: [],
+    extensions,
+    metadata,
+  });
+  const source = planAt("source", [{ name: "data", kind: "data", scope: "app" }], {});
+  const scratchId = "scratch-cwd-222222";
+  const scratch = planAt(
+    scratchId,
+    [
+      { name: "data", kind: "data", scope: "app" },
+      { name: "lando-cache-composer", kind: "cache", scope: "global" },
+    ],
+    { [SCRATCH_EXTENSION_KEY]: { id: scratchId } },
+  );
+  await Effect.runPromise(Effect.all([store.prepare(source), store.prepare(scratch)]));
+  const requests: string[] = [];
+  const provider = {
+    ...TestRuntimeProvider,
+    id: "test",
+    locateVolume: (ref: { store: string }) =>
+      Effect.succeed({ coordinationKey: ref.store, nativeName: ref.store, presence: "absent" as const }),
+    cleanupOwnedResources: makeOwnedResourcesCleanup({
+      ctx: { providerId: "test", remediation: "Retry cleanup.", env: {} },
+      endpointNamespace: "test-daemon",
+      store,
+      api: {
+        request: ({ method, path }) =>
+          Effect.sync(() => {
+            requests.push(`${method} ${path}`);
+            return { status: 404, body: "" };
+          }),
+      },
+    }),
+  };
+
+  // When the scratch's owned state is cleaned up.
+  await Effect.runPromise(
+    cleanupScratchOwnedState({ plan: scratch, provider, keepVolumes: false }).pipe(
+      Effect.provideService(StateStore, stateStore.service),
+      Effect.provideService(
+        RuntimeProviderRegistry,
+        makeTestRuntimeProviderRegistry({ select: () => Effect.succeed(provider) }),
+      ),
+    ),
+  );
+
+  // Then only the source app's members remain, and the shared cache volume was never inspected.
+  const remaining = await Effect.runPromise(store.load(sourceRoot));
+  expect(remaining?.appIds).toEqual([source.id]);
+  expect(new Set(remaining?.resources.map((resource) => resource.appId))).toEqual(new Set([source.id]));
+  expect(requests.some((request) => request.includes("lando-cache-composer"))).toBe(false);
 });

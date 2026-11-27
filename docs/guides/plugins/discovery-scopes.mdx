@@ -38,6 +38,11 @@ From an app root (or a nested cwd inside it), Lando also reads `<appRoot>/.lando
 
 App entries override the same plugin name from the user root or the bundled set. A bad user manifest does not hide a healthy bundled plugin.
 
+When you [fork an app with `lando scratch --fork --source`](../scratch/fork-existing-app.mdx#fork-an-app-from-another-directory),
+Lando reads the source app's registry instead of the working directory's
+app registry. Local plugins run as host code without a separate prompt.
+Only point `--source` at an app whose local plugins you trust.
+
 ## Verify
 
 After `plugin:add`, confirm the name is trusted and the user package directory exists:

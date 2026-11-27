@@ -27,6 +27,14 @@ export interface ScratchAppPaths {
 
 export type ScratchSource = { readonly kind: "fork" } | { readonly kind: "recipe"; readonly ref: string };
 
+export type ScratchAcquireSource =
+  | {
+      readonly kind: "fork";
+      /** Existing directory to discover from. Relative paths resolve against the runtime's cwd. */
+      readonly path?: string;
+    }
+  | Extract<ScratchSource, { readonly kind: "recipe" }>;
+
 /**
  * Opt-in to mounting the host current working directory ($PWD) into the
  * scratch app's primary service. Presence of this object enables the mount;
@@ -40,7 +48,7 @@ export interface ScratchMountCwd {
 type ScratchAcquireIsolationMode = IsolateMode | "none";
 
 export interface ScratchAcquireInput {
-  readonly source: ScratchSource;
+  readonly source: ScratchAcquireSource;
   readonly detached: boolean;
   readonly name?: string;
   readonly answers?: Record<string, string>;
@@ -83,7 +91,7 @@ export type ScratchLifetimeStatus = "attached" | "detached" | "orphan";
 export interface ScratchSummary {
   readonly id: string;
   readonly app: AppRef;
-  /** Where the scratch app came from — a fork of the cwd app or a recipe. */
+  /** Whether the scratch app came from a fork or a recipe. */
   readonly source: ScratchSource;
   /** Isolation mode the scratch app was started in (`full` | `baked` | `cwd`). */
   readonly mode: IsolateMode;

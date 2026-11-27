@@ -9,7 +9,7 @@
  * discovery layers raise.
  */
 import { realpath } from "node:fs/promises";
-import { isAbsolute, resolve } from "node:path";
+import { isAbsolute, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { isPathWithin } from "@lando/paths";
@@ -44,12 +44,29 @@ export const packageRootPath = (packageRoot: string): string =>
 
 const realPathOrResolved = async (path: string): Promise<string> => realpath(path).catch(() => resolve(path));
 
+export interface PluginPackageRoot {
+  readonly authored: string;
+  readonly canonical: string;
+}
+
+export const pinPluginPackageRoot = async (path: string): Promise<PluginPackageRoot> => {
+  const authored = resolve(packageRootPath(path));
+  try {
+    return { authored, canonical: await realpath(authored) };
+  } catch (cause) {
+    throw pluginManifestError(
+      `Plugin package root cannot be resolved: ${authored}`,
+      cause,
+      `Make the package directory at ${authored} readable or repair its registration.`,
+    );
+  }
+};
+
 export const resolvePluginModulePath = async (
-  packageRoot: string,
+  { authored: root, canonical }: PluginPackageRoot,
   pluginName: string,
   modulePath: string,
 ): Promise<string> => {
-  const root = resolve(packageRoot);
   const candidate = modulePath.startsWith("file://")
     ? fileURLToPath(modulePath)
     : isAbsolute(modulePath)
@@ -65,9 +82,9 @@ export const resolvePluginModulePath = async (
     );
   }
 
-  const realRoot = await realPathOrResolved(root);
-  const realResolved = await realPathOrResolved(resolved);
-  if (!isPathWithin(realRoot, realResolved)) {
+  // The registration's lexical spelling is not followed again after admission.
+  const realResolved = await realPathOrResolved(resolve(canonical, relative(root, resolved)));
+  if (!isPathWithin(canonical, realResolved)) {
     throw pluginLoadError(
       pluginName,
       `Plugin module ${modulePath} resolves through symlink outside the plugin package root ${root}.`,

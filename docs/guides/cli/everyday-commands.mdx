@@ -193,6 +193,8 @@ A `lando` command that a running mutation starts for the same app, such as a chi
 `destroy` deletes this app's containers and networks. Named volumes stay unless you pass `--volumes` or `--purge`.
 Run it again with `--volumes` when you want those named volumes gone; Lando removes them from what the provider
 still holds, and reports `unchanged` when there is nothing left to remove.
+`lando info` keeps working after a plain `destroy`: it lists each service as `stopped` with the volumes Lando kept.
+See [Tear down](../tutorial/app-lifecycle.mdx#tear-down).
 
 Once the teardown succeeds, `destroy` also removes the app's saved build output. Only this folder's output goes: another checkout that uses the same app name keeps its own. A destroy that fails partway keeps the saved build output, so `lando logs --build` still prints it.
 

@@ -197,6 +197,10 @@ const SKIPPED = [
     suffix: ".lando.local.ts",
     reason: "TypeScript overlay program, not a canonical YAML Landofile document.",
   },
+  {
+    suffix: ".lando.user.ts",
+    reason: "TypeScript user override, not a canonical YAML Landofile document.",
+  },
   { suffix: ".lando.base.yml", reason: "Partial base layer, not a canonical Landofile document." },
   { suffix: ".lando.local.yml", reason: "Partial overlay layer, not a canonical Landofile document." },
   { suffix: ".lando.recipe.yml", reason: "Recipe overlay layer, not a canonical Landofile document." },

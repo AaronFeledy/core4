@@ -7,7 +7,8 @@ import { Result, Schema } from "effect";
 import { importPluginModule, loadPluginModules } from "./module-cache.ts";
 
 import {
-  packageRootPath,
+  type PluginPackageRoot,
+  pinPluginPackageRoot,
   pluginLoadError,
   pluginManifestError,
   resolvePluginModulePath,
@@ -17,9 +18,13 @@ export interface ExternalPluginModule {
   readonly [key: string]: unknown;
 }
 
-export const loadInstalledPluginImplementation = async (packageRoot: string, manifest: PluginManifest) => {
+export const loadInstalledPluginImplementation = async (
+  root: PluginPackageRoot | string,
+  manifest: PluginManifest,
+) => {
   try {
-    return await loadPluginModules(packageRoot, async () => {
+    const packageRoot = typeof root === "string" ? await pinPluginPackageRoot(root) : root;
+    return await loadPluginModules(packageRoot.canonical, async () => {
       if (manifest.entry === undefined) return undefined;
       const entryPath = await resolvePluginModulePath(packageRoot, String(manifest.name), manifest.entry);
       const module = await importPluginModule(entryPath);
@@ -31,19 +36,13 @@ export const loadInstalledPluginImplementation = async (packageRoot: string, man
       String(manifest.name),
       `Failed to import plugin ${String(manifest.name)} entry ${manifest.entry}`,
       cause,
-      `Repair ${join(packageRoot, manifest.entry ?? "package.json")} for plugin ${String(manifest.name)}.`,
+      `Repair ${join(typeof root === "string" ? root : root.authored, manifest.entry ?? "package.json")} for plugin ${String(manifest.name)}.`,
     );
   }
 };
 
-export const loadInstalledPluginEntry = async (
-  packageRoot: string,
-  manifest: PluginManifest,
-): Promise<ExternalPluginModule | undefined> =>
-  (await loadInstalledPluginImplementation(packageRoot, manifest)).value;
-
 const normalizeExternalContributionModules = async (
-  packageRoot: string,
+  packageRoot: PluginPackageRoot,
   manifest: PluginManifest,
 ): Promise<PluginManifest> => {
   const globalServices = manifest.contributes?.globalServices;
@@ -272,9 +271,11 @@ const normalizeExternalContributionModules = async (
   };
 };
 
-export const loadInstalledPluginManifest = async (packageRootInput: string): Promise<PluginManifest> => {
-  const packageRoot = packageRootPath(packageRootInput);
-  const packageJsonPath = join(packageRoot, "package.json");
+export const loadInstalledPluginManifest = async (
+  root: string | PluginPackageRoot,
+): Promise<PluginManifest> => {
+  const packageRoot = typeof root === "string" ? await pinPluginPackageRoot(root) : root;
+  const packageJsonPath = join(packageRoot.canonical, "package.json");
   let parsed: unknown;
   try {
     parsed = JSON.parse(await readFile(packageJsonPath, "utf8"));
@@ -300,8 +301,8 @@ export const loadInstalledPluginManifest = async (packageRootInput: string): Pro
 export const loadInstalledPlugin = async (
   packageRootInput: string,
 ): Promise<{ readonly manifest: PluginManifest; readonly module?: ExternalPluginModule }> => {
-  const packageRoot = packageRootPath(packageRootInput);
+  const packageRoot = await pinPluginPackageRoot(packageRootInput);
   const manifest = await loadInstalledPluginManifest(packageRoot);
-  const module = await loadInstalledPluginEntry(packageRoot, manifest);
+  const { value: module } = await loadInstalledPluginImplementation(packageRoot, manifest);
   return { manifest, ...(module === undefined ? {} : { module }) };
 };
