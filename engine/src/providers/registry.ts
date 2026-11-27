@@ -1,5 +1,8 @@
 import { inventoryProtectsApp, protectedSlotError } from "@lando/container-runtime/applied-state";
-import { hasResourceOwnershipRecords } from "@lando/container-runtime/provider-assembly";
+import {
+  hasResourceOwnershipRecords,
+  listResourceOwnershipRecords,
+} from "@lando/container-runtime/provider-assembly";
 import { redactProviderError } from "@lando/redaction/provider-error";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import { mapFailures } from "@lando/sdk/command-result";
@@ -322,6 +325,15 @@ export const makeRuntimeProviderRegistry = (
           contributionFor(id).pipe(
             Effect.flatMap(({ pluginStateRoot }) =>
               hasResourceOwnershipRecords(id, pluginStateRoot).pipe(mapFailures(redactFailure)),
+            ),
+          ),
+        ),
+        listResourceOwnership: Effect.fn("RuntimeProviderRegistry.listResourceOwnership")((id: ProviderId) =>
+          contributionFor(id).pipe(
+            Effect.flatMap(({ context, pluginStateRoot }) =>
+              listResourceOwnershipRecords(id, pluginStateRoot, context.stateStore).pipe(
+                mapFailures(redactFailure),
+              ),
             ),
           ),
         ),

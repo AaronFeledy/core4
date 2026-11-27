@@ -23,6 +23,7 @@ export class SetupFlagCollisionError extends Schema.TaggedError<SetupFlagCollisi
 export const SETUP_BUILTIN_FLAG_NAMES: ReadonlyArray<string> = [
   "yes",
   "no-interactive",
+  "dry-run",
   "provider",
   "skip-provider",
   "skip-proxy",

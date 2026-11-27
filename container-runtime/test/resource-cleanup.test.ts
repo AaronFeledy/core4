@@ -1,11 +1,20 @@
 import { expect, test } from "bun:test";
 import { ProviderUnavailableError, appliedStateVersionError } from "@lando/sdk/errors";
-import { AbsolutePath, AppId, ProviderId, ServiceName, appIdentityKey } from "@lando/sdk/schema";
+import {
+  AbsolutePath,
+  AppId,
+  ProviderId,
+  ServiceName,
+  appIdentityKey,
+  planAppIdentity,
+} from "@lando/sdk/schema";
+import { makePluginStateStore } from "@lando/state-store/plugin";
 import { makeTestStateStore } from "@lando/state-store/testing";
-import { Effect } from "effect";
+import { DateTime, Effect } from "effect";
 import type { EngineHttpRequest } from "../src/engine-api.ts";
 import { makeOwnedResourcesCleanup } from "../src/resource-cleanup.ts";
 import { type OwnedResource, makeResourceOwnershipStore } from "../src/resource-ownership.ts";
+import { PlanfulVolumeCoverage } from "../src/teardown-volumes.ts";
 import { volumeCreationLabels } from "../src/volume-creation.ts";
 
 test("a busy shared cache inventory entry does not prevent app resource removal", async () => {
@@ -87,6 +96,61 @@ test("a busy shared cache inventory entry does not prevent app resource removal"
   });
   expect([...volumes.keys()]).toEqual(["shared"]);
   expect(networkPresent).toBe(false);
+});
+
+test("planful volume coverage still retires an already-removed app volume", async () => {
+  const root = AbsolutePath.make("/apps/owned");
+  const appId = AppId.make("app");
+  const providerId = ProviderId.make("test");
+  const owner = {
+    appRoot: root,
+    ownerKey: appIdentityKey("owner", root),
+    appId,
+    providerId,
+    identityDigest: "digest",
+  };
+  const volume: OwnedResource = {
+    ...owner,
+    kind: "volume",
+    nativeName: "data",
+    volumeClass: "data",
+    volumeScope: "app",
+  };
+  const retired: OwnedResource[] = [];
+  const cleanup = makeOwnedResourcesCleanup({
+    ctx: { providerId: "test", remediation: "Retry cleanup.", env: {} },
+    endpointNamespace: "test-daemon",
+    store: {
+      ...makeResourceOwnershipStore("test"),
+      load: () =>
+        Effect.succeed({
+          appRoot: root,
+          ownerKey: owner.ownerKey,
+          providerId,
+          appIds: [appId],
+          resources: [volume],
+        }),
+      retire: (_root, resource) =>
+        Effect.sync(() => {
+          retired.push(resource);
+        }),
+    },
+    api: {
+      request: () => Effect.succeed({ status: 404, body: "" }),
+    },
+  });
+  const result = await Effect.runPromise(
+    cleanup(root, { volumes: true }).pipe(
+      Effect.provideService(PlanfulVolumeCoverage, { provider: "test", app: appId }),
+      Effect.provide(makeTestStateStore().layer),
+    ),
+  );
+  expect(retired).toEqual([volume]);
+  expect(result).toEqual({
+    servicesRemoved: [],
+    networksRemoved: 0,
+    volumesRemoved: { data: 0, cache: 0 },
+  });
 });
 
 test.each([204, 404])(
@@ -375,3 +439,68 @@ for (const kind of ["container", "volume"] as const)
       expect(fixture.retired).toEqual([]);
     }
   });
+
+test.each([
+  { releaseCaches: true, cacheKept: false },
+  { releaseCaches: false, cacheKept: true },
+])(
+  "a mixed inventory retires its shared cache member only when caches are released (releaseCaches: $releaseCaches), never touching the cache volume",
+  async ({ releaseCaches, cacheKept }) => {
+    // Given an inventory holding an app data volume and a shared global cache member.
+    const appId = AppId.make("scratch-mixed-abcdef");
+    const root = AbsolutePath.make("/data/scratch/scratch-mixed-abcdef/root");
+    const providerId = ProviderId.make("test");
+    const store = makeResourceOwnershipStore(
+      providerId,
+      makePluginStateStore(makeTestStateStore().service, AbsolutePath.make("/state"), {
+        enforce: async () => undefined,
+        verify: async () => undefined,
+      }),
+    );
+    const cache = { name: "lando-cache-composer", kind: "cache", scope: "global" } as const;
+    await Effect.runPromise(
+      store.prepare({
+        id: appId,
+        name: appId,
+        slug: appId,
+        provider: providerId,
+        root,
+        identity: planAppIdentity({ root }),
+        services: {},
+        routes: [],
+        stores: [{ name: "data", kind: "data", scope: "app" }, cache],
+        fileSync: [],
+        extensions: {},
+        metadata: { resolvedAt: DateTime.makeUnsafe(0), source: "scratch", runtime: 4 },
+      }),
+    );
+    const requests: string[] = [];
+    const cleanup = makeOwnedResourcesCleanup({
+      ctx: { providerId: "test", remediation: "Retry cleanup.", env: {} },
+      endpointNamespace: "test-daemon",
+      store,
+      api: {
+        request: ({ method, path }) =>
+          Effect.sync(() => {
+            requests.push(`${method} ${path}`);
+            return { status: 404, body: "" };
+          }),
+      },
+    });
+
+    // When the app's owned resources are cleaned up without purging caches.
+    await Effect.runPromise(
+      cleanup(root, { volumes: true, purgeCaches: false, releaseCaches, appIds: [appId] }).pipe(
+        Effect.provide(makeTestStateStore().layer),
+      ),
+    );
+
+    // Then a released cache member leaves with the rest of the inventory, and the cache volume is never inspected.
+    const remaining = await Effect.runPromise(store.load(root));
+    expect(remaining?.resources.map((resource) => resource.nativeName)).toEqual(
+      cacheKept ? [cache.name] : undefined,
+    );
+    expect(requests).toContain("GET /volumes/data");
+    expect(requests.some((request) => request.includes(cache.name))).toBe(false);
+  },
+);
