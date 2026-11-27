@@ -18,7 +18,7 @@ import {
   type ServiceStartLogTail,
 } from "@lando/sdk/errors";
 import { PostServiceStartEvent, PreServiceStartEvent } from "@lando/sdk/events";
-import type { ListenerObservation, VolumeCreationFact } from "@lando/sdk/schema";
+import type { ListenerObservation, ServiceDataVersionFinding, VolumeCreationFact } from "@lando/sdk/schema";
 import {
   type AppPlan,
   type AppRef,
@@ -33,6 +33,7 @@ import {
   ServiceName,
   type ServiceNetworkAttachment,
   type ServicePlan,
+  classifyDataVersionRefusal,
   landoAppNetworkName,
   landoExternalNetworkNames,
   landoServiceNetworkAttachments,
@@ -44,6 +45,7 @@ import { removeRuntimeContainer } from "../container-removal.ts";
 import { nativeStartIntervalNs } from "../create-values.ts";
 import { sharedNetworkLabels } from "../data-root-labels.ts";
 import { type AdoptionReceipt, dataRootRefusal, decideDataRootOwnership } from "../data-root-ownership.ts";
+import { dataVersionRemediation } from "../data-version-diagnostic.ts";
 import { completionIntentServices } from "../dependency-gates.ts";
 import { type LifecycleDialect, libpodLifecycleDialect } from "../dialect.ts";
 import type {
@@ -286,6 +288,7 @@ interface StartFailureInput {
   readonly cause?: unknown;
   readonly logTail?: ServiceStartLogTail;
   readonly listener?: ListenerObservation;
+  readonly dataVersion?: ServiceDataVersionFinding;
   readonly remediation?: string;
 }
 
@@ -306,15 +309,16 @@ const containerRunning = (body: object): boolean => {
 const podmanFailure = (deps: BringUpDeps, input: StartFailureInput) => {
   const redactor = deps.redactor;
   const message = withApiReason(input.message, input.details, redactor);
-  const remediation =
-    deps.options.startFailureRemediation?.({
-      service: String(input.service.name),
-      operation: input.operation,
-      message,
-      ...(input.details === undefined ? {} : { details: input.details }),
-    }) ??
-    input.remediation ??
-    deps.remediation;
+  const providerRemediation =
+    input.dataVersion === undefined
+      ? deps.options.startFailureRemediation?.({
+          service: String(input.service.name),
+          operation: input.operation,
+          message,
+          ...(input.details === undefined ? {} : { details: input.details }),
+        })
+      : undefined;
+  const remediation = providerRemediation ?? input.remediation ?? deps.remediation;
   return new ServiceStartError({
     providerId: input.service.provider,
     operation: input.operation,
@@ -325,6 +329,7 @@ const podmanFailure = (deps: BringUpDeps, input: StartFailureInput) => {
     ...(input.cause === undefined ? {} : { cause: input.cause }),
     ...(input.logTail === undefined ? {} : { logTail: input.logTail }),
     ...(input.listener === undefined ? {} : { listener: input.listener }),
+    ...(input.dataVersion === undefined ? {} : { dataVersion: input.dataVersion }),
   });
 };
 
@@ -1431,8 +1436,20 @@ const captureServiceLogTail = Effect.fnUntraced(
     deps: BringUpDeps,
     plan: AppPlan,
     service: ServicePlan,
-    extras?: { readonly containerId?: string; readonly exitCode?: number; readonly timedOut?: boolean },
-  ): Effect.fn.Return<ServiceStartLogTail | undefined, ProviderError> {
+    extras?: {
+      readonly containerId?: string;
+      readonly exitCode?: number;
+      readonly timedOut?: boolean;
+      readonly classifyDataVersion?: boolean;
+    },
+  ): Effect.fn.Return<
+    | {
+        readonly logTail: ServiceStartLogTail;
+        readonly dataVersion?: NonNullable<ReturnType<typeof classifyDataVersionRefusal>>;
+      }
+    | undefined,
+    ProviderError
+  > {
     const collected = yield* Stream.runCollect(
       containerConsoleLogs(
         deps.api,
@@ -1445,14 +1462,25 @@ const captureServiceLogTail = Effect.fnUntraced(
     if (collected.length === 0) return undefined;
     const provided = yield* Effect.serviceOption(StartFailureLogRedactor);
     const redactor = Option.isSome(provided) ? provided.value : deps.redactor;
-    const redacted = redactor.redactString(collected.map((chunk) => chunk.line).join("\n"));
+    const raw = collected.map((chunk) => chunk.line).join("\n");
+    const dataVersion =
+      service.dataVersion !== undefined && extras?.classifyDataVersion === true
+        ? classifyDataVersionRefusal(service.dataVersion, {
+            exitCode: extras.exitCode,
+            lines: raw.split("\n"),
+          })
+        : undefined;
+    const redacted = redactor.redactString(raw);
     const { lines, truncated } = capRedactedLogLines(redacted.split("\n"));
     return {
-      service: String(service.name),
-      lines,
-      truncated,
-      ...(extras?.exitCode === undefined ? {} : { exitCode: extras.exitCode }),
-      ...(extras?.timedOut === true ? { timedOut: true } : {}),
+      logTail: {
+        service: String(service.name),
+        lines,
+        truncated,
+        ...(extras?.exitCode === undefined ? {} : { exitCode: extras.exitCode }),
+        ...(extras?.timedOut === true ? { timedOut: true } : {}),
+      },
+      ...(dataVersion === undefined ? {} : { dataVersion }),
     };
   },
   (effect) =>
@@ -1486,6 +1514,7 @@ export const withServiceStartLogTail = (
         ...(error.cause === undefined ? {} : { cause: error.cause }),
         logTail,
         ...(error.listener === undefined ? {} : { listener: error.listener }),
+        ...(error.dataVersion === undefined ? {} : { dataVersion: error.dataVersion }),
       });
 
 const captureStartFailure = (
@@ -1501,10 +1530,12 @@ const captureStartFailure = (
   const capture = named === undefined ? Effect.succeed(undefined) : captureServiceLogTail(deps, plan, named);
   return capture.pipe(
     Effect.catchCause((cause) => Effect.failCause(mergeFailure(Cause.fail(error), cause, "cleanup"))),
-    Effect.flatMap((logTail) =>
+    Effect.flatMap((captured) =>
       deps.options.signal?.aborted === true
         ? Effect.interrupt
-        : Effect.fail(error instanceof ServiceStartError ? withServiceStartLogTail(error, logTail) : error),
+        : Effect.fail(
+            error instanceof ServiceStartError ? withServiceStartLogTail(error, captured?.logTail) : error,
+          ),
     ),
   );
 };
@@ -1869,7 +1900,7 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
       aborted || dependency === undefined || blocked.dependencyUnavailable !== undefined
         ? Effect.succeed(undefined)
         : captureServiceLogTail(deps, plan, dependency, {
-            ...(exit === undefined ? {} : { containerId: exit.containerId }),
+            ...(exit === undefined ? {} : { containerId: exit.containerId, classifyDataVersion: true }),
             ...(exitCode === undefined ? {} : { exitCode }),
             ...(blocked.timedOut === true ? { timedOut: true } : {}),
           });
@@ -1909,7 +1940,8 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
               ? ""
               : `Dependency ${blocked.dependency} was ${unavailable.reason}. `
             : `Dependency ${blocked.dependency} ${exit.status === "dead" ? "is dead" : "exited"}${exit.exitCode === undefined ? "" : ` with code ${exit.exitCode}`}. `;
-        const logTail = Exit.isSuccess(captured) ? captured.value : undefined;
+        const evidence = Exit.isSuccess(captured) ? captured.value : undefined;
+        const { dataVersion, logTail } = evidence ?? {};
         const details =
           exit !== undefined
             ? dependencyExitDetails(blocked.dependency, blocked.unmetGate, exit)
@@ -1928,7 +1960,11 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
           service,
           operation: "bringUp.schedule",
           message: `${exitMessage}${diagnostic === undefined ? "" : `Dependency ${blocked.dependency}: ${diagnostic.finding}. `}Service ${blocked.service} could not start because dependency gate ${blocked.unmetGate} was not satisfied.`,
-          remediation: `${action === undefined ? "" : `${deps.redactor.redactString(action)}\n`}${diagnostic?.authority === undefined ? "" : `${deps.redactor.redactString(diagnostic.authority)}\n`}${dependencyGateRemediation(plan, blocked.dependency)}`,
+          remediation:
+            dataVersion !== undefined && dependency !== undefined
+              ? deps.redactor.redactString(dataVersionRemediation(plan, dependency, dataVersion))
+              : `${action === undefined ? "" : `${deps.redactor.redactString(action)}\n`}${diagnostic?.authority === undefined ? "" : `${deps.redactor.redactString(diagnostic.authority)}\n`}${dependencyGateRemediation(plan, blocked.dependency)}`,
+          ...(dataVersion === undefined ? {} : { dataVersion: dataVersion.finding }),
           ...(listener === undefined ? {} : { listener }),
           ...(details === undefined ? {} : { details }),
           ...(logTail === undefined ? {} : { logTail }),

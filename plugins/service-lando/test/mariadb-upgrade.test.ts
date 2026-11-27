@@ -145,14 +145,9 @@ test.skipIf(process.platform === "win32").each([
     if (newer !== undefined) {
       expect(result.exitCode).toBe(1);
       expect(result.stdout.toString()).toBe("");
-      const refusal = result.stderr.toString();
-      expect(refusal).toContain(`MariaDB ${running}`);
-      expect(refusal).toContain(`MariaDB ${newer}`);
-      expect(refusal).toContain(`services.db.image to mariadb:${newer}`);
-      expect(refusal).toContain("every service's data");
-      for (const action of ["lando db:export", "lando destroy --volumes", "lando db:import"]) {
-        expect(refusal).toContain(action);
-      }
+      const refusal = result.stderr.toString().trimEnd().split("\n");
+      expect(refusal).toHaveLength(1);
+      expect(refusal[0]).toStartWith(`lando-data-version-refused data=${newer} image=${running}:`);
     } else {
       expect(result.exitCode).toBe(0);
       expect(result.stderr.toString()).toBe("");

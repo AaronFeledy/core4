@@ -1,6 +1,7 @@
 import { DATABASE_FAMILY_LOCAL_CLIENT_ARGS } from "@lando/sdk/database-creds";
 import {
   AbsolutePath,
+  DATA_VERSION_REFUSAL_MARKER,
   type Environment,
   type LogSource,
   LogSourceId,
@@ -58,8 +59,8 @@ for info in "${DATA_TARGET}/mariadb_upgrade_info" "${DATA_TARGET}/mysql_upgrade_
   data=$(series < "$info")
   [ -n "$data" ] || continue
   if [ "\${data%.*}" -gt "\${running%.*}" ] || { [ "\${data%.*}" -eq "\${running%.*}" ] && [ "\${data#*.}" -gt "\${running#*.}" ]; }; then
-    printf "MariaDB %s can't open this data: MariaDB %s already created or upgraded it, and MariaDB doesn't support downgrading data files.\\nTo keep this data, set services.%s.image to mariadb:%s or newer, then run lando start.\\nTo move it to %s, run lando db:export on the newer version, then lando destroy --volumes (this deletes every service's data in the app), switch back, run lando start, and lando db:import the export.\\n" \\
-      "$running" "$data" "$LANDO_SERVICE_NAME" "$data" "$running" >&2
+    printf "${DATA_VERSION_REFUSAL_MARKER} data=%s image=%s: MariaDB %s can't open data written by MariaDB %s.\\n" \\
+      "$data" "$running" "$running" "$data" >&2
     exit 1
   fi
 done

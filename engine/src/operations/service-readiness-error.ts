@@ -1,3 +1,4 @@
+import { dataVersionRemediation } from "@lando/container-runtime/data-version-diagnostic";
 import { completionIntentServices } from "@lando/container-runtime/dependency-gates";
 import { listenerAuthorityAction, listenerDiagnostic } from "@lando/container-runtime/listener-diagnostic";
 import { observeTcpListener } from "@lando/container-runtime/listener-observation";
@@ -6,7 +7,12 @@ import { isSupervisedService } from "@lando/container-runtime/supervision";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import { type DatabaseClientCheckState, classifyDatabaseClientResult } from "@lando/sdk/database-creds";
 import { ServiceNotReadyError } from "@lando/sdk/errors";
-import type { AppPlan, DatabaseConnection, ServiceName } from "@lando/sdk/schema";
+import {
+  type AppPlan,
+  type DatabaseConnection,
+  type ServiceName,
+  classifyDataVersionRefusal,
+} from "@lando/sdk/schema";
 import type { RuntimeProviderShape, ServiceRuntimeInfo } from "@lando/sdk/services";
 import { Cause, DateTime, Duration, Effect, Option, Stream } from "effect";
 import { databaseCredentialGuide } from "./database-credentials.ts";
@@ -97,6 +103,12 @@ export const failReadiness = Effect.fn("ServiceReadiness.fail")(function* (
         Effect.map((chunks) => {
           if (chunks.length === 0) return undefined;
           const raw = chunks.map((chunk) => chunk.line).join("\n");
+          const contract = service?.dataVersion;
+          const runtime = evidence.runtime;
+          const version =
+            contract !== undefined && (runtime?.status === "exited" || runtime?.status === "dead")
+              ? classifyDataVersionRefusal(contract, { exitCode: runtime.exitCode, lines: raw.split("\n") })
+              : undefined;
           return {
             tail: {
               service: String(target.service),
@@ -105,6 +117,7 @@ export const failReadiness = Effect.fn("ServiceReadiness.fail")(function* (
               ...(evidence.reason === "healthcheck-timeout" ? { timedOut: true } : {}),
             },
             credentialState: classifyCredentialState(service?.connection, evidence.runtime?.exitCode, raw),
+            version,
           };
         }),
         Effect.timeout(Duration.seconds(4)),
@@ -117,6 +130,7 @@ export const failReadiness = Effect.fn("ServiceReadiness.fail")(function* (
   );
   const name = String(target.service);
   const commands = readinessCommands(target);
+  const version = logEvidence?.version;
   const credentials = credentialRemediation(service?.connection, logEvidence?.credentialState);
   const diagnostic =
     listener !== undefined && service !== undefined ? listenerDiagnostic(listener, service) : undefined;
@@ -132,10 +146,13 @@ export const failReadiness = Effect.fn("ServiceReadiness.fail")(function* (
     providerId: String(target.provider.id),
     reason: evidence.reason,
     remediation:
-      evidence.reason === "inspect-failed"
-        ? "Run `lando doctor` to diagnose and restore the provider, then retry start."
-        : `${action === undefined ? "" : `${redactor.redactString(action)}\n`}${diagnostic?.authority === undefined ? "" : `${redactor.redactString(diagnostic.authority)}\n`}Run \`${commands.logs}\` to diagnose the service and fix it.${commands.retry === undefined || credentials.length > 0 ? "" : ` Then retry \`${commands.retry}\`.`}${healthcheckRemediation}${credentials}`,
+      version !== undefined && service !== undefined
+        ? redactor.redactString(dataVersionRemediation(target.plan, service, version))
+        : evidence.reason === "inspect-failed"
+          ? "Run `lando doctor` to diagnose and restore the provider, then retry start."
+          : `${action === undefined ? "" : `${redactor.redactString(action)}\n`}${diagnostic?.authority === undefined ? "" : `${redactor.redactString(diagnostic.authority)}\n`}Run \`${commands.logs}\` to diagnose the service and fix it.${commands.retry === undefined || credentials.length > 0 ? "" : ` Then retry \`${commands.retry}\`.`}${healthcheckRemediation}${credentials}`,
     ...(listener === undefined ? {} : { listener }),
+    ...(version === undefined ? {} : { dataVersion: version.finding }),
     ...(evidence.runtime?.exitCode === undefined ? {} : { exitCode: evidence.runtime.exitCode }),
     ...(evidence.runtime === undefined ? {} : { state: redactor.redactString(evidence.runtime.status) }),
     ...(evidence.attempts === undefined ? {} : { attempts: evidence.attempts }),

@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { ServiceNotReadyError } from "@lando/sdk/errors";
-import { AppId } from "@lando/sdk/schema";
+import { AppId, PortablePath } from "@lando/sdk/schema";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect, Stream } from "effect";
 import { CommandWarnings, makeCommandWarnings } from "../../src/landofile/command-warnings.ts";
@@ -176,6 +176,56 @@ test.each([
   expect(remediation).toContain(logs);
   if (retry === undefined) expect(remediation).not.toContain("retry");
   else expect(remediation).toContain(retry);
+});
+
+test.each([
+  { kind: "user", recovery: "lando db:export dump.sql.gz --service web" },
+  { kind: "global", recovery: "lando global:destroy --volumes" },
+  { kind: "scratch", recovery: "lando scratch:logs scratch-demo" },
+])("$kind readiness classifies a database refusal that the display cap drops", async ({ kind, recovery }) => {
+  const plannedApp = {
+    ...plan,
+    id: AppId.make(kind === "global" ? "global" : kind === "scratch" ? "scratch-demo" : String(plan.id)),
+    extensions: kind === "scratch" ? { "@lando/core/scratch": { id: "scratch-demo" } } : {},
+    services: {
+      [web.name]: {
+        ...web,
+        dataVersion: { label: "MariaDB", target: PortablePath.make("/var/lib/mysql"), refusals: [] },
+      },
+    },
+  };
+  const provider = {
+    ...TestRuntimeProvider,
+    inspect: () =>
+      Effect.succeed({
+        app: plannedApp.id,
+        service: web.name,
+        providerId: plan.provider,
+        status: "exited" as const,
+        publications: { status: "unknown" as const },
+        exitCode: 1,
+      }),
+    logs: () =>
+      Stream.make(
+        {
+          service: web.name,
+          stream: "stderr" as const,
+          line: "lando-data-version-refused data=11.4 image=10.11: MariaDB cannot open the data.",
+        },
+        { service: web.name, stream: "stderr" as const, line: "x".repeat(4100) },
+      ),
+  };
+  const error = await Effect.runPromise(
+    Effect.flip(waitForServiceReadiness({ provider, plan: plannedApp, services: [web.name] })),
+  );
+  expect(error).toMatchObject({
+    _tag: "ServiceNotReadyError",
+    dataVersion: { direction: "downgrade", evidence: "guard", dataVersion: "11.4", imageVersion: "10.11" },
+  });
+  if (!(error instanceof ServiceNotReadyError)) throw new TypeError("Expected readiness error");
+  expect(error.logTail?.lines.join("\n")).not.toContain("lando-data-version-refused");
+  expect(error.remediation).toContain(recovery);
+  expect(error.remediation).not.toContain("Then retry");
 });
 
 test("global supervised warnings use global logs", async () => {
