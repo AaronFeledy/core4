@@ -295,6 +295,21 @@ linux("stops after 200,000 entries and caps skip details at 20", () => {
   expect(changed.map(({ path }) => path)).toEqual([root, target]);
 });
 
+linux("reports partial when an actionable skip cannot fit in the report", () => {
+  const { home, target, request, host } = fixture();
+  const original = join(home, "original");
+  fs.writeFileSync(original, "");
+  for (let index = 0; index < 20; index += 1) fs.symlinkSync(original, join(target, `alias-${index}`));
+  fs.linkSync(original, join(target, "hard-link"));
+
+  const result = run(request, {
+    ...host,
+    readdirSync: (path) => [...host.readdirSync(path)].sort(Buffer.compare),
+  });
+
+  expect(result).toMatchObject({ code: 3, report: { incomplete: [target] } });
+});
+
 linux("reports partial before the first change if the time budget is exhausted", () => {
   const { target, root, request, host, changed } = fixture();
   let time = -60_000;

@@ -7,6 +7,7 @@
  * changes a hard link, special file, or entry that changed while it worked; those it reports.
  */
 import * as fs from "node:fs";
+import { dirname } from "node:path";
 
 const PROC_FD = "/proc/self/fd";
 const PROC_SUPER_MAGIC = 0x9fa0;
@@ -259,12 +260,14 @@ export const repairRootOwnership = (request: RepairRequest, host: RepairHost): R
     const from = BigInt(host.fromUid ?? 0);
     const skipped: Skip[] = [];
     const incomplete = new Set<string>();
+    let omittedSkipParent: string | undefined;
     let changed = 0;
     let seen = 0;
     let exhausted = false;
 
     const skip = (path: string, reason: string): void => {
       if (skipped.length < 20) skipped.push({ path, reason });
+      else if (reason !== "symlink" && reason !== "provider-storage") omittedSkipParent ??= dirname(path);
     };
     const stop = (path: string): false => {
       exhausted = true;
@@ -381,6 +384,7 @@ export const repairRootOwnership = (request: RepairRequest, host: RepairHost): R
         incomplete.add(root);
       }
     }
+    if (omittedSkipParent !== undefined) incomplete.add(omittedSkipParent);
     return { changed, skipped, incomplete: [...incomplete] };
   } finally {
     if (storagePin !== undefined) host.closeSync(storagePin.fd);
