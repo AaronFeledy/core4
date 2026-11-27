@@ -273,4 +273,45 @@ services:
     image: mongo:8
 ```
 
+## Change versions
+
+Back up the database first. Don't jump straight from `mongo:7` to a later 8.x image. MongoDB checks the feature compatibility version (FCV) stored in the data. If it rejects the change, `lando start --format=json` reports `ServiceNotReadyError` with `dataVersion.direction: "incompatible"`.
+
+Restore `mongo:7`, start it again, and set FCV to `7.0` from the app directory:
+
+```sh
+lando mongosh --quiet --eval 'db.adminCommand({ setFeatureCompatibilityVersion: "7.0", confirm: true })'
+```
+
+Set `image: mongo:8.0` and run `lando start`. Confirm that your app can read its data before setting FCV to `8.0`:
+
+```sh
+lando mongosh --quiet --eval 'db.adminCommand({ setFeatureCompatibilityVersion: "8.0", confirm: true })'
+```
+
+For a later 8.x release, follow [MongoDB's upgrade instructions](https://www.mongodb.com/docs/manual/release-notes/) for the target version. Follow each required intermediate version and FCV change instead of using the floating `mongo:8` tag.
+
+  <Scenario id="change-versions" layer="e2e" timeout={600000} render>
+    <Hidden reason="Start the stock MongoDB 7 service">
+      <Step name="seed">
+        <UseFixture name="mongodb-e2e-default" />
+        <Run command="lando start" />
+      </Step>
+    </Hidden>
+    <Step name="refusal">
+      <Run command="lando app:config:set services.db.image mongo:8.3" />
+      <Verify command="lando start --format=json" expectExit={1} expect={{ stdout: { regex: '(?=.*"_tag":"ServiceNotReadyError")(?=.*"direction":"incompatible")(?=.*"evidence":"server")(?=.*setFeatureCompatibilityVersion)' } }} />
+    </Step>
+    <Step name="upgrade-to-8">
+      <Run command="lando app:config:set services.db.image mongo:7" />
+      <Run command="lando start" />
+      <Run command={`lando mongosh --quiet --eval 'db.adminCommand({ setFeatureCompatibilityVersion: "7.0", confirm: true })'`} />
+      <Run command="lando app:config:set services.db.image mongo:8.0" />
+      <Run command="lando start" />
+      <Run command={`lando mongosh --quiet --eval 'db.adminCommand({ setFeatureCompatibilityVersion: "8.0", confirm: true })'`} />
+      <Verify command={`lando mongosh --quiet --eval 'db.adminCommand({ getParameter: 1, featureCompatibilityVersion: 1 })'`} expect={{ stdout: { regex: "version: '8[.]0'" } }} />
+    </Step>
+    <Step name="cleanup"><Cleanup /><Run command="lando destroy -y --volumes" /></Step>
+  </Scenario>
+
 </Guide>

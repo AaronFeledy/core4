@@ -369,7 +369,7 @@ Provider-specific intent MAY appear only under `providers.<id>`. Such intent is 
 | `AppliedStateVersionError` | Applied state carries a stamp newer than this binary supports; the payload is not judged. Carries `providerId`, `operation`, `path`, `storedVersion`, `supportedVersion`, optional `writtenBy`, `scope` (`app` \| `provider`), optional `appId`, message, upgrade remediation (same writer wording as §12.7.1), and optional `cause`. Recovery is run that newer Lando or upgrade; leave the file in place. MUST NOT advise move-aside or destroy. Provider boundaries, the registry, and poweroff failures MUST keep the tag and remediation. Global auto-start keeps it as the tagged `cause` of `GlobalAutoStartError` and adopts its remediation (§20.6.3). Warnings such as the SSH-agent sidecar's keep the diagnosis and remediation in their text. Prune reports a `pruneFailures` entry (§8.2), not this tag. Doctor surfaces the same diagnosis from inventory without raising this tag (§8.2). |
 | `ProviderCapabilityError` | Requested behavior is unsupported. |
 | `ArtifactBuildError` | Artifact build failed. `BuildOrchestrator` adds the optional `service`, `transcriptPath`, and `outputTail` (§6.13.8). |
-| `ServiceStartError` | Service lifecycle start failed. |
+| `ServiceStartError` | Service lifecycle start failed. A terminal dependency exit matching its data-version contract carries `dataVersion` with direction, available versions, and guard or server evidence (§6.7). |
 | `ServiceExecError` | Service command execution failed. |
 | `ServiceNotFoundError` | Selected service does not exist. |
 | `ProviderConfigError` | Provider extension configuration is invalid. |

@@ -186,14 +186,38 @@ services:
 
 Any other version fails when Lando plans the app, before anything starts. Every major, 18 included, keeps its data in the service's own `lando-<data-name>--<service>--postgresql-data` volume. That name follows the folder's data name across renames.
 
-Changing the major doesn't upgrade an existing database. Postgres refuses to start on files from another major, so the `lando start` that applies the change fails with the server's own error. Move the data through a dump. The volume-deletion step below removes app service volumes, not only this database. Verify that the export exists and back up any other service data you need before continuing:
+For vector search on Postgres 18, [use a pgvector image](./postgres-pgvector.mdx).
 
-1. Export it while the old major still runs: `lando db:export dump.sql.gz`
+## Change versions
+
+PostgreSQL can't open an existing data directory from a different major. If you change `postgres:16` to `postgres:17` while 16 is still running, `lando start --format=json` reports `ServiceDataVersionError` with `dataVersion.direction: "upgrade"` and leaves 16 running. If the old server was stopped, the native refusal reports the same versions under `ServiceNotReadyError`.
+
+Move the data through a dump. The volume-deletion step removes every service's data in the app, not only this database. Verify the export and back up any other service data before continuing:
+
+1. Export it while the old major still runs: `lando db:export dump.sql.gz --service db`
 2. Delete the old data volume: `lando destroy -y --volumes`
 3. Change `type:` to the new major, then start: `lando start`
-4. Load the dump: `lando db:import dump.sql.gz --yes`
+4. Load the dump: `lando db:import dump.sql.gz --service db --yes`
 
-For vector search on Postgres 18, [use a pgvector image](./postgres-pgvector.mdx).
+  <Scenario id="change-major" layer="e2e" timeout={600000} render>
+    <Hidden reason="Start the stock PostgreSQL 16 service">
+      <Step name="seed">
+        <UseFixture name="postgres-demo" />
+        <Run command="lando start" />
+      </Step>
+    </Hidden>
+    <Step name="refusal">
+      <Run command="lando app:config:set services.db.type postgres:17" />
+      <Verify command="lando start --format=json" expectExit={1} expect={{ stdout: { regex: '(?=.*"_tag":"ServiceDataVersionError")(?=.*"direction":"upgrade")(?=.*"dataVersion":"16")(?=.*"imageVersion":"17")' } }} />
+    </Step>
+    <Hidden reason="Check the native refusal when the previous server was already stopped">
+      <Step name="stopped-refusal">
+        <Run command="lando stop" />
+        <Verify command="lando start --format=json" expectExit={1} expect={{ stdout: { regex: '(?=.*"_tag":"ServiceNotReadyError")(?=.*"direction":"upgrade")(?=.*"dataVersion":"16")(?=.*"imageVersion":"17")(?=.*"evidence":"server")' } }} />
+      </Step>
+    </Hidden>
+    <Step name="cleanup"><Cleanup /><Run command="lando destroy -y --volumes" /></Step>
+  </Scenario>
 
 ## Next
 
