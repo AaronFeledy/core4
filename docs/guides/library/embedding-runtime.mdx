@@ -468,8 +468,8 @@ yield* Effect.scoped(Effect.gen(function* () {
     detached: true,
   }));
   expect(failure).toMatchObject({ _tag: "ScratchAppError", operation: "acquire" });
-  expect(failure.message).toContain(otherDir);
-  expect(failure.message).toContain(nested);
+  // The selected source is canonical, but the retained caller cwd keeps its original spelling.
+  expect(failure.message).toContain(" at " + canonical(otherDir) + " from " + nested + ":");
   yield* Effect.promise(() => Bun.write(join(context.testDir, ".lando", "plugins", "registry.json"), "{}"));
   const stale = yield* Effect.flip(runtime.scratch({ source: { kind: "fork", path: "." }, detached: true, mountCwd: {} }));
   expect(stale).toMatchObject({ _tag: "ScratchAppError", operation: "acquire" });
