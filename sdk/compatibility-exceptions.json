@@ -85,5 +85,16 @@
       }
     ],
     "justification": "Doctor gains a lando-roots section that reports root-owned files under Lando's own roots. Existing section ids are unchanged; consumers that filter on known sections keep working and can ignore the new id."
+  },
+  {
+    "fingerprint": "sha256:fd4ba94d76f1f9b0fcd5c39f6b11d5b712820ad002726be6d53c297ee4c569f5",
+    "changeKind": "unsupported-construct",
+    "locations": [
+      {
+        "surface": "schema:ProviderSetupPlan",
+        "path": "$.changes.items.anyOf"
+      }
+    ],
+    "justification": "The closed provider-setup host-change union gains enable-user-linger, which the managed Linux provider plans when no systemd user manager runs. Plans are produced and consumed within one setup run and never persisted; existing change members are unchanged."
   }
 ]

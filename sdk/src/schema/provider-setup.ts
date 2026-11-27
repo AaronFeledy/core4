@@ -47,14 +47,39 @@ export const ProvisionCgroupsDelegationHostChange = Schema.TaggedStruct("provisi
 });
 export type ProvisionCgroupsDelegationHostChange = typeof ProvisionCgroupsDelegationHostChange.Type;
 
+export const EnableUserLingerHostChange = Schema.TaggedStruct("enable-user-linger", {
+  user: Schema.String,
+  uid: Schema.Number,
+  optedIn: Schema.Boolean.annotate({
+    description:
+      "Whether the user already opted in through the provider's setup flag. Lingering persists across logout and reboot, so `--yes` alone never approves it.",
+  }),
+  reason: Schema.String,
+}).annotate({
+  description:
+    "Enable systemd lingering for the user so a systemd user manager runs without a login session. Needs its own consent.",
+});
+export type EnableUserLingerHostChange = typeof EnableUserLingerHostChange.Type;
+
 /** Closed provider-setup host-change union. Additions require a reviewed SDK contract change. */
 export const ProviderSetupHostChange = Schema.Union([
   InstallUidmapHostChange,
   ProvisionSubuidHostChange,
   ProvisionSubgidHostChange,
   ProvisionCgroupsDelegationHostChange,
+  EnableUserLingerHostChange,
 ]);
 export type ProviderSetupHostChange = typeof ProviderSetupHostChange.Type;
+
+/** The `_tag` of every provider-setup host change, for errors that name the change they concern. */
+export const ProviderSetupHostChangeTag = Schema.Literals([
+  "install-uidmap",
+  "provision-subuid",
+  "provision-subgid",
+  "provision-cgroups-delegation",
+  "enable-user-linger",
+]);
+export type ProviderSetupHostChangeTag = typeof ProviderSetupHostChangeTag.Type;
 
 export const ProviderSetupPlan = Schema.Struct({
   providerId: ProviderId.annotate({ description: "Provider that inspected and will apply this plan." }),

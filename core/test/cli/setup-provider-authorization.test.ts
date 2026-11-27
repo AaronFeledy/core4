@@ -46,7 +46,7 @@ describe("provider setup authorization", () => {
     );
 
     // Then
-    expect(approved).toBe(plan);
+    expect(approved.plan).toBe(plan);
     expect(calls).toEqual(["provider-setup-consent"]);
   });
 
@@ -83,7 +83,95 @@ describe("provider setup authorization", () => {
     );
 
     // Then
-    expect(approved).toBe(plan);
+    expect(approved.plan).toBe(plan);
     expect(calls).toEqual([]);
+  });
+
+  const linger = (optedIn: boolean): ProviderSetupPlan => ({
+    providerId: ProviderId.make("lando"),
+    changes: [
+      ...plan.changes,
+      { _tag: "enable-user-linger", user: "dev", uid: 1001, optedIn, reason: "No user manager runs." },
+    ],
+  });
+
+  test.each([
+    [false, false],
+    [true, true],
+  ])(
+    "an unattended denial names --enable-linger only when lingering is planned (%p)",
+    async (lingerPlanned, named) => {
+      // When
+      const exit = await Effect.runPromiseExit(
+        authorizeProviderSetupPlan(lingerPlanned ? linger(false) : plan, {
+          yes: false,
+          nonInteractive: true,
+          interaction: undefined,
+        }),
+      );
+
+      // Then
+      const failure = exit._tag === "Failure" ? Cause.findErrorOption(exit.cause) : undefined;
+      const remediation = failure?._tag === "Some" ? failure.value.remediation : "";
+      expect(remediation).toContain("--yes");
+      expect(remediation.includes("--enable-linger")).toBe(named);
+    },
+  );
+
+  test("--yes approves standard changes but skips lingering without its own opt-in", async () => {
+    // Given
+    const calls: string[] = [];
+
+    // When
+    const approved = await Effect.runPromise(
+      authorizeProviderSetupPlan(linger(false), {
+        yes: true,
+        nonInteractive: false,
+        interaction: interaction(true, calls),
+      }),
+    );
+
+    // Then
+    expect(approved.plan.changes.map((change) => change._tag)).toEqual(["install-uidmap"]);
+    expect(approved.skipped.map((change) => change._tag)).toEqual(["enable-user-linger"]);
+    expect(calls).toEqual([]);
+  });
+
+  test("the provider's opt-in flag approves lingering in an unattended run", async () => {
+    // When
+    const approved = await Effect.runPromise(
+      authorizeProviderSetupPlan(linger(true), { yes: true, nonInteractive: true, interaction: undefined }),
+    );
+
+    // Then
+    expect(approved.plan.changes.map((change) => change._tag)).toEqual([
+      "install-uidmap",
+      "enable-user-linger",
+    ]);
+    expect(approved.skipped).toEqual([]);
+  });
+
+  test("an interactive run asks about lingering separately and skips it when declined", async () => {
+    // Given
+    const calls: string[] = [];
+    const answers = (spec: { readonly name?: string }) => spec.name !== "provider-setup-linger-consent";
+    const asking: InteractionServiceShape = {
+      ...interaction(true, calls),
+      confirm: (spec) =>
+        Effect.sync(() => {
+          calls.push(spec.name ?? "");
+          return answers(spec);
+        }),
+    };
+
+    // When
+    const approved = await Effect.runPromise(
+      authorizeProviderSetupPlan(linger(false), { yes: false, nonInteractive: false, interaction: asking }),
+    );
+
+    // Then
+    expect(calls).toEqual(["provider-setup-consent", "provider-setup-linger-consent"]);
+    expect(approved.plan.changes.map((change) => change._tag)).toEqual(["install-uidmap"]);
+    expect(approved.skipped.map((change) => change._tag)).toEqual(["enable-user-linger"]);
   });
 });

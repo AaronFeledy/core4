@@ -4,8 +4,15 @@
  * it. `--skip-provider` records the step as skipped instead.
  */
 import { NetworkTrust } from "@lando/http-client/network-trust";
-import type { InteractionServiceShape, PrivilegeService, RuntimeProviderShape } from "@lando/sdk/services";
-import { type Context, Effect } from "effect";
+import { MessageWarnEvent } from "@lando/sdk/events";
+import type { ProviderSetupHostChange } from "@lando/sdk/schema";
+import {
+  EventService,
+  type InteractionServiceShape,
+  type PrivilegeService,
+  type RuntimeProviderShape,
+} from "@lando/sdk/services";
+import { type Context, DateTime, Effect, Option } from "effect";
 
 import { type ResolvedSetupNetworkTrust, networkTrustFromResolved } from "../../commands/setup-network-trust";
 import { contributedSetupFlagsForProvider } from "./setup-command-flags";
@@ -13,6 +20,19 @@ import { inputBooleanFlag, inputStringFlag } from "./setup-inputs";
 import { authorizeProviderSetupPlan, providerSetupChangePurpose } from "./setup-provider-authorization";
 import { SYSTEM_RUNTIME_PROVIDERS, systemRuntimeUnavailableError } from "./setup-provider-selection";
 import { type SetupReadinessRecorder, runtimeServiceReadinessFor } from "./setup-steps";
+
+const warnSkippedChange = Effect.fnUntraced(function* (change: ProviderSetupHostChange) {
+  const events = yield* Effect.serviceOption(EventService);
+  if (Option.isNone(events) || change._tag !== "enable-user-linger") return;
+  yield* events.value
+    .publish(
+      MessageWarnEvent.make({
+        body: `Lando did not enable lingering for ${change.user}, so no systemd user manager runs for you and containers share the runtime's cgroup (deploy.resources limits are not applied). To enable it, rerun \`lando setup\` in a terminal and approve it, rerun with \`--enable-linger\`, or run \`loginctl enable-linger ${change.user}\`.`,
+        timestamp: yield* DateTime.now,
+      }),
+    )
+    .pipe(Effect.ignore);
+});
 
 export interface ProviderSetupStepInput {
   readonly input: unknown;
@@ -65,11 +85,13 @@ export const runProviderSetupStep = Effect.fn("SetupCommand.runProviderSetupStep
   const plan = yield* provider
     .planSetup(inspectOptions)
     .pipe(Effect.tapError((cause) => recorder.recordFailure("provider", cause)));
-  const approvedPlan = yield* authorizeProviderSetupPlan(plan, {
+  const authorized = yield* authorizeProviderSetupPlan(plan, {
     yes: inputBooleanFlag(input, "yes"),
     nonInteractive: inputBooleanFlag(input, "no-interactive"),
     interaction,
   }).pipe(Effect.tapError((cause) => recorder.recordFailure("provider", cause)));
+  const approvedPlan = authorized.plan;
+  for (const change of authorized.skipped) yield* warnSkippedChange(change);
   // Ask for administrator access once, after consent and before the runtime download and the
   // first privileged change, so a run that cannot get it fails before mutating anything.
   if (approvedPlan.changes.length > 0 && privilegeOptions.privilege !== undefined) {

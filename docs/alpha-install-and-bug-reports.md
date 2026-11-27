@@ -81,7 +81,7 @@ lando setup
 
 Setup saves your choice for later commands. If you already have a saved provider or an environment override, setup keeps that selection instead of showing the provider menu. See [Switch providers](./guides/setup/provider-selection.mdx#switch-providers) when you need to change it.
 
-`lando setup --yes` consents to automatic prerequisite installation, including uidmap on Ubuntu and Debian, subordinate ID ranges, and cgroups delegation. It does not switch providers. Setup asks for administrator access through `sudo` itself; see [When setup needs administrator access](./guides/install/path-and-setup.mdx#when-setup-needs-administrator-access). Without a terminal, trusting the local CA still needs passwordless sudo or `--skip-install-ca`; `SUDO_ASKPASS` does not reach mkcert. Alpha setup can still fail if host prerequisites or the managed runtime cannot start; follow the reported diagnosis rather than assuming setup completed.
+`lando setup --yes` consents to automatic prerequisite installation, including uidmap on Ubuntu and Debian, subordinate ID ranges, and cgroups delegation. It does not switch providers or enable lingering; setup asks about lingering separately, and `--enable-linger` approves it in automation. Setup asks for administrator access through `sudo` itself; see [When setup needs administrator access](./guides/install/path-and-setup.mdx#when-setup-needs-administrator-access). Without a terminal, trusting the local CA still needs passwordless sudo or `--skip-install-ca`; `SUDO_ASKPASS` does not reach mkcert. Alpha setup can still fail if host prerequisites or the managed runtime cannot start; follow the reported diagnosis rather than assuming setup completed.
 
 ### Verify setup
 
@@ -119,6 +119,15 @@ echo -e "[Service]\nDelegate=cpu cpuset io memory pids" | sudo tee /etc/systemd/
 sudo systemctl daemon-reload
 lando setup
 ```
+
+**No systemd user manager (headless servers, SSH without a login session, CI runners):** rerun `lando setup` in a terminal and approve enabling lingering, or run:
+
+```bash
+loginctl enable-linger $USER
+lando setup
+```
+
+Lingering keeps your user manager running after logout and reboot. It also creates `/run/user/<uid>`.
 
 **Missing private runtime directory base:** setup reports `Rootless Podman requires a private runtime directory base for your session.` The managed runtime needs `/run/user/<uid>` to exist, be owned by you, and have mode 0700 (no group or other bits), or an `XDG_RUNTIME_DIR` with the same properties. Logging out and back in usually recreates `/run/user/<uid>`. If your session manager does not, create a directory you own and export it:
 
