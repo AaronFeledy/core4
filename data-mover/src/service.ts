@@ -86,6 +86,7 @@ import {
   encodeArchiveStream,
   encodeCompressionStream,
 } from "./archive-stream.ts";
+import { HostTreeCopyGuard } from "./host-tree-copy-guard.ts";
 import { legacySnapshotReferences, orphanedSnapshotMethods } from "./orphaned-snapshots.ts";
 import { providerFailure } from "./provider-failure.ts";
 import { checkedServiceCommand, serviceCommandStdout } from "./service-command-redaction.ts";
@@ -1107,10 +1108,15 @@ export const makeDataMoverService = (
             "artifact endpoints carry engine image archives, not volume tree archives",
           );
         }
-        yield* validateHostEndpoints(spec, persistence.paths.scratchDir);
         const hostToHost = spec.from._tag === "hostPath" && spec.to._tag === "hostPath";
-        const treeCopy = hostToHost ? yield* hostSourceIsDirectory(spec.from.path) : false;
+        const scope = hostToHost ? yield* HostTreeCopyGuard : undefined;
+        const guard = scope?.transfer === spec ? scope : undefined;
+        if (guard !== undefined) yield* guard.verify;
+        yield* validateHostEndpoints(spec, persistence.paths.scratchDir);
+        const treeCopy =
+          hostToHost && (guard !== undefined || (yield* hostSourceIsDirectory(spec.from.path)));
         if (treeCopy && spec.from._tag === "hostPath" && spec.to._tag === "hostPath") {
+          if (guard !== undefined) yield* guard.verify;
           const treeResult = yield* copyHostTree(spec.from.path, spec.to.path);
           yield* events.publish(
             DataTransferProgressEvent.make({

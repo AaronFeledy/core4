@@ -112,7 +112,9 @@ export const resolvePluginSelection = Effect.fn("PluginSelection.resolve")(funct
   });
   const selected = [...new Set([...resolution.plugins, ...resolution.globalPlugins])];
   const entries = yield* Effect.forEach(
-    selected.flatMap((plugin) => (plugin.path === undefined ? [] : [{ plugin, path: plugin.path }])),
+    selected.flatMap((plugin) =>
+      plugin.packageRoot === undefined ? [] : [{ plugin, path: plugin.packageRoot.canonical }],
+    ),
     ({ plugin, path }) =>
       Effect.tryPromise(() => pluginImplementationIdentity(path)).pipe(
         Effect.map((implementation) => ({ plugin, implementation })),
