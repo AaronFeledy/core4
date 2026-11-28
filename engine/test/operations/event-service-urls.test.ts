@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { authoredInvocationSites, compileInvocationSites } from "@lando/landofile/compiled-sites";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
+import { AppliedStateVersionError, ConfigExpressionError } from "@lando/sdk/errors";
 import type {
   AppPlan,
+  HostEvents,
   LandofileEventName,
   LandofileEvents,
   RoutePlan,
@@ -19,7 +21,7 @@ import { PrivateFileAccessService } from "@lando/state-store/private-file-access
 import { Effect, Layer } from "effect";
 import { runEventToolingCommand } from "../../src/operations/event-tooling-command.ts";
 import { runAppEvent } from "../../src/operations/events.ts";
-import { withProjectEvents } from "../../src/planner/effective-events.ts";
+import { compileEffectiveEvents, withEventsPlan } from "../../src/planner/effective-events.ts";
 import { attachEffectiveTooling } from "../../src/planner/effective-tooling.ts";
 import { attachInvocationAuthority } from "../../src/planner/invocation-authority.ts";
 import { EventCommandExecutor } from "../../src/services/event-command-executor.ts";
@@ -42,13 +44,16 @@ const URL = "https://applied.test:8443";
 const siteTask: ToolingTaskShape = { service: "web", cmd: ["echo", "{{ services.web.url }}"] };
 
 /** A plan whose events and `site` task carry planner-compiled invocation sites. */
-const eventPlan = (events: LandofileEvents): AppPlan => {
+const eventPlan = (events: LandofileEvents, hostEvents: HostEvents = {}): AppPlan => {
   const document = { events, tooling: { site: siteTask } };
   const sites = Effect.runSync(
     compileInvocationSites(authoredInvocationSites(document, "/app/.lando.yml"), {}, document),
   );
   return attachInvocationAuthority(
-    withProjectEvents(attachEffectiveTooling(plan, { site: siteTask }), events),
+    withEventsPlan(
+      attachEffectiveTooling(plan, { site: siteTask }),
+      compileEffectiveEvents({ landofile: { events }, hostEvents, services: plan.services }),
+    ),
     { sites },
   );
 };
@@ -56,9 +61,14 @@ const eventPlan = (events: LandofileEvents): AppPlan => {
 const runEvent = async (
   event: LandofileEventName,
   events: LandofileEvents,
-  options: { readonly applied?: AppPlan | undefined } = {},
+  options: {
+    readonly applied?: AppPlan | undefined;
+    readonly appliedFailure?: AppliedStateVersionError;
+    readonly hostEvents?: HostEvents;
+    readonly canonicalFailure?: AppliedStateVersionError | ConfigExpressionError;
+  } = {},
 ) => {
-  const target = eventPlan(events);
+  const target = eventPlan(events, options.hostEvents);
   const invocations: ToolingInvocation[] = [];
   const redaction = makeRedactionService();
   const resolver = testEnvironmentResolverLayerFor(redaction);
@@ -73,7 +83,10 @@ const runEvent = async (
       RuntimeProviderRegistry,
       makeTestRuntimeProviderRegistry({
         list: Effect.succeed([plan.provider]),
-        readAppliedPlanStrict: () => Effect.succeed("applied" in options ? options.applied : applied),
+        readAppliedPlanStrict: () =>
+          "appliedFailure" in options
+            ? Effect.fail(options.appliedFailure)
+            : Effect.succeed("applied" in options ? options.applied : applied),
       }),
     ),
     Layer.succeed(
@@ -96,15 +109,17 @@ const runEvent = async (
   );
   const executor = EventCommandExecutor.of({
     run: (input) =>
-      runEventToolingCommand({
-        plan: target,
-        name: input.command.replace(/^app:/u, ""),
-        task: siteTask,
-        input: { _tag: "RawArgv", argv: [] },
-      }).pipe(
-        Effect.map((result) => ({ exitCode: result.exitCode, stdout: "", stderr: "" })),
-        Effect.provide(layer),
-      ),
+      options.canonicalFailure !== undefined
+        ? Effect.fail(options.canonicalFailure)
+        : runEventToolingCommand({
+            plan: target,
+            name: input.command.replace(/^app:/u, ""),
+            task: siteTask,
+            input: { _tag: "RawArgv", argv: [] },
+          }).pipe(
+            Effect.map((result) => ({ exitCode: result.exitCode, stdout: "", stderr: "" })),
+            Effect.provide(layer),
+          ),
   });
   const result = await Effect.runPromise(
     runAppEvent(target, event).pipe(
@@ -119,7 +134,100 @@ const runEvent = async (
 const commandText = (commands: ReadonlyArray<ReadonlyArray<string>>) =>
   commands.map((argv) => argv.join(" "));
 
+const newerState = (remediation: string) =>
+  new AppliedStateVersionError({
+    providerId: "lando",
+    operation: "applied-state.read",
+    path: "/state/applied.json",
+    storedVersion: 99,
+    supportedVersion: 14,
+    scope: "app",
+    message: "Applied state was written by a newer Lando.",
+    remediation,
+  });
+
 describe("event step service URLs", () => {
+  test.each(["route", "generated"] as const)(
+    "ignoreError cannot suppress a %s refusal when neither its issue nor its cause fits",
+    async (kind) => {
+      const error = newerState(`Upgrade Lando. ${"界".repeat(7000)}`);
+      const { result, commands } = await runEvent(
+        "post-start",
+        { "post-start": [{ command: "app:site", ignoreError: true }, "echo must-not-run"] },
+        kind === "route" ? { appliedFailure: error } : { canonicalFailure: error },
+      );
+      expect(result).toMatchObject({
+        _tag: "Failure",
+        failure: { _tag: "LandofileEventStepFailedError", issues: [], omittedIssueCount: 1 },
+      });
+      expect(result._tag === "Failure" && result.failure).not.toHaveProperty("cause");
+      expect(commands).toEqual([]);
+    },
+  );
+
+  test("bounds both summaries of an unstarted expression refusal", async () => {
+    const { result } = await runEvent(
+      "post-start",
+      { "post-start": [{ command: "app:site" }] },
+      {
+        canonicalFailure: new ConfigExpressionError({
+          message: "界".repeat(6000),
+          remediation: "直".repeat(6000),
+          expression: "{{ event.missing }}",
+          path: ["cmd"],
+          filePath: "/app/.lando.yml",
+        }),
+      },
+    );
+    expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "LandofileEventStepFailedError" } });
+    if (result._tag === "Success") throw new Error("Expected the event to refuse the expression");
+    expect(Buffer.byteLength(JSON.stringify(result.failure.message))).toBeLessThanOrEqual(1024);
+    expect(Buffer.byteLength(JSON.stringify(result.failure.remediation))).toBeLessThanOrEqual(1024);
+  });
+
+  test("locates a host canonical command's newer-state refusal in config.yml", async () => {
+    const path = ["hostEvents", "post-start", 0, "command"];
+    const { result } = await runEvent(
+      "post-start",
+      {},
+      {
+        hostEvents: { "post-start": [{ command: "app:site" }] },
+        canonicalFailure: newerState("Run the newer Lando."),
+      },
+    );
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: {
+        _tag: "LandofileEventStepFailedError",
+        issues: [
+          { reason: "applied-state-newer", path, source: { layer: "config-file", file: "config.yml", path } },
+        ],
+      },
+    });
+  });
+
+  test("a newer applied state refuses the step with the provider's remediation and cause", async () => {
+    const remediation = "Run the newer Lando that wrote this state.";
+    const { result, commands } = await runEvent(
+      "post-start",
+      { "post-start": [{ cmd: "echo {{ services.web.url }}", ignoreError: true }] },
+      {
+        appliedFailure: newerState(remediation),
+      },
+    );
+    expect(commands).toEqual([]);
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: {
+        _tag: "LandofileEventStepFailedError",
+        outputTail: "",
+        remediation,
+        cause: { _tag: "AppliedStateVersionError", storedVersion: 99, supportedVersion: 14 },
+        issues: [{ reason: "applied-state-newer", suggestion: remediation }],
+      },
+    });
+    expect(result._tag === "Failure" && result.failure).not.toHaveProperty("exitCode");
+  });
   test("resolves a direct post-start step and a canonical tooling command from the applied routes", async () => {
     // When
     const { result, commands } = await runEvent("post-start", {

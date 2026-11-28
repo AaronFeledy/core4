@@ -71,7 +71,7 @@ const eventError = (
   // Failures that reach this point happened outside a step's process: compiling the program or
   // evaluating a predicate or selector. None of them has an exit code.
   return eventStepFailure(
-    { event, label: eventStepLabel(event, stepSource, identity.index), ...identity },
+    { event, label: eventStepLabel(event, stepSource, identity.index), source: stepSource, ...identity },
     failure,
     redactor,
   );

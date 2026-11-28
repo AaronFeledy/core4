@@ -8,6 +8,7 @@ import { createRedactor, isSecretEnvName } from "@lando/sdk/secrets";
 import { Effect, Option } from "effect";
 import { toolingSourceResolverForPlan } from "../planner/effective-tooling.ts";
 import { registerPlanRedaction } from "../services/plan-redaction.ts";
+import { preserveInvocationRefusal } from "../tooling/event-errors.ts";
 import { resolveToolingTaskShape } from "../tooling/step-runner.ts";
 import { resolveInvocationServiceUrls } from "./invocation-service-urls.ts";
 import { type CompileToolingInput, compileToolingInvocations } from "./tooling-compile.ts";
@@ -46,22 +47,21 @@ export const prepareToolingInvocation = Effect.fnUntraced(function* (input: {
     if (Option.isSome(redaction)) yield* redaction.value.registerValues([token]);
   });
   for (const [name, value] of Object.entries(input.context?.vars ?? {})) yield* register(name, value);
+  const callerVars = input.context?.vars ?? {};
+  const sites = input.sites.filter(
+    (site) => site.path[0] !== "vars" || !Object.hasOwn(callerVars, String(site.path[1])),
+  );
   const admitted = yield* admitToolingTask({
     ...input.options,
     name: input.options.lookupKey,
     sites: input.sites,
+    placementSites: sites,
     source: normalizationSource,
   });
   redactionTokens.push(...admitted.redactionTokens);
   return yield* Effect.gen(function* () {
     const preparedInput = { ...admitted, redactionTokens };
     const name = input.options.lookupKey;
-    // A var the caller supplies never runs its definition: none of its literal, `env`, `service`,
-    // or `sh` sites is evaluated, preflighted, or resolved against a route.
-    const callerVars = input.context?.vars ?? {};
-    const sites = input.sites.filter(
-      (site) => site.path[0] !== "vars" || !Object.hasOwn(callerVars, String(site.path[1])),
-    );
     const serviceUrls = yield* resolveInvocationServiceUrls({
       plan: input.plan,
       tool: name,
@@ -116,7 +116,10 @@ export const prepareToolingInvocation = Effect.fnUntraced(function* (input: {
         return yield* Effect.failCause(
           mapFailureCause(cause, (error) =>
             error._tag === "ToolingCompileError"
-              ? new ToolingCompileError(projectToolingDiagnostic(error, redactor))
+              ? preserveInvocationRefusal(
+                  error,
+                  new ToolingCompileError(projectToolingDiagnostic(error, redactor)),
+                )
               : error,
           ),
         );

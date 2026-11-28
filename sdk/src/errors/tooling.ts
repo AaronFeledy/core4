@@ -27,7 +27,8 @@ export class ToolingCompileError extends Schema.TaggedError<ToolingCompileError>
     )
     .annotate({ description: "Corrective action for the tooling failure." }),
   cause: Schema.optional(Schema.Unknown).annotate({
-    description: "Internal cause; excluded from disclosed diagnostics.",
+    description:
+      "Underlying failure; only a redacted tagged cause that fits the diagnostic bound is disclosed.",
   }),
 }) {}
 

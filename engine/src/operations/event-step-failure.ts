@@ -1,5 +1,6 @@
-import { projectToolingDiagnostic } from "@lando/sdk/command-result";
+import { projectEventStepRefusal } from "@lando/sdk/command-result";
 import {
+  AppliedStateVersionError,
   ConfigExpressionError,
   LandofileEventStepFailedError,
   LandofileExpressionParseError,
@@ -11,6 +12,8 @@ import {
   causeMessage,
 } from "@lando/sdk/errors";
 import { Predicate } from "effect";
+import { preserveInvocationRefusal } from "../tooling/event-errors.ts";
+import { eventStepFile } from "./event-step-identity.ts";
 
 interface StepIdentity {
   readonly event: string;
@@ -18,6 +21,7 @@ interface StepIdentity {
   readonly label: string;
   readonly index: number;
   readonly kind: "cmd" | "task" | "command";
+  readonly source: "host" | "project" | undefined;
   readonly service?: string | undefined;
   /** True when the step's command was handed to Bun Shell on the host. */
   readonly hostShell?: boolean;
@@ -62,24 +66,56 @@ export const eventStepFailure = (
     kind: step.kind,
     ...(step.service === undefined ? {} : { service: step.service }),
   };
-  if (error instanceof ToolingCompileError) {
-    const diagnostic = projectToolingDiagnostic(error, redactor);
-    return new LandofileEventStepFailedError({
-      ...identity,
-      message: `Event ${step.label} did not run: ${diagnostic.message}`,
-      outputTail: "",
-      issues: diagnostic.issues,
-      omittedIssueCount: diagnostic.omittedIssueCount,
-      remediation: diagnostic.remediation,
+  const projectRefusal = (
+    diagnostic: Pick<
+      Parameters<typeof projectEventStepRefusal>[0],
+      "message" | "remediation" | "issues" | "omittedIssueCount" | "cause"
+    >,
+  ) =>
+    preserveInvocationRefusal(
+      error,
+      new LandofileEventStepFailedError(
+        projectEventStepRefusal(
+          {
+            ...diagnostic,
+            ...identity,
+            message: `Event ${step.label} did not run: ${diagnostic.message}`,
+          },
+          redactor,
+        ),
+      ),
+    );
+  // A generated client can refuse the applied plan before its tooling invocation is prepared.
+  if (error instanceof AppliedStateVersionError) {
+    const path = [step.source === "host" ? "hostEvents" : "events", step.event, step.index, step.kind];
+    return projectRefusal({
+      message: error.message,
+      remediation: error.remediation,
+      issues: [
+        {
+          rule: "landofile.tooling",
+          reason: "applied-state-newer",
+          path,
+          ...(step.source === "host"
+            ? { source: { layer: "config-file", file: eventStepFile("host", ""), path } }
+            : {}),
+          message: error.message,
+          suggestion: error.remediation,
+        },
+      ],
+      cause: error,
     });
   }
-  if (refusedBeforeStart(error))
-    return new LandofileEventStepFailedError({
-      ...identity,
-      message: `Event ${step.label} did not run: ${redactor.redactString(error.message)}`,
-      outputTail: "",
-      remediation: redactor.redactString(error.remediation),
+  if (error instanceof ToolingCompileError)
+    return projectRefusal({
+      message: error.message,
+      remediation: error.remediation,
+      issues: error.issues,
+      omittedIssueCount: error.omittedIssueCount,
+      cause: error.cause,
     });
+  if (refusedBeforeStart(error))
+    return projectRefusal({ message: error.message, remediation: error.remediation });
   const exitCode = processExitCode(error);
   const wrapped = wrappedRemediation(error);
   const remediation =

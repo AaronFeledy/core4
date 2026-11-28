@@ -1,8 +1,6 @@
-import { types } from "node:util";
 import { resolveLandoRoots } from "@lando/paths";
 import { createStandaloneRedactor } from "@lando/redaction/service";
-import { type ProjectedFailure, projectToolingDiagnostic, taggedErrorJson } from "@lando/sdk/command-result";
-import { ToolingCompileError } from "@lando/sdk/errors";
+import { type ProjectedFailure, projectCommandDiagnostic } from "@lando/sdk/command-result";
 import { type FailureRole, ValidationIssue } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
 import { Schema } from "effect";
@@ -46,12 +44,6 @@ export interface BugReportEnvelope {
 const asString = (value: unknown): string | undefined =>
   typeof value === "string" && value.length > 0 ? value : undefined;
 
-const ownCause = (value: unknown): unknown => {
-  if (value === null || typeof value !== "object" || types.isProxy(value)) return undefined;
-  const descriptor = Object.getOwnPropertyDescriptor(value, "cause");
-  return descriptor !== undefined && "value" in descriptor ? descriptor.value : undefined;
-};
-
 const mergeExtraFields = (
   primary: ReadonlyArray<readonly [string, string]>,
   nested: ReadonlyArray<readonly [string, string]>,
@@ -79,23 +71,13 @@ export const buildBugReport = (input: {
     createStandaloneRedactor("secrets", {
       sourceEnv: { ...(input.sourceEnv ?? process.env) },
     });
-  const projectError = (error: unknown): ReturnType<typeof taggedErrorJson> => {
-    const diagnostic = taggedErrorJson(error);
-    return Schema.is(Schema.Struct(ToolingCompileError.fields))(diagnostic)
-      ? projectToolingDiagnostic(diagnostic, redactor)
-      : diagnostic;
-  };
-  const error = projectError(input.error);
-  const causes: Array<ReturnType<typeof taggedErrorJson>> = [];
-  const seen = new Set<unknown>([input.error]);
-  let current = ownCause(input.error);
-  for (let depth = 0; depth < 4 && current !== undefined && !seen.has(current); depth++) {
-    if (current === null || typeof current !== "object" || types.isProxy(current)) break;
-    const tag = Object.getOwnPropertyDescriptor(current, "_tag");
-    if (tag === undefined || !("value" in tag) || typeof tag.value !== "string") break;
-    seen.add(current);
-    causes.push(projectError(current));
-    current = ownCause(current);
+  const error = projectCommandDiagnostic(input.error, redactor);
+  const causes: Array<typeof error> = [];
+  let current = error.cause;
+  for (let depth = 0; depth < 4 && current !== undefined; depth++) {
+    const cause = projectCommandDiagnostic(current, redactor);
+    causes.push(cause);
+    current = cause.cause;
   }
   const ctx = input.context;
   const cacheDir = ctx.cacheRoot ?? resolveLandoRoots({ env: input.sourceEnv ?? process.env }).userCacheRoot;

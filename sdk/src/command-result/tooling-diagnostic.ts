@@ -1,21 +1,35 @@
-import type { ToolingCompileError } from "@lando/sdk/errors";
-import type { ValidationIssue, ValidationIssuePath, ValidationIssueSource } from "@lando/sdk/schema";
+import { LandofileEventStepFailedError, ToolingCompileError } from "@lando/sdk/errors";
+import {
+  type FailureRole,
+  TaggedErrorJson,
+  type ValidationIssue,
+  type ValidationIssuePath,
+  type ValidationIssueSource,
+} from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
+import { Schema } from "effect";
+import { taggedErrorJson } from "./diagnostic.ts";
 import { encodeRedactedJson } from "./redacted-json.ts";
+import { redactValueWithPolicy, structuralRedaction } from "./structural-redaction.ts";
 
 export type ToolingDiagnostic = Pick<
   ToolingCompileError,
-  "_tag" | "tool" | "source" | "message" | "remediation" | "issues" | "omittedIssueCount"
+  "_tag" | "tool" | "source" | "message" | "remediation" | "issues" | "omittedIssueCount" | "cause"
 >;
 
 const MAX_BYTES = 16 * 1024;
 const MAX_SUMMARY_BYTES = 1024;
 const MAX_ISSUES = 8;
 const encoder = new TextEncoder();
-const serializedBytes = (
-  value: ToolingDiagnostic | string,
-  redactor: Pick<Redactor, "redactString">,
-): number => encoder.encode(encodeRedactedJson(value, redactor)).byteLength;
+const diagnosticPolicy = structuralRedaction(TaggedErrorJson);
+const serializedBytes = (value: unknown, redactor: Pick<Redactor, "redactString">): number =>
+  // The retained object and its final envelope can differ in either direction.
+  Math.max(
+    encoder.encode(JSON.stringify(value)).byteLength,
+    encoder.encode(
+      encodeRedactedJson(value, redactor, typeof value === "string" ? undefined : diagnosticPolicy),
+    ).byteLength,
+  );
 
 export const boundedDiagnosticSummary = (
   redacted: string,
@@ -43,6 +57,55 @@ export const projectToolingDiagnostic = (
   options: { readonly maxBytes?: number } = {},
 ): ToolingDiagnostic => {
   const maxBytes = Math.min(options.maxBytes ?? MAX_BYTES, MAX_BYTES);
+  const text = (value: string) => redactor.redactString(value);
+  const tool = text(diagnostic.tool);
+  const identity = {
+    _tag: diagnostic._tag,
+    tool: serializedBytes(tool, redactor) <= MAX_SUMMARY_BYTES ? tool : "[omitted]",
+  };
+  const source =
+    diagnostic.source === undefined
+      ? {}
+      : { source: { path: text(diagnostic.source.path), task: text(diagnostic.source.task) } };
+  const summaries = projectSummaries(diagnostic, redactor);
+  const withSource = { ...identity, ...source, ...summaries };
+  return projectDetails(
+    serializedBytes({ ...withSource, ...emptyDetails(diagnostic) }, redactor) <= maxBytes
+      ? withSource
+      : { ...identity, ...summaries },
+    diagnostic,
+    { redactor, maxBytes },
+  );
+};
+
+type RefusalDetails = {
+  readonly issues?: readonly ValidationIssue[] | undefined;
+  readonly omittedIssueCount?: number | undefined;
+  readonly cause?: unknown;
+};
+
+const emptyDetails = (
+  input: RefusalDetails,
+): {
+  readonly issues: readonly ValidationIssue[];
+  readonly omittedIssueCount: number;
+} => ({
+  issues: [],
+  omittedIssueCount: (input.omittedIssueCount ?? 0) + (input.issues?.length ?? 0),
+});
+
+type RefusalSummary = { readonly message: string; readonly remediation: string };
+
+const projectSummaries = (diagnostic: RefusalSummary, redactor: Pick<Redactor, "redactString">) => ({
+  message: boundedDiagnosticSummary(redactor.redactString(diagnostic.message), redactor),
+  remediation: boundedDiagnosticSummary(redactor.redactString(diagnostic.remediation), redactor),
+});
+
+const projectDetails = <A extends RefusalSummary>(
+  base: A,
+  diagnostic: RefusalDetails,
+  { redactor, maxBytes }: { readonly redactor: Pick<Redactor, "redactString">; readonly maxBytes: number },
+): A & ReturnType<typeof emptyDetails> & Pick<RefusalDetails, "cause"> => {
   const text = (value: string) => redactor.redactString(value);
   const path = (value: ValidationIssuePath) =>
     value.map((segment) => (typeof segment === "string" ? text(segment) : segment));
@@ -73,29 +136,9 @@ export const projectToolingDiagnostic = (
     path: path(value.path),
     ...(value.source === undefined ? {} : { source: source(value.source) }),
   });
-  const tool = text(diagnostic.tool);
-  const summary: ToolingDiagnostic = {
-    _tag: "ToolingCompileError",
-    tool: serializedBytes(tool, redactor) <= MAX_SUMMARY_BYTES ? tool : "[omitted]",
-    message: boundedDiagnosticSummary(text(diagnostic.message), redactor),
-    remediation: boundedDiagnosticSummary(text(diagnostic.remediation), redactor),
-    issues: [],
-    omittedIssueCount: diagnostic.omittedIssueCount + diagnostic.issues.length,
-  };
-  const withSource: ToolingDiagnostic = {
-    ...summary,
-    ...(diagnostic.source === undefined
-      ? {}
-      : {
-          source: {
-            path: text(diagnostic.source.path),
-            task: text(diagnostic.source.task),
-          },
-        }),
-  };
-  // Never shorten filenames or identities into plausible but false locations.
-  let result = serializedBytes(withSource, redactor) <= maxBytes ? withSource : summary;
-  for (const issue of diagnostic.issues) {
+  const issues = diagnostic.issues ?? [];
+  let result = { ...base, ...emptyDetails(diagnostic) };
+  for (const issue of issues) {
     if (result.issues.length === MAX_ISSUES) break;
     const sanitized: ValidationIssue = {
       ...location(issue),
@@ -106,20 +149,70 @@ export const projectToolingDiagnostic = (
       ...(issue.suggestion === undefined ? {} : { suggestion: text(issue.suggestion) }),
       ...(issue.related === undefined ? {} : { related: issue.related.map(location) }),
     };
-    const candidate: ToolingDiagnostic = {
+    const candidate = {
       ...result,
       issues: [...result.issues, sanitized],
       omittedIssueCount: result.omittedIssueCount - 1,
     };
     if (serializedBytes(candidate, redactor) <= maxBytes) result = candidate;
   }
-  return {
-    _tag: result._tag,
-    tool: result.tool,
-    ...(result.source === undefined ? {} : { source: result.source }),
-    message: result.message,
-    remediation: result.remediation,
-    issues: result.issues,
-    omittedIssueCount: result.omittedIssueCount,
+  const { cause } = taggedErrorJson({ cause: diagnostic.cause });
+  if (cause === undefined) return result;
+  const redactedCause = redactValueWithPolicy(redactor, diagnosticPolicy, cause);
+  const withCause = { ...result, cause: redactedCause };
+  return serializedBytes(withCause, redactor) <= maxBytes ? withCause : result;
+};
+
+type EventStepRefusal = Pick<LandofileEventStepFailedError, "event" | "index" | "kind" | "service"> &
+  RefusalSummary &
+  RefusalDetails;
+
+/** Bound a not-run event step after its message prefix and step identity have been assigned. */
+export const projectEventStepRefusal = (
+  diagnostic: EventStepRefusal,
+  redactor: Pick<Redactor, "redactString">,
+  limit = MAX_BYTES,
+) => {
+  const maxBytes = Math.min(limit, MAX_BYTES);
+  const summary = {
+    _tag: "LandofileEventStepFailedError" as const,
+    ...projectSummaries(diagnostic, redactor),
+    index: diagnostic.index,
+    step: diagnostic.index + 1,
+    kind: diagnostic.kind,
+    outputTail: "",
   };
+  const event = redactor.redactString(diagnostic.event);
+  const service =
+    diagnostic.service === undefined ? {} : { service: redactor.redactString(diagnostic.service) };
+  const fits = (identity: { readonly event: string; readonly service?: string }) =>
+    serializedBytes({ ...summary, ...identity, ...emptyDetails(diagnostic) }, redactor) <= maxBytes;
+  // Omit whole identities rather than shorten them into plausible but wrong names.
+  const identity = fits({ event, ...service })
+    ? { event, ...service }
+    : fits({ event })
+      ? { event }
+      : { event: "[omitted]" };
+  const { cause, ...bounded } = projectDetails({ ...summary, ...identity }, diagnostic, {
+    redactor,
+    maxBytes,
+  });
+  return cause === undefined ? bounded : { ...bounded, cause };
+};
+
+const isToolingFailure = Schema.is(Schema.Struct(ToolingCompileError.fields));
+const isEventStepFailure = Schema.is(Schema.Struct(LandofileEventStepFailedError.fields));
+
+/** Shared machine and human projection, including refusal bounds at the publication boundary. */
+export const projectCommandDiagnostic = (
+  error: unknown,
+  redactor: Pick<Redactor, "redactString">,
+  role?: FailureRole,
+): typeof TaggedErrorJson.Type => {
+  const diagnostic = taggedErrorJson(error);
+  const maxBytes = role === undefined ? MAX_BYTES : MAX_BYTES - serializedBytes({ role }, redactor) + 1;
+  if (isToolingFailure(diagnostic)) return projectToolingDiagnostic(diagnostic, redactor, { maxBytes });
+  if (isEventStepFailure(diagnostic) && diagnostic.exitCode === undefined && diagnostic.outputTail === "")
+    return projectEventStepRefusal(diagnostic, redactor, maxBytes);
+  return diagnostic;
 };

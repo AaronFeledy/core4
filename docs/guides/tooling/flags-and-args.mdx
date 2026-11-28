@@ -417,7 +417,7 @@ cacheDir: /tmp/vars-demo-roots/cache
 
 The message carries the command's own stderr. With `--format=json`, `error._tag` is `ToolingExecError` and `error.variable` and `error.exitCode` carry the same values.
 
-An event step that calls the task with `task:` can set the same var name under its own `vars:`. That caller value wins and the command never runs. See [Reuse a task inside an event](../events/task-events.mdx#reuse-a-task-inside-an-event).
+An event step that calls the task with `task:` can set the same var name under its own `vars:`. The supplied value replaces the task's definition, so the task doesn't run the var's `sh` command or resolve a public route fact in its default. An unused default that reads a route fact won't stop the supplied var from choosing `service`, `user`, or `dir`. Lando still checks the task declaration and uses it to decide which flags and args to forward. `lando app:config:lint` still checks the authored definition. See [Reuse a task inside an event](../events/task-events.mdx#reuse-a-task-inside-an-event).
 
 When a computed value lands inside a shell command string (`cmd` text or a `cmds` entry), Lando inserts it as data, quoted for the spot it lands in: an unquoted site becomes one single-quoted word, and a site inside `'...'` or `"..."` is escaped for those quotes. A value such as `a$(echo PWNED)b` prints literally and is never run:
 

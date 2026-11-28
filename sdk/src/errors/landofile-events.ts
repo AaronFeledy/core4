@@ -25,6 +25,9 @@ export class LandofileEventStepFailedError extends Schema.TaggedError<LandofileE
     omittedIssueCount: Schema.optional(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))).annotate({
       description: "Number of additional refusal findings omitted by bounded disclosure.",
     }),
+    cause: Schema.optional(Schema.Unknown).annotate({
+      description: "Redacted tagged cause of a refusal, when it fits the diagnostic bound.",
+    }),
     remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {

@@ -20,6 +20,33 @@ test("discloses at most eight findings and counts previously omitted findings", 
   expect(result).not.toHaveProperty("cause");
 });
 
+test("discloses only redacted tagged causes that fit the diagnostic budget", () => {
+  const secret = "registered-private-value";
+  const redactor = createRedactor("secrets", { values: [secret] });
+  const project = (path: string) =>
+    projectToolingDiagnostic(
+      new ToolingCompileError({
+        tool: "run",
+        message: "Could not read the applied route.",
+        issues: [{ path: ["cmd"], reason: "applied-state-newer", message: "A newer version wrote it." }],
+        cause: {
+          _tag: "AppliedStateVersionError",
+          message: `Use a newer build for ${secret}.`,
+          path,
+          storedVersion: 99,
+        },
+      }),
+      redactor,
+    );
+  expect(project(`/state/${secret}`)).toMatchObject({
+    cause: { _tag: "AppliedStateVersionError", path: "/state/[redacted]", storedVersion: 99 },
+  });
+  const oversized = project(`/${"界".repeat(6000)}`);
+  expect(oversized.issues.map((issue) => issue.reason)).toEqual(["applied-state-newer"]);
+  expect(oversized).not.toHaveProperty("cause");
+  expect(Buffer.byteLength(JSON.stringify(oversized))).toBeLessThanOrEqual(16 * 1024);
+});
+
 test("redacts all authored diagnostic strings including credential keys and related sources", () => {
   const secret = "private-canary";
   const error = new ToolingCompileError({

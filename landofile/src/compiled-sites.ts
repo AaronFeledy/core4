@@ -25,7 +25,7 @@ import { readsServiceUrl } from "./service-url-reads.ts";
 
 export * from "./invocation-sites.ts";
 export { routeUrlSiteError } from "./route-url-expression.ts";
-export { isPublicRouteFact, serviceUrlReads } from "./service-url-reads.ts";
+export { isPublicRouteFact, isServiceUrlInvocationPath, serviceUrlReads } from "./service-url-reads.ts";
 export {
   dynamicToolingNames,
   dynamicToolingReferenceIssues,

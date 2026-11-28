@@ -31,3 +31,19 @@ test("text tooling failures bound expanded secrets and omit whole locations", ()
   expect(output).not.toContain("xy");
   expect(output.match(/\/app\/whole\.yml/gu)).toHaveLength(4);
 });
+
+test.each(["message", "token"] as const)("text diagnostics do not print an oversized cause %s", (field) => {
+  const error = new ToolingCompileError({
+    tool: "run",
+    message: "Could not resolve the route.",
+    cause: {
+      _tag: "AppliedStateVersionError",
+      message: "Could not read the saved plan.",
+      [field]: "cause-only-value ".repeat(1400),
+    },
+  });
+  const report = buildBugReport({ error, context: { commandId: "app:run", cacheRoot: "/tmp/cache" } });
+  const output = renderPlainBugReport(report, { usage: true });
+  expect(output.includes("cause-only-value")).toBe(false);
+  expect(report.extra.map(([key]) => key)).not.toContain("cause");
+});
