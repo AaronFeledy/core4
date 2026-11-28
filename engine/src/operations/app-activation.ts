@@ -184,10 +184,11 @@ export function withAppActivation<A, E, R>(
         const retiredBeforeCapture = capture ? undefined : yield* prepareTransitions;
         const stateStore = yield* StateStore;
         const withRestorePoints = withUpgradeRestorePoints({
-          app: plan.name,
+          plan: selectedPlan,
           provider,
           upgrades: dataUpgrades,
           noSnapshot: request.noSnapshot,
+          refresh: request.operation === "rebuild",
         });
         return yield* withLaunchVolumeCoordination({
           plan,

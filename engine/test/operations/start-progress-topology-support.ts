@@ -237,9 +237,9 @@ export const makeHarness = (
       ));
   const userProvider: RuntimeProviderShape = {
     ...TestRuntimeProvider,
+    capabilities,
     ...options.providerOverrides,
     id: "lando",
-    capabilities,
     isAvailable: Effect.succeed(true),
     ...(appliedFileSyncState === undefined && options.providerOverrides?.inspectAppliedFileSync === undefined
       ? {}

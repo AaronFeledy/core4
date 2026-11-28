@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { DataTransferError, ProviderUnavailableError } from "@lando/sdk/errors";
 import { PortNumber, SnapshotId, type VolumeIdentity, planAppIdentity, planDataId } from "@lando/sdk/schema";
 import { DataMover, type ServiceRuntimeIdentity, type ServiceRuntimeInfo } from "@lando/sdk/services";
+import { TestRuntimeProvider } from "@lando/sdk/test";
 import { withPhysicalVolumeLock } from "@lando/state-store/volume-lock";
 import { DateTime, Effect, Layer } from "effect";
 import { rebuildApp } from "../../src/operations/rebuild.ts";
@@ -19,7 +20,7 @@ const fixture = (
     readonly from?: string;
     readonly to?: string;
     readonly state?: "running" | "exited";
-    readonly failure?: "capture" | "apply" | "replacement";
+    readonly failure?: "pull" | "capture" | "apply" | "replacement";
   } = {},
 ) => {
   const from = input.from ?? "10.11";
@@ -51,6 +52,7 @@ const fixture = (
   let native = original;
   const actions: string[] = [];
   const captured: Parameters<DataMover["Service"]["snapshot"]>[1][] = [];
+  const snapshots = new Set<SnapshotId>();
   const stateStore = makeTestStateStore();
   const failure = new ProviderUnavailableError({
     providerId: plan.provider,
@@ -91,9 +93,16 @@ const fixture = (
               message: "Disk is full.",
               remediation: "Free space before retrying.",
             });
+          snapshots.add(id);
           return { id, ownerKey: owner.ownerKey, store };
         }),
       ).pipe(Effect.catchTag("StateStoreError", Effect.die)),
+    removeSnapshot: (handle) =>
+      Effect.sync(() => {
+        if (handle.ownerKey !== owner.ownerKey || handle.store.store !== ref.store)
+          throw new Error("Activation tried to remove a foreign snapshot.");
+        snapshots.delete(handle.id);
+      }),
     listSnapshots: (filter) =>
       Effect.succeed(
         filter.ownerKey === owner.ownerKey && filter.service === web.name && filter.store === ref.store
@@ -139,6 +148,12 @@ const fixture = (
         stderr: "",
       }),
     providerOverrides: {
+      ...(input.failure === "pull"
+        ? {
+            capabilities: { ...TestRuntimeProvider.capabilities, artifactPull: true },
+            pullArtifact: () => Effect.fail(failure),
+          }
+        : {}),
       observeBoundVolume: (target) =>
         target.expectedContainerId === native.containerId
           ? Effect.succeed({ ref, identity: physical })
@@ -162,7 +177,7 @@ const fixture = (
     plan: desired,
     app: { kind: "user" as const, id: desired.id, root: desired.root },
   };
-  return { ...harness, target, actions, captured, status: () => status };
+  return { ...harness, target, actions, captured, snapshots, status: () => status };
 };
 
 test.each([
@@ -189,19 +204,21 @@ test.each([
   },
 );
 
-test.each(["capture", "apply", "replacement"] as const)(
-  "failed %s resumes only the original database",
-  async (failure) => {
-    const f = fixture({ failure });
+test.each([
+  ["pull", "running", [], "running", []],
+  ["capture", "running", ["suspend", "capture", "resume"], "running", []],
+  ["apply", "running", ["suspend", "capture", "apply", "resume"], "running", []],
+  ["apply", "exited", ["capture", "apply"], "exited", []],
+  ["replacement", "running", ["suspend", "capture", "apply"], "exited", [id]],
+] as const)(
+  "failed %s with a previously %s database keeps a restore point only if the upgrade might have run",
+  async (failure, state, actions, finalStatus, remaining) => {
+    const f = fixture({ failure, state });
     const error = await Effect.runPromise(startApp({}, f.target).pipe(Effect.provide(f.layer), Effect.flip));
 
-    expect(f.actions).toEqual(
-      failure === "capture"
-        ? ["suspend", "capture", "resume"]
-        : failure === "apply"
-          ? ["suspend", "capture", "apply", "resume"]
-          : ["suspend", "capture", "apply"],
-    );
+    expect(f.actions).toEqual([...actions]);
+    expect(f.status()).toBe(finalStatus);
+    expect([...f.snapshots]).toEqual([...remaining]);
     expect(error._tag).toBe(failure === "capture" ? "ServiceRestorePointError" : "ProviderUnavailableError");
     if (error._tag === "ServiceRestorePointError") {
       expect(error.dataVersion).toEqual({ label: "MariaDB", from: "10.11", to: "11.4" });
