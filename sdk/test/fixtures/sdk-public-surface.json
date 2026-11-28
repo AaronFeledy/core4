@@ -187,7 +187,7 @@
       "removeSnapshot:(handle:SnapshotHandle) => Effect.Effect<void,DataMoverError>",
       "resolveSnapshot:(reference:string,scope:SnapshotFilter) => Effect.Effect<SnapshotInfo,DataMoverError>",
       "restore:(handle:SnapshotHandle,target:VolumeRef,opts?:SnapshotRestoreOptions) => Effect.Effect<void,DataMoverError,Scope.Scope>",
-      "snapshot:(store:VolumeRef,opts?:SnapshotOptions) => Effect.Effect<SnapshotHandle,DataMoverError,Scope.Scope>",
+      "snapshot:(store:VolumeRef,opts?:SnapshotOptions,onCommit?:(handle:SnapshotHandle) => void) => Effect.Effect<SnapshotHandle,DataMoverError,Scope.Scope>",
       "transfer:(spec:DataTransferSpec) => Effect.Effect<DataTransferResult,DataMoverError,Scope.Scope>",
       "transferStream:(spec:DataTransferSpec) => Stream.Stream<DataTransferProgress,DataMoverError,Scope.Scope>",
       "volumeInitialization?:(identity:VolumeIdentity) => Effect.Effect<VolumeInitialization,StateStoreError>"
@@ -583,6 +583,7 @@
     "./command-result": [
       "ConvertedDefectAnnotation",
       "FailureRoleAnnotation",
+      "annotateFailureContext",
       "annotateFailureRole",
       "boundedDiagnosticSummary",
       "buildCommandResultEnvelope",
@@ -912,6 +913,7 @@
       "ServiceFeatureError",
       "ServiceNotFoundError",
       "ServiceNotReadyError",
+      "ServiceRestorePointError",
       "ServiceStartError",
       "ServiceTypeCollisionError",
       "ServiceTypeError",

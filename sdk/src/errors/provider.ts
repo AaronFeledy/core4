@@ -128,6 +128,18 @@ export class ServiceDataVersionError extends Schema.TaggedError<ServiceDataVersi
   },
 ) {}
 
+export class ServiceRestorePointError extends Schema.TaggedError<ServiceRestorePointError>()(
+  "ServiceRestorePointError",
+  {
+    app: Schema.String,
+    service: Schema.String,
+    dataVersion: Schema.Struct({ label: Schema.String, from: Schema.String, to: Schema.String }),
+    cause: Schema.optionalKey(Schema.Unknown),
+    message: Schema.String,
+    remediation: Remediation,
+  },
+) {}
+
 /** Post-apply readiness failure; the applied app remains available for diagnosis. */
 export class ServiceNotReadyError extends Schema.TaggedError<ServiceNotReadyError>()("ServiceNotReadyError", {
   message: Schema.String.annotate({ description: "Human-readable post-apply readiness failure." }),

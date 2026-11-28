@@ -57,6 +57,9 @@ export const StartAppResult = Schema.Struct({
         service: Schema.String.annotate({ description: "Service whose database data upgrades in place." }),
         from: Schema.String.annotate({ description: "Previous on-disk version series." }),
         to: Schema.String.annotate({ description: "Selected server version series." }),
+        restorePoint: Schema.optionalKey(Schema.String).annotate({
+          description: "Id of the snapshot saved before the upgrade.",
+        }),
       }),
     ),
   ).annotate({ description: "In-place database data version changes identified before activation." }),

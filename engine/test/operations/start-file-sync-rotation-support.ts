@@ -9,6 +9,7 @@ import {
   plannedFileSyncSessions,
 } from "@lando/sdk/schema";
 import {
+  type DataMover,
   type FileSyncEngineShape,
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
@@ -109,6 +110,9 @@ export const rotationHarness = Effect.fnUntraced(function* (
     readonly inspect?: RuntimeProviderShape["inspect"];
     readonly exec?: RuntimeProviderShape["exec"];
     readonly observeBoundVolume?: RuntimeProviderShape["observeBoundVolume"];
+    readonly dataMoverLayer?: Layer.Layer<DataMover>;
+    readonly providerOverrides?: Partial<RuntimeProviderShape>;
+    readonly locateVolume?: RuntimeProviderShape["locateVolume"];
     readonly failAt?: FailurePoint;
     readonly extraSession?: boolean;
     readonly missingSession?: boolean;
@@ -214,9 +218,12 @@ export const rotationHarness = Effect.fnUntraced(function* (
     ...(options.previous === undefined ? {} : { resolveAppliedPlan: () => Effect.sync(() => applied) }),
     ...(options.inspect === undefined ? {} : { inspect: options.inspect }),
     ...(options.exec === undefined ? {} : { exec: options.exec }),
-    ...(options.observeBoundVolume === undefined
-      ? {}
-      : { providerOverrides: { observeBoundVolume: options.observeBoundVolume } }),
+    providerOverrides: {
+      ...options.providerOverrides,
+      ...(options.observeBoundVolume === undefined ? {} : { observeBoundVolume: options.observeBoundVolume }),
+    },
+    ...(options.dataMoverLayer === undefined ? {} : { dataMoverLayer: options.dataMoverLayer }),
+    ...(options.locateVolume === undefined ? {} : { locateVolume: options.locateVolume }),
     fileSync: engine,
     onPublish: (event) =>
       Effect.sync(() => {

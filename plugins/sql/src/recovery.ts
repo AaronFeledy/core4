@@ -20,7 +20,7 @@ import { DEFAULT_SNAPSHOT_KEEP_LATEST } from "./snapshot-retention.ts";
 export type { SqlRecoveryContext, SqlRecoveryDeps } from "./recovery-target.ts";
 
 type SqlPhysicalOperation<A, E> = SqlPhysicalContextInput & {
-  readonly reason: Exclude<SnapshotMetadata["recoveryReason"], "seed">;
+  readonly reason: Exclude<SnapshotMetadata["recoveryReason"], "seed" | "upgrade">;
   readonly resumeAfterSnapshot: boolean;
   readonly publish: SqlPublisher;
   /** Snapshots retention must keep besides the one this operation takes, such as a restore source. */
@@ -68,10 +68,12 @@ export const runPhysicalOperation = <A, E>(input: SqlPhysicalOperation<A, E>) =>
     ...(input.label === undefined ? {} : { label: input.label }),
     ...(input.format === undefined ? {} : { format: input.format }),
     ...(input.preflight === undefined ? {} : { preflight: input.preflight }),
+    ...(input.offlineDataVersion === undefined ? {} : { offlineDataVersion: input.offlineDataVersion }),
     adoptLegacy: true,
     body: Effect.fn("Sql.snapshot")(function* (context: SqlRecoveryContext) {
       if (input.preflight !== undefined) yield* input.preflight(context);
       if (context.running) yield* context.suspend;
+      else if (input.offlineDataVersion !== undefined) yield* context.verifyStopped;
       yield* context.verifyVolume;
       const recovery = yield* Effect.uninterruptibleMask((restore) =>
         Effect.gen(function* () {

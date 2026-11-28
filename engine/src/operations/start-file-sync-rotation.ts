@@ -18,11 +18,13 @@ import {
 import { fileSyncBundle } from "./file-sync-bundle.ts";
 import { fileSyncPriorIsCompatibleWithDesired, hasCompleteFileSyncCoverage } from "./file-sync-plan.ts";
 import { markStartMutation } from "./start-incomplete-notice.ts";
+import type { PrepareUpgrade } from "./upgrade-restore-points.ts";
 
 /** Called under the app lock, before drain invalidation, hooks, or replacement intent. */
 export const rotateChangedFileSync = Effect.fn("AppOperation.rotateChangedFileSync")(function* (
   target: ResolvedAppTarget,
   provider: PreparedRuntimeProvider,
+  beforeRotate: PrepareUpgrade = Effect.void,
 ) {
   const desired = yield* fileSyncBundle(target.plan);
   // An interrupted replacement must resume its recorded identity, never supersede it.
@@ -109,6 +111,7 @@ export const rotateChangedFileSync = Effect.fn("AppOperation.rotateChangedFileSy
           timestamp: DateTime.nowUnsafe(),
         }),
       );
+      yield* beforeRotate;
       yield* markStartMutation(old);
       yield* disposal.quiesceRetained;
       yield* disposal.dispose;

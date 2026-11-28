@@ -1,5 +1,5 @@
 import { mergeAppliedPlan } from "@lando/container-runtime/plan";
-import type { StopAppError as SdkStopAppError, StopAppOptions, StopAppResult } from "@lando/sdk/app";
+import type { StopAppError as SdkStopAppError, StopAppResult } from "@lando/sdk/app";
 import {
   type ComposeKeyRejectedError,
   FileSyncStopError,
@@ -51,6 +51,7 @@ import { idleStopEventPlan, stopIdleApp } from "./stop-idle.ts";
 import { mergeContainerReceipts, servicesTakenDown } from "./stop-receipts.ts";
 import { absentPlannedServices } from "./stop-selection.ts";
 import { stopUnplannedContainers } from "./stop-unplanned.ts";
+import { markUpgradeTeardown } from "./upgrade-teardown-boundary.ts";
 
 export type StopAppError = SdkStopAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
 export type { StopAppOptions, StopAppResult } from "@lando/sdk/app";
@@ -215,20 +216,23 @@ export const preflightStopApp = Effect.fnUntraced(function* (
   };
 });
 
-const stopAppWithResolvedPlan = Effect.fnUntraced(function* (
-  _options: StopAppOptions | undefined,
+/** Stop phase under the caller's app lock. */
+export const stopAppWithPlanUnlocked = Effect.fnUntraced(function* <E>(
   target: ResolvedAppTarget,
-  runInitEvents: boolean,
-  prepared?: StopAppPreflight,
+  execution: {
+    readonly runInitEvents: boolean;
+    readonly prepared: StopAppPreflight;
+    readonly beforeStop?: Effect.Effect<void, E, EventService>;
+  },
 ): Effect.fn.Return<
   { readonly result: StopAppResult; readonly plan: AppPlan },
-  SdkStopAppError,
+  SdkStopAppError | E,
   StopAppServices
 > {
   const events = yield* EventService;
   const plan = target.plan;
   const ref = target.app;
-  const preflight = prepared ?? (yield* preflightStopApp(target));
+  const { prepared: preflight, runInitEvents, beforeStop } = execution;
   const {
     runtimeState,
     provider,
@@ -272,6 +276,7 @@ const stopAppWithResolvedPlan = Effect.fnUntraced(function* (
     );
   }
 
+  yield* beforeStop ?? Effect.void;
   const quiesceRetained = provider.quiesceRetainedFileSync;
   const retainedWriters = preflight.retainedWriters;
   // Windows still removes the retained writers of an unfinished accelerated start before stopping.
@@ -317,6 +322,7 @@ const stopAppWithResolvedPlan = Effect.fnUntraced(function* (
     // An unfinished attempt may not have created any session yet; there is nothing to drain.
     if (runtimeState === "running" && sessions.length > 0) yield* maybeFileSync.value.appLifecycle.drain(ref);
   } else if (runtimeState === "running" && appliedFileSync.status === "accelerated") {
+    yield* markUpgradeTeardown(teardownPlan.id);
     const terminate = terminateFileSyncSessions(
       ref,
       fileSyncAvailable ? sessions : undefined,
@@ -363,11 +369,3 @@ const stopAppWithResolvedPlan = Effect.fnUntraced(function* (
     plan,
   };
 });
-
-/** Internal stop phase used only while restart/rebuild already hold the app lock. */
-export const stopAppWithPlanUnlocked = (
-  options: StopAppOptions,
-  target: ResolvedAppTarget,
-  runInitEvents = false,
-  prepared?: StopAppPreflight,
-) => stopAppWithResolvedPlan(options, target, runInitEvents, prepared);

@@ -145,6 +145,8 @@ export const relaunchSelectedServices = Effect.fnUntraced(function* (
             yield* refuseRetainedRouteConsumers({ retained, runtimePlan, proof: routeUrls, operation });
             const environment = yield* openDatabaseCredentialSession(runtimePlan);
             const owned = ownedContainers(target.plan, yield* provider.list({ app: target.plan.id }));
+            yield* verifyGlobalConsumerAdmission;
+            yield* admitted.prepareUpgrade;
             for (const service of [...services].reverse()) {
               if (signal?.aborted === true) return yield* Effect.interrupt;
               yield* events.publish(

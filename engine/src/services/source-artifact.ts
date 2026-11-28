@@ -10,7 +10,7 @@ import type {
   RuntimeProviderShape,
   StateStore,
 } from "@lando/sdk/services";
-import { type Context, DateTime, Effect } from "effect";
+import { Context, DateTime, Effect } from "effect";
 import { commandWarningsUseMachineOutput, recordCommandWarning } from "../landofile/command-warnings.ts";
 import {
   acquireReferencedArtifact,
@@ -28,6 +28,42 @@ interface SourceArtifactOptions {
 }
 
 type SourceRef = Extract<NonNullable<ServicePlan["artifact"]>, { readonly kind: "ref" }>;
+
+const sourceKey = (service: ServicePlan, refresh: boolean) =>
+  JSON.stringify([
+    service.name,
+    service.artifact,
+    serviceImagePlatform(service),
+    service.pullPolicy,
+    readArtifactRefreshAfterMs(service.extensions),
+    refresh,
+  ]);
+
+const PrefetchedSourceArtifacts = Context.Reference<
+  | {
+      readonly provider: RuntimeProviderShape;
+      readonly artifacts: ReadonlyMap<string, ProviderArtifactRef>;
+    }
+  | undefined
+>("@lando/engine/PrefetchedSourceArtifacts", { defaultValue: () => undefined });
+
+export const withPrefetchedSourceArtifacts = Effect.fnUntraced(function* <A, E, R>(
+  input: {
+    readonly provider: RuntimeProviderShape;
+    readonly services: readonly ServicePlan[];
+    readonly options: SourceArtifactOptions;
+  },
+  body: Effect.Effect<A, E, R>,
+) {
+  const { provider, services, options } = input;
+  if (!provider.capabilities.artifactPull) return yield* body;
+  const artifacts = new Map<string, ProviderArtifactRef>();
+  for (const service of services) {
+    const acquired = yield* acquireSourceArtifact(provider, service, options);
+    if (acquired !== undefined) artifacts.set(sourceKey(service, options.refresh), acquired);
+  }
+  return yield* body.pipe(Effect.provideService(PrefetchedSourceArtifacts, { provider, artifacts }));
+});
 
 /**
  * Pull policy for one acquisition. An explicit service policy is authoritative on start and rebuild;
@@ -78,7 +114,20 @@ const warnRefreshFallback = Effect.fnUntraced(function* (
 });
 
 /** Acquires a service's source image ref according to its pull policy before any build runs. */
-export const resolveSourceArtifact = (
+export const resolveSourceArtifact = Effect.fnUntraced(function* (
+  provider: RuntimeProviderShape,
+  service: ServicePlan,
+  options: SourceArtifactOptions,
+): Effect.fn.Return<ProviderArtifactRef | undefined, ProviderError> {
+  const prefetched = yield* PrefetchedSourceArtifacts;
+  const acquired =
+    prefetched?.provider === provider
+      ? prefetched.artifacts.get(sourceKey(service, options.refresh))
+      : undefined;
+  return acquired ?? (yield* acquireSourceArtifact(provider, service, options));
+});
+
+const acquireSourceArtifact = (
   provider: RuntimeProviderShape,
   service: ServicePlan,
   options: SourceArtifactOptions,

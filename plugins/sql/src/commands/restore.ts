@@ -10,6 +10,12 @@ export const spec = {
   bootstrap: "app",
   flags: {
     service: { type: "string", description: "Target database service." },
+    "any-series": {
+      type: "boolean",
+      default: false,
+      description:
+        "Allow an unverified or different database series. Ownership and volume checks still apply.",
+    },
     yes: { type: "boolean", default: false, description: "Skip confirmation prompts." },
   },
   args: {

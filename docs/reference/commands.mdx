@@ -369,6 +369,7 @@ Flags:
 
 | Flag | Description |
 | --- | --- |
+| `--no-snapshot` | Skip restore points before in-place database upgrades. |
 | `--service, -s` | Rebuild a specific planned service and its prerequisites (repeatable). |
 | `--yes, -y` | Skip the confirmation prompt. |
 
@@ -475,6 +476,7 @@ Flags:
 
 | Flag | Description |
 | --- | --- |
+| `--no-snapshot` | Skip restore points before in-place database upgrades. |
 | `--service, -s` | Restart a specific planned service without pulling in dependencies (repeatable). |
 
 ## `lando app:share`
@@ -571,6 +573,7 @@ Flags:
 
 | Flag | Description |
 | --- | --- |
+| `--no-snapshot` | Skip restore points before in-place database upgrades. |
 | `--service, -s` | Service to start, with its prerequisites (repeatable). |
 
 ## `lando app:stop`
@@ -896,6 +899,7 @@ Flags:
 
 | Flag | Description |
 | --- | --- |
+| `--any-series` | Allow an unverified or different database series. Ownership and volume checks still apply. |
 | `--service` | Target database service. |
 | `--yes, -y` | Skip confirmation prompts. |
 
@@ -964,7 +968,7 @@ Flags:
 | `--from-path` | Explicit canonical source app root. |
 | `--keep-latest` | Number of newest snapshots to retain in the selected bucket. |
 | `--preview` | Show deletions without removing snapshots. |
-| `--recovery` | Select automatic recovery snapshots instead of manual ones. |
+| `--recovery` | Select recovery snapshots, including upgrade restore points, instead of manual snapshots. |
 | `--service` | Database service to prune. |
 | `--yes, -y` | Confirm snapshot deletion. |
 

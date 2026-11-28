@@ -10,12 +10,14 @@ import { extractSpecFlags } from "../../spec/command-boundary";
 import { yesFlag } from "../../spec/confirmation-flag";
 import { serviceNamesFlag, specFlagsOf } from "../../spec/input-coercion";
 import { Flags } from "../../spec/metadata";
+import { upgradeSnapshotFlags, upgradeSnapshotOptions } from "./upgrade-snapshot-flag";
 
 export const rebuildOptionsFromInput = (input: unknown): NonNullable<Parameters<typeof rebuildApp>[0]> => {
   const signal = extractSpecAbortSignal(input);
   const flags = specFlagsOf(input);
   const services = serviceNamesFlag(flags);
   return {
+    ...upgradeSnapshotOptions(flags),
     ...(services.length === 0 ? {} : { services }),
     ...(signal === undefined ? {} : { signal }),
   };
@@ -47,6 +49,7 @@ export const rebuildSpec = {
   bootstrap: "app",
   usage: "[--service SERVICE] [--yes]",
   flags: {
+    ...upgradeSnapshotFlags,
     yes: yesFlag("Skip the confirmation prompt."),
     service: Flags.string({
       char: "s",
