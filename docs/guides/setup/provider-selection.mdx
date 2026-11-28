@@ -198,7 +198,7 @@ Lando records the engine that holds an app's containers, so replacing the connec
 - `lando start`, `stop`, `restart`, `rebuild`, `destroy`, `info`, `logs`, and `exec`.
 - App tooling tasks and their `pre-*` and `post-*` events.
 - URL scanning and the SSH agent sidecar, which report the refusal rather than reading another engine's silence as a stopped or missing service.
-- `lando shell <service>`, `lando db:*`, and the data transfer commands that move a recorded app's volumes.
+- `lando shell <service>`, `lando db:*` (including credential repair), `lando schedule:run`, `lando open`, and the data transfer commands that move a recorded app's volumes.
 - `lando global:enable`, `disable`, and `reconcile`, `lando global:rebuild`, and the other global policy commands.
 
 `lando poweroff` does not fail on that app. It skips it, reports why, and powers off the rest.
