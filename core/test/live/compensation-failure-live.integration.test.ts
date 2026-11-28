@@ -4,7 +4,6 @@ import { get as httpGet } from "node:http";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { serviceContainerName } from "@lando/container-runtime/plan";
-import { makePodmanApiClient } from "@lando/container-runtime/podman/api-client";
 import { makeLandoPaths } from "@lando/paths";
 import { appCertificateFiles } from "@lando/proxy-traefik";
 import { ProxyApplyError } from "@lando/sdk/errors";
@@ -19,10 +18,14 @@ import {
 } from "@lando/sdk/schema";
 import { Duration, Effect, Schema } from "effect";
 import { decodeInfoCliEnvelope, runFixtureCli } from "./convergence-cli.ts";
-import { liveEnabled, managedProviderSocketPath } from "./scanner-live-fixture";
+import {
+  inspectRouteContainer,
+  observeRouteContainer,
+  resolveRoutePodmanTarget,
+  routeProviderEnv,
+} from "./route-cli-live-support.ts";
 
-// Uses the inherited managed runtime and global router, like the other CLI-driven live
-// tests. The fault lives only at this app's own certificate path, so other apps are untouched.
+const target = resolveRoutePodmanTarget();
 const cliEntry = resolve(import.meta.dir, "../../bin/lando.ts");
 const inventoryNotice = "Start did not complete. Resources were left in place";
 
@@ -34,45 +37,6 @@ const terminalEnvelope = (stdout: string) =>
     { onExcessProperty: "error" },
   )(stdout.trim().split("\n").at(-1)).envelope;
 
-const containerObservation = Schema.Struct({
-  Id: Schema.NonEmptyString,
-  State: Schema.Struct({ Running: Schema.Boolean }),
-});
-
-const inspectContainer = async (container: string) => {
-  // Use the provider's HTTP transport for Unix sockets and Windows named pipes alike.
-  const api = makePodmanApiClient(managedProviderSocketPath, {
-    env: { ...process.env },
-    providerId: "lando",
-    remediation: "Inspect the opted-in managed provider socket.",
-  });
-  if (api.request === undefined) throw new Error("The managed provider has no HTTP request transport.");
-  const response = await Effect.runPromise(
-    api
-      .request({ method: "GET", path: `/containers/${encodeURIComponent(container)}/json` })
-      .pipe(Effect.timeout("10 seconds")),
-  );
-  return response;
-};
-
-const inspectWeb = async (container: string) => {
-  const response = await inspectContainer(container);
-  expect(response.status, response.body).toBe(200);
-  return Schema.decodeUnknownSync(Schema.fromJsonString(containerObservation))(response.body);
-};
-
-const landoCommand = (cwd: string, args: readonly string[]) => {
-  const binary = process.env.LANDO_SCENARIO_E2E_BINARY;
-  // A compiled runner may be acting as Bun through BUN_BE_BUN; the CLI under test must not inherit it.
-  const { BUN_BE_BUN: _bunBeBun, ...inherited } = process.env;
-  return runFixtureCli([...(binary === undefined ? [process.execPath, cliEntry] : [binary]), ...args], cwd, {
-    ...(binary === undefined ? process.env : inherited),
-    LANDO_TELEMETRY_ENABLED: "false",
-  });
-};
-
-const lando = (cwd: string, args: readonly string[]) => Effect.runPromise(landoCommand(cwd, args));
-
 const isHttpsRoute = (connection: ServiceConnection, hostname: string) =>
   connection.scope === "host" &&
   connection.source === "route" &&
@@ -81,7 +45,10 @@ const isHttpsRoute = (connection: ServiceConnection, hostname: string) =>
   new URL(connection.url).protocol === "https:" &&
   new URL(connection.url).hostname === hostname;
 
-const waitForActiveRoute = async (cwd: string, hostname: string) => {
+const waitForActiveRoute = async (
+  landoCommand: (args: readonly string[]) => ReturnType<typeof runFixtureCli>,
+  hostname: string,
+) => {
   let connections: ReadonlyArray<ServiceConnection> = [];
   const observed = await Effect.runPromise(
     runProbe(
@@ -96,7 +63,7 @@ const waitForActiveRoute = async (cwd: string, hostname: string) => {
         },
       },
       Effect.gen(function* () {
-        const info = yield* landoCommand(cwd, ["info", "--format=json"]);
+        const info = yield* landoCommand(["info", "--format=json"]);
         return yield* Effect.try({
           try: () => {
             expect(info.exitCode, info.stdout + info.stderr).toBe(0);
@@ -117,9 +84,10 @@ const waitForActiveRoute = async (cwd: string, hostname: string) => {
   return connections;
 };
 
-test.skipIf(!liveEnabled)(
+test.skipIf(target === undefined)(
   "start preserves the running container and converges when an app-owned route apply fault is removed",
   async () => {
+    if (target === undefined) throw new Error("The route suite needs an opted-in Podman socket.");
     // Given: a working routed nginx app. The #1462 fault blocks certificate refresh
     // and would also block the old destructive rollback; no global file is modified.
     const appRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-convergence-live-")));
@@ -127,6 +95,17 @@ test.skipIf(!liveEnabled)(
     const marker = `recovered-route-${crypto.randomUUID()}`;
     // This short lowercase/hyphen name is already a normalized planner slug.
     const container = serviceContainerName({ slug: name }, "web");
+    const inspectWeb = () => observeRouteContainer(target, container);
+    const binary = process.env.LANDO_SCENARIO_E2E_BINARY;
+    // A compiled runner may be acting as Bun through BUN_BE_BUN; the CLI under test must not inherit it.
+    const { BUN_BE_BUN: _bunBeBun, ...inherited } = process.env;
+    const landoCommand = (args: readonly string[]) =>
+      runFixtureCli([...(binary === undefined ? [process.execPath, cliEntry] : [binary]), ...args], appRoot, {
+        ...(binary === undefined ? process.env : inherited),
+        ...routeProviderEnv(target),
+        LANDO_TELEMETRY_ENABLED: "false",
+      });
+    const lando = (args: readonly string[]) => Effect.runPromise(landoCommand(args));
     const initialHostname = `${name}.lndo.site`;
     const newHostname = `second-${name}.lndo.site`;
     const certificate = appCertificateFiles(makeLandoPaths(), {
@@ -135,7 +114,7 @@ test.skipIf(!liveEnabled)(
     }).cert;
     const pinned = join(certificate, "pinned");
     const landofile = (hostnames: readonly string[]) =>
-      `name: ${name}\nprovider: lando\nservices:\n  web:\n    type: nginx\n    webroot: .\n    routes:\n${hostnames.map((hostname) => `      - hostname: ${hostname}\n        scheme: both\n`).join("")}`;
+      `name: ${name}\nprovider: ${target.provider}\nservices:\n  web:\n    type: nginx\n    webroot: .\n    routes:\n${hostnames.map((hostname) => `      - hostname: ${hostname}\n        scheme: both\n`).join("")}`;
     let faulted = false;
     let pinnedCreated = false;
     const removeFault = async () => {
@@ -147,9 +126,9 @@ test.skipIf(!liveEnabled)(
     try {
       await Bun.write(join(appRoot, "index.html"), marker);
       await Bun.write(join(appRoot, ".lando.yml"), landofile([initialHostname]));
-      const started = await lando(appRoot, ["start", "--format=json"]);
+      const started = await lando(["start", "--format=json"]);
       expect(started.exitCode, started.stdout + started.stderr).toBe(0);
-      const initial = await inspectWeb(container);
+      const initial = await inspectWeb();
       expect(initial.State.Running).toBe(true);
       const initialResult = Schema.decodeUnknownSync(StartAppResult)(terminalEnvelope(started.stdout).result);
       expect(
@@ -158,7 +137,7 @@ test.skipIf(!liveEnabled)(
           ?.connections.some((connection) => isHttpsRoute(connection, initialHostname)),
       ).toBe(true);
       // File-provider reload is asynchronous. Prove live evidence before injecting the fault.
-      await waitForActiveRoute(appRoot, initialHostname);
+      await waitForActiveRoute(landoCommand, initialHostname);
       await rm(certificate, { force: true });
       await mkdir(certificate);
       faulted = true;
@@ -170,12 +149,12 @@ test.skipIf(!liveEnabled)(
       await Bun.write(join(appRoot, ".lando.yml"), landofile([initialHostname, newHostname]));
 
       // When: start reconciles the new route against the still-running app.
-      const text = await lando(appRoot, ["start", "--renderer=plain"]);
+      const text = await lando(["start", "--renderer=plain"]);
 
       // Then (human surface): one final warning inventories the retained web container
       // after the tagged primary error, with recovery/shutdown guidance and no rollback.
       expect(text.exitCode, text.stdout + text.stderr).toBe(1);
-      expect(await inspectWeb(container)).toEqual(initial);
+      expect(await inspectWeb()).toEqual(initial);
       expect(text.stderr).toContain("code: ProxyApplyError");
       expect(text.stdout + text.stderr).not.toContain("Rollback also failed");
       expect((text.stdout + text.stderr).split(inventoryNotice)).toHaveLength(2);
@@ -199,7 +178,7 @@ test.skipIf(!liveEnabled)(
 
       // Machine surface: retry the same fault; the terminal result keeps the existing
       // envelope contract, without human inventory on either stream or rollback errors.
-      const json = await lando(appRoot, ["start", "--format=json"]);
+      const json = await lando(["start", "--format=json"]);
       expect(json.exitCode, json.stdout + json.stderr).toBe(1);
       const failure = terminalEnvelope(json.stdout);
       expect(failure).toMatchObject({
@@ -212,12 +191,12 @@ test.skipIf(!liveEnabled)(
       expect(json.stdout + json.stderr).not.toContain(inventoryNotice);
       expect(json.stdout + json.stderr).not.toContain("Running: web");
       expect(json.stdout + json.stderr).not.toContain("Rollback also failed");
-      expect(await inspectWeb(container)).toEqual(initial);
+      expect(await inspectWeb()).toEqual(initial);
 
       // Recovery surface: removing only our fault lets start finish the desired route
       // without recreating web. Verify the advertised endpoint actually serves this app.
       await removeFault();
-      const recovered = await lando(appRoot, ["start", "--format=json"]);
+      const recovered = await lando(["start", "--format=json"]);
       expect(recovered.exitCode, recovered.stdout + recovered.stderr).toBe(0);
       const envelope = terminalEnvelope(recovered.stdout);
       expect(envelope.ok).toBe(true);
@@ -227,8 +206,8 @@ test.skipIf(!liveEnabled)(
           .find((service) => service.name === "web")
           ?.connections.some((connection) => isHttpsRoute(connection, newHostname)),
       ).toBe(true);
-      const recoveredConnections = await waitForActiveRoute(appRoot, newHostname);
-      expect(await inspectWeb(container)).toEqual(initial);
+      const recoveredConnections = await waitForActiveRoute(landoCommand, newHostname);
+      expect(await inspectWeb()).toEqual(initial);
       const httpEndpoint = recoveredConnections
         .flatMap((connection) =>
           connection.scope === "host" && connection.binding === "assigned" && connection.state === "active"
@@ -272,11 +251,11 @@ test.skipIf(!liveEnabled)(
         ),
       );
       expect(routed.outcome).toBe("green");
-      const stopped = await lando(appRoot, ["stop", "--format=json"]);
+      const stopped = await lando(["stop", "--format=json"]);
       expect(stopped.exitCode, stopped.stdout + stopped.stderr).toBe(0);
-      const destroyed = await lando(appRoot, ["destroy", "-y", "--volumes", "--format=json"]);
+      const destroyed = await lando(["destroy", "-y", "--volumes", "--format=json"]);
       expect(destroyed.exitCode, destroyed.stdout + destroyed.stderr).toBe(0);
-      expect((await inspectContainer(container)).status).toBe(404);
+      expect((await inspectRouteContainer(target, container)).status).toBe(404);
     } finally {
       // Always attempt every cleanup stage, including when setup or an assertion fails.
       // The inherited global router/runtime stays up; destroy targets only this app.
@@ -284,7 +263,7 @@ test.skipIf(!liveEnabled)(
         await removeFault();
       } finally {
         try {
-          const destroyed = await lando(appRoot, ["destroy", "-y", "--volumes", "--format=json"]);
+          const destroyed = await lando(["destroy", "-y", "--volumes", "--format=json"]);
           expect(destroyed.exitCode, destroyed.stdout + destroyed.stderr).toBe(0);
         } finally {
           await rm(appRoot, { recursive: true, force: true });

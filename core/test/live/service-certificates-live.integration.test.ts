@@ -4,16 +4,24 @@ import { mkdtemp, readFile, readdir, realpath, rm, stat } from "node:fs/promises
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { serviceContainerName } from "@lando/container-runtime/plan";
-import { makePodmanApiClient } from "@lando/container-runtime/podman/api-client";
 import { makeLandoPaths } from "@lando/paths";
 import { certificatePairIsCurrent } from "@lando/sdk/certificates";
 import { CommandResultEnvelope, appIdentityKey } from "@lando/sdk/schema";
-import { Effect, Schema } from "effect";
+import { Schema } from "effect";
+import {
+  binary,
+  decodeStart,
+  infoEnvelope,
+  observeRouteContainer,
+  resolveRoutePodmanTarget,
+  routeCliPrerequisite,
+  routeProviderEnv,
+  spawnRouteCommand,
+  succeeded,
+} from "./route-cli-live-support.ts";
 
-import { binary, decodeStart, infoEnvelope, prerequisite } from "./route-cli-live-support.ts";
-import { managedProviderSocketPath } from "./scanner-live-fixture.ts";
-
-// Uses the inherited managed runtime, router, and mkcert root; the job ran `lando setup` already.
+const target = resolveRoutePodmanTarget();
+const prerequisite = routeCliPrerequisite(target);
 const paths = makeLandoPaths();
 const unselectableRouter = { LANDO_CONFIG__DEFAULT_ROUTER_SERVICE: "missing" };
 
@@ -25,58 +33,6 @@ const terminalEnvelope = Schema.decodeUnknownSync(
 const lastEnvelope = (stdout: string) => {
   const decoded = terminalEnvelope(stdout.trim().split("\n").at(-1) ?? "");
   return "envelope" in decoded ? decoded.envelope : decoded;
-};
-
-const containerObservation = Schema.fromJsonString(
-  Schema.Struct({ Id: Schema.NonEmptyString, State: Schema.Struct({ Running: Schema.Boolean }) }),
-);
-
-const inspectContainer = async (container: string) => {
-  const api = makePodmanApiClient(managedProviderSocketPath, {
-    env: { ...process.env },
-    providerId: "lando",
-    remediation: "Inspect the opted-in managed provider socket.",
-  });
-  if (api.request === undefined) throw new Error("The managed provider has no HTTP request transport.");
-  const response = await Effect.runPromise(
-    api
-      .request({ method: "GET", path: `/containers/${encodeURIComponent(container)}/json` })
-      .pipe(Effect.timeout("10 seconds")),
-  );
-  expect(response.status, response.body).toBe(200);
-  return Schema.decodeUnknownSync(containerObservation)(response.body);
-};
-
-const spawnText = async (
-  cwd: string,
-  argv: readonly string[],
-  options: { readonly timeout?: number; readonly env?: Record<string, string> } = {},
-) => {
-  // Embedded Bun uses BUN_BE_BUN=1; compiled CLI children must dispatch Lando instead.
-  const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => key !== "BUN_BE_BUN"));
-  const proc = Bun.spawn([...argv], {
-    cwd,
-    env: { ...env, LANDO_PROVIDER: "lando", LANDO_TELEMETRY_ENABLED: "false", ...options.env },
-    stdin: "ignore",
-    stdout: "pipe",
-    stderr: "pipe",
-    timeout: options.timeout ?? 120_000,
-    killSignal: "SIGKILL",
-  });
-  const [exitCode, stdout, stderr] = await Promise.all([
-    proc.exited,
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-  ]);
-  return { argv, exitCode, stdout, stderr };
-};
-
-const lando = (cwd: string, args: readonly string[], options?: Parameters<typeof spawnText>[2]) =>
-  spawnText(cwd, [binary, ...args], options);
-
-const succeeded = (result: Awaited<ReturnType<typeof spawnText>>) => {
-  expect(result.exitCode, JSON.stringify(result)).toBe(0);
-  return result.stdout;
 };
 
 const leafFiles = async (dir: string) => {
@@ -97,12 +53,21 @@ describe.serial("generated service certificates and router-less teardown", () =>
   test.skipIf(prerequisite !== undefined && process.env.LANDO_GUIDE_E2E !== "1")(
     "issues once at apply, reuses unchanged material, and destroys without a selectable router",
     async () => {
-      if (prerequisite !== undefined) throw new Error(prerequisite);
-      // Given: setup already created the shared mkcert root and installed the managed binary.
+      if (target === undefined || prerequisite !== undefined) throw new Error(prerequisite);
+      const lando = (
+        cwd: string,
+        args: readonly string[],
+        options?: Parameters<typeof spawnRouteCommand>[2],
+      ) =>
+        spawnRouteCommand(cwd, [binary, ...args], {
+          ...options,
+          env: { ...routeProviderEnv(target), ...options?.env },
+        });
+      // Given: setup already created the shared mkcert root and installed mkcert.
       const mkcert = join(paths.binDir, process.platform === "win32" ? "mkcert.exe" : "mkcert");
       expect(existsSync(mkcert), mkcert).toBe(true);
       const caroot = succeeded(
-        await spawnText(paths.binDir, [mkcert, "-CAROOT"], { timeout: 10_000 }),
+        await spawnRouteCommand(paths.binDir, [mkcert, "-CAROOT"], { timeout: 10_000 }),
       ).trim();
       const rootPem = await readFile(join(caroot, "rootCA.pem"), "utf8");
       expect(existsSync(join(paths.certsDir, "issued"))).toBe(false);
@@ -111,6 +76,7 @@ describe.serial("generated service certificates and router-less teardown", () =>
       const name = `certs-live-${crypto.randomUUID().slice(0, 8)}`;
       // This short lowercase/hyphen name is already a normalized planner slug.
       const container = serviceContainerName({ slug: name }, "web");
+      const inspectContainer = () => observeRouteContainer(target, container);
       const ownerKey = appIdentityKey("owner", root);
       const ownerCerts = join(paths.certsDir, "services", ownerKey);
       const routeFile = join(paths.globalAppRoot, "proxy-traefik", "dynamic", `routes-${ownerKey}.yml`);
@@ -121,7 +87,7 @@ describe.serial("generated service certificates and router-less teardown", () =>
           join(root, ".lando.yml"),
           [
             `name: ${name}`,
-            "provider: lando",
+            `provider: ${target.provider}`,
             "services:",
             "  web:",
             "    type: nginx",
@@ -154,7 +120,7 @@ describe.serial("generated service certificates and router-less teardown", () =>
         ).toBe(true);
         expect(existsSync(join(paths.certsDir, "issued"))).toBe(false);
         expect(existsSync(routeFile), routeFile).toBe(true);
-        const running = await inspectContainer(container);
+        const running = await inspectContainer();
         expect(running.State.Running).toBe(true);
 
         // And: a second start reuses the material and keeps the container.
@@ -163,7 +129,7 @@ describe.serial("generated service certificates and router-less teardown", () =>
         expect(second.certPath).toBe(first.certPath);
         expect(second.cert.equals(first.cert)).toBe(true);
         expect(second.key.equals(first.key)).toBe(true);
-        expect(await inspectContainer(container)).toEqual(running);
+        expect(await inspectContainer()).toEqual(running);
 
         // And: the service sees the same PEM files through its environment.
         const inside = succeeded(
@@ -186,7 +152,7 @@ describe.serial("generated service certificates and router-less teardown", () =>
           ok: false,
           error: { _tag: "ProxySetupError", proxyId: "missing" },
         });
-        expect(await inspectContainer(container)).toEqual(running);
+        expect(await inspectContainer()).toEqual(running);
 
         // Then: read and exec commands still work, and destroy withdraws routes and certificates.
         const info = Schema.decodeUnknownSync(infoEnvelope)(

@@ -554,7 +554,7 @@ The managed runtime runs containers with the bundle's own `crun` and `conmon`, w
 
 The job additionally provisions the rootless runtime prerequisites the Lando-managed Podman needs (`subuid`/`subgid` ranges, the `uidmap` package for `newuidmap`/`newgidmap`, `fuse-overlayfs` for rootless overlay storage on AppArmor-constrained Linux runners, cgroups v2 delegation, and unprivileged-port binding), downloads the current-commit runtime bundle that `runtime-bundle-linux-x64` assembled into `dist/cache/runtime-bundle/`, builds a `file://` manifest with `scripts/build-runtime-bundle.ts --local`, points `LANDO_RUNTIME_BUNDLE_MANIFEST` at it, sets `CONTAINERS_STORAGE_CONF` so Podman uses the bundled `fuse-overlayfs` helper instead of kernel overlay, and runs `dist/lando setup --yes --provider=lando`.
 
-Setup extracts the bundle and `ensureRuntime` brings up the Lando-managed Podman API socket at `$HOME/.local/share/lando/runtime/run/podman.sock`. Managed-CLI live suites require an explicit, answering `LANDO_TEST_PODMAN_SOCKET` that matches their Paths-resolved managed socket; a different socket does not enable them. Teardown is `dist/lando poweroff`.
+Setup extracts the bundle and `ensureRuntime` brings up the Lando-managed Podman API socket at `$HOME/.local/share/lando/runtime/run/podman.sock`. In managed mode, live suites such as the scanner require an explicit, answering `LANDO_TEST_PODMAN_SOCKET` that matches the managed socket for their Lando roots. Teardown is `dist/lando poweroff`.
 
 To reproduce the setup-driven provider preparation on a Linux x64 host, build `dist/lando`, then [assemble the current-commit runtime bundle](#build-a-linux-runtime-bundle) and set up the managed provider from its local manifest. Run these from the repository root:
 
@@ -577,6 +577,10 @@ bun run test:selection services-lando
 Setup needs `/run/user/$(id -u)` (owned by you, mode 0700) or an `XDG_RUNTIME_DIR` with the same properties as the base for the runtime's private directory; it does not use that base directly.
 
 Any manual `podman` command against the managed runtime must join the service's private runtime directory. The service records it in `$LANDO_USER_DATA_ROOT/runtime/run/podman.pid.launch.json` under `.env.XDG_RUNTIME_DIR`; read it with `jq` and export it as `XDG_RUNTIME_DIR` before the command, as above and as the generated workflows do through `landoManagedPodmanRuntimeDirCommands` in `scripts/build-ci-workflow.ts`. A different `XDG_RUNTIME_DIR` makes Podman start a second rootless user namespace and pause process against the same `--root` storage, which corrupts the running service's view of its containers.
+
+To run the nginx route, compensation failure, and service certificate suites against a Podman bridge, use a compiled CLI and leave Lando root overrides, `LANDO_TEST_USE_REAL_ROOTS`, and `LANDO_TEST_NGINX_PRIVATE` unset. If the bridge runs in another VM or WSL distro, set `TMPDIR` to a directory both sides can access at the same path so Podman can bind-mount the fixtures.
+
+Point `LANDO_TEST_PODMAN_SOCKET` at the answering bridge socket and run `bun run test:selection providers-core-live` from the repository root. The runner selects `podman` and [manages temporary roots](#test-root-isolation). The scanner and other managed-only suites remain disabled.
 
 ### Run the database journey spot checks
 

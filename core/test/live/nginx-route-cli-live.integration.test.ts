@@ -8,11 +8,13 @@ import { Schema } from "effect";
 import { ensureCompiledCli } from "../_support/compiled-cli.ts";
 import {
   binary,
-  cli,
   decodeStart,
   infoEnvelope,
-  managedLinuxMapsProjectUser,
-  prerequisite,
+  linuxProjectUserMapping,
+  resolveRoutePodmanTarget,
+  routeCli,
+  routeCliPrerequisite,
+  routeProviderEnv,
   run,
 } from "./route-cli-live-support.ts";
 
@@ -23,7 +25,8 @@ const strictProvider = Schema.decodeUnknownSync(Schema.UndefinedOr(Schema.Litera
   process.env.LANDO_TEST_NGINX_PRIVATE,
 );
 const docker = strictProvider === "docker";
-const provider = docker ? "docker" : "lando";
+const target = docker ? undefined : resolveRoutePodmanTarget(strictProvider === "lando");
+const prerequisite = routeCliPrerequisite(target);
 const systemDockerSocket = "/var/run/docker.sock";
 const systemDockerHost = `unix://${systemDockerSocket}`;
 
@@ -67,41 +70,34 @@ describe.serial("compiled CLI stock nginx", () => {
         expect(uid, "Run the private nginx check as a non-root user").toBeGreaterThan(0);
         expect(gid, "Run the private nginx check with a non-root group").toBeGreaterThan(0);
       }
-      if (!docker && prerequisite !== undefined) throw new Error(prerequisite);
+      if (!docker && (target === undefined || prerequisite !== undefined)) throw new Error(prerequisite);
       if (docker) await requireRootfulDocker();
-      const privateFiles = docker || (await managedLinuxMapsProjectUser(strictProvider === "lando"));
-      if (strictProvider === "lando") {
+      const provider = target?.provider ?? "docker";
+      const mapping =
+        target === undefined
+          ? "image-renumber"
+          : await linuxProjectUserMapping(target, strictProvider === "lando");
+      const privateFiles = mapping !== "unsupported";
+      if (strictProvider === "lando")
         expect(privateFiles, "The managed Linux socket must report a rootless engine").toBe(true);
-      }
       const cliBinary = docker ? await ensureCompiledCli() : binary;
-      const appCli = (cwd: string, args: readonly string[], timeout = 60_000) =>
-        docker
-          ? run(
-              cwd,
-              [
-                "env",
-                "LANDO_PROVIDER=docker",
-                `DOCKER_HOST=${systemDockerHost}`,
-                cliBinary,
-                ...args,
-                "--format=json",
-              ],
-              timeout,
-            )
-          : cli(cwd, args, timeout);
+      const appCli = routeCli(
+        cliBinary,
+        target === undefined
+          ? { LANDO_PROVIDER: "docker", DOCKER_HOST: systemDockerHost }
+          : routeProviderEnv(target),
+      );
       // Given: a uniquely named app outside the repository and, for route coverage, an installed router.
       const root = await mkdtemp(join(tmpdir(), "lando-nginx-route-cli-"));
       const name = `route-cli-${crypto.randomUUID()}`;
       const hostname = `${name}.lndo.site`;
       const body = `nginx-route-proof-${crypto.randomUUID()}`;
       try {
-        if (!docker) {
+        const expectRouterProvider = async () => {
           const global = Schema.decodeUnknownSync(infoEnvelope)(await appCli(root, ["global:info"])).result;
-          expect(
-            global.services.find((service) => service.service === "traefik"),
-            "The inherited roots must contain the installed managed global Traefik app; this test never runs setup.",
-          ).toMatchObject({ provider });
-        }
+          expect(global.services.find((service) => service.service === "traefik")?.provider).toBe(provider);
+        };
+        if (provider === "lando") await expectRouterProvider();
         const publicRoot = join(root, "public");
         const index = join(publicRoot, "index.html");
         if (process.platform !== "win32") await chmod(root, privateFiles ? 0o700 : 0o755);
@@ -197,6 +193,8 @@ describe.serial("compiled CLI stock nginx", () => {
           const response = await request(url);
           const firstHttpMs = performance.now() - readyAt;
           expect(response).toBe(`${body}\n200`);
+          // Bridge setup skips Traefik; the first routed start must materialize it.
+          if (provider === "podman") await expectRouterProvider();
           const missingStatus = (await request(new URL("/missing.html", url))).split("\n").at(-1);
           expect(missingStatus).toBe("404");
           const after = privateFiles ? await permissions() : undefined;
@@ -206,11 +204,8 @@ describe.serial("compiled CLI stock nginx", () => {
           const web = info.services.find((service) => service.service === "web");
           if (web === undefined) throw new Error(`info omitted web for ${name}`);
           expect(web.provider).toBe(provider);
-          if (privateFiles) {
-            expect(web.projectUser).toEqual(
-              docker ? { name: "nginx", uid, gid } : { name: "nginx", uid: 101, gid: 101 },
-            );
-          }
+          const projectIds = mapping === "image-renumber" ? { uid, gid } : { uid: 101, gid: 101 };
+          if (privateFiles) expect(web.projectUser).toEqual({ name: "nginx", ...projectIds });
           const listener = web.connections.find((connection) => connection.scope === "app");
           expect(listener).toMatchObject({
             source: "listener",
@@ -219,9 +214,8 @@ describe.serial("compiled CLI stock nginx", () => {
             protocol: "http",
             state: "active",
           });
-          if (!docker) {
-            expect(web.connections.filter((connection) => connection.source === "publication")).toEqual([]);
-          }
+          if (!docker)
+            expect(web.connections.some((connection) => connection.source === "publication")).toBe(false);
           const ingress = web.connections.find(
             (connection) =>
               connection.source === (docker ? "publication" : "route") && connection.host === url.hostname,
