@@ -57,6 +57,7 @@ export type SqlRecoveryContext = {
   readonly resume: Effect.Effect<void, unknown>;
   readonly suspend: Effect.Effect<void, unknown>;
   readonly verifyVolume: Effect.Effect<void, unknown>;
+  readonly verifyStopped: Effect.Effect<void, unknown>;
 };
 
 export type SqlPhysicalContextInput = {
@@ -70,6 +71,8 @@ export type SqlPhysicalContextInput = {
   readonly label?: string;
   readonly format?: "tar" | "tar.gz" | "tar.zst";
   readonly preflight?: (context: SqlRecoveryContext) => Effect.Effect<void, unknown>;
+  /** Series-only provenance for an offline restore. Do not start a server to query its version. */
+  readonly offlineDataVersion?: NonNullable<SnapshotMetadata["dataVersion"]>;
   readonly adoptLegacy?: boolean;
 };
 
@@ -185,14 +188,19 @@ export const resolvePhysicalContext = Effect.fnUntraced(function* (
   input: SqlPhysicalContextInput,
   target: SqlPhysicalTarget,
 ) {
-  const version = yield* observeDatabaseVersion({
-    deps: input.deps,
-    service: input.serviceName,
-    family: input.family,
-    creds: input.creds,
-    env: input.env,
-    runtime: target.runtime,
-  });
+  const version =
+    input.offlineDataVersion === undefined
+      ? {
+          version: yield* observeDatabaseVersion({
+            deps: input.deps,
+            service: input.serviceName,
+            family: input.family,
+            creds: input.creds,
+            env: input.env,
+            runtime: target.runtime,
+          }),
+        }
+      : { dataVersion: input.offlineDataVersion };
   const identity = target.identity;
   const verifyVolume = Effect.suspend(() =>
     input.deps.inspectVolume(input.serviceName, target.mountStore, target.mountTarget),
@@ -239,12 +247,13 @@ export const resolvePhysicalContext = Effect.fnUntraced(function* (
     resume: exactTransition(true, input.deps.resume(input.serviceName, target.runtime)),
     suspend: exactTransition(false, input.deps.suspend(input.serviceName, target.runtime)),
     verifyVolume,
+    verifyStopped: verifyRuntimeState(input.deps, input.serviceName, target.runtime, false),
     volumeIdentity: identity,
     metadata: {
       service: ServiceName.make(input.serviceName),
       volumeInstanceId: identity.generation,
       family: input.family,
-      version,
+      ...version,
       imageIdentity: target.runtime.imageIdentity,
       recoveryReason: "manual",
     } satisfies SnapshotMetadata,

@@ -32,6 +32,7 @@ import { type PreparedStartOverlays, prepareStartOverlays } from "./start-overla
 import { launchAdmittedSelectedStart } from "./start-selected.ts";
 import { preflightStopApp } from "./stop-internal.ts";
 import { retireSupersededRealizations, validateSelectedRename } from "./superseded-realizations.ts";
+import { withUpgradeRestorePoints } from "./upgrade-restore-points.ts";
 import {
   publishPlacementVolumeTransitionNotices,
   withVolumeTransitionNotices,
@@ -67,6 +68,7 @@ interface StartActivation {
   readonly target: ResolvedAppTarget;
   readonly services: ReadonlyArray<ServiceName> | undefined;
   readonly signal: AbortSignal | undefined;
+  readonly noSnapshot?: boolean | undefined;
   readonly managed: StartManagedScope | undefined;
 }
 interface RestartActivation {
@@ -74,6 +76,7 @@ interface RestartActivation {
   readonly target: ResolvedAppTarget;
   readonly services: ReadonlyArray<ServiceName> | undefined;
   readonly signal: AbortSignal | undefined;
+  readonly noSnapshot?: boolean | undefined;
   readonly managed: StartManagedScope | undefined;
 }
 interface RebuildActivation extends Omit<RestartActivation, "operation"> {
@@ -143,6 +146,7 @@ export function withAppActivation<A, E, R>(
           resumed = yield* startAppForTarget(
             {
               ...(signal === undefined ? {} : { signal }),
+              ...(request.noSnapshot === undefined ? {} : { noSnapshot: request.noSnapshot }),
               ...(pending.record.services === undefined ? {} : { services: pending.record.services }),
             },
             target,
@@ -167,70 +171,92 @@ export function withAppActivation<A, E, R>(
         const overlays = yield* prepareStartOverlays({ ...target, plan: selectedPlan }, selectedProvider);
         const provider = yield* prepare;
         if (!scoped) yield* claimDataIdentityBeforeRetirement(target, placement.superseded, provider);
-        const retired = yield* retireSupersededRealizations(target, placement.superseded, {
-          provider,
-          selectedServices: scoped,
+        const prepareTransitions = Effect.gen(function* () {
+          const retired = yield* retireSupersededRealizations(target, placement.superseded, {
+            provider,
+            selectedServices: scoped,
+          });
+          if (request.operation === "start" && !scoped) yield* rotateChangedFileSync(target, provider);
+          return retired;
         });
-        if (request.operation === "start" && !scoped) yield* rotateChangedFileSync(target, provider);
+        // Rotation and retirement can replace the original too. Hold their volumes before capture.
+        const capture = dataUpgrades.length > 0 && request.noSnapshot !== true;
+        const retiredBeforeCapture = capture ? undefined : yield* prepareTransitions;
         const stateStore = yield* StateStore;
+        const withRestorePoints = withUpgradeRestorePoints({
+          app: plan.name,
+          provider,
+          upgrades: dataUpgrades,
+          noSnapshot: request.noSnapshot,
+        });
         return yield* withLaunchVolumeCoordination({
           plan,
           // A halt also tears down the applied plan, so restart and rebuild lock its volumes up front.
-          additionalPlans:
-            request.operation === "start" || placement.plan === undefined ? [] : [placement.plan],
+          additionalPlans: [
+            ...(capture ? placement.superseded : []),
+            ...((capture || request.operation !== "start") && placement.plan !== undefined
+              ? [placement.plan]
+              : []),
+          ],
           provider,
           stateStore,
-          body: Effect.fnUntraced(function* () {
-            yield* claimAppDataIdentity(target);
-            let preparedTargets: readonly PreparedFileSyncTarget[] | undefined;
-            switch (request.operation) {
-              case "start":
-                preparedTargets = yield* preflightStartAppDrain(target, undefined, services);
-                break;
-              case "restart":
-              case "rebuild": {
-                const stopPreflight = yield* preflightStopApp(target);
-                yield* preflightStartAppDrain(target, stopPreflight);
-                break;
-              }
-              default:
-                return request satisfies never;
-            }
-            if (!retired) yield* ensureStartTransactionConsistent(target);
-            let appliedPlan: AppPlan | undefined;
-            if (scoped) {
-              appliedPlan =
-                request.operation === "start"
-                  ? placement.plan
-                  : yield* preflightSelectedRelaunch(target, selectedPlan, request.operation);
-            }
-            yield* publishDataUpgradeNotices(dataUpgrades);
-            if (resumed === undefined) yield* runAppInitEvents(plan);
-            const dataVersionChanges = [
-              ...(resumed?.dataVersionChanges ?? []),
-              ...dataUpgrades.map(({ service, from, to }) => ({ service, from, to })),
-            ];
-            const base = {
-              [admitted]: true as const,
-              target,
-              provider,
-              placement,
-              dataUpgrades,
-              removedByResume: resumed?.servicesRemoved ?? [],
-              ...(dataVersionChanges.length === 0 ? {} : { dataVersionChanges }),
-            };
-            const admission = scoped
-              ? {
-                  ...base,
-                  scope: "services" as const,
-                  selectedPlan,
-                  overlays,
-                  appliedPlan,
-                  preparedTargets,
+          body: withRestorePoints(
+            Effect.fnUntraced(function* (points) {
+              const retired = capture ? yield* prepareTransitions : retiredBeforeCapture;
+              yield* claimAppDataIdentity(target);
+              let preparedTargets: readonly PreparedFileSyncTarget[] | undefined;
+              switch (request.operation) {
+                case "start":
+                  preparedTargets = yield* preflightStartAppDrain(target, undefined, services);
+                  break;
+                case "restart":
+                case "rebuild": {
+                  const stopPreflight = yield* preflightStopApp(target);
+                  yield* preflightStartAppDrain(target, stopPreflight);
+                  break;
                 }
-              : { ...base, scope: "app" as const, overlays, preparedTargets };
-            return yield* body(admission);
-          }),
+                default:
+                  return request satisfies never;
+              }
+              if (!retired) yield* ensureStartTransactionConsistent(target);
+              let appliedPlan: AppPlan | undefined;
+              if (scoped) {
+                appliedPlan =
+                  request.operation === "start"
+                    ? placement.plan
+                    : yield* preflightSelectedRelaunch(target, selectedPlan, request.operation);
+              }
+              yield* publishDataUpgradeNotices(dataUpgrades);
+              if (resumed === undefined) yield* runAppInitEvents(plan);
+              const dataVersionChanges = [
+                ...(resumed?.dataVersionChanges ?? []),
+                ...dataUpgrades.map(({ service, from, to }) => {
+                  const restorePoint = points.get(service);
+                  return { service, from, to, ...(restorePoint === undefined ? {} : { restorePoint }) };
+                }),
+              ];
+              const base = {
+                [admitted]: true as const,
+                target,
+                provider,
+                placement,
+                dataUpgrades,
+                removedByResume: resumed?.servicesRemoved ?? [],
+                ...(dataVersionChanges.length === 0 ? {} : { dataVersionChanges }),
+              };
+              const admission = scoped
+                ? {
+                    ...base,
+                    scope: "services" as const,
+                    selectedPlan,
+                    overlays,
+                    appliedPlan,
+                    preparedTargets,
+                  }
+                : { ...base, scope: "app" as const, overlays, preparedTargets };
+              return yield* body(admission);
+            }),
+          ),
         });
       }),
     ),
@@ -244,7 +270,14 @@ export const startAppForTarget = Effect.fn("AppOperation.startForTarget")(functi
   execution: { readonly beforeStart?: Effect.Effect<void> } = {},
 ): Effect.fn.Return<StartAppResult, AppActivationError, AppActivationServices> {
   return yield* withAppActivation(
-    { operation: "start", target, services: options?.services, signal: options?.signal, managed },
+    {
+      operation: "start",
+      target,
+      services: options?.services,
+      signal: options?.signal,
+      noSnapshot: options?.noSnapshot,
+      managed,
+    },
     (admission) =>
       Effect.gen(function* () {
         yield* (execution.beforeStart ?? Effect.void).pipe(Effect.uninterruptible);

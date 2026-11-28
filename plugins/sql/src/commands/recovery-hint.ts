@@ -13,6 +13,7 @@ export const renderRecoveryHint = (result: DbCommandResult): string =>
       : [
           `Saved recovery snapshot ${result.recoverySnapshotId}. To undo, run: lando db:restore ${result.recoverySnapshotId} --service ${result.service} --yes`,
         ]),
+    ...(result.nextStep === undefined ? [] : [result.nextStep]),
   ].join("\n");
 
 export const render: NonNullable<ExecutableCommandSpec<DbCommandResult>["render"]> = ({ result }) => {

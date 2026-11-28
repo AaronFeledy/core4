@@ -68,6 +68,7 @@ export const rebuildApp = Effect.fn("AppOperation.rebuild")(function* (
       target: initialTarget,
       services: options.services,
       signal: options.signal,
+      noSnapshot: options.noSnapshot,
       managed,
     },
     Effect.fnUntraced(function* (admitted) {

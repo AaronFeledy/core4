@@ -283,10 +283,19 @@ export const SnapshotMetadata = Schema.Union([
       description: "Physical source volume creation identity.",
     }),
     family: Schema.String.annotate({ description: "Observed database family." }),
-    version: Schema.String.annotate({ description: "Observed database version." }),
+    version: Schema.optionalKey(Schema.String).annotate({ description: "Observed database version." }),
+    dataVersion: Schema.optionalKey(
+      Schema.Struct({
+        label: Schema.String.annotate({ description: "Database product name." }),
+        series: Schema.String.annotate({ description: "On-disk database version series at capture." }),
+        source: Schema.Literals(["record", "running-image", "applied-plan"]).annotate({
+          description: "Evidence used to determine the on-disk series.",
+        }),
+      }),
+    ).annotate({ description: "Database series evidence, separate from an observed server version." }),
     imageIdentity: Schema.String.annotate({ description: "Observed immutable runtime image identity." }),
     path: Schema.optionalKey(Schema.Never),
-    recoveryReason: Schema.Literals(["manual", "reset", "restore", "import", "seed"]).annotate({
+    recoveryReason: Schema.Literals(["manual", "reset", "restore", "import", "seed", "upgrade"]).annotate({
       description: "Reason this durable recovery point was created.",
     }),
   }),
@@ -300,6 +309,7 @@ export const SnapshotMetadata = Schema.Union([
     }),
     volumeInstanceId: Schema.optionalKey(Schema.Never),
     imageIdentity: Schema.optionalKey(Schema.Never),
+    dataVersion: Schema.optionalKey(Schema.Never),
   }),
 ]);
 export type SnapshotMetadata = typeof SnapshotMetadata.Type;
@@ -343,10 +353,10 @@ export const SnapshotHandle = Schema.Struct({
 export type SnapshotHandle = typeof SnapshotHandle.Type;
 
 /**
- * StateStore version of a persisted snapshot sidecar. Version 2 added the SQLite
- * metadata arm; version 1 records are server snapshots and decode unchanged.
+ * StateStore version of the DataMover snapshot sidecar. Version 3 adds data-series
+ * evidence. Version 2 added SQLite metadata; both earlier versions decode unchanged.
  */
-export const SNAPSHOT_INFO_VERSION = 2;
+export const SNAPSHOT_INFO_VERSION = 3;
 
 /**
  * Persisted snapshot sidecar record.
@@ -413,6 +423,9 @@ export const PrunePolicy = Schema.Struct({
     description:
       "Prune automatic recovery snapshots instead of manual or unclassified snapshots. Defaults to false.",
   }),
+  includeUpgrade: Schema.optionalKey(Schema.Boolean).annotate({
+    description: "Include upgrade restore points in explicit recovery pruning. Defaults to false.",
+  }),
   retainSnapshotIds: Schema.optionalKey(Schema.Array(SnapshotId)).annotate({
     description:
       "Keep these snapshots first within the selected bucket's keepLatest budget, regardless of timestamp.",
@@ -421,15 +434,16 @@ export const PrunePolicy = Schema.Struct({
 export type PrunePolicy = typeof PrunePolicy.Type;
 
 /**
- * The retention bucket `PrunePolicy.recovery` selects. Manual snapshots and snapshots with no
- * recorded `recoveryReason` share the manual bucket; every other reason is an automatic recovery
- * snapshot. Previews and deletions both use this so a confirmation lists exactly what is removed.
+ * Previews and deletions select the same bucket. Upgrade points are protected from
+ * automatic retention, and eligible only for explicit recovery pruning.
  */
 export const snapshotInPruneBucket = (
   snapshot: Pick<SnapshotInfo, "metadata">,
   recovery: boolean,
+  includeUpgrade = false,
 ): boolean => {
   const reason = snapshot.metadata?.recoveryReason;
+  if (reason === "upgrade") return recovery && includeUpgrade;
   const manual = reason === undefined || reason === "manual";
   return recovery ? !manual : manual;
 };

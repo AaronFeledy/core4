@@ -68,6 +68,7 @@ export const restartApp = Effect.fn("AppOperation.restart")(
         target: initialTarget,
         services: options.services,
         signal: options.signal,
+        noSnapshot: options.noSnapshot,
         managed,
       },
       Effect.fnUntraced(function* (admitted) {

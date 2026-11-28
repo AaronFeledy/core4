@@ -18,9 +18,13 @@ import {
 import { EventService, type ProviderError } from "@lando/sdk/services";
 import { DateTime, Effect } from "effect";
 import type { PreparedRuntimeProvider } from "../providers/prepared.ts";
+import { upgradeRestoreRemediation } from "./upgrade-restore-points.ts";
 
 export interface DataUpgrade {
   readonly service: ServiceName;
+  readonly target: PortablePath;
+  readonly store: string;
+  readonly appliedPlan: AppPlan;
   readonly label: string;
   readonly from: string;
   readonly to: string;
@@ -204,6 +208,9 @@ export const assessDataVersions = Effect.fn("AppActivation.assessDataVersions")(
         if (upgrade === undefined || compareDataSeries(from, upgrade.from, series.depth) === 1)
           upgrade = {
             service: service.name,
+            target: contract.target,
+            store: mount.store,
+            appliedPlan,
             label: contract.label,
             from,
             to,
@@ -222,6 +229,18 @@ export const assessDataVersions = Effect.fn("AppActivation.assessDataVersions")(
         evidence.source === "running-image"
           ? `data last opened by ${contract.label} ${from}`
           : `data with recorded ${contract.label} version ${from}`;
+      const restore =
+        comparison === 1
+          ? yield* upgradeRestoreRemediation({
+              plan: appliedPlan,
+              service: service.name,
+              store: mount.store,
+              label: contract.label,
+              depth: series.depth,
+              series: to,
+              family: service.connection?.family,
+            })
+          : undefined;
       return yield* new ServiceDataVersionError({
         app: desired.name,
         service: service.name,
@@ -230,7 +249,9 @@ export const assessDataVersions = Effect.fn("AppActivation.assessDataVersions")(
         ...(applied.artifact?.kind === "ref" ? { appliedImage: applied.artifact.ref } : {}),
         dataVersion: finding,
         message: `Service ${service.name}: the previous container is still running unchanged. ${contract.label} ${to} cannot open ${data}.`,
-        remediation: dataVersionRemediation(desired, service, { finding }),
+        remediation: [restore, dataVersionRemediation(desired, service, { finding })]
+          .filter(Boolean)
+          .join(" "),
       });
     }
     if (upgrade !== undefined) dataUpgrades.push(upgrade);

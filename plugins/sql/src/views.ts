@@ -5,6 +5,7 @@ import {
   DatabaseConnection,
   Environment,
   ServiceCreds,
+  ServiceDataVersion,
   type ServicePlan,
   planAppIdentity,
   planDataId,
@@ -49,6 +50,7 @@ export type SqlPlanService = {
   readonly type: string;
   readonly environment: Environment;
   readonly connection?: DatabaseConnection;
+  readonly dataVersion?: ServiceDataVersion;
   readonly sqlite?: { readonly path: string };
   readonly user?: string;
   readonly mounts: ReadonlyArray<SqlPlanMount>;
@@ -212,6 +214,9 @@ export const toSqlPlan = (value: unknown): SqlPlan => {
       ...(service.connection === undefined
         ? {}
         : { connection: Schema.decodeUnknownSync(DatabaseConnection)(service.connection) }),
+      ...(service.dataVersion === undefined
+        ? {}
+        : { dataVersion: Schema.decodeUnknownSync(ServiceDataVersion)(service.dataVersion) }),
       ...(sqlitePath === undefined ? {} : { sqlite: { path: sqlitePath } }),
       ...(typeof service.user === "string" ? { user: service.user } : {}),
       mounts,

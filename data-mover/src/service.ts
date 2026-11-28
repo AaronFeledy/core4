@@ -1761,7 +1761,7 @@ export const makeDataMoverService = (
           }
           const retained = new Set(policy.retainSnapshotIds?.map(String));
           return [...infos]
-            .filter((info) => snapshotInPruneBucket(info, policy.recovery === true))
+            .filter((info) => snapshotInPruneBucket(info, policy.recovery === true, policy.includeUpgrade))
             .sort(
               (left, right) =>
                 Number(retained.has(String(right.id))) - Number(retained.has(String(left.id))) ||

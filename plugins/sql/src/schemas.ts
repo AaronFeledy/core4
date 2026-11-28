@@ -15,6 +15,7 @@ export const DbCommandResult = Schema.Struct({
   file: Schema.optionalKey(Schema.String),
   format: Schema.optionalKey(Schema.Literals(["sql", "sqlite"])),
   snapshotId: Schema.optionalKey(Schema.String),
+  nextStep: Schema.optionalKey(Schema.String),
   recoverySnapshotId: Schema.optionalKey(Schema.String),
   recoveryPath: Schema.optionalKey(Schema.String),
   recoverySkipped: Schema.optionalKey(Schema.Literal("database-missing")),

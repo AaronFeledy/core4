@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
 import { ServiceExecError } from "@lando/sdk/errors";
 import { AbsolutePath } from "@lando/sdk/schema";
-import type { CommandSpec, ExecTarget } from "@lando/sdk/services";
-import { Effect } from "effect";
+import { type CommandSpec, DataMover, type ExecTarget } from "@lando/sdk/services";
+import { Context, Effect } from "effect";
 import { withAppActivation } from "../../src/operations/app-activation.ts";
 import { rebuildApp } from "../../src/operations/rebuild.ts";
 import { restartApp } from "../../src/operations/restart.ts";
@@ -197,6 +197,7 @@ test.each([
         target: fixture.target,
         services: undefined,
         signal: undefined,
+        noSnapshot: true,
         managed: undefined,
       },
       ({ dataUpgrades }) => Effect.succeed(dataUpgrades),
@@ -223,12 +224,23 @@ test("proceeds without an upgrade finding when the running service's mount canno
 
 test("reports an in-place upgrade before applying", async () => {
   const fixture = setup({ from: "10.11", to: "11.4", evidence: "record" });
-  const result = await Effect.runPromise(startApp({}, fixture.target).pipe(Effect.provide(fixture.layer)));
+  const result = await Effect.runPromise(
+    startApp({}, fixture.target).pipe(
+      Effect.updateContext((context: Context.Context<Effect.Services<ReturnType<typeof startApp>>>) =>
+        Context.omit(DataMover)(context),
+      ),
+      Effect.provide(fixture.layer),
+    ),
+  );
   expect(result.dataVersionChanges).toEqual([{ service: "web", from: "10.11", to: "11.4" }]);
   const firstApply = fixture.timeline.findIndex(({ kind }) => kind === "apply");
   expect(fixture.timeline[firstApply]).toEqual({ kind: "apply" });
   expect(fixture.timeline.slice(0, firstApply)).toContainEqual({
     kind: "notice",
     body: expect.stringMatching(/\bweb\b.*\bMariaDB\b.*\b10\.11\b.*\b11\.4\b/su),
+  });
+  expect(fixture.timeline.slice(0, firstApply)).toContainEqual({
+    kind: "notice",
+    body: expect.stringMatching(/no restore point.*web/iu),
   });
 });

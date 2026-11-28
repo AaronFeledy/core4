@@ -912,6 +912,7 @@
       "ServiceFeatureError",
       "ServiceNotFoundError",
       "ServiceNotReadyError",
+      "ServiceRestorePointError",
       "ServiceStartError",
       "ServiceTypeCollisionError",
       "ServiceTypeError",

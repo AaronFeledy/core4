@@ -454,6 +454,7 @@ describe("SDK plan-carrying error channels", () => {
         | import("@lando/sdk/services").FileSystemError
         | ServiceNotReadyError
         | import("@lando/sdk/errors").ServiceDataVersionError
+        | import("@lando/sdk/errors").ServiceRestorePointError
         | DebuggerHostUnavailableError
         | import("@lando/sdk/errors").AppPlacementError
         | import("@lando/sdk/errors").AppResolveError
