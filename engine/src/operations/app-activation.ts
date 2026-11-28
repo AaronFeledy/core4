@@ -213,9 +213,9 @@ export function withAppActivation<A, E, R>(
           provider,
           stateStore,
           body: withRestorePoints(
-            Effect.fnUntraced(function* ({ prepareUpgrade: captureOnce, points, verifiedFrom }) {
+            Effect.fnUntraced(function* ({ prepareUpgrade: captureOnce, points, verifiedFrom, upgrades }) {
               const verifiedUpgrades = () =>
-                dataUpgrades.map((upgrade) => ({
+                upgrades.map((upgrade) => ({
                   ...upgrade,
                   from: verifiedFrom.get(upgrade.service) ?? upgrade.from,
                 }));
