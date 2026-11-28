@@ -81,7 +81,7 @@ const waitForExit = async (api: DockerApiClient, requestedService = serviceName,
   );
   await Effect.runPromise(persistAppliedPlan(appliedPlanState, plan));
   const provider = await Effect.runPromise(
-    makeRuntimeProvider({ platform: "linux", dockerApi: api, appliedPlanState }),
+    makeRuntimeProvider({ platform: "linux", env: {}, dockerApi: api, appliedPlanState }),
   );
   return Effect.runPromise(
     Effect.scoped(
@@ -102,7 +102,12 @@ const waitFailure = async (api: DockerApiClient, requestedService = serviceName)
         ownerOnlyFileAccess,
       );
       yield* persistAppliedPlan(appliedPlanState, plan);
-      const provider = yield* makeRuntimeProvider({ platform: "linux", dockerApi: api, appliedPlanState });
+      const provider = yield* makeRuntimeProvider({
+        platform: "linux",
+        env: {},
+        dockerApi: api,
+        appliedPlanState,
+      });
       return yield* Effect.flip(
         Effect.scoped(provider.waitForExit({ app: appId, service: requestedService })),
       );

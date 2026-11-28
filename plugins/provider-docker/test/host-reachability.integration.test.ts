@@ -45,10 +45,11 @@ test.skipIf(dockerHost === undefined)(
         socket.on("error", reject);
       });
       expect(localResponse, "local IPv4 listener control").toBe(token);
-      const api = makeDockerApiClient(dockerHost);
+      const api = makeDockerApiClient(dockerHost ?? "");
       const provider = await Effect.runPromise(
         makeRuntimeProvider({
           platform: "linux",
+          env: {},
           dockerApi: api,
           resolveContainerHelper: resolveBuiltContainerHelperForTest,
           appliedPlanState: makePluginStateStore(

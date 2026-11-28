@@ -144,6 +144,35 @@ describe("doctor chaos: provider path", () => {
     expect(result.provider?.selection.providerId).toBe("lando");
   });
 
+  test("leads with the remediation the provider's selection failure carries", async () => {
+    // Given a provider that refuses its configuration with a specific fix
+    const layers = layersFor(
+      makeTestRuntimeProviderRegistry({
+        list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
+        select: () =>
+          Effect.fail(
+            new ProviderUnavailableError({
+              providerId: TestRuntimeProvider.id,
+              operation: "select",
+              message: 'Docker context "remote" connects over TLS.',
+              remediation: "Run `docker context use <name>` for a local socket context, then retry.",
+            }),
+          ),
+      }),
+    );
+
+    // When
+    const result = await Effect.runPromise(doctor({}).pipe(Effect.provide(layers)));
+
+    // Then that fix comes first and setup follows with its command
+    const check = result.checks.find((entry) => entry.name === "selected-provider");
+    expect(check?.solutions[0]).toEqual({
+      kind: "manual",
+      description: "Run `docker context use <name>` for a local socket context, then retry.",
+    });
+    expect(check?.solutions[1]?.command).toBe("lando setup");
+  });
+
   test("degrades to a failed check when the provider status probe fails", async () => {
     // Given
     const layers = layersFor(

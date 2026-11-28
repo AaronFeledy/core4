@@ -27,6 +27,8 @@ export const makeProviderLayer = (options: NonNullable<Parameters<typeof provide
         resolveContainerHelper: resolveBuiltContainerHelperForTest,
         ...options,
         ...supervisedExecFixtureOptions(options.dockerApi),
+        // Isolate from the host Docker CLI context unless a test supplies env.
+        env: options.env ?? {},
         appliedPlanState: options.appliedPlanState ?? testPluginState(),
       }),
     ),

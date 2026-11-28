@@ -132,7 +132,9 @@ describe("provider-docker logs", () => {
         consoleFrame(2, "2026-05-17T12:00:03.000Z part\n"),
       ],
     });
-    const provider = await Effect.runPromise(makeRuntimeProvider({ platform: "linux", dockerApi: fake.api }));
+    const provider = await Effect.runPromise(
+      makeRuntimeProvider({ platform: "linux", env: {}, dockerApi: fake.api }),
+    );
     const logs = await collectLogs(
       provider.logs(
         { app: appId, service: serviceName, ...(withPlan ? { plan: makePlan() } : {}) },
@@ -152,7 +154,9 @@ describe("provider-docker logs", () => {
   test("streams Docker Engine logs when the app plan is passed in the target", async () => {
     const fake = makeFakeApi();
     const provider = await Effect.runPromise(
-      RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ platform: "linux", dockerApi: fake.api }))),
+      RuntimeProvider.pipe(
+        Effect.provide(makeProviderLayer({ platform: "linux", env: {}, dockerApi: fake.api })),
+      ),
     );
     const plan = makePlan();
 
@@ -188,7 +192,9 @@ describe("provider-docker logs", () => {
       ],
       logLine: "discovered",
     });
-    const provider = await Effect.runPromise(makeRuntimeProvider({ platform: "linux", dockerApi: fake.api }));
+    const provider = await Effect.runPromise(
+      makeRuntimeProvider({ platform: "linux", env: {}, dockerApi: fake.api }),
+    );
 
     const logs = await collectLogs(
       provider.logs({ app: appId, service: serviceName }, { follow: false, tail: 20 }),
@@ -204,7 +210,9 @@ describe("provider-docker logs", () => {
 
   test("does not report unimplemented logs when the container is missing", async () => {
     const fake = makeFakeApi();
-    const provider = await Effect.runPromise(makeRuntimeProvider({ platform: "linux", dockerApi: fake.api }));
+    const provider = await Effect.runPromise(
+      makeRuntimeProvider({ platform: "linux", env: {}, dockerApi: fake.api }),
+    );
 
     const exit = await Effect.runPromiseExit(
       Stream.runCollect(provider.logs({ app: appId, service: serviceName }, { follow: false })),

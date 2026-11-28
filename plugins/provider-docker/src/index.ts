@@ -102,7 +102,7 @@ import {
   type RuntimeProviderShape,
   type ServiceRuntimeInfo,
 } from "@lando/sdk/services";
-import { Effect, Layer, Schema, Stream } from "effect";
+import { Effect, Layer, Result, Schema, Stream } from "effect";
 
 import { AGENT_RELAY_IMAGE, makeDockerDesktopAgentSocketBridge } from "./agent-socket-relay.ts";
 import {
@@ -111,7 +111,15 @@ import {
   persistAppliedPlan,
   removeAppliedPlan,
 } from "./applied-state.ts";
+import {
+  type UnsupportedDockerEndpointError,
+  endpointLabel,
+  resolveDockerHost,
+  unsupportedEndpointDetails,
+} from "./docker-endpoint.ts";
+import { dockerEndpointCheck } from "./docker-endpoint-check.ts";
 import { makeIptablesForwardCheck } from "./iptables-forward-check.ts";
+import { dockerRuntimeForEndpoint, unreachableDockerRemediation } from "./runtime-hint.ts";
 
 export type {
   DockerApiClient,
@@ -127,6 +135,7 @@ export {
   persistAppliedPlan,
   removeAppliedPlan,
 } from "./applied-state.ts";
+export { resolveDockerHost } from "./docker-endpoint.ts";
 
 export const PLUGIN_NAME = "@lando/provider-docker" as const;
 
@@ -137,16 +146,6 @@ const DOCKER_CTX_BASE = {
   remediation:
     "Run `lando doctor --provider=docker` to inspect the Docker provider, then retry `lando start`.",
 } as const;
-
-const unreachableDocker = (error: ProviderUnavailableError) =>
-  new ProviderUnavailableError({
-    providerId: error.providerId,
-    operation: "getStatus",
-    message: error.message,
-    remediation:
-      "Start Docker Desktop or Docker Engine, verify access to the configured Docker socket, then retry the command.",
-    cause: error,
-  });
 
 const DOCKER_CTX: ProviderErrorContext = { ...DOCKER_CTX_BASE, env: {} };
 
@@ -173,12 +172,6 @@ export interface ProviderLayerOptions {
   readonly sanitizeAppliedPlan?: (plan: AppPlan) => AppPlan;
   /** Lando user-data root; file-mode bind copies live beneath it. */
   readonly userDataRoot?: string;
-}
-
-export interface ResolveDockerHostOptions {
-  readonly dockerHost?: string;
-  readonly platform?: HostPlatform;
-  readonly env?: Readonly<Record<string, string | undefined>>;
 }
 
 export type EmitComposeOptions = Omit<RuntimeEmitComposeOptions, "ctx">;
@@ -247,9 +240,6 @@ const request = Effect.fn("DockerApi.request")(
     api.request === undefined ? Effect.fail(missingApi(operation)) : api.request(input),
 );
 
-const unixSocketPath = (dockerHost: string) =>
-  dockerHost.startsWith("unix://") ? dockerHost.slice("unix://".length) : dockerHost;
-
 export const isNpipeDockerHost = (dockerHost: string): boolean => dockerHost.startsWith("npipe:");
 
 export const npipeSocketPath = normalizeNamedPipePath;
@@ -257,14 +247,29 @@ export const npipeSocketPath = normalizeNamedPipePath;
 const isVmMediatedDockerHost = (platform: HostPlatform, dockerHost: string): boolean => {
   const family = hostPlatformFamily(platform);
   if (family === "darwin" || family === "win32") return true;
-  const socketPath = unixSocketPath(dockerHost);
-  return (
+  if (
     dockerHost.startsWith("tcp://") ||
     dockerHost.startsWith("http://") ||
-    dockerHost.startsWith("https://") ||
-    socketPath.includes("/.docker/desktop/") ||
-    socketPath.includes("/.docker/run/")
-  );
+    dockerHost.startsWith("https://")
+  ) {
+    return true;
+  }
+  return dockerRuntimeForEndpoint(dockerHost, platform)?.vmMediated === true;
+};
+
+/**
+ * The volume relay reaches its host broker through Docker Desktop's `host.docker.internal` gateway.
+ * A Linux VM runtime without that gateway gets no delivery rather than one that cannot connect.
+ */
+const agentSocketDelivery = (
+  platform: HostPlatform,
+  dockerHost: string,
+): "bind-directory" | "volume-relay" | undefined => {
+  if (!isVmMediatedDockerHost(platform, dockerHost)) return "bind-directory";
+  const runtime = dockerRuntimeForEndpoint(dockerHost, platform);
+  return hostPlatformFamily(platform) === "linux" && runtime?.hostGateway === false
+    ? undefined
+    : "volume-relay";
 };
 
 /** Engine facts that only a live endpoint reports. Omitted facts take the conservative default. */
@@ -308,6 +313,7 @@ export const dockerCapabilitiesForHost = (
   // non-root project user. A local rootful engine writes real host ids and
   // can renumber a catalog account to them during the image build.
   const vmMediated = isVmMediatedDockerHost(platform, dockerHost);
+  const agentDelivery = agentSocketDelivery(platform, dockerHost);
   const bindOwnership = vmMediated
     ? ("unknown" as const)
     : usernsRemap
@@ -322,7 +328,7 @@ export const dockerCapabilitiesForHost = (
     serviceHealth: "native",
     artifactBuild: true,
     artifactPull: true,
-    bindMountPerformance: isVmMediatedDockerHost(platform, dockerHost) ? "slow" : "native",
+    bindMountPerformance: vmMediated ? "slow" : "native",
     serializesVolumeCopyUp: false,
     volumeSnapshot: "none",
     serviceFileCopy: "native",
@@ -341,9 +347,7 @@ export const dockerCapabilitiesForHost = (
     composeProjectFields: { supported: ["configs"] },
     providerExtensions: [],
     hostProxy: hostProxyCapabilities(platform, containerTargets, "host.docker.internal"),
-    agentSocket: {
-      delivery: isVmMediatedDockerHost(platform, dockerHost) ? "volume-relay" : "bind-directory",
-    },
+    ...(agentDelivery === undefined ? {} : { agentSocket: { delivery: agentDelivery } }),
   });
   return withPreservedPathVerdict(
     capabilities,
@@ -395,28 +399,18 @@ export const introspectProviderCapabilities = (
     }),
   );
 
-export const makeDockerApiClient = (
-  dockerHost = process.env.DOCKER_HOST ?? "/var/run/docker.sock",
-): DockerApiClient => makeRuntimeDockerApiClient(dockerHost, dockerContextForEnv({ ...process.env }));
+export const makeDockerApiClient = (dockerHost: string): DockerApiClient =>
+  makeRuntimeDockerApiClient(dockerHost, dockerContextForEnv({ ...process.env }));
 
-export const resolveDockerHost = (options: ResolveDockerHostOptions = {}): string => {
-  const env = options.env ?? process.env;
-  if (options.dockerHost !== undefined) return options.dockerHost;
-  if (options.platform === undefined) {
-    throw unavailable("select", "provider-docker host resolution requires the resolved host platform.");
-  }
-  const family = hostPlatformFamily(options.platform);
-  if (family === "win32" && env.LANDO_TEST_WINDOWS_DOCKER_SOCKET !== undefined) {
-    return env.LANDO_TEST_WINDOWS_DOCKER_SOCKET;
-  }
-  if (env.LANDO_TEST_DOCKER_SOCKET !== undefined) return env.LANDO_TEST_DOCKER_SOCKET;
-  if (env.DOCKER_HOST !== undefined) return env.DOCKER_HOST;
-  if (family === "win32") return "npipe://./pipe/docker_engine";
-  if (family === "linux" && env.HOME !== undefined && env.LANDO_DOCKER_DESKTOP === "1") {
-    return `${env.HOME}/.docker/desktop/docker.sock`;
-  }
-  return "/var/run/docker.sock";
-};
+const unsupportedEndpointUnavailable = (error: UnsupportedDockerEndpointError) =>
+  new ProviderUnavailableError({
+    providerId: PROVIDER_ID,
+    operation: "select",
+    message: error.message,
+    remediation: error.remediation,
+    details: { ...unsupportedEndpointDetails(error), reason: error.reason },
+    cause: error,
+  });
 
 export const { renderCompose, emitCompose, composePath } = composeAdaptersFor(DOCKER_CTX);
 
@@ -521,18 +515,27 @@ export const makeRuntimeProvider = Effect.fnUntraced(function* (options: Provide
   return yield* makeRuntimeProviderWithContext(options, ctx);
 });
 
-const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CTX: ProviderErrorContext) => {
+const makeRuntimeProviderWithContext = (
+  options: ProviderLayerOptions,
+  diagnosticCtx: ProviderErrorContext,
+) => {
   if (options.platform === undefined) {
     return Effect.fail(
       unavailable("select", "provider-docker construction requires the resolved host platform."),
     );
   }
   const platform = options.platform;
-  const resolvedDockerHost = resolveDockerHost({
+  const endpoint = resolveDockerHost({
     platform,
+    env: options.env ?? process.env,
     ...(options.dockerHost === undefined ? {} : { dockerHost: options.dockerHost }),
-    ...(options.env === undefined ? {} : { env: options.env }),
   });
+  if (Result.isFailure(endpoint)) return Effect.fail(unsupportedEndpointUnavailable(endpoint.failure));
+  const resolvedDockerHost = endpoint.success.host;
+  const DOCKER_CTX: ProviderErrorContext = {
+    ...diagnosticCtx,
+    unreachableRemediation: unreachableDockerRemediation(resolvedDockerHost, platform),
+  };
   const dockerApi =
     options.dockerApi ??
     (options.dockerApiFactory === undefined
@@ -646,7 +649,7 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CT
       platform,
       runtimeIdentity: resolvedDockerHost,
       capabilities: resolvedCapabilities,
-      ...(isVmMediatedDockerHost(platform, resolvedDockerHost)
+      ...(agentSocketDelivery(platform, resolvedDockerHost) === "volume-relay"
         ? {
             openAgentSocketBridge: makeDockerDesktopAgentSocketBridge({
               api: dockerApi,
@@ -668,12 +671,7 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CT
               Effect.map(({ plans }) => plans),
             ),
       setup: Effect.fn("RuntimeProvider.setup")(() => Effect.void),
-      getStatus: dockerApi.info.pipe(
-        Effect.as({ state: "running" as const, message: "ready" }),
-        mapFailures((error) =>
-          error instanceof ProviderUnavailableError ? unreachableDocker(error) : error,
-        ),
-      ),
+      getStatus: dockerApi.info.pipe(Effect.as({ state: "running" as const, message: "ready" })),
       getVersions: dockerApi.info.pipe(
         Effect.map((info) => {
           const runtime =
@@ -876,7 +874,16 @@ export const plugin = definePlugin({
       {
         id: runtimeProviderId,
         purge: Effect.fn("Docker.preflightPurge")(function* (input) {
-          const endpoint = resolveDockerHost(input);
+          const resolved = resolveDockerHost(input);
+          // Like an engine that does not answer: never substitute the default socket for it.
+          if (Result.isFailure(resolved)) {
+            return {
+              kind: "skipped" as const,
+              endpoint: endpointLabel(resolved.failure),
+              reason: resolved.failure.message,
+            };
+          }
+          const endpoint = resolved.success.host;
           const ctx = dockerContextForEnv(input.env);
           return yield* preflightDataRootPurge(
             makeRuntimeDockerApiClient(endpoint, ctx, { env: input.env }),
@@ -908,5 +915,5 @@ export const plugin = definePlugin({
       },
     ],
   ]),
-  doctorChecks: [makeIptablesForwardCheck()],
+  doctorChecks: [dockerEndpointCheck, makeIptablesForwardCheck()],
 });

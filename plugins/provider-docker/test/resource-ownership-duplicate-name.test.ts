@@ -28,6 +28,7 @@ test("a stopped app with no live resources still reserves its name without autho
     const provider = await Effect.runPromise(
       makeRuntimeProvider({
         platform: "linux",
+        env: {},
         appliedPlanState: state,
         dockerApi: {
           info: Effect.succeed({}),
@@ -135,6 +136,7 @@ test("starting a second app with a running app's name names the other app's root
     const provider = await Effect.runPromise(
       makeRuntimeProvider({
         platform: "linux",
+        env: {},
         appliedPlanState: state,
         dockerApi: {
           info: Effect.succeed({}),

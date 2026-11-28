@@ -67,6 +67,7 @@ const metadata = {
 const makeProviderLayer = () =>
   providerLayer({
     platform: "linux",
+    env: {},
     resolveContainerHelper: resolveBuiltContainerHelperForTest,
     dockerApi: makeDockerApiClient(dockerHost ?? ""),
     appliedPlanState: makePluginStateStore(

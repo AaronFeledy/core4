@@ -78,7 +78,7 @@ const makeFakeApi = (response: DockerHttpResponse) => {
 
 const makeProvider = async (api: DockerApiClient, appliedPlan?: AppPlan) => {
   if (appliedPlan === undefined) {
-    return Effect.runPromise(makeRuntimeProvider({ platform: "linux", dockerApi: api }));
+    return Effect.runPromise(makeRuntimeProvider({ platform: "linux", env: {}, dockerApi: api }));
   }
   const appliedPlanState = makePluginStateStore(
     makeTestStateStore().service,
@@ -86,7 +86,9 @@ const makeProvider = async (api: DockerApiClient, appliedPlan?: AppPlan) => {
     ownerOnlyFileAccess,
   );
   await Effect.runPromise(persistAppliedPlan(appliedPlanState, appliedPlan));
-  return Effect.runPromise(makeRuntimeProvider({ platform: "linux", dockerApi: api, appliedPlanState }));
+  return Effect.runPromise(
+    makeRuntimeProvider({ platform: "linux", env: {}, dockerApi: api, appliedPlanState }),
+  );
 };
 
 const hasStringTag = (value: object): value is { readonly _tag: string } =>

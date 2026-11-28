@@ -87,7 +87,7 @@ test("buildArtifact sends Docker build requests for build specs", async () => {
             : { status: 200, body: '{"Id":"sha256:built"}' };
         }),
     };
-    const provider = await Effect.runPromise(makeRuntimeProvider({ dockerApi, platform: "linux" }));
+    const provider = await Effect.runPromise(makeRuntimeProvider({ dockerApi, platform: "linux", env: {} }));
     const servicePlan = service({
       kind: "build",
       context: AbsolutePath.make(context),
@@ -142,7 +142,7 @@ test("buildArtifact applies build steps after a context build", async () => {
           return { status: 200, body: '{"aux":{"ID":"sha256:base-image"}}' };
         }),
     };
-    const provider = await Effect.runPromise(makeRuntimeProvider({ dockerApi, platform: "linux" }));
+    const provider = await Effect.runPromise(makeRuntimeProvider({ dockerApi, platform: "linux", env: {} }));
     const servicePlan = service(
       {
         kind: "build",
@@ -205,7 +205,7 @@ test("buildArtifact derives a Dockerfile for ref builds with build steps", async
         return { status: 200, body: "" };
       }),
   };
-  const provider = await Effect.runPromise(makeRuntimeProvider({ dockerApi, platform: "linux" }));
+  const provider = await Effect.runPromise(makeRuntimeProvider({ dockerApi, platform: "linux", env: {} }));
   const servicePlan = service(
     { kind: "ref", ref: "debian:12.11-slim" },
     {

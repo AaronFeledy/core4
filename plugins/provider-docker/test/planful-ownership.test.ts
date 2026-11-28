@@ -32,6 +32,7 @@ for (const labels of replacements) {
       const provider = await Effect.runPromise(
         makeRuntimeProvider({
           platform: "linux",
+          env: {},
           appliedPlanState: state,
           dockerApi: {
             info: Effect.succeed({}),

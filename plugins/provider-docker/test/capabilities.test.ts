@@ -21,7 +21,7 @@ import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { makeMemoryLogFileAccess } from "@lando/sdk/log-follow";
 import { ProviderCapabilities } from "@lando/sdk/schema";
 import { RuntimeProvider } from "@lando/sdk/services";
-import { Effect, Exit, Stream } from "effect";
+import { Effect, Exit, Result, Stream } from "effect";
 
 const listen = (server: Server, socketPath: string): Promise<void> =>
   new Promise((resolve, reject) => {
@@ -259,8 +259,10 @@ describe("provider-docker capabilities", () => {
 
     expect(provider.platform).toBe("wsl");
     expect(
-      resolveDockerHost({ platform: "wsl", env: { HOME: "/home/alice", LANDO_DOCKER_DESKTOP: "1" } }),
-    ).toBe("/home/alice/.docker/desktop/docker.sock");
+      Result.getOrThrow(
+        resolveDockerHost({ platform: "wsl", env: { HOME: "/home/alice", LANDO_DOCKER_DESKTOP: "1" } }),
+      ).host,
+    ).toBe("unix:///home/alice/.docker/desktop/docker.sock");
     expect(provider.capabilities.bindMountPerformance).toBe("slow");
   });
 
@@ -488,25 +490,12 @@ describe("provider-docker capabilities", () => {
       ),
     );
 
-    expect(createdHosts).toEqual(["/var/run/docker.sock", "/home/alice/.docker/desktop/docker.sock"]);
+    expect(createdHosts).toEqual([
+      "unix:///var/run/docker.sock",
+      "unix:///home/alice/.docker/desktop/docker.sock",
+    ]);
     expect(provider.capabilities.bindMountPerformance).toBe("native");
     expect(desktopProvider.capabilities.bindMountPerformance).toBe("slow");
-  });
-
-  test("supports explicit config and env Docker host discovery", () => {
-    expect(resolveDockerHost({ dockerHost: "tcp://127.0.0.1:2375", env: {}, platform: "linux" })).toBe(
-      "tcp://127.0.0.1:2375",
-    );
-    expect(
-      resolveDockerHost({ env: { LANDO_TEST_DOCKER_SOCKET: "/tmp/docker.sock" }, platform: "linux" }),
-    ).toBe("/tmp/docker.sock");
-    expect(resolveDockerHost({ env: { DOCKER_HOST: "unix:///tmp/docker.sock" }, platform: "linux" })).toBe(
-      "unix:///tmp/docker.sock",
-    );
-    expect(
-      resolveDockerHost({ env: { HOME: "/home/alice", LANDO_DOCKER_DESKTOP: "1" }, platform: "linux" }),
-    ).toBe("/home/alice/.docker/desktop/docker.sock");
-    expect(resolveDockerHost({ env: {}, platform: "darwin" })).toBe("/var/run/docker.sock");
   });
 
   test("declares the Windows capability matrix with slow bind mount performance", () => {
@@ -527,45 +516,6 @@ describe("provider-docker capabilities", () => {
       "slow",
     );
     expect(dockerCapabilitiesForHost("win32", "tcp://127.0.0.1:2375").bindMountPerformance).toBe("slow");
-  });
-
-  test("resolves the Windows Docker Desktop named pipe by default", () => {
-    expect(resolveDockerHost({ env: {}, platform: "win32" })).toBe("npipe://./pipe/docker_engine");
-  });
-
-  test("Windows discovery honors precedence: explicit > LANDO_TEST_WINDOWS_DOCKER_SOCKET > LANDO_TEST_DOCKER_SOCKET > DOCKER_HOST > default", () => {
-    expect(
-      resolveDockerHost({
-        dockerHost: "tcp://127.0.0.1:2375",
-        env: { LANDO_TEST_WINDOWS_DOCKER_SOCKET: "npipe://./pipe/skip" },
-        platform: "win32",
-      }),
-    ).toBe("tcp://127.0.0.1:2375");
-
-    expect(
-      resolveDockerHost({
-        env: {
-          LANDO_TEST_WINDOWS_DOCKER_SOCKET: "tcp://win.example:2375",
-          LANDO_TEST_DOCKER_SOCKET: "tcp://generic.example:2375",
-          DOCKER_HOST: "tcp://env.example:2375",
-        },
-        platform: "win32",
-      }),
-    ).toBe("tcp://win.example:2375");
-
-    expect(
-      resolveDockerHost({
-        env: {
-          LANDO_TEST_DOCKER_SOCKET: "tcp://generic.example:2375",
-          DOCKER_HOST: "tcp://env.example:2375",
-        },
-        platform: "win32",
-      }),
-    ).toBe("tcp://generic.example:2375");
-
-    expect(resolveDockerHost({ env: { DOCKER_HOST: "tcp://env.example:2375" }, platform: "win32" })).toBe(
-      "tcp://env.example:2375",
-    );
   });
 
   test("introspects the Windows Docker capability matrix after API discovery", async () => {

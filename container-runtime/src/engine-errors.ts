@@ -88,7 +88,7 @@ export const transportFailure = (
     operation,
     message: redactString(withApiReason(cause.message, cause.details, redactorFor(ctx)), redactorFor(ctx)),
     ...(cause.details === undefined ? {} : { details: redactDetails(cause.details, redactorFor(ctx)) }),
-    remediation: ctx.remediation,
+    remediation: cause.kind === "connect" ? (ctx.unreachableRemediation ?? ctx.remediation) : ctx.remediation,
     cause,
   };
   return cause.kind === "parse" ? new ProviderInternalError(input) : new ProviderUnavailableError(input);
