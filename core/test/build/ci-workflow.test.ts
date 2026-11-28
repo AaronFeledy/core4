@@ -330,8 +330,12 @@ describe("ci workflow", () => {
     expect(providerLandoE2e).toContain("        run: bun run codegen");
     expect(providerLandoE2e).toContain("      - name: Build Linux x64 binary");
     expect(providerLandoE2e).toContain("      - name: Run e2e guide scenarios");
+    expect(providerLandoE2e).toContain('ca_root="$("$LANDO_USER_DATA_ROOT/bin/mkcert" -CAROOT)"');
     expect(providerLandoE2e).toContain(
-      '          LANDO_SCENARIO_E2E_BINARY="$GITHUB_WORKSPACE/dist/lando" bun run scripts/test-reporters/run-guide-scenarios.ts test/scenarios/generated/guides/** --max-concurrency=1 --test-name-pattern="\\[e2e\\]"',
+      'cat /etc/ssl/certs/ca-certificates.crt "$ca_root/rootCA.pem" > "$curl_ca_bundle"',
+    );
+    expect(providerLandoE2e).toContain(
+      '          CURL_CA_BUNDLE="$curl_ca_bundle" LANDO_SCENARIO_E2E_BINARY="$GITHUB_WORKSPACE/dist/lando" bun run scripts/test-reporters/run-guide-scenarios.ts test/scenarios/generated/guides/** --max-concurrency=1 --test-name-pattern="\\[e2e\\]"',
     );
     expect(providerLandoE2e).toContain('          LANDO_GUIDE_E2E: "1"');
     expect(providerLandoE2e).toContain('          LANDO_GUIDE_SCENARIO_LIVE_OUTPUT: "1"');
