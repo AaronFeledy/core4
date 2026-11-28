@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { ServiceExecError } from "@lando/sdk/errors";
 import type { CommandSpec, ExecTarget } from "@lando/sdk/services";
 import { Effect } from "effect";
+import { withAppActivation } from "../../src/operations/app-activation.ts";
 import { rebuildApp } from "../../src/operations/rebuild.ts";
 import { restartApp } from "../../src/operations/restart.ts";
 import { startApp } from "../../src/operations/start.ts";
@@ -17,7 +18,7 @@ const target = (desired: typeof plan) => ({
 const setup = (input: {
   readonly from: string;
   readonly to: string;
-  readonly evidence: "record" | "running-image" | "stopped" | "exec-failure" | "oversized";
+  readonly evidence: "record" | "running-image" | "stopped" | "exec-failure" | "oversized" | "no-record";
   readonly upgrade?: "in-place" | "unsupported";
 }) => {
   const previous = versionedPlan(plan, web, input.from);
@@ -43,7 +44,7 @@ const setup = (input: {
         }),
       );
     const stdout =
-      input.evidence === "running-image"
+      input.evidence === "running-image" || input.evidence === "no-record"
         ? "\0"
         : `${input.from}.13-MariaDB\n${input.evidence === "oversized" ? "x".repeat(4096) : ""}\0`;
     return Effect.succeed({ exitCode: 0, stdout, stderr: "" });
@@ -134,7 +135,7 @@ test("an unsupported upgrade refuses even though the old version is lower", asyn
   expect(fixture.mutations).toEqual([]);
 });
 
-test.each(["stopped", "exec-failure", "oversized"] as const)(
+test.each(["stopped", "no-record", "exec-failure", "oversized"] as const)(
   "a %s prior server does not establish a downgrade",
   async (evidence) => {
     const fixture = setup({ from: "11.4", to: "10.11", evidence });
@@ -144,6 +145,36 @@ test.each(["stopped", "exec-failure", "oversized"] as const)(
     expect(fixture.observations).toEqual(evidence === "stopped" ? ["inspect"] : ["inspect", "read"]);
   },
 );
+
+test.each([
+  ["stopped", "applied-plan", ["inspect"]],
+  ["no-record", "applied-plan", ["inspect", "read"]],
+  ["record", "record", ["inspect", "read"]],
+  ["running-image", "running-image", ["inspect", "read"]],
+] as const)("admits an in-place upgrade with %s evidence", async (evidence, source, observations) => {
+  const fixture = setup({ from: "10.11", to: "11.4", evidence });
+  const upgrades = await Effect.runPromise(
+    withAppActivation(
+      {
+        operation: "start",
+        target: fixture.target,
+        services: undefined,
+        signal: undefined,
+        managed: undefined,
+      },
+      ({ dataUpgrades }) => Effect.succeed(dataUpgrades),
+    ).pipe(Effect.provide(fixture.layer)),
+  );
+  expect(upgrades).toMatchObject([{ service: "web", from: "10.11", to: "11.4", source }]);
+  expect(fixture.observations).toEqual([...observations]);
+});
+
+test("an older applied series alone does not refuse an unsupported upgrade", async () => {
+  const fixture = setup({ from: "10.11", to: "11.4", evidence: "stopped", upgrade: "unsupported" });
+  const result = await Effect.runPromise(startApp({}, fixture.target).pipe(Effect.provide(fixture.layer)));
+  expect(result.dataVersionChanges).toBeUndefined();
+  expect(fixture.mutations).toEqual(["apply"]);
+});
 
 test("reports an in-place upgrade before applying", async () => {
   const fixture = setup({ from: "10.11", to: "11.4", evidence: "record" });

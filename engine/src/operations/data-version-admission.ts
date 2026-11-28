@@ -21,6 +21,7 @@ export interface DataUpgrade {
   readonly label: string;
   readonly from: string;
   readonly to: string;
+  readonly source: Evidence["source"] | "applied-plan";
 }
 
 type Evidence = { readonly version: string; readonly source: "record" | "running-image" };
@@ -121,11 +122,11 @@ export const assessDataVersions = Effect.fn("AppActivation.assessDataVersions")(
         series,
         appliedSeries: appliedSeries?.image,
       });
-      if (evidence === undefined) continue;
-      const comparison = compareDataSeries(evidence.version, series.image, series.depth);
-      if (comparison === undefined || comparison === 0) continue;
-      const { version: from, source } = evidence;
+      const from = evidence?.version ?? appliedSeries?.image;
+      if (from === undefined) continue;
       const to = series.image;
+      const comparison = compareDataSeries(from, to, series.depth);
+      if (comparison === undefined || comparison === 0) continue;
       if (comparison === -1 && series.upgrade === "in-place") {
         if (upgrade === undefined || compareDataSeries(from, upgrade.from, series.depth) === 1)
           upgrade = {
@@ -135,12 +136,14 @@ export const assessDataVersions = Effect.fn("AppActivation.assessDataVersions")(
             label: contract.label,
             from,
             to,
+            source: evidence?.source ?? "applied-plan",
           };
         continue;
       }
+      if (evidence === undefined) continue;
       const finding = {
         direction: comparison === 1 ? "downgrade" : "upgrade",
-        evidence: source,
+        evidence: evidence.source,
         dataVersion: from,
         imageVersion: to,
       } as const;
