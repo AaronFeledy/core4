@@ -24,6 +24,8 @@ Explanation, reference, and blog content MUST NOT contain rendered executable sc
 
 Each feature has exactly one home guide under the discovery roots. The home guide owns every test that drives Lando through its CLI or library API for that feature: the promises the page shows readers, plus edge cases and regressions whether or not the page mentions them. Tests readers do not see live in hidden steps, test-only scenarios, or case scenarios (§19.7). Tests that call internal modules directly, rather than going through the CLI or library API, belong in the owning workspace package's `test/` tree.
 
+One checked-in home-guide map records each feature, its home guide, and the source paths or path patterns the feature covers. The map is normative: the coverage gate, the guide drift gate (§19.10), and affected selection (§19.12) MUST read ownership from it and from nothing else. A covered path MUST have exactly one owning feature, and a feature MUST name exactly one home guide; one guide MAY be home to several features. A mapped guide path MUST be canonical: repository-relative, `/` separators, with no `./` or `../` segment, doubled slash, or trailing slash. A mapped guide MUST lie under the discovery roots, MUST parse, and MUST contain at least one scenario, and a feature SHOULD be mapped only where a scenario in its home guide exercises the covered sources. Every covered path or pattern MUST match at least one Git-visible file. An empty map, or one that breaks any of these rules, MUST fail every gate that reads it; it is never treated as "nothing is covered".
+
 ### 19.2 Model and artifact
 
 An executable guide has `GuideFrontmatter`, one top-level `<Guide>`, and one or more `<Scenario>` elements. The engine compiles scenarios, not pages.
@@ -176,6 +178,19 @@ Generated tests MUST preserve source path, line range, scenario, variant, step, 
 
 A binding diagnostic MUST name the guide source path and line, the scenario and resolved variant, and a remediation, and MAY name the related declaration line. It MUST NOT print bound values. Every failure includes a copy-pasteable rerun command (§19.12).
 
+`bun run check:guide-coverage` is a merge gate. It MUST validate the home-guide map (§19.1) and the guide coverage index: every guide-table row names a valid status and a `docs/guides/**.mdx` path, a malformed guide-table row fails the gate, a `Shipped` row MUST name an existing guide while a `Planned` row MAY name a guide not written yet, and every home guide under `docs/guides/` MUST have an index row. A recipe README needs no index row, and the index's separate recipe README table is not validated by this gate.
+
+`bun run check:guide-drift` is a merge gate on pull requests only: merge-queue (`merge_group`) and push-to-default-branch runs skip it, so a guide change lands with the pull request. It MUST fail when a covered path changed and neither the owning feature's home guide nor a file under that guide's fixture directory (`docs/guides/<guide-id>/fixtures/`) changed. One predicate defines touching a guide, shared with affected selection (§19.12): a path touches guide G when it is G's MDX or a file under `docs/guides/<G's id>/fixtures/`. A case file does not count as a change to its guide until case files compile (§19.7). The gate obeys these rules:
+
+- Changed paths are the difference from the merge base of the base and head to the head, with both sides of a rename included. Outside CI the head is the working tree: the net difference from the merge base to the files on disk, plus untracked files that are not ignored, against a default base of `origin/main`.
+- A changed path that is absent from the Git-visible file list, such as a deleted or renamed-away file, can match several features' source patterns even though ownership validation sees no overlap. The gate MUST attribute that path to every matching feature, and each of their home guides MUST then change.
+- The container-command baseline is compared with the base itself, not the merge base, so an older ancestor's allowance cannot admit a new entry. The comparison is aggregate over the whole file: an entry may move with its page when that page is removed, but the total number of entries never grows, and a base without a baseline is compared as an empty baseline.
+- The map, guides, fixtures, and baseline are read from the checked-out tree; the base and head select changed paths only.
+- A skip is one `Guide-Coverage-Skip: <reason>` line in the pull request body, with a reason of at least 24 characters, and MUST NOT be read from any other source. More than one such line is ambiguous and MUST fail the gate, naming each line. A local run MAY supply the same text to preview the result. A valid skip exempts every covered feature whose home guide was not touched; a reason that is too short fails the gate.
+- Map failures and baseline growth MUST fail the gate and MUST NOT be waived by a skip. They are reported before any skip status.
+- Any failure to determine the comparison or the changed paths, including an unresolvable base or head, a missing merge base, or a failed lookup of the pull request body, MUST fail the gate. The gate MUST NOT report a pass or a skip when it could not determine what changed.
+- Output MUST name the comparison, each touched feature with its changed paths and home guide, and, when a skip applies, its reason and exactly the features it exempted.
+
 Schema round-trip, generated-test typecheck, source-mapper fixtures, public-transcript policy, and canonical redaction are cooperating merge gates (§13.2–§13.4).
 
 ### 19.11 Test layer position
@@ -187,6 +202,8 @@ Scenario variants SHOULD remain below 30 seconds p95 and e2e smoke below 5 minut
 ### 19.12 Author commands
 
 The author workflow MUST run a guide, scenario, variant, step, or fixture; preserve the workspace on request; update local transcript artifacts; explain the resolved scenario plan; and print source maps and resolved bindings in debug mode. Every failure MUST include a copy-pasteable rerun command.
+
+Affected selection (`bun run test:affected`) MUST list home-guide scenarios apart from unit test files, with their own counts. A changed path selects a guide when the home-guide map covers it (§19.1), when it is a guide under the discovery roots, or when it lies under a guide's fixture directory; a case file selects nothing until case files compile (§19.7). For each selected guide the selector MUST list every scenario variant with its disposition on the host, using the same skip rules the generator applies (§19.7): will run, skipped with the rule and reason, or e2e not admitted. A skipped variant MUST NOT be reported as run. Running the selection MUST execute the selected guides through the author workflow above rather than a second runner. E2e variants MUST run only when the caller explicitly opts in through `LANDO_GUIDE_E2E=1`; the selector MUST NOT set it, and without it MUST print the command that runs them. A run that executes nothing MUST exit nonzero and say why. A run that executes anything MAY exit zero with variants that did not run, but it MUST always report every variant that did not run and the command that would run the unadmitted e2e ones. An invalid map MUST fail selection before any guide is listed or run, reporting every map diagnostic. A selected guide that cannot be read or parsed MUST be reported as a diagnostic naming its path, never as a crash.
 
 ### 19.13 Recipe README integration
 

@@ -1,169 +1,29 @@
 #!/usr/bin/env bun
 import { type FSWatcher, watch } from "node:fs";
-import { mkdtemp, readdir, rm, stat, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { dirname, join, relative, resolve } from "node:path";
+import { readdir } from "node:fs/promises";
+import { relative, resolve } from "node:path";
 
+import { type GuideScenarioAst, buildGuideScenarioAst } from "./build-guide-scenarios.ts";
 import {
-  type GuideScenarioAst,
-  buildGuideScenarioAst,
-  resolveGeneratedGuideTestRoot,
-} from "./build-guide-scenarios.ts";
-import type { TrackTestChild } from "./live-test-roots.ts";
-import { withRunnerOwnedTestRoots } from "./test-preload-roots.ts";
-import { rewriteScenarioSourceMappedOutput } from "./test-reporters/scenario-source-mapper.ts";
+  dirExists,
+  isShuttingDown,
+  onShutdown,
+  pruneOrphanGeneratedGuides,
+  requestShutdown,
+  runIteration,
+} from "./guides/dev-guides-pipeline.ts";
+import {
+  type AffectedGuidesContext,
+  computeAffectedGuides,
+  normalize,
+  parseDevGuidesArgs,
+  uniqueSorted,
+} from "./guides/dev-guides-selection.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 const GENERATOR_PATH = resolve(import.meta.dirname, "build-guide-scenarios.ts");
-const GENERATED_ROOT = resolveGeneratedGuideTestRoot();
 const GUIDE_ROOT = "docs/guides";
-const TSC_PATH = resolve(REPO_ROOT, "node_modules/.bin/tsc");
 const DEBOUNCE_MS = 150;
-
-export interface DevGuidesOptions {
-  readonly once: boolean;
-  readonly singleGuidePath?: string;
-}
-
-export interface AffectedGuidesContext {
-  readonly allGuideIds: readonly string[];
-  readonly guidePathToId: ReadonlyMap<string, string>;
-  readonly singleGuideId?: string;
-}
-
-interface RunResult {
-  readonly exitCode: number;
-  readonly stdout: string;
-  readonly stderr: string;
-}
-
-const ABORT_EXIT_CODE = 130;
-
-let activeProc: Bun.Subprocess | undefined;
-let liveTestInFlight = false;
-let shutdownCode = ABORT_EXIT_CODE;
-let shuttingDown = false;
-const shutdownHooks = new Set<() => void>();
-
-const requestShutdown = (signal: "SIGINT" | "SIGTERM"): void => {
-  if (shuttingDown) return;
-  shuttingDown = true;
-  shutdownCode = signal === "SIGTERM" ? 143 : ABORT_EXIT_CODE;
-  if (liveTestInFlight) process.exitCode = shutdownCode;
-  activeProc?.kill(signal);
-  for (const hook of shutdownHooks) hook();
-};
-
-const normalize = (path: string): string => path.replaceAll("\\", "/");
-
-const uniqueSorted = (ids: readonly string[]): readonly string[] =>
-  [...new Set(ids)].sort((left, right) => left.localeCompare(right));
-
-export const parseDevGuidesArgs = (args: ReadonlyArray<string>): DevGuidesOptions => {
-  let once = false;
-  let singleGuidePath: string | undefined;
-  for (const arg of args) {
-    if (arg === "--once") {
-      once = true;
-      continue;
-    }
-    if (arg.startsWith("--")) throw new Error(`Unknown dev:guides flag: ${arg}`);
-    if (singleGuidePath !== undefined) throw new Error("dev:guides accepts at most one guide path");
-    singleGuidePath = normalize(arg);
-  }
-  return singleGuidePath === undefined ? { once } : { once, singleGuidePath };
-};
-
-/**
- * Maps a changed repo-relative path to the guide ids whose scenarios it affects.
- * A guide MDX change affects only that guide; a production-source or generator
- * change affects every guide. Single-guide mode pins every change to one guide.
- */
-export const computeAffectedGuides = (changedPath: string, ctx: AffectedGuidesContext): readonly string[] => {
-  if (ctx.singleGuideId !== undefined) return [ctx.singleGuideId];
-  const mapped = ctx.guidePathToId.get(normalize(changedPath));
-  if (mapped !== undefined) return [mapped];
-  return uniqueSorted(ctx.allGuideIds);
-};
-
-const run = async (
-  cmd: ReadonlyArray<string>,
-  env: Record<string, string | undefined> = {},
-  track?: TrackTestChild,
-): Promise<RunResult> => {
-  if (shuttingDown) {
-    return {
-      exitCode: shutdownCode,
-      stdout: "",
-      stderr: "dev:guides: shutdown requested before subprocess start\n",
-    };
-  }
-  const proc = Bun.spawn({
-    cmd: [...cmd],
-    cwd: REPO_ROOT,
-    env: { ...process.env, ...env, PATH: `${dirname(process.execPath)}:${process.env.PATH ?? ""}` },
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  if (track === undefined) activeProc = proc;
-  else track(proc);
-  try {
-    const [exitCode, stdout, stderr] = await Promise.all([
-      proc.exited,
-      new Response(proc.stdout).text(),
-      new Response(proc.stderr).text(),
-    ]);
-    return { exitCode, stdout, stderr };
-  } finally {
-    if (proc.exitCode === null && proc.signalCode === null) proc.kill("SIGKILL");
-    await proc.exited;
-    if (activeProc === proc) activeProc = undefined;
-  }
-};
-
-const dirExists = async (absolutePath: string): Promise<boolean> => {
-  try {
-    return (await stat(absolutePath)).isDirectory();
-  } catch {
-    return false;
-  }
-};
-
-const generatedDirsFor = async (guideIds: readonly string[]): Promise<readonly string[]> => {
-  const present: string[] = [];
-  for (const id of guideIds) {
-    if (await dirExists(resolve(REPO_ROOT, GENERATED_ROOT, id))) present.push(id);
-  }
-  return present;
-};
-
-export const missingGeneratedGuideIds = (
-  guideIds: readonly string[],
-  presentIds: readonly string[],
-): readonly string[] => {
-  const present = new Set(presentIds);
-  return guideIds.filter((id) => !present.has(id));
-};
-
-const noGeneratedOutput = (guideIds: readonly string[]): RunResult => ({
-  exitCode: 1,
-  stdout: "",
-  stderr: `dev:guides: no generated scenario output found for ${guideIds.join(", ") || "requested guides"}\n`,
-});
-
-export const pruneOrphanGeneratedGuides = async (validIds: ReadonlySet<string>): Promise<void> => {
-  let entries: readonly string[];
-  try {
-    entries = await readdir(resolve(REPO_ROOT, GENERATED_ROOT));
-  } catch {
-    return;
-  }
-  for (const entry of entries) {
-    if (validIds.has(entry)) continue;
-    const target = resolve(REPO_ROOT, GENERATED_ROOT, entry);
-    if (await dirExists(target)) await rm(target, { force: true, recursive: true });
-  }
-};
 
 const pluginSrcRoots = async (): Promise<readonly string[]> => {
   const roots: string[] = [];
@@ -178,134 +38,6 @@ const pluginSrcRoots = async (): Promise<readonly string[]> => {
     if (await dirExists(src)) roots.push(src);
   }
   return roots;
-};
-
-const regenerate = async (guideIds: readonly string[], isAll: boolean): Promise<RunResult> => {
-  if (isAll) return run([process.execPath, "run", GENERATOR_PATH]);
-  let last: RunResult = { exitCode: 0, stdout: "", stderr: "" };
-  for (const id of guideIds) {
-    last = await run([process.execPath, "run", GENERATOR_PATH, "--only", id]);
-    if (last.exitCode !== 0) return last;
-  }
-  return last;
-};
-
-const typecheckGuides = async (guideIds: readonly string[]): Promise<RunResult> => {
-  if (guideIds.length === 0) return noGeneratedOutput([]);
-
-  const present = await generatedDirsFor(guideIds);
-  const missing = missingGeneratedGuideIds(guideIds, present);
-  if (missing.length > 0) return noGeneratedOutput(missing);
-  const include = present.map((id) => `${resolve(REPO_ROOT, GENERATED_ROOT, id)}/**/*.ts`);
-  const configDir = await mkdtemp(join(tmpdir(), "lando-dev-guides-"));
-  const configPath = join(configDir, "tsconfig.json");
-  const config = {
-    extends: resolve(REPO_ROOT, "tsconfig.base.json"),
-    compilerOptions: {
-      noEmit: true,
-      emitDeclarationOnly: false,
-      declaration: false,
-      declarationMap: false,
-      composite: false,
-      rootDir: REPO_ROOT,
-      typeRoots: [resolve(REPO_ROOT, "node_modules/@types")],
-      paths: {
-        "@lando/core": [resolve(REPO_ROOT, "core/src/index.ts")],
-        "@lando/core/*": [resolve(REPO_ROOT, "core/src/*/index.ts")],
-        "@lando/engine": [resolve(REPO_ROOT, "engine/src/index.ts")],
-        "@lando/engine/*": [resolve(REPO_ROOT, "engine/src/*.ts")],
-        "@lando/sdk": [resolve(REPO_ROOT, "sdk/src/index.ts")],
-        "@lando/sdk/*": [resolve(REPO_ROOT, "sdk/src/*")],
-      },
-    },
-    include,
-  };
-  try {
-    await writeFile(configPath, JSON.stringify(config, null, 2));
-    return await run([TSC_PATH, "--noEmit", "-p", configPath]);
-  } finally {
-    await rm(configDir, { force: true, recursive: true });
-  }
-};
-
-const testGuides = async (guideIds: readonly string[], isAll: boolean): Promise<RunResult> => {
-  const runTests = async (targets: readonly string[]) => {
-    const command = [process.execPath, "test", ...targets];
-    if (process.env.LANDO_GUIDE_E2E !== "1")
-      return withRunnerOwnedTestRoots({ env: process.env, live: false }, (env) => run(command, env));
-    const { MissingLiveTestBinaryError, runWithLiveTestRoots } = await import("./live-test-roots.ts");
-    let output = { stdout: "", stderr: "" };
-    liveTestInFlight = true;
-    try {
-      const exitCode = await runWithLiveTestRoots(
-        { live: true, cwd: REPO_ROOT, env: process.env },
-        async (env, track) => {
-          const result = await run([...command, "--max-concurrency=1"], env, track);
-          output = result;
-          return result.exitCode;
-        },
-      );
-      return { ...output, exitCode };
-    } catch (error) {
-      if (error instanceof MissingLiveTestBinaryError) {
-        return { stdout: "", stderr: `${error.message}\n`, exitCode: 1 };
-      }
-      throw error;
-    } finally {
-      liveTestInFlight = false;
-    }
-  };
-  if (isAll) {
-    if (!(await dirExists(resolve(REPO_ROOT, GENERATED_ROOT)))) return noGeneratedOutput([]);
-    return runTests([`${GENERATED_ROOT}/`]);
-  }
-  if (guideIds.length === 0) return noGeneratedOutput([]);
-
-  const present = await generatedDirsFor(guideIds);
-  const missing = missingGeneratedGuideIds(guideIds, present);
-  if (missing.length > 0) return noGeneratedOutput(missing);
-  return runTests(present.map((id) => `${GENERATED_ROOT}/${id}/`));
-};
-
-const writeMapped = (result: RunResult): void => {
-  if (result.stdout.length > 0) {
-    process.stdout.write(
-      rewriteScenarioSourceMappedOutput(result.stdout, {
-        repoRoot: REPO_ROOT,
-        generatedRoot: resolve(REPO_ROOT, GENERATED_ROOT),
-      }),
-    );
-  }
-  if (result.stderr.length > 0) {
-    process.stderr.write(
-      rewriteScenarioSourceMappedOutput(result.stderr, {
-        repoRoot: REPO_ROOT,
-        generatedRoot: resolve(REPO_ROOT, GENERATED_ROOT),
-      }),
-    );
-  }
-};
-
-const runIteration = async (guideIds: readonly string[], isAll: boolean): Promise<number> => {
-  const generated = await regenerate(guideIds, isAll);
-  if (generated.exitCode !== 0) {
-    process.stderr.write(generated.stderr || generated.stdout);
-    return generated.exitCode;
-  }
-
-  if (shuttingDown) return shutdownCode;
-
-  const typecheck = await typecheckGuides(guideIds);
-  if (typecheck.exitCode !== 0) {
-    process.stderr.write(typecheck.stdout || typecheck.stderr);
-    return typecheck.exitCode;
-  }
-
-  if (shuttingDown) return shutdownCode;
-
-  const tested = await testGuides(guideIds, isAll);
-  writeMapped(tested);
-  return tested.exitCode;
 };
 
 const buildGuideIndex = async (): Promise<{
@@ -330,8 +62,21 @@ const writeError = (prefix: string, error: unknown): void => {
 
 const resolveSingleGuideId = (
   index: { readonly guidePathToId: ReadonlyMap<string, string> },
-  singleGuidePath: string,
-): string | undefined => index.guidePathToId.get(singleGuidePath);
+  guidePath: string,
+): string | undefined => index.guidePathToId.get(guidePath);
+
+const resolvePinnedGuideIds = (
+  index: { readonly guidePathToId: ReadonlyMap<string, string> },
+  guidePaths: readonly string[],
+): { readonly ids?: readonly string[] } | { readonly missing: string } => {
+  const ids: string[] = [];
+  for (const guidePath of guidePaths) {
+    const id = resolveSingleGuideId(index, guidePath);
+    if (id === undefined) return { missing: guidePath };
+    ids.push(id);
+  }
+  return ids.length === 0 ? {} : { ids: uniqueSorted(ids) };
+};
 
 const main = async (): Promise<void> => {
   process.once("SIGINT", requestShutdown);
@@ -360,18 +105,15 @@ const main = async (): Promise<void> => {
   if (indexReady) {
     await pruneOrphanGeneratedGuides(new Set(index.allGuideIds));
 
-    const singleGuideId =
-      options.singleGuidePath === undefined
-        ? undefined
-        : resolveSingleGuideId(index, options.singleGuidePath);
-    if (options.singleGuidePath !== undefined && singleGuideId === undefined) {
-      process.stderr.write(`dev:guides: no guide found at ${options.singleGuidePath}\n`);
+    const pinned = resolvePinnedGuideIds(index, options.guidePaths);
+    if ("missing" in pinned) {
+      process.stderr.write(`dev:guides: no guide found at ${pinned.missing}\n`);
       process.exitCode = 2;
       return;
     }
 
-    const initialIds = singleGuideId === undefined ? index.allGuideIds : [singleGuideId];
-    const initialIsAll = singleGuideId === undefined;
+    const initialIds = pinned.ids ?? index.allGuideIds;
+    const initialIsAll = pinned.ids === undefined;
     initialCode = await runIteration(initialIds, initialIsAll);
   }
 
@@ -380,7 +122,7 @@ const main = async (): Promise<void> => {
     return;
   }
 
-  if (shuttingDown) return;
+  if (isShuttingDown()) return;
 
   const watchedRoots: string[] = [
     resolve(REPO_ROOT, GUIDE_ROOT),
@@ -399,7 +141,7 @@ const main = async (): Promise<void> => {
   };
 
   const flush = async (): Promise<void> => {
-    if (running || shuttingDown) return;
+    if (running || isShuttingDown()) return;
     if (pending.size === 0) return;
     running = true;
     const changed = [...pending];
@@ -414,15 +156,13 @@ const main = async (): Promise<void> => {
         requeue(changed);
         return;
       }
-      if (shuttingDown) return;
+      if (isShuttingDown()) return;
       await pruneOrphanGeneratedGuides(new Set(index.allGuideIds));
-      if (shuttingDown) return;
-      const singleGuideId =
-        options.singleGuidePath === undefined
-          ? undefined
-          : resolveSingleGuideId(index, options.singleGuidePath);
-      if (options.singleGuidePath !== undefined && singleGuideId === undefined) {
-        process.stderr.write(`dev:guides: no guide found at ${options.singleGuidePath}\n`);
+      if (isShuttingDown()) return;
+      const guidePath = options.guidePaths[0];
+      const singleGuideId = guidePath === undefined ? undefined : resolveSingleGuideId(index, guidePath);
+      if (guidePath !== undefined && singleGuideId === undefined) {
+        process.stderr.write(`dev:guides: no guide found at ${guidePath}\n`);
         requeue(changed);
         return;
       }
@@ -432,16 +172,16 @@ const main = async (): Promise<void> => {
           : { allGuideIds: index.allGuideIds, guidePathToId: index.guidePathToId, singleGuideId };
       const affected = uniqueSorted(changed.flatMap((path) => computeAffectedGuides(path, ctx)));
       const isAll = singleGuideId === undefined && affected.length === index.allGuideIds.length;
-      if (shuttingDown) return;
+      if (isShuttingDown()) return;
       await runIteration(affected, isAll);
     } finally {
       running = false;
-      if (!shuttingDown && pending.size > 0) schedule();
+      if (!isShuttingDown() && pending.size > 0) schedule();
     }
   };
 
   const schedule = (): void => {
-    if (shuttingDown) return;
+    if (isShuttingDown()) return;
     if (timer !== undefined) clearTimeout(timer);
     timer = setTimeout(() => {
       void flush();
@@ -452,7 +192,7 @@ const main = async (): Promise<void> => {
     basename.endsWith("~") || /\.sw[a-z]$/.test(basename) || basename === "4913";
 
   const onChange = (baseDir: string, filename: string | null): void => {
-    if (shuttingDown) return;
+    if (isShuttingDown()) return;
     if (filename === null) {
       pending.add(normalize(relative(REPO_ROOT, baseDir)));
       schedule();
@@ -470,7 +210,7 @@ const main = async (): Promise<void> => {
   }
   watchers.push(
     watch(GENERATOR_PATH, () => {
-      if (shuttingDown) return;
+      if (isShuttingDown()) return;
       pending.add(normalize(relative(REPO_ROOT, GENERATOR_PATH)));
       schedule();
     }),
@@ -479,11 +219,11 @@ const main = async (): Promise<void> => {
   process.stderr.write("dev:guides watching for changes (Ctrl-C to exit)\n");
 
   await new Promise<void>((resolveExit) => {
-    if (shuttingDown) {
+    if (isShuttingDown()) {
       resolveExit();
       return;
     }
-    shutdownHooks.add(() => {
+    onShutdown(() => {
       if (timer !== undefined) clearTimeout(timer);
       for (const watcher of watchers) watcher.close();
       resolveExit();

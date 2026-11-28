@@ -112,9 +112,12 @@ After the repository bootstrap, run the package's focused checks from the root:
 ```sh
 bun test plugins/github-actions/test
 bun run --filter='@lando/github-actions' typecheck
-bun run dev:guides docs/guides/plugins/github-actions-inspection.mdx --once
+bun run test:affected --run
 ```
 
+The last command selects `docs/guides/plugins/github-actions-inspection.mdx`
+for any change under `plugins/github-actions/src/`, because that guide is the
+package's home guide, and runs its scenarios after the affected unit tests.
 The guide scenarios call `listWorkflows` directly against fixtures. To exercise
 the linked command, build the distribution with
 `bun run --filter='@lando/github-actions' build:artifact` and set
@@ -152,6 +155,7 @@ sources, and building the helper when the selected tests need it.
 | `bun run gate:pr` | Typecheck, lint, generated-output drift, test ownership, boundaries, and guide drift against `origin/main` |
 | `bun test` | Full test suite; live tests may have additional prerequisites |
 | `bun run test:unit` | Unsharded run of the CI unit file set: every `*.test.ts` outside the dedicated library, recipe, docs and nightly suites |
+| `bun run test:affected` | List the unit test files and home-guide scenarios your change selects; add `--run` to run them |
 | `bun run test:selection <id>` | Run one named CI selection from `scripts/test-selections.ts`, exactly as its workflow job does |
 | `bun run lint` | Report Biome formatting and lint diagnostics without writing |
 | `bun run fix` | Apply every fixable Biome diagnostic, including import order |
@@ -163,7 +167,9 @@ sources, and building the helper when the selected tests need it.
 
 The pre-PR gate does not replace tests. Root typechecking covers source,
 non-docs test trees, and repository scripts; the docs checks are separate.
-Fetch `origin/main` before checking guide drift. Use the [CI runbook](./ci.md)
+Fetch `origin/main` before checking guide drift: the gate compares your
+working tree, uncommitted files included, with the point where your branch
+left `origin/main`, and it fails if that ref is missing. Use the [CI runbook](./ci.md)
 to reproduce a specific job, including focused tests, guide checks, and
 provider integration tests.
 
@@ -172,8 +178,14 @@ behavior against external systems. To write or debug one scenario, follow
 [author an executable guide scenario](./guide-authoring.md). Guide fixtures
 and `provider: test` can model operations without starting containers. They do
 not prove live runtime behavior or produce a real transcript of every displayed
-command. Use real-provider e2e scenarios for that evidence. Keep regressions
-with no documentation purpose in tests rather than inventing a guide to hold them.
+command. Use real-provider e2e scenarios for that evidence.
+
+A test that drives Lando through its CLI or library API belongs in the
+feature's home guide, even when it's an edge case or a regression the page
+never mentions. Put it in a hidden step or a test-only scenario so readers
+don't see it. Tests that call internal modules directly stay in the owning
+package's `test/` tree. See
+[put a feature's tests in its home guide](./guide-authoring.md#put-a-features-tests-in-its-home-guide).
 
 ## Format and lint
 

@@ -1,9 +1,22 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-
-import { affectedTestCommand, changedPaths, selectAffectedTests } from "../../../scripts/test-affected.ts";
+import { discoverChanges } from "../../../scripts/git-changes.ts";
+import {
+  affectedGuideRunPlan,
+  notExecutedReason,
+  summarizeAffectedGuides,
+} from "../../../scripts/guides/affected-guide-run.ts";
+import { selectAffectedGuides } from "../../../scripts/guides/affected-guides.ts";
+import type { HomeGuideEntry } from "../../../scripts/guides/home-guide-registry.ts";
+import {
+  affectedRunOutcome,
+  affectedTestCommand,
+  nothingExecutedReport,
+  unitTestEnvironment,
+} from "../../../scripts/test-affected-run.ts";
+import { selectAffectedTests } from "../../../scripts/test-affected-selection.ts";
 import { collectShardedTestFiles } from "../../../scripts/test-shards.ts";
 
 const roots: string[] = [];
@@ -269,10 +282,11 @@ test("recovers removed barrel edges and deleted paths from the base commit", asy
   await put(root, "pkg/src/old.ts", "export const old = 1;\n");
   await git(root, "add", ".");
   await git(root, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-qm", "base");
-  await put(root, "pkg/src/zbarrel.ts", "export {};\n");
+  await put(root, "pkg/src/zbarrel.ts", 'export * from "./znew";\n');
+  await put(root, "pkg/src/znew.ts", "export const fresh = 1;\n");
   await rm(join(root, "pkg/src/old.ts"));
-  const changed = await changedPaths(root, "HEAD");
-  expect(changed).toEqual(["pkg/src/old.ts", "pkg/src/zbarrel.ts"]);
+  const changed = (await discoverChanges(root, { kind: "working-tree", baseRef: "HEAD" })).paths;
+  expect(changed).toEqual(["pkg/src/old.ts", "pkg/src/zbarrel.ts", "pkg/src/znew.ts"]);
   const result = await selectAffectedTests({
     root,
     changed,
@@ -363,20 +377,6 @@ test("runs only exact selected paths and preserves a failing child exit", async 
   expect(fail.stderr).toContain("extra ran");
 });
 
-test("reports both rename paths and untracked names containing spaces", async () => {
-  const root = await fixture();
-  await put(root, "pkg/src/old name.ts", "export {};\n");
-  await git(root, "add", ".");
-  await git(root, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-qm", "base");
-  await rename(join(root, "pkg/src/old name.ts"), join(root, "pkg/src/new name.ts"));
-  await put(root, "pkg/src/extra name.ts", "export {};\n");
-  expect(await changedPaths(root, "HEAD")).toEqual([
-    "pkg/src/extra name.ts",
-    "pkg/src/new name.ts",
-    "pkg/src/old name.ts",
-  ]);
-});
-
 test(
   "finds the historical schema regressions in the current repository",
   async () => {
@@ -461,3 +461,609 @@ test(
   },
   { timeout: 20_000 },
 );
+
+const guideFile = (id: string, scenarios: string): string => `---
+id: ${id}
+provider: test
+platforms: [darwin, linux, win32]
+---
+
+# ${id}
+
+<Guide>
+${scenarios}
+</Guide>
+`;
+
+const step = (name: string): string =>
+  `  <Step name="${name}">
+    <Run command="version" />
+  </Step>`;
+
+const scenario = (id: string, props = ""): string =>
+  `  <Scenario id="${id}"${props}>
+${step("run")}
+  </Scenario>`;
+
+const guideRepository = async (): Promise<string> => {
+  const root = await fixture();
+  await put(
+    root,
+    "docs/guides/demo.mdx",
+    guideFile(
+      "demo",
+      [
+        scenario("runs"),
+        scenario("darwin-only", ' platforms={["darwin"]}'),
+        scenario("live", ' layer="e2e"'),
+        `  <Scenario id="authored-skip">
+    <Skip reason="never runs against the provider">
+${step("run")}
+    </Skip>
+  </Scenario>`,
+      ].join("\n"),
+    ),
+  );
+  await put(
+    root,
+    "docs/guides/variant-demo.mdx",
+    `---
+id: variant-demo
+provider: test
+axes:
+  mode: [one, two]
+variants:
+  two:
+    skip:
+      reason: this cell is not supported yet
+---
+
+<Guide>
+  <Scenario id="modes">
+    <Tabs axis="mode">
+      <Tab name="one">
+${step("run")}
+      </Tab>
+      <Tab name="two">
+${step("run")}
+      </Tab>
+    </Tabs>
+  </Scenario>
+</Guide>
+`,
+  );
+  await put(root, "docs/guides/live-demo.mdx", guideFile("live-demo", scenario("live", ' layer="e2e"')));
+  await put(root, "docs/guides/demo/fixtures/app/.lando.yml", "name: demo\n");
+  await put(root, "docs/guides/demo/cases.cases.ts", "export const cases = [];\n");
+  await put(root, "pkg/src/covered.ts", "export const covered = 1;\n");
+  await put(root, "pkg/src/uncovered.ts", "export const uncovered = 1;\n");
+  await put(root, "pkg/src/live.ts", "export const live = 1;\n");
+  await put(root, "pkg/test/covered.test.ts", 'import "../src/covered";\n');
+  await git(root, "add", ".");
+  await git(root, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-qm", "base");
+  return root;
+};
+
+const demoEntries: readonly HomeGuideEntry[] = [
+  { feature: "demo", guide: "docs/guides/demo.mdx", sources: ["pkg/src/covered.ts"] },
+  { feature: "variant-demo", guide: "docs/guides/variant-demo.mdx", sources: ["pkg/src/uncovered.ts"] },
+  { feature: "live-demo", guide: "docs/guides/live-demo.mdx", sources: ["pkg/src/live.ts"] },
+];
+
+const guideIdsFor = async (root: string, changed: readonly string[]): Promise<readonly string[]> => {
+  const selection = await selectAffectedGuides({
+    root,
+    changed,
+    hostPlatform: "linux",
+    entries: demoEntries,
+  });
+  expect(selection.diagnostics).toEqual([]);
+  return selection.guides.map((guide) => guide.guideId);
+};
+
+test("a covered source, a guide page, and a fixture each select their guide", async () => {
+  const root = await guideRepository();
+  expect(await guideIdsFor(root, ["pkg/src/covered.ts"])).toEqual(["demo"]);
+  expect(await guideIdsFor(root, ["docs/guides/variant-demo.mdx"])).toEqual(["variant-demo"]);
+  expect(await guideIdsFor(root, ["docs/guides/demo/fixtures/app/.lando.yml"])).toEqual(["demo"]);
+});
+
+test("a case file and an uncovered source select no guide", async () => {
+  const root = await guideRepository();
+  expect(await guideIdsFor(root, ["docs/guides/demo/cases.cases.ts"])).toEqual([]);
+  expect(await guideIdsFor(root, ["pkg/src/not-covered-anywhere.ts"])).toEqual([]);
+});
+
+test("guide selection leaves the unit selection unchanged", async () => {
+  const root = await guideRepository();
+  const eligible = ["pkg/test/covered.test.ts"];
+  const unit = await selectAffectedTests({ root, changed: ["pkg/src/covered.ts"], eligible });
+  const withGuide = await selectAffectedTests({
+    root,
+    changed: ["pkg/src/covered.ts", "docs/guides/demo.mdx"],
+    eligible,
+  });
+  expect(withGuide.selected).toEqual(unit.selected);
+  expect(withGuide.witnesses.get("pkg/test/covered.test.ts")).toEqual(
+    unit.witnesses.get("pkg/test/covered.test.ts"),
+  );
+});
+
+test("lists each variant with the compiler's skip kind for this host", async () => {
+  const root = await guideRepository();
+  const selection = await selectAffectedGuides({
+    root,
+    changed: ["pkg/src/covered.ts", "pkg/src/uncovered.ts"],
+    hostPlatform: "linux",
+    entries: demoEntries,
+  });
+  const plan = affectedGuideRunPlan(selection, {});
+  const byScenario = (guideId: string) =>
+    new Map(
+      plan.guides
+        .find((guide) => guide.guideId === guideId)
+        ?.variants.map((variant) => [
+          variant.label === "" ? variant.scenarioId : `${variant.scenarioId} ${variant.label}`,
+          variant,
+        ]),
+    );
+  const demo = byScenario("demo");
+  expect(demo.get("runs")?.state).toBe("will-run");
+  expect(demo.get("darwin-only")?.skip?.kind).toBe("platform");
+  expect(demo.get("authored-skip")?.skip?.kind).toBe("authored");
+  expect(demo.get("live")?.state).toBe("e2e-not-admitted");
+  expect(demo.size).toBe(4);
+
+  const variant = byScenario("variant-demo");
+  expect(variant.size).toBe(2);
+  expect(variant.get("modes mode=one")?.state).toBe("will-run");
+  expect(variant.get("modes mode=two")?.skip?.kind).toBe("variant");
+});
+
+test("e2e variants count as not admitted until the caller sets LANDO_GUIDE_E2E=1", async () => {
+  const root = await guideRepository();
+  const selection = await selectAffectedGuides({
+    root,
+    changed: ["pkg/src/covered.ts"],
+    hostPlatform: "linux",
+    entries: demoEntries,
+  });
+  const notAdmitted = summarizeAffectedGuides(selection, {});
+  expect(notAdmitted.e2eNotAdmitted).toBe(1);
+  expect(notAdmitted.willRun).toBe(1);
+  expect(notAdmitted.skipped).toBe(2);
+
+  const admitted = summarizeAffectedGuides(selection, { LANDO_GUIDE_E2E: "1" });
+  expect(admitted.e2eNotAdmitted).toBe(0);
+  expect(admitted.willRun).toBe(2);
+});
+
+test("an e2e-only selection has no guide command until the caller admits e2e", async () => {
+  const root = await guideRepository();
+  const selection = await selectAffectedGuides({
+    root,
+    changed: ["pkg/src/live.ts"],
+    hostPlatform: "linux",
+    entries: demoEntries,
+  });
+
+  const notAdmitted = affectedGuideRunPlan(selection, {});
+  expect(notAdmitted.summary.willRun).toBe(0);
+  expect(notAdmitted.command).toBeUndefined();
+  expect(notAdmitted.e2eCommand).toContain("docs/guides/live-demo.mdx");
+  expect(notAdmitted.notRun).toContain("1 e2e variant in docs/guides/live-demo.mdx (not admitted)");
+  expect(affectedRunOutcome(notAdmitted, false)).toBe(1);
+  expect(affectedRunOutcome(notAdmitted, true)).toBe(0);
+  const report = nothingExecutedReport(notAdmitted);
+  expect(report[0]).toBe(
+    "[test-affected] nothing was executed: 1 e2e variant is not admitted (set LANDO_GUIDE_E2E=1 with LANDO_SCENARIO_E2E_BINARY and LANDO_TEST_PODMAN_SOCKET).",
+  );
+  expect(report[1]).toContain(
+    "LANDO_GUIDE_E2E=1 LANDO_SCENARIO_E2E_BINARY=core/dist/lando LANDO_TEST_PODMAN_SOCKET=/path/to/podman.sock bun run dev:guides docs/guides/live-demo.mdx --once",
+  );
+  expect(report).toHaveLength(4);
+
+  const admitted = affectedGuideRunPlan(selection, { LANDO_GUIDE_E2E: "1" });
+  expect(admitted.summary.willRun).toBe(1);
+  expect(admitted.command).toEqual([
+    process.execPath,
+    "run",
+    "scripts/dev-guides.ts",
+    "--once",
+    "docs/guides/live-demo.mdx",
+  ]);
+  expect(admitted.notRun).toBeUndefined();
+});
+
+test("the run plan invokes dev:guides once with the caller's environment", async () => {
+  const root = await guideRepository();
+  const selection = await selectAffectedGuides({
+    root,
+    changed: ["pkg/src/covered.ts"],
+    hostPlatform: "linux",
+    entries: demoEntries,
+  });
+  const env = { LANDO_GUIDE_E2E: undefined as string | undefined };
+  const plan = affectedGuideRunPlan(selection, env);
+  expect(plan.command).toEqual([
+    process.execPath,
+    "run",
+    "scripts/dev-guides.ts",
+    "--once",
+    "docs/guides/demo.mdx",
+  ]);
+  expect(plan.env).toBe(env);
+  expect(plan.e2eCommand).toContain("LANDO_GUIDE_E2E=1");
+  expect(plan.e2eCommand).toContain("bun run dev:guides docs/guides/demo.mdx --once");
+});
+
+test("the run plan has no command when every variant is skipped", async () => {
+  const root = await fixture();
+  await put(
+    root,
+    "docs/guides/skips-only.mdx",
+    guideFile("skips-only", scenario("darwin-only", ' platforms={["darwin"]}')),
+  );
+  await put(root, "pkg/src/skipped.ts", "export const skipped = 1;\n");
+  await git(root, "add", ".");
+  await git(root, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-qm", "base");
+  const selection = await selectAffectedGuides({
+    root,
+    changed: ["pkg/src/skipped.ts"],
+    hostPlatform: "linux",
+    entries: [
+      { feature: "skips-only", guide: "docs/guides/skips-only.mdx", sources: ["pkg/src/skipped.ts"] },
+    ],
+  });
+  const plan = affectedGuideRunPlan(selection, {});
+  expect(plan.command).toBeUndefined();
+  expect(plan.summary.willRun).toBe(0);
+  expect(plan.summary.skipped).toBe(1);
+});
+
+test("the e2e command uses the caller's binary and socket and names every e2e-bearing guide", async () => {
+  const root = await guideRepository();
+  const selection = await selectAffectedGuides({
+    root,
+    changed: ["pkg/src/covered.ts", "pkg/src/live.ts"],
+    hostPlatform: "linux",
+    entries: demoEntries,
+  });
+  const plan = affectedGuideRunPlan(selection, {
+    LANDO_SCENARIO_E2E_BINARY: "/tmp/lando",
+    LANDO_TEST_PODMAN_SOCKET: "/tmp/podman.sock",
+  });
+  expect(plan.e2eCommand).toContain("LANDO_SCENARIO_E2E_BINARY=/tmp/lando");
+  expect(plan.e2eCommand).toContain("LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock");
+  expect(plan.e2eCommand).toContain(
+    "bun run dev:guides docs/guides/demo.mdx docs/guides/live-demo.mdx --once",
+  );
+  expect(plan.e2eCommand).not.toContain("<");
+  expect(plan.e2eHints).toEqual([]);
+});
+
+test("the e2e command uses a built core/dist/lando and only the socket path needs replacing", async () => {
+  const root = await guideRepository();
+  await put(root, "core/dist/lando", "#!/bin/sh\n");
+  const selection = await selectAffectedGuides({
+    root,
+    changed: ["pkg/src/covered.ts"],
+    hostPlatform: "linux",
+    entries: demoEntries,
+  });
+  const plan = affectedGuideRunPlan(selection, {});
+  expect(plan.e2eCommand).toContain("LANDO_SCENARIO_E2E_BINARY=core/dist/lando");
+  expect(plan.e2eCommand).toContain("LANDO_TEST_PODMAN_SOCKET=/path/to/podman.sock");
+  expect(plan.e2eCommand).not.toContain("<");
+  expect(plan.e2eHints).toHaveLength(1);
+  expect(plan.e2eHints[0]).toContain("replace /path/to/podman.sock");
+});
+
+test("the e2e command still names core/dist/lando when it is not built, plus the build hint", async () => {
+  const root = await guideRepository();
+  const selection = await selectAffectedGuides({
+    root,
+    changed: ["pkg/src/covered.ts"],
+    hostPlatform: "linux",
+    entries: demoEntries,
+  });
+  const plan = affectedGuideRunPlan(selection, {});
+  expect(plan.e2eCommand).toContain("LANDO_SCENARIO_E2E_BINARY=core/dist/lando");
+  expect(plan.e2eCommand).not.toContain("<");
+  expect(plan.e2eHints.some((hint) => hint.includes("(cd core && bun run build)"))).toBe(true);
+});
+
+test("the not-executed reason names each cause in a mixed selection", () => {
+  const base = { guides: 1, variants: 4, willRun: 0 };
+  const skippedOnly = notExecutedReason({ ...base, skipped: 2, e2eNotAdmitted: 0 });
+  expect(skippedOnly).toContain("2 selected guide variants are skipped by rule");
+  expect(skippedOnly).not.toContain("e2e");
+
+  const e2eOnly = notExecutedReason({ ...base, skipped: 0, e2eNotAdmitted: 3 });
+  expect(e2eOnly).toContain("3 e2e variants are not admitted");
+  expect(e2eOnly).not.toContain("skipped by rule");
+
+  const both = notExecutedReason({ ...base, skipped: 1, e2eNotAdmitted: 1 });
+  expect(both).toContain("1 selected guide variant is skipped by rule");
+  expect(both).toContain("1 e2e variant is not admitted");
+  expect(both).toContain(" and ");
+
+  expect(notExecutedReason({ ...base, skipped: 0, e2eNotAdmitted: 0 })).toContain(
+    "no unit test file and no home-guide scenario variant was selected",
+  );
+});
+
+test(
+  "the CLI succeeds after the unit pass but reports the e2e variants it did not run",
+  async () => {
+    const root = resolve(import.meta.dirname, "../../..");
+    const env = Object.fromEntries(
+      Object.entries(process.env).filter(([name]) => name !== "LANDO_GUIDE_E2E"),
+    );
+    // Built at run time: a literal guide path would make the CLI's own selection
+    // include this test file, whose child would then spawn the CLI again.
+    const guidePath = ["docs", "guides", "recipes", "drupal-production-copy.mdx"].join("/");
+    // CI unit-shard checkouts are depth 1 with no origin/main ref; HEAD keeps the
+    // comparison local while still exercising the CLI's --run orchestration.
+    const child = Bun.spawn(
+      [process.execPath, "run", "scripts/test-affected.ts", "--file", guidePath, "--base", "HEAD", "--run"],
+      { cwd: root, env, stdout: "pipe", stderr: "pipe" },
+    );
+    const [stdout, stderr, code] = await Promise.all([
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+      child.exited,
+    ]);
+
+    expect(code, `${stdout}\n${stderr}`).toBe(0);
+    expect(stdout).toContain(`[test-affected] not run: 1 e2e variant in ${guidePath} (not admitted)`);
+    expect(stdout).toContain("LANDO_GUIDE_E2E=1");
+    expect(stdout).toContain(`bun run dev:guides ${guidePath} --once`);
+    expect(`${stdout}${stderr}`).not.toContain("guide run expected");
+  },
+  { timeout: 180000 },
+);
+
+test("a deleted path that matches two features' globs selects both guides", async () => {
+  const root = await guideRepository();
+  await put(root, "docs/guides/other.mdx", guideFile("other", scenario("runs")));
+  await put(root, "pkg/src/kept.ts", "export const kept = 1;\n");
+  await put(root, "pkg/legacy/x.ts", "export const legacy = 1;\n");
+
+  const selection = await selectAffectedGuides({
+    root,
+    changed: ["pkg/src/x.ts"],
+    hostPlatform: "linux",
+    entries: [
+      { feature: "nested-sources", guide: "docs/guides/demo.mdx", sources: ["pkg/**/x.ts"] },
+      { feature: "flat-sources", guide: "docs/guides/other.mdx", sources: ["pkg/src/*.ts"] },
+    ],
+  });
+  expect(selection.diagnostics).toEqual([]);
+  expect(selection.guides.map((guide) => guide.guideId).sort()).toEqual(["demo", "other"]);
+});
+
+test("reasons accumulate when a path is both a covered source and a guide", async () => {
+  const root = await fixture();
+  await put(root, "docs/guides/other.mdx", guideFile("other", scenario("runs")));
+  await put(root, "recipes/demo/README.mdx", guideFile("recipe-demo", scenario("runs")));
+
+  const selection = await selectAffectedGuides({
+    root,
+    changed: ["recipes/demo/README.mdx"],
+    hostPlatform: "linux",
+    entries: [
+      { feature: "recipe-demo", guide: "docs/guides/other.mdx", sources: ["recipes/demo/README.mdx"] },
+    ],
+  });
+  expect(selection.diagnostics).toEqual([]);
+  const reasons = selection.guides.flatMap((guide) => guide.reasons);
+  expect(reasons).toContain("recipes/demo/README.mdx -> feature recipe-demo");
+  expect(reasons).toContain("recipes/demo/README.mdx guide changed");
+  expect(selection.selectedPaths).toContain("recipes/demo/README.mdx");
+});
+
+test("shell-quotes e2e values and guide paths only when they need it", async () => {
+  const root = await guideRepository();
+  await put(root, "docs/guides/with space.mdx", guideFile("spaced", scenario("live", ' layer="e2e"')));
+
+  const selection = await selectAffectedGuides({
+    root,
+    changed: ["docs/guides/with space.mdx"],
+    hostPlatform: "linux",
+    entries: demoEntries,
+  });
+  const plan = affectedGuideRunPlan(selection, {
+    LANDO_SCENARIO_E2E_BINARY: "/tmp/lando binary",
+    LANDO_TEST_PODMAN_SOCKET: "/tmp/podman socket.sock",
+  });
+
+  expect(plan.e2eCommand).toContain("LANDO_SCENARIO_E2E_BINARY='/tmp/lando binary'");
+  expect(plan.e2eCommand).toContain("LANDO_TEST_PODMAN_SOCKET='/tmp/podman socket.sock'");
+  expect(plan.e2eCommand).toContain("'docs/guides/with space.mdx' --once");
+  expect(plan.e2eCommand).not.toContain("<");
+});
+
+test("prints a single-quotable command for a path containing a quote", async () => {
+  const root = await guideRepository();
+  await put(root, "docs/guides/it's here.mdx", guideFile("quoted", scenario("live", ' layer="e2e"')));
+
+  const selection = await selectAffectedGuides({
+    root,
+    changed: ["docs/guides/it's here.mdx"],
+    hostPlatform: "linux",
+    entries: demoEntries,
+  });
+  const plan = affectedGuideRunPlan(selection, {});
+  expect(plan.e2eCommand).toContain(`'docs/guides/it'\\''s here.mdx'`);
+});
+
+test("the closing report also names variants skipped by rule", async () => {
+  const root = await guideRepository();
+  const selection = await selectAffectedGuides({
+    root,
+    changed: ["pkg/src/covered.ts"],
+    hostPlatform: "linux",
+    entries: demoEntries,
+  });
+  const plan = affectedGuideRunPlan(selection, {});
+  expect(plan.notRun).toStartWith("not run: ");
+  expect(plan.notRun).toContain("1 e2e variant in docs/guides/demo.mdx (not admitted)");
+  expect(plan.notRun).toContain("2 skipped variants in docs/guides/demo.mdx (skipped by rule)");
+});
+
+test("a map with a missing guide reports diagnostics instead of crashing selection", async () => {
+  const root = await fixture();
+  await put(root, "pkg/src/covered.ts", "export const covered = 1;\n");
+
+  const selection = await selectAffectedGuides({
+    root,
+    changed: ["pkg/src/covered.ts"],
+    hostPlatform: "linux",
+    entries: [{ feature: "gone", guide: "docs/guides/gone.mdx", sources: ["pkg/src/covered.ts"] }],
+  });
+
+  expect(selection.guides).toEqual([]);
+  expect(selection.diagnostics.map((diagnostic) => diagnostic.code)).toContain("registry.unknown-guide");
+});
+
+test("a map with an unparseable guide reports diagnostics instead of crashing selection", async () => {
+  const root = await fixture();
+  await put(root, "docs/guides/broken.mdx", "---\nid: [not, a, string]\n---\n");
+  await put(root, "pkg/src/covered.ts", "export const covered = 1;\n");
+
+  const selection = await selectAffectedGuides({
+    root,
+    changed: ["pkg/src/covered.ts"],
+    hostPlatform: "linux",
+    entries: [{ feature: "broken", guide: "docs/guides/broken.mdx", sources: ["pkg/src/covered.ts"] }],
+  });
+
+  expect(selection.guides).toEqual([]);
+  expect(selection.diagnostics.map((diagnostic) => diagnostic.code)).toContain("registry.guide-invalid");
+});
+
+test("a fixture edit still selects its guide when an unrelated guide has invalid frontmatter", async () => {
+  const root = await guideRepository();
+  await put(root, "docs/guides/known.mdx", guideFile("known", scenario("runs")));
+  await put(root, "docs/guides/broken.mdx", "---\nid: [not, a, string]\n---\n");
+  await put(root, "docs/guides/known/fixtures/app/.lando.yml", "name: known\n");
+
+  const selection = await selectAffectedGuides({
+    root,
+    changed: ["docs/guides/known/fixtures/app/.lando.yml"],
+    hostPlatform: "linux",
+    entries: [{ feature: "known", guide: "docs/guides/known.mdx", sources: ["pkg/src/covered.ts"] }],
+  });
+
+  expect(selection.diagnostics).toEqual([]);
+  expect(selection.guides.map((guide) => guide.guideId)).toEqual(["known"]);
+});
+
+test("a selected guide that fails to parse is a diagnostic naming its path", async () => {
+  const root = await guideRepository();
+  await put(root, "docs/guides/broken.mdx", "---\nid: [not, a, string]\n---\n");
+
+  const selection = await selectAffectedGuides({
+    root,
+    changed: ["docs/guides/broken.mdx"],
+    hostPlatform: "linux",
+    entries: demoEntries,
+  });
+
+  expect(selection.guides).toEqual([]);
+  expect(selection.diagnostics).toHaveLength(1);
+  expect(selection.diagnostics[0]?.code).toBe("selection.guide-invalid");
+  expect(selection.diagnostics[0]?.message).toContain('"docs/guides/broken.mdx"');
+});
+
+test("the unit child drops live-test opt-ins while the guide child keeps them", async () => {
+  const root = await guideRepository();
+  const caller: Record<string, string | undefined> = {
+    LANDO_GUIDE_E2E: "1",
+    LANDO_SCENARIO_E2E_BINARY: "/tmp/lando",
+    LANDO_TEST_PODMAN_SOCKET: "/tmp/podman.sock",
+    LANDO_TEST_DOCKER_SOCKET: "/var/run/docker.sock",
+    LANDO_TEST_WINDOWS_DOCKER_SOCKET: "//./pipe/docker_engine",
+    LANDO_TEST_USE_REAL_ROOTS: "1",
+    PATH: "/bin",
+    HOME: "/home/test",
+  };
+  const selection = await selectAffectedGuides({
+    root,
+    changed: ["pkg/src/live.ts"],
+    hostPlatform: "linux",
+    entries: demoEntries,
+  });
+  const plan = affectedGuideRunPlan(selection, caller);
+
+  expect(unitTestEnvironment(caller)).toEqual({ PATH: "/bin", HOME: "/home/test" });
+  expect(plan.command).toBeDefined();
+  expect(plan.env).toBe(caller);
+  expect(plan.env.LANDO_GUIDE_E2E).toBe("1");
+  expect(plan.env.LANDO_SCENARIO_E2E_BINARY).toBe("/tmp/lando");
+  expect(plan.env.LANDO_TEST_PODMAN_SOCKET).toBe("/tmp/podman.sock");
+});
+
+test("renders a PowerShell e2e command on win32", async () => {
+  const root = await guideRepository();
+  const selection = await selectAffectedGuides({
+    root,
+    changed: ["pkg/src/live.ts"],
+    hostPlatform: "linux",
+    entries: demoEntries,
+  });
+  const plan = affectedGuideRunPlan(selection, {}, "win32");
+
+  expect(plan.command).toBeUndefined();
+  expect(plan.e2eCommand).toBe(
+    "$env:LANDO_GUIDE_E2E='1'; $env:LANDO_SCENARIO_E2E_BINARY='core\\dist\\lando.exe'; $env:LANDO_TEST_PODMAN_SOCKET='\\\\.\\pipe\\podman-lando'; bun run dev:guides 'docs/guides/live-demo.mdx' --once",
+  );
+  expect(plan.e2eHints).toEqual([
+    expect.stringContaining(
+      "core\\dist\\lando.exe does not exist yet; build it with bun --cwd=core run build.",
+    ),
+    expect.stringContaining("replace \\\\.\\pipe\\podman-lando with the answering Podman named pipe"),
+    expect.stringContaining("PowerShell $env: assignments last for the rest of this session"),
+  ]);
+  expect(plan.e2eRunNote).toContain("$env:");
+});
+
+test("quotes spaces and apostrophes in both e2e renderings", async () => {
+  const root = await guideRepository();
+  await put(root, "docs/guides/it's here.mdx", guideFile("quoted", scenario("live", ' layer="e2e"')));
+  const selection = await selectAffectedGuides({
+    root,
+    changed: ["pkg/src/live.ts"],
+    hostPlatform: "linux",
+    entries: demoEntries,
+  });
+
+  const posix = affectedGuideRunPlan(selection, {
+    LANDO_SCENARIO_E2E_BINARY: "/tmp/lando's binary",
+    LANDO_TEST_PODMAN_SOCKET: "/tmp/podman socket.sock",
+  });
+  expect(posix.e2eCommand).toContain("LANDO_SCENARIO_E2E_BINARY='/tmp/lando'\\''s binary'");
+  expect(posix.e2eCommand).toContain("LANDO_TEST_PODMAN_SOCKET='/tmp/podman socket.sock'");
+
+  const windows = affectedGuideRunPlan(
+    selection,
+    {
+      LANDO_SCENARIO_E2E_BINARY: "C:\\Program Files\\lando's.exe",
+      LANDO_TEST_PODMAN_SOCKET: "\\\\.\\pipe\\lando bridge.sock",
+    },
+    "win32",
+  );
+  expect(windows.e2eCommand).toContain("$env:LANDO_SCENARIO_E2E_BINARY='C:\\Program Files\\lando''s.exe'");
+  expect(windows.e2eCommand).toContain("$env:LANDO_TEST_PODMAN_SOCKET='\\\\.\\pipe\\lando bridge.sock'");
+
+  const quotedSelection = await selectAffectedGuides({
+    root,
+    changed: ["docs/guides/it's here.mdx"],
+    hostPlatform: "linux",
+    entries: demoEntries,
+  });
+  expect(affectedGuideRunPlan(quotedSelection, {}, "win32").e2eCommand).toContain(
+    "'docs/guides/it''s here.mdx'",
+  );
+});

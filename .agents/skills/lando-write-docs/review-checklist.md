@@ -23,7 +23,7 @@ Use this checklist with [SKILL.md](SKILL.md). Check technical truth and the read
 - [ ] A guide has one `<Guide>` element containing all scenarios. Confirm the scenario count; focused tests require success and a positive test count.
 - [ ] Object-valued guide props hold only literals, arrays, and plain objects. Boxed TTY command output is asserted through `--format=json`.
 - [ ] Scenarios use isolated resources, hold on a host with Lando already installed, and never run destructive commands.
-- [ ] If owned: PRD `## Guide Coverage`, `Shipped` INDEX row, coverage/transcript/drift checks, and any required static-test phrases remain correct.
+- [ ] If owned: the `scripts/guides/home-guides.ts` entry and a scenario that exercises its sources, `Shipped` INDEX row, coverage/transcript/drift checks, and any required static-test phrases remain correct.
 
 ## Editorial pass
 

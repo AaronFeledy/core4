@@ -1,301 +1,457 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join } from "node:path";
 
-import {
-  type GuideDriftDeclaration,
-  checkGuideDrift,
-  checkGuideDriftOnDisk,
-  formatDriftDiagnostic,
-  formatGuideDriftSummary,
-  parseGuideCoverageSurfacePaths,
-  parsePrdSourceArgs,
-} from "../../../scripts/check-guide-drift.ts";
+import { type GuideDriftGateOptions, runGuideDriftGate } from "../../../scripts/check-guide-drift.ts";
+import type { HomeGuideEntry } from "../../../scripts/guides/home-guide-registry.ts";
 
-const repoRoot = resolve(import.meta.dirname, "../../..");
+const roots: string[] = [];
 
-const scaffold = async (files: Record<string, string>): Promise<string> => {
+const demoGuide = `---
+id: demo
+provider: test
+---
+
+# Demo
+
+<Guide>
+  <Scenario id="runs">
+    <Step name="run">
+      <Run command="version" />
+    </Step>
+  </Scenario>
+</Guide>
+`;
+
+const put = async (root: string, path: string, content: string): Promise<void> => {
+  const target = join(root, path);
+  await mkdir(dirname(target), { recursive: true });
+  await writeFile(target, content);
+};
+
+const git = async (root: string, ...args: string[]): Promise<void> => {
+  const child = Bun.spawn(["git", ...args], { cwd: root, stdout: "pipe", stderr: "pipe" });
+  const [stderr, code] = await Promise.all([new Response(child.stderr).text(), child.exited]);
+  if (code !== 0) throw new Error(`git ${args.join(" ")}: ${stderr}`);
+};
+
+const commit = (root: string, message: string): Promise<void> =>
+  git(
+    root,
+    "-c",
+    "user.name=Test",
+    "-c",
+    "user.email=test@example.invalid",
+    "-c",
+    "commit.gpgsign=false",
+    "commit",
+    "-qm",
+    message,
+  );
+
+const fixture = async (files: Record<string, string> = {}): Promise<string> => {
   const root = await mkdtemp(join(tmpdir(), "lando-guide-drift-"));
-  for (const [rel, content] of Object.entries(files)) {
-    const absolute = resolve(root, rel);
-    await mkdir(dirname(absolute), { recursive: true });
-    await writeFile(absolute, content);
-  }
-  if (!("docs/guides/prd-sources.json" in files)) {
-    const directories = [
-      ...new Set(
-        Object.keys(files)
-          .filter((path) => path.startsWith("prd/") && path.endsWith(".md"))
-          .map((path) => dirname(path)),
-      ),
-    ];
-    const configPath = resolve(root, "docs/guides/prd-sources.json");
-    await mkdir(dirname(configPath), { recursive: true });
-    await writeFile(configPath, JSON.stringify({ directories, files: [] }));
-  }
+  roots.push(root);
+  await put(root, "docs/guides/demo.mdx", demoGuide);
+  await put(root, "src/covered.ts", "export const a = 1;\n");
+  for (const [path, content] of Object.entries(files)) await put(root, path, content);
+  await git(root, "init", "-q");
+  await git(root, "add", ".");
+  await commit(root, "base");
   return root;
 };
 
-const prdSection = (
-  guides: ReadonlyArray<{ story: string; path: string }>,
-  surfaces: ReadonlyArray<string>,
-): string => `# Some PRD
+const entries: readonly HomeGuideEntry[] = [
+  { feature: "demo", guide: "docs/guides/demo.mdx", sources: ["src/*.ts"] },
+];
 
-## User Stories
+const literalEntries: readonly HomeGuideEntry[] = [
+  { feature: "demo", guide: "docs/guides/demo.mdx", sources: ["src/covered.ts"] },
+];
 
-Body text mentioning \`core/src/elsewhere.ts\` that must be ignored.
+const gate = (
+  root: string,
+  env: NodeJS.ProcessEnv = {},
+  injected = entries,
+): ReturnType<typeof runGuideDriftGate> =>
+  runGuideDriftGate({
+    root,
+    env: { GUIDE_DRIFT_BASE_REF: "HEAD", ...env },
+    args: [],
+    entries: injected,
+  } satisfies GuideDriftGateOptions);
 
-## Guide Coverage
+const skipBody = `Guide-Coverage-Skip: ${"intentional internal refactor with no guide change"}`;
 
-Per PRD-12 US-198/US-199, this PRD owns the executable guides listed below.
-
-**Guides owned by this PRD:**
-
-| User Story | Feature | Guide Path | Acceptance |
-|---|---|---|---|
-${guides.map((g) => `| ${g.story} | Feature | \`${g.path}\` | Required at story acceptance |`).join("\n")}
-
-**CLI / source surface paths covered (drift gate input):**
-
-${surfaces.map((s) => `- \`${s}\``).join("\n")}
-
-## Open Questions
-
-Nothing here.
-`;
-
-const codesFor = (diagnostics: ReadonlyArray<{ code: string }>): ReadonlyArray<string> =>
-  diagnostics.map((d) => d.code);
-
-describe("parseGuideCoverageSurfacePaths", () => {
-  test("extracts only the drift-gate surface bullets, not guide paths or prose", () => {
-    const surfaces = parseGuideCoverageSurfacePaths(
-      prdSection(
-        [{ story: "US-129", path: "docs/guides/recipes/remote-sources.mdx" }],
-        ["core/src/recipes/**", "sdk/src/recipes/**", "plugins/recipe-*/src/**"],
-      ),
-    );
-    expect(surfaces).toEqual(["core/src/recipes/**", "sdk/src/recipes/**", "plugins/recipe-*/src/**"]);
-  });
-
-  test("returns nothing when the section declares no surface bullets", () => {
-    const surfaces = parseGuideCoverageSurfacePaths(
-      "## Guide Coverage\n\n**None — internal/infra PRD.** No executable guides are required.\n\n## Next\n",
-    );
-    expect(surfaces).toEqual([]);
-  });
-
-  test("returns nothing when there is no Guide Coverage section", () => {
-    const surfaces = parseGuideCoverageSurfacePaths("# Title\n\n## User Stories\n\nNo coverage.\n");
-    expect(surfaces).toEqual([]);
-  });
+afterEach(async () => {
+  await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
-const recipeDecl: GuideDriftDeclaration = {
-  source: "prd/alpha-3/prd-alpha-3-07-recipes-full-breadth.md",
-  surfacePaths: ["core/src/recipes/**", "sdk/src/recipes/**", "plugins/recipe-*/src/**"],
-  guidePaths: ["docs/guides/recipes/remote-sources.mdx"],
+test("a covered path without a touch to the home guide fails", async () => {
+  const root = await fixture();
+  await put(root, "src/covered.ts", "export const a = 2;\n");
+
+  const result = await gate(root);
+  expect(result.exitCode).toBe(1);
+  expect(result.stderr).toContain("drift.guide-not-touched");
+  expect(result.stderr).toContain('"src/covered.ts"');
+  expect(result.stderr).toContain("docs/guides/demo.mdx");
+  expect(result.stderr).toContain('"docs/guides/demo/fixtures/"');
+  expect(result.stderr).not.toContain("<guideId>");
+  expect(result.stderr).toContain("bun run test:affected --run");
+  expect(result.stderr).toContain("GUIDE_DRIFT_PR_BODY");
+});
+
+test("the remediation resolves the fixtures directory from the guide's frontmatter id", async () => {
+  const root = await fixture({
+    "docs/guides/services/renamed.mdx": demoGuide.replace("id: demo", "id: actual-id"),
+    "src/nested/covered.ts": "export const a = 1;\n",
+  });
+  await put(root, "src/nested/covered.ts", "export const a = 2;\n");
+
+  const result = await gate(root, {}, [
+    { feature: "nested", guide: "docs/guides/services/renamed.mdx", sources: ["src/nested/*.ts"] },
+  ]);
+  expect(result.exitCode).toBe(1);
+  expect(result.stderr).toContain('"docs/guides/actual-id/fixtures/"');
+  expect(result.stderr).not.toContain("docs/guides/services/renamed/fixtures/");
+  expect(result.stderr).not.toContain("<guideId>");
+});
+
+test("touching the home guide satisfies the covered path", async () => {
+  const root = await fixture();
+  await put(root, "src/covered.ts", "export const a = 2;\n");
+  await put(root, "docs/guides/demo.mdx", `${demoGuide}\nMore.\n`);
+
+  const result = await gate(root);
+  expect(result.exitCode).toBe(0);
+  expect(result.stdout).toContain('"src/covered.ts" -> demo: docs/guides/demo.mdx touched');
+});
+
+test("a guide-only change passes with no covered path changed", async () => {
+  const root = await fixture();
+  await put(root, "docs/guides/demo.mdx", `${demoGuide}\nMore.\n`);
+
+  const result = await gate(root);
+  expect(result.exitCode).toBe(0);
+  expect(result.stdout).toContain("no covered paths changed");
+});
+
+test("a fixture change beside the guide satisfies the covered path", async () => {
+  const root = await fixture({ "docs/guides/demo/fixtures/app/.lando.yml": "name: demo\n" });
+  await put(root, "src/covered.ts", "export const a = 2;\n");
+  await put(root, "docs/guides/demo/fixtures/app/.lando.yml", "name: demo\nservices: {}\n");
+
+  const result = await gate(root);
+  expect(result.exitCode).toBe(0);
+});
+
+test("a .cases.ts change beside the guide is not a guide change", async () => {
+  const root = await fixture({ "docs/guides/demo/example.cases.ts": "export const cases = [];\n" });
+  await put(root, "src/covered.ts", "export const a = 2;\n");
+  await put(root, "docs/guides/demo/example.cases.ts", "export const cases = [1];\n");
+
+  const result = await gate(root);
+  expect(result.exitCode).toBe(1);
+  expect(result.stderr).toContain("drift.guide-not-touched");
+});
+
+test("a different guide does not satisfy the covered path", async () => {
+  const root = await fixture();
+  await put(root, "src/covered.ts", "export const a = 2;\n");
+  await put(root, "docs/guides/other.mdx", demoGuide.replace("id: demo", "id: other"));
+
+  const result = await gate(root);
+  expect(result.exitCode).toBe(1);
+  expect(result.stderr).toContain("drift.guide-not-touched");
+});
+
+test("a staged rename under a glob reports both paths", async () => {
+  const root = await fixture();
+  await git(root, "mv", "src/covered.ts", "src/renamed.ts");
+
+  const result = await gate(root);
+  expect(result.exitCode).toBe(1);
+  expect(result.stderr).toContain("drift.guide-not-touched");
+  expect(result.stderr).toContain('"src/covered.ts"');
+  expect(result.stderr).toContain('"src/renamed.ts"');
+});
+
+test("a staged rename of a literally declared source fails the map, skip or not", async () => {
+  const root = await fixture();
+  await git(root, "mv", "src/covered.ts", "src/renamed.ts");
+
+  const withoutSkip = await gate(root, {}, literalEntries);
+  expect(withoutSkip.exitCode).toBe(1);
+  expect(withoutSkip.stderr).toContain("registry.unmatched-source");
+
+  const withSkip = await gate(root, { GUIDE_DRIFT_PR_BODY: skipBody }, literalEntries);
+  expect(withSkip.exitCode).toBe(1);
+  expect(withSkip.stderr).toContain("registry.unmatched-source");
+  expect(withSkip.stderr).toContain("does not waive");
+});
+
+test("an empty map fails even with a valid skip", async () => {
+  const root = await fixture();
+  await put(root, "src/covered.ts", "export const a = 2;\n");
+
+  const result = await gate(root, { GUIDE_DRIFT_PR_BODY: skipBody }, []);
+  expect(result.exitCode).toBe(1);
+  expect(result.stderr).toContain("registry.empty");
+});
+
+test("a valid skip exempts the unsatisfied feature and reports it", async () => {
+  const root = await fixture();
+  await put(root, "src/covered.ts", "export const a = 2;\n");
+
+  const result = await gate(root, { GUIDE_DRIFT_PR_BODY: skipBody });
+  expect(result.exitCode).toBe(0);
+  expect(result.stdout).toContain("Guide-Coverage-Skip accepted:");
+  expect(result.stdout).toContain("demo");
+  expect(result.stdout).toContain("exempted by Guide-Coverage-Skip");
+});
+
+test("a 23-character skip reason fails", async () => {
+  const root = await fixture();
+  await put(root, "src/covered.ts", "export const a = 2;\n");
+
+  const result = await gate(root, { GUIDE_DRIFT_PR_BODY: `Guide-Coverage-Skip: ${"x".repeat(23)}` });
+  expect(result.exitCode).toBe(1);
+  expect(result.stderr).toContain("drift.skip-reason-too-short");
+});
+
+test("a skip reason of exactly the minimum length is accepted", async () => {
+  const root = await fixture();
+  await put(root, "src/covered.ts", "export const a = 2;\n");
+
+  const result = await gate(root, {
+    GUIDE_DRIFT_PR_BODY: `Guide-Coverage-Skip: ${"x".repeat(24)}`,
+  });
+  expect(result.exitCode).toBe(0);
+});
+
+test("a head SHA that is not a commit fails closed with a GitChangeError", async () => {
+  const root = await fixture();
+
+  const result = await runGuideDriftGate({
+    root,
+    env: { GUIDE_DRIFT_BASE_SHA: await headSha(root), GUIDE_DRIFT_HEAD_SHA: "not-an-object" },
+    args: [],
+    entries,
+  });
+  expect(result.exitCode).toBe(1);
+  expect(result.stderr).toContain("GitChangeError");
+  expect(result.stderr).toContain("fetch-depth: 0");
+});
+
+test("one of the two comparison SHAs without the other fails closed", async () => {
+  const root = await fixture();
+
+  const result = await runGuideDriftGate({
+    root,
+    env: { GUIDE_DRIFT_BASE_SHA: await headSha(root) },
+    args: [],
+    entries,
+  });
+  expect(result.exitCode).toBe(1);
+  expect(result.stderr).toContain("GUIDE_DRIFT_HEAD_SHA");
+  expect(result.stdout).not.toContain("passed");
+});
+
+const headSha = async (root: string): Promise<string> => {
+  const child = Bun.spawn(["git", "rev-parse", "HEAD"], { cwd: root, stdout: "pipe", stderr: "pipe" });
+  const [out] = await Promise.all([new Response(child.stdout).text(), child.exited]);
+  return out.trim();
 };
 
-describe("checkGuideDrift (pure)", () => {
-  test("S1: touching a covered surface without its guide fails", () => {
-    const result = checkGuideDrift({
-      declarations: [recipeDecl],
-      changedFiles: ["core/src/recipes/git-source.ts"],
-      prBody: "Implements the git recipe source.",
-    });
-    expect(result.skip).toBeUndefined();
-    expect(codesFor(result.diagnostics)).toContain("drift.guide-not-touched");
-    expect(result.diagnostics.some((d) => d.message.includes("prd-alpha-3-07-recipes-full-breadth.md"))).toBe(
-      true,
-    );
-    expect(result.diagnostics.some((d) => d.message.includes("Guide-Coverage-Skip"))).toBe(true);
-  });
+const summaryRun = async (
+  root: string,
+  env: NodeJS.ProcessEnv,
+  injected = entries,
+): Promise<{ readonly result: Awaited<ReturnType<typeof runGuideDriftGate>>; readonly summary: string }> => {
+  const summaryPath = join(root, "step-summary.md");
+  await writeFile(summaryPath, "");
+  const result = await gate(root, { GITHUB_STEP_SUMMARY: summaryPath, ...env }, injected);
+  return { result, summary: await Bun.file(summaryPath).text() };
+};
 
-  test("S1: a wildcard plugin surface match still requires the guide", () => {
-    const result = checkGuideDrift({
-      declarations: [recipeDecl],
-      changedFiles: ["plugins/recipe-acme/src/index.ts"],
-      prBody: "Adds a recipe plugin.",
-    });
-    expect(codesFor(result.diagnostics)).toContain("drift.guide-not-touched");
-  });
+test("pass output and summary name the comparison, the covered path, its feature, and the guide", async () => {
+  const root = await fixture();
+  await put(root, "src/covered.ts", "export const a = 2;\n");
+  await put(root, "docs/guides/demo.mdx", `${demoGuide}\nMore.\n`);
 
-  test("S2: touching both the surface and one of its guides passes", () => {
-    const result = checkGuideDrift({
-      declarations: [recipeDecl],
-      changedFiles: ["core/src/recipes/git-source.ts", "docs/guides/recipes/remote-sources.mdx"],
-      prBody: "Implements the git recipe source and updates the guide.",
-    });
-    expect(result.diagnostics).toEqual([]);
-    expect(result.skip).toBeUndefined();
-  });
-
-  test("S3: a guide-only PR passes (no covered surface touched)", () => {
-    const result = checkGuideDrift({
-      declarations: [recipeDecl],
-      changedFiles: ["docs/guides/recipes/remote-sources.mdx"],
-      prBody: "Doc-only tweak.",
-    });
-    expect(result.diagnostics).toEqual([]);
-  });
-
-  test("a PR touching neither surface nor guide passes", () => {
-    const result = checkGuideDrift({
-      declarations: [recipeDecl],
-      changedFiles: ["core/src/cli/run.ts", "README.md"],
-      prBody: "Unrelated change.",
-    });
-    expect(result.diagnostics).toEqual([]);
-  });
-
-  test("S4: a Guide-Coverage-Skip tag with a >=24 char reason bypasses the gate", () => {
-    const reason = "intentional refactor with no guide-visible behavior change";
-    const result = checkGuideDrift({
-      declarations: [recipeDecl],
-      changedFiles: ["core/src/recipes/git-source.ts"],
-      prBody: `Refactor.\n\nGuide-Coverage-Skip: ${reason}\n`,
-    });
-    expect(result.diagnostics).toEqual([]);
-    expect(result.skip?.reason).toBe(reason);
-  });
-
-  test("S5: a Guide-Coverage-Skip tag with a too-short reason fails", () => {
-    const result = checkGuideDrift({
-      declarations: [recipeDecl],
-      changedFiles: ["core/src/recipes/git-source.ts"],
-      prBody: "Guide-Coverage-Skip: too short\n",
-    });
-    expect(codesFor(result.diagnostics)).toContain("drift.skip-reason-too-short");
-    expect(result.skip).toBeUndefined();
-  });
-
-  test("a skip reason of exactly 24 characters passes", () => {
-    const reason = "x".repeat(24);
-    const result = checkGuideDrift({
-      declarations: [recipeDecl],
-      changedFiles: ["core/src/recipes/git-source.ts"],
-      prBody: `Guide-Coverage-Skip: ${reason}`,
-    });
-    expect(result.diagnostics).toEqual([]);
-    expect(result.skip?.reason).toBe(reason);
-  });
-
-  test("an empty changed-file set passes (no PR context)", () => {
-    const result = checkGuideDrift({ declarations: [recipeDecl], changedFiles: [], prBody: "" });
-    expect(result.diagnostics).toEqual([]);
-  });
-
-  test("diagnostics format as code: message", () => {
-    const formatted = formatDriftDiagnostic({ code: "drift.guide-not-touched", message: "hello" });
-    expect(formatted).toBe("drift.guide-not-touched: hello");
-  });
-
-  test("formats a PR check summary that includes a valid skip reason", () => {
-    const reason = "intentional refactor with no guide-visible behavior change";
-    const summary = formatGuideDriftSummary(
-      { diagnostics: [], skip: { reason } },
-      { changedFiles: ["core/src/recipes/git-source.ts"], prBody: `Guide-Coverage-Skip: ${reason}` },
-    );
-    expect(summary).toContain("Status: bypassed via `Guide-Coverage-Skip`.");
-    expect(summary).toContain(`Reason: ${reason}`);
-    expect(summary).toContain("- `core/src/recipes/git-source.ts`");
-  });
+  const { result, summary } = await summaryRun(root, {});
+  expect(result.exitCode).toBe(0);
+  expect(result.stdout).toContain("merge base ");
+  expect(result.stdout).toContain('"src/covered.ts" -> demo: docs/guides/demo.mdx touched');
+  expect(summary).toContain("Status: passed.");
+  expect(summary).toContain('"src/covered.ts" -> demo: docs/guides/demo.mdx touched');
 });
 
-describe("checkGuideDriftOnDisk", () => {
-  test("an empty changed-file set passes against the real repo", async () => {
-    const result = await checkGuideDriftOnDisk(repoRoot, { changedFiles: [], prBody: "" });
-    expect(result.diagnostics).toEqual([]);
-  });
+test("an unrelated change reports the comparison count instead of a covered path", async () => {
+  const root = await fixture({ "docs/notes.txt": "one\n" });
+  await put(root, "docs/notes.txt", "two\n");
 
-  test("passes with zero declarations when no PRD sources exist", async () => {
-    const root = await scaffold({
-      "docs/guides/prd-sources.json": JSON.stringify({ directories: [], files: [] }),
-    });
-    try {
-      const result = await checkGuideDriftOnDisk(root, {
-        changedFiles: ["core/src/recipes/x.ts"],
-        prBody: "changes a surface with no declared owner",
-      });
-      expect(result.diagnostics).toEqual([]);
-    } finally {
-      await rm(root, { force: true, recursive: true });
-    }
-  });
+  const result = await gate(root);
+  expect(result.exitCode).toBe(0);
+  expect(result.stdout).toContain("no covered paths changed (1 changed paths compared)");
+});
 
-  test("an explicitly supplied PRD source parses the same drift declaration", async () => {
-    const root = await scaffold({
-      "prd/custom/recipe.md": prdSection(
-        [{ story: "US-129", path: "docs/guides/recipes/remote-sources.mdx" }],
-        ["core/src/recipes/**"],
-      ),
-      "docs/guides/prd-sources.json": JSON.stringify({ directories: [], files: [] }),
-    });
-    try {
-      const result = await checkGuideDriftOnDisk(root, {
-        prdSources: ["prd/custom/recipe.md"],
-        changedFiles: ["core/src/recipes/x.ts"],
-        prBody: "changes the declared surface",
-      });
-      expect(codesFor(result.diagnostics)).toContain("drift.guide-not-touched");
-      expect(
-        result.diagnostics.some((diagnostic) => diagnostic.message.includes("prd/custom/recipe.md")),
-      ).toBe(true);
-    } finally {
-      await rm(root, { force: true, recursive: true });
-    }
+test("a valid skip reports its reason and exactly the exempted features, not the satisfied ones", async () => {
+  const otherGuide = demoGuide.replace("id: demo", "id: other");
+  const root = await fixture({
+    "docs/guides/other.mdx": otherGuide,
+    "src/demo/covered.ts": "export const a = 1;\n",
+    "src/other/covered.ts": "export const a = 1;\n",
   });
+  const twoEntries: readonly HomeGuideEntry[] = [
+    { feature: "demo", guide: "docs/guides/demo.mdx", sources: ["src/demo/*.ts"] },
+    { feature: "other", guide: "docs/guides/other.mdx", sources: ["src/other/*.ts"] },
+  ];
+  await put(root, "src/demo/covered.ts", "export const a = 2;\n");
+  await put(root, "src/other/covered.ts", "export const a = 2;\n");
+  await put(root, "docs/guides/demo.mdx", `${demoGuide}\nMore.\n`);
 
-  test("shares repeatable PRD source CLI parsing with the coverage gate", () => {
-    expect(parsePrdSourceArgs(["--prd-source=prd/one", "--prd-source=prd/two.md"])).toEqual([
-      "prd/one",
-      "prd/two.md",
-    ]);
+  const { result, summary } = await summaryRun(root, { GUIDE_DRIFT_PR_BODY: skipBody }, twoEntries);
+  expect(result.exitCode).toBe(0);
+  expect(result.stdout).toContain("Guide-Coverage-Skip accepted:");
+  expect(result.stdout).toContain("intentional internal refactor with no guide change");
+  expect(result.stdout).toContain("-> other:");
+  expect(result.stdout).not.toContain("-> other: docs/guides/other.mdx touched");
+  expect(result.stdout).not.toContain('"src/demo/covered.ts" -> demo: docs/guides/demo.mdx (exempted');
+
+  const exempted =
+    summary.split("### Exempted by Guide-Coverage-Skip")[1]?.split("### Changed Files")[0] ?? "";
+  expect(exempted).toContain('"src/other/covered.ts" -> other: docs/guides/other.mdx');
+  expect(exempted).not.toContain("-> demo:");
+});
+
+test("baseline growth fails with a valid skip, and the diagnostic precedes the skip status", async () => {
+  const root = await fixture({ "scripts/guides/container-command-lint.ts": "export {};\n" });
+  const baselinePath = join(root, "scripts/guides/container-command-baseline.json");
+  await writeFile(baselinePath, JSON.stringify({ "docs/guides/demo.mdx": ["lando exec app -- php -m"] }));
+  await git(root, "add", ".");
+  await commit(root, "baseline");
+  await writeFile(
+    baselinePath,
+    JSON.stringify({
+      "docs/guides/demo.mdx": ["lando exec app -- php -m"],
+      "docs/guides/added.mdx": ["lando logs -s app"],
+    }),
+  );
+  await put(root, "src/covered.ts", "export const a = 2;\n");
+
+  const { result, summary } = await summaryRun(root, { GUIDE_DRIFT_PR_BODY: skipBody });
+  expect(result.exitCode).toBe(1);
+  const diagnostic = result.stderr.indexOf("guide.container-command.e2e-coverage");
+  const skipStatus = result.stderr.indexOf("Guide-Coverage-Skip accepted:");
+  expect(diagnostic).toBeGreaterThanOrEqual(0);
+  expect(skipStatus).toBeGreaterThan(diagnostic);
+  expect(result.stderr).toContain("does not waive");
+  expect(summary.indexOf("guide.container-command.e2e-coverage")).toBeLessThan(
+    summary.indexOf("### Exempted by Guide-Coverage-Skip"),
+  );
+});
+
+test("the failure text gives both the PR-body line and its local preview command", async () => {
+  const root = await fixture();
+  await put(root, "src/covered.ts", "export const a = 2;\n");
+
+  const result = await gate(root);
+  expect(result.exitCode).toBe(1);
+  expect(result.stderr).toContain("Guide-Coverage-Skip:");
+  expect(result.stderr).toContain(
+    "GUIDE_DRIFT_PR_BODY='Guide-Coverage-Skip: <reason>' bun run check:guide-drift",
+  );
+  expect(result.stderr).toContain("bun run test:affected --run");
+});
+
+test("an explicit --base with the comparison SHAs is an error", async () => {
+  const root = await fixture();
+  const sha = await headSha(root);
+
+  const result = await runGuideDriftGate({
+    root,
+    env: { GUIDE_DRIFT_BASE_SHA: sha, GUIDE_DRIFT_HEAD_SHA: sha },
+    args: ["--base", "HEAD"],
+    entries,
   });
+  expect(result.exitCode).toBe(1);
+  expect(result.stderr).toContain("--base HEAD");
+  expect(result.stderr).toContain("GUIDE_DRIFT_BASE_SHA");
+  expect(result.stderr).toContain("drop --base");
+});
 
-  test("scaffolded PRD: touch-surface-without-guide fails, touch-both passes", async () => {
-    const root = await scaffold({
-      "prd/alpha-3/prd-alpha-3-07-recipes.md": prdSection(
-        [{ story: "US-129", path: "docs/guides/recipes/remote-sources.mdx" }],
-        ["core/src/recipes/**"],
-      ),
-    });
-    try {
-      const fail = await checkGuideDriftOnDisk(root, {
-        changedFiles: ["core/src/recipes/x.ts"],
-        prBody: "no guide",
-      });
-      expect(codesFor(fail.diagnostics)).toContain("drift.guide-not-touched");
+test("the CI SHA pair still compares the two commits", async () => {
+  const root = await fixture();
+  const sha = await headSha(root);
 
-      const pass = await checkGuideDriftOnDisk(root, {
-        changedFiles: ["core/src/recipes/x.ts", "docs/guides/recipes/remote-sources.mdx"],
-        prBody: "touched both",
-      });
-      expect(pass.diagnostics).toEqual([]);
-    } finally {
-      await rm(root, { force: true, recursive: true });
-    }
+  const result = await runGuideDriftGate({
+    root,
+    env: { GUIDE_DRIFT_BASE_SHA: sha, GUIDE_DRIFT_HEAD_SHA: sha },
+    args: [],
+    entries,
   });
+  expect(result.exitCode).toBe(0);
+  expect(result.stdout).toContain("no covered paths changed");
+});
 
-  test("scaffolded PRD: a valid skip tag bypasses the gate on disk", async () => {
-    const root = await scaffold({
-      "prd/alpha-3/prd-alpha-3-07-recipes.md": prdSection(
-        [{ story: "US-129", path: "docs/guides/recipes/remote-sources.mdx" }],
-        ["core/src/recipes/**"],
-      ),
-    });
-    try {
-      const reason = "deliberate internal refactor, no user-facing surface change";
-      const result = await checkGuideDriftOnDisk(root, {
-        changedFiles: ["core/src/recipes/x.ts"],
-        prBody: `Body\n\nGuide-Coverage-Skip: ${reason}`,
-      });
-      expect(result.diagnostics).toEqual([]);
-      expect(result.skip?.reason).toBe(reason);
-    } finally {
-      await rm(root, { force: true, recursive: true });
-    }
+test("a deleted path that matches two features' globs requires both guides", async () => {
+  const otherGuide = demoGuide.replace("id: demo", "id: other");
+  const root = await fixture({
+    "docs/guides/other.mdx": otherGuide,
+    "src/x.ts": "export const gone = 1;\n",
+    "src/legacy/x.ts": "export const legacy = 1;\n",
   });
+  const twoEntries: readonly HomeGuideEntry[] = [
+    { feature: "nested-sources", guide: "docs/guides/demo.mdx", sources: ["src/**/x.ts"] },
+    { feature: "flat-sources", guide: "docs/guides/other.mdx", sources: ["src/*.ts"] },
+  ];
+  await rm(join(root, "src/x.ts"));
+
+  const result = await gate(root, {}, twoEntries);
+  expect(result.exitCode).toBe(1);
+  expect(result.stderr).toContain('drift.guide-not-touched: "src/x.ts" changed for feature "flat-sources"');
+  expect(result.stderr).toContain('drift.guide-not-touched: "src/x.ts" changed for feature "nested-sources"');
+});
+
+test("a .cases.ts file under the guide's fixtures does not count as touching the guide", async () => {
+  const root = await fixture({
+    "docs/guides/demo/fixtures/example.cases.ts": "export const cases = [];\n",
+  });
+  await put(root, "src/covered.ts", "export const a = 2;\n");
+  await put(root, "docs/guides/demo/fixtures/example.cases.ts", "export const cases = [1];\n");
+
+  const result = await gate(root);
+  expect(result.exitCode).toBe(1);
+  expect(result.stderr).toContain("drift.guide-not-touched");
+});
+
+test("more than one skip line is ambiguous and fails without exempting anything", async () => {
+  const root = await fixture();
+  await put(root, "src/covered.ts", "export const a = 2;\n");
+
+  const result = await gate(root, {
+    GUIDE_DRIFT_PR_BODY: `Reviewed.\n${skipBody}\n${skipBody}\n`,
+  });
+  expect(result.exitCode).toBe(1);
+  expect(result.stderr).toContain("drift.skip-ambiguous");
+  expect(result.stderr).toContain('2 "Guide-Coverage-Skip:" lines');
+  expect(result.stderr).toContain('line 2: "intentional internal refactor with no guide change"');
+  expect(result.stderr).toContain('line 3: "intentional internal refactor with no guide change"');
+  expect(result.stderr).not.toContain("Guide-Coverage-Skip accepted:");
+  expect(result.stderr).toContain("drift.guide-not-touched");
+});
+
+test("a mapped guide that does not exist is a map failure, not a crash", async () => {
+  const root = await fixture();
+  await put(root, "src/covered.ts", "export const a = 2;\n");
+
+  const result = await gate(root, {}, [
+    { feature: "gone", guide: "docs/guides/gone.mdx", sources: ["src/*.ts"] },
+  ]);
+  expect(result.exitCode).toBe(1);
+  expect(result.stderr).toContain("registry.unknown-guide");
+  expect(result.stderr).not.toContain("ENOENT");
 });

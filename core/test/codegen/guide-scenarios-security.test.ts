@@ -22,12 +22,23 @@ describe("build-guide-scenarios --only guide id safety", () => {
     }
   });
 
-  test("accepts a legal kebab-case --only guide id", () => {
-    // Given: a GuideId-shaped token.
-    // When: both flag forms are parsed.
-    // Then: onlyGuide is the decoded id.
-    expect(parseBuildGuideScenarioArgs(["--only", "php"])).toEqual({ onlyGuide: "php" });
-    expect(parseBuildGuideScenarioArgs(["--only=drupal-cms"])).toEqual({ onlyGuide: "drupal-cms" });
+  test("rejects an unsafe second --only value", () => {
+    for (const value of UNSAFE_ONLY_VALUES) {
+      expect(() => parseBuildGuideScenarioArgs(["--only", "php", "--only", value])).toThrow(
+        UnsafeGuideIdError,
+      );
+    }
+  });
+
+  test("accepts repeatable legal kebab-case --only guide ids", () => {
+    // Given: GuideId-shaped tokens in both flag forms.
+    // When: the flags are parsed.
+    // Then: onlyGuides holds every decoded id in order.
+    expect(parseBuildGuideScenarioArgs(["--only", "php"])).toEqual({ onlyGuides: ["php"] });
+    expect(parseBuildGuideScenarioArgs(["--only=drupal-cms"])).toEqual({ onlyGuides: ["drupal-cms"] });
+    expect(parseBuildGuideScenarioArgs(["--only", "php", "--only=drupal-cms"])).toEqual({
+      onlyGuides: ["php", "drupal-cms"],
+    });
   });
 });
 
@@ -38,27 +49,39 @@ describe("build-guide-scenarios clear-target containment", () => {
     try {
       const testOutput = "test/generated/guides";
       const transcriptOutput = "dist/transcripts/public/guides";
-      const victim = "php";
-      await mkdir(join(sandbox, testOutput, victim), { recursive: true });
-      await mkdir(join(sandbox, transcriptOutput, victim), { recursive: true });
-      await writeFile(join(sandbox, testOutput, victim, "stale.test.ts"), "// stale\n", "utf8");
-      await writeFile(join(sandbox, transcriptOutput, victim, "stale.json"), "{}\n", "utf8");
+      const victims = ["php", "drupal-cms"];
+      const survivor = "node";
+      for (const victim of victims) {
+        await mkdir(join(sandbox, testOutput, victim), { recursive: true });
+        await mkdir(join(sandbox, transcriptOutput, victim), { recursive: true });
+        await writeFile(join(sandbox, testOutput, victim, "stale.test.ts"), "// stale\n", "utf8");
+        await writeFile(join(sandbox, transcriptOutput, victim, "stale.json"), "{}\n", "utf8");
+      }
+      await mkdir(join(sandbox, testOutput, survivor), { recursive: true });
+      await writeFile(join(sandbox, testOutput, survivor, "keep.test.ts"), "// keep\n", "utf8");
 
       const sentinelPath = join(sandbox, "outside-sentinel.txt");
       await writeFile(sentinelPath, "keep-me\n", "utf8");
 
       // When: clears run for the victim guide id under each canonical root.
-      const testTarget = resolveContainedClearTarget(sandbox, testOutput, victim);
-      const transcriptTarget = resolveContainedClearTarget(sandbox, transcriptOutput, victim);
-      expect(testTarget).toBe(resolve(sandbox, testOutput, victim));
-      expect(transcriptTarget).toBe(resolve(sandbox, transcriptOutput, victim));
+      for (const victim of victims) {
+        expect(resolveContainedClearTarget(sandbox, testOutput, victim)).toBe(
+          resolve(sandbox, testOutput, victim),
+        );
+        expect(resolveContainedClearTarget(sandbox, transcriptOutput, victim)).toBe(
+          resolve(sandbox, transcriptOutput, victim),
+        );
+      }
 
-      await emitGuideScenarioTests([], sandbox, testOutput, { clearGuideId: victim });
-      await emitPublicTranscripts([], sandbox, transcriptOutput, { clearGuideId: victim });
+      await emitGuideScenarioTests([], sandbox, testOutput, { clearGuideIds: victims });
+      await emitPublicTranscripts([], sandbox, transcriptOutput, { clearGuideIds: victims });
 
-      // Then: victim dirs are gone and the outside sentinel survives.
-      expect(await Bun.file(join(sandbox, testOutput, victim, "stale.test.ts")).exists()).toBe(false);
-      expect(await Bun.file(join(sandbox, transcriptOutput, victim, "stale.json")).exists()).toBe(false);
+      // Then: victim dirs are gone, the other guide's output and the outside sentinel survive.
+      for (const victim of victims) {
+        expect(await Bun.file(join(sandbox, testOutput, victim, "stale.test.ts")).exists()).toBe(false);
+        expect(await Bun.file(join(sandbox, transcriptOutput, victim, "stale.json")).exists()).toBe(false);
+      }
+      expect(await Bun.file(join(sandbox, testOutput, survivor, "keep.test.ts")).exists()).toBe(true);
       expect(await readFile(sentinelPath, "utf8")).toBe("keep-me\n");
     } finally {
       await rm(sandbox, { recursive: true, force: true });

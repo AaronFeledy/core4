@@ -484,6 +484,26 @@ teach the feature; the rest run where readers don't see them:
   flow the page doesn't teach, such as a regression for a reported bug or a
   failure path. It never renders and produces no public transcript.
 
+The home is declared in
+[`scripts/guides/home-guides.ts`](../../scripts/guides/home-guides.ts). Each
+entry names a feature, its home guide, and the source paths or globs the
+feature covers. A source path has one owner, and a feature has one guide. A
+guide can be home to several features.
+
+Before adding a row, find a scenario in the guide that exercises its sources:
+
+- For a service type, a scenario plans or starts an app whose Landofile
+  declares that `type`.
+- For a command spec, a `<Run>` or `<Verify>` invokes the command. A `--help`
+  run justifies the spec file only, not the operation behind it.
+- For a helper file beside a service or command, a scenario asserts the
+  behavior that file implements.
+
+A guide that only mentions the feature in prose isn't its home. If no
+scenario reaches a source, leave the source out and record why in the
+comment at the top of the map. Sources that several guides share stay
+unmapped too, because no single page owns them.
+
 Other pages that teach the same feature link to its home guide instead of
 repeating these tests. When you edit a guide, treat hidden steps and
 test-only scenarios as tests, not as content to trim: deleting one removes
@@ -499,15 +519,89 @@ guide already proves.
 ## Register coverage
 
 A guide under `docs/guides/**` needs a `Shipped` row in
-[`docs/guides/INDEX.md`](../guides/INDEX.md), and the owning PRD's
-`## Guide Coverage` section when one exists. Then run:
+[`docs/guides/INDEX.md`](../guides/INDEX.md). If the guide is a feature's
+home, it also needs an entry in
+[`scripts/guides/home-guides.ts`](../../scripts/guides/home-guides.ts):
+
+```ts
+{
+  feature: "db-creds-apply",
+  guide: "docs/guides/tooling/db-creds-apply.mdx",
+  sources: ["plugins/sql/src/commands/creds-apply.ts"],
+},
+```
+
+`feature` is a kebab-case id. `guide` is a page under `docs/guides/` or a
+`recipes/<id>/README.mdx`. Each source is a repository path or a glob, and it
+has to match a file git can see. Then run:
 
 ```sh
 bun run check:guide-coverage
 bun run check:public-transcripts
 ```
 
-If you changed a source path that a guide covers without touching that
-guide, `check:guide-drift` fails against `origin/main`. Update the guide or
-record a `Guide-Coverage-Skip:` reason in the PR body, as described in the
-[repository instructions](../../AGENTS.md#guides-and-docs-as-tests).
+`check:guide-coverage` checks INDEX statuses and requires each `Shipped`
+guide to exist. The map must be nonempty. Each feature appears once, each
+source matches a Git-visible file, and no file has two owners. Every home
+guide must parse and contain a `<Scenario>`. Home guides under
+`docs/guides/` need an INDEX row; recipe READMEs do not.
+
+### Keep the home guide current
+
+`check:guide-drift` fails when a covered source changed and its home guide
+didn't. Two kinds of change count as touching the guide:
+
+- the guide's MDX file
+- a file under `docs/guides/<guide-id>/fixtures/`, where `<guide-id>` is the
+  `id` in the guide's frontmatter
+
+A `<stem>.cases.ts` file beside the guide doesn't count yet, and neither
+does an edit to another guide. A renamed source is checked under both its
+old and new path. If the map names the old path literally, update that row
+in the same change, because a source that matches no file fails the gate.
+A deleted or renamed-away path that several features' patterns still match
+counts for every one of them, so each of their home guides has to change.
+
+Run the gate before you push. It compares your working tree, including
+uncommitted and untracked files, with the point where your branch left
+`origin/main`:
+
+```sh
+git fetch origin main
+bun run check:guide-drift
+```
+
+Pass `--base <ref>` to compare with another branch. A passing run names each
+covered path, its feature, and the guide you touched, or says no covered
+path changed. A failing run names the changed paths, the feature, and the
+home guide to update. After you update the guide, run its scenarios:
+
+```sh
+bun run test:affected --run
+```
+
+### Record a skip when no guide change is needed
+
+Some source changes don't alter anything a guide shows or tests, such as a
+renamed local variable. Don't make a token guide edit. Add this line to the
+pull request body, with a reason of at least 24 characters:
+
+```text
+Guide-Coverage-Skip: <why no guide change is needed>
+```
+
+CI reads the skip from the pull request body and nowhere else. A commit
+message or a file in the repository doesn't count. To see what the gate
+will do with your reason before you open the pull request, pass the same
+line through `GUIDE_DRIFT_PR_BODY`:
+
+```sh
+GUIDE_DRIFT_PR_BODY='Guide-Coverage-Skip: <why no guide change is needed>' bun run check:guide-drift
+```
+
+One skip line exempts every feature in the change whose guide wasn't
+touched. The output and the CI step summary list the reason and each
+exempted feature, so a reviewer can see what it covered. A reason shorter
+than 24 characters fails the gate. A skip never waives a problem in the map
+itself or a new entry in the
+[container command baseline](#run-every-container-command-you-show).

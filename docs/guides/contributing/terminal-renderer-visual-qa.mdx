@@ -59,9 +59,6 @@ goldens after an intentional renderer change. Without the update flag the gate i
 missing golden is a hard failure, never a silent create, so CI can't regenerate a golden it should be
 checking.
 
-Editing `core/src/cli/renderer` or `core/test/cli/renderer` requires touching this owned guide or
-recording a Guide-Coverage-Skip reason, per the guide drift gate.
-
 <Guide>
   <Scenario id="terminal-renderer-visual-qa" render={false} reason="The visual QA gate above is a deterministic unit suite with committed goldens and no TTY, provider, or network; this scenario keeps one real CLI check in the guide harness.">
     <Step name="config-check">
