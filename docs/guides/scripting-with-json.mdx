@@ -79,8 +79,8 @@ there is no stream to end. The `help` command only accepts `text`, `json`,
 and `yaml`; `--format=table` or `--format=ndjson` returns a `RendererSelectionError`
 with exit code 2.
 
-Every machine run ends in exactly one envelope or result frame, written after
-Lando has shut down everything the command started. When that shutdown fails
+Lando writes the final envelope, result frame, or jq output after it shuts
+down everything the command started. When that shutdown fails
 after the command succeeded, the envelope reports the shutdown failure as its
 `error` and keeps the command's `result`. When the command had already failed,
 the shutdown failure joins `error.additionalErrors` with role `cleanup`, and
@@ -311,6 +311,24 @@ doesn't undo what the Bun child already did on disk. Trust you granted with
     </Step>
   </Scenario>
 
+  <Scenario id="select-streaming-result" render={false} reason="Selections write only the terminal result of a streaming command">
+    <Step name="scaffold-app">
+      <Run command="lando init . --recipe node-postgres --name=select-demo --yes" />
+    </Step>
+    <Step name="select-app-name">
+      <Verify command="lando start --jq .result.app" expect={{ stdout: { regex: "^\\s*select-demo\\s*$" } }} />
+    </Step>
+    <Step name="project-app-name">
+      <Verify command="lando start --json=app" expect={{ stdout: { regex: "^\\s*\\{\"apiVersion\":\"v4\",[^\\n]*\"result\":\\{\"app\":\"select-demo\"\\}[^\\n]*\\}\\s*$" } }} />
+    </Step>
+    <Step name="select-from-failed-start">
+      <Verify command="lando start --service no-such-service --jq .ok" expectExit={1} expect={{ stdout: { regex: "^\\s*false\\s*$" } }} />
+    </Step>
+    <Step name="cleanup-scaffold">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
   <Scenario id="reject-json-jq-conflicts" render={false} reason="Unknown keys and --json plus --jq must fail">
     <Step name="unknown-json-key">
       <Run command="lando version --json=not-a-real-key" expectExit={1} />
@@ -380,6 +398,16 @@ contains only that key.
 
 `--jq .ok` prints the raw scalar `true`. Do not combine bare `--json` with
 `--jq`. An unknown key exits nonzero.
+
+On a streaming command, `--jq` prints only the selection from the final result
+envelope. For example, `lando start --jq .result.app` prints the app name
+without progress or data frames. `lando start --json=app` also skips those
+frames and prints one envelope with only `app` in `result`. Use `--format=json`
+without a selection if you need the frames as they arrive.
+
+The command keeps its exit status even when `--jq` selects from a failure
+envelope. If jq itself fails, Lando exits with status 2 and prints an envelope
+with `JqExpressionError` instead.
 
 ## Read anything as YAML
 

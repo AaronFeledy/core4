@@ -174,7 +174,11 @@ export const runCommandInScope = <A, E, R, RE>(
               Effect.provideService(StreamFrameSink, owner.sink),
             );
           })
-        : executeCommand(finishFrames),
+        : routing.sink === "discard"
+          ? executeCommand(finishFrames).pipe(
+              Effect.provideService(StreamFrameSink, { emit: () => Effect.void }),
+            )
+          : executeCommand(finishFrames),
     );
   let observeProgress: ((event: LandoEvent) => void) | undefined;
   const executeWithEventConsumer = withEventConsumer(executeWithLiveSink, {

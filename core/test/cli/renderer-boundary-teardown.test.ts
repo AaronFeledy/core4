@@ -37,6 +37,7 @@ const runWithFailingTeardown = async (
     readonly streaming?: boolean;
     readonly live?: boolean;
     readonly exitCode?: number;
+    readonly jqExpression?: string;
   },
 ): Promise<Run> => {
   const io = createBufferedRendererIO();
@@ -59,6 +60,7 @@ const runWithFailingTeardown = async (
     setExitCode: (code) => exitCodes.push(code),
     ...(options.streaming === true ? { streaming: StreamFrame } : {}),
     ...(options.live === true ? { streamingMode: "live" as const } : {}),
+    ...(options.jqExpression === undefined ? {} : { jqExpression: options.jqExpression }),
     ...(options.exitCode === undefined
       ? {}
       : { completion: () => ({ ok: false as const, exitCode: options.exitCode ?? 1 }) }),
@@ -102,6 +104,21 @@ describe("a failing runtime teardown", () => {
     expect(envelope.error?.additionalErrors?.map((error) => [error._tag, error.role])).toEqual([
       ["LandoInternalError", "cleanup"],
     ]);
+    expect(run.exitCodes).toEqual([1]);
+  });
+
+  test("streaming jq selects the cleanup error in one terminal document after teardown", async () => {
+    const run = await runWithFailingTeardown(Effect.fail(commandFailure), {
+      format: "json",
+      streaming: true,
+      jqExpression: ".error.additionalErrors | map({code: ._tag, role, message})",
+    });
+
+    expect(run.stdoutAtTeardown).toEqual([""]);
+    expect(JSON.parse(run.stdout)).toEqual([
+      { code: "LandoInternalError", role: "cleanup", message: "teardown failed" },
+    ]);
+    expect(run.stderr).toBe("");
     expect(run.exitCodes).toEqual([1]);
   });
 

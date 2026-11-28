@@ -71,6 +71,29 @@ for (const rendererMode of RENDERER_MODES) {
   }
 }
 
+const jsonEnvelope = {
+  stdout: "envelope",
+  serialization: "json",
+  events: "notifications-only",
+  sink: "none",
+} as const;
+const jq = { jqExpression: ".ok" };
+const keys = { projectResultKeys: ["name"] };
+
+test.each([
+  ["framed-jq", "json", true, false, jq, jsonEnvelope],
+  ["framed-keys", "json", true, false, keys, jsonEnvelope],
+  ["live-jq", "json", false, true, jq, { ...jsonEnvelope, sink: "discard" }],
+  ["non-framed-jq", "json", false, false, jq, jsonEnvelope],
+  ["yaml-selection", "yaml", true, true, keys, { ...jsonEnvelope, serialization: "yaml" }],
+  ["ndjson-selection", "ndjson", true, true, jq, { stdout: "frames", events: "frames", sink: "live" }],
+] as const)("routes result selection: %s", (_case, format, frames, live, selection, expected) => {
+  // The dispatcher refuses selection with ndjson before reaching this router.
+  expect(
+    resolveOutputRouting({ rendererMode: "json", format, frames, live, report: false }, selection),
+  ).toEqual(expected);
+});
+
 for (const rendererMode of RENDERER_MODES) {
   test(`routes a ${rendererMode} ndjson report command to its report frames with mode narration`, () => {
     // Given a command that renders its own ndjson report and streams no frames

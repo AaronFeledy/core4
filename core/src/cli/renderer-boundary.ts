@@ -152,13 +152,16 @@ const resolveRunOutput = <A, R, RE>(
   options: RunWithRendererHandlingOptions<A, R, RE>,
   sourceEnv: Readonly<Record<string, string | undefined>>,
 ): RunOutput => {
-  const routing = resolveOutputRouting({
-    rendererMode: options.rendererMode,
-    format: options.resultFormat ?? DEFAULT_RESULT_FORMAT,
-    frames: options.streaming !== undefined,
-    live: options.streamingMode === "live",
-    report: options.ndjsonReport !== undefined,
-  });
+  const routing = resolveOutputRouting(
+    {
+      rendererMode: options.rendererMode,
+      format: options.resultFormat ?? DEFAULT_RESULT_FORMAT,
+      frames: options.streaming !== undefined,
+      live: options.streamingMode === "live",
+      report: options.ndjsonReport !== undefined,
+    },
+    options,
+  );
   const machineStdout = routing.stdout !== "human";
   const payloadStdout = options.payloadStdout === true && machineStdout;
   const humanChildOutput = !machineStdout && options.rendererMode !== "json";

@@ -1169,16 +1169,16 @@ Outside the command-result boundary, an unrecoverable entrypoint failure MAY emi
 
 Live commands, built-in or plugin (§8.3), MUST treat `StreamFrameSink` as optional (`Effect.serviceOption`). YAML runs have no live sink and MUST collect output into the single result envelope.
 
-One pure routing function decides where output goes from the renderer, result format, whether the command declares a frame schema, and whether it streams live; the boundary MUST NOT re-derive these choices elsewhere:
+One pure routing function decides where output goes from the renderer, result format, result selection, whether the command declares a frame schema, and whether it streams live; the boundary MUST NOT re-derive these choices elsewhere:
 
 | Result format | Machine/result destination (stdout unless a granted payload owns it) | Events |
 | --- | --- | --- |
-| `json` or `ndjson`, frame schema declared or live | NDJSON frames ending in one `result` frame | `event` frames on the same destination |
-| `json` otherwise, and `yaml` | One envelope | `lando`: no narration (desktop notifications still realized); `plain`: none; `json`: `notify.desktop` records on stderr; `verbose`: full event dump on stderr |
+| `json` without a selection or `ndjson`, frame schema declared or live | NDJSON frames ending in one `result` frame | `event` frames on the same destination |
+| All other `json` and `yaml` | One envelope, or only the jq output when `--jq` is used | `lando`: no narration (desktop notifications still realized); `plain`: none; `json`: `notify.desktop` records on stderr; `verbose`: full event dump on stderr |
 | `ndjson` from a command's own report frames (`meta:doctor`) | Report event frames ending in one `result` frame, written by the boundary; a failure that produced no report is the result frame alone, and a report retained past a teardown failure keeps its event frames before the failed result | Renderer narration on stderr: `lando` tree or lines, `plain` lines, `json` event lines, `verbose` dump |
 | `text` and `table` | Rendered result and tool payload | Renderer narration on stderr: `lando` tree or lines, `plain` lines, `json` event lines, `verbose` dump |
 
-A live sink attaches for live commands in every format except `yaml`.
+A live sink attaches for live commands in every format except `yaml`. With JSON result selection, that sink discards data without buffering it, keeping the live terminal result unchanged.
 
 When a CLI-granted data payload owns stdout (§8.3), that payload alone uses stdout, byte-exact. The envelope, every frame (including event and terminal result frames), and `--jq` output MUST use stderr, for success and failure; pre-command failures use the same destination when parsed argv requests the stdout grant. Human result formats keep their existing routing. Machine output follows any diagnostics the selected renderer writes there. Default `lando` and `plain` suppress event narration in envelope formats; with redirected stderr, no explicit `Renderer.message` diagnostics or §18.6 deprecation diagnostics, and no opt-in debug defect logs (§8.11.1), the envelope or frame sequence is the only stderr output. The `json` renderer can precede an envelope with `notify.desktop` records; `verbose` can precede it with a full event dump. Default `lando` can also realize desktop notifications when stderr is a TTY. Framed publications are carried in the frame sequence, without duplicate event narration. Closing either destination independently retains exit `141`; interruption retains the ordinary cancellation status.
 
@@ -1205,15 +1205,16 @@ Every non-interactive canonical command MUST accept `--format json` and `-j`, ex
 - Equals form always supplies a field list.
 - `-j` never consumes the next token.
 
-`--jq <expr>` implies JSON, evaluates an embedded jq 1.8-compatible subset against the redacted envelope, replaces the machine result output (stderr when a granted payload owns stdout), preserves exit status, and renders scalars raw. It is bounded, has no environment or module loading, and never spawns system jq. For streaming commands it transforms only the terminal result frame. MCP returns the full redacted envelope and accepts neither projection nor jq; Effect-native library APIs retain typed results and Causes (§16).
+`--jq <expr>` implies JSON, evaluates an embedded jq 1.8-compatible subset against the redacted envelope, replaces the machine result output (stderr when a granted payload owns stdout), preserves exit status, and renders scalars raw. It is bounded, has no environment or module loading, and never spawns system jq. For streaming commands, both `--jq` and `--json=<keys>` select from the terminal result envelope; no event or data frames are written. `--jq` writes only the evaluated output, and `--json=<keys>` writes one projected envelope without a result frame wrapper. Both use the renderer's envelope event rules. MCP returns the full redacted envelope and accepts neither projection nor jq; Effect-native library APIs retain typed results and Causes (§16).
 
 The ordered path is schema encode → optional projection → envelope → redaction → optional jq → stdout, or stderr when a granted data payload owns stdout.
 
 - Help/no-command JSON remains catalog output.
 - Domain `--path` flags are unrelated.
 - Bare list mode with `--jq` is an error.
-- Non-JSON format with projection or jq is an error.
+- A format other than JSON or YAML with projection or jq is an error.
 - On command failure, jq still evaluates the failure envelope.
+- On jq evaluation failure, the result is one unfiltered `JqExpressionError` envelope and exit status 2.
 - `encodeCommandResult` remains the only serializer.
 
 #### 8.11.6 Command tracing and the `trace` envelope field

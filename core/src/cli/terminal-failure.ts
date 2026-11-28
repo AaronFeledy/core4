@@ -37,13 +37,16 @@ export const planTerminalFailure = <A, R, RE>(
   redactor: Redactor,
 ): Effect.Effect<TerminalDocument, unknown> => {
   const outcome = commandFailureOutcome(cause, options.signal);
-  const routing = resolveOutputRouting({
-    rendererMode: options.rendererMode,
-    format: options.resultFormat ?? DEFAULT_RESULT_FORMAT,
-    frames: options.streaming !== undefined,
-    live: options.streamingMode === "live",
-    report: options.ndjsonReport !== undefined,
-  });
+  const routing = resolveOutputRouting(
+    {
+      rendererMode: options.rendererMode,
+      format: options.resultFormat ?? DEFAULT_RESULT_FORMAT,
+      frames: options.streaming !== undefined,
+      live: options.streamingMode === "live",
+      report: options.ndjsonReport !== undefined,
+    },
+    options,
+  );
   const exitCode = Cause.hasInterruptsOnly(cause) ? commandInterruptionExitCode(options.signal) : 1;
   const result = {
     command: options.command ?? "cli:unknown",

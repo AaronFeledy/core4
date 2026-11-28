@@ -1,139 +1,123 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { expect, test } from "bun:test";
 import { createBufferedRendererIO } from "@lando/renderer/io";
-
 import { CommandResultEnvelope, StreamFrame } from "@lando/sdk/schema";
+import { EventService } from "@lando/sdk/services";
 import { Effect, Layer, Schema } from "effect";
-import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
+import { CommandPayloadStdout } from "../../src/cli/command-payload-stdout";
+import { runWithRendererHandling } from "../../src/cli/renderer-boundary";
 
-const TinyResultSchema = Schema.Struct({ name: Schema.String });
+const options = {
+  runtime: Layer.empty,
+  rendererMode: "json",
+  resultFormat: "json",
+  command: "fixture:dump",
+  resultSchema: Schema.Struct({ name: Schema.String, status: Schema.String }),
+  streaming: StreamFrame,
+  streamFrames: () =>
+    [
+      { _tag: "stdout", service: "web", chunk: "stdout chunk\n" },
+      { _tag: "stderr", service: "web", chunk: "stderr chunk\n" },
+    ] as const,
+  formatError: () => "unexpected failure",
+} as const;
 
-const decodeFrame = (line: string) => Schema.decodeUnknownSync(StreamFrame)(JSON.parse(line));
+const result = { name: "demo", status: "started" };
+const publishProgress = Effect.gen(function* () {
+  const events = yield* EventService;
+  const timestamp = "2026-10-30T00:00:00.000Z";
+  yield* events.publish({ _tag: "message.info", body: "starting", timestamp });
+  yield* events.publish({ _tag: "message.info", body: "started", timestamp });
+});
+const streamingSuccess = Effect.andThen(publishProgress, Effect.succeed(result));
 
-const decodeEnvelope = (line: string) => Schema.decodeUnknownSync(CommandResultEnvelope)(JSON.parse(line));
+test("streaming key projection writes only the projected result envelope", async () => {
+  const io = createBufferedRendererIO();
+  const codes: number[] = [];
+  await runWithRendererHandling(streamingSuccess, {
+    ...options,
+    io,
+    projectResultKeys: ["name"],
+    setExitCode: (code) => codes.push(code),
+  });
 
-beforeEach(() => {
-  process.exitCode = undefined;
+  const envelope = Schema.decodeUnknownSync(CommandResultEnvelope)(JSON.parse(io.stdout()));
+  expect(envelope.ok).toBe(true);
+  expect(envelope.result).toEqual({ name: "demo" });
+  expect(io.stderr()).toBe("");
+  expect(codes).toEqual([0]);
 });
 
-afterEach(() => {
-  process.exitCode = undefined;
+test("streaming jq selects from the failure envelope and preserves exit 1", async () => {
+  const io = createBufferedRendererIO();
+  const codes: number[] = [];
+  await runWithRendererHandling(Effect.andThen(publishProgress, Effect.fail("command failed")), {
+    ...options,
+    io,
+    jqExpression: ".ok",
+    setExitCode: (code) => codes.push(code),
+  });
+
+  expect(io.stdout()).toBe("false\n");
+  expect(io.stderr()).toBe("");
+  expect(codes).toEqual([1]);
 });
 
-describe("runWithRendererHandling streaming jqExpression", () => {
-  test("emits chunk frames then a non-envelope last line", async () => {
-    // Given a streaming success plus --jq .result.name.
-    const io = createBufferedRendererIO();
-    let exitCode: number | undefined;
+test("unselected buffered JSON writes ordered events and data before its only result frame", async () => {
+  const io = createBufferedRendererIO();
+  await runWithRendererHandling(streamingSuccess, { ...options, io, setExitCode: () => undefined });
 
-    // When the command emits stdout/stderr frames and a tiny result.
-    await runWithRendererHandling(Effect.succeed({ name: "demo" }), {
-      runtime: Layer.empty,
-      rendererMode: "json",
-      resultFormat: "json",
-      command: "app:logs",
-      resultSchema: TinyResultSchema,
-      streaming: StreamFrame,
-      streamFrames: () => [
-        { _tag: "stdout", service: "web", chunk: "stdout chunk\n" },
-        { _tag: "stderr", service: "web", chunk: "stderr chunk\n" },
-      ],
+  const frames = io.stdoutLines().map((line) => Schema.decodeUnknownSync(StreamFrame)(JSON.parse(line)));
+  expect(frames).toMatchObject([
+    { _tag: "event", event: "message.info", payload: { body: "starting" } },
+    { _tag: "event", event: "message.info", payload: { body: "started" } },
+    { _tag: "stdout", service: "web", chunk: "stdout chunk\n" },
+    { _tag: "stderr", service: "web", chunk: "stderr chunk\n" },
+    { _tag: "result", envelope: { ok: true, result: { name: "demo", status: "started" } } },
+  ]);
+  expect(io.stderr()).toBe("");
+});
+
+test("jq writes no buffered data frames beside a granted stdout payload", async () => {
+  const io = createBufferedRendererIO();
+  const payload = new Uint8Array([0, 255, 10, 13, 65]);
+  const codes: number[] = [];
+
+  await runWithRendererHandling(
+    Effect.gen(function* () {
+      const write = yield* Effect.serviceOption(CommandPayloadStdout);
+      if (write._tag === "None") throw new Error("expected stdout grant");
+      yield* write.value(payload);
+      return result;
+    }),
+    {
+      ...options,
+      io,
+      payloadStdout: true,
       jqExpression: ".result.name",
-      io,
-      render: () => "should not render",
-      formatError: () => "unexpected",
-      setExitCode: (code) => {
-        exitCode = code;
-      },
-    });
+      setExitCode: (code) => codes.push(code),
+    },
+  );
 
-    // Then intermediate frames stay stream frames and the last line is raw jq output.
-    const lines = io.stdoutLines();
-    expect(lines.length).toBeGreaterThanOrEqual(3);
-    expect(decodeFrame(lines[0] ?? "{}")).toMatchObject({
-      _tag: "stdout",
-      service: "web",
-      chunk: "stdout chunk\n",
-    });
-    expect(decodeFrame(lines[1] ?? "{}")).toMatchObject({
-      _tag: "stderr",
-      service: "web",
-      chunk: "stderr chunk\n",
-    });
-    const last = lines[lines.length - 1];
-    expect(last).toBe("demo");
-    expect(() => decodeFrame(last ?? "{}")).toThrow();
-    expect(io.stderr()).toBe("");
-    expect(exitCode).toBe(0);
+  expect(io.stdoutBytes()).toEqual(payload);
+  expect(io.stderr()).toBe("demo\n");
+  expect(codes).toEqual([0]);
+});
+
+test("a jq evaluation failure writes one failure envelope and no buffered data frames", async () => {
+  const io = createBufferedRendererIO();
+  const codes: number[] = [];
+
+  await runWithRendererHandling(Effect.succeed(result), {
+    ...options,
+    io,
+    jqExpression: '1, error("failed selection")',
+    setExitCode: (code) => codes.push(code),
   });
 
-  test("does not jq intermediate stream chunks", async () => {
-    // Given streaming frames whose chunk text would change if jq ran on them.
-    const io = createBufferedRendererIO();
-
-    // When jq selects a scalar from the terminal envelope only.
-    await runWithRendererHandling(Effect.succeed({ name: "demo" }), {
-      runtime: Layer.empty,
-      rendererMode: "json",
-      resultFormat: "json",
-      command: "app:logs",
-      resultSchema: TinyResultSchema,
-      streaming: StreamFrame,
-      streamFrames: () => [{ _tag: "stdout", chunk: '{"keep":true}\n' }],
-      jqExpression: ".result.name",
-      io,
-      render: () => "should not render",
-      formatError: () => "unexpected",
-    });
-
-    // Then the stdout frame chunk is unchanged.
-    const lines = io.stdoutLines();
-    expect(decodeFrame(lines[0] ?? "{}")).toMatchObject({
-      _tag: "stdout",
-      chunk: '{"keep":true}\n',
-    });
-    expect(lines[lines.length - 1]).toBe("demo");
+  expect(Schema.decodeUnknownSync(CommandResultEnvelope)(JSON.parse(io.stdout()))).toMatchObject({
+    ok: false,
+    error: { _tag: "JqExpressionError" },
   });
-
-  test("exits 2 on jq eval failure after writing stream chunks only", async () => {
-    // Given streaming success and an invalid jq expression.
-    const io = createBufferedRendererIO();
-    let exitCode: number | undefined;
-
-    // When the terminal result line fails to evaluate.
-    await runWithRendererHandling(Effect.succeed({ name: "demo" }), {
-      runtime: Layer.empty,
-      rendererMode: "json",
-      resultFormat: "json",
-      command: "app:logs",
-      resultSchema: TinyResultSchema,
-      streaming: StreamFrame,
-      streamFrames: () => [{ _tag: "stdout", chunk: "chunk\n" }],
-      jqExpression: "oops(",
-      io,
-      render: () => "should not render",
-      formatError: () => "unexpected",
-      setExitCode: (code) => {
-        exitCode = code;
-      },
-    });
-
-    // Then chunks remain, exit is 2, and stdout is not an envelope+jq mix.
-    expect(exitCode).toBe(2);
-    const lines = io.stdoutLines();
-    expect(decodeFrame(lines[0] ?? "{}")).toMatchObject({ _tag: "stdout", chunk: "chunk\n" });
-    const last = lines[lines.length - 1] ?? "";
-    expect(last.includes("demo") && last.includes("oops(")).toBe(false);
-    if (last.startsWith("{")) {
-      try {
-        const frame = decodeFrame(last);
-        if (frame._tag === "result") {
-          expect(frame.envelope.error).toMatchObject({ _tag: "JqExpressionError" });
-        }
-      } catch {
-        const envelope = decodeEnvelope(last);
-        expect(envelope.ok).toBe(false);
-        expect(envelope.error).toMatchObject({ _tag: "JqExpressionError" });
-      }
-    }
-  });
+  expect(io.stderr()).toBe("");
+  expect(codes).toEqual([2]);
 });
