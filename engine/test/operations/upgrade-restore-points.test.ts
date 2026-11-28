@@ -21,11 +21,12 @@ const fixture = (
     readonly from?: string;
     readonly to?: string;
     readonly state?: "running" | "exited";
-    readonly failure?: "pull" | "capture" | "apply" | "replacement";
+    readonly failure?: "pull" | "helper-pull" | "capture" | "apply" | "replacement";
     readonly failResume?: boolean;
     readonly afterSnapshotCommit?: Effect.Effect<void>;
     readonly offlineVersion?: string;
     readonly recordBuild?: boolean;
+    readonly recordPreStop?: boolean;
   } = {},
 ) => {
   const from = input.from ?? "10.11";
@@ -168,10 +169,13 @@ const fixture = (
         stderr: "",
       }),
     providerOverrides: {
-      ...(input.failure === "pull"
+      ...(input.failure === "pull" || input.failure === "helper-pull"
         ? {
             capabilities: { ...TestRuntimeProvider.capabilities, artifactPull: true },
-            pullArtifact: () => Effect.fail(failure),
+            pullArtifact: ({ ref }) =>
+              input.failure === "pull" || ref.includes("library/alpine")
+                ? Effect.fail(failure)
+                : Effect.succeed({ ref, providerId: plan.provider }),
           }
         : {}),
       observeBoundVolume: (target) =>
@@ -197,6 +201,14 @@ const fixture = (
         input.failResume === true ? Effect.fail(failure) : changeOriginal(identity, "running"),
     },
     onStop: () => actions.push("stop"),
+    ...(input.recordPreStop === true
+      ? {
+          onPublish: (event) =>
+            Effect.sync(() => {
+              if (event._tag === "pre-stop") actions.push(`pre-stop:${status}`);
+            }),
+        }
+      : {}),
     ...(input.recordBuild === true ? { onBuild: () => actions.push("build") } : {}),
     onDestroy: () => actions.push("teardown"),
     onApply: () =>
@@ -246,8 +258,15 @@ test("selected rebuild finishes its artifact build before taking the database of
   expect(f.actions).toEqual(["build", "suspend", "capture", "stop", "apply"]);
 });
 
+test("whole restart runs pre-stop while the old database is still running", async () => {
+  const f = fixture({ recordPreStop: true });
+  await Effect.runPromise(restartApp({}, f.target).pipe(Effect.provide(f.layer)));
+  expect(f.actions.slice(0, 3)).toEqual(["pre-stop:running", "suspend", "capture"]);
+});
+
 test.each([
   ["pull", "running", [], "running", []],
+  ["helper-pull", "running", [], "running", []],
   ["capture", "running", ["suspend", "capture", "resume"], "running", []],
   ["apply", "running", ["suspend", "capture", "apply", "resume"], "running", []],
   ["apply", "exited", ["capture", "apply"], "exited", []],
@@ -261,8 +280,12 @@ test.each([
     expect(f.actions).toEqual([...actions]);
     expect(f.status()).toBe(finalStatus);
     expect([...f.snapshots]).toEqual([...remaining]);
-    expect(error._tag).toBe(failure === "capture" ? "ServiceRestorePointError" : "ProviderUnavailableError");
-    if (error._tag === "ServiceRestorePointError") {
+    expect(error._tag).toBe(
+      failure === "capture" || failure === "helper-pull"
+        ? "ServiceRestorePointError"
+        : "ProviderUnavailableError",
+    );
+    if (failure === "capture" && error._tag === "ServiceRestorePointError") {
       expect(error.dataVersion).toEqual({ label: "MariaDB", from: "10.11", to: "11.4" });
       expect(error.remediation).toContain("--no-snapshot");
       expect(error.cause).toBeInstanceOf(DataTransferError);

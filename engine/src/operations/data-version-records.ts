@@ -49,6 +49,11 @@ export const decodeVersionRecords = (
   };
 };
 
+export const prepareSnapshotHelper = (provider: RuntimeProviderShape) =>
+  provider.capabilities.artifactPull
+    ? provider.pullArtifact({ ref: dataHelperImage.ref, policy: "missing" }).pipe(Effect.asVoid)
+    : Effect.void;
+
 export const readOfflineVersion = Effect.fn("AppActivation.readOfflineDatabaseVersion")(function* (input: {
   readonly provider: RuntimeProviderShape;
   readonly appliedPlan: AppPlan;
@@ -59,21 +64,14 @@ export const readOfflineVersion = Effect.fn("AppActivation.readOfflineDatabaseVe
   const paths = contract.series?.records.map(({ path }) => path) ?? [];
   if (paths.length === 0 || paths.some((path) => !path.startsWith(`${mount.target}/`))) return undefined;
   return yield* Effect.scoped(
-    (provider.capabilities.artifactPull
-      ? provider.pullArtifact({ ref: dataHelperImage.ref, policy: "missing" })
-      : Effect.void
-    ).pipe(
-      Effect.andThen(
-        provider.run({
-          owner: { app: appliedPlan.id, plan: appliedPlan },
-          image: dataHelperImage.ref,
-          mounts: [{ ...mount, readOnly: true }],
-          command: versionRecordCommand(paths),
-          captureStdout: true,
-          remove: true,
-        }),
-      ),
-    ),
+    provider.run({
+      owner: { app: appliedPlan.id, plan: appliedPlan },
+      image: dataHelperImage.ref,
+      mounts: [{ ...mount, readOnly: true }],
+      command: versionRecordCommand(paths),
+      captureStdout: true,
+      remove: true,
+    }),
   ).pipe(
     Effect.timeout("2 seconds"),
     Effect.map((read) => decodeVersionRecords(read, paths, contract)?.version),

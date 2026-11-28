@@ -13,7 +13,7 @@ import { Effect } from "effect";
 import { coordinatedServiceVolume } from "../lifecycle/volume-coordination.ts";
 import type { PreparedRuntimeProvider } from "../providers/prepared.ts";
 import type { DataUpgrade } from "./data-version-admission.ts";
-import { readOfflineVersion } from "./data-version-records.ts";
+import { prepareSnapshotHelper, readOfflineVersion } from "./data-version-records.ts";
 import { catalogMount } from "./database-convergence/target.ts";
 import { markStartMutation } from "./start-incomplete-notice.ts";
 import { refuseDataVersion } from "./upgrade-restore-remediation.ts";
@@ -137,9 +137,19 @@ export const captureRestorePoint = Effect.fn("AppActivation.captureRestorePoint"
     return comparison === -1 ? observed : undefined;
   });
   if (publication === undefined) {
-    if (isIdleRunStatus(runtime.status)) yield* verify;
+    if (isIdleRunStatus(runtime.status)) {
+      const available = yield* prepareSnapshotHelper(provider).pipe(
+        observeBounded,
+        Effect.as(true),
+        Effect.catch(() => Effect.succeed(false)),
+      );
+      if (available) yield* verify;
+    }
     return undefined;
   }
+  yield* prepareSnapshotHelper(provider).pipe(
+    mapFailures((cause) => error("the snapshot helper image could not be acquired.", cause)),
+  );
   const { mover, onPrepare, onCommit, onDiscard } = publication;
   const { suspend, resume } = provider;
   const wasRunning = runtime.status === "running";

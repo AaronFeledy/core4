@@ -168,13 +168,12 @@ Oracle MySQL clients installed into PHP services use Oracle's signed Bookworm AP
 To move from MySQL 8.0 to 8.4 on the existing data volume, run these commands from the app directory:
 
 ```sh
-lando stop
 lando app:config:set services.db.type mysql:8.4
 lando start
 lando mysql -N -e 'SELECT VERSION()'
 ```
 
-Lando saves a restore point before upgrading and prints its ID. With `lando start --format=json`, look for `dataVersionChanges[0].restorePoint` in the final result. The version query should report 8.4. Check that your app can still read its data.
+Lando stops the database for the copy, saves a restore point, and prints its ID. With `lando start --format=json`, look for `dataVersionChanges[0].restorePoint` in the final result. The version query should report 8.4. Check that your app can still read its data.
 
 Use `--no-snapshot` only if you have another backup or accept upgrading without one. Automatic retention leaves [upgrade restore points](../tooling/db-import-export.mdx#restore-points-before-version-upgrades) in place. Use `lando db:snapshots:prune --recovery` to remove them.
 
@@ -210,7 +209,6 @@ If you have no restore point, use a verified export taken before the upgrade. To
       </Step>
     </Hidden>
     <Step name="upgrade">
-      <Run command="lando stop" />
       <Run command="lando app:config:set services.db.type mysql:8.4" />
       <Verify command="lando start --format=json" expect={{ stdout: { regex: '"dataVersionChanges":\\[\\{"service":"db","from":"8[.]0","to":"8[.]4","restorePoint":"[a-f0-9-]{36}"\\}\\]' } }} />
       <Verify command="lando mysql -N -e 'SELECT VERSION()'" expect={{ stdout: { regex: "^8[.]4[.]" } }} />

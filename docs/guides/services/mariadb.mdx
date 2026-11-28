@@ -162,14 +162,13 @@ For a version outside the catalog, use `type: mariadb` with an `image:` override
 
 Changing the MariaDB version keeps the data volume. Lando sets `MARIADB_AUTO_UPGRADE=1` on every `mariadb` service, so the official image runs `mariadb-upgrade` on the existing data when the version changes. To move from `mariadb:10.11` to `mariadb:11.4`, run these commands from the app directory on your host.
 
-1. Stop the app, then set the service type to the newer catalog version:
+1. Set the service type to the newer catalog version:
 
    ```sh
-   lando stop
    lando app:config:set services.db.type mariadb:11.4
    ```
 
-2. Start the app. Lando saves a restore point before upgrading and prints its ID. With automatic upgrades enabled, the image backs up its system tables and runs `mariadb-upgrade` before the service reports ready:
+2. Start the app. Lando stops the database for the copy, saves a restore point, and prints its ID. With automatic upgrades enabled, the image backs up its system tables and runs `mariadb-upgrade` before the service reports ready:
 
    ```sh
    lando start
@@ -227,7 +226,6 @@ lando db:import before-upgrade.sql.gz --service db --yes
       </Step>
     </Hidden>
     <Step name="upgrade">
-      <Run command="lando stop" />
       <Run command="lando app:config:set services.db.type mariadb:11.4" />
       <Verify command="lando start --format=json" expect={{ stdout: { regex: '"dataVersionChanges":\\[\\{"service":"db","from":"10[.]11","to":"11[.]4","restorePoint":"[a-f0-9-]{36}"\\}\\]' } }} />
     </Step>

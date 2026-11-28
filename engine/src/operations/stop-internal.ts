@@ -1,5 +1,5 @@
 import { mergeAppliedPlan } from "@lando/container-runtime/plan";
-import type { StopAppError as SdkStopAppError, StopAppOptions, StopAppResult } from "@lando/sdk/app";
+import type { StopAppError as SdkStopAppError, StopAppResult } from "@lando/sdk/app";
 import {
   type ComposeKeyRejectedError,
   FileSyncStopError,
@@ -216,20 +216,23 @@ export const preflightStopApp = Effect.fnUntraced(function* (
   };
 });
 
-const stopAppWithResolvedPlan = Effect.fnUntraced(function* (
-  _options: StopAppOptions | undefined,
+/** Stop phase under the caller's app lock. */
+export const stopAppWithPlanUnlocked = Effect.fnUntraced(function* <E>(
   target: ResolvedAppTarget,
-  runInitEvents: boolean,
-  prepared?: StopAppPreflight,
+  execution: {
+    readonly runInitEvents: boolean;
+    readonly prepared: StopAppPreflight;
+    readonly beforeStop?: Effect.Effect<void, E, EventService>;
+  },
 ): Effect.fn.Return<
   { readonly result: StopAppResult; readonly plan: AppPlan },
-  SdkStopAppError,
+  SdkStopAppError | E,
   StopAppServices
 > {
   const events = yield* EventService;
   const plan = target.plan;
   const ref = target.app;
-  const preflight = prepared ?? (yield* preflightStopApp(target));
+  const { prepared: preflight, runInitEvents, beforeStop } = execution;
   const {
     runtimeState,
     provider,
@@ -273,6 +276,7 @@ const stopAppWithResolvedPlan = Effect.fnUntraced(function* (
     );
   }
 
+  yield* beforeStop ?? Effect.void;
   const quiesceRetained = provider.quiesceRetainedFileSync;
   const retainedWriters = preflight.retainedWriters;
   // Windows still removes the retained writers of an unfinished accelerated start before stopping.
@@ -365,11 +369,3 @@ const stopAppWithResolvedPlan = Effect.fnUntraced(function* (
     plan,
   };
 });
-
-/** Internal stop phase used only while restart/rebuild already hold the app lock. */
-export const stopAppWithPlanUnlocked = (
-  options: StopAppOptions,
-  target: ResolvedAppTarget,
-  runInitEvents = false,
-  prepared?: StopAppPreflight,
-) => stopAppWithResolvedPlan(options, target, runInitEvents, prepared);

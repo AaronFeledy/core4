@@ -36,9 +36,7 @@ export const haltAndRelaunchApp = Effect.fn("AppOperation.haltAndRelaunch")(func
 
   const certificates =
     admitted.dataUpgrades.length === 0 ? undefined : (yield* prepareServiceCertificates(plan)).certificates;
-  yield* admitted.prepareUpgrade;
-  yield* markStartMutation(plan);
-  yield* haltAppRuntime(target);
+  yield* haltAppRuntime(target, admitted.prepareUpgrade.pipe(Effect.andThen(markStartMutation(plan))));
   yield* managed?.onStopped ?? Effect.void;
 
   const provider = yield* prepareProvider(admitted.provider);
