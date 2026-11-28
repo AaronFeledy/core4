@@ -1,4 +1,5 @@
 import { createConnection } from "node:net";
+import { normalizeNamedPipePath } from "@lando/sdk/engine-placement";
 import { ProviderCapabilityError, ProviderUnavailableError } from "@lando/sdk/errors";
 import { Effect } from "effect";
 
@@ -17,7 +18,6 @@ import {
   type SocketHttpConnection,
   connectSocket,
   makeSocketHttpClient,
-  normalizeNamedPipePath,
   socketHttpConnection,
 } from "../transport.ts";
 

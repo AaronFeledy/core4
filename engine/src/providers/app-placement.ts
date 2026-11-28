@@ -1,4 +1,4 @@
-import { destroyCommand, enginePlacementMismatch } from "@lando/container-runtime/engine-identity";
+import { destroyCommand, enginePlacementMismatch } from "@lando/sdk/engine-placement";
 import { AppPlacementError, AppResolveError } from "@lando/sdk/errors";
 import {
   AbsolutePath,

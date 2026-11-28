@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  AppPlacementError,
   type AppliedStateVersionError,
   PlanReplanRequiredError,
   appliedStateVersionError,
@@ -8,7 +9,9 @@ import {
   AbsolutePath,
   AppId,
   AppPlan,
+  type AppliedAppPlan,
   CLONED_SERVICE_PROVENANCE_KEY,
+  type EngineIdentity,
   LoadScopedLandofile,
   ProviderId,
   ServiceName,
@@ -88,6 +91,11 @@ interface PlannedService {
   readonly clonedFrom?: string;
 }
 
+const identity = (host: string): EngineIdentity => ({
+  fingerprint: host,
+  endpoint: `unix:///${host}/podman.sock`,
+});
+
 const makePlan = (
   services: ReadonlyArray<PlannedService> = [
     { name: "web" },
@@ -95,8 +103,9 @@ const makePlan = (
     { name: "web-schedule-1002", clonedFrom: "web" },
   ],
   recordedRoot?: AbsolutePath,
-) =>
-  AppPlan.make({
+  recordedEngine?: EngineIdentity,
+): AppPlan & Pick<AppliedAppPlan, "engineIdentity"> => ({
+  ...AppPlan.make({
     id: AppId.make("demo"),
     name: "demo",
     slug: "demo",
@@ -113,7 +122,9 @@ const makePlan = (
     fileSync: [],
     metadata,
     extensions: {},
-  });
+  }),
+  ...(recordedEngine === undefined ? {} : { engineIdentity: recordedEngine }),
+});
 
 const makeRuntime = (
   options: {
@@ -121,15 +132,19 @@ const makeRuntime = (
     readonly planServices?: ReadonlyArray<PlannedService>;
     readonly protection?: AppliedStateVersionError;
     readonly recordedRoot?: AbsolutePath;
+    readonly recordedEngine?: EngineIdentity;
+    readonly engineIdentity?: EngineIdentity;
     readonly omitExit?: boolean;
   } = {},
 ) => {
   const execs: Array<{ readonly target: ExecTarget; readonly command: ProviderCommandSpec }> = [];
-  const plan = makePlan(options.planServices, options.recordedRoot);
+  const plan = makePlan(options.planServices, options.recordedRoot, options.recordedEngine);
   const order: string[] = [];
   const encoder = new TextEncoder();
   const provider: RuntimeProviderShape = {
     ...TestRuntimeProvider,
+    id: String(plan.provider),
+    ...(options.engineIdentity === undefined ? {} : { engineIdentity: options.engineIdentity }),
     execStream: (target, command) =>
       Stream.suspend(() => {
         execs.push({ target, command });
@@ -178,6 +193,8 @@ const makeRuntime = (
       Effect.runPromise(
         runScheduleJob({ name, ...(service === undefined ? {} : { service }) }).pipe(Effect.provide(layer)),
       ),
+    runFailure: (name: string) =>
+      Effect.runPromise(runScheduleJob({ name }).pipe(Effect.provide(layer), Effect.flip)),
     runLive: (name: string) => {
       const frames: StreamFrameSinkFrame[] = [];
       const sink = StreamFrameSink.of({
@@ -209,6 +226,31 @@ describe("schedule:run", () => {
     await expect(runtime.run("fail")).rejects.toMatchObject({ _tag: "AppliedStateVersionError" });
     expect(runtime.execs).toEqual([]);
   });
+  test("refuses a job recorded on another engine before executing it", async () => {
+    const runtime = makeRuntime({
+      recordedEngine: identity("first"),
+      engineIdentity: identity("second"),
+    });
+
+    const failure = await runtime.runFailure("ok");
+
+    expect(failure).toBeInstanceOf(AppPlacementError);
+    if (failure instanceof AppPlacementError) {
+      expect(failure.message).toContain(identity("first").endpoint);
+      expect(failure.message).toContain(identity("second").endpoint);
+    }
+    expect(runtime.execs).toEqual([]);
+  });
+
+  test("runs a job when the provider has no engine identity", async () => {
+    const runtime = makeRuntime({ recordedEngine: identity("first") });
+
+    const result = await runtime.run("ok");
+
+    expect(result.exitCode).toBe(0);
+    expect(runtime.execs).toHaveLength(1);
+  });
+
   test("runs a job when the applied record names the canonical form of the app root", async () => {
     // Given: the Landofile reports the root as written while the record holds its canonical form,
     // as on Windows, where the drive letter and separators can differ.

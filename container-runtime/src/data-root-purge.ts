@@ -1,4 +1,5 @@
 import { mapFailures } from "@lando/sdk/command-result";
+import { engineEndpointDisplay } from "@lando/sdk/engine-placement";
 import { ProviderId } from "@lando/sdk/schema";
 import { Effect, Result, Schema } from "effect";
 import { removeRuntimeContainer } from "./container-removal.ts";
@@ -6,7 +7,6 @@ import { makePurgeCandidates, purgeKinds } from "./data-root-purge-candidates.ts
 import type { EngineHttpApi, EngineHttpRequest, ProviderErrorContext } from "./engine-api.ts";
 import { isSuccessStatus } from "./engine-api.ts";
 import { apiResponseFailure, missingApi, missingRequest } from "./engine-errors.ts";
-import { engineEndpointDisplay } from "./engine-identity.ts";
 import { BUILT_ARTIFACT_PREFIX, BUILT_ARTIFACT_STORE_LABEL } from "./image-build.ts";
 import { listContainerArtifacts, normalizeImageRef } from "./image-list.ts";
 import { removeContainerArtifact } from "./image-remove.ts";

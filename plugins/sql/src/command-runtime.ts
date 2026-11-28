@@ -1,5 +1,5 @@
 import { realpath } from "node:fs/promises";
-import { enginePlacementMismatch } from "@lando/container-runtime/engine-identity";
+import { enginePlacementMismatch } from "@lando/sdk/engine-placement";
 import { PlanReplanRequiredError, SqlRecoveryUnavailableError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, PortablePath, ServiceName, isIdleRunStatus } from "@lando/sdk/schema";
 import {

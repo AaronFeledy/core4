@@ -1,4 +1,4 @@
-import { destroyCommand } from "@lando/container-runtime/engine-identity";
+import { destroyCommand } from "@lando/sdk/engine-placement";
 import { AppResolveError } from "@lando/sdk/errors";
 import { type AbsolutePath, type AppRef, ProviderId, type ResourceOwnership } from "@lando/sdk/schema";
 import type { AppliedOrphanGroup } from "@lando/sdk/services";

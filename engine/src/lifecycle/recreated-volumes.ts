@@ -1,4 +1,4 @@
-import { engineEndpointDisplay } from "@lando/container-runtime/engine-identity";
+import { engineEndpointDisplay } from "@lando/sdk/engine-placement";
 import type {
   AppPlan,
   AppliedAppPlan,

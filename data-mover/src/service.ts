@@ -2,7 +2,6 @@ import { createHash, randomUUID } from "node:crypto";
 import { cp, mkdir, readdir, realpath, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { inventoryProtectsApp, protectedSlotError } from "@lando/container-runtime/applied-state";
-import { enginePlacementMismatch } from "@lando/container-runtime/engine-identity";
 import { APP_ROOT_LABEL, SNAPSHOT_STORE_LABEL } from "@lando/container-runtime/labels";
 import { findAppRoot } from "@lando/landofile/discovery";
 import { discoveryCwd } from "@lando/landofile/operation-discovery";
@@ -12,6 +11,7 @@ import { RedactionService, createStandaloneRedactor } from "@lando/redaction/ser
 import { tryPromiseSettled } from "@lando/sdk/abortable-promise";
 import { mapFailures, mapStreamFailures } from "@lando/sdk/command-result";
 import { sha256Hex } from "@lando/sdk/digest";
+import { enginePlacementMismatch } from "@lando/sdk/engine-placement";
 import {
   ArchiveFormatError,
   ArtifactTransferError,

@@ -353,12 +353,4 @@ export const makeSocketHttpClient = (options: SocketHttpClientOptions): SocketHt
   return { request, stream };
 };
 
-export const normalizeNamedPipePath = (socketPath: string): string => {
-  if (!socketPath.startsWith("npipe:")) return socketPath;
-  const pipePath = socketPath.slice("npipe:".length);
-  const desktopPipe = pipePath.match(/^\/{2,4}\.\/pipe\/(.+)$/u);
-  if (desktopPipe !== null) {
-    return `\\\\.\\pipe\\${(desktopPipe[1] ?? "").replaceAll("/", "\\")}`;
-  }
-  return pipePath;
-};
+export { normalizeNamedPipePath } from "@lando/sdk/engine-placement";
