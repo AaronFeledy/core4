@@ -317,7 +317,7 @@ describe("check:codegen-drift package wiring", () => {
 
     // When / Then: the chain runs typecheck, lint, codegen:check, test ownership, boundaries, then guide-drift.
     expect(gatePr).toBe(
-      "bun run typecheck && bun run lint && bun run codegen:check && bun run check:test-ownership && bun run check:boundaries && GUIDE_DRIFT_BASE_REF=origin/main bun run check:guide-drift",
+      "bun run typecheck && bun run lint && bun run codegen:check && bun run check:test-ownership && bun run check:boundaries && bun run check:guide-drift",
     );
   });
 });
