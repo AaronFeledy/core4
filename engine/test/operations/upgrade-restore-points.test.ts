@@ -6,6 +6,7 @@ import { DataMover, type ServiceRuntimeIdentity, type ServiceRuntimeInfo } from 
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { withPhysicalVolumeLock } from "@lando/state-store/volume-lock";
 import { DateTime, Deferred, Effect, Exit, Fiber, Layer } from "effect";
+import { TestClock } from "effect/testing";
 import { rebuildApp } from "../../src/operations/rebuild.ts";
 import { restartApp } from "../../src/operations/restart.ts";
 import { startApp } from "../../src/operations/start.ts";
@@ -21,12 +22,13 @@ const fixture = (
     readonly from?: string;
     readonly to?: string;
     readonly state?: "running" | "exited";
-    readonly failure?: "pull" | "helper-pull" | "capture" | "apply" | "replacement";
+    readonly failure?: "pull" | "helper-pull" | "helper-run" | "capture" | "apply" | "replacement";
     readonly failResume?: boolean;
     readonly afterSnapshotCommit?: Effect.Effect<void>;
     readonly offlineVersion?: string;
     readonly recordBuild?: boolean;
     readonly recordPreStop?: boolean;
+    readonly slowHelper?: { readonly pullStarted: Deferred.Deferred<void> };
   } = {},
 ) => {
   const from = input.from ?? "10.11";
@@ -169,13 +171,20 @@ const fixture = (
         stderr: "",
       }),
     providerOverrides: {
-      ...(input.failure === "pull" || input.failure === "helper-pull"
+      ...(input.failure === "pull" || input.failure === "helper-pull" || input.slowHelper !== undefined
         ? {
             capabilities: { ...TestRuntimeProvider.capabilities, artifactPull: true },
             pullArtifact: ({ ref }) =>
-              input.failure === "pull" || ref.includes("library/alpine")
+              input.failure === "pull" || (input.failure === "helper-pull" && ref.includes("library/alpine"))
                 ? Effect.fail(failure)
-                : Effect.succeed({ ref, providerId: plan.provider }),
+                : Effect.gen(function* () {
+                    if (ref.includes("library/alpine") && input.slowHelper !== undefined) {
+                      actions.push("helper-pull");
+                      yield* Deferred.succeed(input.slowHelper.pullStarted, undefined);
+                      yield* Effect.sleep("5 seconds");
+                    }
+                    return { ref, providerId: plan.provider };
+                  }),
           }
         : {}),
       observeBoundVolume: (target) =>
@@ -183,13 +192,18 @@ const fixture = (
           ? Effect.succeed({ ref, identity: physical })
           : Effect.fail(failure),
       run: (spec) =>
-        Effect.sync(() => {
+        Effect.gen(function* () {
           if (
             status !== "exited" ||
             spec.mounts?.[0]?.readOnly !== true ||
             spec.mounts[0].store !== ref.store
           )
             throw new Error("Offline version read did not use the stopped, read-only database volume.");
+          if (input.failure === "helper-run") return yield* failure;
+          if (input.slowHelper !== undefined) {
+            actions.push("helper-read");
+            yield* Effect.sleep("5 seconds");
+          }
           return {
             exitCode: 0,
             stdout: input.offlineVersion === undefined ? "-\0" : `+${input.offlineVersion}.7-MariaDB\n\0`,
@@ -336,6 +350,9 @@ test("an already-stopped database gets an upgrade restore point without resuming
     dataVersion: { label: "MariaDB", series: "10.11", source: "applied-plan" },
   });
   expect(f.captured[0]?.metadata?.version).toBeUndefined();
+  expect(f.events.some((event) => event._tag === "message.warn" && /web.*verified/iu.test(event.body))).toBe(
+    false,
+  );
 });
 
 test.each([
@@ -363,6 +380,56 @@ test("labels a stopped database's snapshot with the record on disk, not the appl
   const f = fixture({ state: "exited", offlineVersion: "10.6" });
   await Effect.runPromise(startApp({}, f.target).pipe(Effect.provide(f.layer)));
   expect(f.captured[0]?.metadata?.dataVersion).toMatchObject({ series: "10.6", source: "record" });
+});
+
+test("a slow offline helper verifies the running database snapshot after one pull before suspension", async () => {
+  const pullStarted = Deferred.makeUnsafe<void>();
+  const f = fixture({ offlineVersion: "10.6", slowHelper: { pullStarted }, failure: "apply" });
+  await Effect.runPromise(
+    Effect.gen(function* () {
+      const fiber = yield* Effect.forkChild(startApp({}, f.target).pipe(Effect.flip));
+      yield* Deferred.await(pullStarted);
+      yield* TestClock.adjust("20 seconds");
+      yield* Fiber.join(fiber);
+    }).pipe(Effect.provide(f.layer), Effect.provide(TestClock.layer())),
+  );
+
+  expect(f.actions).toEqual(["helper-pull", "suspend", "helper-read", "capture", "apply", "resume"]);
+  expect(f.captured[0]?.metadata?.dataVersion).toMatchObject({ series: "10.6", source: "record" });
+});
+
+test("a stopped downgrade check waits for a slow image pull and still refuses verified newer data", async () => {
+  const pullStarted = Deferred.makeUnsafe<void>();
+  const f = fixture({
+    from: "11.4",
+    to: "10.11",
+    state: "exited",
+    offlineVersion: "11.4",
+    slowHelper: { pullStarted },
+    failure: "apply",
+  });
+  const exit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const fiber = yield* Effect.forkChild(startApp({}, f.target).pipe(Effect.exit));
+      yield* Deferred.await(pullStarted);
+      yield* TestClock.adjust("20 seconds");
+      return yield* Fiber.join(fiber);
+    }).pipe(Effect.provide(f.layer), Effect.provide(TestClock.layer())),
+  );
+
+  expect(Exit.isFailure(exit) && taggedErrorJson(failureOutcomeFromCause(exit.cause).error)._tag).toBe(
+    "ServiceDataVersionError",
+  );
+  expect(f.actions).toEqual(["helper-pull", "helper-read"]);
+});
+
+test("an offline helper failure warns and captures an unverified point", async () => {
+  const f = fixture({ failure: "helper-run", offlineVersion: "11.8" });
+  await Effect.runPromise(startApp({}, f.target).pipe(Effect.provide(f.layer)));
+
+  expect(f.captured[0]?.metadata?.dataVersion).toMatchObject({ series: "10.11", source: "applied-plan" });
+  const warnings = f.events.flatMap((event) => (event._tag === "message.warn" ? [event.body] : []));
+  expect(warnings).toEqual([expect.stringMatching(/web.*could not be verified|could not verify.*web/iu)]);
 });
 
 test.each([

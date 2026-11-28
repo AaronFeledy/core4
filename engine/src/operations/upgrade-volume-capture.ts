@@ -1,5 +1,6 @@
 import { mapFailures } from "@lando/sdk/command-result";
 import { ServiceRestorePointError } from "@lando/sdk/errors";
+import { MessageWarnEvent } from "@lando/sdk/events";
 import {
   type AppPlan,
   type SnapshotHandle,
@@ -8,8 +9,8 @@ import {
   planAppIdentity,
   planDataId,
 } from "@lando/sdk/schema";
-import { type DataMover, RuntimeProvider } from "@lando/sdk/services";
-import { Effect } from "effect";
+import { type DataMover, EventService, RuntimeProvider } from "@lando/sdk/services";
+import { DateTime, Effect, Result } from "effect";
 import { coordinatedServiceVolume } from "../lifecycle/volume-coordination.ts";
 import type { PreparedRuntimeProvider } from "../providers/prepared.ts";
 import type { DataUpgrade } from "./data-version-admission.ts";
@@ -108,12 +109,26 @@ export const captureRestorePoint = Effect.fn("AppActivation.captureRestorePoint"
   const desired = plan.services[service];
   const contract = desired?.dataVersion;
   const depth = contract?.series?.depth;
+  const warnUnverified = Effect.fnUntraced(function* (reason: string) {
+    const events = yield* EventService;
+    yield* events
+      .publish(
+        MessageWarnEvent.make({
+          body: `The database version for ${service} could not be verified: ${reason}.`,
+          timestamp: yield* DateTime.now,
+        }),
+      )
+      .pipe(Effect.ignore);
+  });
   const verify = Effect.gen(function* () {
     if (contract === undefined || depth === undefined || desired === undefined) return undefined;
-    const observed = yield* readOfflineVersion({ provider, appliedPlan, mount: privateMount, contract });
-    if (observed !== undefined) yield* proveVolume;
-    const comparison = observed === undefined ? undefined : compareDataSeries(observed, to, depth);
-    if (observed !== undefined && comparison === 1)
+    const read = yield* readOfflineVersion({ provider, appliedPlan, mount: privateMount, contract });
+    if (read.kind === "unavailable") yield* warnUnverified(read.reason);
+    if (read.kind !== "verified") return undefined;
+    const observed = read.version;
+    yield* proveVolume;
+    const comparison = compareDataSeries(observed, to, depth);
+    if (comparison === 1)
       return yield* refuseDataVersion({
         desired: plan,
         appliedPlan,
@@ -138,12 +153,9 @@ export const captureRestorePoint = Effect.fn("AppActivation.captureRestorePoint"
   });
   if (publication === undefined) {
     if (isIdleRunStatus(runtime.status)) {
-      const available = yield* prepareSnapshotHelper(provider).pipe(
-        observeBounded,
-        Effect.as(true),
-        Effect.catch(() => Effect.succeed(false)),
-      );
-      if (available) yield* verify;
+      const prepared = yield* Effect.result(prepareSnapshotHelper(provider));
+      if (Result.isSuccess(prepared)) yield* verify;
+      else yield* warnUnverified("the storage helper image could not be acquired");
     }
     return undefined;
   }

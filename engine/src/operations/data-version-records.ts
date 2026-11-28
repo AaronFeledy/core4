@@ -6,7 +6,14 @@ import {
   parseDataVersionRecords,
 } from "@lando/sdk/schema";
 import type { ExecResult, RuntimeProviderShape } from "@lando/sdk/services";
-import { Effect } from "effect";
+import { Effect, Option } from "effect";
+
+const OFFLINE_HELPER_DEADLINE = "30 seconds";
+
+type OfflineVersion =
+  | { readonly kind: "verified"; readonly version: string }
+  | { readonly kind: "missing" }
+  | { readonly kind: "unavailable"; readonly reason: string };
 
 export const versionRecordCommand = (paths: readonly string[]) => [
   "sh",
@@ -59,10 +66,12 @@ export const readOfflineVersion = Effect.fn("AppActivation.readOfflineDatabaseVe
   readonly appliedPlan: AppPlan;
   readonly mount: VolumeMountPlan;
   readonly contract: ServiceDataVersion;
-}) {
+}): Effect.fn.Return<OfflineVersion> {
   const { provider, appliedPlan, mount, contract } = input;
   const paths = contract.series?.records.map(({ path }) => path) ?? [];
-  if (paths.length === 0 || paths.some((path) => !path.startsWith(`${mount.target}/`))) return undefined;
+  if (paths.length === 0) return { kind: "missing" };
+  if (paths.some((path) => !path.startsWith(`${mount.target}/`)))
+    return { kind: "unavailable", reason: "a version record is outside the database volume" };
   return yield* Effect.scoped(
     provider.run({
       owner: { app: appliedPlan.id, plan: appliedPlan },
@@ -73,8 +82,17 @@ export const readOfflineVersion = Effect.fn("AppActivation.readOfflineDatabaseVe
       remove: true,
     }),
   ).pipe(
-    Effect.timeout("2 seconds"),
-    Effect.map((read) => decodeVersionRecords(read, paths, contract)?.version),
-    Effect.catch(() => Effect.succeed(undefined)),
+    Effect.timeoutOption(OFFLINE_HELPER_DEADLINE),
+    Effect.match({
+      onFailure: (): OfflineVersion => ({ kind: "unavailable", reason: "the storage helper failed" }),
+      onSuccess: (read): OfflineVersion => {
+        if (Option.isNone(read)) return { kind: "unavailable", reason: "the storage helper timed out" };
+        const records = decodeVersionRecords(read.value, paths, contract);
+        if (records?.version !== undefined) return { kind: "verified", version: records.version };
+        return records?.missing === true
+          ? { kind: "missing" }
+          : { kind: "unavailable", reason: "the storage helper could not read a usable version record" };
+      },
+    }),
   );
 });
