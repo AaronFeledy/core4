@@ -12,17 +12,17 @@ import { type DataMover, RuntimeProvider } from "@lando/sdk/services";
 import { Effect } from "effect";
 import { coordinatedServiceVolume } from "../lifecycle/volume-coordination.ts";
 import type { PreparedRuntimeProvider } from "../providers/prepared.ts";
-import { type DataUpgrade, refuseDataVersion } from "./data-version-admission.ts";
+import type { DataUpgrade } from "./data-version-admission.ts";
 import { readOfflineVersion } from "./data-version-records.ts";
 import { catalogMount } from "./database-convergence/target.ts";
 import { markStartMutation } from "./start-incomplete-notice.ts";
+import { refuseDataVersion } from "./upgrade-restore-remediation.ts";
 
 const observeBounded = Effect.timeout("2 seconds");
 
 export type UndoCapture = Effect.Effect<string | undefined, ServiceRestorePointError>;
 
 export const captureRestorePoint = Effect.fn("AppActivation.captureRestorePoint")(function* (input: {
-  readonly app: string;
   readonly plan: AppPlan;
   readonly upgrade: DataUpgrade;
   readonly provider: PreparedRuntimeProvider;
@@ -32,7 +32,8 @@ export const captureRestorePoint = Effect.fn("AppActivation.captureRestorePoint"
     readonly onCommit: (handle: SnapshotHandle) => void;
   };
 }) {
-  const { app, plan, upgrade, provider, publication } = input;
+  const { plan, upgrade, provider, publication } = input;
+  const app = plan.name;
   const { appliedPlan, service, target: destination, store, label, from, to, source } = upgrade;
   const error = (reason: string, cause?: unknown) =>
     new ServiceRestorePointError({

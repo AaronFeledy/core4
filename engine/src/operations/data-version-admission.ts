@@ -1,12 +1,9 @@
-import { dataVersionRemediation } from "@lando/container-runtime/data-version-diagnostic";
 import { ownsServiceContainer } from "@lando/container-runtime/native-ownership";
-import { ServiceDataVersionError } from "@lando/sdk/errors";
 import { MessageInfoEvent } from "@lando/sdk/events";
 import {
   type AppPlan,
   type PortablePath,
   type ServiceDataVersion,
-  type ServiceDataVersionFinding,
   type ServiceName,
   type ServicePlan,
   type VolumeMountPlan,
@@ -19,7 +16,7 @@ import { EventService, type ProviderError } from "@lando/sdk/services";
 import { DateTime, Effect } from "effect";
 import type { PreparedRuntimeProvider } from "../providers/prepared.ts";
 import { decodeVersionRecords, versionRecordCommand } from "./data-version-records.ts";
-import { upgradeRestoreRemediation } from "./upgrade-restore-remediation.ts";
+import { refuseDataVersion } from "./upgrade-restore-remediation.ts";
 
 export interface DataUpgrade {
   readonly service: ServiceName;
@@ -132,54 +129,6 @@ const versionEvidence = Effect.fnUntraced(
       Effect.catch(() => Effect.succeed(undefined)),
     ),
 );
-
-export const refuseDataVersion = Effect.fnUntraced(function* (input: {
-  readonly desired: AppPlan;
-  readonly appliedPlan: AppPlan;
-  readonly service: ServicePlan;
-  readonly mount: VolumeMountPlan;
-  readonly label: string;
-  readonly depth: 1 | 2;
-  readonly providerId: string;
-  readonly finding: ServiceDataVersionFinding & { readonly imageVersion: string };
-  readonly generation: string;
-  readonly stopped?: boolean;
-}) {
-  const { desired, appliedPlan, service, mount, label, depth, providerId, finding, generation } = input;
-  const { dataVersion: from, imageVersion: to } = finding;
-  const applied = appliedPlan.services[service.name];
-  const data =
-    finding.evidence === "running-image"
-      ? `data last opened by ${label} ${from}`
-      : `data with recorded ${label} version ${from}`;
-  const restore =
-    finding.direction === "downgrade"
-      ? yield* upgradeRestoreRemediation({
-          plan: appliedPlan,
-          service: service.name,
-          store: mount.store,
-          label,
-          depth,
-          series: to,
-          family: service.connection?.family,
-          generation,
-        })
-      : undefined;
-  const unchanged =
-    input.stopped === true
-      ? "the previous container was not replaced"
-      : "the previous container is still running unchanged";
-  return yield* new ServiceDataVersionError({
-    app: desired.name,
-    service: service.name,
-    providerId,
-    image: service.artifact?.kind === "ref" ? service.artifact.ref : to,
-    ...(applied?.artifact?.kind === "ref" ? { appliedImage: applied.artifact.ref } : {}),
-    dataVersion: finding,
-    message: `Service ${service.name}: ${unchanged}. ${label} ${to} cannot open ${data}.`,
-    remediation: [restore, dataVersionRemediation(desired, service, { finding })].filter(Boolean).join(" "),
-  });
-});
 
 export const assessDataVersions = Effect.fn("AppActivation.assessDataVersions")(function* (
   desired: AppPlan,

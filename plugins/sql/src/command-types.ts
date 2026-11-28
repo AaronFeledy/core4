@@ -36,7 +36,6 @@ export type DbCommandInput = {
   readonly hostCwd?: string;
   readonly keepLatest?: number;
   readonly preview?: boolean;
-  /** `db:snapshots:prune` selects recovery snapshots instead of manual ones. */
   readonly recovery?: boolean;
   readonly stdio?: ExecutableCommandStdio;
 };

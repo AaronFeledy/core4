@@ -174,9 +174,9 @@ lando start
 lando mysql -N -e 'SELECT VERSION()'
 ```
 
-Lando saves a restore point before upgrading and prints its ID. If you run `lando start --format=json` for the upgrade, the ID is `dataVersionChanges[0].restorePoint` in the final result. The version query should report 8.4. Check that your app can still read its data.
+Lando saves a restore point before upgrading and prints its ID. With `lando start --format=json`, look for `dataVersionChanges[0].restorePoint` in the final result. The version query should report 8.4. Check that your app can still read its data.
 
-Pass `--no-snapshot` to start without saving a restore point only if you have another backup or accept upgrading without one. Automatic retention leaves [upgrade restore points](../tooling/db-import-export.mdx#restore-points-before-version-upgrades) in place. Use `lando db:snapshots:prune --recovery` to remove them explicitly.
+Use `--no-snapshot` only if you have another backup or accept upgrading without one. Automatic retention leaves [upgrade restore points](../tooling/db-import-export.mdx#restore-points-before-version-upgrades) in place. Use `lando db:snapshots:prune --recovery` to remove them.
 
 ## Go back to the old version
 

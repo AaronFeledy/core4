@@ -254,8 +254,9 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
       const snapshots = yield* deps.listSnapshots(filter);
       const recovery = input.recovery === true;
       prunePolicy = { filter, keepLatest, ...(recovery ? { recovery, includeUpgrade: true } : {}) };
+      const { includeUpgrade } = prunePolicy;
       pruneCandidates = [...snapshots]
-        .filter((snapshot) => snapshotInPruneBucket(snapshot, recovery, true))
+        .filter((snapshot) => snapshotInPruneBucket(snapshot, recovery, includeUpgrade))
         .sort(
           (left, right) => DateTime.toEpochMillis(right.createdAt) - DateTime.toEpochMillis(left.createdAt),
         )

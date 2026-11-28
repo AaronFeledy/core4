@@ -45,7 +45,6 @@ export const withUpgradeRestorePoints =
           : input.stoppedChecks;
       for (const upgrade of stoppedChecks) {
         yield* captureRestorePoint({
-          app: input.plan.name,
           plan: input.plan,
           provider: input.provider,
           upgrade,
@@ -84,7 +83,6 @@ export const withUpgradeRestorePoints =
                 yield* notice(`Saving a restore point of ${service} before moving to ${label} ${to}…`);
                 yield* active.startTask(service);
                 const captured = yield* captureRestorePoint({
-                  app: input.plan.name,
                   plan: input.plan,
                   provider: input.provider,
                   upgrade,
