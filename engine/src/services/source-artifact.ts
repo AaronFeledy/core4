@@ -47,24 +47,23 @@ const PrefetchedSourceArtifacts = Context.Reference<
   | undefined
 >("@lando/engine/PrefetchedSourceArtifacts", { defaultValue: () => undefined });
 
-export const withPrefetchedSourceArtifacts = <A, E, R>(
+export const withPrefetchedSourceArtifacts = Effect.fnUntraced(function* <A, E, R>(
   input: {
     readonly provider: RuntimeProviderShape;
     readonly services: readonly ServicePlan[];
     readonly options: SourceArtifactOptions;
   },
   body: Effect.Effect<A, E, R>,
-) =>
-  Effect.gen(function* () {
-    const { provider, services, options } = input;
-    if (!provider.capabilities.artifactPull) return yield* body;
-    const artifacts = new Map<string, ProviderArtifactRef>();
-    for (const service of services) {
-      const acquired = yield* acquireSourceArtifact(provider, service, options);
-      if (acquired !== undefined) artifacts.set(sourceKey(service, options.refresh), acquired);
-    }
-    return yield* body.pipe(Effect.provideService(PrefetchedSourceArtifacts, { provider, artifacts }));
-  });
+) {
+  const { provider, services, options } = input;
+  if (!provider.capabilities.artifactPull) return yield* body;
+  const artifacts = new Map<string, ProviderArtifactRef>();
+  for (const service of services) {
+    const acquired = yield* acquireSourceArtifact(provider, service, options);
+    if (acquired !== undefined) artifacts.set(sourceKey(service, options.refresh), acquired);
+  }
+  return yield* body.pipe(Effect.provideService(PrefetchedSourceArtifacts, { provider, artifacts }));
+});
 
 /**
  * Pull policy for one acquisition. An explicit service policy is authoritative on start and rebuild;
@@ -115,19 +114,18 @@ const warnRefreshFallback = Effect.fnUntraced(function* (
 });
 
 /** Acquires a service's source image ref according to its pull policy before any build runs. */
-export const resolveSourceArtifact = (
+export const resolveSourceArtifact = Effect.fnUntraced(function* (
   provider: RuntimeProviderShape,
   service: ServicePlan,
   options: SourceArtifactOptions,
-): Effect.Effect<ProviderArtifactRef | undefined, ProviderError> =>
-  Effect.gen(function* () {
-    const prefetched = yield* PrefetchedSourceArtifacts;
-    const acquired =
-      prefetched?.provider === provider
-        ? prefetched.artifacts.get(sourceKey(service, options.refresh))
-        : undefined;
-    return acquired ?? (yield* acquireSourceArtifact(provider, service, options));
-  });
+): Effect.fn.Return<ProviderArtifactRef | undefined, ProviderError> {
+  const prefetched = yield* PrefetchedSourceArtifacts;
+  const acquired =
+    prefetched?.provider === provider
+      ? prefetched.artifacts.get(sourceKey(service, options.refresh))
+      : undefined;
+  return acquired ?? (yield* acquireSourceArtifact(provider, service, options));
+});
 
 const acquireSourceArtifact = (
   provider: RuntimeProviderShape,

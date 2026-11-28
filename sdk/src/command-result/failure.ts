@@ -178,11 +178,14 @@ export const failureOutcomeFromCause = <E>(
       },
     ];
   });
-  if (primary === undefined)
-    return { _tag: "failure", kind: "none", error: Cause.squash(cause), additionalErrors };
-  const { reason, typed } = primary;
-  const context = Context.getOrUndefined(Cause.reasonAnnotations(reason), FailureContextAnnotation);
+  const contextReason = primary?.reason ?? cause.reasons[0];
+  const context =
+    contextReason === undefined
+      ? undefined
+      : Context.getOrUndefined(Cause.reasonAnnotations(contextReason), FailureContextAnnotation);
   const extras = { additionalErrors, ...(context === undefined ? {} : { failureContext: context }) };
+  if (primary === undefined) return { _tag: "failure", kind: "none", error: Cause.squash(cause), ...extras };
+  const { reason, typed } = primary;
   switch (reason._tag) {
     case "Fail":
       return { _tag: "failure", kind: "typed", source: "fail", error: reason.error, ...extras };
@@ -197,7 +200,7 @@ export const failureOutcomeFromCause = <E>(
 
 /** Add structured context to the primary reason without replacing the error. */
 export const annotateFailureContext = <E>(cause: Cause.Cause<E>, context: FailureContext): Cause.Cause<E> => {
-  const primary = primaryFailureReason(cause);
+  const primary = primaryFailureReason(cause) ?? cause.reasons[0];
   if (primary === undefined) return cause;
   const previous = Context.getOrUndefined(Cause.reasonAnnotations(primary), FailureContextAnnotation);
   return Cause.fromReasons(

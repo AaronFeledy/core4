@@ -294,6 +294,11 @@ test("cancelling after snapshot commit resumes the original and removes the comm
   await Effect.runPromise(Deferred.await(committed).pipe(Effect.timeout("5 seconds")));
   await Effect.runPromise(Fiber.interrupt(fiber));
 
+  const exit = await Effect.runPromise(Fiber.await(fiber));
+  if (Exit.isSuccess(exit)) throw new Error("expected capture to be interrupted");
+  const outcome = failureOutcomeFromCause(exit.cause);
+  expect(outcome.kind).toBe("none");
+  expect(outcome.failureContext?.restorePointIds).toEqual([id]);
   expect(f.actions).toEqual(["suspend", "capture", "resume"]);
   expect(f.status()).toBe("running");
   expect([...f.snapshots]).toEqual([]);

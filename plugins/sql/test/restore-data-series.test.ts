@@ -57,7 +57,7 @@ test.each([
     expect(result.snapshotId).toBe(f.point.id);
     expect(f.harness.lifecycle()).toEqual(lifecycle);
     expect(result.restoredSeries).toBe("8.0");
-    expect(result.databaseLeftStopped).toBe(!lifecycle.includes("resume"));
+    expect(result.databaseLeftStopped).toBe(!lifecycle.some((action) => action === "resume"));
     expect(result.undoCommands).toEqual([
       `lando app:config:set services.database.type mysql:${applied}`,
       `lando db:restore ${result.recoverySnapshotId} --service database --any-series`,
@@ -93,7 +93,9 @@ test.each([
 
 test("an explicitly accepted unverified snapshot leaves the database stopped", async () => {
   const f = await fixture({ applied: "8.0", desired: "8.0", verified: false });
-  const result = await Effect.runPromise(executeDbCommand(f.deps, { ...f.options, anySeries: true }));
+  const result: DbCommandResult = await Effect.runPromise(
+    executeDbCommand(f.deps, { ...f.options, anySeries: true }),
+  );
   expect(result.snapshotId).toBe(f.point.id);
   expect(result.restoredSeries).toBeUndefined();
   expect(result.databaseLeftStopped).toBe(true);

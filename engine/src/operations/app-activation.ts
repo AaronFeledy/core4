@@ -172,20 +172,21 @@ export function withAppActivation<A, E, R>(
         const overlays = yield* prepareStartOverlays({ ...target, plan: selectedPlan }, selectedProvider);
         const provider = yield* prepare;
         if (!scoped) yield* claimDataIdentityBeforeRetirement(target, placement.superseded, provider);
-        const prepareTransitions = (prepareUpgrade: PrepareUpgrade) =>
-          Effect.gen(function* () {
-            if (!scoped && placement.superseded.length > 0) yield* prepareUpgrade;
-            const retired = yield* retireSupersededRealizations(target, placement.superseded, {
-              provider,
-              selectedServices: scoped,
-            });
-            if (request.operation === "start" && !scoped)
-              yield* rotateChangedFileSync(target, provider, prepareUpgrade);
-            return retired;
+        const prepareTransitions = Effect.fnUntraced(function* (prepareUpgrade: PrepareUpgrade) {
+          if (!scoped && placement.superseded.length > 0) yield* prepareUpgrade;
+          const retired = yield* retireSupersededRealizations(target, placement.superseded, {
+            provider,
+            selectedServices: scoped,
           });
+          if (request.operation === "start" && !scoped)
+            yield* rotateChangedFileSync(target, provider, prepareUpgrade);
+          return retired;
+        });
         // Rotation and retirement can replace the original too. Hold their volumes before capture.
         const { stoppedChecks, dataUpgrades } = assessment;
-        const capture = (dataUpgrades.length > 0 && request.noSnapshot !== true) || stoppedChecks.length > 0;
+        const capture =
+          stoppedChecks.length > 0 ||
+          dataUpgrades.some(({ source }) => request.noSnapshot !== true || source === "applied-plan");
         const retiredBeforeCapture = capture ? undefined : yield* prepareTransitions(Effect.void);
         const stateStore = yield* StateStore;
         const withRestorePoints = withUpgradeRestorePoints({
