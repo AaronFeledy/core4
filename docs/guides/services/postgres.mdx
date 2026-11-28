@@ -125,9 +125,12 @@ services:
 ```
 
 Lando keeps the planned port and any `config.server` flag, then appends your
-list. Do not put `-p`, `-c port=...`, or `-c config_file=...` in `extraArgs:`;
-set `port:` or `config.server` instead. Custom images and Compose builds reject
-the key.
+list. Set `port:` or `config.server` rather than passing `-p`, `-c port=...`,
+or `-c config_file=...`. `-D` and `-c data_directory=...` are also reserved:
+keep the default data directory or use `command:` for a custom launcher.
+With `config.server`, Lando still reads the database version from the default
+data directory, `/var/lib/postgresql/data`. Custom images and Compose builds
+reject `extraArgs:`.
 
 If you also set `command:` or `entrypoint:` on the service, yours wins. Lando won't append the `-c config_file=...` flag to a command you wrote yourself, so pass it in your own command if you still want the file loaded.
 
@@ -190,7 +193,7 @@ For vector search on Postgres 18, [use a pgvector image](./postgres-pgvector.mdx
 
 ## Change versions
 
-PostgreSQL can't open an existing data directory from a different major. If you change `postgres:16` to `postgres:17` while 16 is still running, `lando start --format=json` reports `ServiceDataVersionError` with `dataVersion.direction: "upgrade"` and leaves 16 running. If the old server was stopped, the native refusal reports the same versions under `ServiceNotReadyError`.
+PostgreSQL can't open an existing data directory from a different major. If you change `postgres:16` to `postgres:17` while 16 is still running, `lando start --format=json` reports `ServiceDataVersionError` with `dataVersion.direction: "upgrade"` and leaves 16 running. If the old server was stopped, the native refusal reports the same versions under `ServiceNotReadyError` for a standalone service, or `ServiceStartError` if a dependent service is blocked.
 
 To move the data, export it and restore it on the new major. Before deleting volumes, verify the export and back up other services: volume deletion removes every service's data in the app.
 

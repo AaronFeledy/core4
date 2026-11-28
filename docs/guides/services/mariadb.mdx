@@ -109,9 +109,11 @@ services:
 ```
 
 Lando keeps the planned port and any `config.server` handling, then appends
-your list. Do not put `--port`, `-P`, or `--defaults-*` in `extraArgs:`; set
-`port:` or `config.server` instead. Custom images and Compose builds reject
-the key.
+your list. Set `port:` or `config.server` rather than passing `--port`, `-P`,
+or `--defaults-*`. `--datadir` is also reserved: keep the default data directory
+or use `command:` for a custom launcher. With `config.server`, Lando still
+reads the database version from `/var/lib/mysql`, the default data directory.
+Custom images and Compose builds reject `extraArgs:`.
 
 The path has to stay inside the app root. Absolute paths, paths that climb out of the app root, and symlinks that point outside it are rejected when Lando plans the app, before anything starts.
 
@@ -163,16 +165,17 @@ Changing the MariaDB version keeps the data volume. Lando sets `MARIADB_AUTO_UPG
 1. Export the database while the old version still runs. You can't undo an upgrade in place. The export holds the service's configured database, not other databases or user accounts on the server:
 
    ```sh
-   lando db:export before-upgrade.sql.gz
+   lando db:export before-upgrade.sql.gz --service db
    ```
 
-2. Set the service type to the newer catalog version:
+2. Stop the app, then set the service type to the newer catalog version:
 
    ```sh
+   lando stop
    lando app:config:set services.db.type mariadb:11.4
    ```
 
-3. Start the app. Lando announces the in-place upgrade from 10.11 to 11.4 even if you stopped 10.11 after exporting. The image backs up its system tables and runs `mariadb-upgrade` before the service reports ready:
+3. Start the app. Lando announces the move from 10.11 to 11.4 on the existing data. With automatic upgrades enabled, the image backs up its system tables and runs `mariadb-upgrade` before the service reports ready:
 
    ```sh
    lando start
@@ -187,7 +190,7 @@ Changing the MariaDB version keeps the data volume. Lando sets `MARIADB_AUTO_UPG
 
    Both should name the new version, and your tables should still be there. Run your app's tests to check that its queries still work on the new server.
 
-On later starts with the same version, the image skips the upgrade. To stop the image from running `mariadb-upgrade` automatically, override Lando's default with `MARIADB_AUTO_UPGRADE: "0"` under the service's `environment:`. An unchanged version record doesn't prove a downgrade is safe.
+On later starts with the same version, the image skips the upgrade. To stop the image from running `mariadb-upgrade` automatically, override Lando's default with `MARIADB_AUTO_UPGRADE: "0"` under the service's `environment:`. The `--format=json` result's `dataVersionChanges` lists identified version transitions, not proof that the image rewrote any files. An unchanged version record doesn't prove a downgrade is safe.
 
 ## Go back to the old version
 
@@ -198,16 +201,16 @@ lando app:config:set services.db.type mariadb:10.11
 lando start --format=json
 ```
 
-The JSON error has `_tag: "ServiceDataVersionError"` and `dataVersion.direction: "downgrade"`. `dataVersion.dataVersion` is the series on disk (`11.4`), and `dataVersion.imageVersion` is the requested series (`10.11`). The newer server keeps running. Restore the newer `type:` to keep using that data.
+The JSON error has `_tag: "ServiceDataVersionError"` and `dataVersion.direction: "downgrade"`. `dataVersion.dataVersion` identifies the incompatible data series (`11.4`), and `dataVersion.imageVersion` is the requested series (`10.11`). The newer server keeps running unchanged. Restore the newer `type:` or your previous `image:` to keep using that data.
 
 If the old container was already stopped, the official image's Lando launcher checks the files before starting MariaDB. That refusal has the same `dataVersion` fields under `ServiceNotReadyError` (or `ServiceStartError` when a dependent service is blocked). A service that sets `command:`, `entrypoint:`, or `build:` skips Lando's checks.
 
-To go back, restore the export from before the upgrade onto a fresh volume. `--volumes` deletes the data of every service in the app, not only `db`, so back up anything else you need first. With `type:` already set to the old version:
+To go back, prefer an export taken before the upgrade. Importing an export made on the newer version into the older version isn't guaranteed to work. Verify the dump first. `--volumes` deletes the data of every service in the app, not only `db`, so back up anything else you need first. With `type:` already set to the old version:
 
 ```sh
 lando destroy -y --volumes
 lando start
-lando db:import before-upgrade.sql.gz --yes
+lando db:import before-upgrade.sql.gz --service db --yes
 ```
 
 Use the same export, destroy, and import steps to start the new version on a clean volume instead of upgrading in place.
@@ -225,8 +228,9 @@ Use the same export, destroy, and import steps to start the new version on a cle
         <Verify command="lando exec db -- printenv MARIADB_AUTO_UPGRADE" expect={{ stdout: { regex: "^1\\s*$" } }} />
       </Step>
     </Hidden>
-    <Step name="export"><Run command="lando db:export before-upgrade.sql.gz" /></Step>
+    <Step name="export"><Run command="lando db:export before-upgrade.sql.gz --service db" /></Step>
     <Step name="upgrade">
+      <Run command="lando stop" />
       <Run command="lando app:config:set services.db.type mariadb:11.4" />
       <Verify command="lando start --format=json" expect={{ stdout: { regex: '"event":"message[.]info"[^\\n]*"body":"[^"\\n]*db[^"\\n]*10[.]11[^"\\n]*11[.]4[^"\\n]*"[\\s\\S]*"dataVersionChanges":\\[\\{"service":"db","from":"10[.]11","to":"11[.]4"\\}\\]' } }} />
     </Step>
@@ -246,7 +250,7 @@ Use the same export, destroy, and import steps to start the new version on a cle
     <Step name="roll-back">
       <Run command="lando destroy -y --volumes" />
       <Run command="lando start" />
-      <Run command="lando db:import before-upgrade.sql.gz --yes" />
+      <Run command="lando db:import before-upgrade.sql.gz --service db --yes" />
     </Step>
     <Hidden reason="Prove the restored 10.11 server holds the exported row">
       <Step name="restored">
