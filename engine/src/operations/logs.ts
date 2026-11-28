@@ -451,7 +451,9 @@ export const logsAppForTarget = Effect.fn("AppOperation.logsForTarget")(function
   options: LogsAppOptions | undefined,
   target: ResolvedAppTarget,
 ): Effect.fn.Return<CollectedLogsAppResult, SdkLogsAppError, RuntimeProviderRegistry> {
-  return yield* collectLogsForPlan(target.plan, options ?? {}, options?.follow ?? false);
+  // The handle carries the desired plan, which names no engine; judge the record it resolves to.
+  const plan = yield* observedAppPlan(target.plan);
+  return yield* collectLogsForPlan(plan, options ?? {}, options?.follow ?? false);
 });
 
 export const followLogsApp = Effect.fn("AppOperation.followLogs")(function* (
