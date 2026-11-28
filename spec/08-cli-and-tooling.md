@@ -77,7 +77,7 @@ The registry is authoritative for ids, aliases, bootstrap levels, flags, and res
 | `app:open` | `open` | `app` | Open or print URLs; `--service`, `--route`, `--all`, `--print` |
 | `app:pull` | `pull` | `app` | Pull remote datasets and optionally code (§10.12); `[<remote>@<env>]`, `--remote`, `--branch`, `--only`, `--fresh`, `--code`, `--no-snapshot`, `--allow-exposure`, `--force`, `--yes`, `--no-interactive`, `--format json` |
 | `app:push` | `push` | `app` | Push local datasets (§10.12); explicit `<remote>@<env>` and target bindings; `--remote`, `--branch`, `--only`, `--allow-exposure`, `--force`, `--yes`, `--no-interactive`, `--format json`. No code, fresh, or snapshot flags. |
-| `app:rebuild` | `rebuild` | `app` | Rebuild selected prerequisite closure; repeatable `--service/-s` |
+| `app:rebuild` | `rebuild` | `app` | Rebuild selected prerequisite closure; repeatable `--service/-s`; `--no-snapshot` skips database upgrade restore points (§6.15). |
 | `app:remote:add` | none | `app` | Add a `remotes.<name>` entry; `[<name>] [<source>]`, repeated `--set key=value` |
 | `app:remote:env:list` | none | `app` | List environments of a remote; `--remote`, `--format json` |
 | `app:remote:list` | none | `app` | List configured remotes with redacted config; `--remote`, `--format json` |
@@ -86,13 +86,13 @@ The registry is authoritative for ids, aliases, bootstrap levels, flags, and res
 | `app:remote:switch` | `switch` | `app` | Check out exact code ref of `<remote>@<env>`, reload/replan, then pull (§10.12.1); `--branch`, `--no-pull`, `--only`, `--fresh`, `--no-snapshot`, `--allow-exposure`, `--force`, `--yes`, `--no-interactive`, `--format json` |
 | `app:remote:tether` | none | `app` | Foreground session against explicit `<remote>@<env>` and repeatable `--unit` (§10.12.5); interactive CLI only, initially stopped app, revocable forwarding. Declares CLI-owned `--yes`/`-y` (§8.3.1) but MUST reject a true value; no protection bypass or programmatic dispatch. |
 | `app:remote:test` | none | `app` | Verify remote reachability and credentials; `[<remote>@<env>]`, `--remote`, `--format json` |
-| `app:restart` | `restart` | `app` | Stop then start inside restart events |
+| `app:restart` | `restart` | `app` | Stop then start inside restart events; `--no-snapshot` skips database upgrade restore points (§6.15). |
 | `app:shell` | `shell` | `app` | Interactive host or service shell; `--service`, `--no-history` |
 | `app:share` | `share` | `app` | Start tunnel; `--target`, `--provider`, `--detach`, `--format json` |
 | `app:share:list` | none | `app` | List tunnel sessions |
 | `app:share:stop` | none | `app` | Stop a detached tunnel session |
 | `app:ssh` | `ssh` | `app` | Login shell (`bash -l` when present, otherwise `sh -l`) or supplied command in a service; the login shell keeps the service `PATH` (§6.4) and a supplied command runs its argv unchanged; `--service`, `--user`, `--no-history`; stdin and PTY follow the command-wide host-stdin rule |
-| `app:start` | `start` | `app` | Start current app, or `--service` / `-s` (repeatable) for named services closed over prerequisites and companions; resolves an unfinished accelerated attempt in its recorded scope first (§10.6.3, §6.15). |
+| `app:start` | `start` | `app` | Start current app, or `--service` / `-s` (repeatable) for named services closed over prerequisites and companions; resolves an unfinished accelerated attempt in its recorded scope first (§10.6.3, §6.15). `--no-snapshot` skips database upgrade restore points. |
 | `app:stop` | `stop` | `app` | Stop current app, or `--service` / `-s` (repeatable) for named services without stopping their dependents; a selected stop refuses while an accelerated attempt is unfinished, naming the recorded start command (§6.15, §10.6.3) |
 | `app:trust` | `trust` | `plugins` | Approve project host access (§7.9); `--revoke` removes the approval |
 | `apps:init` | `init` | `plugins` | Write a Landofile and its support files from a recipe (§8.8) |
