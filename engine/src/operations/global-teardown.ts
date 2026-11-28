@@ -46,7 +46,7 @@ export const resolveGlobalTeardown = Effect.fn("GlobalApp.resolveTeardown")(func
   const plans =
     recorded !== undefined && (recorded.identity?.appRoot ?? recorded.root) === root ? [recorded] : [];
   const provider = yield* registry.select(providerId);
-  yield* requireOwningEngine(provider, "global", plans);
+  if (intent !== "destroy" || explicit === undefined) yield* requireOwningEngine(provider, "global", plans);
   const resourceOwnership = registry.resourceOwnership;
   const ownership = yield* resourceOwnership?.(providerId, root) ?? Effect.succeed(undefined);
   if (intent === "destroy" && (ownership !== undefined || plans.length > 0))

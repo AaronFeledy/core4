@@ -115,7 +115,7 @@ export const requireOwningEngine = (
         desiredProviderId: provider.id,
         realizedProviderId: plan.provider,
         message: `App ${plan.id} was realized at ${owningEndpoint}, but ${engineEndpointDisplay(current.endpoint)} now connects to a different engine.`,
-        remediation: `Restore the connection to ${owningEndpoint}${provider.id === "docker" ? " with `docker context use <name>` or by setting DOCKER_HOST" : " by setting DOCKER_HOST"}. To retire the old realization, reconnect to its engine and run \`${destroyCommand(app, plan.provider)}\`.`,
+        remediation: `Restore the connection to ${owningEndpoint}${provider.id === "docker" ? " with `docker context use <name>` or by setting DOCKER_HOST" : provider.id === "podman" ? " by setting DOCKER_HOST" : ""}.${kind === "scratch" ? "" : ` If that engine is gone, run \`${destroyCommand(app, plan.provider)}\` to drop Lando's record. Anything left on the old engine is not removed.`}`,
       }),
     );
   }

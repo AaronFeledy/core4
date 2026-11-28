@@ -190,6 +190,28 @@ test("observation reuses the applied plan instead of the newly selected provider
 });
 
 const daemonTarget = { app, root: applied.root, plan: applied };
+test("explicit destroy retires the recorded app through the selected engine", async () => {
+  const recorded = { ...applied, engineIdentity: { fingerprint: "old", endpoint: "unix:///old.sock" } };
+  const retired: string[] = [];
+  const harness = makeHarness({
+    plannedApp: applied,
+    appliedPlans: [recorded],
+    providerOverrides: { engineIdentity: { fingerprint: "new", endpoint: "unix:///new.sock" } },
+    onDestroy: (target, options) => {
+      if (options.containers === "remove" && options.removeState) retired.push(target.app);
+    },
+  });
+  try {
+    await Effect.runPromise(
+      destroyApp({ providerId: applied.provider, yes: true }, daemonTarget).pipe(
+        Effect.provide(harness.layer),
+      ),
+    );
+    expect(retired).toEqual([applied.id]);
+  } finally {
+    rmSync(harness.userDataRoot, { recursive: true, force: true });
+  }
+});
 for (const [name, run] of Object.entries({
   start: startApp({}, daemonTarget),
   restart: restartApp({}, daemonTarget),

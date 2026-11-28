@@ -14,6 +14,7 @@ import { ownedSnapshots } from "./destroy-snapshots.ts";
 export const prepareDestroyOwners = Effect.fn("AppOperation.prepareDestroyOwners")(function* (
   path: string,
   options: {
+    readonly providerId?: ProviderId;
     readonly purgeSnapshots?: boolean;
     readonly target?: ResolvedAppTarget;
     readonly roots?: readonly AbsolutePath[];
@@ -66,6 +67,7 @@ export const prepareDestroyOwners = Effect.fn("AppOperation.prepareDestroyOwners
     [...owners].filter((id) => selected === undefined || id === selected),
     (id) => registry.select(ProviderId.make(id)),
   );
-  for (const provider of providers) yield* requireOwningEngine(provider, app.kind, matching);
+  for (const provider of providers)
+    if (provider.id !== options.providerId) yield* requireOwningEngine(provider, app.kind, matching);
   yield* prepareTeardownOwners(providers);
 });
