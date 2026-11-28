@@ -25,6 +25,7 @@ import { hasExactFileSyncSessionCoverage, terminateFileSyncSessions } from "./fi
 import { acquireFileSyncEngine } from "./file-sync-acquire.ts";
 import { fileSyncBundle } from "./file-sync-bundle.ts";
 import { sameFileSyncSessionSpec } from "./file-sync-paths.ts";
+import { markUpgradeTeardown } from "./upgrade-teardown-boundary.ts";
 
 type DestroyFileSync = {
   readonly applicable: boolean;
@@ -90,6 +91,7 @@ export const prepareDestroyFileSync = Effect.fn("AppOperation.prepareDestroyFile
   const lifecycle = applied.status === "accelerated" ? engine?.appLifecycle : undefined;
   const phase = lifecycle === undefined ? undefined : yield* lifecycle.disposalPhase(app);
   const resumed = phase !== undefined && fileSyncDisposalCommitted(phase);
+  if (resumed) yield* markUpgradeTeardown(plan.id);
   const applicable =
     applied.status === "accelerated" &&
     (phase === "completed" || (engine !== undefined && (yield* engine.isAvailable)));
@@ -161,6 +163,7 @@ export const prepareDestroyFileSync = Effect.fn("AppOperation.prepareDestroyFile
         ))
     )
       return yield* Effect.fail(coverageError());
+    yield* markUpgradeTeardown(cleanupPlan.id);
     const { preparedVolumeNames } = yield* quiesceRetained(cleanupPlan);
     if (
       retained?.record.phase === "apply-intent" &&
@@ -184,6 +187,7 @@ export const prepareDestroyFileSync = Effect.fn("AppOperation.prepareDestroyFile
       // Provider target cleanup sits between disposal and the completed receipt.
       const remaining = planFileSyncDisposal(phase);
       for (const operation of remaining) {
+        if (operation === "dispose") yield* markUpgradeTeardown(cleanupPlan.id);
         if (operation !== "completeDisposal") yield* lifecycle[operation](app);
       }
       if (disposeTargets !== undefined) yield* disposeTargets(cleanupPlan);
@@ -192,6 +196,7 @@ export const prepareDestroyFileSync = Effect.fn("AppOperation.prepareDestroyFile
       if (engine === undefined) {
         return yield* Effect.fail(failure("An accelerated mount has no matching file sync engine."));
       }
+      yield* markUpgradeTeardown(cleanupPlan.id);
       yield* terminateFileSyncSessions(app, sessions).pipe(Effect.provideService(FileSyncEngine, engine));
       if (disposeTargets !== undefined) yield* disposeTargets(cleanupPlan);
     }

@@ -1,16 +1,14 @@
 # Feature Coverage Matrix
 
-This matrix maps each user-facing PRD feature to the executable guide(s) that
-exercise it. The first table is the union of every PRD's `## Guide Coverage` section;
-internal/infra PRD 13 declares no guides and is intentionally absent. The
-supplementary sections at the end list capability guides that are **not owned by a
-PRD** (core service types and end-to-end tutorials that predate the PRD set). They
-carry no PRD or User Story and exist purely as capability documentation plus tests.
+This matrix lists every guide the documentation set ships and the feature it serves.
+The sections below group guides without a PRD or User Story; they exist as capability
+documentation plus executable tests.
 
 `Status` is `Shipped` when the guide file exists on disk and `Planned` when the owning
-story has no guide on disk. `bun run check:guide-coverage` validates that every
-guide path declared in a PRD's `## Guide Coverage` section appears below and that every
-`Shipped` row references a real `docs/guides/<path>.mdx` file.
+story has no guide on disk. `bun run check:guide-coverage` validates that every row names
+a valid status and an existing guide, and that every guide named as a feature's home in
+`scripts/guides/home-guides.ts` has a row here. The map also drives guide drift and
+affected-test selection, and a row needs a scenario that exercises its sources.
 
 | PRD | User Story | Feature | Guide Path | Status |
 |---|---|---|---|---|
@@ -82,6 +80,7 @@ guide path declared in a PRD's `## Guide Coverage` section appears below and tha
 | PRD-06 | US-126 | scratch registry garbage collection (`apps:scratch:gc`) | `docs/guides/scratch/scratch-gc.mdx` | Shipped |
 | PRD-06 | US-127 | `--mount-cwd` + `--share-global-storage` flags | `docs/guides/scratch/mount-and-share-flags.mdx` | Shipped |
 | PRD-06 | US-128 | `apps:scratch:list` + `apps:scratch:info` | `docs/guides/scratch/list-and-info.mdx` | Shipped |
+| PRD-06 | US-129 | disposable tool runner (`apps:scratch:run`) | `docs/guides/scratch/disposable-tool-runner.mdx` | Shipped |
 | PRD-07 | US-129 | remote recipe sources (git, tarball, npm, registry) | `docs/guides/recipes/remote-sources.mdx` | Shipped |
 | PRD-07 | US-134 | `runs:` allowlist + ctx.run | `docs/guides/recipes/authoring-runs-allowlist.mdx` | Shipped |
 | PRD-07 | US-135 | `fetchAllowlist:` + ctx.fetch | `docs/guides/recipes/authoring-fetch-allowlist.mdx` | Shipped |

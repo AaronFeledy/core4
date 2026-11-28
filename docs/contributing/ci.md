@@ -175,19 +175,41 @@ On Windows the command runs the paths in sequential batches to stay under the co
 
 For focused work, run explicit test paths or use the affected selector below. `test:unit` and the timings refresh both run the whole unit set.
 
-For a local review of which shard-eligible tests may relate to your changes, run:
+To list the shard-eligible tests and home-guide scenarios affected by your changes, run:
 
 ```bash
 bun run test:affected
 ```
 
-This prints selected test paths, counts, a changed-file-to-test import path for each selection, fixture-reference matches, unmatched changed paths, and uncertain imports. It does not run tests unless you add `--run`. A dry run with zero matches prints `selected=0`; `--run` with zero matches exits nonzero without starting a test process. The default comparison uses the merge base with `origin/main` plus staged, unstaged, and untracked files. Use `--base <ref>` for another comparison or repeat `--file <path>` to inspect explicit repository paths. For example:
+The listing shows why each test or guide was selected and flags unmatched paths and uncertain imports. With no matches, it prints `selected=0` and `guides=0`. Add `--run` to execute the selection. A run that executes nothing, with no unit file and no guide variant, exits nonzero and prints the e2e command. A run that executes units or guide variants exits zero even when some selected variants could not run, and it never starts a `dev:guides` pass that would execute nothing. A partial run always ends with a `not run:` line naming every variant that did not run, and the e2e command when admission is missing.
+
+By default, the selector compares the files on disk with the merge base of your branch and `origin/main`, including untracked files Git doesn't ignore. If Git fails, the selector prints the failed command and a fix. Use `--base <ref>` to compare against another base or repeat `--file <path>` to inspect specific repository paths:
 
 ```bash
 bun run test:affected --file sdk/src/schema/landofile.ts --file sdk/src/schema/json-schema.ts --run
 ```
 
 Even with `--file`, selection walks imports from every shard-eligible test. Its time and memory use depend on the repository graph and the machine.
+
+Guide selection is separate from unit selection and has its own count line:
+
+```text
+[test-affected] guides=1 scenario-variants=9 will-run=5 skipped=0 e2e-not-admitted=4
+```
+
+A changed source in `scripts/guides/home-guides.ts` selects its home guide. A changed guide selects itself, and a file under `docs/guides/<guide-id>/fixtures/` selects the guide with that id. A `.cases.ts` file selects no guide. Paths that select a guide don't appear under unmatched paths. The listing names those paths under each guide, then shows the status of each scenario variant:
+
+| Disposition | Meaning |
+| --- | --- |
+| `will run` | `--run` executes the variant on this host. |
+| `skipped` | The guide compiler skips the variant here. The line gives the kind (`platform`, `variant`, or `authored`) and the reason. A skipped variant is not evidence. |
+| `e2e not admitted` | The variant is on the `e2e` layer and `LANDO_GUIDE_E2E` is not `1`. |
+
+The dispositions come from the same rules the scenario generator uses, so the listing matches what the generated tests do. If the home-guide map is invalid, or a selected guide cannot be read or parsed, the command prints every diagnostic (naming the guide path) and exits nonzero before it lists or runs any guide, with or without `--run`.
+
+`--run` runs the selected unit files first and stops there if they fail. It then runs every selected guide that has at least one variant that will run, in a single `bun run dev:guides <guide paths> --once` pass, and exits with the first failing child's status. A run that executes nothing exits nonzero and says why. A run that executes something ends with a `not run:` line when any selected variant did not run, for example `[test-affected] not run: 7 e2e variants in docs/guides/tooling/db-creds-apply.mdx (not admitted)`, followed by the e2e command when admission is missing.
+
+Without `LANDO_GUIDE_E2E=1`, the listing prints a `dev:guides` command for the selected e2e variants. It uses your `LANDO_SCENARIO_E2E_BINARY` and `LANDO_TEST_PODMAN_SOCKET` when set. Otherwise, it uses `core/dist/lando` and the placeholder `/path/to/podman.sock`, with instructions if you need to build the binary or replace the socket path. Values and guide paths are single-quoted only when the shell would otherwise split them, so normal paths stay readable. On Windows the command uses PowerShell `$env:` assignments instead: every value and path is single-quoted (an inner quote is doubled), the default binary is `core\dist\lando.exe`, the default socket is the `\\.\pipe\podman-lando` named pipe, and a hint notes that `$env:` assignments last for the rest of the session. Set the same three variables on `bun run test:affected --run` to run e2e variants in the guide pass only. That pass inherits your shell environment, not the unit run's temporary roots, so it can allocate [live test roots](#guide-e2e-smoke-subset). The unit pass strips these variables and the other live-test opt-ins (`LANDO_TEST_DOCKER_SOCKET`, `LANDO_TEST_WINDOWS_DOCKER_SOCKET`, `LANDO_TEST_USE_REAL_ROOTS`), so opting the guide pass into e2e cannot make unit tests live.
 
 The selector treats each test preload configured in `bunfig.toml`, and every module a preload loads while it runs, as a dependency of every eligible test. A change to one of them therefore selects the full set. The bundled plugins are the exception. `scripts/test-preload.ts` loads them the first time a test reads the engine composition global (`__landoEngineCompositionInputs`), so a test that never reads it never evaluates them. The selector verifies that the lazy `require` runs only from that global's value. It then attributes the plugins to the files that name the global or read `globalThis` through a computed key, so a bundled plugin change selects the tests that reach `engine/src/composition.ts` instead of every test. Selection treats each test file as if it ran alone. In a combined run, plugins that one file loads stay loaded for the files after it. If a configured preload cannot be resolved inside the repository, the selector reports the uncertainty and selects the full eligible set.
 
@@ -211,7 +233,7 @@ Renovate proposes updates early on Mondays, Central time, and waits until a rele
 
 - Minor and patch updates arrive as one `Bun packages` PR and one `GitHub Actions` PR. Each major update gets its own PR.
 - Security fixes for direct Bun dependencies and `overrides` arrive outside the weekly schedule, from the OSV advisory database.
-- Bun and Effect upgrades wait until you approve them on the Dependency Dashboard. A Bun PR moves `.bun-version`, `constraints.bun` in the Renovate configuration, every `engines.bun`, and `@types/bun` together. Finish it by updating the [runtime-bundle builder pins](#update-the-builder-pins), `BUN_LICENSE_PIN` in `scripts/compiled-binary-notices.ts`, and the Bun version the contributor docs name. Effect stays pinned in the root workspace catalog, which `core/test/build/effect-version-pin.test.ts` guards.
+- Bun and Effect upgrades wait until you approve them on the Dependency Dashboard. A Bun PR moves `.bun-version`, `constraints.bun` in the Renovate configuration, every `engines.bun`, and `@types/bun` together. Finish it by updating the [runtime-bundle builder pins](#update-the-builder-pins), `BUN_LICENSE_PIN` in `scripts/compiled-binary-notices.ts`, and the Bun version the contributor docs name. For Effect, follow the [Effect upgrade checks](#effect-upgrade-checks).
 - `@opentui/core` stays on 0.8.0 until upstream ships a native build without FFmpeg.
 
 Every action a generated workflow uses is pinned once in `.github/actions/pins.yml`, as a full commit labeled with its release: `owner/repo@<commit> # vX.Y.Z`. Generators read that file through `scripts/action-pins.ts`, and `core/test/build/action-pins.test.ts` fails when a committed workflow uses an action any other way. Renovate moves a pin in that file and in every committed workflow in one PR, writing the same text the generators write, so `codegen:check` passes without a regeneration step. It also proposes a fix when a pin's commit stops matching its release tag. Renovate never edits runner labels, job containers, or action inputs. To add an action or move a pin yourself, edit its line in `pins.yml` and run `bun run codegen`.
@@ -241,7 +263,7 @@ Do not confuse it with the three repository scripts whose names look similar:
 | Script | What it checks |
 | --- | --- |
 | `check:codegen-drift` | Pure drift over the catalog-owned generated outputs; wrapped by `codegen:check`. |
-| `check:guide-drift` | Semantic gate that fires when a covered source path changed and no owned guide was touched. |
+| `check:guide-drift` | Guide gate that fails when a covered source path changed and neither its home guide nor that guide's fixtures did. See [guide drift](#guide-drift). |
 | `bun audit` (the `audit` script) | Dependency vulnerability advisories. Nothing to do with drift. |
 
 The harness gate script exits 0 to run the step and exits 1 to skip it because its thresholds were not met. A line reading `[looper] gate skipped Drift Audit: gate: script exited with code 1` is therefore a by-design skip, not a failure. The gate does still fire: a `.drift-gate-US-660` state file holding `3 828 6 0` sits beside a real `US-660 Drift Audit` progress-log entry from 2026-09-20 02:02. The defect is that one exit code carries two meanings, so a false predicate and a failed evaluation look identical in the log. That is what let a skip read as a failure across roughly a dozen stories. When you read loop output, treat `gate skipped` as a skip and treat only a step reported as failed as a failure.
@@ -709,6 +731,32 @@ than hiding it behind a skip.
 Only a standalone `nolint` fence metadata token opts out. A title such as
 `title="nolint-example.yaml"` or a quoted value containing `nolint` does not.
 
+## Guide drift
+
+`bun run check:guide-drift` fails when a change touches a source path that `scripts/guides/home-guides.ts` assigns to a feature, and touches neither that feature's home guide nor a file under the guide's `docs/guides/<guide-id>/fixtures/` directory. A deleted or renamed-away path that several features' patterns still match counts for every one of them, so each of their home guides has to change. [Register coverage](./guide-authoring.md#register-coverage) covers the map and how to satisfy the gate.
+
+In CI the gate is the `Check guide drift` step of the `guide-scenarios-<platform>` jobs. It runs on `pull_request` events only, so a merge-queue run does not execute it. Editing the pull request body does not start a new run: after you add or change a skip line, re-run the job that hosts the step (`guide-scenarios-<platform>`, or `guide-scenarios-linux-x64-runner` on Linux x64). The step passes the pull request's base and head SHAs as `GUIDE_DRIFT_BASE_SHA` and `GUIDE_DRIFT_HEAD_SHA`, reads the pull request body with `gh pr view`, and exports it as `GUIDE_DRIFT_PR_BODY`. The step reads these inputs differently:
+
+| Input | Where it comes from |
+| --- | --- |
+| Changed paths | The diff from the merge base of the two SHAs to the head SHA. Both sides of a rename count. Commits that landed on the base branch after the pull request branched are not part of it. |
+| Container-command baseline | The checked-out `scripts/guides/container-command-baseline.json` compared with the file at the base SHA itself, not the merge base, so an allowance from an older ancestor cannot excuse a new entry. The totals are compared, so an entry may move with its page when that page is removed; the total never grows. |
+| Home-guide map, guides, and fixtures | The checked-out tree. The SHAs select changed paths only. |
+| Skip | Exactly one `Guide-Coverage-Skip: <reason>` line in the pull request body, with a reason of at least 24 characters. More than one line fails the gate as ambiguous. |
+
+The gate fails closed. If only one SHA variable is set, the gate says so and exits 1. If a SHA is not a commit in the checkout, the two commits share no ancestor, or a git command that lists the changes exits nonzero, the gate prints `GitChangeError` with the failed command and a fix, and exits 1. A failed read of the baseline at the base stops the gate the same way, with `GitChangeError`, the failed command, and a fix. The checkout needs full history (`fetch-depth: 0`). The body lookup is its own shell line, so a failed `gh pr view` fails the step before the gate runs instead of handing it an empty body.
+
+Map diagnostics and baseline growth are printed first and fail the gate even when a valid skip is present. A skip exempts only features whose home guide was not touched. The output and the step summary name the comparison, each touched feature with its paths and guide, the skip reason, and the features the skip exempted.
+
+A local run takes no SHAs:
+
+```bash
+git fetch origin main
+bun run check:guide-drift
+```
+
+It compares the merge base of `HEAD` and `origin/main` with the files on disk. That is a net difference: staged and unstaged edits count, untracked files that git does not ignore count, and an edit you staged and then restored on disk does not. The baseline is compared with the tip of the base ref. Choose another base with `--base <ref>` or `GUIDE_DRIFT_BASE_REF`; these select the working-tree comparison, while the two SHA variables are separate and `--base` cannot be combined with them. A base ref that does not resolve fails the gate, so a bare run is never a silent pass. To preview a skip, set `GUIDE_DRIFT_PR_BODY` to the line you plan to put in the pull request body.
+
 ## Guide e2e smoke subset
 
 The `guides`, `runtime`, and `providers` PR profiles run generated guide scenarios on Linux x64 and Windows x64. Broad CI runs them on all six platforms through `guide-scenarios-<platform>` jobs. Each job runs the full `bun run codegen` (there is no standalone guide-scenario codegen step; `core/test/build/ci-workflow.test.ts` asserts one is absent), validates guide metadata and transcript artifacts, then runs `test/scenarios/generated/guides/**` through the source-mapped guide scenario wrapper so failures annotate the MDX source.
@@ -727,7 +775,7 @@ The live region exists so a hung job leaves evidence of where it stopped; see th
 
 The e2e `@smoke` scenarios run in their own job, `guide-e2e-linux-x64`, so the generated-scenario job above no longer waits for the binary or spends its time limit on them. The job runs as two shards. Each one downloads the Linux x64 compiled binary, provisions the same managed Podman socket that provider integration uses, sets `LANDO_GUIDE_E2E=1`, and runs half of the generated scenarios tagged `@smoke` on the `e2e` layer, one at a time. The wrapper's `--smoke-e2e` flag selects those files from the header that the scenario generator writes into each one, and Bun's `--shard=<i>/<n>` splits them by sorted path. The nightly job below runs every `[e2e]` scenario, including those outside the smoke shards.
 
-With an explicit `LANDO_TEST_PODMAN_SOCKET`, guide runs with `LANDO_GUIDE_E2E=1` and test selections that opt into runner-owned Podman roots use one temporary directory for the data, config, cache, and system-plugin roots. An `[e2e]` name filter alone does not enable guide e2e or allocate roots. The runner allocates roots only if none of the four root variables is set and `LANDO_TEST_USE_REAL_ROOTS` is not `1`. Before allocating or purging, it checks that the compiled CLI (`core/dist/lando`, or `LANDO_SCENARIO_E2E_BINARY` when set) exists and is executable. If not, it stops with that path and `(cd core && bun run build)`, and the `retire` command exits 2 without touching the directory. Before the tests run, it runs `lando setup` in those roots for the Podman provider and the local CA tooling, so routed scenarios can issue certificates. It skips the router helper, shell integration, the file-sync engine, and trust-store changes, which belong to your installation. If that setup fails, the runner skips the tests and still retires the roots. Selections that need an existing managed installation use the job's or caller's roots instead. The runner never retires those roots. A fixture that supplies its own temporary roots retires them itself.
+With an explicit `LANDO_TEST_PODMAN_SOCKET`, guide runs with `LANDO_GUIDE_E2E=1` and test selections that opt into runner-owned Podman roots use one temporary directory for the data, config, cache, and system-plugin roots. An `[e2e]` name filter alone does not enable guide e2e or allocate roots. The runner allocates roots only if none of the four root variables is set and `LANDO_TEST_USE_REAL_ROOTS` is not `1`. Before allocating or purging, it checks that the compiled CLI (`core/dist/lando`, or `LANDO_SCENARIO_E2E_BINARY` when set) exists and is executable. If not, it stops with that path and `(cd core && bun run build)` on POSIX or `bun --cwd=core run build` on Windows, and the `retire` command exits 2 without touching the directory. Before the tests run, it runs `lando setup` in those roots for the Podman provider and the local CA tooling, so routed scenarios can issue certificates. It skips the router helper, shell integration, the file-sync engine, and trust-store changes, which belong to your installation. If that setup fails, the runner skips the tests and still retires the roots. Selections that need an existing managed installation use the job's or caller's roots instead. The runner never retires those roots. A fixture that supplies its own temporary roots retires them itself.
 
 After reaping the test child, even if it fails, the runner gives the compiled CLI a bounded time to run `lando uninstall --purge --yes --format=json` with the test roots and a private `LANDO_SHELL_PROFILE`. Purge can remove the data, config, and cache roots itself. Before deleting the enclosing temporary directory, the runner checks the same endpoint for containers, networks, and volumes labeled for the original data root and images labeled for its build store. Shared cache volumes without a data-root label are outside this check.
 
@@ -936,6 +984,24 @@ When adopting this workflow, replace the previous per-job required status checks
 The final `ci` job always runs. It requires successful selection and every selected gate. Any other result fails `ci`, including a failure, a cancellation, an unexpected skip, or GitHub's undocumented `abandoned` result for a job whose runner was lost. The gate prints one `<job>: <result>` line per unsuccessful job. Only policy-excluded jobs may be skipped. The dependency-audit workflow and scheduled self-hosted evidence workflows are not PR merge gates.
 
 If GitHub loses a runner before it starts any steps and the only other failures are summaries or gates failing because of that loss, CI automatically reruns the failed jobs once. An independent failure, a timeout after a step starts, or a later attempt does not trigger another automatic rerun. This behavior only takes effect once the retry workflow is on `main`, because GitHub runs `workflow_run` workflows from the default branch.
+
+## Effect upgrade checks
+
+Approve the Effect update on Renovate's Dependency Dashboard. The pin lives in the root workspace catalog in `package.json`; the PR also updates `bun.lock`. Run from the repository root on the update branch:
+
+```bash
+bun run bootstrap
+bun run codegen:check
+bun run check:schema-compatibility
+bun run typecheck
+bun run test:selection effect-upgrade
+bun run dev:guides docs/guides/agent-native/mcp.mdx --once
+bun run dev:guides docs/guides/plugins/authoring-new-plugin.mdx --once
+```
+
+Bootstrap regenerates the compiled decoders. The preset does not run guide scenarios or replace PR checks. The lockfile change selects the `runtime` CI profile.
+
+Check for stale pins with `git grep -n -F '<previous-version>'`, substituting the previous Effect version. Review the release notes for RPC, MCP, Stream, Layer, TestClock, and Schema changes. Check whether the release removes the need for workarounds tracked in [#2804](https://github.com/AaronFeledy/core4/issues/2804) ([Effect-TS/effect#11015](https://github.com/Effect-TS/effect/issues/11015)) and [#1835](https://github.com/AaronFeledy/core4/issues/1835) ([Effect-TS/effect#11016](https://github.com/Effect-TS/effect/issues/11016)).
 
 ## Bun upgrade smoke checks
 

@@ -110,7 +110,8 @@ export const makeTerminalPlanners = <A>(deps: TerminalPlanDeps<A>) => {
     deps.setResultExit(Exit.failCause(cause));
     const redactor = yield* redaction.forProfile("secrets", { sourceEnv, redactionTokens: extraTokens });
     yield* recordCliDefect(cause, redactor, deps.io);
-    const { kind, error, additionalErrors } = commandFailureOutcome(cause, signal);
+    const outcome = commandFailureOutcome(cause, signal);
+    const { kind, error, additionalErrors } = outcome;
     const exitCode =
       retained?.exitCode ??
       (Cause.hasInterruptsOnly(cause)
@@ -121,7 +122,6 @@ export const makeTerminalPlanners = <A>(deps: TerminalPlanDeps<A>) => {
     const evidence = yield* failureEvidenceLine(error);
     const diagnostics = evidence === undefined ? [] : [diagnosticLine(evidence)];
     if (machineTerminal !== undefined) {
-      const outcome = { _tag: "failure", error, additionalErrors } as const;
       const plan = yield* deps.planMachineDocument(
         machineTerminal,
         {

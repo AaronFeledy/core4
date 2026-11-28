@@ -28,6 +28,11 @@ describe("automatic SQL recovery retention", () => {
           }
           const untouched: string[] = [];
           for (let index = 0; index < 5; index += 1) untouched.push((yield* fixture.snapshot("manual")).id);
+          untouched.push(
+            (yield* fixture.snapshot("upgrade", {
+              dataVersion: { label: "MySQL", series: "8.0", source: "record" },
+            })).id,
+          );
           for (const scope of [
             { store: "sql-app_other_data" },
             { root: join(fixture.harness.root, "other-worktree") },
@@ -214,4 +219,20 @@ describe("automatic SQL recovery retention", () => {
     // Then: the automatic bucket is untouched.
     expect(fixture.removed).toEqual([]);
   });
+});
+
+test("explicit recovery prune can preview and remove an upgrade restore point", async () => {
+  const fixture = await makeRetentionTestDeps();
+  const point = await Effect.runPromise(
+    fixture.snapshot("upgrade", {
+      dataVersion: { label: "MySQL", series: "8.0", source: "record" },
+    }),
+  );
+  const options = { action: "prune", yes: true, keepLatest: 0, recovery: true } as const;
+  const preview = await Effect.runPromise(executeDbCommand(fixture.deps, { ...options, preview: true }));
+  expect(preview.pruneCandidates).toEqual([point.id]);
+  expect(fixture.removed).toEqual([]);
+  const applied = await Effect.runPromise(executeDbCommand(fixture.deps, options));
+  expect(applied.prunedSnapshotIds).toEqual([point.id]);
+  expect(await Effect.runPromise(fixture.mover.listSnapshots({ id: point.id }))).toEqual([]);
 });

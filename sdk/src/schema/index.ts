@@ -111,6 +111,7 @@ export {
   PublishedEndpointInput,
 } from "./endpoint.ts";
 export * from "./endpoint-selection.ts";
+export * from "./engine-identity.ts";
 export { ToolingEnvironment } from "./environment-input.ts";
 export * from "./environment-value.ts";
 export * from "./event-plan.ts";
@@ -184,6 +185,8 @@ export * from "./resource-ownership.ts";
 export { RouteFilter, RouteFilterKind } from "./route-filter.ts";
 export * from "./schedule.ts";
 export * from "./service-connection.ts";
+export * from "./service-data-version.ts";
+export * from "./service-data-version-evidence.ts";
 export * from "./service-dependency.ts";
 export * from "./service-feature-validation.ts";
 export * from "./service-info.ts";

@@ -7,6 +7,7 @@ import { renderStartAppResult } from "../../commands/start-result";
 import { type LandoCommandSpec, extractSpecAbortSignal } from "../../spec/command-base";
 import { serviceNamesFlag, specFlagsOf } from "../../spec/input-coercion";
 import { Flags } from "../../spec/metadata";
+import { upgradeSnapshotFlags, upgradeSnapshotOptions } from "./upgrade-snapshot-flag";
 
 /**
  * `lando app:start` — native command metadata adapter.
@@ -14,8 +15,10 @@ import { Flags } from "../../spec/metadata";
 
 export const startOptionsFromInput = (input: unknown): NonNullable<Parameters<typeof startApp>[0]> => {
   const signal = extractSpecAbortSignal(input);
-  const services = serviceNamesFlag(specFlagsOf(input));
+  const flags = specFlagsOf(input);
+  const services = serviceNamesFlag(flags);
   return {
+    ...upgradeSnapshotOptions(flags),
     ...(services.length === 0 ? {} : { services }),
     ...(signal === undefined ? {} : { signal }),
   };
@@ -33,6 +36,7 @@ export const startSpec = {
   bootstrap: "app",
   usage: "[--service SERVICE]",
   flags: {
+    ...upgradeSnapshotFlags,
     service: Flags.string({
       char: "s",
       description: "Service to start, with its prerequisites (repeatable).",

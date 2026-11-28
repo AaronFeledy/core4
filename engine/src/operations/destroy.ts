@@ -144,75 +144,80 @@ export const destroyAppForTarget = Effect.fn("AppOperation.destroyForTarget")(fu
   );
 });
 
-export const destroyApp = Effect.fn("AppOperation.destroy")(function* (
-  options: DestroyAppOptions = {},
-  target?: ResolvedAppTarget,
-): Effect.fn.Return<DestroyAppResult, DestroyAppError, DestroyAppServices> {
-  if (options.providerId !== undefined) {
-    const { providerId, ...scopedOptions } = options;
-    if (target !== undefined && target.plan.provider !== providerId)
-      return yield* Effect.fail(
-        new AppResolveError({
-          message: "The explicit provider differs from the app handle's applied provider.",
-          reason: "mismatch",
-          detail: "provider",
-          remediation: `Run \`lando destroy --provider=${providerId} --yes\` from the app directory.`,
-        }),
-      );
-    return yield* destroyApp(scopedOptions, target).pipe(Effect.provideService(TeardownProvider, providerId));
-  }
-  if (target !== undefined) return yield* destroyAppForTarget(options, target);
-  const root = (yield* findAppRoot()) ?? (yield* discoveryCwd());
-  return yield* withAppMutationLock(
-    { kind: "user", id: root, root },
-    Effect.gen(function* () {
-      yield* prepareDestroyOwners(root, options);
-      const resolution = yield* resolveTeardownResolution;
-      // An explicit provider only tears down what that provider holds; it never falls back to the desired plan.
-      const scopedProvider = yield* TeardownProvider;
-      if (resolution.kind === "absent" && scopedProvider !== undefined) {
-        const builtImages = yield* removeAppBuildOutput(
-          BuildOwner.root(resolution.root),
-          String(scopedProvider),
-          String(scopedProvider),
-          { images: options.purgeCaches === true ? "remove" : "release" },
+export const destroyApp = Effect.fn("AppOperation.destroy")(
+  function* (
+    options: DestroyAppOptions = {},
+    target?: ResolvedAppTarget,
+  ): Effect.fn.Return<DestroyAppResult, DestroyAppError, DestroyAppServices> {
+    if (options.providerId !== undefined) {
+      const { providerId } = options;
+      if (target !== undefined && target.plan.provider !== providerId)
+        return yield* Effect.fail(
+          new AppResolveError({
+            message: "The explicit provider differs from the app handle's applied provider.",
+            reason: "mismatch",
+            detail: "provider",
+            remediation: `Run \`lando destroy --provider=${providerId} --yes\` from the app directory.`,
+          }),
         );
-        return {
-          app: basename(resolution.root),
-          outcome: "unchanged" as const,
-          servicesDestroyed: [],
-          dataVolumesRemoved: false,
-          cacheVolumesRemoved: false,
-          snapshotsRemoved: 0,
-          builtImages,
-        };
-      }
-      return yield* runTeardown(resolution, options, { desired: resolveDesiredAppTarget });
-    }),
-  );
-});
-
-export const destroyAppAtRoot = Effect.fn("AppOperation.destroyAtRoot")(function* (
-  root: string,
-  options: DestroyAppOptions = {},
-  retryCommand?: string,
-): Effect.fn.Return<
-  DestroyAppResult,
-  DestroyAppError | FileIoError | FileNotFoundError | FilePermissionError,
-  DestroyAppServices | FileSystem
-> {
-  if (options.providerId !== undefined) {
-    const { providerId, ...scopedOptions } = options;
-    return yield* destroyAppAtRoot(root, scopedOptions, retryCommand).pipe(
-      Effect.provideService(TeardownProvider, providerId),
+    }
+    if (target !== undefined) return yield* destroyAppForTarget(options, target);
+    const root = (yield* findAppRoot()) ?? (yield* discoveryCwd());
+    return yield* withAppMutationLock(
+      { kind: "user", id: root, root },
+      Effect.gen(function* () {
+        yield* prepareDestroyOwners(root, options);
+        const resolution = yield* resolveTeardownResolution;
+        // An explicit provider only tears down what that provider holds; it never falls back to the desired plan.
+        const scopedProvider = yield* TeardownProvider;
+        if (resolution.kind === "absent" && scopedProvider !== undefined) {
+          const builtImages = yield* removeAppBuildOutput(
+            BuildOwner.root(resolution.root),
+            String(scopedProvider),
+            String(scopedProvider),
+            { images: options.purgeCaches === true ? "remove" : "release" },
+          );
+          return {
+            app: basename(resolution.root),
+            outcome: "unchanged" as const,
+            servicesDestroyed: [],
+            dataVolumesRemoved: false,
+            cacheVolumesRemoved: false,
+            snapshotsRemoved: 0,
+            builtImages,
+          };
+        }
+        return yield* runTeardown(resolution, options, { desired: resolveDesiredAppTarget });
+      }),
     );
-  }
-  return yield* withMissingDestroyRoot(root, options, ({ resolution, candidates }) =>
-    runTeardown(resolution, options, {
-      desired: Effect.succeed(undefined),
-      snapshotRoots: candidates,
-      missingRoot: true,
-      ...(retryCommand === undefined ? {} : { retryCommand }),
-    }),
-  );
-});
+  },
+  (effect, options?: DestroyAppOptions, _target?: ResolvedAppTarget) =>
+    options?.providerId === undefined
+      ? effect
+      : Effect.provideService(effect, TeardownProvider, options.providerId),
+);
+
+export const destroyAppAtRoot = Effect.fn("AppOperation.destroyAtRoot")(
+  function* (
+    root: string,
+    options: DestroyAppOptions = {},
+    retryCommand?: string,
+  ): Effect.fn.Return<
+    DestroyAppResult,
+    DestroyAppError | FileIoError | FileNotFoundError | FilePermissionError,
+    DestroyAppServices | FileSystem
+  > {
+    return yield* withMissingDestroyRoot(root, options, ({ resolution, candidates }) =>
+      runTeardown(resolution, options, {
+        desired: Effect.succeed(undefined),
+        snapshotRoots: candidates,
+        missingRoot: true,
+        ...(retryCommand === undefined ? {} : { retryCommand }),
+      }),
+    );
+  },
+  (effect, _root: string, options?: DestroyAppOptions, _retryCommand?: string) =>
+    options?.providerId === undefined
+      ? effect
+      : Effect.provideService(effect, TeardownProvider, options.providerId),
+);

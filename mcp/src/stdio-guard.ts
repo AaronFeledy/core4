@@ -1,6 +1,5 @@
 import { McpTransportError } from "@lando/sdk/errors";
 import { Cause, Clock, Deferred, Duration, Effect, Pull, Semaphore, Stdio, Stream } from "effect";
-import { PARSE_ERROR_CODE } from "effect/ai/McpSchema";
 import { forEach as forEachChunk } from "effect/Sink";
 import {
   MAX_FRAME_BYTES,
@@ -8,6 +7,8 @@ import {
   PARTIAL_FRAME_DEADLINE,
   stdioTransportError,
 } from "./stdio-limits";
+
+const isJsonWhitespace = (byte: number) => byte === 0x20 || byte === 0x09 || byte === 0x0d;
 
 export const guardStdio = Effect.fnUntraced(function* (
   stdio: Stdio.Stdio,
@@ -33,7 +34,7 @@ export const guardStdio = Effect.fnUntraced(function* (
                       stdioTransportError("MCP stdio stdout write exceeded the 5 second deadline."),
                     ),
                 }),
-                Effect.catch((error) => fail(stdioTransportError(error.message, error))),
+                Effect.catch((cause) => fail(stdioTransportError(cause.message, { cause }))),
               )
             : Effect.void,
         ).pipe(Effect.uninterruptible),
@@ -44,15 +45,7 @@ export const guardStdio = Effect.fnUntraced(function* (
       let parts: Uint8Array[] = [];
       let size = 0;
       let startedAt: number | undefined;
-      const joined = () => {
-        const bytes = new Uint8Array(size);
-        let offset = 0;
-        for (const part of parts) {
-          bytes.set(part, offset);
-          offset += part.length;
-        }
-        return bytes;
-      };
+      let blank = true;
       const next = Effect.fnUntraced(
         function* () {
           while (true) {
@@ -69,14 +62,19 @@ export const guardStdio = Effect.fnUntraced(function* (
                     ),
                     orElse: () =>
                       Effect.fail(
-                        stdioTransportError("MCP stdio partial frame exceeded the 5 second deadline."),
+                        stdioTransportError("MCP stdio partial frame exceeded the 5 second deadline.", {
+                          remediation:
+                            "Reconnect and write each JSON-RPC message with its terminating LF in one flush, within 5 seconds of its first byte.",
+                        }),
                       ),
                   });
             const chunks = yield* Pull.catchDone(read, () =>
               Effect.gen(function* () {
-                if (size > 0 && new TextDecoder().decode(joined()).trim().length > 0) {
+                if (!blank) {
                   return yield* Effect.fail(
-                    stdioTransportError("MCP stdio closed with an incomplete non-whitespace frame."),
+                    stdioTransportError("MCP stdio closed with an incomplete non-whitespace frame.", {
+                      remediation: "End every JSON-RPC message with LF before closing stdin.",
+                    }),
                   );
                 }
                 yield* close;
@@ -92,36 +90,34 @@ export const guardStdio = Effect.fnUntraced(function* (
                 const length = end - start;
                 if (size + length > MAX_FRAME_BYTES) {
                   return yield* Effect.fail(
-                    stdioTransportError("MCP stdio frame exceeded the 1 MiB inbound limit."),
+                    stdioTransportError("MCP stdio frame exceeded the 1 MiB inbound limit.", {
+                      remediation:
+                        "Reconnect and send each JSON-RPC message as one line of at most 1 MiB, including any CR before LF.",
+                    }),
                   );
                 }
                 if (length > 0) {
                   if (startedAt === undefined) startedAt = yield* Clock.currentTimeMillis;
-                  parts.push(chunk.slice(start, end));
+                  const part = chunk.slice(start, end);
+                  parts.push(part);
                   size += length;
+                  if (blank) blank = part.every(isJsonWhitespace);
                 }
                 if (end < chunk.length) {
-                  const frame = new Uint8Array(size + 1);
-                  frame.set(joined());
-                  frame[size] = 10;
-                  const text = new TextDecoder().decode(frame);
-                  if (text.trim().length > 0) {
-                    const parsed = yield* Effect.result(Effect.try(() => JSON.parse(text)));
-                    if (parsed._tag === "Failure") {
-                      const error = { code: PARSE_ERROR_CODE, message: "Parse error" };
-                      yield* Stream.run(
-                        Stream.make(`${JSON.stringify({ jsonrpc: "2.0", id: null, error })}\n`),
-                        stdout(),
-                      );
-                      return yield* Effect.fail(
-                        stdioTransportError("MCP stdio received a malformed JSON frame."),
-                      );
+                  if (!blank) {
+                    const frame = new Uint8Array(size + 1);
+                    let offset = 0;
+                    for (const part of parts) {
+                      frame.set(part, offset);
+                      offset += part.length;
                     }
+                    frame[size] = 10;
+                    frames.push(frame);
                   }
-                  frames.push(frame);
                   parts = [];
                   size = 0;
                   startedAt = undefined;
+                  blank = true;
                 }
                 start = end + 1;
               }
@@ -135,7 +131,7 @@ export const guardStdio = Effect.fnUntraced(function* (
           const failure =
             error instanceof McpTransportError
               ? error
-              : stdioTransportError("MCP stdio input failed while reading a frame.", error);
+              : stdioTransportError("MCP stdio input failed while reading a frame.", { cause: error });
           return fail(failure).pipe(Effect.andThen(Cause.done()));
         }),
       );

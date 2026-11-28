@@ -1,16 +1,20 @@
 import { expect, test } from "bun:test";
 import { rmSync } from "node:fs";
 import { join } from "node:path";
-import { AppResolveError, FileSyncSelectionError } from "@lando/sdk/errors";
+import { dockerEngineIdentity, podmanEngineIdentity } from "@lando/container-runtime/engine-identity";
+import { AppPlacementError, AppResolveError, FileSyncSelectionError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, type AppPlan, ProviderId, appIdentityKey } from "@lando/sdk/schema";
 import { AppPlanner, GlobalAppService } from "@lando/sdk/services";
 import { Effect } from "effect";
 import { withResolvedCwd } from "../../src/landofile/app-resolution.ts";
+import { destroyApp } from "../../src/operations/destroy.ts";
+import { execApp } from "../../src/operations/exec.ts";
 import { infoApp } from "../../src/operations/info.ts";
 import { logsApp } from "../../src/operations/logs.ts";
 import { rebuildApp } from "../../src/operations/rebuild.ts";
 import { restartApp } from "../../src/operations/restart.ts";
 import { startApp } from "../../src/operations/start.ts";
+import { stopApp } from "../../src/operations/stop.ts";
 import {
   ensureAppPlacement,
   observedAppPlan,
@@ -184,6 +188,107 @@ test("observation reuses the applied plan instead of the newly selected provider
     rmSync(harness.userDataRoot, { recursive: true, force: true });
   }
 });
+
+const daemonTarget = { app, root: applied.root, plan: applied };
+test("explicit destroy retires the recorded app through the selected engine", async () => {
+  const recorded = { ...applied, engineIdentity: { fingerprint: "old", endpoint: "unix:///old.sock" } };
+  const retired: string[] = [];
+  const harness = makeHarness({
+    plannedApp: applied,
+    appliedPlans: [recorded],
+    providerOverrides: { engineIdentity: { fingerprint: "new", endpoint: "unix:///new.sock" } },
+    onDestroy: (target, options) => {
+      if (options.containers === "remove" && options.removeState) retired.push(target.app);
+    },
+  });
+  try {
+    await Effect.runPromise(
+      destroyApp({ providerId: applied.provider, yes: true }, daemonTarget).pipe(
+        Effect.provide(harness.layer),
+      ),
+    );
+    expect(retired).toEqual([applied.id]);
+  } finally {
+    rmSync(harness.userDataRoot, { recursive: true, force: true });
+  }
+});
+for (const [name, run] of Object.entries({
+  start: startApp({}, daemonTarget),
+  restart: restartApp({}, daemonTarget),
+  rebuild: rebuildApp({}, daemonTarget),
+  stop: stopApp({}, daemonTarget),
+  destroy: destroyApp({}, daemonTarget),
+  info: infoApp({}, daemonTarget),
+  logs: logsApp({}, daemonTarget),
+  exec: execApp({ command: ["true"], service: "web" }, daemonTarget),
+})) {
+  test(`${name} refuses a different daemon without mutating the app`, async () => {
+    const recorded = { ...applied, engineIdentity: { fingerprint: "a", endpoint: "unix:///a.sock" } };
+    let mutations = 0;
+    const harness = makeHarness({
+      plannedApp: applied,
+      appliedPlans: [recorded],
+      providerOverrides: { engineIdentity: { fingerprint: "b", endpoint: "unix:///b.sock" } },
+      onBuild: () => {
+        mutations++;
+      },
+      onApply: () => {
+        mutations++;
+      },
+      onStop: () => mutations++,
+      onDestroy: () => mutations++,
+    });
+    try {
+      const result = await Effect.runPromise(
+        Effect.result(
+          Effect.gen(function* () {
+            yield* run;
+          }),
+        ).pipe(Effect.provide(harness.layer)),
+      );
+      if (result._tag !== "Failure") throw new Error("Expected placement refusal");
+      expect(result.failure).toBeInstanceOf(AppPlacementError);
+      expect(result.failure.message).toContain("unix:///a.sock");
+      expect(result.failure.message).toContain("unix:///b.sock");
+      expect(mutations).toBe(0);
+    } finally {
+      rmSync(harness.userDataRoot, { recursive: true, force: true });
+    }
+  });
+}
+
+const socket = "unix:///a.sock";
+const dockerIdentity = (ID: string, endpoint = socket) => {
+  const identity = dockerEngineIdentity({ ID }, endpoint);
+  if (!identity) throw new Error("Expected a Docker engine identity");
+  return identity;
+};
+const podmanIdentity = (hostname: string) => {
+  const identity = podmanEngineIdentity({ host: { hostname }, store: { graphRoot: "/store" } }, socket);
+  if (!identity) throw new Error("Expected a Podman engine identity");
+  return identity;
+};
+for (const [name, recorded, current] of [
+  ["same daemon via alias", dockerIdentity("a"), dockerIdentity("a", "tcp://dev:2375")],
+  ["Docker reset at the same socket", dockerIdentity("a"), dockerIdentity("b", "/a.sock")],
+  ["Podman host rename at the same socket", podmanIdentity("old"), podmanIdentity("new")],
+  ["old record without identity", undefined, dockerIdentity("b")],
+  ["unidentified engine", dockerIdentity("a"), undefined],
+] as const) {
+  test(`start admits ${name}`, async () => {
+    const harness = makeHarness({
+      plannedApp: applied,
+      appliedPlans: [recorded === undefined ? applied : { ...applied, engineIdentity: recorded }],
+      providerOverrides: current === undefined ? {} : { engineIdentity: current },
+    });
+    try {
+      const result = await Effect.runPromise(startApp({}, daemonTarget).pipe(Effect.provide(harness.layer)));
+      expect(result.servicesStarted.map(({ name }) => name)).toEqual(["web"]);
+    } finally {
+      rmSync(harness.userDataRoot, { recursive: true, force: true });
+    }
+  });
+}
 
 test("ambiguous placement names provider-scoped confirmed destroy commands", async () => {
   const harness = makeHarness({ appliedPlans: [applied, { ...applied, provider: desired.provider }] });

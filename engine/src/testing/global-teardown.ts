@@ -78,6 +78,7 @@ export const globalTeardownHarness = async (
   dataRoot: string,
   input: {
     readonly plan?: AppPlan;
+    readonly engineIdentity?: RuntimeProviderShape["engineIdentity"];
     readonly orphanRoot?: AbsolutePath;
     readonly volumes?: ReadonlyArray<VolumeInfo>;
     readonly destroyOutcome?: BringDownOutcome;
@@ -117,6 +118,7 @@ export const globalTeardownHarness = async (
   let prepared = false;
   const provider = {
     ...TestRuntimeProvider,
+    ...(input.engineIdentity === undefined ? {} : { engineIdentity: input.engineIdentity }),
     id: "lando",
     appliedPlans: input.appliedPlans ?? Effect.succeed(input.plan === undefined ? [] : [input.plan]),
     isAvailable: input.availability ?? Effect.succeed(true),

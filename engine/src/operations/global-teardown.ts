@@ -20,7 +20,7 @@ import {
   settleRoutesTask,
   withdrawOwnerRoutes,
 } from "../lifecycle/route-withdrawal.ts";
-import { TeardownProvider } from "../providers/app-placement.ts";
+import { TeardownProvider, requireOwningEngine } from "../providers/app-placement.ts";
 import { type AppliedStateProvider, resolveTeardownEvidence } from "../providers/applied-state-resolution.ts";
 import { observeRuntime, prepareTeardownOwners, runtimeOnline } from "../providers/runtime-observation.ts";
 import { canonicalMissingAppRoot } from "./app-mutation-lock.ts";
@@ -46,6 +46,7 @@ export const resolveGlobalTeardown = Effect.fn("GlobalApp.resolveTeardown")(func
   const plans =
     recorded !== undefined && (recorded.identity?.appRoot ?? recorded.root) === root ? [recorded] : [];
   const provider = yield* registry.select(providerId);
+  if (intent !== "destroy" || explicit === undefined) yield* requireOwningEngine(provider, "global", plans);
   const resourceOwnership = registry.resourceOwnership;
   const ownership = yield* resourceOwnership?.(providerId, root) ?? Effect.succeed(undefined);
   if (intent === "destroy" && (ownership !== undefined || plans.length > 0))

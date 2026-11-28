@@ -91,7 +91,7 @@ If you are looking for a public surface or policy:
 | Container create-config identity and ordinary apply recreate | 05 | §5.3.2 |
 | Shutdown observations: `ServiceShutdownObservation`, `FileSyncQuiesceResult`, optional `shutdownObservations` on teardown receipts, no graceful/forced verdict | 05 | §5.3.3 |
 | Durable ownership manifest and verified teardown cleanup | 05 + 12 | §5.3.1 + §12.4.2 |
-| `AppPlan` and `ServicePlan` schema families; applied-state v1–v13 readers, v7-to-v8 `kind` migration, v9 `keepAlive` intent, v10 `RouteText` environments, v11 event-intent removal, v12 planned ports, v13 route-fact members, strict applied-map writers, newer-format protection on the stamp alone (`AppliedStateVersionError`), required contribution and registry inventory and targeted strict read | 05 | §5.3.1 + §5.5 + §5.5.2 |
+| `AppPlan` and `ServicePlan` schema families; applied-state v1–v14 readers, v7-to-v8 `kind` migration, v9 `keepAlive` intent, v10 `RouteText` environments, v11 event-intent removal, v12 planned ports, v13 route-fact members, v14 optional database version intent, strict applied-map writers, newer-format protection on the stamp alone (`AppliedStateVersionError`), required contribution and registry inventory and targeted strict read | 05 | §5.3.1 + §5.5 + §5.5.2 |
 | Runtime-owned helper creation mount, logical/applied-plan exclusion, non-root cache permissions, and file-log delivery | 05 + 06 + 12 | §5.5 + §6.2.1 + §6.4 + §6.14.3 + §12.1 |
 | Environment values and executable-plan eligibility | 05 + 07 | §5.5.2 + §7.3.1 |
 | Provider extensions and error family, including `AppliedStateVersionError` | 05 | §5.6 + §5.7 |
@@ -250,7 +250,7 @@ If you are looking for a public surface or policy:
 | Deprecation schema, service, event, and surface matrix | 16 | §18.2 + §18.5 |
 | Deprecation presentation, removal, and gates | 16 | §18.6 + §18.8 |
 | Executable-guide model, components, scenario runtime, and display vs. execute bindings | 17 | §19.2 + §19.4 + §19.5 |
-| Feature home guides, test placement, case files, and background scenario runs | 13 + 17 | §13.1 + §19.1 + §19.4 + §19.7 + §19.9 |
+| Feature home guides, the home-guide map, guide drift, test placement, case files, and background scenario runs | 13 + 17 | §13.1 + §19.1 + §19.4 + §19.7 + §19.9 + §19.10 + §19.12 |
 | Transcripts, shared scenario compiler, source maps, and binding diagnostics | 17 | §19.6 + §19.7 + §19.10 |
 | Recipe scaffold README cells, skips, and single-mode library scenarios | 17 | §19.13 + §19.14 |
 | Guide acceptance and tabbed variants | 17 | §19.15 + §19.16 |

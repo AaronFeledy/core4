@@ -39,8 +39,9 @@ import { countCommand, dumpCompleteness } from "./families.ts";
 import { confirmOrFail, publishTree } from "./progress.ts";
 import { waitForSqlDatabase } from "./readiness.ts";
 import { runPhysicalOperation, withPhysicalVolumeLock } from "./recovery.ts";
+import { planSeriesRestore } from "./restore-data-series.ts";
 import { resumeSqlRuntime } from "./runtime-observation.ts";
-import type { DbCommandStep } from "./schemas.ts";
+import type { DbCommandResult, DbCommandStep } from "./schemas.ts";
 import { executeSeed } from "./seed.ts";
 import { precheckSeedEligibility } from "./seed-eligibility.ts";
 import { resolveSeedSource } from "./seed-source.ts";
@@ -252,9 +253,10 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
       const keepLatest = input.keepLatest ?? DEFAULT_SNAPSHOT_KEEP_LATEST;
       const snapshots = yield* deps.listSnapshots(filter);
       const recovery = input.recovery === true;
-      prunePolicy = { filter, keepLatest, ...(recovery ? { recovery } : {}) };
+      prunePolicy = { filter, keepLatest, ...(recovery ? { recovery, includeUpgrade: true } : {}) };
+      const { includeUpgrade } = prunePolicy;
       pruneCandidates = [...snapshots]
-        .filter((snapshot) => snapshotInPruneBucket(snapshot, recovery))
+        .filter((snapshot) => snapshotInPruneBucket(snapshot, recovery, includeUpgrade))
         .sort(
           (left, right) => DateTime.toEpochMillis(right.createdAt) - DateTime.toEpochMillis(left.createdAt),
         )
@@ -298,6 +300,10 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
       ...(prepared === undefined ? {} : { expectedDigest: prepared.digest }),
     };
     let snapshotId: string | undefined;
+    let nextStep: string | undefined;
+    let restoreOutcome:
+      | Pick<DbCommandResult, "restoredSeries" | "databaseLeftStopped" | "startCommands" | "undoPrerequisite">
+      | undefined;
     let listedSnapshots: ReadonlyArray<SnapshotInfo> | undefined;
     let prunedSnapshotIds: ReadonlyArray<SnapshotId> | undefined;
     let retentionApplied: boolean | undefined;
@@ -307,13 +313,13 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
       | { readonly recoverySnapshotId: string; readonly operation: SqlRecoveryOperationError["operation"] }
       | undefined;
     const runPhysical = <A, E>(
-      reason: Parameters<typeof runPhysicalOperation<A, E>>[0]["reason"],
-      body: Parameters<typeof runPhysicalOperation<A, E>>[0]["body"],
-      resumeAfterSnapshot: boolean,
-      preflight?: Parameters<typeof runPhysicalOperation<A, E>>[0]["preflight"],
-      retainSnapshotIds?: ReadonlyArray<string>,
+      operation: Pick<
+        Parameters<typeof runPhysicalOperation<A, E>>[0],
+        "reason" | "body" | "resumeAfterSnapshot" | "preflight" | "retainSnapshotIds" | "offlineDataVersion"
+      >,
     ) =>
       runPhysicalOperation({
+        ...operation,
         deps: { ...deps, resume: resumeDatabase },
         plan: deps.plan,
         service,
@@ -328,14 +334,10 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
               format:
                 input.compression === "gzip" ? "tar.gz" : input.compression === "zstd" ? "tar.zst" : "tar",
             }),
-        reason,
         publish: deps.publish,
-        resumeAfterSnapshot,
-        ...(preflight === undefined ? {} : { preflight }),
-        ...(retainSnapshotIds === undefined ? {} : { retainSnapshotIds }),
-        body,
       }).pipe(
         Effect.map(({ result, recoverySnapshotId }) => {
+          const { reason } = operation;
           completionReceipt = { recoverySnapshotId, operation: reason === "manual" ? "snapshot" : reason };
           return result;
         }),
@@ -345,28 +347,29 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
         transfer = yield* runExport(deps, deps.exec, io);
         break;
       case "import":
-        transfer = yield* runPhysical(
-          "import",
-          () => runImport(deps, deps.exec, io).pipe(Effect.provideService(SqlEnvironmentSession, session)),
-          true,
-        );
+        transfer = yield* runPhysical({
+          reason: "import",
+          body: () =>
+            runImport(deps, deps.exec, io).pipe(Effect.provideService(SqlEnvironmentSession, session)),
+          resumeAfterSnapshot: true,
+        });
         break;
       case "reset":
-        yield* runPhysical(
-          "reset",
-          () =>
+        yield* runPhysical({
+          reason: "reset",
+          body: () =>
             runReset(deps.exec, target.name, target.family, creds, env, protectedEnvironment.secrets).pipe(
               Effect.provideService(SqlEnvironmentSession, session),
             ),
-          true,
-        );
+          resumeAfterSnapshot: true,
+        });
         break;
       case "snapshot": {
-        const handle = yield* runPhysical(
-          "manual",
-          (_context, recoveryId) => Effect.succeed({ id: recoveryId }),
-          true,
-        );
+        const handle = yield* runPhysical({
+          reason: "manual",
+          body: (_context, recoveryId) => Effect.succeed({ id: recoveryId }),
+          resumeAfterSnapshot: true,
+        });
         snapshotId = handle.id;
         break;
       }
@@ -405,19 +408,46 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
           return yield* Effect.die(new Error("Restore source was not resolved"));
         snapshotId = restoreSource.id;
         const handle = snapshotHandle(restoreSource);
-        yield* runPhysical(
-          "restore",
-          (context) =>
-            Effect.gen(function* () {
-              yield* context.verifyVolume;
-              yield* deps.restore(handle, context.volume);
-              if (context.running) yield* context.resume;
-            }),
-          false,
-          (context) => requireRestoreCompatibleSnapshot(restoreSource, context),
+        const seriesRestore = yield* planSeriesRestore({
+          source: restoreSource,
+          service,
+          desiredDataVersion: deps.desiredDataVersion,
+          anySeries: input.anySeries === true,
+        });
+        const databaseLeftStopped = yield* runPhysical({
+          reason: "restore",
+          body: Effect.fnUntraced(function* (context) {
+            yield* context.verifyVolume;
+            yield* context.verifyStopped;
+            yield* deps.restore(handle, context.volume);
+            const resume = context.running && (seriesRestore?.resume ?? true);
+            if (resume) yield* context.resume;
+            return !resume;
+          }),
+          resumeAfterSnapshot: false,
+          preflight: (context) =>
+            requireRestoreCompatibleSnapshot(restoreSource, context, seriesRestore?.desiredSeries),
           // The snapshot just restored from may itself be an automatic recovery snapshot.
-          [restoreSource.id],
-        );
+          retainSnapshotIds: [restoreSource.id],
+          ...(seriesRestore === undefined ? {} : { offlineDataVersion: seriesRestore.currentDataVersion }),
+        });
+        if (seriesRestore !== undefined) {
+          const { restoredSeries, startCommands } = seriesRestore;
+          restoreOutcome = {
+            databaseLeftStopped,
+            ...(restoredSeries === undefined
+              ? {}
+              : { restoredSeries, ...(databaseLeftStopped ? { startCommands } : {}) }),
+            undoPrerequisite: { verified: false, step: "verify-data-series" },
+          };
+          if (databaseLeftStopped)
+            nextStep =
+              restoredSeries === undefined
+                ? "Verify the restored data series and pin it in the Landofile before running `lando start`."
+                : `Run ${startCommands.map((command) => `\`${command}\``).join(", then ")} to start the database on the restored series.`;
+        } else {
+          restoreOutcome = { databaseLeftStopped };
+        }
         break;
       }
       case "seed":
@@ -475,6 +505,8 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
         ? { file }
         : {}),
       ...(snapshotId === undefined ? {} : { snapshotId }),
+      ...(nextStep === undefined ? {} : { nextStep }),
+      ...restoreOutcome,
       ...(completionReceipt === undefined || completionReceipt.operation === "snapshot"
         ? {}
         : { recoverySnapshotId: completionReceipt.recoverySnapshotId }),

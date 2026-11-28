@@ -1,7 +1,7 @@
 import { resolve as resolvePath } from "node:path";
 import { mapFailures } from "@lando/sdk/command-result";
 import { AppResolveError } from "@lando/sdk/errors";
-import { AbsolutePath } from "@lando/sdk/schema";
+import { AbsolutePath, type ProviderId } from "@lando/sdk/schema";
 import { FileSystem, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { Effect } from "effect";
 import { TeardownProvider } from "../providers/app-placement.ts";
@@ -17,7 +17,7 @@ import { prepareDestroyOwners } from "./destroy-owners.ts";
 
 export const withMissingDestroyRoot = Effect.fn("AppOperation.withMissingDestroyRoot")(function* <A, E, R>(
   root: string,
-  options: { readonly purgeSnapshots?: boolean },
+  options: { readonly purgeSnapshots?: boolean; readonly providerId?: ProviderId },
   body: (resolved: {
     readonly resolution: TeardownResolution;
     readonly candidates: readonly AbsolutePath[];

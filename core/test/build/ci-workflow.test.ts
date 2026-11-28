@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, readdir, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pinnedAction } from "../../../scripts/action-pins.ts";
@@ -1043,8 +1043,12 @@ describe("ci workflow", () => {
     );
     expect(guideScenariosRunner).toContain("          GH_TOKEN: ${{ github.token }}");
     expect(guideScenariosRunner).toContain(
-      '          GUIDE_DRIFT_PR_BODY="$(gh pr view ${{ github.event.pull_request.number }} --json body --jq .body)" bun run check:guide-drift',
+      '          GUIDE_DRIFT_PR_BODY="$(gh pr view ${{ github.event.pull_request.number }} --json body --jq .body)"',
     );
+    expect(guideScenariosRunner).toContain("          export GUIDE_DRIFT_PR_BODY");
+    expect(guideScenariosRunner).toContain("          bun run check:guide-drift");
+    // The assignment stands alone so bash -e stops on a failed PR-body lookup.
+    expect(guideScenariosRunner).not.toContain('--jq .body)" bun run check:guide-drift');
     expect(guideScenariosRunner).toContain(guideScenarioRunLine);
     expect(guideScenariosRunner).toContain(guideScenarioStepWithLiveOutput);
     expect(guideScenariosRunner).not.toContain("Run e2e smoke guide scenarios");
@@ -1657,3 +1661,69 @@ describe("ci workflow", () => {
     expect(providerIntegration).not.toContain("win32-arm64");
   });
 });
+
+const driftStepScript = (workflow: string): string => {
+  const lines = workflow.split("\n");
+  const stepStart = lines.findIndex((line) => line.trim() === "- name: Check guide drift");
+  expect(stepStart).toBeGreaterThanOrEqual(0);
+  const runIndex = lines.findIndex((line, index) => index > stepStart && line.trim() === "run: |");
+  expect(runIndex).toBeGreaterThan(stepStart);
+  const runIndent = (lines[runIndex]?.match(/^\s*/) ?? [""])[0].length;
+  const body: string[] = [];
+  for (const line of lines.slice(runIndex + 1)) {
+    const indent = (line.match(/^\s*/) ?? [""])[0].length;
+    if (line.trim() !== "" && indent <= runIndent) break;
+    if (line.trim() === "") continue;
+    body.push(line.slice(runIndent + 2));
+  }
+  return body.join("\n");
+};
+
+test.skipIf(process.platform === "win32")(
+  "the drift step fails when the PR-body lookup fails and passes the body when it succeeds",
+  async () => {
+    const workflow = await readWorkflow();
+    const script = driftStepScript(workflow).replace("${{ github.event.pull_request.number }}", "1");
+    expect(script).toContain("gh pr view 1 --json body --jq .body");
+
+    const sandbox = await mkdtemp(join(tmpdir(), "lando-drift-step-"));
+    try {
+      const bin = join(sandbox, "bin");
+      await mkdir(bin, { recursive: true });
+      const record = join(sandbox, "record.txt");
+      const scriptPath = join(sandbox, "step.sh");
+      await writeFile(scriptPath, script);
+      await writeFile(join(bin, "bun"), '#!/bin/sh\nprintf "%s" "$GUIDE_DRIFT_PR_BODY" > "$RECORD"\n', {
+        mode: 0o755,
+      });
+      const runStep = async (ghBody: string | undefined) => {
+        await writeFile(
+          join(bin, "gh"),
+          ghBody === undefined ? "#!/bin/sh\nexit 1\n" : `#!/bin/sh\nprintf "%s\\n" "${ghBody}"\n`,
+          { mode: 0o755 },
+        );
+        await rm(record, { force: true });
+        const child = Bun.spawn(["bash", "--noprofile", "--norc", "-eo", "pipefail", scriptPath], {
+          cwd: sandbox,
+          env: { PATH: `${bin}:/usr/bin:/bin`, HOME: sandbox, RECORD: record },
+          stdout: "pipe",
+          stderr: "pipe",
+        });
+        const [code, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()]);
+        const recorded = (await Bun.file(record).exists()) ? await Bun.file(record).text() : undefined;
+        return { code, stderr, recorded };
+      };
+
+      const failed = await runStep(undefined);
+      expect(failed.code).not.toBe(0);
+      expect(failed.recorded).toBeUndefined();
+
+      const passed = await runStep("Reviewed body");
+      expect(passed.code).toBe(0);
+      expect(passed.recorded).toBe("Reviewed body");
+    } finally {
+      await rm(sandbox, { recursive: true, force: true });
+    }
+  },
+  20000,
+);

@@ -47,6 +47,33 @@ lando doctor
 
 Doctor should name the provider you selected. Setup fails with remediation if that system runtime is missing. It does not install Docker or Podman for you. To return to the default, run `lando setup --provider=lando`.
 
+## Use Colima, OrbStack, or another Docker context
+
+The docker provider picks its engine the way the `docker` CLI does. With `DOCKER_HOST` unset, it follows the active Docker context: `DOCKER_CONTEXT` when you set it, otherwise the context `docker context use` selected. Colima selects its own `colima` context when it starts, and OrbStack creates an `orbstack` context, so there is nothing to configure in Lando. Lando does not start these runtimes or change your context.
+
+1. Start the runtime and check that the Docker CLI reaches it:
+
+```sh
+colima start
+docker context ls
+docker ps
+```
+
+`docker context ls` marks the current context with `*`. If that is not your runtime's context, run `docker context use <name>` with the name it lists. Lima's Docker template prints a `docker context create` command and a `docker context use` command after `limactl start`. Run both, then `docker ps`.
+
+2. Set up Lando with Docker and check which endpoint it resolved:
+
+```sh
+lando setup --provider=docker
+lando doctor --provider=docker --format=json
+```
+
+The `docker-endpoint` check reports the socket in `context.endpoint` and what chose it in `context.source`: `context` (with the name in `context.contextName`), `DOCKER_HOST`, or `default` when no context is selected. As with the Docker CLI, `DOCKER_HOST` wins over any context.
+
+If the engine behind that socket stops, Lando's error names the command that starts it again, such as `colima start` or `orb start`.
+
+Lando cannot connect through a context that uses TLS or `ssh://`, or to a TCP `DOCKER_HOST` with `DOCKER_TLS_VERIFY` set. Doctor and `lando start` fail with the context name or `DOCKER_HOST` before sending anything. Select a context whose endpoint is a local socket, or set `DOCKER_HOST` to the engine's socket, then retry.
+
 ## How setup chooses a provider
 
 `lando setup` (including `--yes`) picks the first of:
@@ -161,6 +188,8 @@ lando start
 Data volumes stay on the old provider; they are not copied.
 
 If older starts left copies on two providers, retire the unwanted copy with `lando destroy --provider=<id> --yes`. Without that explicit selection, ambiguous cleanup fails closed. The global app has the same escape hatch: `lando global:destroy --provider=<id> --yes`.
+
+Two Docker contexts can also point to different engines. If Lando reports different engines, restore the original connection with `docker context use <name>` or `DOCKER_HOST` to keep using that copy. If the original engine is gone, run `lando destroy --provider=docker --yes` from the app directory, or `lando global:destroy --provider=docker --yes` for the global app. Explicit destroy cleans up the app on the **currently connected** engine and drops Lando's record. It does not connect to the old engine or remove anything left there.
 
 ## Resolve a provider conflict
 

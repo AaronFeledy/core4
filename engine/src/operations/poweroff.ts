@@ -1,4 +1,5 @@
 import { makeLandoPaths, normalizeHostPlatform } from "@lando/paths";
+import { ScratchAppError } from "@lando/sdk/errors";
 import {
   ConfigService,
   type FileSystem,
@@ -9,6 +10,7 @@ import {
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { makeStateStore } from "@lando/state-store/service";
 import { Effect, Option, Result, Schema } from "effect";
+import { EngineMismatchError } from "../providers/app-placement.ts";
 import { HostMaintenanceRegistry, teardownHostMaintainers } from "../runtime/host-maintenance.ts";
 import { CORE_VERSION } from "../version.ts";
 import { type GlobalStopError, type GlobalStopServices, globalStop } from "./global-stop.ts";
@@ -64,6 +66,16 @@ export type PoweroffServices =
 export type PoweroffError = GlobalStopError | PoweroffStopError | StopAppError;
 
 type RuntimeServiceStopResult = { readonly terminated: boolean; readonly pid?: number };
+
+const skippedEngineMismatch = (error: EngineMismatchError): PoweroffAppResult => ({
+  kind: error.app.kind,
+  appId: error.app.id,
+  appRoot: error.app.root,
+  providerId: error.realizedProviderId,
+  outcome: "skipped",
+  reason: `${error.message} ${error.remediation}`,
+});
+
 export const poweroff = Effect.fn("AppsPoweroff.poweroff")(function* (
   options: PoweroffOptions = {},
 ): Effect.fn.Return<PoweroffResult, PoweroffError, PoweroffServices> {
@@ -79,6 +91,10 @@ export const poweroff = Effect.fn("AppsPoweroff.poweroff")(function* (
       Effect.result,
     );
     if (Result.isFailure(stopped)) {
+      if (stopped.failure instanceof EngineMismatchError) {
+        apps.push(skippedEngineMismatch(stopped.failure));
+        continue;
+      }
       failures.push({
         kind: "user",
         appId: String(target.appId),
@@ -116,6 +132,12 @@ export const poweroff = Effect.fn("AppsPoweroff.poweroff")(function* (
       .destroy(target.id, { keepVolumes: false, reason: "poweroff" })
       .pipe(Effect.result);
     if (Result.isFailure(destroyed)) {
+      const error = destroyed.failure;
+      // It lives on another engine, so keeping this runtime up would not protect it.
+      if (error instanceof ScratchAppError && error.cause instanceof EngineMismatchError) {
+        apps.push(skippedEngineMismatch(error.cause));
+        continue;
+      }
       failures.push({
         kind: "scratch",
         appId: target.id,
@@ -154,7 +176,6 @@ export const poweroff = Effect.fn("AppsPoweroff.poweroff")(function* (
       providerId: "global",
       error: globalTargetResult.failure,
     });
-  let globalStopped = false;
   if (globalTarget === undefined || failures.length > 0) {
     apps.push(
       appResult(
@@ -172,15 +193,16 @@ export const poweroff = Effect.fn("AppsPoweroff.poweroff")(function* (
       Effect.result,
     );
     if (Result.isFailure(stopped)) {
-      failures.push({
-        kind: "global",
-        appId: "global",
-        appRoot: globalTarget.root,
-        providerId: String(globalTarget.providerId),
-        error: stopped.failure,
-      });
+      if (stopped.failure instanceof EngineMismatchError) apps.push(skippedEngineMismatch(stopped.failure));
+      else
+        failures.push({
+          kind: "global",
+          appId: "global",
+          appRoot: globalTarget.root,
+          providerId: String(globalTarget.providerId),
+          error: stopped.failure,
+        });
     } else {
-      globalStopped = true;
       apps.push(
         appResult(
           {
@@ -211,7 +233,7 @@ export const poweroff = Effect.fn("AppsPoweroff.poweroff")(function* (
   }
 
   const runtimeService =
-    !keepGlobal && globalStopped && keptScratch === 0
+    globalTarget !== undefined && keptScratch === 0
       ? yield* stopManagedRuntimeService
       : ({ terminated: false } satisfies RuntimeServiceStopResult);
   return {

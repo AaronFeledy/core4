@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -124,6 +124,16 @@ const runWithRegistry = <A, E>(
 ) => Effect.runPromise(effect.pipe(Effect.provide(registryLayer(defaultProviderId, options))));
 
 describe("RuntimeProviderRegistryLayer.layer", () => {
+  // The docker provider follows the host's Docker context; pin the default so a host TLS context cannot fail selection.
+  const hostDockerContext = process.env.DOCKER_CONTEXT;
+  beforeAll(() => {
+    process.env.DOCKER_CONTEXT = "default";
+  });
+  afterAll(() => {
+    if (hostDockerContext === undefined) Reflect.deleteProperty(process.env, "DOCKER_CONTEXT");
+    else process.env.DOCKER_CONTEXT = hostDockerContext;
+  });
+
   test("LANDO_PROVIDER overrides the configured default provider", async () => {
     const previous = process.env.LANDO_PROVIDER;
     process.env.LANDO_PROVIDER = "docker";

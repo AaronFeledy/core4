@@ -4,7 +4,7 @@ import { DependencyEnvironmentIntent, landoServiceStoreName, normalizeAppSlug } 
 import type { ServiceFeatureContext, ServiceFeatureDefinition } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
 import { AUTHORED_BUILD_STEP_PREFIX, isAuthoredBuildStep } from "../planner/authored-build-step.ts";
-
+import { finalizeDataVersion } from "./data-version.ts";
 import { type BaseSeed, type DraftServicePlan, makeDraft } from "./draft.ts";
 import { endpointValidationError, normalizeEndpoints } from "./endpoint-normalizer.ts";
 import { type ExtraArgsLauncher, captureExtraArgsLauncher } from "./extra-args-launcher.ts";
@@ -109,6 +109,15 @@ const makeContext = (
   setListenerAuthority: (authority) => {
     draft.listenerAuthority = authority;
   },
+  setDataVersion: (contract) => {
+    draft.dataVersion = contract;
+    draft.dataVersionProcess = {
+      artifactRef: draft.artifact?.kind === "ref" ? draft.artifact.ref : undefined,
+      command: draft.command,
+      entrypoint: draft.entrypoint,
+      pgdata: draft.environment.PGDATA,
+    };
+  },
   setCerts: (certs) => {
     draft.certs = { ...certs };
   },
@@ -144,6 +153,7 @@ export const applyPreparedService = Effect.fn("ServiceFeature.applyPreparedServi
     readonly dependencyEnvironments: readonly DependencyEnvironmentIntent[];
     readonly extraArgsLauncher: ExtraArgsLauncher | undefined;
     readonly launcherProjectUser: DraftServicePlan["launcherProjectUser"];
+    readonly dataVersionProcess: DraftServicePlan["dataVersionProcess"];
   },
   ServiceFeatureError
 > {
@@ -208,6 +218,7 @@ export const applyPreparedService = Effect.fn("ServiceFeature.applyPreparedServi
     dependencyEnvironments,
     extraArgsLauncher: launcher.current,
     launcherProjectUser: draft.launcherProjectUser,
+    dataVersionProcess: draft.dataVersionProcess,
   };
 });
 
@@ -240,7 +251,7 @@ export const composeServiceWithContributions = Effect.fn("ServiceFeature.compose
 export const composeService = Effect.fn("ServiceFeature.composeService")(function* (
   input: ComposeServiceInput,
 ): Effect.fn.Return<ServicePlan, ServiceFeatureError> {
-  const { plan, endpointContributions } = yield* composeServiceWithContributions(input);
+  const { plan, endpointContributions, dataVersionProcess } = yield* composeServiceWithContributions(input);
   const endpoints = normalizeEndpoints(endpointContributions, input.normalizedConfig);
   const endpointError = endpointValidationError(endpoints, {
     appRoot: input.appRoot,
@@ -256,5 +267,5 @@ export const composeService = Effect.fn("ServiceFeature.composeService")(functio
       }),
     );
   }
-  return { ...plan, endpoints };
+  return finalizeDataVersion({ ...plan, endpoints }, dataVersionProcess);
 });

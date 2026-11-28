@@ -27,7 +27,7 @@ import { Effect, Result, Schema } from "effect";
 import { resolveAgentEnvAudit } from "../config/agent-env-policy.ts";
 import { routerEnabled } from "../config/router-config.ts";
 import { type ResolvedAppTarget, loadUserLandofileAt, planDesiredApp } from "../landofile/app-resolution.ts";
-import { observedAppPlan } from "../providers/app-placement.ts";
+import { observedAppPlan, requireOwningEngine } from "../providers/app-placement.ts";
 import { hostProxyPlanExtension } from "../subsystems/host-proxy/plan-extension.ts";
 import { hostProxyEligibleServices } from "../subsystems/host-proxy/worker-service-plan.ts";
 import { collectObservedConnections, collectPlanObservations } from "./connection-collector.ts";
@@ -135,6 +135,7 @@ export const infoForPlan = Effect.fn("AppOperation.infoForPlan")(function* (
     options.kind ?? "user",
   );
   const provider = yield* registry.select(plan);
+  yield* requireOwningEngine(provider, options.kind ?? "user", [applied]);
   const observations = yield* collectPlanObservations(
     plan,
     completionPlan,

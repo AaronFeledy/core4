@@ -14,6 +14,7 @@ describe("@lando/provider-docker plugin descriptor", () => {
     const provider = await Effect.runPromise(
       makeRuntimeProvider({
         platform: "linux",
+        env: {},
         dockerApi: {
           info: Effect.succeed({ Architecture: "x86_64", OSType: "linux" }),
           request: (request) => {

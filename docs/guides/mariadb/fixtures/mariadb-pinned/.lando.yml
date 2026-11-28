@@ -1,0 +1,4 @@
+name: mariadb-upgrade
+services:
+  db:
+    type: mariadb:10.11

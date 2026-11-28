@@ -1,10 +1,11 @@
 import { resolve } from "node:path";
 import { Schema } from "effect";
 
+import { readFileAtCommit, resolveCommit } from "../git-changes.ts";
+
 export const CONTAINER_COMMAND_BASELINE_PATH = "scripts/guides/container-command-baseline.json";
 export const CONTAINER_COMMAND_CODE = "guide.container-command.e2e-coverage";
 export const CONTAINER_COMMAND_WAIVER = "{/* lando-lint: not-e2e <reason> */}";
-const rulePath = "scripts/guides/container-command-lint.ts";
 const baselineSchema = Schema.Record(Schema.String, Schema.Array(Schema.String));
 export type ContainerCommandBaseline = typeof baselineSchema.Type;
 export const decodeContainerCommandBaseline = Schema.decodeUnknownSync(baselineSchema);
@@ -38,37 +39,15 @@ export const addedContainerCommandEntries = (
   return added;
 };
 
-class BaselineGitError extends Error {
-  constructor(args: readonly string[], detail: string) {
-    super(`Could not read container command baseline from Git (git ${args.join(" ")}): ${detail}`);
-  }
-}
-
-const git = (root: string, args: readonly string[]): string => {
-  const result = Bun.spawnSync({ cmd: ["git", ...args], cwd: root, stdout: "pipe", stderr: "pipe" });
-  if (!result.success) throw new BaselineGitError(args, result.stderr.toString().trim());
-  return result.stdout.toString();
-};
-
+/**
+ * Reads the baseline at `baseRef` through the shared change reader, so a git
+ * failure is a `GitChangeError` with a remediation like every other one.
+ */
 export const checkContainerCommandBaselineOnDisk = async (root: string, baseRef: string) => {
-  const revision = git(root, ["rev-parse", "--verify", "--end-of-options", `${baseRef}^{commit}`]).trim();
-  const paths = git(root, [
-    "ls-tree",
-    "-r",
-    "--name-only",
-    revision,
-    "--",
-    CONTAINER_COMMAND_BASELINE_PATH,
-    rulePath,
-  ]).split(/\r?\n/);
-  const hasBaseline = paths.includes(CONTAINER_COMMAND_BASELINE_PATH);
-  if (!hasBaseline && !paths.includes(rulePath)) return { bootstrap: true, diagnostics: [] };
-
-  const base = hasBaseline
-    ? decodeContainerCommandBaseline(
-        JSON.parse(git(root, ["show", `${revision}:${CONTAINER_COMMAND_BASELINE_PATH}`])),
-      )
-    : {};
+  const revision = await resolveCommit(root, baseRef, "base");
+  const baseText = await readFileAtCommit(root, revision, CONTAINER_COMMAND_BASELINE_PATH);
+  // A base without a baseline is an empty baseline: the comparison stays fail-closed.
+  const base = baseText === undefined ? {} : decodeContainerCommandBaseline(JSON.parse(baseText));
   const file = Bun.file(resolve(root, CONTAINER_COMMAND_BASELINE_PATH));
   const current = (await file.exists()) ? decodeContainerCommandBaseline(await file.json()) : {};
   const removedPaths = new Set<string>();
@@ -76,11 +55,10 @@ export const checkContainerCommandBaselineOnDisk = async (root: string, baseRef:
     if (!(await Bun.file(resolve(root, path)).exists())) removedPaths.add(path);
   }
   return {
-    bootstrap: false,
     diagnostics: addedContainerCommandEntries(base, current, removedPaths).map(({ path, command }) => ({
       sourcePath: CONTAINER_COMMAND_BASELINE_PATH,
       code: CONTAINER_COMMAND_CODE,
-      message: `${path}: \`${/[\r\n]/.test(command) ? JSON.stringify(command) : command}\` was added to the baseline. Run it in an e2e scenario on the page or waive the fence with ${CONTAINER_COMMAND_WAIVER}; the baseline only shrinks.`,
+      message: `${path}: \`${/[\r\n]/.test(command) ? JSON.stringify(command) : command}\` was added to the baseline. Run it in an e2e scenario on the page or waive the fence with ${CONTAINER_COMMAND_WAIVER}; the total never grows, though an entry may move with its page when that page is removed.`,
     })),
   };
 };

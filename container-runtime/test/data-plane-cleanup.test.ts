@@ -1024,8 +1024,8 @@ describe("failed-create compensation", () => {
     });
     const inner = await Effect.runPromise(
       Effect.gen(function* () {
-        // Observe the first pull directly: Effect's Channel.runDrain loses a pull failure when
-        // the fiber has a pending interrupt, even when acquireRelease preserved both reasons.
+        // On Effect 4.1.7, runDrain reports only the pending interrupt. The first pull
+        // retains both that interrupt and the typed create failure after compensation.
         const attempt =
           mode === "streamed"
             ? Effect.scoped(Effect.flatten(Stream.toPull(provider.runStream(spec))))

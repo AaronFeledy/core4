@@ -2,7 +2,12 @@
 import { runWithLiveTestRoots } from "./live-test-roots.ts";
 import { withRunnerOwnedTestRoots } from "./test-preload-roots.ts";
 import { TEST_ROOT, collectTestFiles, resolveTestSelection } from "./test-selection-files.ts";
-import { TEST_SELECTIONS, type TestSelection } from "./test-selections.ts";
+import {
+  type ContributorTestPreset,
+  TEST_PRESETS,
+  TEST_SELECTIONS,
+  type TestSelection,
+} from "./test-selections.ts";
 
 export class TestSelectionError extends Error {
   constructor(
@@ -24,33 +29,35 @@ export const runTestSelection = async (
   options: {
     readonly root?: string;
     readonly selections?: readonly TestSelection[];
+    readonly presets?: readonly ContributorTestPreset[];
   } = {},
 ): Promise<number> => {
   const selections: readonly TestSelection[] = options.selections ?? TEST_SELECTIONS;
   const selection = selections.find((entry) => entry.id === id);
-  if (selection === undefined) throw new TestSelectionError("unknown", id);
-  if (selection.runner === "go") throw new TestSelectionError("runner", id);
+  const target = selection ?? (options.presets ?? TEST_PRESETS).find((entry) => entry.id === id);
+  if (target === undefined) throw new TestSelectionError("unknown", id);
+  if (selection?.runner === "go") throw new TestSelectionError("runner", id);
   const root = options.root ?? TEST_ROOT;
-  const files = resolveTestSelection(selection, await collectTestFiles(root));
+  const files = resolveTestSelection(target, await collectTestFiles(root));
   if (files.length === 0) throw new TestSelectionError("empty", id);
   console.error(`[test:selection] ${id}: ${files.length} files`);
-  // Trees go to Bun as `./dir` so Bun keeps its own file order, which some live suites
-  // still depend on (#2231); files and globs pass as the exact files they resolve to.
-  const targets = selection.paths.flatMap((selector) =>
-    selector.endsWith("/")
-      ? [`./${selector.slice(0, -1)}`]
-      : resolveTestSelection({ ...selection, paths: [selector] }, files).map((path) => `./${path}`),
-  );
-  const live = selection.usesInheritedLivePodmanRoots === true;
+  // Live suites depend on Bun's directory walk order (#2231); presets run exact files.
+  const targets =
+    selection?.paths.flatMap((selector) =>
+      selector.endsWith("/")
+        ? [`./${selector.slice(0, -1)}`]
+        : resolveTestSelection({ ...selection, paths: [selector] }, files).map((path) => `./${path}`),
+    ) ?? files.map((path) => `./${path}`);
+  const live = selection?.usesInheritedLivePodmanRoots === true;
   return withRunnerOwnedTestRoots({ env: process.env, live }, (runnerEnv) =>
     runWithLiveTestRoots({ live, cwd: root, env: runnerEnv }, (env, track) => {
       const child = Bun.spawn(
         [
           process.execPath,
-          ...(selection.noOrphans ? ["--no-orphans"] : []),
+          ...(selection?.noOrphans ? ["--no-orphans"] : []),
           "test",
-          ...(selection.args ?? []),
-          ...(selection.ignore ?? []).map((pattern) => `--path-ignore-patterns=${pattern}`),
+          ...(selection?.args ?? []),
+          ...(selection?.ignore ?? []).map((pattern) => `--path-ignore-patterns=${pattern}`),
           ...new Set(targets),
         ],
         { cwd: root, env, stdin: "inherit", stdout: "inherit", stderr: "inherit" },

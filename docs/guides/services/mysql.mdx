@@ -108,9 +108,11 @@ services:
 ```
 
 Lando keeps the planned port and any `config.server` handling, then appends
-your list. Do not put `--port`, `-P`, or `--defaults-*` in `extraArgs:`; set
-`port:` or `config.server` instead. Custom images and Compose builds reject
-the key.
+your list. Set `port:` or `config.server` rather than passing `--port`, `-P`,
+or `--defaults-*`. `--datadir` is also reserved: keep the default data directory
+or use `command:` for a custom launcher. With `config.server`, Lando still
+reads the database version from `/var/lib/mysql`, the default data directory.
+Custom images and Compose builds reject `extraArgs:`.
 
 The path has to stay inside the app root. Absolute paths, paths that climb out of the app root, and symlinks that point outside it are rejected when Lando plans the app, before anything starts.
 
@@ -159,8 +161,81 @@ Use unversioned `type: mysql` for an image outside the catalog. Lando can [check
 
 Each MySQL service keeps its data in its own `lando-<data-name>--<service>--mysql-data` volume, independent of the server version. The data-name slug stays fixed when you rename the app.
 
-Keeping a volume's identity is not an upgrade compatibility check. Existing databases still depend on the SQL recovery guard for changed or unknown initialized series; do not treat a type change as a safe datadir upgrade.
-
 Oracle MySQL clients installed into PHP services use Oracle's signed Bookworm APT repository on amd64 and SHA256-pinned Oracle EL9 RPM payloads on Linux arm64 for all three series (8.0, 8.4, and 9.7). The arm64 support policy covers default `caching_sha2_password` authentication, not LDAP/SASL plugins. Live arm64 build, connection, and dump/restore verification is still pending. See [Customize PHP](./php-customization.mdx).
+
+## Change versions
+
+To move from MySQL 8.0 to 8.4 on the existing data volume, run these commands from the app directory:
+
+```sh
+lando app:config:set services.db.type mysql:8.4
+lando start
+lando mysql -N -e 'SELECT VERSION()'
+```
+
+Lando stops the database for the copy, saves a restore point, and prints its ID. With `lando start --format=json`, look for `dataVersionChanges[0].restorePoint` in the final result. The version query should report 8.4. Check that your app can still read its data.
+
+Use `--no-snapshot` only if you have another backup or accept upgrading without one. Automatic retention leaves [upgrade restore points](../tooling/db-import-export.mdx#restore-points-before-version-upgrades) in place. Use `lando db:snapshots:prune --recovery` to remove them.
+
+## Go back to the old version
+
+List the restore points for `db` and note the ID of the `upgrade` point for 8.0:
+
+```sh
+lando db:snapshots --service db
+```
+
+Pin the old series and restore the point. Replace `<id>` with the ID from the list. Restoring replaces your current database files, including changes made since the upgrade.
+
+```sh
+lando app:config:set services.db.type mysql:8.0
+lando db:restore <id> --service db
+lando start
+lando mysql -N -e 'SELECT VERSION()'
+```
+
+Check that the server reports 8.0 and that your app can read the recovered data. To keep the upgraded data instead, restore `type: mysql:8.4` or your previous `image:` without running `db:restore`.
+
+MySQL may not leave a readable version record. If the point is listed as unverified, add `--any-series` to `db:restore` only if you independently know the series of the saved data. If you start on the old series before restoring, Lando refuses a downgrade it can verify and names a matching verified point if one exists. Otherwise, the server's own downgrade refusal can appear under `ServiceNotReadyError`.
+
+If you have no restore point, use a verified export taken before the upgrade. To make one before changing versions, run `lando db:export before-upgrade.sql.gz --service db` while 8.0 still runs. Importing an export made on 8.4 into 8.0 isn't guaranteed to work. **Back up other services first:** `--volumes` deletes every service's data in the app. Run `lando destroy -y --volumes`, `lando start` on 8.0, then `lando db:import before-upgrade.sql.gz --service db --yes`.
+
+  <Scenario id="change-versions" layer="e2e" timeout={600000} render={false} reason="Verify MySQL upgrade, rollback, and the native stopped-service refusal">
+    <Hidden reason="Start with an existing MySQL 8.0 database">
+      <Step name="seed">
+        <UseFixture name="mysql-demo" />
+        <Run command="lando start" />
+        <Run command={`lando mysql -e "CREATE TABLE notes (body TEXT); INSERT INTO notes VALUES ('still here');"`} />
+      </Step>
+    </Hidden>
+    <Step name="upgrade">
+      <Run command="lando app:config:set services.db.type mysql:8.4" />
+      <Verify command="lando start --format=json" expect={{ stdout: { regex: '"dataVersionChanges":\\[\\{"service":"db","from":"8[.]0","to":"8[.]4","restorePoint":"[a-f0-9-]{36}"\\}\\]' } }} />
+      <Verify command="lando mysql -N -e 'SELECT VERSION()'" expect={{ stdout: { regex: "^8[.]4[.]" } }} />
+      <Verify command="lando mysql -N -e 'SELECT body FROM notes'" expect={{ stdout: { regex: "still here" } }} />
+      <Run command="lando db:snapshots --service db --format=json" capture={{ name: "restoreId", json: "snapshots.0.id" }} />
+    </Step>
+    <Step name="refusal">
+      <Run command="lando app:config:set services.db.type mysql:8.0" />
+      <Verify command="lando start --format=json" expectExit={1} expect={{ stdout: { regex: '(?=.*"_tag":"ServiceDataVersionError")(?=.*"direction":"downgrade")', not: { regex: "lando db:restore" } } }} />
+    </Step>
+    <Step name="roll-back">
+      <Verify command="lando db:restore {{capture:restoreId}} --service db --yes --format=json" expectExit={1} expect={{ stdout: { regex: '"_tag":"SqlRecoveryUnavailableError"' } }} />
+      <Verify command="lando db:restore {{capture:restoreId}} --service db --any-series --yes --format=json" expect={{ stdout: { regex: '(?=.*"databaseLeftStopped":true)(?=.*"undoPrerequisite":\\{"verified":false,"step":"verify-data-series"\\})' } }} />
+      <Run command="lando start" />
+      <Verify command="lando mysql -N -e 'SELECT VERSION()'" expect={{ stdout: { regex: "^8[.]0[.]" } }} />
+      <Verify command="lando mysql -N -e 'SELECT body FROM notes'" expect={{ stdout: { regex: "still here" } }} />
+    </Step>
+    <Hidden reason="Check that a stopped server's record blocks downgrade before apply">
+      <Step name="stopped-refusal">
+        <Run command="lando app:config:set services.db.type mysql:8.4" />
+        <Run command="lando start" />
+        <Run command="lando stop" />
+        <Run command="lando app:config:set services.db.type mysql:8.0" />
+        <Verify command="lando start --format=json" expectExit={1} expect={{ stdout: { regex: '(?=.*"_tag":"ServiceDataVersionError")(?=.*"direction":"downgrade")(?=.*"dataVersion":"8[.]4")(?=.*"imageVersion":"8[.]0")(?=.*"evidence":"record")' } }} />
+      </Step>
+    </Hidden>
+    <Step name="cleanup"><Cleanup /><Run command="lando destroy -y --volumes" /></Step>
+  </Scenario>
 
 </Guide>

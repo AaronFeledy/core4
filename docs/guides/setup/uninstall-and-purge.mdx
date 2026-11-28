@@ -27,7 +27,7 @@ lando uninstall --yes --purge
 
 `--keep-data` leaves running apps and their managed VM in place. It also retains the provider setup state, runtime service, host-proxy sessions, and Mutagen tools so those apps can keep using them. The managed CLI binary is removed; keep the retained runtime files until you no longer need the app data.
 
-On host Docker and Podman, `--purge` uses each provider's own engine connection, such as `DOCKER_HOST`, a Unix socket, or a Windows named pipe. It does not look for the `docker` or `podman` command on `PATH`. The plan names each reachable connection and counts the containers, networks, volumes, and built images in scope. It also names connections it could not reach; purge skips those engines.
+On host Docker and Podman, `--purge` uses each provider's own engine connection, such as `DOCKER_HOST`, the active Docker context, a Unix socket, or a Windows named pipe. It does not look for the `docker` or `podman` command on `PATH`. The plan names each reachable connection and counts the containers, networks, volumes, and built images in scope. It also names connections it could not reach; purge skips those engines.
 
 Lando inspects each container, network, or named volume labeled for this data root before removing it. It stops and removes owned containers first, including their unused anonymous volumes. It then removes private networks, this root's shared bridge if nothing remains attached, and named volumes whose identity still matches. Named volumes and images are never force-deleted. Lando leaves other installations' resources and older resources without a data-root label alone.
 

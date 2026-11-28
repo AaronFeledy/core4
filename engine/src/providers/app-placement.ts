@@ -1,6 +1,14 @@
+import { engineEndpointDisplay, matchesEnginePlacement } from "@lando/container-runtime/engine-identity";
 import { AppPlacementError, AppResolveError } from "@lando/sdk/errors";
-import { AbsolutePath, AppId, type AppPlan, type AppRef, type ProviderId } from "@lando/sdk/schema";
-import { RuntimeProviderRegistry } from "@lando/sdk/services";
+import {
+  AbsolutePath,
+  AppId,
+  type AppPlan,
+  type AppRef,
+  type AppliedAppPlan,
+  type ProviderId,
+} from "@lando/sdk/schema";
+import { RuntimeProviderRegistry, type RuntimeProviderShape } from "@lando/sdk/services";
 import { Context, Effect } from "effect";
 import { canonicalMissingAppRoot } from "../operations/app-mutation-lock.ts";
 import { matchesAppPlanIdentity } from "./app-plan-identity.ts";
@@ -87,6 +95,41 @@ export const ensureAppPlacement = Effect.fn("AppPlacement.ensure")(function* (
 ) {
   return (yield* ensureAppPlacementState(app, desired)).desired;
 });
+
+export class EngineMismatchError extends AppPlacementError {}
+
+export const requireOwningEngine = (
+  provider: RuntimeProviderShape,
+  kind: AppRef["kind"],
+  plans: readonly (Pick<AppliedAppPlan, "id" | "provider" | "root" | "engineIdentity"> | undefined)[],
+): Effect.Effect<void, AppPlacementError> => {
+  const current = provider.engineIdentity;
+  if (current === undefined) return Effect.void;
+  for (const plan of plans) {
+    if (plan === undefined || plan.provider !== provider.id) continue;
+    const recorded = plan.engineIdentity;
+    if (recorded === undefined || matchesEnginePlacement(recorded, current)) continue;
+    const app = { kind, root: plan.root, id: plan.id };
+    const owningEndpoint = engineEndpointDisplay(recorded.endpoint);
+    let reconnect = `Restore the connection to ${owningEndpoint}`;
+    if (provider.id === "docker") reconnect += " with `docker context use <name>` or by setting DOCKER_HOST";
+    else if (provider.id === "podman") reconnect += " by setting DOCKER_HOST";
+    const retire =
+      kind === "scratch"
+        ? ` If that engine is gone, run \`lando scratch:destroy ${app.id}\` to retire the scratch. Anything left on the old engine is not removed.`
+        : ` If that engine is gone, run \`${destroyCommand(app, plan.provider)}\` to drop Lando's record. Anything left on the old engine is not removed.`;
+    return Effect.fail(
+      new EngineMismatchError({
+        app,
+        desiredProviderId: provider.id,
+        realizedProviderId: plan.provider,
+        message: `App ${plan.id} was realized at ${owningEndpoint}, but ${engineEndpointDisplay(current.endpoint)} now connects to a different engine.`,
+        remediation: `${reconnect}.${retire}`,
+      }),
+    );
+  }
+  return Effect.void;
+};
 
 export const observedAppPlan = Effect.fn("AppPlacement.observedPlan")(function* (
   plan: AppPlan,

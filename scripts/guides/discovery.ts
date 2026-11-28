@@ -45,3 +45,20 @@ export const discoverGuideMdxFiles = async (root = REPO_ROOT): Promise<ReadonlyA
   const [guides, recipes] = await Promise.all([walkMdx(root, "docs/guides"), discoverRecipeReadmes(root)]);
   return [...guides, ...recipes].sort((a, b) => a.localeCompare(b));
 };
+
+/** Fixtures for a guide id resolve here for every guide with that id. */
+export const guideFixturesRoot = (guideId: string): string => `docs/guides/${guideId}/fixtures/`;
+
+/**
+ * The one predicate for "this path touches this guide": the guide's MDX or a
+ * file under its fixture directory. A case file touches nothing until cases
+ * compile.
+ */
+export const pathTouchesGuide = (
+  path: string,
+  guide: { readonly guidePath: string; readonly guideId?: string },
+): boolean => {
+  if (path.endsWith(".cases.ts")) return false;
+  if (path === guide.guidePath) return true;
+  return guide.guideId !== undefined && path.startsWith(guideFixturesRoot(guide.guideId));
+};

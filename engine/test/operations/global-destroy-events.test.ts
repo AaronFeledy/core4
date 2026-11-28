@@ -62,6 +62,23 @@ test.each([
   });
 });
 
+test("only explicitly scoped global destroy retires a plan from another engine", () =>
+  withRoot(async (root) => {
+    const plan = {
+      ...globalPlanAt(AbsolutePath.make(join(root, "global"))),
+      engineIdentity: { endpoint: "/old.sock", fingerprint: "old" },
+    };
+    const harness = await globalTeardownHarness(root, {
+      plan,
+      engineIdentity: { endpoint: "/new.sock", fingerprint: "new" },
+    });
+    const failure = await Effect.runPromise(globalDestroy().pipe(Effect.provide(harness.layer), Effect.flip));
+    expect(failure._tag).toBe("AppPlacementError");
+    expect(harness.destroyOptions).toEqual([]);
+    await Effect.runPromise(globalDestroy({ providerId: plan.provider }).pipe(Effect.provide(harness.layer)));
+    expect(harness.destroyOptions).toEqual([{ containers: "remove", volumes: false, removeState: true }]);
+  }));
+
 test("global stop emits no destroy bracket or destroy progress", async () => {
   await withRoot(async (root) => {
     // Given applied global state.

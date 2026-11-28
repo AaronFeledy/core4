@@ -121,6 +121,7 @@ export const hostProxyTransportDoctorChecks = Effect.fnUntraced(function* (
           return yield* diagnoseHostProxyWorker({
             doctor: options,
             record: state.record,
+            runDir,
             current: true,
             maxProbeServices: limits.maxProbeServices,
           });
@@ -135,6 +136,7 @@ export const hostProxyTransportDoctorChecks = Effect.fnUntraced(function* (
           return yield* diagnoseHostProxyWorker({
             doctor: options,
             record: state.record,
+            runDir,
             current: false,
             maxProbeServices: limits.maxProbeServices,
           });

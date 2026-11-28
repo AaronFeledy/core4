@@ -13,6 +13,7 @@ import { catalogDatabaseKey } from "../operations/database-convergence/catalog.t
 import { applyAuthoredDependencies } from "../services/authored-dependencies.ts";
 import { composeBuildToArtifact, isComposeBuild } from "../services/compose-build-artifact.ts";
 import { mergeComposeKnobs } from "../services/compose-knobs.ts";
+import { dataVersionProcessWithExtraArgs } from "../services/data-version.ts";
 import { applyPreparedService } from "../services/feature.ts";
 import { AUTHORED_BUILD_STEP_PREFIX } from "./authored-build-step.ts";
 import type { MountAuthoringContext } from "./authored-mount-entry.ts";
@@ -146,6 +147,11 @@ export const planServiceDrafts = Effect.fn("AppPlanner.planServices")(function* 
       extraArgsProcess === undefined
         ? composition.plan
         : { ...composition.plan, command: extraArgsProcess.command };
+    const dataVersionProcess = dataVersionProcessWithExtraArgs(
+      composition.dataVersionProcess,
+      composition.plan,
+      extraArgsProcess,
+    );
     const authoredServicePlanWithoutLabels = applyAuthoredDependencies(
       yield* applyAuthoredSqlite(applyAuthoredHealthcheck(processPlan, service), service, appRoot),
       service,
@@ -223,6 +229,7 @@ export const planServiceDrafts = Effect.fn("AppPlanner.planServices")(function* 
     plannedServiceDrafts.push({
       name,
       ...(extraArgsProcess === undefined ? {} : { extraArgsProcess }),
+      ...(dataVersionProcess === undefined ? {} : { dataVersionProcess }),
       dependencyEnvironments: composition.dependencyEnvironments,
       authoredStorage: service.storage,
       hostnames: service.hostnames ?? [],

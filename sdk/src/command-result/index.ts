@@ -11,6 +11,7 @@ export {
   type FailureOutcome,
   FailureRoleAnnotation,
   type ProjectedFailure,
+  annotateFailureContext,
   annotateFailureRole,
   commandFailureCause,
   failureDefectCause,
@@ -165,6 +166,9 @@ const encodeCommandEnvelope = Effect.fnUntraced(function* (
             : {}),
           error: {
             ...projectError(options.outcome.error),
+            ...(options.outcome.failureContext === undefined
+              ? {}
+              : { context: options.outcome.failureContext }),
             ...(options.outcome.additionalErrors.length
               ? {
                   additionalErrors: options.outcome.additionalErrors.map(({ role, error }) => ({

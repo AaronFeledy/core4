@@ -15,6 +15,13 @@ export const DbCommandResult = Schema.Struct({
   file: Schema.optionalKey(Schema.String),
   format: Schema.optionalKey(Schema.Literals(["sql", "sqlite"])),
   snapshotId: Schema.optionalKey(Schema.String),
+  nextStep: Schema.optionalKey(Schema.String),
+  restoredSeries: Schema.optionalKey(Schema.String),
+  databaseLeftStopped: Schema.optionalKey(Schema.Boolean),
+  startCommands: Schema.optionalKey(Schema.Array(Schema.String)),
+  undoPrerequisite: Schema.optionalKey(
+    Schema.Struct({ verified: Schema.Literal(false), step: Schema.Literal("verify-data-series") }),
+  ),
   recoverySnapshotId: Schema.optionalKey(Schema.String),
   recoveryPath: Schema.optionalKey(Schema.String),
   recoverySkipped: Schema.optionalKey(Schema.Literal("database-missing")),

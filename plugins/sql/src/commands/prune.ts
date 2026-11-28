@@ -38,7 +38,8 @@ export const spec = {
     recovery: {
       type: "boolean",
       default: false,
-      description: "Select automatic recovery snapshots instead of manual ones.",
+      description:
+        "Select recovery snapshots, including upgrade restore points, instead of manual snapshots.",
     },
     preview: { type: "boolean", default: false, description: "Show deletions without removing snapshots." },
     yes: { type: "boolean", default: false, description: "Confirm snapshot deletion." },

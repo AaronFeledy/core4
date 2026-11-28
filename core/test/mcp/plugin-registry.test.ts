@@ -60,6 +60,21 @@ const flagInputNames = (inputSchema: unknown): ReadonlyArray<string> => {
   return Object.keys(flags);
 };
 
+test("Lando output-selection switches never enter any built-in or bundled plugin tool schema", async () => {
+  const registry = await Effect.runPromise(bundledMcpRegistry().pipe(Effect.provide(RedactionService.layer)));
+  const ids = registry.commandEntries.map(({ spec }) => spec.id);
+  const catalog = buildCatalog({
+    commandEntries: registry.commandEntries,
+    effective: computeEffectiveAllowlist({ defaults: [], allow: ids }),
+  });
+  expect(catalog.tools.map(({ toolId }) => toolId).sort()).toEqual(ids.sort());
+  for (const tool of catalog.tools) {
+    for (const key of ["format", "json", "jq"]) {
+      expect(flagInputNames(tool.inputSchema), tool.toolId).not.toContain(key);
+    }
+  }
+});
+
 test("a plugin's format and json flags read Lando's selection, so its tool rejects them as input", async () => {
   // Given: a plugin command that declares the format and json flags Lando fills on the CLI.
   const registry = await Effect.runPromise(

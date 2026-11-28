@@ -1,6 +1,33 @@
 import { expect } from "bun:test";
 import { Schema } from "effect";
+import { type FramingCase, containsReplies, expectedReplies, ping } from "./framing-cases";
 import { startPipe } from "./real-pipe-client";
+
+export async function runFramingCase(command: readonly string[], cwd: string, row: FramingCase) {
+  await using pipe = startPipe(command, cwd);
+  await pipe.initialize();
+  for (const write of row.writes) await pipe.sendRaw(write.bytes());
+  if (row.closeInput === "before-replies") await pipe.closeInput();
+  if (row.closeInput === "after-replies") {
+    await pipe.waitFor(() => containsReplies(pipe.messages.slice(1), row.replies));
+    if (row.usabilityPing) {
+      await pipe.send(ping(21));
+      await pipe.waitFor(() => pipe.messages.some((frame) => frame.id === 21));
+    }
+    await pipe.closeInput();
+  }
+  const clean = row.exit === "clean";
+  expect(await pipe.finish()).toBe(clean ? 0 : 1);
+  expect(pipe.diagnostics.at(-1)).toEqual(
+    clean
+      ? { event: "serverExit", exit: "Success" }
+      : { event: "serverExit", exit: "Failure", interruptedOnly: false, error: row.exit },
+  );
+  const observed = pipe.messages.slice(1);
+  const expected = expectedReplies(row);
+  expect(observed).toHaveLength(expected.length);
+  expect(containsReplies(observed, expected)).toBe(true);
+}
 
 export async function successfulCall(pipe: ReturnType<typeof startPipe>, id: string) {
   await pipe.send({ jsonrpc: "2.0", id, method: "tools/call", params: { name: "app:info" } });
@@ -96,7 +123,7 @@ export async function abandonment(
   expect(exits).toHaveLength(1);
   if (shutdown === "SIGTERM") {
     expect(exits[0]).toMatchObject({ event: "serverExit", exit: "Failure", interruptedOnly: true });
-    expect(exits[0]?.cause).toBeDefined();
+    expect(exits[0]?.error).toBeUndefined();
   } else {
     expect(exits).toEqual([{ event: "serverExit", exit: "Success" }]);
   }

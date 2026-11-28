@@ -4,7 +4,7 @@ import {
   type ProviderCapabilities as ProviderCapabilitiesShape,
 } from "@lando/sdk/schema";
 
-import type { ProviderError, ProviderStatus } from "@lando/sdk/services";
+import type { ProviderError, ProviderSelectionError, ProviderStatus } from "@lando/sdk/services";
 import type {
   DoctorFinding,
   DoctorRuntime,
@@ -58,7 +58,7 @@ export const providerStubFor = (providerId: string): PluginDoctorProvider => ({
 export const providerUnavailableCheck = (input: {
   readonly providerId: string;
   readonly platform: HostPlatform;
-  readonly cause: unknown;
+  readonly cause: ProviderSelectionError;
   readonly redact: (value: string) => string;
 }): DoctorFinding => {
   const described = describeDoctorFailure(input.cause);
@@ -69,12 +69,18 @@ export const providerUnavailableCheck = (input: {
     message,
   };
   if (described.tag !== undefined) context.failure = described.tag;
+  const own: DoctorSolution = {
+    kind: "manual",
+    description: redactDoctorMessage(input.cause.remediation, input.redact),
+  };
+  // The provider's remediation names its own fix; setup follows it and keeps its structured command.
+  const solutions = [own, setupRemediationFor(input.providerId)];
   return {
     name: "selected-provider",
     status: "fail",
     severity: "error",
     context,
-    solutions: [setupRemediationFor(input.providerId)],
+    solutions,
   };
 };
 

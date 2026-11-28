@@ -9,6 +9,8 @@ import type { Effect, Stream } from "effect";
 export type ProviderErrorContext = {
   readonly providerId: string;
   readonly remediation: string;
+  /** Replaces `remediation` when a request cannot connect to the engine, e.g. to name the command that starts it. */
+  readonly unreachableRemediation?: string;
   /** Explicit host env snapshot for heuristic secret collection. Never read process.env here. */
   readonly env: Readonly<Record<string, string | undefined>>;
   readonly redactor?: Redactor;

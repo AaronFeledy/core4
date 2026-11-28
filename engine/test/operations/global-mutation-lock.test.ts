@@ -19,6 +19,12 @@ import {
   withAppMutationLock,
 } from "../../src/operations/app-mutation-lock.ts";
 
+// Serialize the fixture's protocol, not Effect's Result JSON.
+const childResultOutput = `console.log(JSON.stringify(Result.match(result, {
+    onSuccess: (value) => ({ _tag: "Success", value }),
+    onFailure: (failure) => ({ _tag: "Failure", failure }),
+  })));`;
+
 const fixture = async () => {
   const directory = await realpath(await mkdtemp(join(tmpdir(), "lando-global-mutation-")));
   const root = join(directory, "embedded-global");
@@ -275,7 +281,7 @@ test("shared policy excludes a separate process using different data and global 
   await Bun.write(
     script,
     `
- import {Effect,Layer} from "${repo}/node_modules/effect/dist/index.js";
+ import {Effect,Layer,Result} from "${repo}/node_modules/effect/dist/index.js";
  import {makeLandoPaths} from "${repo}/paths/src/paths.ts";
  import {GlobalAppService,PathsService,StateStore} from "${repo}/sdk/src/services/index.ts";
  import {AbsolutePath,ProviderId} from "${repo}/sdk/src/schema/index.ts";
@@ -287,7 +293,7 @@ test("shared policy excludes a separate process using different data and global 
  const base=Layer.mergeAll(PrivateFileAccessService.layer,Layer.succeed(PathsService,paths),Layer.succeed(GlobalAppService,{id:"global",paths:Effect.succeed({root}),root:Effect.succeed(root),providerId:Effect.succeed(ProviderId.make("docker"))}));
  const layer=Layer.effect(StateStore,Effect.map(PrivateFileAccessService,access=>makeStateStore({privateFileAccess:access,roots:paths.roots}))).pipe(Layer.provideMerge(base));
  const result=await Effect.runPromise(withGlobalMutation(Effect.succeed("must not enter")).pipe(Effect.result,Effect.provide(layer)));
- console.log(JSON.stringify(result));
+ ${childResultOutput}
  `,
   );
   try {
@@ -332,7 +338,7 @@ test.each(["shared-policy", "shared-runtime"] as const)(
     await Bun.write(
       script,
       `
-      import {Effect,Layer} from "${repo}/node_modules/effect/dist/index.js";
+      import {Effect,Layer,Result} from "${repo}/node_modules/effect/dist/index.js";
       import {makeLandoPaths} from "${repo}/paths/src/paths.ts";
       import {GlobalAppService,PathsService,StateStore} from "${repo}/sdk/src/services/index.ts";
       import {PrivateFileAccessService} from "${repo}/state-store/src/private-file-access.ts";
@@ -347,7 +353,7 @@ test.each(["shared-policy", "shared-runtime"] as const)(
         if(owner){await Bun.write(${JSON.stringify(ready)},"ready");while(!await Bun.file(${JSON.stringify(release)}).exists())await Bun.sleep(5)}
         return "owned";
       })).pipe(Effect.result,Effect.provide(layer)));
-      console.log(JSON.stringify(result));
+      ${childResultOutput}
     `,
     );
     const spawn = (mode: string) =>

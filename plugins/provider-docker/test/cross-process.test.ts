@@ -9,11 +9,13 @@ import {
 } from "@lando/container-runtime/testing/exec-supervision";
 import { installNonCompensatingExecUmask } from "@lando/container-runtime/testing/exec-umask";
 import { makePluginStateStore } from "@lando/engine/plugins/context-state";
+import { makeLandoPaths } from "@lando/paths";
 import {
   type DockerApiClient,
   type DockerHttpRequest,
   type DockerHttpResponse,
   makeRuntimeProvider,
+  plugin,
 } from "@lando/provider-docker";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import {
@@ -82,7 +84,7 @@ const fileExists = async (path: string): Promise<boolean> => {
   }
 };
 
-const makeFakeApi = () => {
+const makeFakeApi = (daemonId = "persistent-daemon") => {
   const existing = new Set<string>();
   const running = new Set<string>();
   const images = new Set<string>();
@@ -213,7 +215,7 @@ const makeFakeApi = () => {
   };
 
   const api: DockerApiClient = {
-    info: Effect.succeed({}),
+    info: Effect.succeed({ ID: daemonId }),
     request: (input) => {
       calls.push(input);
       return Effect.succeed(responseFor(input));
@@ -244,6 +246,7 @@ const makeProvider = (stateDir: string, dockerApi: DockerApiClient) =>
   Effect.runPromise(
     makeRuntimeProvider({
       platform: "linux",
+      env: {},
       dockerApi,
       ...supervisedExecFixtureOptions(dockerApi),
       appliedPlanState: makePluginStateStore(
@@ -267,6 +270,28 @@ const isUnavailableExec = (error: unknown): boolean => {
 };
 
 describe("provider-docker cross-process state", () => {
+  test("an unusable context cannot report clean while this installation has recorded resources", async () => {
+    await withStateDir(async (dataRoot) => {
+      const stateDir = makeLandoPaths({ userDataRoot: dataRoot }).pluginStateDir(plugin.name);
+      const provider = await makeProvider(stateDir, makeFakeApi().api);
+      await Effect.runPromise(Effect.scoped(provider.apply(plan, { reconcile: false })));
+      const purge = plugin.runtimeProviders?.get(providerId)?.purge;
+      if (!purge) throw new Error("Missing Docker purge hook");
+      const attempt = purge({
+        platform: "linux",
+        dataRoot,
+        buildStore: "test",
+        env: { DOCKER_HOST: "tcp://127.0.0.1:2376", DOCKER_TLS_VERIFY: "1" },
+      });
+      const refused = await Effect.runPromise(Effect.flip(attempt));
+      expect(refused).toBeInstanceOf(ProviderUnavailableError);
+      expect(refused.message).toContain("unix:///var/run/docker.sock");
+      await Effect.runPromise(provider.bringDown({ app: plan.id }, { containers: "remove", volumes: false }));
+      expect(await fileExists(appliedPlanPath(stateDir, plan.id))).toBe(false);
+      expect(await Effect.runPromise(Effect.flip(attempt))).toBeInstanceOf(ProviderUnavailableError);
+    });
+  });
+
   test("apply with appliedPlanState writes the current applied-state envelope", async () => {
     await withStateDir(async (stateDir) => {
       const fake = makeFakeApi();
@@ -276,7 +301,16 @@ describe("provider-docker cross-process state", () => {
       expect(await fileExists(path)).toBe(true);
       const raw = JSON.parse(await readFile(path, "utf8"));
       expect(raw.version).toBe(APPLIED_STATE_VERSION);
-      expect(raw.data).toBeDefined();
+      expect(raw.data.engineIdentity).toMatchObject({
+        endpoint: "unix:///var/run/docker.sock",
+        fingerprint: expect.any(String),
+      });
+      const replacement = await makeProvider(stateDir, makeFakeApi("replacement").api);
+      await Effect.runPromise(Effect.scoped(replacement.apply(plan, { reconcile: true })));
+      expect(replacement.engineIdentity?.fingerprint).not.toBe(raw.data.engineIdentity.fingerprint);
+      expect(JSON.parse(await readFile(path, "utf8")).data.engineIdentity).toEqual(
+        replacement.engineIdentity,
+      );
     });
   });
 

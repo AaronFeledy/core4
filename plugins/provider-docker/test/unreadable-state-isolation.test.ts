@@ -17,6 +17,7 @@ for (const operation of ["stop", "destroy", "inspect", "logs"] as const) {
       const provider = await Effect.runPromise(
         makeRuntimeProvider({
           platform: "linux",
+          env: {},
           appliedPlanState: state,
           appliedPlanStateDir: `${root}/plugin-state`,
           dockerApi: {
@@ -100,6 +101,7 @@ test("ownership sweep skips and reports unreadable A while removing B's labeled 
     const provider = await Effect.runPromise(
       makeRuntimeProvider({
         platform: "linux",
+        env: {},
         appliedPlanState: state,
         appliedPlanStateDir: `${root}/plugin-state`,
         dockerApi: {

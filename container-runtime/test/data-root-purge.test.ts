@@ -16,11 +16,15 @@ import {
 import { makePluginStateStore } from "@lando/state-store/plugin";
 import { makeStateStore } from "@lando/state-store/service";
 import { Effect } from "effect";
+import { makeAppliedPlanStore } from "../src/applied-state.ts";
 import { type DataRootPurgeOptions, preflightDataRootPurge } from "../src/data-root-purge.ts";
 import type { EngineHttpApi, EngineHttpResponse } from "../src/engine-api.ts";
+import { dockerEngineIdentity } from "../src/engine-identity.ts";
 import { BUILT_ARTIFACT_STORE_LABEL } from "../src/image-build.ts";
 import { volumeSelectorValue } from "../src/podman/volume-prune.ts";
+import { preflightRecordedPurge } from "../src/purge-placement.ts";
 import { makeResourceOwnershipStore } from "../src/resource-ownership.ts";
+import { plan } from "./fixtures/environment-values.ts";
 
 const dataRoot = "/installation/a";
 const appRoot = "/project/web";
@@ -215,6 +219,59 @@ const withInventory = async (run: (opts: typeof options, pluginRoot: string) => 
     await rm(root, { recursive: true, force: true });
   }
 };
+
+test("purge needs the recorded daemon, including when a different socket aliases it", () =>
+  withInventory(async (opts, pluginRoot) => {
+    const access = { enforce: async () => undefined, verify: async () => undefined };
+    const state = makePluginStateStore(
+      makeStateStore({ privateFileAccess: access }),
+      AbsolutePath.make(pluginRoot),
+      access,
+    );
+    const store = makeAppliedPlanStore({ providerId: "docker", layout: "per-app" });
+    const recorded = dockerEngineIdentity({ ID: "A" }, "unix:///recorded.sock");
+    if (!recorded) throw new Error("Expected a Docker identity");
+    const applied = { ...plan, engineIdentity: recorded };
+    await Effect.runPromise(store.persistAppliedPlan(state, applied));
+    const { api, actions } = fixture();
+    let daemon = "B";
+    const prepare = preflightRecordedPurge(ctx, opts, store.listAppliedPlans, {
+      api: { ...api, info: Effect.sync(() => ({ ID: daemon })) },
+      endpoint: "tcp://proxy:2375",
+      identify: dockerEngineIdentity,
+    });
+    const wrong = await Effect.runPromise(Effect.flip(prepare));
+    expect(wrong.message).toContain("unix:///recorded.sock");
+    expect(wrong.message).toContain("tcp://proxy:2375");
+    const skipped = await Effect.runPromise(
+      Effect.flip(
+        preflightRecordedPurge(ctx, opts, store.listAppliedPlans, {
+          kind: "skipped",
+          endpoint: "Docker context",
+          reason: "Unsupported transport",
+        }),
+      ),
+    );
+    expect(skipped.message).toContain("unix:///recorded.sock");
+    daemon = "A";
+    const found = await Effect.runPromise(prepare);
+    if (found.kind !== "reachable") throw new Error("Expected alias to reach the recorded daemon");
+    daemon = "B";
+    expect((await Effect.runPromise(found.sweep())).retained).toHaveLength(1);
+    expect(actions).toEqual([]);
+    expect((await Effect.runPromise(store.loadAppliedPlanStrict(state, plan.id)))?.engineIdentity).toEqual(
+      recorded,
+    );
+    const replacement = await Effect.runPromise(
+      preflightRecordedPurge(ctx, opts, store.listAppliedPlans, {
+        api: { ...api, info: Effect.succeed({ ID: "replacement" }) },
+        endpoint: recorded.endpoint,
+        identify: dockerEngineIdentity,
+      }),
+    );
+    if (replacement.kind !== "reachable") throw new Error("Expected reachable replacement");
+    expect((await Effect.runPromise(replacement.sweep())).retained).toEqual([]);
+  }));
 
 test("purges exactly receipted legacy objects and leaves replacements and peer-labeled objects alone", () =>
   withInventory(async (opts, pluginRoot) => {

@@ -7,7 +7,7 @@ import { AppPlanner, GlobalAppService, RuntimeProviderRegistry } from "@lando/sd
 import { Effect, Schema } from "effect";
 import { commitGlobalPolicy, prepareGlobalPolicy } from "../global-app/enablement.ts";
 import { withGlobalMutation } from "../global-app/mutation.ts";
-import { globalCreateProviderId } from "../global-app/placement.ts";
+import { selectGlobalCreateProvider } from "../global-app/placement.ts";
 import { prepareGlobalConfiguration } from "../global-app/preparation.ts";
 import { recordGlobalGeneration } from "../global-app/reconciliation.ts";
 import { assertGlobalResolution } from "../global-app/resolution.ts";
@@ -39,9 +39,7 @@ export type GlobalInstallResult = typeof GlobalInstallResultSchema.Type;
 const installPreparedConfiguration = Effect.fn("AppOperation.installPreparedConfiguration")(
   function* (_options: GlobalInstallOptions = {}) {
     const globalApp = yield* GlobalAppService;
-    const providers = yield* RuntimeProviderRegistry;
-    const providerId = yield* globalCreateProviderId();
-    const provider = yield* providers.select(providerId);
+    const { providerId, provider } = yield* selectGlobalCreateProvider();
     const preparation = yield* prepareGlobalConfiguration({
       providerId,
       providerCapabilities: provider.capabilities,

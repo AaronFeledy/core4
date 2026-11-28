@@ -43,8 +43,8 @@ export const makeProviderInventoryLayer = (inputs: MinimalBootstrapLayerInputs) 
   );
 };
 
-export const makeProviderBootstrapBaseLayer = (inputs: MinimalBootstrapLayerInputs) => {
-  // Effect 4 memoizes leaf layers, not composite traversal. Share this dependency graph too.
+export const makeProviderBootstrapBaseLayer = <R>(inputs: MinimalBootstrapLayerInputs<R>) => {
+  // The commands graph ends in a non-memoized Layer.tap. Share that completion across consumers.
   const commandsRuntimeLayer = Layer.suspend(() => makeCommandsBootstrapBaseLayer(inputs));
   const providerSupportLayer = Layer.mergeAll(
     AppPlanSanitizerLayer.layer,

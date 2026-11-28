@@ -51,6 +51,18 @@ export const LandofileEventsOutcome = Schema.Union([
 export type LandofileEventsOutcome = typeof LandofileEventsOutcome.Type;
 
 export const StartAppResult = Schema.Struct({
+  dataVersionChanges: Schema.optionalKey(
+    Schema.Array(
+      Schema.Struct({
+        service: Schema.String.annotate({ description: "Service whose database data upgrades in place." }),
+        from: Schema.String.annotate({ description: "Previous on-disk version series." }),
+        to: Schema.String.annotate({ description: "Selected server version series." }),
+        restorePoint: Schema.optionalKey(Schema.String).annotate({
+          description: "Id of the snapshot saved before the upgrade.",
+        }),
+      }),
+    ),
+  ).annotate({ description: "In-place database data version changes identified before activation." }),
   credentialChanges: Schema.optionalKey(
     Schema.Array(
       Schema.Struct({
@@ -126,6 +138,7 @@ export const RestartAppResult = Schema.Struct({
   servicesStarted: StartAppResult.fields.servicesStarted,
   checks: StartAppResult.fields.checks,
   credentialChanges: StartAppResult.fields.credentialChanges,
+  dataVersionChanges: StartAppResult.fields.dataVersionChanges,
   servicesRemoved: StartAppResult.fields.servicesRemoved,
 }).annotate({ description: "Services and optional readiness checks returned after restarting an app." });
 export type RestartAppResult = typeof RestartAppResult.Type;
@@ -138,6 +151,7 @@ export const RebuildAppResult = Schema.Struct({
   servicesStarted: StartAppResult.fields.servicesStarted,
   checks: StartAppResult.fields.checks,
   credentialChanges: StartAppResult.fields.credentialChanges,
+  dataVersionChanges: StartAppResult.fields.dataVersionChanges,
   servicesRemoved: StartAppResult.fields.servicesRemoved,
 }).annotate({
   description: "Rebuilt services and their post-start observations returned after rebuilding an app.",

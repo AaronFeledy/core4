@@ -8,11 +8,7 @@ import { Context, Layer } from "effect";
 import * as BuiltInCommandCatalogLayer from "../../cli/built-in-command-catalog-live.ts";
 import { type MinimalBootstrapLayerInputs, minimalBootstrapLayerFor } from "./minimal.ts";
 
-export const makePluginsBootstrapBaseLayer = <R>(
-  inputs: Omit<MinimalBootstrapLayerInputs, "pluginLayers"> & {
-    readonly pluginLayers: readonly Layer.Layer<unknown, unknown, R>[];
-  },
-) => {
+export const makePluginsBootstrapBaseLayer = <R>(inputs: MinimalBootstrapLayerInputs<R>) => {
   const minimalRuntimeGraph = minimalBootstrapLayerFor(inputs);
   const minimalRuntimeLayer = Layer.suspend(() => minimalRuntimeGraph);
   const contributionGraphLayer = PluginContributionGraphLayer.PluginContributionGraph.layer<R>(

@@ -88,7 +88,7 @@ interface DestroyFixtureOptions {
   /** Old desired-plan frame written instead of the current version. */
   readonly desiredPlanVersion?: number;
   /** Return the scratch app's applied plan from resolveAppliedPlan; defaults to none. */
-  readonly appliedPlan?: boolean;
+  readonly appliedPlan?: true | "other-engine";
   /** A newer receipt protects this scratch app, by name or as the provider's shared record. */
   readonly offlineNewerReceipt?: "app" | "provider";
   /**
@@ -203,6 +203,10 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
   let stopped = false;
   const provider = {
     ...TestRuntimeProvider,
+    id: plan.provider,
+    ...(options.appliedPlan === "other-engine"
+      ? { engineIdentity: { fingerprint: "current", endpoint: "unix:///current.sock" } }
+      : {}),
     ...(options.offlineNewerReceipt
       ? { isAvailable: Effect.succeed(false), getStatus: Effect.succeed({ state: "idle" as const }) }
       : {}),
@@ -212,7 +216,7 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
         ownership = ownership.filter((hints) => hints.appRoot !== cleanupRoot);
         return { servicesRemoved: [], networksRemoved: 0, volumesRemoved: { data: 0, cache: 0 } };
       }),
-    bringDown: (_target: unknown, request: BringDownOptions) =>
+    bringDown: (target: { readonly app: AppId }, request: BringDownOptions) =>
       Effect.sync(() => {
         const call = request.removeState ? "forget" : stopped ? `destroy:${request.volumes}` : "stop";
         stopped = true;
@@ -230,22 +234,24 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
                 }),
               )
             : Effect.sync(() => {
-                if (call === "forget") applied = undefined;
+                if (call === "forget" && applied?.id === target.app) applied = undefined;
                 return { kind: "removed" as const, containers: [], volumesRemoved: { data: 0, cache: 0 } };
               }),
         ),
       ),
   };
   // The applied receipt a forgetting bring-down removes.
-  let applied: AppPlan | undefined =
-    options.appliedPlan === true
-      ? {
-          ...plan,
-          extensions: {
-            [SCRATCH_EXTENSION_KEY]: options.cwd ? { id } : { id, projectRoot: planRoot },
-          },
-        }
-      : undefined;
+  let applied = options.appliedPlan
+    ? {
+        ...plan,
+        ...(options.appliedPlan === "other-engine"
+          ? { engineIdentity: { fingerprint: "old", endpoint: "tcp://secret@old.example:2375" } }
+          : {}),
+        extensions: {
+          [SCRATCH_EXTENSION_KEY]: options.cwd ? { id } : { id, projectRoot: planRoot },
+        },
+      }
+    : undefined;
   const unreadable =
     options.offlineNewerReceipt === undefined
       ? []
@@ -266,7 +272,7 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
           (entry) => (entry.appId === undefined || entry.appId === id) && provider === plan.provider,
         );
         return issue === undefined
-          ? Effect.succeed(undefined)
+          ? Effect.succeed(applied?.id === id && applied.provider === provider ? applied : undefined)
           : Effect.fail(
               appliedStateVersionError({
                 ...issue,

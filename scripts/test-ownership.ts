@@ -11,7 +11,14 @@ import {
   normalizeTestPath,
   resolveTestSelection,
 } from "./test-selection-files.ts";
-import { TEST_SELECTIONS, type TestSelection, hasNameFilter, selectionMatches } from "./test-selections.ts";
+import {
+  type ContributorTestPreset,
+  TEST_PRESETS,
+  TEST_SELECTIONS,
+  type TestSelection,
+  hasNameFilter,
+  selectionMatches,
+} from "./test-selections.ts";
 
 export const MANUAL_TESTS: Readonly<Record<string, string>> = {
   "core/test/cli/shell-tty.integration.test.ts": "LANDO_TEST_SHELL_TTY=1 and a real terminal",
@@ -42,6 +49,7 @@ const matrixChecks: readonly MatrixTestCheck[] = PROVIDER_ACCEPTANCE_CELLS.flatM
 export interface TestInventoryOptions {
   readonly root?: string;
   readonly selections?: readonly TestSelection[];
+  readonly presets?: readonly ContributorTestPreset[];
   readonly planChecks?: readonly MatrixTestCheck[];
   readonly manual?: Readonly<Record<string, string>>;
   readonly workflowRoot?: string;
@@ -56,6 +64,8 @@ export type TestOwnershipCode =
   | "UNKNOWN_LOCATION"
   | "STALE_SELECTOR"
   | "UNBOUND_SELECTION"
+  | "PRESET_FILE"
+  | "WORKFLOW_PRESET"
   | "RAW_BUN_TEST"
   | "MANUAL_SELECTED"
   | "MANUAL_STALE";
@@ -139,6 +149,7 @@ export const checkTestOwnership = async (options: TestInventoryOptions = {}) => 
   const snapshot = await inventorySnapshot(options);
   const issues = await checkInventoryOwnership({
     ...snapshot,
+    presets: options.presets ?? TEST_PRESETS,
     workflowRoot: options.workflowRoot ?? resolve(snapshot.root, ".github/workflows"),
   });
   return { entries: snapshot.entries, issues };

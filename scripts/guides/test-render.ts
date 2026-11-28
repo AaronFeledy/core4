@@ -1,4 +1,5 @@
 import type { GuidePlatform } from "../../sdk/src/docs/guide-frontmatter.ts";
+import { scenarioDisposition } from "./disposition.ts";
 import type { GuideScenarioAst, GuideScenarioNode, GuideVariant } from "./model.ts";
 import { resolveScenario } from "./resolve.ts";
 import {
@@ -15,11 +16,11 @@ export const renderScenarioTest = (
   hostPlatform: GuidePlatform,
 ): string => {
   const resolved = resolveScenario(guide, scenario, requestedVariant);
+  const disposition = scenarioDisposition(guide, scenario, requestedVariant, hostPlatform);
   const variant = resolved.variant;
-  const scenarioLayer = scenario.layer ?? guide.frontmatter.defaultLayer ?? "scenario";
   const timeout = scenario.timeout ?? guide.frontmatter.timeout;
   const usesLibraryRuntime = resolved.runMode === "library";
-  const usesE2eRuntime = scenarioLayer === "e2e";
+  const usesE2eRuntime = disposition.layer === "e2e";
   const variableSetup = renderVariableSetup(resolved.variables);
   const finalizers = resolved.steps.map((step, index) =>
     renderCleanupFinalizer(step, guide.sourcePath, index),
@@ -50,17 +51,9 @@ export const renderScenarioTest = (
     variant === undefined
       ? "// @variant:"
       : `// @variant: ${variant.pairs.map((pair) => `${pair.axis}=${pair.value}`).join(" ")}`;
-  const effectiveTags = [
-    ...new Set([...(variant?.tags ?? guide.frontmatter.tags ?? []), ...(scenario.tags ?? [])]),
-  ];
+  const effectiveTags = disposition.tags;
   const effectivePlatforms = resolved.platforms;
-  const hostPlatforms = hostPlatform === "wsl" ? ["wsl", "linux"] : [hostPlatform];
-  const platformSkip =
-    effectivePlatforms !== undefined &&
-    effectivePlatforms.length > 0 &&
-    !hostPlatforms.some((p) => effectivePlatforms.some((allowed) => allowed === p))
-      ? `skipped on ${hostPlatform}: requires platform [${effectivePlatforms.join(",")}]`
-      : undefined;
+  const platformSkip = disposition.platformSkip;
   const annotationLines = [
     ...(effectiveTags.length === 0 ? [] : [`// @tags: ${effectiveTags.join(",")}`]),
     ...(usesE2eRuntime ? ["// @layer: e2e"] : []),
@@ -70,12 +63,12 @@ export const renderScenarioTest = (
   ];
   const variantAnnotations = annotationLines.length === 0 ? "" : `\n${annotationLines.join("\n")}`;
   const skips =
-    variant?.skip === undefined && !resolved.skipOnly
-      ? resolved.skips
+    disposition.variantSkip === undefined && disposition.authoredSkip === undefined
+      ? disposition.stepSkips
           .map((skip) => `// @skip: ${skip.reason}\ntest.skip(${JSON.stringify(skip.stepName)}, () => {});`)
           .join("\n")
       : "";
-  const forcedSkip = variant?.skip !== undefined || platformSkip !== undefined || resolved.skipOnly;
+  const forcedSkip = disposition.skip !== undefined;
   const label =
     variant === undefined || variant.pairs.length === 0
       ? ""

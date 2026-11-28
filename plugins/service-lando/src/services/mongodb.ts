@@ -12,6 +12,7 @@ import { Effect, Schema } from "effect";
 import { dataNameFor } from "../app-name.ts";
 import { connectionFor } from "./_connection-helpers.ts";
 import { claimsCreds, familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
+import { MONGO_DATA as DATA_TARGET, applyDatabaseVersion, databaseVersionFeature } from "./_data-version.ts";
 import {
   RESERVED_LONG_PORT,
   catalogDbExtraArgsRemediation,
@@ -40,7 +41,6 @@ export const MONGODB_LISTENER = {
 } as const;
 export const DEFAULT_PORT = MONGODB_LISTENER.port;
 const selectPort = primaryPortSelector(MONGODB_LISTENER);
-const DATA_TARGET = PortablePath.make("/data/db");
 const FAMILY = "mongodb" as const;
 export const MONGODB_FEATURE_ID = "service-lando.mongodb";
 export const MONGODB_CONFIG_TARGET = PortablePath.make("/etc/lando/mongod.conf");
@@ -129,6 +129,7 @@ const applyMongodbFeature = (ctx: ServiceFeatureContext): void => {
   }
 
   applyAuthoredProcessFields(ctx);
+  applyDatabaseVersion(ctx);
 
   const probes = mongodbProbes(port);
   ctx.setHealthcheck(probes.healthcheck);
@@ -197,7 +198,13 @@ export const mongodbServiceType: ServiceType = {
             ...familyEnvFor(FAMILY, creds),
           },
         },
-        features: [{ id: MONGODB_FEATURE_ID }],
+        features: [
+          databaseVersionFeature("mongo", {
+            id: MONGODB_FEATURE_ID,
+            service: input.service,
+            image: input.service.image ?? DEFAULT_IMAGE,
+          }),
+        ],
         tooling: mongodbToolingForConnection(ServiceName.make(input.name), {
           family: "mongodb",
           creds,

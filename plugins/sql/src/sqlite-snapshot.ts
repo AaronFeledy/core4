@@ -9,7 +9,6 @@ import {
   SNAPSHOT_INFO_VERSION,
   ServiceName,
   SnapshotInfo,
-  type SnapshotMetadata,
   snapshotHandle,
 } from "@lando/sdk/schema";
 import type { DataMover, StateStoreShape } from "@lando/sdk/services";
@@ -32,6 +31,7 @@ export const SqliteSnapshotInfo = Schema.Struct({
     recoveryReason: Schema.Literals(["manual", "reset", "restore", "import"]),
   }),
 });
+export type SqliteRecoveryReason = typeof SqliteSnapshotInfo.Type.metadata.recoveryReason;
 
 export type SqliteSnapshotDeps = SqliteHelperDeps & {
   readonly paths: SqliteHelperDeps["paths"] & { readonly snapshotsDir: string };
@@ -48,7 +48,7 @@ export const sqliteSnapshotMetadata = (input: {
   readonly service: string;
   readonly path: string;
   readonly version: string;
-  readonly recoveryReason: Exclude<SnapshotMetadata["recoveryReason"], "seed">;
+  readonly recoveryReason: SqliteRecoveryReason;
 }) => ({
   service: ServiceName.make(input.service),
   path: input.path,
@@ -116,7 +116,7 @@ export const persistSqliteSnapshot = Effect.fn("Sql.persistSqliteSnapshot")(func
   options: {
     readonly id?: string;
     readonly label?: string;
-    readonly recoveryReason?: Exclude<SnapshotMetadata["recoveryReason"], "seed">;
+    readonly recoveryReason?: SqliteRecoveryReason;
   },
 ) {
   const owner = sqlPlanIdentity(plan);

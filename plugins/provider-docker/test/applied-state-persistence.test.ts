@@ -233,6 +233,7 @@ describe("provider-docker applied state persistence", () => {
           const provider = await Effect.runPromise(
             makeRuntimeProvider({
               platform: "linux",
+              env: {},
               appliedPlanState: state,
               appliedPlanStateDir: stateDir,
               dockerApi: {
@@ -312,6 +313,7 @@ describe("provider-docker applied state persistence", () => {
         const provider = await Effect.runPromise(
           makeRuntimeProvider({
             platform: "linux",
+            env: {},
             appliedPlanState: state,
             appliedPlanStateDir: stateDir,
             dockerApi: {

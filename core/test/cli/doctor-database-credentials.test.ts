@@ -261,18 +261,6 @@ test("reports a check the section budget outran as an explicit skip per login", 
   }
 });
 
-/**
- * Effect 4's TestClock fires every due sleep in one `adjust`, yielding only once between them,
- * so work woken by an earlier deadline cannot settle before a later deadline fires. Advance a
- * millisecond at a time and drain the scheduler between steps, as a real clock would.
- */
-const advanceSettled = Effect.fnUntraced(function* (millis: number) {
-  for (let elapsed = 0; elapsed < millis; elapsed += 1) {
-    yield* TestClock.adjust("1 millis");
-    yield* Effect.promise(() => new Promise<void>((resume) => setImmediate(resume)));
-  }
-});
-
 test("keeps a completed rejection when slow target work spends most of the section budget", async () => {
   const { plan, root } = await planFor();
   try {
@@ -312,7 +300,7 @@ test("keeps a completed rejection when slow target work spends most of the secti
             // must be derived from the 400ms that remain, not from the section's full duration.
             yield* Deferred.await(listing);
             yield* TestClock.adjust(Duration.millis(1_600));
-            yield* advanceSettled(400);
+            yield* TestClock.adjust(Duration.millis(400));
             return yield* Fiber.join(fiber);
           }).pipe(Effect.provide(TestClock.layer())),
         ),
@@ -324,9 +312,12 @@ test("keeps a completed rejection when slow target work spends most of the secti
       subject: "creds-demo/db:app",
       context: { family: "mariadb", login: "app" },
     });
-    expect(result.skipped ?? []).not.toContainEqual(
-      expect.objectContaining({ reason: expect.stringContaining("could not complete") }),
-    );
+    expect(result.skipped).toEqual([
+      {
+        check: "database-credentials:db:root",
+        reason: expect.stringContaining("the credential check budget expired before this login was observed"),
+      },
+    ]);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

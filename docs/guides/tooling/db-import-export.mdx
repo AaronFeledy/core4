@@ -208,7 +208,7 @@ lando db:restore before-change --yes
 
 `db:restore` takes a label or the id `db:snapshots` prints. Both ids and labels resolve only within the current app, owner, and database store. An exact id wins. Otherwise Lando uses the newest snapshot with that label, so you can reuse a label like `before-change` and always get the latest one. Labels don't have to be unique, and `db:snapshots` lists every snapshot that shares one; pass an id to restore an older one. Restore takes a recovery snapshot first, so if you restored the wrong one, restore the recovery snapshot ID it reports. A name that matches nothing in that scope fails with `SnapshotNotFoundError`.
 
-A snapshot restores only into the database volume that took it, with matching owner, service, database family, version, image, and recorded physical volume generation. Snapshots from another app or checkout don't restore, even when they show up in `db:snapshots --from-app`. Native snapshots also cannot restore through another provider. Move data across providers with `db:export` on the source, then `db:import` or `db:seed <file>` on the destination.
+A snapshot restores only into the database volume that took it, with matching owner, service, database family, and recorded physical volume generation. Ordinary snapshots also require the same server version and image. [Upgrade restore points](#restore-points-before-version-upgrades) use the data version series instead. Snapshots from another app or checkout don't restore, even when they show up in `db:snapshots --from-app`. Native snapshots also cannot restore through another provider. Move data across providers with `db:export` on the source, then `db:import` or `db:seed <file>` on the destination.
 
 ## Seed a fresh database
 
@@ -243,7 +243,7 @@ Doctor's filesystem-only `legacy-snapshot-catalogs` check lists the count and pa
 
 Before `db:import`, `db:reset`, or `db:restore` changes your data, Lando takes an automatic recovery snapshot. After a successful operation, Lando keeps the newest 3 recovery snapshots per database automatically, including the one just taken. Failed operations leave every recovery snapshot in place and report the snapshot ID you can restore. Retention stays within this app folder and database; another Git worktree's snapshots stay put.
 
-`lando db:snapshots:prune` handles manual snapshots created by `db:snapshot`. It keeps the newest 3 by default; `--keep-latest` changes that number. Add `--recovery` to prune the automatic recovery snapshots instead. A recovery snapshot holds a full copy of the database as it was before the change, so delete them when that copy shouldn't stay on disk, such as after importing production data. Preview first, then delete every recovery snapshot for the database:
+`lando db:snapshots:prune` handles manual snapshots created by `db:snapshot`. It keeps the newest 3 by default; `--keep-latest` changes that number. Add `--recovery` to prune recovery snapshots, including upgrade restore points, instead. A recovery snapshot holds a full copy of the database as it was before the change, so delete it when that copy shouldn't stay on disk, such as after importing production data. Preview first, then delete every recovery snapshot for the database:
 
 ```sh
 lando db:snapshots:prune --recovery --keep-latest 0 --preview
@@ -251,6 +251,14 @@ lando db:snapshots:prune --recovery --keep-latest 0 --yes
 ```
 
 Prune and purge delete native data through the recording provider before removing the catalog entry. If deletion fails, the snapshot stays listed so you can retry. If automatic retention warns that cleanup failed, your database operation still succeeded; older recovery snapshots may remain until a later successful operation retries cleanup.
+
+## Restore points before version upgrades
+
+Before an in-place [MariaDB](../services/mariadb.mdx#change-versions) or [MySQL](../services/mysql.mdx#change-versions) upgrade, Lando saves the original data and prints the restore point ID. `lando db:snapshots --service db` lists it with the reason `upgrade`. Automatic retention keeps three non-upgrade recovery snapshots and leaves upgrade points alone. Explicit `lando db:snapshots:prune --recovery` includes upgrade points. Preview before deleting.
+
+Restoring replaces changes made since capture. Set the service to the snapshot's exact series in your Landofile, then run `lando db:restore <id> --service db` with the listed ID. If the point is unverified, add `--any-series` only after checking the series independently. Ownership and volume checks still apply.
+
+If the applied server uses a different series or the restored series is unverified, restore leaves the database stopped so it can't reopen the files. Follow the restore output to start the correct series, then check that your app can read the recovered data. The output also lists the undo point. If it's unverified, independently verify its data series and pin that series before restoring it.
 
 ## Confirm destructive work
 
@@ -378,7 +386,7 @@ lando db:reset --yes
     </Step>
   </Scenario>
 
-  <Scenario id="restore-label-and-prune-recovery" layer="e2e" render={false} reason="A reused label restores the newest snapshot and --recovery deletes only recovery snapshots">
+  <Scenario id="restore-label-and-prune-recovery" layer="e2e" timeout={180000} render={false} reason="A reused label restores the newest snapshot and --recovery deletes only recovery snapshots">
     <Step name="restore-reused-label">
       <UseFixture name="one-db" />
       <Verify command="lando start --format=json" expect={{ stdout: { regex: "\"ok\":true" } }} />

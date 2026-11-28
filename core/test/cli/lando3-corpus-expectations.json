@@ -1249,24 +1249,18 @@
   {
     "fixture": "mariadb/examples/10.11",
     "outcome": {
-      "stage": "unsupported",
-      "diagnostics": [
+      "stage": "lint",
+      "valid": false,
+      "violations": [
         {
-          "sourceId": "mariadb/examples/10.11/.lando.yml",
-          "kind": "unsupported",
-          "keyPath": ["services", "defaults", "type"],
-          "message": "mariadb version 10.11 is not available in Lando 4."
-        },
-        {
-          "sourceId": "mariadb/examples/10.11/.lando.yml",
-          "kind": "unsupported",
-          "keyPath": ["services", "patch", "type"],
-          "message": "mariadb version 10.11.7 is not available in Lando 4."
+          "message": "Route for service defaults selects port 3306, which declares tcp, not HTTP.",
+          "path": ["proxy", "defaults", 0],
+          "rule": "landofile.route"
         }
       ]
     },
-    "category": "unsupported-diagnostics",
-    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+    "category": "expected-rejection",
+    "reason": "The legacy proxy entry targets MariaDB's TCP listener on port 3306, which cannot serve an HTTP route."
   },
   {
     "fixture": "mariadb/examples/10.2",
@@ -1617,24 +1611,18 @@
   {
     "fixture": "mariadb/examples/11.8",
     "outcome": {
-      "stage": "unsupported",
-      "diagnostics": [
+      "stage": "lint",
+      "valid": false,
+      "violations": [
         {
-          "sourceId": "mariadb/examples/11.8/.lando.yml",
-          "kind": "unsupported",
-          "keyPath": ["services", "database", "type"],
-          "message": "mariadb version 11.8 is not available in Lando 4."
-        },
-        {
-          "sourceId": "mariadb/examples/11.8/.lando.yml",
-          "kind": "unsupported",
-          "keyPath": ["services", "patch", "type"],
-          "message": "mariadb version 11.8.3 is not available in Lando 4."
+          "message": "Route for service database selects port 3306, which declares tcp, not HTTP.",
+          "path": ["proxy", "database", 0],
+          "rule": "landofile.route"
         }
       ]
     },
-    "category": "unsupported-diagnostics",
-    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+    "category": "expected-rejection",
+    "reason": "The legacy proxy entry targets MariaDB's TCP listener on port 3306, which cannot serve an HTTP route."
   },
   {
     "fixture": "mariadb/examples/custom",
@@ -3130,12 +3118,6 @@
           "kind": "unsupported",
           "keyPath": ["services", "database", "type"],
           "message": "mariadb version 10.6 is not available in Lando 4."
-        },
-        {
-          "sourceId": "phpmyadmin/examples/4.x/.lando.yml",
-          "kind": "unsupported",
-          "keyPath": ["services", "database2", "type"],
-          "message": "mariadb version 10.11 is not available in Lando 4."
         }
       ]
     },

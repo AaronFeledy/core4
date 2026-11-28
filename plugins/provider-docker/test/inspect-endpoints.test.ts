@@ -63,7 +63,9 @@ test("Docker inspect reports actual transport without planned HTTP metadata", as
     info: Effect.succeed({}),
     request: () => Effect.succeed({ status: 200, body: inspectBody }),
   };
-  const provider = await Effect.runPromise(makeRuntimeProvider({ platform: "linux", dockerApi: api }));
+  const provider = await Effect.runPromise(
+    makeRuntimeProvider({ platform: "linux", env: {}, dockerApi: api }),
+  );
   // When
   const result = await Effect.runPromise(provider.inspect({ app: plan.id, service: name, plan }));
   // Then
@@ -95,7 +97,9 @@ test("Docker list leaves planless TCP bindings as TCP rather than guessing HTTP"
           : inspectBody,
       }),
   };
-  const provider = await Effect.runPromise(makeRuntimeProvider({ platform: "linux", dockerApi: api }));
+  const provider = await Effect.runPromise(
+    makeRuntimeProvider({ platform: "linux", env: {}, dockerApi: api }),
+  );
   // When
   const result = await Effect.runPromise(provider.list({ app: plan.id }));
   // Then
@@ -134,7 +138,9 @@ test("Docker list keeps the reporting provider id and the raw provider label", a
           : inspectBody,
       }),
   };
-  const provider = await Effect.runPromise(makeRuntimeProvider({ platform: "linux", dockerApi: api }));
+  const provider = await Effect.runPromise(
+    makeRuntimeProvider({ platform: "linux", env: {}, dockerApi: api }),
+  );
   // When
   const result = await Effect.runPromise(provider.list({ app: plan.id }));
   // Then the reporting provider stays docker; the raw label survives for the ownership predicate.
@@ -159,7 +165,9 @@ test.each([
       info: Effect.succeed({}),
       request: () => Effect.succeed({ status, body }),
     };
-    const provider = await Effect.runPromise(makeRuntimeProvider({ platform: "linux", dockerApi: api }));
+    const provider = await Effect.runPromise(
+      makeRuntimeProvider({ platform: "linux", env: {}, dockerApi: api }),
+    );
     // When
     const result = await Effect.runPromise(provider.inspect({ app: plan.id, service: name, plan }));
     // Then
@@ -181,7 +189,9 @@ test.each(["paused", "restarting"])(
           body: JSON.stringify({ ...body, State: { Running: true, Status: state } }),
         }),
     };
-    const provider = await Effect.runPromise(makeRuntimeProvider({ platform: "linux", dockerApi: api }));
+    const provider = await Effect.runPromise(
+      makeRuntimeProvider({ platform: "linux", env: {}, dockerApi: api }),
+    );
     // When
     const result = await Effect.runPromise(provider.inspect({ app: plan.id, service: name, plan }));
     // Then
@@ -222,7 +232,9 @@ test.each([
             : { status, body },
         ),
     };
-    const provider = await Effect.runPromise(makeRuntimeProvider({ platform: "linux", dockerApi: api }));
+    const provider = await Effect.runPromise(
+      makeRuntimeProvider({ platform: "linux", env: {}, dockerApi: api }),
+    );
     // When
     const result = await Effect.runPromise(provider.list({ app: plan.id }));
     // Then

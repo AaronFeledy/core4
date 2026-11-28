@@ -61,7 +61,7 @@ export const normalizeStructure = (schema: JsonSchema, preserveEvaluatedProperti
   const result: Record<string, JsonValue> = { ...schema };
   if (result.type === "integer") {
     // Effect's Int decoder already used Number.isSafeInteger in 4.0.0.
-    // 4.1.4 emits these implicit limits; stricter authored bounds still matter.
+    // 4.1.4 and later emit these implicit limits; stricter authored bounds still matter.
     if (result.minimum === Number.MIN_SAFE_INTEGER) Reflect.deleteProperty(result, "minimum");
     if (result.maximum === Number.MAX_SAFE_INTEGER) Reflect.deleteProperty(result, "maximum");
   }

@@ -59,26 +59,35 @@ export const listResourceOwnershipRecords = Effect.fn("ResourceOwnership.listRec
   return summaries;
 });
 
+export const openPurgeState = Effect.fn("ResourceOwnership.openPurgeState")(function* (
+  providerId: string,
+  input: { readonly dataRoot: string; readonly pluginId: string },
+) {
+  const { dataRoot } = input;
+  const paths = makeLandoPaths({
+    userDataRoot: dataRoot,
+    platform: sep === "\\" ? "win32" : "linux",
+    sources: { user: false, env: false },
+  });
+  const pluginRoot = AbsolutePath.make(paths.pluginStateDir(input.pluginId));
+  const dir = inventoryDir(pluginRoot);
+  const resolved = yield* Effect.tryPromise({
+    try: () => realpathOrDeepestExisting(dir),
+    catch: (cause) => ownershipFailure(providerId, cause),
+  });
+  if (!isPathWithin(dataRoot, resolved)) return yield* Effect.fail(ownershipFailure(providerId));
+  const access = yield* PrivateFileAccessService;
+  const state = makePluginStateStore(makeStateStore({ privateFileAccess: access }), pluginRoot, access);
+  return { pluginRoot, state };
+}, Effect.provide(PrivateFileAccessService.layer));
+
 export const readDataRootAdoptionReceipts = Effect.fn("ResourceOwnership.readDataRootAdoptionReceipts")(
   function* (providerId: string, input: { readonly dataRoot: string; readonly pluginId: string }) {
     const { dataRoot } = input;
-    const paths = makeLandoPaths({
-      userDataRoot: dataRoot,
-      platform: sep === "\\" ? "win32" : "linux",
-      sources: { user: false, env: false },
-    });
-    const pluginRoot = AbsolutePath.make(paths.pluginStateDir(input.pluginId));
-    const dir = inventoryDir(pluginRoot);
-    const resolved = yield* Effect.tryPromise({
-      try: () => realpathOrDeepestExisting(dir),
-      catch: (cause) => ownershipFailure(providerId, cause),
-    });
-    if (!isPathWithin(dataRoot, resolved)) return yield* Effect.fail(ownershipFailure(providerId));
-    const records = yield* listRecords(dir).pipe(mapFailures((cause) => ownershipFailure(providerId, cause)));
-    if (records.length === 0) return { dataRoot, receipts: [] } satisfies DataRootOwnershipContext;
-
-    const access = yield* PrivateFileAccessService;
-    const state = makePluginStateStore(makeStateStore({ privateFileAccess: access }), pluginRoot, access);
+    const { pluginRoot, state } = yield* openPurgeState(providerId, input);
+    const records = yield* listRecords(inventoryDir(pluginRoot)).pipe(
+      mapFailures((cause) => ownershipFailure(providerId, cause)),
+    );
     const store = makeResourceOwnershipStore(providerId, state);
     const receipts: AdoptionReceipt[] = [];
     for (const record of records) {
@@ -89,5 +98,4 @@ export const readDataRootAdoptionReceipts = Effect.fn("ResourceOwnership.readDat
     }
     return { dataRoot, receipts } satisfies DataRootOwnershipContext;
   },
-  Effect.provide(PrivateFileAccessService.layer),
 );

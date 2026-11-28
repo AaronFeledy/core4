@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
-import { SecretNotFoundError } from "@lando/sdk/errors";
+import { SecretNotFoundError, isErrnoCode } from "@lando/sdk/errors";
 import { createRedactor } from "@lando/sdk/secrets";
 import { EventService, type LandoEvent, type ShellReplInput } from "@lando/sdk/services";
 import { Cause, Deferred, Effect, Exit, Fiber, Layer, Queue, Stream } from "effect";
@@ -571,9 +571,7 @@ test("the evaluator argv contains static code but never the command text", () =>
   if (process.platform !== "win32") expect(hostShellEvaluatorArgv()).toContain("--no-orphans");
 });
 
-test("aborting a line reaps evaluator descendants before returning", async () => {
-  if (process.platform === "win32") return;
-
+test.skipIf(process.platform !== "linux")("line abort leaves descendants terminating or gone", async () => {
   // Given
   const root = await mkdtemp(join(tmpdir(), "lando-host-repl-descendants-"));
   const pidFile = join(root, "pid");
@@ -590,21 +588,27 @@ test("aborting a line reaps evaluator descendants before returning", async () =>
       writeStderr: () => {},
     });
     const pid = Number.parseInt((await readFile(pidFile, "utf8")).trim(), 10);
-    let alive = true;
+    let terminating = true;
     try {
-      process.kill(pid, 0);
+      // Read pending signals first: the kernel can consume SIGKILL as the task enters do_exit.
+      const status = await Bun.file(`/proc/${pid}/status`).text();
       const stat = await Bun.file(`/proc/${pid}/stat`).text();
-      alive = stat.split(" ")[2] !== "Z";
+      const [state, , , , , , flags] = stat.slice(stat.lastIndexOf(")") + 2).split(" ");
+      terminating =
+        state === "Z" ||
+        state === "X" ||
+        (Number(flags) & 0x4) !== 0 || // PF_EXITING
+        [...status.matchAll(/^(?:SigPnd|ShdPnd):\t([0-9a-f]+)$/gim)].some(
+          ([, mask]) => (BigInt(`0x${mask}`) & 0x100n) !== 0n,
+        );
     } catch (cause) {
-      if (cause instanceof Error && "code" in cause && (cause.code === "ESRCH" || cause.code === "ENOENT")) {
-        alive = false;
-      } else throw cause;
+      if (!isErrnoCode(cause, "ESRCH") && !isErrnoCode(cause, "ENOENT")) throw cause;
     }
-    if (alive) process.kill(pid, "SIGKILL");
+    if (!terminating) process.kill(pid, "SIGKILL");
 
     // Then
     expect(result.exitCode).toBe(130);
-    expect(alive).toBe(false);
+    expect(terminating).toBe(true);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

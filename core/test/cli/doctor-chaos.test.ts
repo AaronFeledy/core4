@@ -15,6 +15,7 @@ import { TestClock } from "effect/testing";
 import type { DoctorSectionResult } from "../../src/cli/commands/doctor.ts";
 import { doctor } from "../../src/cli/commands/doctor.ts";
 import { resilientDoctorReport } from "../../src/cli/commands/doctor-bootstrap";
+import { HostProxyDoctorFileSystem } from "../../src/cli/commands/doctor-host-proxy-filesystem";
 import { probeBudgetMs } from "../../src/cli/commands/doctor-plugin-checks.ts";
 import { DoctorReportSchema, collectDoctorReport } from "../../src/cli/commands/doctor-report.ts";
 import { independentSection } from "../../src/cli/commands/doctor-sections";
@@ -72,25 +73,21 @@ const doctorModule = (check: PluginDoctorCheckContribution): LandoPluginModule =
   doctorChecks: [check],
 });
 
+const absentHostProxyRoot = Layer.effect(
+  HostProxyDoctorFileSystem,
+  Effect.map(HostProxyDoctorFileSystem, (live) => ({
+    ...live,
+    readRoot: () => Effect.succeed({ _tag: "absent" }),
+  })),
+).pipe(Layer.provide(HostProxyDoctorFileSystem.layer));
+
 const layersFor = (registry: ReturnType<typeof makeTestRuntimeProviderRegistry>) =>
   Layer.mergeAll(
     Layer.succeed(RuntimeProviderRegistry, registry),
     Layer.succeed(ConfigService, ConfigService.of(buildConfigService())),
     Layer.succeed(PathsService, makeLandoPaths({ platform: "linux", env: {} })),
+    absentHostProxyRoot,
   );
-
-/**
- * Effect 4's TestClock fires every due sleep in one `adjust`, yielding only once
- * between them, so work woken by an earlier deadline cannot settle before a later
- * deadline fires. Advance a millisecond at a time and drain the scheduler between
- * steps, as a real clock would.
- */
-const advanceSettled = Effect.fnUntraced(function* (millis: number) {
-  for (let elapsed = 0; elapsed < millis; elapsed += 1) {
-    yield* TestClock.adjust("1 millis");
-    yield* Effect.promise(() => new Promise<void>((resume) => setImmediate(resume)));
-  }
-});
 
 const selfSections = (report: DoctorSectionResult) =>
   report.checks
@@ -145,6 +142,35 @@ describe("doctor chaos: provider path", () => {
     expect(check?.context.failure).toBe("ProviderUnavailableError");
     expect(check?.solutions.map((solution) => solution.command)).toContain("lando setup");
     expect(result.provider?.selection.providerId).toBe("lando");
+  });
+
+  test("leads with the remediation the provider's selection failure carries", async () => {
+    // Given a provider that refuses its configuration with a specific fix
+    const layers = layersFor(
+      makeTestRuntimeProviderRegistry({
+        list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
+        select: () =>
+          Effect.fail(
+            new ProviderUnavailableError({
+              providerId: TestRuntimeProvider.id,
+              operation: "select",
+              message: 'Docker context "remote" connects over TLS.',
+              remediation: "Run `docker context use <name>` for a local socket context, then retry.",
+            }),
+          ),
+      }),
+    );
+
+    // When
+    const result = await Effect.runPromise(doctor({}).pipe(Effect.provide(layers)));
+
+    // Then that fix comes first and setup follows with its command
+    const check = result.checks.find((entry) => entry.name === "selected-provider");
+    expect(check?.solutions[0]).toEqual({
+      kind: "manual",
+      description: "Run `docker context use <name>` for a local socket context, then retry.",
+    });
+    expect(check?.solutions[1]?.command).toBe("lando setup");
   });
 
   test("degrades to a failed check when the provider status probe fails", async () => {
@@ -503,7 +529,8 @@ describe("doctor chaos: plugin-contributed checks", () => {
         yield* Deferred.await(hangStarted);
         yield* Effect.yieldNow;
         expect(Option.isSome(yield* Deferred.poll(healthyStarted))).toBe(true);
-        yield* advanceSettled(1_000);
+        yield* TestClock.adjust("1 second");
+        expect(fiber.pollUnsafe()).toBeDefined();
         return yield* Fiber.join(fiber);
       }).pipe(Effect.provide(layers), Effect.provide(TestClock.layer())),
     );
@@ -523,13 +550,11 @@ describe("doctor chaos: plugin-contributed checks", () => {
 
   test("preserves contribution input order when checks complete in reverse", async () => {
     // Given two checks whose second completion releases the first
-    const firstStarted = Effect.runSync(Deferred.make<void>());
     const secondFinished = Effect.runSync(Deferred.make<void>());
     const first = doctorModule({
       id: "chaos-order-first",
       run: () =>
-        Deferred.succeed(firstStarted, undefined).pipe(
-          Effect.andThen(Deferred.await(secondFinished)),
+        Deferred.await(secondFinished).pipe(
           Effect.as([
             {
               name: "chaos-order-first",
@@ -565,26 +590,18 @@ describe("doctor chaos: plugin-contributed checks", () => {
     const layers = layersFor(statusRegistry(TestRuntimeProvider.getStatus));
 
     // When
+    const options = { env: {} };
     const report = await Effect.runPromise(
-      Effect.gen(function* () {
-        const options = { env: SHORT_BUDGET_ENV };
-        const fiber = yield* Effect.forkChild(
-          collectDoctorReport({
-            options,
-            contexts: {},
-            table: [
-              independentSection({
-                id: "provider",
-                run: doctor(options, [first, second]).pipe(Effect.provide(layers)),
-              }),
-            ],
+      collectDoctorReport({
+        options,
+        contexts: {},
+        table: [
+          independentSection({
+            id: "provider",
+            run: doctor(options, [first, second]).pipe(Effect.provide(layers)),
           }),
-        );
-        yield* Deferred.await(firstStarted);
-        yield* Effect.yieldNow;
-        yield* advanceSettled(1_000);
-        return yield* Fiber.join(fiber);
-      }).pipe(Effect.provide(layers), Effect.provide(TestClock.layer())),
+        ],
+      }),
     );
 
     // Then
@@ -593,6 +610,7 @@ describe("doctor chaos: plugin-contributed checks", () => {
         .filter((check) => check.section === "provider" && check.name.startsWith("chaos-order-"))
         .map((entry) => entry.name),
     ).toEqual(["chaos-order-first", "chaos-order-second"]);
+    expect(selfSections(report)).toEqual([]);
   });
 
   test("keeps inner attribution when sequential plugin and provider probes exhaust the report budget", async () => {
@@ -629,9 +647,9 @@ describe("doctor chaos: plugin-contributed checks", () => {
           }),
         );
         yield* Deferred.await(pluginStarted);
-        yield* advanceSettled(800);
+        yield* TestClock.adjust("800 millis");
         yield* Deferred.await(providerStarted);
-        yield* advanceSettled(200);
+        yield* TestClock.adjust("200 millis");
         return yield* Fiber.join(fiber);
       }).pipe(Effect.provide(layers), Effect.provide(TestClock.layer())),
     );

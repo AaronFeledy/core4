@@ -18,7 +18,7 @@ After setup succeeds, run `lando doctor` and check that it reports Docker.
 
 `--yes` consents to confirmation. It does not switch providers. See [What persists](./provider-selection.mdx#what-persists).
 
-Windows Docker Desktop uses the named pipe `npipe://./pipe/docker_engine` when `DOCKER_HOST` is unset. Bind mounts are VM-mediated, so `bindMountPerformance` reports `slow`.
+With `DOCKER_HOST` unset, Lando uses the endpoint of the active Docker context, as the `docker` CLI does, and falls back to the named pipe `npipe://./pipe/docker_engine` when no context is selected. `lando doctor --provider=docker --format=json` reports the endpoint in its `docker-endpoint` check. Bind mounts are VM-mediated, so `bindMountPerformance` reports `slow`.
 
 Setup fails with remediation if Docker Desktop is missing. It does not install Docker for you.
 

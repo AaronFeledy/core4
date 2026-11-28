@@ -2,9 +2,11 @@ import { describe, expect, test } from "bun:test";
 import { chmod, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { makePrepareUninstallCleanup, providerPurgeHooks } from "@lando/engine/install/uninstall-discovery";
 import { makePluginStateStore as makePluginStateStoreWithAccess } from "@lando/engine/plugins/context-state";
+import { makeLandoPaths } from "@lando/paths";
 import { DateTime, Effect, Schema } from "effect";
-import { makeRuntimeProvider } from "../src/index.ts";
+import { makeRuntimeProvider, plugin } from "../src/index.ts";
 import { ownerOnlyFileAccess } from "./private-file-access.ts";
 
 const makePluginStateStore = (
@@ -124,6 +126,23 @@ const withStateDir = async <T>(run: (dir: string) => Promise<T>): Promise<T> => 
 };
 
 describe("provider-lando applied state persistence", () => {
+  test("purge proceeds when a stopped managed machine still has applied plans", () =>
+    withStateDir(async (dataRoot) => {
+      const pluginRoot = makeLandoPaths({ userDataRoot: dataRoot }).pluginStateDir(plugin.name);
+      const state = makePluginStateStore(makeStateStore(), AbsolutePath.make(pluginRoot));
+      await Effect.runPromise(persistAppliedPlan(state, plan));
+      const prepare = makePrepareUninstallCleanup(
+        providerPurgeHooks([plugin]),
+        async () => {
+          throw Object.assign(new Error("no machine installed"), { code: "ENOENT" });
+        },
+        "darwin",
+        { hostEnv: {} },
+      );
+      const prepared = await prepare(dataRoot, join(dataRoot, "cache"));
+      expect(prepared.apps).toEqual([]);
+      expect(await prepared.cleanup()).toContain("cleanup was skipped");
+    }));
   for (const damage of ["corrupt", "migration", "decode"] as const) {
     for (const operation of ["apply", "reconcile", "stop", "restart", "destroy-supplied"] as const) {
       test(`${operation} refuses ${damage} state before touching the runtime`, async () => {

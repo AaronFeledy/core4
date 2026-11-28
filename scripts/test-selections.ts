@@ -1,9 +1,12 @@
 import { CI_PLATFORMS } from "./ci-platforms.ts";
 
-export interface TestSelection {
+interface TestSelectors {
   readonly id: string;
   readonly paths: readonly string[];
   readonly ignore?: readonly string[];
+}
+
+export interface TestSelection extends TestSelectors {
   readonly args?: readonly string[];
   /** Run as `bun --no-orphans test`, killing every descendant on exit; live suites keep their daemons. */
   readonly noOrphans?: true;
@@ -12,6 +15,10 @@ export interface TestSelection {
   readonly runner?: "go";
   readonly jobs: readonly { readonly workflow: string; readonly job: string }[];
   readonly needs?: string;
+}
+
+export interface ContributorTestPreset extends TestSelectors {
+  readonly kind: "preset";
 }
 
 export const UNIT_SHARD_COUNT = 3;
@@ -394,13 +401,51 @@ export const TEST_SELECTIONS = [
   },
 ] as const satisfies readonly TestSelection[];
 
+export const TEST_PRESETS = [
+  {
+    id: "effect-upgrade",
+    kind: "preset",
+    ignore: ["**/*.integration.test.ts"],
+    paths: [
+      "sdk/test/schema/",
+      "sdk/test/library/",
+      "core/test/library/",
+      "core/test/runtime/",
+      "core/test/mcp/",
+      "mcp/test/",
+      "container-runtime/test/",
+      "http-client/test/",
+      "plugins/sql/test/",
+      "core/test/cli/doctor-chaos.test.ts",
+      "core/test/cli/doctor-database-credentials.test.ts",
+      "core/test/cli/doctor-layer-build-characterization.test.ts",
+      "core/test/cli/compiled-decoders.test.ts",
+      "core/test/cli/machine-output-conformance.test.ts",
+      "core/test/cli/commands/meta/mcp-list.test.ts",
+      "core/test/docs/component-props.test.ts",
+      "core/test/build/effect-version-pin.test.ts",
+      "engine/test/operations/plugin-scaffold.test.ts",
+      "engine/test/operations/ensure-global-warm.test.ts",
+      "engine/test/operations/global-mutation-lock.test.ts",
+      "engine/test/operations/info-file-sync-*.test.ts",
+      "engine/test/services/environment-value-resolver.test.ts",
+      "engine/test/services/event-service-waitfor-query.test.ts",
+      "engine/test/runtime/app-generations.test.ts",
+      "renderer/test/renderer-contract.test.ts",
+      "plugins/renderer-lando/test/renderer-contract.test.ts",
+      "redaction/test/exact-values.test.ts",
+      "sdk/test/command-result-json-redaction.test.ts",
+    ],
+  },
+] as const satisfies readonly ContributorTestPreset[];
+
 export type TestSelectionId = (typeof TEST_SELECTIONS)[number]["id"];
 export const testSelectionCommand = (id: TestSelectionId): string => `bun run test:selection ${id}`;
 
 export const selectorMatches = (selector: string, path: string): boolean =>
   selector.endsWith("/") ? path.startsWith(selector) : new Bun.Glob(selector).match(path);
 
-export const selectionMatches = (selection: TestSelection, path: string): boolean =>
+export const selectionMatches = (selection: TestSelectors, path: string): boolean =>
   selection.paths.some((selector) => selectorMatches(selector, path)) &&
   !(selection.ignore ?? []).some((selector) => selectorMatches(selector, path));
 

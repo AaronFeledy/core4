@@ -15,7 +15,7 @@ nativeListenPortSuite({
   serviceType: mariadbServiceType,
   variable: "MYSQL_TCP_PORT",
   defaultPort: 3306,
-  serverCommand: "mariadbd",
+  startupCommand: "sh",
 });
 
 const metadata = {
@@ -71,6 +71,7 @@ describe("mariadb ServiceType", () => {
 
     expect(plan.type).toBe("mariadb");
     expect(plan.artifact).toEqual({ kind: "ref", ref: "mariadb:11.4" });
+    expect(plan.environment.MARIADB_AUTO_UPGRADE).toBe("1");
     expect(plan.environment.MARIADB_USER).toBe("lando");
     expect(plan.environment.MARIADB_PASSWORD).toBe("lando");
     expect(plan.environment.MARIADB_DATABASE).toBe("myapp");
@@ -246,7 +247,7 @@ describe("mariadb ServiceType", () => {
       },
     ]);
     expect(String(MARIADB_CONFIG_TARGET)).toBe("/etc/mysql/conf.d/99-lando.cnf");
-    expect(plan.command).toEqual(["mariadbd", "--port=3306"]);
+    expect(plan.command?.slice(-2)).toEqual(["mariadbd", "--port=3306"]);
     expect(plan.entrypoint).toEqual(baseline.entrypoint);
   });
 
@@ -259,8 +260,38 @@ describe("mariadb ServiceType", () => {
 
     // Then
     expect(plan.mounts.filter((mount) => mount.type !== "volume")).toEqual([]);
-    expect(plan.command).toBeUndefined();
     expect(plan.entrypoint).toBeUndefined();
+  });
+
+  test.each([{ port: 4306 }, { port: 4306, environment: { MYSQL_TCP_PORT: "4306" } }])(
+    "passes the planned port on argv with a mounted option file for %j",
+    async (definition) => {
+      const plan = await planMariadb({ type: "mariadb", ...definition, config: { server: "config/my.cnf" } });
+      expect(plan.command?.slice(-2)).toEqual(["mariadbd", "--port=4306"]);
+    },
+  );
+
+  test.each(["command", "entrypoint"] as const)("mounts config.server with an authored %s", async (field) => {
+    const plan = await planMariadb({
+      type: "mariadb",
+      port: 4306,
+      [field]: ["custom-server"],
+      config: { server: "config/my.cnf" },
+    });
+    expect(plan[field]).toEqual(["custom-server"]);
+    if (field === "entrypoint") expect(plan.command).toBeUndefined();
+    expect(plan.mounts).toContainEqual(expect.objectContaining({ target: MARIADB_CONFIG_TARGET }));
+  });
+
+  test("pins the port without the guard on a non-official image with config.server", async () => {
+    const plan = await planMariadb({
+      type: "mariadb",
+      image: "myorg/mariadb",
+      port: 4306,
+      config: { server: "config/my.cnf" },
+    });
+    expect(plan.command).toEqual(["mariadbd", "--port=4306"]);
+    expect(plan.mounts).toContainEqual(expect.objectContaining({ target: MARIADB_CONFIG_TARGET }));
   });
 
   test.each([

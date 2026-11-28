@@ -17,5 +17,7 @@ export const makeRuntimeProvider = (options: NonNullable<Parameters<typeof facto
   factory({
     ...fixtureHelperOptionsFor(options.dockerApi),
     ...options,
+    // Isolate from the host Docker CLI context unless a test supplies env.
+    env: options.env ?? {},
     appliedPlanState: options.appliedPlanState ?? state(),
   });

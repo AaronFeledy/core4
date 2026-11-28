@@ -1,7 +1,7 @@
 import { mapFailures } from "@lando/sdk/command-result";
 import { AppliedStateVersionError, ProviderUnavailableError } from "@lando/sdk/errors";
 import type { PluginStateStore } from "@lando/sdk/plugins";
-import type { AppId, AppPlan, AppliedAppPlan, ProviderId } from "@lando/sdk/schema";
+import type { AppId, AppPlan, AppliedAppPlan, EngineIdentity, ProviderId } from "@lando/sdk/schema";
 import { Effect } from "effect";
 
 import { mergeAppliedPlan } from "./plan.ts";
@@ -9,6 +9,7 @@ import { mergeAppliedPlan } from "./plan.ts";
 export interface AppliedPlanCacheOptions {
   readonly providerId: ProviderId;
   readonly providerName: string;
+  readonly engineIdentity?: EngineIdentity;
   readonly appliedPlanState?: PluginStateStore;
   readonly sanitizeAppliedPlan?: (plan: AppPlan) => AppPlan;
   readonly load: (
@@ -56,7 +57,9 @@ export const makeAppliedPlanCache = (options: AppliedPlanCacheOptions) => {
   ): Effect.Effect<void, AppliedPlanCacheError> => {
     const write = Effect.gen(function* () {
       const previous = yield* resolveMutationPlan(plan.id);
-      const persisted = sanitize(mergeAppliedPlan(previous, plan, mode));
+      const { engineIdentity: _incoming, ...merged } = sanitize(mergeAppliedPlan(previous, plan, mode));
+      const engineIdentity = options.engineIdentity ?? previous?.engineIdentity;
+      const persisted = engineIdentity === undefined ? merged : { ...merged, engineIdentity };
       if (state !== undefined) yield* options.persist(state, persisted);
       plans.set(plan.id, persisted);
     });

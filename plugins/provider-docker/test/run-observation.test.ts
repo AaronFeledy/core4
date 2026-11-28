@@ -64,7 +64,7 @@ const providerFor = (state: object | undefined, listState?: string, inspectStatu
           : JSON.stringify({ Id: "c", ...(state === undefined ? {} : { State: state }) }),
       }),
   };
-  return makeRuntimeProvider({ platform: "linux", dockerApi: api });
+  return makeRuntimeProvider({ platform: "linux", env: {}, dockerApi: api });
 };
 
 test.each([

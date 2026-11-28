@@ -54,6 +54,7 @@
     "./applied-plan-cache": "./src/applied-plan-cache.ts",
     "./volume-classes": "./src/volume-classes.ts",
     "./dependency-gates": "./src/dependency-gates.ts",
+    "./data-version-diagnostic": "./src/data-version-diagnostic.ts",
     "./dependency-schedule": "./src/dependency-schedule.ts",
     "./service-start-schedule": "./src/service-start-schedule.ts",
     "./healthcheck-probe": "./src/healthcheck-probe.ts",
@@ -64,6 +65,7 @@
     "./listener-diagnostic": "./src/listener-diagnostic.ts",
     "./supervision": "./src/supervision.ts",
     "./engine-api": "./src/engine-api.ts",
+    "./engine-identity": "./src/engine-identity.ts",
     "./resource-names": "./src/resource-names.ts",
     "./redact": "./src/redact.ts",
     "./engine-errors": "./src/engine-errors.ts",
@@ -101,7 +103,8 @@
     "./podman/container-events": "./src/podman/container-events.ts",
     "./podman/version-floor": "./src/podman/version-floor.ts",
     "./provider-assembly": "./src/provider-assembly.ts",
-    "./project-user-realization": "./src/project-user-realization.ts"
+    "./project-user-realization": "./src/project-user-realization.ts",
+    "./purge-placement": "./src/purge-placement.ts"
   },
   "files": ["./src", "./dist", "!./dist/**/*.tsbuildinfo"],
   "keywords": ["lando", "container-runtime", "provider"],

@@ -186,6 +186,20 @@ export function redactProviderError(
       return new ServiceStartError({
         ...baseFields(error, redactor, options),
         service: redactor.redactString(error.service),
+        ...(error.dataVersion === undefined
+          ? {}
+          : {
+              dataVersion: {
+                direction: error.dataVersion.direction,
+                evidence: error.dataVersion.evidence,
+                ...(error.dataVersion.dataVersion === undefined
+                  ? {}
+                  : { dataVersion: redactor.redactString(error.dataVersion.dataVersion) }),
+                ...(error.dataVersion.imageVersion === undefined
+                  ? {}
+                  : { imageVersion: redactor.redactString(error.dataVersion.imageVersion) }),
+              },
+            }),
         ...(error.logTail === undefined
           ? {}
           : {

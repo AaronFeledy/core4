@@ -36,10 +36,10 @@ export const resolveScratchTeardown = Effect.fn("ScratchApp.resolveTeardown")(fu
         remediation: "Repair the scratch plan cache before retrying destroy.",
       }),
     );
-  if (plan !== undefined) yield* providers.readAppliedPlanStrict(plan);
+  const recorded = plan === undefined ? undefined : yield* providers.readAppliedPlanStrict(plan);
   const ownership: ReadonlyArray<ResourceOwnership> =
     plan === undefined && teardown !== undefined && teardown.kind !== "absent"
       ? (teardown.ownership ?? [])
       : [];
-  return { plan, ownership, inventoryOnly: plan === undefined && teardown?.kind === "owned" };
+  return { plan, recorded, ownership, inventoryOnly: plan === undefined && teardown?.kind === "owned" };
 });

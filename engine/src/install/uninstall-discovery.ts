@@ -72,10 +72,14 @@ export const makePrepareUninstallCleanup =
       }
       const found = result.success;
       if (!found) return [];
+      for (const path of found.unreadableAppliedState ?? [])
+        details.push(
+          `${providerId}: unreadable applied state at ${path}; resources without independent ownership evidence are retained.`,
+        );
       switch (found.kind) {
         case "skipped":
           details.push(
-            `${providerId}: no engine answered at ${found.endpoint}, so there was nothing to clean there (${found.reason.replace(/\.$/u, "")}).`,
+            `${providerId}: no engine answered at ${found.endpoint}; cleanup was skipped (${found.reason.replace(/\.$/u, "")}).`,
           );
           return [];
         case "reachable": {

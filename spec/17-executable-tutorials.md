@@ -24,6 +24,8 @@ Explanation, reference, and blog content MUST NOT contain rendered executable sc
 
 Each feature has exactly one home guide under the discovery roots. The home guide owns every test that drives Lando through its CLI or library API for that feature: the promises the page shows readers, plus edge cases and regressions whether or not the page mentions them. Tests readers do not see live in hidden steps, test-only scenarios, or case scenarios (§19.7). Tests that call internal modules directly, rather than going through the CLI or library API, belong in the owning workspace package's `test/` tree.
 
+One checked-in home-guide map records each feature, its home guide, and the source paths or path patterns the feature covers. The map is normative: the coverage gate, the guide drift gate (§19.10), and affected selection (§19.12) MUST read ownership from it and from nothing else. A covered path MUST have exactly one owning feature, and a feature MUST name exactly one home guide; one guide MAY be home to several features. A mapped guide path MUST be canonical: repository-relative, `/` separators, with no `./` or `../` segment, doubled slash, or trailing slash. A mapped guide MUST lie under the discovery roots, MUST parse, and MUST contain at least one scenario, and a feature SHOULD be mapped only where a scenario in its home guide exercises the covered sources. Every covered path or pattern MUST match at least one Git-visible file. An empty map, or one that breaks any of these rules, MUST fail every gate that reads it; it is never treated as "nothing is covered".
+
 ### 19.2 Model and artifact
 
 An executable guide has `GuideFrontmatter`, one top-level `<Guide>`, and one or more `<Scenario>` elements. The engine compiles scenarios, not pages.
@@ -71,7 +73,7 @@ Prop schemas live in `@lando/sdk/docs/components`; implementations and AST helpe
 
 A CLI `command` on `<Run>` or `<Verify>` is one POSIX shell command line, and it executes as the argument vector a POSIX shell would produce for it, without invoking a shell. Single quotes are literal; double quotes honor backslash escapes of `$`, backtick, `"`, `\`, and newline; an unquoted backslash escapes the next character and a backslash-newline is removed; a quoted empty string is an argument. Text a shell would interpret instead of passing through (command separators including an unquoted newline, operators, redirections, `$` and backtick substitution, globs, brace and history expansion, and a word-initial `~` or `#`) MUST be quoted or escaped, and a command MUST NOT be empty or begin with a `NAME=value` environment assignment. A command without exactly one such reading fails generation and lint with `guide.command.syntax` at the component's source line. The check applies after interpolation (§19.5) to both the execution and the display projection, and its diagnostic names the reason and offending character, never the command or a bound value. The compiler carries the parsed argument vector on the resolved execution projection, and every runner executes that vector.
 
-`<Verify event>` matches the events published by the scenario's most recent CLI invocation, whether a `<Run command>` or a `<Verify command>`. Only in-process scenario invocations publish to the scenario, so a `<Verify event>` in an `e2e` scenario fails generation and lint with `guide.event.e2e`.
+`<Verify event>` matches the events published by the scenario's most recent foreground CLI invocation, whether a `<Run command>` or a `<Verify command>`. Child invocations do not publish lifecycle events to the scenario. A `<Verify event>` in an `e2e` scenario fails generation and lint with `guide.event.e2e`.
 
 `<Fetch>` is valid only in a scenario whose effective layer is `e2e`; other layers fail generation and lint with `guide.fetch.requires-e2e`. The method is `GET` (default) or `HEAD`, with optional request headers. `expect.status` MUST be one integer from 200 to 599 or a nonempty list of such codes. `expect.headers` optionally applies `MatcherSchema` by case-insensitive response header name, and `expect.body` optionally matches the response body as text. Redirects MUST NOT be followed.
 
@@ -93,7 +95,11 @@ The e2e scenario uses the roots supplied by its runner, whether caller-owned or 
 
 The default scenario layer dispatches the real CLI in process against the scenario's own in-memory provider registry, supplied to every provider-level runtime consumer. Each invocation MUST pass an explicit cwd, environment, renderer IO, exit-status sink, service substitutions, and event observer without patching process globals. A nested `lando` that host tooling runs resolves through `PATH` in source mode, not to the in-process CLI, so a scenario whose `:host` tooling or script calls `lando` MUST use the e2e layer, where the compiled CLI runs nested calls as itself (§8.2.4). Each in-process scenario MUST own separate Lando data, cache, configuration, and system-plugin roots, and fixture lookup MUST resolve from a captured repository root. Lifecycle commands take their real code paths: an apply persists the applied plan through the applied-state store that real providers use, later commands resolve applied state and teardown evidence from that record, and destroy removes it. Provider observation reports only containers the scenario created. Container execution, routing, and post-start URL scanning use in-memory test doubles. Every event an invocation publishes is recorded, redacted, on the context and on that invocation's result. The harness MUST NOT synthesize command results or events, including static-site fetches; assertions requiring real container output belong in an e2e scenario with cleanup and app destruction.
 
-A scenario MAY start a CLI invocation as a background run. The run uses the same argument vector, roots, and environment as a foreground invocation on the scenario's layer. The scenario waits on a readiness condition over the run's output or a workspace file with a bounded timeout, delivers at most one signal, and then awaits the result: exit status or terminating signal, stdout, and stderr. Readiness waits are event-driven; fixed sleeps are forbidden. The scenario `Scope` terminates and reaps any background run the scenario did not finish. A platform that cannot deliver the requested signal fails with a tagged error rather than skipping. Background runs are available to case scenarios (§19.7); no MDX component exposes them.
+A scenario MAY use `ScenarioContext.startCli` to launch a CLI child with the foreground command's arguments, working directory, and Lando roots. The `e2e` layer runs the selected compiled binary with the runner environment minus embedded-Bun reentry controls. The default layer runs the source entry with isolated roots and allowlisted OS variables, excluding ambient provider endpoints and configuration. Isolated roots do not restrict host access. Default-layer dialogues MUST be host-only; provider-backed dialogues MUST use `e2e`. Children do not use the injected provider or contribute lifecycle events.
+
+A child MAY keep writable stdin; otherwise stdin is closed at spawn. The handle writes and flushes input and can send EOF. The harness drains both output streams concurrently into bounded captures. Stdout-line waits are event-driven, bounded, and fail if stdout closes before a match. The repeatable result includes stdout, stderr, exit status, and the terminating signal when available. The owning `Scope` terminates and reaps unfinished children. Workspace-file readiness and delivery of one caller-selected signal (with a tagged refusal on unsupported platforms) remain outstanding (#2524).
+
+Background runs are available to case scenarios (§19.7) on either layer and to library `<Run>` code on the default layer. No MDX component exposes a line dialogue.
 
 ### 19.5 Display vs. execute
 
@@ -107,11 +113,11 @@ An empty string is a valid bound value. Display values MUST be short literals su
 
 ### 19.6 Transcripts
 
-Each scenario variant captures stdout, stderr, exit status, lifecycle events, inspected artifacts, and cleanup status as a `Transcript` of `TranscriptFrame` values under `dist/transcripts/`.
+Each scenario variant captures stdout, stderr, exit status, in-process lifecycle events, inspected artifacts, and cleanup status as a `Transcript` of `TranscriptFrame` values under `dist/transcripts/`. A background run contributes at most one run frame, including when reaped by its scope; visibility is captured at spawn. Stdin and terminating signals are not recorded in the frame.
 
 | Surface | Contract |
 |---|---|
-| Internal transcript | Contains all sanitized frames, including hidden, test-only, fixture, event, and cleanup frames; consumed by CI and diagnostics. |
+| Internal transcript | Contains sanitized recorded frames, including those from test-only scenarios; consumed by CI and diagnostics. Actions inside a hidden block may suppress recording entirely. |
 | Public transcript | Generated statically from the resolved scenario at codegen time; contains only visible frames from rendered reader scenarios; consumed by docs and recipe README generation. Not execution evidence. |
 
 A public `<Fetch>` frame renders only the request line (method and authored URL without query or fragment) and the expected HTTP status or statuses. It MUST NOT render headers or response content.
@@ -172,6 +178,19 @@ Generated tests MUST preserve source path, line range, scenario, variant, step, 
 
 A binding diagnostic MUST name the guide source path and line, the scenario and resolved variant, and a remediation, and MAY name the related declaration line. It MUST NOT print bound values. Every failure includes a copy-pasteable rerun command (§19.12).
 
+`bun run check:guide-coverage` is a merge gate. It MUST validate the home-guide map (§19.1) and the guide coverage index: every guide-table row names a valid status and a `docs/guides/**.mdx` path, a malformed guide-table row fails the gate, a `Shipped` row MUST name an existing guide while a `Planned` row MAY name a guide not written yet, and every home guide under `docs/guides/` MUST have an index row. A recipe README needs no index row, and the index's separate recipe README table is not validated by this gate.
+
+`bun run check:guide-drift` is a merge gate on pull requests only: merge-queue (`merge_group`) and push-to-default-branch runs skip it, so a guide change lands with the pull request. It MUST fail when a covered path changed and neither the owning feature's home guide nor a file under that guide's fixture directory (`docs/guides/<guide-id>/fixtures/`) changed. One predicate defines touching a guide, shared with affected selection (§19.12): a path touches guide G when it is G's MDX or a file under `docs/guides/<G's id>/fixtures/`. A case file does not count as a change to its guide until case files compile (§19.7). The gate obeys these rules:
+
+- Changed paths are the difference from the merge base of the base and head to the head, with both sides of a rename included. Outside CI the head is the working tree: the net difference from the merge base to the files on disk, plus untracked files that are not ignored, against a default base of `origin/main`.
+- A changed path that is absent from the Git-visible file list, such as a deleted or renamed-away file, can match several features' source patterns even though ownership validation sees no overlap. The gate MUST attribute that path to every matching feature, and each of their home guides MUST then change.
+- The container-command baseline is compared with the base itself, not the merge base, so an older ancestor's allowance cannot admit a new entry. The comparison is aggregate over the whole file: an entry may move with its page when that page is removed, but the total number of entries never grows, and a base without a baseline is compared as an empty baseline.
+- The map, guides, fixtures, and baseline are read from the checked-out tree; the base and head select changed paths only.
+- A skip is one `Guide-Coverage-Skip: <reason>` line in the pull request body, with a reason of at least 24 characters, and MUST NOT be read from any other source. More than one such line is ambiguous and MUST fail the gate, naming each line. A local run MAY supply the same text to preview the result. A valid skip exempts every covered feature whose home guide was not touched; a reason that is too short fails the gate.
+- Map failures and baseline growth MUST fail the gate and MUST NOT be waived by a skip. They are reported before any skip status.
+- Any failure to determine the comparison or the changed paths, including an unresolvable base or head, a missing merge base, or a failed lookup of the pull request body, MUST fail the gate. The gate MUST NOT report a pass or a skip when it could not determine what changed.
+- Output MUST name the comparison, each touched feature with its changed paths and home guide, and, when a skip applies, its reason and exactly the features it exempted.
+
 Schema round-trip, generated-test typecheck, source-mapper fixtures, public-transcript policy, and canonical redaction are cooperating merge gates (§13.2–§13.4).
 
 ### 19.11 Test layer position
@@ -183,6 +202,8 @@ Scenario variants SHOULD remain below 30 seconds p95 and e2e smoke below 5 minut
 ### 19.12 Author commands
 
 The author workflow MUST run a guide, scenario, variant, step, or fixture; preserve the workspace on request; update local transcript artifacts; explain the resolved scenario plan; and print source maps and resolved bindings in debug mode. Every failure MUST include a copy-pasteable rerun command.
+
+Affected selection (`bun run test:affected`) MUST list home-guide scenarios apart from unit test files, with their own counts. A changed path selects a guide when the home-guide map covers it (§19.1), when it is a guide under the discovery roots, or when it lies under a guide's fixture directory; a case file selects nothing until case files compile (§19.7). For each selected guide the selector MUST list every scenario variant with its disposition on the host, using the same skip rules the generator applies (§19.7): will run, skipped with the rule and reason, or e2e not admitted. A skipped variant MUST NOT be reported as run. Running the selection MUST execute the selected guides through the author workflow above rather than a second runner. E2e variants MUST run only when the caller explicitly opts in through `LANDO_GUIDE_E2E=1`; the selector MUST NOT set it, and without it MUST print the command that runs them. A run that executes nothing MUST exit nonzero and say why. A run that executes anything MAY exit zero with variants that did not run, but it MUST always report every variant that did not run and the command that would run the unadmitted e2e ones. An invalid map MUST fail selection before any guide is listed or run, reporting every map diagnostic. A selected guide that cannot be read or parsed MUST be reported as a diagnostic naming its path, never as a crash.
 
 ### 19.13 Recipe README integration
 
@@ -197,6 +218,8 @@ A scaffold README MUST exist for every declared legal variant cell, including ce
 Embedding guides (§16) MAY target runtime operations and `App` handles instead of the binary. Rendered docs MUST show the corresponding host TypeScript. Command-shaped library operations MAY use `@lando/core/cli`; lifecycle guides SHOULD prefer `App` handles.
 
 Each MDX scenario runs in exactly one mode: CLI or shell commands, or library `<Run runtime="library">`. Mixing modes within one scenario is an error, and an `e2e` MDX scenario is CLI only. CLI and library forms MAY coexist on one page as separate scenarios when the reader workflow needs both. Library `code` and `displayCode` are opaque to guide interpolation (§19.5). Case scenarios (§19.7) are TypeScript against `ScenarioContext` and are not bound by this mode rule; an `e2e` case scenario still reaches the product only through the compiled binary.
+
+Library code on the default layer MAY drive the CLI through `ScenarioContext.runCli` or `ScenarioContext.startCli` (§19.4).
 
 ### 19.15 Acceptance criteria
 

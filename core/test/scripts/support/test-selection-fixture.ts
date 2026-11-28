@@ -45,6 +45,7 @@ export const createTestSelectionFixture = async () => {
   const options: TestInventoryOptions = {
     root,
     selections,
+    presets: [],
     planChecks: [],
     manual: {},
     workflowRoot: join(root, ".github/workflows"),

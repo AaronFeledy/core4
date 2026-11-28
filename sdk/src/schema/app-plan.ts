@@ -3,6 +3,7 @@ import { Predicate, Schema } from "effect";
 import { sha256Hex } from "../digest/index.ts";
 import { ArtifactBuildSpec, ArtifactRef } from "./artifacts.ts";
 import { DatabaseConnection, ServiceCreds } from "./database-connection.ts";
+import { EngineIdentity } from "./engine-identity.ts";
 import { Environment } from "./environment-value.ts";
 import { EventsPlan } from "./event-plan.ts";
 import { FileSyncSessionSpec } from "./file-sync-engine.ts";
@@ -37,6 +38,7 @@ import {
   ServiceName,
   ServiceProjectUser,
 } from "./primitives.ts";
+import { ServiceDataVersion } from "./service-data-version.ts";
 import { SqliteTargetConfig } from "./sqlite.ts";
 import { SHA256_HEX_PATTERN, patternString } from "./string-forms.ts";
 
@@ -142,6 +144,9 @@ const ServicePlanFields = {
   }),
   listenerAuthority: Schema.optionalKey(ListenerAuthority).annotate({
     description: "Structured ownership and configuration advice for the planned listener.",
+  }),
+  dataVersion: Schema.optionalKey(ServiceDataVersion).annotate({
+    description: "Database storage compatibility rules contributed by the service feature.",
   }),
   scanner: Schema.optionalKey(ScanPlan).annotate({
     description: "Fully resolved settings for this service's post-start URL scan.",
@@ -561,7 +566,12 @@ export type AppPlan = typeof AppPlan.Type;
 
 const { events: eventPlanField, ...appliedPlanFields } = AppPlan.fields;
 
-export const AppliedAppPlan = Schema.Struct(appliedPlanFields).annotate({
+export const AppliedAppPlan = Schema.Struct({
+  ...appliedPlanFields,
+  engineIdentity: Schema.optionalKey(EngineIdentity).annotate({
+    description: "Engine that realized this plan, when the provider could identify it.",
+  }),
+}).annotate({
   identifier: "AppliedAppPlan",
   description: "Provider realization without invocation-time event hooks.",
 });
