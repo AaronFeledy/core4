@@ -23,6 +23,7 @@ export const versionedPlan = (
     ...plan.services,
     [base.name]: {
       ...base,
+      serviceTypeId: `mariadb:${image}`,
       artifact: { kind: "ref", ref: `mariadb:${image}`, digest },
       mounts: [...base.mounts, { type: "volume", target: dataTarget, store, readOnly: false }],
       dataVersion: {

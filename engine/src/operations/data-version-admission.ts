@@ -1,4 +1,5 @@
 import { dataVersionRemediation } from "@lando/container-runtime/data-version-diagnostic";
+import { ownsServiceContainer } from "@lando/container-runtime/native-ownership";
 import { ServiceDataVersionError } from "@lando/sdk/errors";
 import { MessageInfoEvent } from "@lando/sdk/events";
 import {
@@ -9,8 +10,10 @@ import {
   type ServicePlan,
   type VolumeMountPlan,
   compareDataSeries,
+  isIdleRunStatus,
   parseDataVersionRecords,
   planAppIdentity,
+  planDataId,
 } from "@lando/sdk/schema";
 import { EventService, type ProviderError } from "@lando/sdk/services";
 import { DateTime, Effect } from "effect";
@@ -48,13 +51,19 @@ const versionEvidence = Effect.fnUntraced(
     const runtime = yield* provider.inspect(target);
     const root = planAppIdentity(appliedPlan).appRoot;
     if (
-      runtime.status !== "running" ||
-      !runtime.containerId ||
       runtime.app !== target.app ||
       runtime.appRoot !== root ||
       runtime.providerId !== appliedPlan.provider ||
-      runtime.service !== service.name ||
+      runtime.service !== service.name
+    )
+      return undefined;
+    if (isIdleRunStatus(runtime.status)) return "no-record" as const;
+    if (
+      runtime.status !== "running" ||
+      !runtime.containerId ||
+      (runtime.labels !== undefined && !ownsServiceContainer(appliedPlan, runtime)) ||
       mount.subpath !== undefined ||
+      !provider.capabilities.serviceExec ||
       provider.observeBoundVolume === undefined
     )
       return undefined;
@@ -75,6 +84,7 @@ const versionEvidence = Effect.fnUntraced(
     const bound = { ...target, expectedContainerId: runtime.containerId };
     const volume = yield* provider.observeBoundVolume(bound, mount.target);
     if (
+      volume.ref.app !== planDataId(appliedPlan) ||
       volume.ref.store !== mount.store ||
       volume.identity?.nativeName !== mount.store ||
       volume.identity.ownerRoot !== root
@@ -115,6 +125,7 @@ const versionEvidence = Effect.fnUntraced(
       if (Buffer.byteLength(content) <= 4096) files.set(path, content);
     }
     const version = parseDataVersionRecords(files, contract);
+    const missing = contents.slice(0, -1).every((frame) => frame === "-");
     const artifact = service.artifact;
     const expectedImage =
       artifact?.kind === "ref"
@@ -125,12 +136,11 @@ const versionEvidence = Effect.fnUntraced(
       appliedSeries !== undefined &&
       expectedImage !== undefined &&
       expectedImage === immutableImageId(runtime.imageIdentity) &&
-      (version === undefined
-        ? contents.slice(0, -1).every((frame) => frame === "-")
-        : compareDataSeries(appliedSeries, version, series.depth) === 1)
+      (version === undefined ? missing : compareDataSeries(appliedSeries, version, series.depth) === 1)
     )
       return { version: appliedSeries, source: "running-image" } satisfies Evidence;
-    return version === undefined ? undefined : ({ version, source: "record" } satisfies Evidence);
+    if (version !== undefined) return { version, source: "record" } satisfies Evidence;
+    return missing ? ("no-record" as const) : undefined;
   },
   (effect) =>
     effect.pipe(
@@ -173,7 +183,7 @@ export const assessDataVersions = Effect.fn("AppActivation.assessDataVersions")(
           : undefined;
       if (appliedSeries?.image === series.image) continue;
       const runtime = yield* provider;
-      const evidence = yield* versionEvidence({
+      const observation = yield* versionEvidence({
         provider: runtime,
         appliedPlan,
         service: applied,
@@ -182,6 +192,8 @@ export const assessDataVersions = Effect.fn("AppActivation.assessDataVersions")(
         series,
         appliedSeries: appliedSeries?.image,
       });
+      if (observation === undefined) continue;
+      const evidence = observation === "no-record" ? undefined : observation;
       const from = evidence?.version ?? appliedSeries?.image;
       if (from === undefined) continue;
       const to = series.image;
@@ -205,6 +217,10 @@ export const assessDataVersions = Effect.fn("AppActivation.assessDataVersions")(
         dataVersion: from,
         imageVersion: to,
       } as const;
+      const data =
+        evidence.source === "running-image"
+          ? `data last opened by ${contract.label} ${from}`
+          : `data with recorded ${contract.label} version ${from}`;
       return yield* new ServiceDataVersionError({
         app: desired.name,
         service: service.name,
@@ -212,7 +228,7 @@ export const assessDataVersions = Effect.fn("AppActivation.assessDataVersions")(
         image: service.artifact?.kind === "ref" ? service.artifact.ref : to,
         ...(applied.artifact?.kind === "ref" ? { appliedImage: applied.artifact.ref } : {}),
         dataVersion: finding,
-        message: `Service ${service.name}: ${contract.label} ${to} cannot open data written by ${contract.label} ${from}.`,
+        message: `Service ${service.name}: the previous container is still running unchanged. ${contract.label} ${to} cannot open ${data}.`,
         remediation: dataVersionRemediation(desired, service, { finding }),
       });
     }
@@ -227,7 +243,7 @@ export const publishDataUpgradeNotices = Effect.fnUntraced(function* (dataUpgrad
   for (const { service, from, to, label } of dataUpgrades)
     yield* events.publish(
       MessageInfoEvent.make({
-        body: `Upgrading ${service} data from ${label} ${from} to ${to} in place.`,
+        body: `Moving ${service} from ${label} ${from} to ${to} on its existing data.`,
         timestamp: DateTime.nowUnsafe(),
       }),
     );

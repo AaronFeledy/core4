@@ -21,7 +21,7 @@ const setup = (input: {
   readonly to: string;
   readonly evidence: "record" | "running-image" | "stopped" | "exec-failure" | "oversized" | "no-record";
   readonly upgrade?: "in-place" | "unsupported";
-  readonly proof?: "wrong-app" | "wrong-store" | "wrong-image" | "read-failed";
+  readonly proof?: "wrong-app" | "unowned-container" | "wrong-store" | "wrong-image" | "read-failed";
 }) => {
   const previous = versionedPlan(plan, web, input.from);
   const desired = versionedPlan(plan, web, input.to, input.upgrade);
@@ -62,6 +62,7 @@ const setup = (input: {
         observations.push("inspect");
         if (input.evidence === "stopped") return { ...runtime, status: "exited", exitCode: 0 } as const;
         if (input.proof === "wrong-app") return { ...runtime, appRoot: AbsolutePath.make("/foreign") };
+        if (input.proof === "unowned-container") return { ...runtime, labels: {} };
         if (input.evidence === "running-image")
           return {
             ...runtime,
@@ -121,6 +122,10 @@ test.each(["start", "selected restart", "rebuild"] as const)(
       image: "mariadb:10.11",
       appliedImage: "mariadb:11.4",
       dataVersion: { direction: "downgrade", evidence: "record", dataVersion: "11.4", imageVersion: "10.11" },
+      message: expect.stringContaining("the previous container is still running unchanged"),
+      remediation: expect.stringMatching(
+        /services\.web\.type.*mariadb:11\.4.*export taken before the upgrade.*Importing across versions is not guaranteed.*lando destroy -y --volumes/su,
+      ),
     });
     expect(fixture.observations).toEqual(["inspect", "read"]);
     expect(fixture.mutations).toEqual([]);
@@ -134,6 +139,7 @@ test("a healthy running server supplies version evidence when the record is abse
   );
   expect(error).toMatchObject({
     _tag: "ServiceDataVersionError",
+    message: expect.stringContaining("data last opened by MariaDB 11.4"),
     dataVersion: {
       direction: "downgrade",
       evidence: "running-image",
@@ -145,6 +151,7 @@ test("a healthy running server supplies version evidence when the record is abse
 
 test.each([
   ["wrong-app", "record", ["inspect"]],
+  ["unowned-container", "record", ["inspect"]],
   ["wrong-store", "record", ["inspect"]],
   ["wrong-image", "running-image", ["inspect", "read"]],
   ["read-failed", "running-image", ["inspect", "read"]],
@@ -204,6 +211,14 @@ test("an older applied series alone does not refuse an unsupported upgrade", asy
   const result = await Effect.runPromise(startApp({}, fixture.target).pipe(Effect.provide(fixture.layer)));
   expect(result.dataVersionChanges).toBeUndefined();
   expect(fixture.mutations).toEqual(["apply"]);
+});
+
+test("proceeds without an upgrade finding when the running service's mount cannot be proven", async () => {
+  const fixture = setup({ from: "10.11", to: "11.4", evidence: "no-record", proof: "wrong-store" });
+  const result = await Effect.runPromise(startApp({}, fixture.target).pipe(Effect.provide(fixture.layer)));
+  expect(result.dataVersionChanges).toBeUndefined();
+  expect(fixture.mutations).toEqual(["apply"]);
+  expect(fixture.observations).toEqual(["inspect"]);
 });
 
 test("reports an in-place upgrade before applying", async () => {
