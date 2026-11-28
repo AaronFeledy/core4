@@ -803,8 +803,10 @@ test(
     // Built at run time: a literal guide path would make the CLI's own selection
     // include this test file, whose child would then spawn the CLI again.
     const guidePath = ["docs", "guides", "recipes", "drupal-production-copy.mdx"].join("/");
+    // CI unit-shard checkouts are depth 1 with no origin/main ref; HEAD keeps the
+    // comparison local while still exercising the CLI's --run orchestration.
     const child = Bun.spawn(
-      [process.execPath, "run", "scripts/test-affected.ts", "--file", guidePath, "--run"],
+      [process.execPath, "run", "scripts/test-affected.ts", "--file", guidePath, "--base", "HEAD", "--run"],
       { cwd: root, env, stdout: "pipe", stderr: "pipe" },
     );
     const [stdout, stderr, code] = await Promise.all([
