@@ -171,7 +171,7 @@ lando app:config:set services.db.type mysql:8.4
 lando start
 ```
 
-MySQL upgrades the existing data in place. When Lando verifies the change before applying it, it announces the upgrade and lists it in `dataVersionChanges` with `--format=json`. Check that the application still reads its data.
+Lando announces the in-place upgrade before starting MySQL 8.4, even if you stopped 8.0 after the export. With `--format=json`, the result lists the change in `dataVersionChanges`. Check that the application still reads its data after MySQL upgrades it.
 
 If you set `type:` back to `mysql:8.0`, MySQL can't open data upgraded by 8.4. With the newer server running and its version verified, `lando start --format=json` reports `ServiceDataVersionError` with `dataVersion.direction: "downgrade"` and leaves 8.4 running. On a stopped service, the server's own refusal can instead appear under `ServiceNotReadyError`.
 
@@ -187,7 +187,7 @@ To keep the upgraded data, restore `type: mysql:8.4`. To return to 8.0, restore 
     <Step name="upgrade">
       <Run command="lando db:export before-upgrade.sql.gz --service db" />
       <Run command="lando app:config:set services.db.type mysql:8.4" />
-      <Run command="lando start" />
+      <Verify command="lando start --format=json" expect={{ stdout: { regex: '"event":"message[.]info"[^\\n]*"body":"[^"\\n]*db[^"\\n]*8[.]0[^"\\n]*8[.]4[^"\\n]*"[\\s\\S]*"dataVersionChanges":\\[\\{"service":"db","from":"8[.]0","to":"8[.]4"\\}\\]' } }} />
     </Step>
     <Step name="refusal">
       <Run command="lando app:config:set services.db.type mysql:8.0" />

@@ -172,7 +172,7 @@ Changing the MariaDB version keeps the data volume. Lando sets `MARIADB_AUTO_UPG
    lando app:config:set services.db.type mariadb:11.4
    ```
 
-3. Start the app. Lando announces the in-place upgrade when it identifies the older data. The image backs up its system tables and runs `mariadb-upgrade` before the service reports ready:
+3. Start the app. Lando announces the in-place upgrade from 10.11 to 11.4, even if you stopped 10.11 after the export. The image backs up its system tables and runs `mariadb-upgrade` before the service reports ready:
 
    ```sh
    lando start
@@ -228,7 +228,7 @@ Use the same export, destroy, and import steps to start the new version on a cle
     <Step name="export"><Run command="lando db:export before-upgrade.sql.gz" /></Step>
     <Step name="upgrade">
       <Run command="lando app:config:set services.db.type mariadb:11.4" />
-      <Verify command="lando start --format=json" expect={{ stdout: { regex: '"dataVersionChanges":\\[\\{"service":"db","from":"10[.]11","to":"11[.]4"\\}\\]' } }} />
+      <Verify command="lando start --format=json" expect={{ stdout: { regex: '"event":"message[.]info"[^\\n]*"body":"[^"\\n]*db[^"\\n]*10[.]11[^"\\n]*11[.]4[^"\\n]*"[\\s\\S]*"dataVersionChanges":\\[\\{"service":"db","from":"10[.]11","to":"11[.]4"\\}\\]' } }} />
     </Step>
     <Step name="check">
       <Verify command="lando mariadb -N -e 'SELECT VERSION()'" expect={{ stdout: { regex: "^11[.]4[.]" } }} />
