@@ -1805,7 +1805,6 @@ export const layerWithPrivateFileAccess: Layer.Layer<
       const redaction = yield* Effect.serviceOption(RedactionService);
       const events = yield* makeEvents(eventService, redaction);
       const persistence = { paths, stateStore, providerRegistry, privateFileAccess };
-      // A record written on another engine describes resources this one cannot see.
       const refuseForeignEngine = (provider: RuntimeProviderShape, record: AppPlan | undefined) => {
         const mismatch = enginePlacementMismatch({ provider, kind: "user", records: [record] });
         return mismatch === undefined ? Effect.void : Effect.fail(mismatch);

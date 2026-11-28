@@ -116,15 +116,14 @@ const resolveCompiledSteps = Effect.fnUntraced(function* (
 ) {
   const compiled = plan.events?.[event] ?? [];
   const primary = Object.entries(plan.services).find(([, service]) => service.primary === true)?.[0];
-  // Read the applied record once and admit it before any step inspects a container, so a
-  // different engine's silence never becomes evidence that a service is down.
+  // A different engine's silence is not evidence that a service is down.
   const provider = yield* Effect.cached(
     Effect.gen(function* () {
       const registry = yield* Effect.serviceOption(RuntimeProviderRegistry);
       if (Option.isNone(registry)) return undefined;
       const applied = yield* registry.value.readAppliedPlanStrict(plan);
       const selected = yield* registry.value.select(plan);
-      return (yield* admitRecordedApp(selected, planAppKind(plan), [applied])).provider;
+      return yield* admitRecordedApp(selected, planAppKind(plan), [applied]);
     }),
   );
   const resolved: EventStepPlan[] = [];

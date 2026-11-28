@@ -118,10 +118,7 @@ export interface ScenarioRunOptions {
   readonly answers?: Readonly<Record<string, string>>;
   /** Hard timeout for a compiled CLI child. */
   readonly timeoutMs?: number;
-  /**
-   * Environment entries for this run only, merged over the scenario environment. A test that
-   * points Lando at a different container engine needs one endpoint per invocation.
-   */
+  /** Environment overrides for this run only. */
   readonly env?: Readonly<Record<string, string | undefined>>;
 }
 

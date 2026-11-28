@@ -210,7 +210,7 @@ export const layer: Layer.Layer<UrlScanner, never, RuntimeProviderRegistry | Htt
             if (suppliedPlan !== undefined) {
               const applied = yield* registry.readAppliedPlanStrict(suppliedPlan);
               const provider = yield* registry.select(suppliedPlan);
-              return (yield* admitRecordedApp(provider, planAppKind(suppliedPlan), [applied])).provider;
+              return yield* admitRecordedApp(provider, planAppKind(suppliedPlan), [applied]);
             }
             const inspectAppliedPlans = registry.appliedStateInventory;
             // The first provider that could not be inspected keeps its own tag and remediation.
@@ -224,7 +224,7 @@ export const layer: Layer.Layer<UrlScanner, never, RuntimeProviderRegistry | Htt
               const plan = inspected.success.plans.find((plan) => plan.id === appId && plan.provider === id);
               if (plan !== undefined) {
                 const provider = yield* registry.select(plan);
-                return (yield* admitRecordedApp(provider, planAppKind(plan), [plan])).provider;
+                return yield* admitRecordedApp(provider, planAppKind(plan), [plan]);
               }
               const issue = inspected.success.unreadable.find((entry) => inventoryProtectsApp(entry, appId));
               if (issue !== undefined) uninspected ??= protectedSlotError(id, issue, appId);

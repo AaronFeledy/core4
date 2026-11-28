@@ -295,44 +295,36 @@ const changePolicy = Effect.fn("GlobalPolicy.change")(function* (
           ];
     }),
   ];
-  const observedProvider =
-    operation !== "enable" && applied !== undefined
-      ? yield* Effect.result(
-          Effect.flatMap(RuntimeProviderRegistry, (registry) => registry.select(applied.provider)),
-        )
-      : undefined;
-  if (observedProvider?._tag === "Success" && applied !== undefined)
-    yield* requireOwningEngine(observedProvider.success, "global", [applied]);
-  const observedApplied: Result.Result<AppPlan | undefined, unknown> | undefined =
-    observedProvider === undefined
-      ? undefined
-      : observedProvider._tag === "Failure"
-        ? Result.map(observedProvider, () => undefined)
-        : applied === undefined
-          ? undefined
-          : yield* Effect.result(
-              Effect.gen(function* () {
-                const provider = observedProvider.success;
-                if (!(yield* runtimeOnline(provider))) return undefined;
-                const observations = yield* provider.list({ app: applied.id, includeUnplanned: true });
-                const active = new Set(
-                  observations
-                    .filter(
-                      (service) =>
-                        service.appRoot === applied.root &&
-                        service.providerId === applied.provider &&
-                        isActiveRunStatus(service.status),
-                    )
-                    .map((service) => String(service.service)),
-                );
-                return {
-                  ...applied,
-                  services: Object.fromEntries(
-                    Object.entries(applied.services).filter(([id]) => active.has(id)),
-                  ),
-                };
-              }),
-            );
+  const observedApplied = yield* Effect.gen(function* () {
+    if (operation === "enable" || applied === undefined) return undefined;
+    const selected = yield* Effect.result(
+      Effect.flatMap(RuntimeProviderRegistry, (registry) => registry.select(applied.provider)),
+    );
+    if (Result.isFailure(selected)) return selected;
+    const provider = selected.success;
+    // A placement refusal is fatal, unlike an unavailable observation.
+    yield* requireOwningEngine(provider, "global", [applied]);
+    return yield* Effect.result(
+      Effect.gen(function* () {
+        if (!(yield* runtimeOnline(provider))) return undefined;
+        const observations = yield* provider.list({ app: applied.id, includeUnplanned: true });
+        const active = new Set(
+          observations
+            .filter(
+              (service) =>
+                service.appRoot === applied.root &&
+                service.providerId === applied.provider &&
+                isActiveRunStatus(service.status),
+            )
+            .map((service) => String(service.service)),
+        );
+        return {
+          ...applied,
+          services: Object.fromEntries(Object.entries(applied.services).filter(([id]) => active.has(id))),
+        };
+      }),
+    );
+  });
   const blockers =
     operation === "enable"
       ? []

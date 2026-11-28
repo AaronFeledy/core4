@@ -106,18 +106,12 @@ export const requireOwningEngine = (
   );
 };
 
-/** Refuses before the caller uses `provider` when a record names another engine. */
 export const admitRecordedApp = (
   provider: RuntimeProviderShape,
   kind: AppRef["kind"],
   records: readonly (Pick<AppliedAppPlan, "id" | "provider" | "root" | "engineIdentity"> | undefined)[],
-): Effect.Effect<
-  {
-    readonly provider: RuntimeProviderShape;
-    readonly records: typeof records;
-  },
-  AppPlacementError
-> => requireOwningEngine(provider, kind, records).pipe(Effect.as({ provider, records }));
+): Effect.Effect<RuntimeProviderShape, AppPlacementError> =>
+  requireOwningEngine(provider, kind, records).pipe(Effect.as(provider));
 
 /** The app kind a plan realizes, for wording a refusal's retirement command. */
 export const planAppKind = (plan: Pick<AppPlan, "extensions">): "scratch" | "user" =>

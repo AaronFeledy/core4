@@ -94,14 +94,12 @@ export const applyActivation = Effect.fn("Activation.apply")(
           }),
         });
         const baseline = request.volumeBaseline ?? request.previousPlan;
-        // A volume the recorded plan had, created again by this apply, came back without its data.
-        if (baseline !== undefined && (applied.createdVolumes ?? []).length > 0) {
+        const facts = applied.createdVolumes ?? [];
+        if (baseline !== undefined && facts.length > 0) {
           const warnings = recreatedVolumeWarnings({
-            facts: applied.createdVolumes ?? [],
+            facts,
             baseline,
-            ...(request.provider.engineIdentity === undefined
-              ? {}
-              : { engine: request.provider.engineIdentity }),
+            engine: request.provider.engineIdentity,
           });
           // A host with no event channel still records the warning for machine output.
           const events = yield* Effect.serviceOption(EventService);

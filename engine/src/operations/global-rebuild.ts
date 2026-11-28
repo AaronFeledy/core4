@@ -124,8 +124,7 @@ export const globalRebuild = Effect.fn("GlobalRebuild.rebuild")(
     );
     const preparedOverlays = yield* prepareDebuggerOverlay(loaded.plan);
 
-    // The record a recreated volume is judged against. Installation already refused a record
-    // naming another engine through `selectGlobalCreateProvider`.
+    // Installation already checked the record's engine through `selectGlobalCreateProvider`.
     const { plan: recordedGlobal } = yield* resolveGlobalPlacement();
     const provider = yield* selectPreparedProvider(loaded.plan);
     const events = yield* EventService;

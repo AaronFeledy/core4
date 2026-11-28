@@ -231,8 +231,7 @@ export const executeToolingInvocations = Effect.fnUntraced(function* (
   const session = yield* (yield* EnvironmentValueResolver).openSession();
   // Running-command defaults come from the applied plan: a container created
   // before the project user existed has no mapping, so its commands must keep
-  // the old identity. One lookup serves every container invocation and the
-  // placement verdict, so a refused app never reaches the provider.
+  // the old identity. Reuse this lookup for the placement verdict.
   const appliedPlan = input.requiresProvider
     ? yield* Effect.flatMap(RuntimeProviderRegistry, (registry) => appliedAppPlan(registry, input.plan))
     : undefined;
@@ -242,7 +241,7 @@ export const executeToolingInvocations = Effect.fnUntraced(function* (
       ? yield* Effect.flatMap(RuntimeProviderRegistry, (registry) => registry.select(input.plan))
       : runtimeProviderService);
   const provider = input.requiresProvider
-    ? (yield* admitRecordedApp(selected, planAppKind(input.plan), [appliedPlan])).provider
+    ? yield* admitRecordedApp(selected, planAppKind(input.plan), [appliedPlan])
     : selected;
   let combined: ToolingEngineResult = {
     tool: input.tool,

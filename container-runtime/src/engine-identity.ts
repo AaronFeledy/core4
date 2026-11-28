@@ -72,11 +72,7 @@ export interface EnginePlacementCheck {
   readonly records: readonly (EnginePlacementRecord | undefined)[];
 }
 
-/**
- * The placement refusal for a record that names another engine, or `undefined` when this engine
- * holds (or might hold) every record. Records without an identity and providers without one are
- * not judged: there is nothing to compare.
- */
+/** Refuse only when both the record and provider identify their engines. */
 export const enginePlacementMismatch = (input: EnginePlacementCheck): AppPlacementError | undefined => {
   const current = input.provider.engineIdentity;
   if (current === undefined) return undefined;
