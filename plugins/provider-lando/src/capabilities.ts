@@ -183,10 +183,7 @@ export const declaredProviderLandoCapabilities = (
     : capabilities;
 };
 
-export const introspectProviderCapabilities = (
-  api: PodmanApiClient,
-  platform: HostPlatform,
-): Effect.Effect<ProviderCapabilities, ProviderCapabilityError | ProviderUnavailableError> =>
+export const inspectProviderEngine = (api: PodmanApiClient, platform: HostPlatform) =>
   api.info.pipe(
     mapFailures((cause): ProviderCapabilityError | ProviderUnavailableError =>
       cause instanceof ProviderInternalError
@@ -205,10 +202,14 @@ export const introspectProviderCapabilities = (
     ),
     Effect.map((info) => {
       const containerArch = engineInfoArchitecture(info);
-      return providerLandoCapabilitiesForPlatform(
+      const capabilities = providerLandoCapabilitiesForPlatform(
         platform,
         hostProxyContainerTargets(containerArch),
         podmanInfoRootless(info) ?? hostPlatformFamily(platform) !== "win32",
       );
+      return { capabilities, info };
     }),
   );
+
+export const introspectProviderCapabilities = (api: PodmanApiClient, platform: HostPlatform) =>
+  inspectProviderEngine(api, platform).pipe(Effect.map(({ capabilities }) => capabilities));

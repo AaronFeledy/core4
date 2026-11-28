@@ -64,6 +64,7 @@
     "./listener-diagnostic": "./src/listener-diagnostic.ts",
     "./supervision": "./src/supervision.ts",
     "./engine-api": "./src/engine-api.ts",
+    "./engine-identity": "./src/engine-identity.ts",
     "./resource-names": "./src/resource-names.ts",
     "./redact": "./src/redact.ts",
     "./engine-errors": "./src/engine-errors.ts",

@@ -213,7 +213,7 @@ const makeFakeApi = () => {
   };
 
   const api: DockerApiClient = {
-    info: Effect.succeed({}),
+    info: Effect.succeed({ ID: "persistent-daemon" }),
     request: (input) => {
       calls.push(input);
       return Effect.succeed(responseFor(input));
@@ -277,7 +277,10 @@ describe("provider-docker cross-process state", () => {
       expect(await fileExists(path)).toBe(true);
       const raw = JSON.parse(await readFile(path, "utf8"));
       expect(raw.version).toBe(APPLIED_STATE_VERSION);
-      expect(raw.data).toBeDefined();
+      expect(raw.data.engineIdentity).toMatchObject({
+        endpoint: "unix:///var/run/docker.sock",
+        fingerprint: expect.any(String),
+      });
     });
   });
 

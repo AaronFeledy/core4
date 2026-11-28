@@ -300,6 +300,7 @@ export interface StopAppOptions {
 }
 
 export type StopAppError =
+  | AppPlacementError
   | ProxyApplyError
   | ProxyError
   | Lando3LandofileDetected
@@ -379,6 +380,7 @@ export type InfoLogSource = ServiceInfoLogSource;
 export type InfoAppService = ServiceInfo;
 
 export type InfoAppError =
+  | AppPlacementError
   | StateStoreError
   | AppResolveError
   | UserLandofileError
@@ -399,6 +401,7 @@ export interface ExecAppOptions {
 }
 
 export type ExecAppError =
+  | AppPlacementError
   | UserLandofileError
   | AppPlannerError
   | ProviderSelectionError
@@ -448,6 +451,7 @@ export interface LogsAppOptions {
 }
 
 export type LogsAppError =
+  | AppPlacementError
   | StateStoreError
   | AppResolveError
   | Lando3LandofileDetected

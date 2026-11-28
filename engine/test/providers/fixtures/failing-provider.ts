@@ -17,6 +17,7 @@ export const failingProvider = (): Required<RuntimeProviderShape> => {
   return {
     ...TestRuntimeProvider,
     runtimeIdentity: "test-runtime",
+    engineIdentity: { fingerprint: "test", endpoint: "unix:///test.sock" },
     healthyDependencyContinuation: true,
     isAvailable: Effect.fail(availabilityError),
     appliedPlans: fail(),

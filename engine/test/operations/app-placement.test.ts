@@ -1,16 +1,19 @@
 import { expect, test } from "bun:test";
 import { rmSync } from "node:fs";
 import { join } from "node:path";
-import { AppResolveError, FileSyncSelectionError } from "@lando/sdk/errors";
+import { AppPlacementError, AppResolveError, FileSyncSelectionError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, type AppPlan, ProviderId, appIdentityKey } from "@lando/sdk/schema";
 import { AppPlanner, GlobalAppService } from "@lando/sdk/services";
 import { Effect } from "effect";
 import { withResolvedCwd } from "../../src/landofile/app-resolution.ts";
+import { destroyApp } from "../../src/operations/destroy.ts";
+import { execApp } from "../../src/operations/exec.ts";
 import { infoApp } from "../../src/operations/info.ts";
 import { logsApp } from "../../src/operations/logs.ts";
 import { rebuildApp } from "../../src/operations/rebuild.ts";
 import { restartApp } from "../../src/operations/restart.ts";
 import { startApp } from "../../src/operations/start.ts";
+import { stopApp } from "../../src/operations/stop.ts";
 import {
   ensureAppPlacement,
   observedAppPlan,
@@ -184,6 +187,77 @@ test("observation reuses the applied plan instead of the newly selected provider
     rmSync(harness.userDataRoot, { recursive: true, force: true });
   }
 });
+
+const daemonTarget = { app, root: applied.root, plan: applied };
+for (const [name, run] of Object.entries({
+  start: startApp({}, daemonTarget),
+  restart: restartApp({}, daemonTarget),
+  rebuild: rebuildApp({}, daemonTarget),
+  stop: stopApp({}, daemonTarget),
+  destroy: destroyApp({}, daemonTarget),
+  info: infoApp({}, daemonTarget),
+  logs: logsApp({}, daemonTarget),
+  exec: execApp({ command: ["true"], service: "web" }, daemonTarget),
+})) {
+  test(`${name} refuses a different daemon without mutating the app`, async () => {
+    const recorded = { ...applied, engineIdentity: { fingerprint: "a", endpoint: "unix:///a.sock" } };
+    let mutations = 0;
+    const harness = makeHarness({
+      plannedApp: applied,
+      appliedPlans: [recorded],
+      providerOverrides: { engineIdentity: { fingerprint: "b", endpoint: "unix:///b.sock" } },
+      onBuild: () => {
+        mutations++;
+      },
+      onApply: () => {
+        mutations++;
+      },
+      onStop: () => mutations++,
+      onDestroy: () => mutations++,
+    });
+    try {
+      const result = await Effect.runPromise(
+        Effect.result(
+          Effect.gen(function* () {
+            yield* run;
+          }),
+        ).pipe(Effect.provide(harness.layer)),
+      );
+      if (result._tag !== "Failure") throw new Error("Expected placement refusal");
+      expect(result.failure).toBeInstanceOf(AppPlacementError);
+      expect(result.failure.message).toContain("unix:///a.sock");
+      expect(result.failure.message).toContain("unix:///b.sock");
+      expect(mutations).toBe(0);
+    } finally {
+      rmSync(harness.userDataRoot, { recursive: true, force: true });
+    }
+  });
+}
+
+for (const [name, recorded, current] of [
+  ["same daemon via alias", "a", "a"],
+  ["old record without identity", undefined, "b"],
+  ["unidentified engine", "a", undefined],
+] as const) {
+  test(`start admits ${name}`, async () => {
+    const harness = makeHarness({
+      plannedApp: applied,
+      appliedPlans: [
+        recorded === undefined
+          ? applied
+          : { ...applied, engineIdentity: { fingerprint: recorded, endpoint: "unix:///a.sock" } },
+      ],
+      providerOverrides:
+        current === undefined ? {} : { engineIdentity: { fingerprint: current, endpoint: "tcp://dev:2375" } },
+    });
+    try {
+      const result = await Effect.runPromise(startApp({}, daemonTarget).pipe(Effect.provide(harness.layer)));
+      expect(result.servicesStarted.length).toBeGreaterThan(0);
+    } finally {
+      rmSync(harness.userDataRoot, { recursive: true, force: true });
+    }
+  });
+}
 
 test("ambiguous placement names provider-scoped confirmed destroy commands", async () => {
   const harness = makeHarness({ appliedPlans: [applied, { ...applied, provider: desired.provider }] });

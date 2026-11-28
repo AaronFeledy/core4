@@ -467,6 +467,7 @@ describe("SDK plan-carrying error channels", () => {
       Equal<
         StopAppError,
         | LegacyStopAppError
+        | import("@lando/sdk/errors").AppPlacementError
         | import("@lando/sdk/errors").ProxyError
         | import("@lando/sdk/errors").ProxyApplyError
       >
@@ -479,6 +480,7 @@ describe("SDK plan-carrying error channels", () => {
       Equal<
         InfoAppError,
         | LegacyInfoAppError
+        | import("@lando/sdk/errors").AppPlacementError
         | import("@lando/sdk/errors").AppResolveError
         | import("@lando/sdk/errors").StateStoreError
       >
@@ -487,7 +489,7 @@ describe("SDK plan-carrying error channels", () => {
   });
 
   test("ExecAppError retains its pre-refactor members", () => {
-    assertType<Equal<ExecAppError, LegacyExecAppError>>(true);
+    assertType<Equal<ExecAppError, LegacyExecAppError | import("@lando/sdk/errors").AppPlacementError>>(true);
     expect(true).toBe(true);
   });
 
@@ -501,6 +503,7 @@ describe("SDK plan-carrying error channels", () => {
       Equal<
         LogsAppError,
         | LegacyLogsAppError
+        | import("@lando/sdk/errors").AppPlacementError
         | import("@lando/sdk/errors").AppResolveError
         | import("@lando/sdk/errors").StateStoreError
       >

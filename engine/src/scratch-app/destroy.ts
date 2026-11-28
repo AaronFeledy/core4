@@ -1,7 +1,7 @@
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import { causeRemediation, mapFailures } from "@lando/sdk/command-result";
-import { ScratchAppError } from "@lando/sdk/errors";
+import { AppPlacementError, ScratchAppError } from "@lando/sdk/errors";
 import {
   PostDestroyEvent,
   PostScratchDestroyEvent,
@@ -26,6 +26,7 @@ import { removeServiceCertificates } from "../lifecycle/service-certificate-path
 import { canonicalMissingAppRoot } from "../operations/app-mutation-lock.ts";
 import { withDestroyProgress } from "../operations/destroy-progress.ts";
 import { removeSnapshots, scratchOwnedSnapshots } from "../operations/destroy-snapshots.ts";
+import { requireOwningEngine } from "../providers/app-placement.ts";
 import { BuildOwner } from "../services/build-owner.ts";
 import { clearAppBuildResults } from "../services/build-results.ts";
 import { removeAppBuildOutput, warnBuildOutputCleanupFailure } from "../services/build-transcript-cleanup.ts";
@@ -64,8 +65,8 @@ export const makeScratchReaper = Effect.gen(function* () {
       // The desired cache may miss after a frame bump; recover the matching applied plan
       // before planless orphan cleanup so snapshots and provider teardown still own the app.
       const lookupRoot = entry?.layout === "legacy" ? AbsolutePath.make(entry.rootPath) : managedRoot;
-      const { plan, ownership, inventoryOnly } = input.materializationOnly
-        ? { plan: undefined, ownership: [], inventoryOnly: false }
+      const { plan, recorded, ownership, inventoryOnly } = input.materializationOnly
+        ? { plan: undefined, recorded: undefined, ownership: [], inventoryOnly: false }
         : yield* resolveScratchTeardown({
             id: input.id,
             lookupRoot,
@@ -97,6 +98,7 @@ export const makeScratchReaper = Effect.gen(function* () {
         },
       };
       const provider = plan === undefined ? undefined : yield* providers.select(plan);
+      if (provider !== undefined) yield* requireOwningEngine(provider, "scratch", [recorded]);
       const orphan =
         plan === undefined && !input.materializationOnly
           ? yield* scanner.prepareScratch(input.id, keepVolumes)
@@ -235,7 +237,8 @@ export const makeScratchReaper = Effect.gen(function* () {
         ? cause
         : new ScratchAppError({
             operation: "destroy",
-            message: "Unable to destroy scratch resources.",
+            message:
+              cause instanceof AppPlacementError ? cause.message : "Unable to destroy scratch resources.",
             cause,
             remediation:
               causeRemediation(cause) ??

@@ -26,7 +26,7 @@ import { Context, Effect } from "effect";
 import { resolveProxyDefaultDomain } from "../config/proxy-default-domain.ts";
 import { resolveRouterConfigForApp, routerEnabled } from "../config/router-config.ts";
 import { withGlobalMutation } from "../global-app/mutation.ts";
-import { globalCreateProviderId } from "../global-app/placement.ts";
+import { selectGlobalCreateProvider } from "../global-app/placement.ts";
 import { withGlobalResolutionCapabilities } from "../global-app/resolution.ts";
 import { mapFailureErrors } from "../lifecycle/failure-compensation.ts";
 import { interruptOnAbort } from "../subsystems/healthcheck/attempt.ts";
@@ -166,9 +166,7 @@ export const withGlobalConsumerAdmission = Effect.fnUntraced(function* <A, E, R>
               };
         if (router?.prepare !== undefined && config !== undefined) yield* router.prepare(config);
         const verify = Effect.gen(function* () {
-          const providerId = yield* globalCreateProviderId();
-          const registry = yield* RuntimeProviderRegistry;
-          const provider = yield* registry.select(providerId);
+          const { providerId, provider } = yield* selectGlobalCreateProvider();
           const current = yield* withGlobalResolutionCapabilities(
             providerId,
             provider.capabilities,

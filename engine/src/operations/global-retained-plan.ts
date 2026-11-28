@@ -24,6 +24,7 @@ import { DateTime, Effect, Option } from "effect";
 import { resolveGlobalPlacement } from "../global-app/placement.ts";
 import { readGlobalResolution } from "../global-app/resolution.ts";
 import { adoptPlanDataRoot } from "../lifecycle/volume-coordination.ts";
+import { requireOwningEngine } from "../providers/app-placement.ts";
 import { prepareProvider } from "../providers/prepared.ts";
 import { serviceInDataRoot } from "./data-root-scope.ts";
 import { composeGlobalRecordedPlan } from "./global-recorded-plan.ts";
@@ -44,6 +45,7 @@ export const prepareGlobalReplacement = Effect.fn("GlobalApp.prepareReplacement"
   const registry = yield* RuntimeProviderRegistry;
   yield* registry.readAppliedPlanStrict(desired);
   const { plan: placed } = yield* resolveGlobalPlacement();
+  yield* requireOwningEngine(selectedProvider, "global", [placed]);
   const renamed = placed !== undefined && landoNativeAppSlug(placed) !== landoNativeAppSlug(desired);
   const prior = renamed ? undefined : placed;
   if (

@@ -23,6 +23,7 @@ import { withAgentContextEnv } from "../config/agent-env.ts";
 import { resolveAgentEnvForwardAllowlist } from "../config/agent-env-policy.ts";
 import { withTerminalEnv } from "../config/terminal-env.ts";
 import { type ResolvedAppTarget, loadUserLandofileAt, planDesiredApp } from "../landofile/app-resolution.ts";
+import { requireOwningEngine } from "../providers/app-placement.ts";
 import { appliedAppPlan, selectCommandIdentity } from "../services/execution-identity.ts";
 import { HostExecutionDefaults } from "../services/host-execution-context.ts";
 import { registerPlanRedaction } from "../services/plan-redaction.ts";
@@ -221,6 +222,7 @@ export const execApp = Effect.fn("AppOperation.exec")(function* (
   yield* registerPlanRedaction(plan);
   const provider = yield* registry.select(plan);
   const applied = yield* appliedAppPlan(registry, plan);
+  yield* requireOwningEngine(provider, appTarget?.app.kind ?? "user", [applied]);
   const appliedService = Object.values(applied?.services ?? {}).find((entry) => entry.name === service.name);
   if (applied?.provider === plan.provider) yield* publishNodePackageManagerWarning(service, appliedService);
   const identity = selectCommandIdentity({

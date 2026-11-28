@@ -11,6 +11,7 @@ import {
   type AppPlan,
   AppPlan as AppPlanSchema,
   type AppRef,
+  type AppliedAppPlan,
   LoadScopedLandofile,
   type ProviderCapabilities,
   ProviderId,
@@ -136,7 +137,7 @@ export const makeHarness = (
     /**
      * When omitted, placement uses `resolveAppliedPlan`. Pass `[]` to model no applied user app.
      */
-    readonly appliedPlans?: ReadonlyArray<AppPlan>;
+    readonly appliedPlans?: ReadonlyArray<AppPlan & Pick<AppliedAppPlan, "engineIdentity">>;
     readonly providerOverrides?: Partial<RuntimeProviderShape>;
     readonly selectProvider?: (target?: AppPlan | ProviderId) => Effect.Effect<RuntimeProviderShape>;
     readonly resolveAppliedPlan?: typeof RuntimeProviderRegistry.Service.resolveAppliedPlan;

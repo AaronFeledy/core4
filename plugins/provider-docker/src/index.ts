@@ -27,6 +27,7 @@ import {
 import { compareDockerApiVersion } from "@lando/container-runtime/docker/api-version";
 import type { ProviderErrorContext } from "@lando/container-runtime/engine-api";
 import { apiResponseFailure, parseEngineJson } from "@lando/container-runtime/engine-errors";
+import { dockerEngineIdentity } from "@lando/container-runtime/engine-identity";
 import { validateHealthcheckExecution } from "@lando/container-runtime/healthcheck-attempt";
 import { buildContainerArtifact } from "@lando/container-runtime/image-build";
 import { makeEnsureImage } from "@lando/container-runtime/image-ensure";
@@ -365,11 +366,7 @@ export const windowsDockerCapabilities = dockerCapabilitiesForHost("win32", "npi
 
 export const decodeProviderCapabilities = decodeProviderCapabilitiesFor(PROVIDER_ID);
 
-export const introspectProviderCapabilities = (
-  api: DockerApiClient,
-  platform: HostPlatform,
-  dockerHost = "/var/run/docker.sock",
-): Effect.Effect<ProviderCapabilities, ProviderCapabilityError | ProviderUnavailableError> =>
+const inspectEngine = (api: DockerApiClient, platform: HostPlatform, dockerHost = "/var/run/docker.sock") =>
   api.info.pipe(
     mapFailures((cause) =>
       cause instanceof ProviderInternalError
@@ -388,7 +385,7 @@ export const introspectProviderCapabilities = (
     Effect.map((info) => {
       const engineArch = engineInfoArchitecture(info);
       const startIntervalVersion = api.requestApiVersion?.(["1.44"]);
-      return dockerCapabilitiesForHost(platform, dockerHost, {
+      const capabilities = dockerCapabilitiesForHost(platform, dockerHost, {
         containerTargets: hostProxyContainerTargets(engineArch),
         rootless: engineInfoRootless(info) ?? false,
         usernsRemap: engineInfoUsernsRemap(info) ?? false,
@@ -396,8 +393,15 @@ export const introspectProviderCapabilities = (
           startIntervalVersion !== undefined &&
           (compareDockerApiVersion(startIntervalVersion, "1.44") ?? -1) >= 0,
       });
+      return { capabilities, engineIdentity: dockerEngineIdentity(info, dockerHost) };
     }),
   );
+
+export const introspectProviderCapabilities = (
+  api: DockerApiClient,
+  platform: HostPlatform,
+  dockerHost?: string,
+) => inspectEngine(api, platform, dockerHost).pipe(Effect.map(({ capabilities }) => capabilities));
 
 export const makeDockerApiClient = (dockerHost: string): DockerApiClient =>
   makeRuntimeDockerApiClient(dockerHost, dockerContextForEnv({ ...process.env }));
@@ -543,15 +547,18 @@ const makeRuntimeProviderWithContext = (
       : options.dockerApiFactory(resolvedDockerHost));
   const defaultFactoryConstruction =
     options.dockerApi === undefined && options.dockerApiFactory === undefined;
-  const capabilities = introspectProviderCapabilities(dockerApi, platform, resolvedDockerHost).pipe(
+  const capabilities = inspectEngine(dockerApi, platform, resolvedDockerHost).pipe(
     Effect.catch((failure) =>
       defaultFactoryConstruction
-        ? Effect.succeed(dockerCapabilitiesForHost(platform, resolvedDockerHost))
+        ? Effect.succeed({
+            capabilities: dockerCapabilitiesForHost(platform, resolvedDockerHost),
+            engineIdentity: undefined,
+          })
         : Effect.fail(failure),
     ),
   );
   const runtimeCapabilities = capabilities.pipe(
-    Effect.map((resolved) => {
+    Effect.map(({ capabilities: resolved, engineIdentity }) => {
       const logSourceBinding = makeProviderLogSourceBinding({
         ...(DOCKER_CTX.redactor === undefined ? {} : { redactor: DOCKER_CTX.redactor }),
         sourceEnv: DOCKER_CTX.env,
@@ -566,11 +573,16 @@ const makeRuntimeProviderWithContext = (
           serviceLogSources: logSourceBinding.supported && resolved.serviceLogSources,
         },
         logSourceBinding,
+        engineIdentity,
       };
     }),
   );
   return Effect.gen(function* () {
-    const { capabilities: resolvedCapabilities, logSourceBinding } = yield* runtimeCapabilities;
+    const {
+      capabilities: resolvedCapabilities,
+      logSourceBinding,
+      engineIdentity,
+    } = yield* runtimeCapabilities;
     const execHelper = {
       resolveContainerHelper: options.resolveContainerHelper,
       helperTarget: resolvedCapabilities.hostProxy?.containerTargets[0],
@@ -580,6 +592,7 @@ const makeRuntimeProviderWithContext = (
       userDataRoot: options.userDataRoot,
       providerId: ProviderId.make(PROVIDER_ID),
       endpointNamespace: resolvedDockerHost,
+      ...(engineIdentity === undefined ? {} : { engineIdentity }),
       pullHelperImage: (ref) =>
         pullImage(dockerApi, ref, {
           ctx: DOCKER_CTX,
@@ -648,6 +661,7 @@ const makeRuntimeProviderWithContext = (
       version: "0.0.0",
       platform,
       runtimeIdentity: resolvedDockerHost,
+      ...(engineIdentity === undefined ? {} : { engineIdentity }),
       capabilities: resolvedCapabilities,
       ...(agentSocketDelivery(platform, resolvedDockerHost) === "volume-relay"
         ? {

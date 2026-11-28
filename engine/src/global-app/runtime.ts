@@ -16,8 +16,9 @@ import {
   type EnsureGlobalServicesServices,
   ensureGlobalServicesRunning,
 } from "../operations/ensure-global-services.ts";
+import { requireOwningEngine } from "../providers/app-placement.ts";
 import { prepareProvider } from "../providers/prepared.ts";
-import { globalCreateProviderId, globalObserveProviderId } from "./placement.ts";
+import { globalObserveProviderId, selectGlobalCreateProvider } from "./placement.ts";
 
 export const layer = Layer.effect(
   GlobalAppService,
@@ -37,6 +38,7 @@ export const layer = Layer.effect(
               appRoot: root,
               dataRoot: paths.roots.userDataRoot,
             });
+            yield* requireOwningEngine(provider, "global", [plan]);
             const online = !onlyRunning || (yield* provider.getStatus).state !== "idle";
             const services =
               online && plan?.provider === provider.id
@@ -48,9 +50,9 @@ export const layer = Layer.effect(
           }),
         ),
       );
-    const createProvider = globalCreateProviderId().pipe(
+    const createProvider = selectGlobalCreateProvider().pipe(
       Effect.provide(context),
-      Effect.flatMap((id) => registry.select(id)),
+      Effect.map(({ provider }) => provider),
     );
     return GlobalAppService.of({
       ...globalApp,

@@ -38,7 +38,7 @@ import {
   rememberGlobalEnsure,
 } from "../global-app/ensure-cache.ts";
 import { type GlobalMutationServices, withGlobalMutation } from "../global-app/mutation.ts";
-import { globalCreateProviderId } from "../global-app/placement.ts";
+import { selectGlobalCreateProvider } from "../global-app/placement.ts";
 import { type GlobalResolution, readGlobalResolution } from "../global-app/resolution.ts";
 import { captureGlobalStartupAdmission } from "../global-app/startup-admission.ts";
 import { applyActivation } from "../lifecycle/activation-apply.ts";
@@ -170,7 +170,7 @@ export const ensureGlobalServicesRunning = Effect.fnUntraced(
     const cached = globalEnsureRecord(registry, root);
     if (cached !== undefined) {
       yield* registry.readAppliedPlanStrict(cached.plan);
-      const provider = yield* registry.select(yield* globalCreateProviderId());
+      const { provider } = yield* selectGlobalCreateProvider();
       const inputs = yield* captureGlobalEnsureInputs(cached.plan, cached.landofile, provider);
       const names = Object.values(cached.plan.services);
       const selected = includeAvailableDependencies(requested, names);

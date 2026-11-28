@@ -21,6 +21,7 @@ import {
 import { preflightDataRootPurge } from "@lando/container-runtime/data-root-purge";
 import { libpodPullDialect, libpodWaitDialect } from "@lando/container-runtime/dialect";
 import type { PodmanApiClient, ProviderErrorContext } from "@lando/container-runtime/engine-api";
+import { podmanEngineIdentity } from "@lando/container-runtime/engine-identity";
 import { validateHealthcheckExecution } from "@lando/container-runtime/healthcheck-attempt";
 import { buildContainerArtifact } from "@lando/container-runtime/image-build";
 import { makeEnsureImage } from "@lando/container-runtime/image-ensure";
@@ -706,6 +707,7 @@ const assembleRuntimeProvider = (
         ? noConflict()
         : detectProviderLandoConflict(options.stateDir, socketPath);
 
+  const endpoint = socketPath.startsWith("/") ? `unix://${socketPath}` : socketPath;
   const gatedRuntime = podmanApi.info.pipe(
     Effect.flatMap((info) =>
       enforceServerVersionFloor(info).pipe(
@@ -726,6 +728,7 @@ const assembleRuntimeProvider = (
           });
           return {
             serverVersion,
+            engineIdentity: podmanEngineIdentity(info, endpoint),
             capabilities: {
               ...capabilities,
               serviceHealth: podmanServiceHealth(info),
@@ -757,7 +760,12 @@ const assembleRuntimeProvider = (
   );
   return Effect.gen(function* () {
     yield* conflictCheck;
-    const { serverVersion, capabilities: resolvedCapabilities, logSourceBinding } = yield* gatedRuntime;
+    const {
+      serverVersion,
+      capabilities: resolvedCapabilities,
+      logSourceBinding,
+      engineIdentity,
+    } = yield* gatedRuntime;
     const execHelper = {
       resolveContainerHelper: options.resolveContainerHelper,
       helperTarget: resolvedCapabilities.hostProxy?.containerTargets[0],
@@ -767,7 +775,8 @@ const assembleRuntimeProvider = (
       ctx: PODMAN_CTX,
       userDataRoot: options.userDataRoot,
       providerId: providerIdBranded,
-      endpointNamespace: socketPath.startsWith("/") ? `unix://${socketPath}` : socketPath,
+      endpointNamespace: endpoint,
+      ...(engineIdentity === undefined ? {} : { engineIdentity }),
       pullHelperImage: (ref) =>
         pullImage(podmanApi, ref, {
           ctx: PODMAN_CTX,
@@ -835,7 +844,8 @@ const assembleRuntimeProvider = (
       displayName: "Podman Runtime Provider (user-installed)",
       version: "0.0.0",
       platform,
-      runtimeIdentity: socketPath.startsWith("/") ? `unix://${socketPath}` : socketPath,
+      runtimeIdentity: endpoint,
+      ...(engineIdentity === undefined ? {} : { engineIdentity }),
       capabilities: {
         ...resolvedCapabilities,
         ...(agentBridge === undefined ? {} : { agentSocket: { delivery: "guest-bridge" } }),

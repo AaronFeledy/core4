@@ -1,6 +1,14 @@
+import { engineEndpointDisplay } from "@lando/container-runtime/engine-identity";
 import { AppPlacementError, AppResolveError } from "@lando/sdk/errors";
-import { AbsolutePath, AppId, type AppPlan, type AppRef, type ProviderId } from "@lando/sdk/schema";
-import { RuntimeProviderRegistry } from "@lando/sdk/services";
+import {
+  AbsolutePath,
+  AppId,
+  type AppPlan,
+  type AppRef,
+  type AppliedAppPlan,
+  type ProviderId,
+} from "@lando/sdk/schema";
+import { RuntimeProviderRegistry, type RuntimeProviderShape } from "@lando/sdk/services";
 import { Context, Effect } from "effect";
 import { canonicalMissingAppRoot } from "../operations/app-mutation-lock.ts";
 import { matchesAppPlanIdentity } from "./app-plan-identity.ts";
@@ -87,6 +95,32 @@ export const ensureAppPlacement = Effect.fn("AppPlacement.ensure")(function* (
 ) {
   return (yield* ensureAppPlacementState(app, desired)).desired;
 });
+
+export const requireOwningEngine = (
+  provider: RuntimeProviderShape,
+  kind: AppRef["kind"],
+  plans: readonly (Pick<AppliedAppPlan, "id" | "provider" | "root" | "engineIdentity"> | undefined)[],
+) => {
+  const current = provider.engineIdentity;
+  if (current === undefined) return Effect.void;
+  for (const plan of plans) {
+    if (plan === undefined || plan.provider !== provider.id) continue;
+    const recorded = plan.engineIdentity;
+    if (recorded === undefined || recorded.fingerprint === current.fingerprint) continue;
+    const app = { kind, root: plan.root, id: plan.id };
+    const owningEndpoint = engineEndpointDisplay(recorded.endpoint);
+    return Effect.fail(
+      new AppPlacementError({
+        app,
+        desiredProviderId: provider.id,
+        realizedProviderId: plan.provider,
+        message: `App ${plan.id} was realized at ${owningEndpoint}, but ${engineEndpointDisplay(current.endpoint)} now connects to a different engine.`,
+        remediation: `Restore the connection to ${owningEndpoint}${provider.id === "docker" ? " with `docker context use <name>` or by setting DOCKER_HOST" : " by setting DOCKER_HOST"}. To retire the old realization, reconnect to its engine and run \`${destroyCommand(app, plan.provider)}\`.`,
+      }),
+    );
+  }
+  return Effect.void;
+};
 
 export const observedAppPlan = Effect.fn("AppPlacement.observedPlan")(function* (
   plan: AppPlan,

@@ -69,7 +69,7 @@ import { publishStartWarnings } from "../operations/start-warnings.ts";
 import { resolveAppIdentity } from "../planner/app-identity.ts";
 import { validateAppPlan } from "../planner/plan-decode.ts";
 import { PluginContributionGraph } from "../plugins/contribution-graph.ts";
-import { ensureAppPlacement } from "../providers/app-placement.ts";
+import { ensureAppPlacementState, requireOwningEngine } from "../providers/app-placement.ts";
 import { prepareProvider } from "../providers/prepared.ts";
 import { RuntimeCwd } from "../runtime/cwd.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
@@ -577,7 +577,7 @@ const makeScratchAppService = Effect.fnUntraced(function* (
       ),
     );
     const preparedOverlays = yield* prepareDebuggerOverlay(markedPlan);
-    yield* ensureAppPlacement(
+    const placement = yield* ensureAppPlacementState(
       { kind: "scratch", id: scratchId, root: markedPlan.root },
       markedPlan.provider,
     ).pipe(
@@ -594,9 +594,12 @@ const makeScratchAppService = Effect.fnUntraced(function* (
     )
       yield* preflightGlobalPlacement;
     const provider = yield* providerRegistry.select(markedPlan).pipe(
+      Effect.tap((selected) => requireOwningEngine(selected, "scratch", [placement.plan])),
       Effect.flatMap(prepareProvider),
       mapFailures((cause) =>
-        scratchAppError("start", `Unable to select a provider for scratch app ${scratchId}.`, cause),
+        cause instanceof AppPlacementError
+          ? cause
+          : scratchAppError("start", `Unable to select a provider for scratch app ${scratchId}.`, cause),
       ),
     );
     yield* writeCachedPlan(planCache, markedPlan);

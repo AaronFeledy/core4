@@ -2,7 +2,7 @@ import { AbsolutePath, AppId, ProviderId } from "@lando/sdk/schema";
 import { RuntimeProviderRegistry } from "@lando/sdk/services";
 import { Effect } from "effect";
 import type { ResolvedAppTarget } from "../landofile/app-resolution.ts";
-import { TeardownProvider } from "../providers/app-placement.ts";
+import { TeardownProvider, requireOwningEngine } from "../providers/app-placement.ts";
 import { matchesAppPlanIdentity } from "../providers/app-plan-identity.ts";
 import { prepareTeardownOwners } from "../providers/runtime-observation.ts";
 import { readDiscardableStart } from "./accelerated-start-disposal.ts";
@@ -46,10 +46,10 @@ export const prepareDestroyOwners = Effect.fn("AppOperation.prepareDestroyOwners
     ),
   );
   const snapshots = options.purgeSnapshots === true ? yield* ownedSnapshots(roots) : [];
+  const app = options.target?.app ?? { kind: "user" as const, id: "" };
+  const matching = plans.filter((plan) => matchesAppPlanIdentity(plan, app));
   const owners = new Set([
-    ...plans
-      .filter((plan) => matchesAppPlanIdentity(plan, options.target?.app ?? { kind: "user", id: "" }))
-      .map((plan) => plan.provider),
+    ...matching.map((plan) => plan.provider),
     // A target without a Landofile is the caller's applied evidence; a desired target proves nothing.
     ...(options.target === undefined || options.target.landofile !== undefined
       ? []
@@ -66,5 +66,6 @@ export const prepareDestroyOwners = Effect.fn("AppOperation.prepareDestroyOwners
     [...owners].filter((id) => selected === undefined || id === selected),
     (id) => registry.select(ProviderId.make(id)),
   );
+  for (const provider of providers) yield* requireOwningEngine(provider, app.kind, matching);
   yield* prepareTeardownOwners(providers);
 });

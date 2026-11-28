@@ -52,7 +52,7 @@ interface RegistryOptions {
 
 export const registryLayer = (provider: RuntimeProviderShape, options: RegistryOptions = {}) => {
   const id = ProviderId.make(provider.id);
-  const inventory =
+  const inventory: RuntimeProviderContribution["appliedStateInventory"] =
     options.contribution?.appliedStateInventory ?? (() => Effect.succeed({ plans: [plan], unreadable: [] }));
   const manifest = Schema.decodeUnknownSync(PluginManifest)({
     name: "@test/error-output",

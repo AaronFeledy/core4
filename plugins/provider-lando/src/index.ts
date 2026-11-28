@@ -9,6 +9,7 @@ import type {
   PodmanApiClient,
   ProviderErrorContext,
 } from "@lando/container-runtime/engine-api";
+import { podmanEngineIdentity } from "@lando/container-runtime/engine-identity";
 import { validateHealthcheckExecution } from "@lando/container-runtime/healthcheck-attempt";
 import { buildContainerArtifact } from "@lando/container-runtime/image-build";
 import { makeEnsureImage } from "@lando/container-runtime/image-ensure";
@@ -134,7 +135,7 @@ import {
 } from "./applied-state.ts";
 import {
   declaredProviderLandoCapabilities,
-  introspectProviderCapabilities,
+  inspectProviderEngine,
   mvpProviderCapabilities,
   withResourceControl,
 } from "./capabilities.ts";
@@ -913,10 +914,18 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
             Effect.map((control) => withResourceControl(mvpProviderCapabilities(platform, arch), control)),
           )
         : undefined;
-    const baseCapabilities =
+    const inspected =
       shouldProbeCapabilities && podmanApi !== undefined
-        ? introspectProviderCapabilities(podmanApi, platform)
-        : (managedCapabilities ?? Effect.succeed(mvpProviderCapabilities(platform, arch)));
+        ? yield* inspectProviderEngine(podmanApi, platform)
+        : undefined;
+    const engineIdentity =
+      inspected === undefined || socketPath === undefined
+        ? undefined
+        : podmanEngineIdentity(inspected.info, socketPath);
+    const baseCapabilities =
+      inspected === undefined
+        ? (managedCapabilities ?? Effect.succeed(mvpProviderCapabilities(platform, arch)))
+        : Effect.succeed(inspected.capabilities);
     // Only the managed Linux service can be vouched for; an external socket keeps `serviceHealth: none`.
     const { runtimeRunDir, providerPidPath } = options;
     const capabilities =
@@ -968,6 +977,7 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
       helperTarget: resolvedCapabilities.hostProxy?.containerTargets[0],
     };
     const planState = makeProviderPlanState({
+      ...(engineIdentity === undefined ? {} : { engineIdentity }),
       ctx: LANDO_CTX,
       userDataRoot: options.userDataRoot,
       ...(podmanApi === undefined
@@ -1456,6 +1466,7 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
         version: "0.0.0",
         platform,
         runtimeIdentity: socketPath ?? `lando:${platform}`,
+        ...(engineIdentity === undefined ? {} : { engineIdentity }),
         capabilities: {
           ...resolvedCapabilities,
           ...(windowsSyncTargets === undefined ? {} : { fileSyncTargets: "prepared-volume" as const }),
