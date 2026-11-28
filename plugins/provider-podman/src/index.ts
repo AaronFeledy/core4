@@ -18,7 +18,6 @@ import {
   hostProxyCapabilities,
   hostProxyContainerTargets,
 } from "@lando/container-runtime/capabilities";
-import { preflightRecordedPurge } from "@lando/container-runtime/data-root-purge";
 import { libpodPullDialect, libpodWaitDialect } from "@lando/container-runtime/dialect";
 import type { PodmanApiClient, ProviderErrorContext } from "@lando/container-runtime/engine-api";
 import { podmanEngineIdentity } from "@lando/container-runtime/engine-identity";
@@ -62,6 +61,7 @@ import {
   providerHostInputs,
   rememberAppliedPlan,
 } from "@lando/container-runtime/provider-assembly";
+import { preflightRecordedPurge } from "@lando/container-runtime/purge-placement";
 import {
   redactDetails,
   redactString,

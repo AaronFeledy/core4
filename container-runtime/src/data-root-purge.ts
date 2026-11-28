@@ -1,15 +1,9 @@
 import { mapFailures } from "@lando/sdk/command-result";
-import type { ProviderPurgePreflight } from "@lando/sdk/plugins";
-import { type EngineIdentity, ProviderId } from "@lando/sdk/schema";
+import { ProviderId } from "@lando/sdk/schema";
 import { Effect, Result, Schema } from "effect";
 import { removeRuntimeContainer } from "./container-removal.ts";
 import { makePurgeCandidates, purgeKinds } from "./data-root-purge-candidates.ts";
-import type {
-  EngineApiClient,
-  EngineHttpApi,
-  EngineHttpRequest,
-  ProviderErrorContext,
-} from "./engine-api.ts";
+import type { EngineHttpApi, EngineHttpRequest, ProviderErrorContext } from "./engine-api.ts";
 import { isSuccessStatus } from "./engine-api.ts";
 import { apiResponseFailure, missingApi, missingRequest } from "./engine-errors.ts";
 import { engineEndpointDisplay } from "./engine-identity.ts";
@@ -17,7 +11,6 @@ import { BUILT_ARTIFACT_PREFIX, BUILT_ARTIFACT_STORE_LABEL } from "./image-build
 import { listContainerArtifacts, normalizeImageRef } from "./image-list.ts";
 import { removeContainerArtifact } from "./image-remove.ts";
 import { APP_LABEL, APP_ROOT_LABEL, VOLUME_INSTANCE_LABEL } from "./labels.ts";
-import { guardPurgePlacement } from "./purge-placement.ts";
 import { redactString, redactorFor } from "./redact.ts";
 import { readDataRootAdoptionReceipts } from "./resource-ownership-records.ts";
 
@@ -255,27 +248,4 @@ export const preflightDataRootPurge = Effect.fn("DataRootPurge.preflight")(funct
     return { endpoint, removed, retained, failed, outsideScope };
   });
   return { kind: "reachable" as const, endpoint, counts, apps: [...apps.values()], syncPresent, sweep };
-});
-
-export const preflightRecordedPurge = Effect.fn("DataRootPurge.preflightRecorded")(function* (
-  ctx: ProviderErrorContext,
-  input: Omit<DataRootPurgeOptions, "endpoint">,
-  inventory: Parameters<typeof guardPurgePlacement>[2],
-  connection:
-    | Extract<ProviderPurgePreflight, { kind: "skipped" }>
-    | {
-        readonly api: EngineApiClient;
-        readonly endpoint: string;
-        readonly identify: (info: unknown, endpoint: string) => EngineIdentity | undefined;
-      },
-) {
-  if ("kind" in connection) return yield* guardPurgePlacement(ctx.providerId, input, inventory, connection);
-  const { api, endpoint, identify } = connection;
-  const found = yield* preflightDataRootPurge(api, ctx, { ...input, endpoint });
-  const current = api.info.pipe(
-    Effect.timeout("2 seconds"),
-    Effect.map((info) => identify(info, endpoint)),
-    Effect.catch(() => Effect.succeed(undefined)),
-  );
-  return yield* guardPurgePlacement(ctx.providerId, input, inventory, found, current);
 });

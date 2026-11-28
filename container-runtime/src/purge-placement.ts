@@ -4,17 +4,21 @@ import type { PluginStateStore, ProviderPurgePreflight } from "@lando/sdk/plugin
 import type { AppliedStateInventory, EngineIdentity } from "@lando/sdk/schema";
 import { Effect, Result } from "effect";
 import type { AppliedPlanStoreError } from "./applied-state.ts";
+import { type DataRootPurgeOptions, preflightDataRootPurge } from "./data-root-purge.ts";
+import type { EngineApiClient, ProviderErrorContext } from "./engine-api.ts";
 import { engineEndpointDisplay, matchesEnginePlacement } from "./engine-identity.ts";
 import { listResourceOwnershipRecords, openPurgeState } from "./resource-ownership-records.ts";
 
-/** Purge is descriptor-only. Read the same durable records as placement without bootstrapping a runtime. */
-export const guardPurgePlacement = Effect.fn("DataRootPurge.guardPlacement")(function* (
+type ListAppliedPlans = (
+  state: PluginStateStore,
+  root: string,
+) => Effect.Effect<AppliedStateInventory, AppliedPlanStoreError>;
+
+// Purge runs without bootstrapping a runtime provider.
+const guardPurgePlacement = Effect.fn("DataRootPurge.guardPlacement")(function* (
   providerId: string,
   input: { readonly dataRoot: string; readonly pluginId: string },
-  inventory: (
-    state: PluginStateStore,
-    root: string,
-  ) => Effect.Effect<AppliedStateInventory, AppliedPlanStoreError>,
+  inventory: ListAppliedPlans,
   found: ProviderPurgePreflight,
   current?: Effect.Effect<EngineIdentity | undefined>,
 ) {
@@ -74,4 +78,27 @@ export const guardPurgePlacement = Effect.fn("DataRootPurge.guardPlacement")(fun
       return yield* observation.sweep();
     }),
   };
+});
+
+export const preflightRecordedPurge = Effect.fn("DataRootPurge.preflightRecorded")(function* (
+  ctx: ProviderErrorContext,
+  input: Omit<DataRootPurgeOptions, "endpoint">,
+  inventory: ListAppliedPlans,
+  connection:
+    | Extract<ProviderPurgePreflight, { kind: "skipped" }>
+    | {
+        readonly api: EngineApiClient;
+        readonly endpoint: string;
+        readonly identify: (info: unknown, endpoint: string) => EngineIdentity | undefined;
+      },
+) {
+  if ("kind" in connection) return yield* guardPurgePlacement(ctx.providerId, input, inventory, connection);
+  const { api, endpoint, identify } = connection;
+  const found = yield* preflightDataRootPurge(api, ctx, { ...input, endpoint });
+  const current = api.info.pipe(
+    Effect.timeout("2 seconds"),
+    Effect.map((info) => identify(info, endpoint)),
+    Effect.catch(() => Effect.succeed(undefined)),
+  );
+  return yield* guardPurgePlacement(ctx.providerId, input, inventory, found, current);
 });

@@ -17,15 +17,12 @@ import { makePluginStateStore } from "@lando/state-store/plugin";
 import { makeStateStore } from "@lando/state-store/service";
 import { Effect } from "effect";
 import { makeAppliedPlanStore } from "../src/applied-state.ts";
-import {
-  type DataRootPurgeOptions,
-  preflightDataRootPurge,
-  preflightRecordedPurge,
-} from "../src/data-root-purge.ts";
+import { type DataRootPurgeOptions, preflightDataRootPurge } from "../src/data-root-purge.ts";
 import type { EngineHttpApi, EngineHttpResponse } from "../src/engine-api.ts";
 import { dockerEngineIdentity } from "../src/engine-identity.ts";
 import { BUILT_ARTIFACT_STORE_LABEL } from "../src/image-build.ts";
 import { volumeSelectorValue } from "../src/podman/volume-prune.ts";
+import { preflightRecordedPurge } from "../src/purge-placement.ts";
 import { makeResourceOwnershipStore } from "../src/resource-ownership.ts";
 import { plan } from "./fixtures/environment-values.ts";
 
@@ -260,7 +257,7 @@ test("purge needs the recorded daemon, including when a different socket aliases
     const found = await Effect.runPromise(prepare);
     if (found.kind !== "reachable") throw new Error("Expected alias to reach the recorded daemon");
     daemon = "B";
-    expect((await Effect.runPromise(found.sweep())).retained.length).toBeGreaterThan(0);
+    expect((await Effect.runPromise(found.sweep())).retained).toHaveLength(1);
     expect(actions).toEqual([]);
     expect((await Effect.runPromise(store.loadAppliedPlanStrict(state, plan.id)))?.engineIdentity).toEqual(
       recorded,

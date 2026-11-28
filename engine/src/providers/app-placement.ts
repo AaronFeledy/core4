@@ -109,13 +109,20 @@ export const requireOwningEngine = (
     if (recorded === undefined || matchesEnginePlacement(recorded, current)) continue;
     const app = { kind, root: plan.root, id: plan.id };
     const owningEndpoint = engineEndpointDisplay(recorded.endpoint);
+    let reconnect = `Restore the connection to ${owningEndpoint}`;
+    if (provider.id === "docker") reconnect += " with `docker context use <name>` or by setting DOCKER_HOST";
+    else if (provider.id === "podman") reconnect += " by setting DOCKER_HOST";
+    const retire =
+      kind === "scratch"
+        ? ""
+        : ` If that engine is gone, run \`${destroyCommand(app, plan.provider)}\` to drop Lando's record. Anything left on the old engine is not removed.`;
     return Effect.fail(
       new AppPlacementError({
         app,
         desiredProviderId: provider.id,
         realizedProviderId: plan.provider,
         message: `App ${plan.id} was realized at ${owningEndpoint}, but ${engineEndpointDisplay(current.endpoint)} now connects to a different engine.`,
-        remediation: `Restore the connection to ${owningEndpoint}${provider.id === "docker" ? " with `docker context use <name>` or by setting DOCKER_HOST" : provider.id === "podman" ? " by setting DOCKER_HOST" : ""}.${kind === "scratch" ? "" : ` If that engine is gone, run \`${destroyCommand(app, plan.provider)}\` to drop Lando's record. Anything left on the old engine is not removed.`}`,
+        remediation: `${reconnect}.${retire}`,
       }),
     );
   }

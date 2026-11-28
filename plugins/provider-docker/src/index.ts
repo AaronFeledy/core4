@@ -11,7 +11,6 @@ import {
   withPreservedPathVerdict,
 } from "@lando/container-runtime/capabilities";
 import { volumeCreationLabels } from "@lando/container-runtime/data-plane";
-import { preflightRecordedPurge } from "@lando/container-runtime/data-root-purge";
 import {
   dockerLifecycleDialect,
   dockerPullDialect,
@@ -63,6 +62,7 @@ import {
   providerHostInputs,
   rememberAppliedPlan,
 } from "@lando/container-runtime/provider-assembly";
+import { preflightRecordedPurge } from "@lando/container-runtime/purge-placement";
 import {
   redactDetails,
   redactString,

@@ -283,7 +283,7 @@ for (const [name, recorded, current] of [
     });
     try {
       const result = await Effect.runPromise(startApp({}, daemonTarget).pipe(Effect.provide(harness.layer)));
-      expect(result.servicesStarted.length).toBeGreaterThan(0);
+      expect(result.servicesStarted.map(({ name }) => name)).toEqual(["web"]);
     } finally {
       rmSync(harness.userDataRoot, { recursive: true, force: true });
     }

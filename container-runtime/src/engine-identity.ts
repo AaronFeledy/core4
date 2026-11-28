@@ -20,20 +20,16 @@ const Docker = Schema.Struct({ ID: Schema.NonEmptyString });
 
 const connectionLabel = (endpoint: string, recorded = false): string => {
   const url = URL.parse(endpoint);
-  // Remote connection strings can contain credentials, including in query parameters.
+  // Remote connection strings can carry credentials, including in userinfo and query parameters.
   if (url === null)
     return endpoint.startsWith("/") || endpoint.startsWith("\\\\.\\pipe\\") ? endpoint : "unknown endpoint";
   if (url.protocol === "unix:" || url.protocol === "npipe:")
     return `${url.protocol}//${url.host}${url.pathname}`;
-  // One proxy can route different API prefixes to different daemons. A prefix itself can be secret.
+  // A proxy can route different prefixes to different daemons, but the prefix itself can be secret.
   const prefix = explicitDockerApiPrefixFromHost(endpoint);
-  const marker =
-    prefix !== undefined
-      ? `#prefix=${sha256Hex(prefix)}`
-      : recorded && /^#prefix=[a-f0-9]{64}$/u.test(url.hash)
-        ? url.hash
-        : "";
-  return `${url.protocol}//${url.host}${marker}`;
+  const address = `${url.protocol}//${url.host}`;
+  if (prefix !== undefined) return `${address}#prefix=${sha256Hex(prefix)}`;
+  return recorded && /^#prefix=[a-f0-9]{64}$/u.test(url.hash) ? address + url.hash : address;
 };
 
 export const engineEndpointDisplay = (endpoint: string): string => connectionLabel(endpoint, true);
@@ -55,6 +51,7 @@ export const matchesEnginePlacement = (recorded: EngineIdentity, current: Engine
   const endpoint = canonicalConnection(recorded.endpoint);
   return endpoint !== undefined && endpoint === canonicalConnection(current.endpoint);
 };
+
 // Podman's compatibility ID is random per request. Both API dialects describe
 // the same backing store by the host's name and graph root, not its run dir.
 export const podmanEngineIdentity = (info: unknown, endpoint: string) => {

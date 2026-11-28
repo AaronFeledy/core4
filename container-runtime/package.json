@@ -102,7 +102,8 @@
     "./podman/container-events": "./src/podman/container-events.ts",
     "./podman/version-floor": "./src/podman/version-floor.ts",
     "./provider-assembly": "./src/provider-assembly.ts",
-    "./project-user-realization": "./src/project-user-realization.ts"
+    "./project-user-realization": "./src/project-user-realization.ts",
+    "./purge-placement": "./src/purge-placement.ts"
   },
   "files": ["./src", "./dist", "!./dist/**/*.tsbuildinfo"],
   "keywords": ["lando", "container-runtime", "provider"],
