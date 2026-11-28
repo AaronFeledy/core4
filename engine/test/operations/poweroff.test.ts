@@ -148,6 +148,7 @@ const makeHarness = async (input: {
   const provider = {
     ...TestRuntimeProvider,
     id: "lando",
+    engineIdentity: { endpoint: "unix:///current.sock", fingerprint: "current" },
     appliedPlans: Effect.succeed(snapshot.appliedPlans),
     getStatus: input.statusFailure
       ? Effect.fail(
@@ -306,6 +307,37 @@ const withRoots = async <A>(
 };
 
 describe("poweroff operation", () => {
+  test.each(["user", "global"] as const)(
+    "skips a %s app on another engine without blocking shutdown",
+    async (kind) => {
+      await withRoots(async ({ a, b, quiet }) => {
+        const other = { engineIdentity: { endpoint: "tcp://secret@old.example:2375", fingerprint: "old" } };
+        const user = { ...planAt(a, "first"), ...(kind === "user" ? other : {}) };
+        const global = { ...globalPlanAt(AbsolutePath.make(quiet)), ...(kind === "global" ? other : {}) };
+        const harness = await makeHarness({
+          roots: [
+            { root: a, plan: user, status: "running" },
+            { root: b, plan: planAt(b, "second"), status: "running" },
+          ],
+          globalPlans: [global],
+        });
+        const result = await Effect.runPromise(poweroff().pipe(Effect.provide(harness.layer)));
+        const skipped = result.apps.filter((app) => app.outcome === "skipped");
+        expect(skipped).toMatchObject([{ kind, appRoot: kind === "user" ? a : quiet, providerId }]);
+        const reason = skipped[0]?.reason;
+        expect(reason).toContain("tcp://old.example:2375");
+        expect(reason).toContain("unix:///current.sock");
+        expect(reason).not.toContain("secret");
+        expect(reason).toContain(`lando ${kind === "global" ? "global:" : ""}destroy --provider=lando --yes`);
+        expect(harness.calls).not.toContain(`stop:${kind === "user" ? a : quiet}`);
+        expect(harness.calls).toContain(`stop:${b}`);
+        if (kind === "user")
+          expect(result.apps.find((app) => app.kind === "global")?.outcome).toBe("stopped");
+        expect(harness.calls.at(-1)).toBe("runtime");
+        expect(result.runtimeServiceStopped).toBe(true);
+      });
+    },
+  );
   test("skips a scratch on another engine and destroys the next scratch", () =>
     withDestroyFixture({ appliedPlan: "other-engine" }, async (f) => {
       const id = AppId.make("scratch-next-654321");
@@ -327,7 +359,8 @@ describe("poweroff operation", () => {
         { appId: f.id, outcome: "skipped", reason: expect.stringContaining("tcp://old.example:2375") },
         { appId: id, outcome: "destroyed" },
       ]);
-      expect(result.keptScratchApps).toBe(1);
+      // Nothing was kept running here, so it does not hold the managed runtime up.
+      expect(result.keptScratchApps).toBe(0);
       expect([...f.entries.keys()]).toEqual([f.id]);
       expect(f.receipt()?.id).toBe(f.id);
     }));

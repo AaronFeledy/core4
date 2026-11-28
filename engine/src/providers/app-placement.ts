@@ -96,6 +96,8 @@ export const ensureAppPlacement = Effect.fn("AppPlacement.ensure")(function* (
   return (yield* ensureAppPlacementState(app, desired)).desired;
 });
 
+export class EngineMismatchError extends AppPlacementError {}
+
 export const requireOwningEngine = (
   provider: RuntimeProviderShape,
   kind: AppRef["kind"],
@@ -117,7 +119,7 @@ export const requireOwningEngine = (
         ? ` If that engine is gone, run \`lando scratch:destroy ${app.id}\` to retire the scratch. Anything left on the old engine is not removed.`
         : ` If that engine is gone, run \`${destroyCommand(app, plan.provider)}\` to drop Lando's record. Anything left on the old engine is not removed.`;
     return Effect.fail(
-      new AppPlacementError({
+      new EngineMismatchError({
         app,
         desiredProviderId: provider.id,
         realizedProviderId: plan.provider,

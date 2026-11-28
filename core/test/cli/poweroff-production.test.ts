@@ -155,7 +155,8 @@ const failedPostStop = {
   },
 } as const;
 
-test("renders stopped, unchanged, and failed-hook outcomes separately when app ids repeat", () => {
+test("distinguishes stopped, unchanged, skipped, and failed-hook outcomes when app ids repeat", () => {
+  const reason = "Engine changed. Run `lando destroy --provider=docker --yes`.";
   const rendered = renderPoweroffResult({
     apps: [
       {
@@ -182,6 +183,14 @@ test("renders stopped, unchanged, and failed-hook outcomes separately when app i
         providerId: "lando",
         outcome: "unchanged",
       },
+      {
+        kind: "user",
+        appId: "twin",
+        appRoot: "/away",
+        providerId: "docker",
+        outcome: "skipped",
+        reason,
+      },
     ],
     keptGlobalApp: false,
     keptScratchApps: 0,
@@ -191,7 +200,8 @@ test("renders stopped, unchanged, and failed-hook outcomes separately when app i
   const lines = rendered.split("\n");
   expect(
     lines.filter((line) => line.includes("twin (")).map((line) => line.match(/twin \(\/\w+\)/gu)),
-  ).toEqual([["twin (/one)"], ["twin (/quiet)"], ["twin (/two)"]]);
+  ).toEqual([["twin (/one)"], ["twin (/quiet)"], ["twin (/two)"], ["twin (/away)"]]);
+  expect(lines.find((line) => line.includes("twin (/away)"))).toContain(reason);
   expect(lines.filter((line) => line.includes(failedPostStop.event))).toEqual([
     expect.stringContaining("twin (/two)"),
   ]);
