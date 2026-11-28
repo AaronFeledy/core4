@@ -138,8 +138,9 @@ jobs:
               ATTEMPTS=$((ATTEMPTS + 1))
               LOG_FILE="$RUNNER_TEMP/job-$JOB_ID.log"
               TAIL_FILE="$RUNNER_TEMP/job-$JOB_ID.tail"
-              timeout 20 gh api "repos/$GH_REPO/actions/jobs/$JOB_ID/logs" > "$LOG_FILE" || continue
-              awk '{ sub(/\r$/, ""); sub(/^(\357\273\277)?[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9:.]+Z ?/, ""); gsub(/\033\[[0-9;]*[A-Za-z]/, ""); if ($0 ~ /^##\[endgroup\]$/ || $0 ~ /^[[:space:]]*$/) next; sub(/^##\[group\]/, ""); line[++count] = substr($0, 1, 240); if (!exited && $0 ~ /^##\[error\]Process completed with exit code/) exited = count; if ($0 ~ /^##\[error\]/) last = count }; END { end = exited ? exited : (last ? last : count); for (i = (end > 30 ? end - 29 : 1); i <= end; i++) print line[i] }' "$LOG_FILE" > "$TAIL_FILE" || continue
+              # gh rejects colored logs even with redirected stdout. Keep raw bytes off the terminal.
+              timeout 20 gh api "repos/$GH_REPO/actions/jobs/$JOB_ID/logs" --allow-escape-sequences > "$LOG_FILE" || continue
+              awk '{ sub(/\r$/, ""); sub(/^(\357\273\277)?[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9:.]+Z ?/, ""); gsub(/\033\[[0-9;]*[A-Za-z]/, ""); gsub(/[[:cntrl:]]/, ""); if ($0 ~ /^##\[endgroup\]$/ || $0 ~ /^[[:space:]]*$/) next; sub(/^##\[group\]/, ""); line[++count] = substr($0, 1, 240); if (!exited && $0 ~ /^##\[error\]Process completed with exit code/) exited = count; if ($0 ~ /^##\[error\]/) last = count }; END { end = exited ? exited : (last ? last : count); for (i = (end > 30 ? end - 29 : 1); i <= end; i++) print line[i] }' "$LOG_FILE" > "$TAIL_FILE" || continue
               FENCE='```'
               while grep -qF -- "$FENCE" "$TAIL_FILE"; do FENCE="$FENCE\`"; done
               {

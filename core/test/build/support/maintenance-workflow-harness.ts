@@ -189,7 +189,14 @@ case "$1 $2" in
   'api repos/'*'/jobs')
     if [ -n "$RUN_JOBS_FAIL" ]; then exit 1; fi
     printf '%s' "$RUN_JOBS" | jq -r "\${@: -1}" ;;
-  'api repos/'*'/logs') cat "$JOB_LOGS/$(basename "$(dirname "$2")").log" ;;
+  'api repos/'*'/logs'*)
+    log_file="$JOB_LOGS/$(basename "$(dirname "$2")").log"
+    if [ "$#" -ne 3 ] && LC_ALL=C grep -q $'\\x1b' "$log_file"; then
+      echo 'the response contains terminal escape sequences' >&2
+      exit 1
+    fi
+    if [ "$#" -eq 3 ] && [ "$3" != --allow-escape-sequences ]; then exit 2; fi
+    cat "$log_file" ;;
 esac`,
       // The reporter bounds requests with coreutils timeout, which macOS lacks; the fake gh never stalls.
       timeout: `shift

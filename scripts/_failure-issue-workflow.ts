@@ -44,6 +44,7 @@ export const renderFailureIssueStep = (issue: FailureIssue): string => {
     '{ sub(/\\r$/, "")',
     'sub(/^(\\357\\273\\277)?[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9:.]+Z ?/, "")',
     'gsub(/\\033\\[[0-9;]*[A-Za-z]/, "")',
+    'gsub(/[[:cntrl:]]/, "")',
     "if ($0 ~ /^##\\[endgroup\\]$/ || $0 ~ /^[[:space:]]*$/) next",
     'sub(/^##\\[group\\]/, "")',
     `line[++count] = substr($0, 1, ${EVIDENCE_LINE_CHARS})`,
@@ -83,7 +84,8 @@ export const renderFailureIssueStep = (issue: FailureIssue): string => {
               ATTEMPTS=$((ATTEMPTS + 1))
               LOG_FILE="$RUNNER_TEMP/job-$JOB_ID.log"
               TAIL_FILE="$RUNNER_TEMP/job-$JOB_ID.tail"
-              timeout ${EVIDENCE_REQUEST_SECONDS} gh api "repos/$GH_REPO/actions/jobs/$JOB_ID/logs" > "$LOG_FILE" || continue
+              # gh rejects colored logs even with redirected stdout. Keep raw bytes off the terminal.
+              timeout ${EVIDENCE_REQUEST_SECONDS} gh api "repos/$GH_REPO/actions/jobs/$JOB_ID/logs" --allow-escape-sequences > "$LOG_FILE" || continue
               awk ${shellQuote(logTail)} "$LOG_FILE" > "$TAIL_FILE" || continue
               FENCE='\`\`\`'
               while grep -qF -- "$FENCE" "$TAIL_FILE"; do FENCE="$FENCE\\\`"; done
