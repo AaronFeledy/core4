@@ -1,4 +1,4 @@
-import { engineEndpointDisplay } from "@lando/container-runtime/engine-identity";
+import { engineEndpointDisplay, matchesEnginePlacement } from "@lando/container-runtime/engine-identity";
 import { AppPlacementError, AppResolveError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -106,7 +106,7 @@ export const requireOwningEngine = (
   for (const plan of plans) {
     if (plan === undefined || plan.provider !== provider.id) continue;
     const recorded = plan.engineIdentity;
-    if (recorded === undefined || recorded.fingerprint === current.fingerprint) continue;
+    if (recorded === undefined || matchesEnginePlacement(recorded, current)) continue;
     const app = { kind, root: plan.root, id: plan.id };
     const owningEndpoint = engineEndpointDisplay(recorded.endpoint);
     return Effect.fail(

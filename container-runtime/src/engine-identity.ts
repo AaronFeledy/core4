@@ -1,6 +1,7 @@
 import { sha256Hex } from "@lando/sdk/digest";
 import type { EngineIdentity } from "@lando/sdk/schema";
 import { Option, Schema } from "effect";
+import { dockerApiEndpointKey, dockerHttpBaseUrl } from "./docker/api-prefix.ts";
 
 const Libpod = Schema.Struct({
   host: Schema.Struct({ hostname: Schema.NonEmptyString }),
@@ -25,6 +26,12 @@ const identity = (parts: readonly string[], endpoint: string): EngineIdentity =>
   fingerprint: sha256Hex(JSON.stringify(parts)),
   endpoint: engineEndpointDisplay(endpoint),
 });
+
+// A replacement at the same address can reconcile; the same store at another address is an alias.
+export const matchesEnginePlacement = (recorded: EngineIdentity, current: EngineIdentity): boolean =>
+  recorded.fingerprint === current.fingerprint ||
+  dockerApiEndpointKey(dockerHttpBaseUrl(recorded.endpoint)) ===
+    dockerApiEndpointKey(dockerHttpBaseUrl(current.endpoint));
 // Podman's compatibility ID is random per request. Both API dialects describe
 // the same backing store by the host's name and graph root, not its run dir.
 export const podmanEngineIdentity = (info: unknown, endpoint: string) => {

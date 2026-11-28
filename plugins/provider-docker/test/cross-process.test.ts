@@ -84,7 +84,7 @@ const fileExists = async (path: string): Promise<boolean> => {
   }
 };
 
-const makeFakeApi = () => {
+const makeFakeApi = (daemonId = "persistent-daemon") => {
   const existing = new Set<string>();
   const running = new Set<string>();
   const images = new Set<string>();
@@ -215,7 +215,7 @@ const makeFakeApi = () => {
   };
 
   const api: DockerApiClient = {
-    info: Effect.succeed({ ID: "persistent-daemon" }),
+    info: Effect.succeed({ ID: daemonId }),
     request: (input) => {
       calls.push(input);
       return Effect.succeed(responseFor(input));
@@ -305,6 +305,12 @@ describe("provider-docker cross-process state", () => {
         endpoint: "unix:///var/run/docker.sock",
         fingerprint: expect.any(String),
       });
+      const replacement = await makeProvider(stateDir, makeFakeApi("replacement").api);
+      await Effect.runPromise(Effect.scoped(replacement.apply(plan, { reconcile: true })));
+      expect(replacement.engineIdentity?.fingerprint).not.toBe(raw.data.engineIdentity.fingerprint);
+      expect(JSON.parse(await readFile(path, "utf8")).data.engineIdentity).toEqual(
+        replacement.engineIdentity,
+      );
     });
   });
 

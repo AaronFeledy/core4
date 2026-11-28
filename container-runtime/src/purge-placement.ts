@@ -4,7 +4,7 @@ import type { PluginStateStore, ProviderPurgePreflight } from "@lando/sdk/plugin
 import type { AppliedStateInventory, EngineIdentity } from "@lando/sdk/schema";
 import { Effect, Result } from "effect";
 import type { AppliedPlanStoreError } from "./applied-state.ts";
-import { engineEndpointDisplay } from "./engine-identity.ts";
+import { engineEndpointDisplay, matchesEnginePlacement } from "./engine-identity.ts";
 import { listResourceOwnershipRecords, openPurgeState } from "./resource-ownership-records.ts";
 
 /** Purge is descriptor-only. Read the same durable records as placement without bootstrapping a runtime. */
@@ -42,7 +42,9 @@ export const guardPurgePlacement = Effect.fn("DataRootPurge.guardPlacement")(fun
   const prove = Effect.gen(function* () {
     if (!claims.length) return;
     const selected = found.kind === "reachable" && current !== undefined ? yield* current : undefined;
-    const missing = claims.filter((claim) => claim.fingerprint !== selected?.fingerprint);
+    const missing = claims.filter(
+      (claim) => selected === undefined || !matchesEnginePlacement(claim, selected),
+    );
     if (!missing.length) return;
     const endpoints = [...new Set(missing.map(({ endpoint }) => engineEndpointDisplay(endpoint)))].join(", ");
     return yield* failure(

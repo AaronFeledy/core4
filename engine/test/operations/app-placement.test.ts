@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { rmSync } from "node:fs";
 import { join } from "node:path";
+import { dockerEngineIdentity, podmanEngineIdentity } from "@lando/container-runtime/engine-identity";
 import { AppPlacementError, AppResolveError, FileSyncSelectionError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, type AppPlan, ProviderId, appIdentityKey } from "@lando/sdk/schema";
 import { AppPlanner, GlobalAppService } from "@lando/sdk/services";
@@ -234,21 +235,29 @@ for (const [name, run] of Object.entries({
   });
 }
 
+const socket = "unix:///a.sock";
+const dockerIdentity = (ID: string, endpoint = socket) => {
+  const identity = dockerEngineIdentity({ ID }, endpoint);
+  if (!identity) throw new Error("Expected a Docker engine identity");
+  return identity;
+};
+const podmanIdentity = (hostname: string) => {
+  const identity = podmanEngineIdentity({ host: { hostname }, store: { graphRoot: "/store" } }, socket);
+  if (!identity) throw new Error("Expected a Podman engine identity");
+  return identity;
+};
 for (const [name, recorded, current] of [
-  ["same daemon via alias", "a", "a"],
-  ["old record without identity", undefined, "b"],
-  ["unidentified engine", "a", undefined],
+  ["same daemon via alias", dockerIdentity("a"), dockerIdentity("a", "tcp://dev:2375")],
+  ["Docker reset at the same socket", dockerIdentity("a"), dockerIdentity("b", "/a.sock")],
+  ["Podman host rename at the same socket", podmanIdentity("old"), podmanIdentity("new")],
+  ["old record without identity", undefined, dockerIdentity("b")],
+  ["unidentified engine", dockerIdentity("a"), undefined],
 ] as const) {
   test(`start admits ${name}`, async () => {
     const harness = makeHarness({
       plannedApp: applied,
-      appliedPlans: [
-        recorded === undefined
-          ? applied
-          : { ...applied, engineIdentity: { fingerprint: recorded, endpoint: "unix:///a.sock" } },
-      ],
-      providerOverrides:
-        current === undefined ? {} : { engineIdentity: { fingerprint: current, endpoint: "tcp://dev:2375" } },
+      appliedPlans: [recorded === undefined ? applied : { ...applied, engineIdentity: recorded }],
+      providerOverrides: current === undefined ? {} : { engineIdentity: current },
     });
     try {
       const result = await Effect.runPromise(startApp({}, daemonTarget).pipe(Effect.provide(harness.layer)));

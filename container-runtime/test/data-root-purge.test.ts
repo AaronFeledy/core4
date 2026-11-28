@@ -265,6 +265,15 @@ test("purge needs the recorded daemon, including when a different socket aliases
     expect((await Effect.runPromise(store.loadAppliedPlanStrict(state, plan.id)))?.engineIdentity).toEqual(
       recorded,
     );
+    const replacement = await Effect.runPromise(
+      preflightRecordedPurge(ctx, opts, store.listAppliedPlans, {
+        api: { ...api, info: Effect.succeed({ ID: "replacement" }) },
+        endpoint: recorded.endpoint,
+        identify: dockerEngineIdentity,
+      }),
+    );
+    if (replacement.kind !== "reachable") throw new Error("Expected reachable replacement");
+    expect((await Effect.runPromise(replacement.sweep())).retained).toEqual([]);
   }));
 
 test("purges exactly receipted legacy objects and leaves replacements and peer-labeled objects alone", () =>
