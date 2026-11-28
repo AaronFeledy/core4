@@ -111,14 +111,13 @@ export const rebuildApp = Effect.fn("AppOperation.rebuild")(function* (
         timestamp: DateTime.nowUnsafe(),
       });
       yield* publishAndRunAppEvent(plan, "post-rebuild", postRebuild);
+      const dataVersionChanges = admitted.dataVersionChanges();
       return {
         app: start.app,
         servicesRebuilt: start.servicesStarted.map((service) => service.name),
         servicesStarted: start.servicesStarted,
         ...(start.credentialChanges === undefined ? {} : { credentialChanges: start.credentialChanges }),
-        ...(admitted.dataVersionChanges === undefined
-          ? {}
-          : { dataVersionChanges: admitted.dataVersionChanges }),
+        ...(dataVersionChanges === undefined ? {} : { dataVersionChanges }),
         ...(start.checks === undefined ? {} : { checks: start.checks }),
         ...(start.servicesRemoved === undefined ? {} : { servicesRemoved: start.servicesRemoved }),
       };

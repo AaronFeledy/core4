@@ -25,6 +25,7 @@ const fixture = (
     readonly failResume?: boolean;
     readonly afterSnapshotCommit?: Effect.Effect<void>;
     readonly offlineVersion?: string;
+    readonly recordBuild?: boolean;
   } = {},
 ) => {
   const from = input.from ?? "10.11";
@@ -196,6 +197,7 @@ const fixture = (
         input.failResume === true ? Effect.fail(failure) : changeOriginal(identity, "running"),
     },
     onStop: () => actions.push("stop"),
+    ...(input.recordBuild === true ? { onBuild: () => actions.push("build") } : {}),
     onDestroy: () => actions.push("teardown"),
     onApply: () =>
       Effect.gen(function* () {
@@ -237,6 +239,12 @@ test.each([
     ]);
   },
 );
+
+test("selected rebuild finishes its artifact build before taking the database offline", async () => {
+  const f = fixture({ recordBuild: true });
+  await Effect.runPromise(rebuildApp({ services: [web.name] }, f.target).pipe(Effect.provide(f.layer)));
+  expect(f.actions).toEqual(["build", "suspend", "capture", "stop", "apply"]);
+});
 
 test.each([
   ["pull", "running", [], "running", []],

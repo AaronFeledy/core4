@@ -32,7 +32,7 @@ import { type PreparedStartOverlays, prepareStartOverlays } from "./start-overla
 import { launchAdmittedSelectedStart } from "./start-selected.ts";
 import { preflightStopApp } from "./stop-internal.ts";
 import { retireSupersededRealizations, validateSelectedRename } from "./superseded-realizations.ts";
-import { withUpgradeRestorePoints } from "./upgrade-restore-points.ts";
+import { type PrepareUpgrade, withUpgradeRestorePoints } from "./upgrade-restore-points.ts";
 import {
   publishPlacementVolumeTransitionNotices,
   withVolumeTransitionNotices,
@@ -46,7 +46,8 @@ interface AdmittedBase {
   readonly provider: PreparedRuntimeProvider;
   readonly placement: Effect.Success<ReturnType<typeof ensureAppPlacementState>>;
   readonly dataUpgrades: readonly DataUpgrade[];
-  readonly dataVersionChanges?: StartAppResult["dataVersionChanges"];
+  readonly prepareUpgrade: PrepareUpgrade;
+  readonly dataVersionChanges: () => StartAppResult["dataVersionChanges"];
   /** Services an unfinished accelerated start removed when admission resumed it. */
   readonly removedByResume: ReadonlyArray<string>;
 }
@@ -171,18 +172,21 @@ export function withAppActivation<A, E, R>(
         const overlays = yield* prepareStartOverlays({ ...target, plan: selectedPlan }, selectedProvider);
         const provider = yield* prepare;
         if (!scoped) yield* claimDataIdentityBeforeRetirement(target, placement.superseded, provider);
-        const prepareTransitions = Effect.gen(function* () {
-          const retired = yield* retireSupersededRealizations(target, placement.superseded, {
-            provider,
-            selectedServices: scoped,
+        const prepareTransitions = (prepareUpgrade: PrepareUpgrade) =>
+          Effect.gen(function* () {
+            if (!scoped && placement.superseded.length > 0) yield* prepareUpgrade;
+            const retired = yield* retireSupersededRealizations(target, placement.superseded, {
+              provider,
+              selectedServices: scoped,
+            });
+            if (request.operation === "start" && !scoped)
+              yield* rotateChangedFileSync(target, provider, prepareUpgrade);
+            return retired;
           });
-          if (request.operation === "start" && !scoped) yield* rotateChangedFileSync(target, provider);
-          return retired;
-        });
         // Rotation and retirement can replace the original too. Hold their volumes before capture.
         const { stoppedChecks, dataUpgrades } = assessment;
         const capture = (dataUpgrades.length > 0 && request.noSnapshot !== true) || stoppedChecks.length > 0;
-        const retiredBeforeCapture = capture ? undefined : yield* prepareTransitions;
+        const retiredBeforeCapture = capture ? undefined : yield* prepareTransitions(Effect.void);
         const stateStore = yield* StateStore;
         const withRestorePoints = withUpgradeRestorePoints({
           plan: selectedPlan,
@@ -204,8 +208,18 @@ export function withAppActivation<A, E, R>(
           provider,
           stateStore,
           body: withRestorePoints(
-            Effect.fnUntraced(function* (points, verifiedFrom) {
-              const retired = capture ? yield* prepareTransitions : retiredBeforeCapture;
+            Effect.fnUntraced(function* ({ prepareUpgrade: captureOnce, points, verifiedFrom }) {
+              const verifiedUpgrades = () =>
+                dataUpgrades.map((upgrade) => ({
+                  ...upgrade,
+                  from: verifiedFrom.get(upgrade.service) ?? upgrade.from,
+                }));
+              const prepareUpgrade = yield* Effect.cached(
+                captureOnce.pipe(
+                  Effect.andThen(Effect.suspend(() => publishDataUpgradeNotices(verifiedUpgrades()))),
+                ),
+              );
+              const retired = capture ? yield* prepareTransitions(prepareUpgrade) : retiredBeforeCapture;
               yield* claimAppDataIdentity(target);
               let preparedTargets: readonly PreparedFileSyncTarget[] | undefined;
               switch (request.operation) {
@@ -229,27 +243,26 @@ export function withAppActivation<A, E, R>(
                     ? placement.plan
                     : yield* preflightSelectedRelaunch(target, selectedPlan, request.operation);
               }
-              const verifiedUpgrades = dataUpgrades.map((upgrade) => ({
-                ...upgrade,
-                from: verifiedFrom.get(upgrade.service) ?? upgrade.from,
-              }));
-              yield* publishDataUpgradeNotices(verifiedUpgrades);
               if (resumed === undefined) yield* runAppInitEvents(plan);
-              const dataVersionChanges = [
-                ...(resumed?.dataVersionChanges ?? []),
-                ...verifiedUpgrades.map(({ service, from, to }) => {
-                  const restorePoint = points.get(service);
-                  return { service, from, to, ...(restorePoint === undefined ? {} : { restorePoint }) };
-                }),
-              ];
+              const dataVersionChanges = () => {
+                const changes = [
+                  ...(resumed?.dataVersionChanges ?? []),
+                  ...verifiedUpgrades().map(({ service, from, to }) => {
+                    const restorePoint = points.get(service);
+                    return { service, from, to, ...(restorePoint === undefined ? {} : { restorePoint }) };
+                  }),
+                ];
+                return changes.length === 0 ? undefined : changes;
+              };
               const base = {
                 [admitted]: true as const,
                 target,
                 provider,
                 placement,
-                dataUpgrades: verifiedUpgrades,
+                dataUpgrades,
+                prepareUpgrade,
+                dataVersionChanges,
                 removedByResume: resumed?.servicesRemoved ?? [],
-                ...(dataVersionChanges.length === 0 ? {} : { dataVersionChanges }),
               };
               const admission = scoped
                 ? {
@@ -300,11 +313,10 @@ export const startAppForTarget = Effect.fn("AppOperation.startForTarget")(functi
               ...executionTargets,
               announceApplyOutcome: true,
             });
+        const dataVersionChanges = admission.dataVersionChanges();
         return {
           ...result,
-          ...(admission.dataVersionChanges === undefined
-            ? {}
-            : { dataVersionChanges: admission.dataVersionChanges }),
+          ...(dataVersionChanges === undefined ? {} : { dataVersionChanges }),
         };
       }),
   );

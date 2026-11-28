@@ -1,5 +1,5 @@
 import { annotateFailureContext, mapFailures } from "@lando/sdk/command-result";
-import { ServiceRestorePointError } from "@lando/sdk/errors";
+import { type EventError, type ServiceDataVersionError, ServiceRestorePointError } from "@lando/sdk/errors";
 import { MessageInfoEvent } from "@lando/sdk/events";
 import {
   type AppPlan,
@@ -12,6 +12,7 @@ import {
   planDataId,
 } from "@lando/sdk/schema";
 import { DataMover, EventService, RuntimeProvider, StateStore } from "@lando/sdk/services";
+import { makeTaskTree, runWithTaskTree } from "@lando/sdk/task-progress";
 import { DateTime, Effect, Exit, Option } from "effect";
 import { mergeFailure, runAllAndMergeFailures } from "../lifecycle/failure-compensation.ts";
 import { coordinatedServiceVolume } from "../lifecycle/volume-coordination.ts";
@@ -27,6 +28,11 @@ import { restoreCommand } from "./upgrade-restore-remediation.ts";
 const observeBounded = Effect.timeout("2 seconds");
 
 type UndoCapture = Effect.Effect<string | undefined, ServiceRestorePointError>;
+export type PrepareUpgrade = Effect.Effect<
+  void,
+  EventError | ServiceDataVersionError | ServiceRestorePointError,
+  EventService
+>;
 
 const captureRestorePoint = Effect.fn("AppActivation.captureRestorePoint")(function* (input: {
   readonly app: string;
@@ -220,10 +226,11 @@ export const withUpgradeRestorePoints =
     readonly refresh: boolean;
   }) =>
   <A, E, R>(
-    body: (
-      points: ReadonlyMap<ServiceName, SnapshotId>,
-      verifiedFrom: ReadonlyMap<ServiceName, string>,
-    ) => Effect.Effect<A, E, R>,
+    body: (preparation: {
+      readonly prepareUpgrade: PrepareUpgrade;
+      readonly points: ReadonlyMap<ServiceName, SnapshotId>;
+      readonly verifiedFrom: ReadonlyMap<ServiceName, string>;
+    }) => Effect.Effect<A, E, R>,
   ) =>
     Effect.fn("AppActivation.withUpgradeRestorePoints")(function* () {
       const points = new Map<ServiceName, SnapshotId>();
@@ -237,7 +244,8 @@ export const withUpgradeRestorePoints =
           upgrade,
         }).pipe(Effect.catchTag("ServiceRestorePointError", () => Effect.void));
       }
-      if (input.noSnapshot === true || input.upgrades.length === 0) return yield* body(points, verifiedFrom);
+      if (input.noSnapshot === true || input.upgrades.length === 0)
+        return yield* body({ prepareUpgrade: Effect.void, points, verifiedFrom });
       const mover = yield* Effect.serviceOption(DataMover);
       const events = yield* EventService;
       const notice = (body: string) =>
@@ -245,33 +253,57 @@ export const withUpgradeRestorePoints =
           Effect.flatMap((timestamp) => events.publish(MessageInfoEvent.make({ body, timestamp }))),
         );
       const prepared: UndoCapture[] = [];
-      const activation = Effect.gen(function* () {
-        for (const upgrade of input.upgrades) {
-          const { service, label, to } = upgrade;
-          if (Option.isNone(mover)) {
+      const capture = Effect.gen(function* () {
+        if (Option.isNone(mover)) {
+          for (const { service } of input.upgrades)
             yield* notice(`No restore point was saved for ${service}: the data mover is unavailable.`);
-            continue;
-          }
-          yield* notice(`Saving a restore point of ${service} before moving to ${label} ${to}…`);
-          const captured = yield* captureRestorePoint({
-            app: input.plan.name,
-            plan: input.plan,
-            provider: input.provider,
-            upgrade,
-            publication: {
-              mover: mover.value,
-              onPrepare: (undo) => prepared.push(undo),
-              onCommit: (snapshot) => points.set(service, snapshot.id),
-            },
-          });
-          if (captured === undefined) continue;
-          const { handle, verified } = captured;
-          if (verified !== undefined) verifiedFrom.set(service, verified);
-          if (verified === undefined && upgrade.source === "applied-plan") unverified.add(service);
-          yield* notice(`Saved restore point ${handle.id} for ${service}.`);
+          return;
         }
-        return yield* body(points, verifiedFrom);
+        yield* notice(
+          "The database stays offline while Lando copies its data. Allow free disk space about the size of its volume.",
+        );
+        const tree = makeTaskTree(events, {
+          parentId: `upgrade-restore-point:${input.plan.id}`,
+          label: `Save database upgrade restore points for ${input.plan.name}`,
+          children: input.upgrades.map(({ service }) => ({ id: service, label: `Save ${service}` })),
+          prefixChildIds: true,
+        });
+        yield* runWithTaskTree(
+          tree,
+          (active) =>
+            Effect.gen(function* () {
+              for (const upgrade of input.upgrades) {
+                const { service, label, to } = upgrade;
+                yield* notice(`Saving a restore point of ${service} before moving to ${label} ${to}…`);
+                yield* active.startTask(service);
+                const captured = yield* captureRestorePoint({
+                  app: input.plan.name,
+                  plan: input.plan,
+                  provider: input.provider,
+                  upgrade,
+                  publication: {
+                    mover: mover.value,
+                    onPrepare: (undo) => prepared.push(undo),
+                    onCommit: (snapshot) => points.set(service, snapshot.id),
+                  },
+                });
+                if (captured === undefined) continue;
+                const { handle, verified } = captured;
+                if (verified !== undefined) verifiedFrom.set(service, verified);
+                if (verified === undefined && upgrade.source === "applied-plan") unverified.add(service);
+                yield* notice(`Saved restore point ${handle.id} for ${service}.`);
+                yield* active.completeTask(service);
+              }
+            }),
+          {
+            success: "Database restore points saved",
+            failure: "Database restore point capture failed",
+            interrupt: "Database restore point capture interrupted",
+          },
+        );
       });
+      const prepareUpgrade = yield* Effect.cached(capture);
+      const activation = Effect.suspend(() => body({ prepareUpgrade, points, verifiedFrom }));
       const settle = Effect.uninterruptibleMask((restore) =>
         Effect.gen(function* () {
           const exit = yield* Effect.exit(restore(activation));

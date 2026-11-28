@@ -42,7 +42,11 @@ import type { ResolvedAppTarget } from "../landofile/app-resolution.ts";
 import { applyActivation, openDatabaseCredentialSession } from "../lifecycle/activation-apply.ts";
 import { mapFailureErrors } from "../lifecycle/failure-compensation.ts";
 import { type PreparedRouteUrls, prepareRouteUrlBindings } from "../lifecycle/route-url-bindings.ts";
-import { type PreparedCertificates, prepareServiceCertificates } from "../lifecycle/service-certificates.ts";
+import {
+  type PreparedCertificates,
+  prepareServiceCertificates,
+  stampPreparedCertificates,
+} from "../lifecycle/service-certificates.ts";
 import { completeStartup } from "../lifecycle/startup-completion.ts";
 import { verifyActiveVolumeCoordination } from "../lifecycle/volume-coordination.ts";
 import type { PreparedRuntimeProvider } from "../providers/prepared.ts";
@@ -189,10 +193,16 @@ export const launchAdmittedApp = Effect.fnUntraced(function* (
     readonly preparedTargets?: readonly PreparedFileSyncTarget[];
     /** Start and restart announce replacements; rebuild recreates every container by design. */
     readonly announceApplyOutcome?: boolean;
+    readonly certificates?: PreparedCertificates;
   },
 ): Effect.fn.Return<StartAppResult, StartAppError, BoundStartAppServices> {
   const resolvedOptions = options ?? {};
-  const { plan, certificates } = yield* preflightAppLaunch(admitted.target, admitted.provider);
+  const { plan, certificates } = yield* preflightAppLaunch(
+    admitted.target,
+    admitted.provider,
+    undefined,
+    execution.certificates,
+  );
   yield* announceAppLaunch({ target: admitted.target, plan, options: resolvedOptions });
   return yield* activateAppLaunch({
     admitted,
@@ -211,6 +221,7 @@ export const preflightAppLaunch = Effect.fnUntraced(function* (
   target: ResolvedAppTarget,
   provider: PreparedRuntimeProvider,
   services?: readonly ServiceName[],
+  certificates?: PreparedCertificates,
 ) {
   const bundle = yield* fileSyncBundle(target.plan);
   const inspectAppliedFileSync = provider.inspectAppliedFileSync;
@@ -255,7 +266,10 @@ export const preflightAppLaunch = Effect.fnUntraced(function* (
       }),
     );
   // Prepare before hooks; the activation applier requires this proof to stamp the plan it applies.
-  const prepared = yield* prepareServiceCertificates(resolvedPlan);
+  const prepared =
+    certificates === undefined
+      ? yield* prepareServiceCertificates(resolvedPlan)
+      : { plan: yield* stampPreparedCertificates(resolvedPlan, certificates), certificates };
   if (bundle.kind === "accelerated" && inspectPrior !== undefined) {
     const prior = yield* inspectPrior();
     if (prior.status === "accelerated" && prior.engineId !== bundle.id) {
@@ -390,7 +404,7 @@ const applyAppLaunch = Effect.fnUntraced(function* (input: {
           complete: true,
           ...(environment === undefined ? {} : { environment }),
           ...(options.signal === undefined ? {} : { signal: options.signal }),
-          beforeApply: verifyGlobalConsumerAdmission,
+          beforeApply: verifyGlobalConsumerAdmission.pipe(Effect.andThen(admitted.prepareUpgrade)),
         }),
         ...(pendingStart === undefined ? {} : { afterApply: pendingStart.complete }),
         prepareGpgHome: input.prepareGpgHome,

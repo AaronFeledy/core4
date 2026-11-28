@@ -1,6 +1,7 @@
 import type { StartAppOptions } from "@lando/sdk/app";
 import { type BuildOptions, StateStore } from "@lando/sdk/services";
 import { Effect } from "effect";
+import { prepareServiceCertificates } from "../lifecycle/service-certificates.ts";
 import { withLaunchVolumeCoordination } from "../lifecycle/volume-coordination.ts";
 import { prepareProvider } from "../providers/prepared.ts";
 import type { AdmittedApp } from "./app-activation.ts";
@@ -33,6 +34,9 @@ export const haltAndRelaunchApp = Effect.fn("AppOperation.haltAndRelaunch")(func
   const plan = target.plan;
   const stateStore = yield* StateStore;
 
+  const certificates =
+    admitted.dataUpgrades.length === 0 ? undefined : (yield* prepareServiceCertificates(plan)).certificates;
+  yield* admitted.prepareUpgrade;
   yield* markStartMutation(plan);
   yield* haltAppRuntime(target);
   yield* managed?.onStopped ?? Effect.void;
@@ -47,6 +51,7 @@ export const haltAndRelaunchApp = Effect.fn("AppOperation.haltAndRelaunch")(func
       const preparedTargets = yield* preflightStartAppDrain(target);
       return yield* launchAdmittedApp(admitted, options, managed, {
         ...execution,
+        ...(certificates === undefined ? {} : { certificates }),
         ...(preparedTargets === undefined ? {} : { preparedTargets }),
       });
     }),
