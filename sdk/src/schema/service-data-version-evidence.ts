@@ -67,7 +67,7 @@ export const classifyDataVersionRefusal = (
   input: { readonly exitCode: number | undefined; readonly lines: readonly string[] },
 ): { readonly finding: ServiceDataVersionFinding; readonly hint?: string } | undefined => {
   if (input.exitCode === 0) return undefined;
-  const newestFirst = input.lines.toReversed();
+  const newestFirst = [...input.lines].reverse();
   for (const line of newestFirst) {
     const marker = markerPattern.exec(line);
     if (marker === null) continue;
