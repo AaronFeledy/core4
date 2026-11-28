@@ -1,4 +1,5 @@
 import { realpath } from "node:fs/promises";
+import { enginePlacementMismatch } from "@lando/container-runtime/engine-identity";
 import { PlanReplanRequiredError, SqlRecoveryUnavailableError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, PortablePath, ServiceName, isIdleRunStatus } from "@lando/sdk/schema";
 import {
@@ -64,6 +65,10 @@ export const runDbCommand = Effect.fn("Sql.runDbCommand")(function* (input: DbCo
   const earlyTarget = resolveSqlTarget(plan, input.service);
   if (earlyTarget._tag === "Failure") return yield* Effect.fail(earlyTarget.failure);
   const provider = yield* registry.select(planned);
+  // The applied plan names the engine that holds the database. A different engine answers
+  // "no such container", which must never pass for an absent one.
+  const mismatch = enginePlacementMismatch({ provider, kind: "user", records: [planned] });
+  if (mismatch !== undefined) return yield* Effect.fail(mismatch);
   const planner = yield* Effect.serviceOption(AppPlanner);
   return yield* executeDbCommand(
     {

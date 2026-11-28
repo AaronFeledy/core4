@@ -297,6 +297,64 @@ describe("shellApp — shell modes", () => {
     ]);
   });
 
+  test("service mode refuses an app recorded on another engine before exec", async () => {
+    const observed: string[] = [];
+    const engine = (host: string) => ({ fingerprint: host, endpoint: `unix:///${host}/podman.sock` });
+    const provider = fakeProvider({
+      engineIdentity: engine("second"),
+      execStream: () => {
+        observed.push("execStream");
+        return Effect.die("A foreign engine must not run a shell.") as never;
+      },
+    });
+    const recorded = { ...currentTestPlan(plan), engineIdentity: engine("first") };
+    const registry = makeTestRuntimeProviderRegistry({
+      list: Effect.succeed([providerId]),
+      capabilities: Effect.succeed(capabilities),
+      readAppliedPlanStrict: () => Effect.succeed(recorded),
+      select: () => Effect.succeed(outputRegisteredTestProvider(provider, plan)),
+    });
+
+    const error = await Effect.runPromise(
+      Effect.flip(
+        shellApp({
+          service: "web",
+          io: { writeStdout: () => {}, writeStderr: () => {} },
+        }).pipe(
+          Effect.provide(
+            Layer.mergeAll(
+              Layer.succeed(PathsService, makeLandoPaths({ userDataRoot: "/tmp/shell-configured-data" })),
+              Layer.succeed(
+                LandofileService,
+                LandofileService.of({
+                  discover: Effect.succeed(literalLandofile({ name: "shell-scenario" }, plan.root)),
+                }),
+              ),
+              Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(currentTestPlan(plan)) })),
+              Layer.succeed(RuntimeProviderRegistry, registry),
+              shellRunnerLayer(),
+              Layer.succeed(
+                SecretStore,
+                SecretStore.of({
+                  id: "test",
+                  get: () => Effect.die("secret not expected"),
+                  has: () => Effect.succeed(false),
+                  list: Effect.succeed([]),
+                }),
+              ),
+              emptyConfigServiceLayer,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(error._tag).toBe("AppPlacementError");
+    expect(error.message).toContain("unix:///first/podman.sock");
+    expect(error.remediation).toContain("lando destroy --provider=lando --yes");
+    expect(observed).toEqual([]);
+  });
+
   test("service mode respects an explicit shell override", async () => {
     const calls: Array<{ command: ReadonlyArray<string> }> = [];
     const provider = fakeProvider({

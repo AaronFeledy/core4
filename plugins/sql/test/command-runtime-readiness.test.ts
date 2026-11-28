@@ -30,7 +30,7 @@ import { cleanupSqlTestDeps, makeSqlTestDeps } from "./support/fakes.ts";
 
 afterEach(cleanupSqlTestDeps);
 
-test.each(["readiness", "protected receipt"] as const)(
+test.each(["readiness", "protected receipt", "foreign engine"] as const)(
   "SQLite command authorizes runtime work through %s",
   async (scenario) => {
     const f = makeSqlTestDeps({ password: "secret" });
@@ -77,6 +77,9 @@ test.each(["readiness", "protected receipt"] as const)(
       extensions: {},
       metadata,
     };
+    const engine = (host: string) => ({ fingerprint: host, endpoint: `unix:///${host}/podman.sock` });
+    const recorded =
+      scenario === "foreign engine" ? { ...planned, engineIdentity: engine("first") } : planned;
     const suspended = new ServiceNotFoundError({
       providerId,
       operation: "suspend",
@@ -84,8 +87,10 @@ test.each(["readiness", "protected receipt"] as const)(
       message: "Suspension failed after stopping.",
       remediation: "Retry.",
     });
-    const provider = {
+    const observed: string[] = [];
+    const baseProvider = {
       ...makeTestRuntimeProvider(),
+      ...(scenario === "foreign engine" ? { engineIdentity: engine("second") } : {}),
       inspect: () =>
         Effect.succeed({
           app: planned.id,
@@ -99,6 +104,17 @@ test.each(["readiness", "protected receipt"] as const)(
       suspend: () => Effect.fail(suspended),
       resume: () => Effect.void,
     };
+    const provider = new Proxy(baseProvider, {
+      get(target, property, receiver) {
+        const value = Reflect.get(target, property, receiver);
+        return typeof value === "function"
+          ? (...args: ReadonlyArray<unknown>) => {
+              observed.push(String(property));
+              return (value as (...inner: ReadonlyArray<unknown>) => unknown).apply(target, [...args]);
+            }
+          : value;
+      },
+    });
     const entered = Deferred.makeUnsafe<Parameters<typeof ServiceReadiness.Service.wait>[0]>();
     const release = Deferred.makeUnsafe<void>();
     const unused = Effect.die("Unused test service method");
@@ -125,13 +141,13 @@ test.each(["readiness", "protected receipt"] as const)(
         makeTestRuntimeProviderRegistry({
           list: Effect.succeed([providerId]),
           capabilities: Effect.succeed(provider.capabilities),
-          appliedPlansFor: () => Effect.succeed([planned]),
+          appliedPlansFor: () => Effect.succeed([recorded]),
           readAppliedPlanStrict: () =>
-            scenario === "protected receipt" ? Effect.fail(protection) : Effect.succeed(planned),
+            scenario === "protected receipt" ? Effect.fail(protection) : Effect.succeed(recorded),
           select: () => Effect.succeed(provider),
           resolveAppliedPlan: (_root, _app, lookup) =>
             lookup === "exact"
-              ? Effect.succeed(planned)
+              ? Effect.succeed(recorded)
               : Effect.die("SQL commands must ask for the exact app"),
           resolveTeardownEvidence: () => unused,
         }),
@@ -161,6 +177,25 @@ test.each(["readiness", "protected receipt"] as const)(
       Layer.succeed(PrivateFileAccessService, f.deps.privateFileAccess),
     );
 
+    if (scenario === "foreign engine") {
+      const refused = await Effect.runPromise(
+        runDbCommand({ action: "reset", yes: true }).pipe(
+          Effect.provide(services),
+          Effect.result,
+          Effect.timeout("2 seconds"),
+        ),
+      );
+      expect(refused).toMatchObject({
+        _tag: "Failure",
+        failure: {
+          _tag: "AppPlacementError",
+          message: expect.stringContaining("unix:///first/podman.sock"),
+          remediation: expect.stringContaining("lando destroy --provider=test --yes"),
+        },
+      });
+      expect(observed).toEqual([]);
+      return;
+    }
     if (scenario === "protected receipt") {
       const result = await Effect.runPromise(
         runDbCommand({ action: "reset", yes: true }).pipe(

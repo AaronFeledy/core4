@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { cp, mkdir, readdir, realpath, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { inventoryProtectsApp, protectedSlotError } from "@lando/container-runtime/applied-state";
+import { enginePlacementMismatch } from "@lando/container-runtime/engine-identity";
 import { APP_ROOT_LABEL, SNAPSHOT_STORE_LABEL } from "@lando/container-runtime/labels";
 import { findAppRoot } from "@lando/landofile/discovery";
 import { discoveryCwd } from "@lando/landofile/operation-discovery";
@@ -56,6 +57,7 @@ import {
   PathsService,
   RuntimeProvider,
   RuntimeProviderRegistry,
+  type RuntimeProviderShape,
   StateStore,
 } from "@lando/sdk/services";
 import {
@@ -1803,6 +1805,11 @@ export const layerWithPrivateFileAccess: Layer.Layer<
       const redaction = yield* Effect.serviceOption(RedactionService);
       const events = yield* makeEvents(eventService, redaction);
       const persistence = { paths, stateStore, providerRegistry, privateFileAccess };
+      // A record written on another engine describes resources this one cannot see.
+      const refuseForeignEngine = (provider: RuntimeProviderShape, record: AppPlan | undefined) => {
+        const mismatch = enginePlacementMismatch({ provider, kind: "user", records: [record] });
+        return mismatch === undefined ? Effect.void : Effect.fail(mismatch);
+      };
       const service = (target?: DataEndpoint | VolumeRef, providerId?: ProviderId) => {
         const app =
           target === undefined ? undefined : "_tag" in target ? appFromEndpoint(target) : target.app;
@@ -1814,7 +1821,11 @@ export const layerWithPrivateFileAccess: Layer.Layer<
           const bound = Option.isSome(supplied) && supplied.value.id !== "stub" ? supplied.value : undefined;
           if (app === undefined) return bound ?? (yield* providerRegistry.select(providerId));
           if (bound !== undefined && !volume) {
-            yield* providerRegistry.readAppliedPlanStrict({ id: app, provider: ProviderId.make(bound.id) });
+            const recorded = yield* providerRegistry.readAppliedPlanStrict({
+              id: app,
+              provider: ProviderId.make(bound.id),
+            });
+            yield* refuseForeignEngine(bound, recorded);
             return bound;
           }
           const inspectAppliedPlans = providerRegistry.appliedStateInventory;
@@ -1836,8 +1847,11 @@ export const layerWithPrivateFileAccess: Layer.Layer<
                 recorded !== undefined &&
                 recorded.provider === id &&
                 (volume ? planDataId(recorded) : recorded.id) === app
-              )
-                return bound ?? (yield* providerRegistry.select(recorded));
+              ) {
+                const provider = bound ?? (yield* providerRegistry.select(recorded));
+                yield* refuseForeignEngine(provider, recorded);
+                return provider;
+              }
             }
             // A protected receipt can't reveal whether a renamed app still owns this data ID.
             const issue =
