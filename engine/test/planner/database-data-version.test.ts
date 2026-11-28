@@ -18,7 +18,8 @@ import { planApp } from "../plan-app.ts";
 const laterProcess: ServiceFeatureDefinition = {
   id: "test.database-process",
   priority: 700,
-  apply: (ctx) => Effect.sync(() => ctx.setCommand(["postgres", "-D", "/different"])),
+  apply: (ctx) =>
+    Effect.sync(() => ctx.setCommand(["postgres", "-D", "/different"], { extraArgs: () => undefined })),
 };
 const child: ServiceType = {
   id: "custom-postgres-child",
@@ -125,6 +126,32 @@ test("keeps startup refusals but drops series after a child launcher or app feat
     expect(service?.dataVersion?.refusals).not.toBeEmpty();
     expect(service?.dataVersion?.series).toBeUndefined();
   }
+});
+
+test.each([
+  ["mariadb:10.11", ["--max-connections=77"], "10.11"],
+  ["mysql:8.4", ["--max-connections=77"], "8.4"],
+  ["postgres:17", ["-c", "max_connections=77"], "17"],
+] as const)("keeps %s series when extraArgs extend its stock launcher", async (type, extraArgs, image) => {
+  const { services } = await plan({ db: { type, extraArgs } });
+  const db = services[ServiceName.make("db")];
+  expect(db?.command?.slice(-extraArgs.length)).toEqual([...extraArgs]);
+  expect(db?.dataVersion?.series?.image).toBe(image);
+});
+
+test("rejects database extraArgs when a later feature replaces the stock launcher", async () => {
+  await expect(
+    plan(
+      {
+        db: { type: child.id, extraArgs: ["-c", "max_connections=77"] },
+        artifact: { type: "postgres:17" },
+      },
+      true,
+    ),
+  ).rejects.toMatchObject({
+    _tag: "LandofileValidationError",
+    issues: [{ path: ["services", "db", "extraArgs"] }],
+  });
 });
 
 test.each([

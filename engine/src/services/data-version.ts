@@ -2,6 +2,23 @@ import type { ServicePlan } from "@lando/sdk/schema";
 import { Equal } from "effect";
 import type { DataVersionProcess } from "./draft.ts";
 
+type ProcessInvocation = {
+  readonly command?: ServicePlan["command"];
+  readonly entrypoint?: ServicePlan["entrypoint"];
+};
+
+const sameInvocation = (left: ProcessInvocation, right: ProcessInvocation) =>
+  Equal.equals(left.command, right.command) && Equal.equals(left.entrypoint, right.entrypoint);
+
+export const dataVersionProcessWithExtraArgs = (
+  captured: DataVersionProcess | undefined,
+  original: ProcessInvocation,
+  appended: ProcessInvocation | undefined,
+): DataVersionProcess | undefined =>
+  captured !== undefined && appended !== undefined && sameInvocation(captured, original)
+    ? { ...captured, command: appended.command }
+    : captured;
+
 export const finalizeDataVersion = (
   service: ServicePlan,
   process: DataVersionProcess | undefined,
@@ -11,8 +28,7 @@ export const finalizeDataVersion = (
     process?.artifactRef !== undefined &&
     service.artifact?.kind === "ref" &&
     service.artifact.ref === process.artifactRef &&
-    Equal.equals(service.command, process.command) &&
-    Equal.equals(service.entrypoint, process.entrypoint) &&
+    sameInvocation(service, process) &&
     Equal.equals(service.environment.PGDATA, process.pgdata)
   )
     return service;
