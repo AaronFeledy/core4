@@ -1,14 +1,65 @@
 import { expect, test } from "bun:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { appliedPlanPath, makeAppliedPlanStore } from "@lando/container-runtime/applied-state";
 import { preflightDataRootPurge } from "@lando/container-runtime/data-root-purge";
 import type { EngineHttpApi } from "@lando/container-runtime/engine-api";
+import { dockerEngineIdentity } from "@lando/container-runtime/engine-identity";
+import { preflightRecordedPurge } from "@lando/container-runtime/purge-placement";
+import { makeLandoPaths } from "@lando/paths";
 import type { LandoPluginModule, ProviderPurgeHook } from "@lando/sdk/plugins";
-import { ProviderId } from "@lando/sdk/schema";
+import { AppId, ProviderId } from "@lando/sdk/schema";
 import { Effect } from "effect";
 import { makePrepareUninstallCleanup, providerPurgeHooks } from "../../src/install/uninstall-discovery.ts";
 
 const missingRuntime = async () => {
   throw Object.assign(new Error("not installed"), { code: "ENOENT" });
 };
+
+test.each([200, 503])(
+  "purge reports unreadable placement without requiring a repair (ping %d)",
+  async (status) => {
+    const dataRoot = await mkdtemp(join(tmpdir(), "purge-unreadable-"));
+    try {
+      const pluginId = "@lando/provider-docker";
+      const root = makeLandoPaths({ userDataRoot: dataRoot }).pluginStateDir(pluginId);
+      const path = appliedPlanPath(root, AppId.make("web"));
+      await Bun.write(path, "not a plan");
+      const store = makeAppliedPlanStore({ providerId: "docker", layout: "per-app" });
+      const purge: ProviderPurgeHook = (input) =>
+        preflightRecordedPurge(
+          { providerId: "docker", remediation: "Retry", env: {} },
+          { ...input, pluginId },
+          store.listAppliedPlans,
+          {
+            endpoint: "/fixture.sock",
+            identify: dockerEngineIdentity,
+            api: {
+              info: Effect.succeed({ ID: "current" }),
+              request: ({ method, path }) =>
+                method !== "GET"
+                  ? Effect.die("No ownership evidence for deletion")
+                  : Effect.succeed({
+                      status: path === "/_ping" ? status : 200,
+                      body: path.startsWith("/volumes?") ? '{"Volumes":null}' : "[]",
+                    }),
+            },
+          },
+        );
+      const prepared = await makePrepareUninstallCleanup(
+        [{ providerId: "docker", purge }],
+        missingRuntime,
+        "linux",
+      )(dataRoot, join(dataRoot, "cache"));
+      expect(prepared.detail).toContain(path);
+      expect(await prepared.cleanup()).toContain(path);
+      expect(await Bun.file(path).text()).toBe("not a plan");
+    } finally {
+      await rm(dataRoot, { recursive: true, force: true });
+    }
+  },
+);
 
 test("descriptor-only discovery reports this root's app without constructing a runtime provider", async () => {
   const providerId = ProviderId.make("podman");
@@ -81,6 +132,6 @@ test("skips an unreachable endpoint and still completes cleanup", async () => {
   );
   expect(prepared.apps).toEqual([]);
   expect(await prepared.cleanup()).toContain(
-    "docker: no engine answered at /test/unreachable.sock, so there was nothing to clean there (HTTP 503).",
+    "docker: no engine answered at /test/unreachable.sock; cleanup was skipped (HTTP 503).",
   );
 });

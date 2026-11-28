@@ -111,6 +111,7 @@ export {
   PublishedEndpointInput,
 } from "./endpoint.ts";
 export * from "./endpoint-selection.ts";
+export * from "./engine-identity.ts";
 export { ToolingEnvironment } from "./environment-input.ts";
 export * from "./environment-value.ts";
 export * from "./event-plan.ts";

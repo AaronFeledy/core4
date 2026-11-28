@@ -3,6 +3,7 @@ import { Predicate, Schema } from "effect";
 import { sha256Hex } from "../digest/index.ts";
 import { ArtifactBuildSpec, ArtifactRef } from "./artifacts.ts";
 import { DatabaseConnection, ServiceCreds } from "./database-connection.ts";
+import { EngineIdentity } from "./engine-identity.ts";
 import { Environment } from "./environment-value.ts";
 import { EventsPlan } from "./event-plan.ts";
 import { FileSyncSessionSpec } from "./file-sync-engine.ts";
@@ -565,7 +566,12 @@ export type AppPlan = typeof AppPlan.Type;
 
 const { events: eventPlanField, ...appliedPlanFields } = AppPlan.fields;
 
-export const AppliedAppPlan = Schema.Struct(appliedPlanFields).annotate({
+export const AppliedAppPlan = Schema.Struct({
+  ...appliedPlanFields,
+  engineIdentity: Schema.optionalKey(EngineIdentity).annotate({
+    description: "Engine that realized this plan, when the provider could identify it.",
+  }),
+}).annotate({
   identifier: "AppliedAppPlan",
   description: "Provider realization without invocation-time event hooks.",
 });

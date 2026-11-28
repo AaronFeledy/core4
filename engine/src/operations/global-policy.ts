@@ -13,7 +13,7 @@ import {
 import { commitGlobalPolicy, prepareGlobalPolicy } from "../global-app/enablement.ts";
 import { GlobalPolicyReconciliationError } from "../global-app/errors.ts";
 import { withGlobalMutation } from "../global-app/mutation.ts";
-import { globalCreateProviderId, resolveGlobalPlacement } from "../global-app/placement.ts";
+import { resolveGlobalPlacement, selectGlobalCreateProvider } from "../global-app/placement.ts";
 import { prepareGlobalConfiguration } from "../global-app/preparation.ts";
 import {
   GlobalReconciliationPending,
@@ -159,13 +159,7 @@ const changePolicy = Effect.fn("GlobalPolicy.change")(function* (
   const previousReceiptResult = yield* Effect.result(readGlobalReconciliation());
   const previousReceipt =
     previousReceiptResult._tag === "Success" ? previousReceiptResult.success : { pending: [] };
-  const runtime = yield* Effect.result(
-    Effect.gen(function* () {
-      const registry = yield* RuntimeProviderRegistry;
-      const providerId = yield* globalCreateProviderId();
-      return { providerId, provider: yield* registry.select(providerId) };
-    }),
-  );
+  const runtime = yield* Effect.result(selectGlobalCreateProvider());
   const preparation = yield* prepareGlobalConfiguration(
     runtime._tag === "Success"
       ? {

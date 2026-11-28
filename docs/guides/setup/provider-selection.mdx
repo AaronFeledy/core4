@@ -189,6 +189,8 @@ Data volumes stay on the old provider; they are not copied.
 
 If older starts left copies on two providers, retire the unwanted copy with `lando destroy --provider=<id> --yes`. Without that explicit selection, ambiguous cleanup fails closed. The global app has the same escape hatch: `lando global:destroy --provider=<id> --yes`.
 
+Two Docker contexts can also point to different engines. If Lando reports different engines, restore the original connection with `docker context use <name>` or `DOCKER_HOST` to keep using that copy. If the original engine is gone, run `lando destroy --provider=docker --yes` from the app directory, or `lando global:destroy --provider=docker --yes` for the global app. Explicit destroy cleans up the app on the **currently connected** engine and drops Lando's record. It does not connect to the old engine or remove anything left there.
+
 ## Resolve a provider conflict
 
 If `lando doctor` reports a conflict between the managed Lando runtime and system Podman, pick one provider explicitly:

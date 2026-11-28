@@ -1,8 +1,12 @@
 import { causeRemediation, mapFailures } from "@lando/sdk/command-result";
 import { AppPlacementError, GlobalAppError } from "@lando/sdk/errors";
-import { GlobalAppService } from "@lando/sdk/services";
+import { GlobalAppService, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { Effect } from "effect";
-import { ensureAppPlacement, resolveAppPlacement } from "../providers/app-placement.ts";
+import {
+  ensureAppPlacementState,
+  requireOwningEngine,
+  resolveAppPlacement,
+} from "../providers/app-placement.ts";
 import { hostProviderSelection } from "../providers/host-provider.ts";
 
 const globalPlacementInput = Effect.gen(function* () {
@@ -17,10 +21,10 @@ export const resolveGlobalPlacement = Effect.fn("GlobalApp.resolvePlacement")(fu
   return { ...(yield* resolveAppPlacement(app, selection.providerId, undefined, true)), selection };
 });
 
-export const globalCreateProviderId = Effect.fn("GlobalApp.createProviderId")(
+const globalCreatePlacement = Effect.fn("GlobalApp.createPlacement")(
   function* () {
     const { selection, app } = yield* globalPlacementInput;
-    return yield* ensureAppPlacement(app, selection.providerId).pipe(
+    return yield* ensureAppPlacementState(app, selection.providerId).pipe(
       mapFailures((error) =>
         error instanceof AppPlacementError && selection.source === "env"
           ? new AppPlacementError({
@@ -46,6 +50,17 @@ export const globalCreateProviderId = Effect.fn("GlobalApp.createProviderId")(
         }),
   ),
 );
+
+export const globalCreateProviderId = () =>
+  globalCreatePlacement().pipe(Effect.map(({ desired }) => desired));
+
+export const selectGlobalCreateProvider = Effect.fn("GlobalApp.selectCreateProvider")(function* () {
+  const { desired: providerId, plan } = yield* globalCreatePlacement();
+  const registry = yield* RuntimeProviderRegistry;
+  const provider = yield* registry.select(providerId);
+  yield* requireOwningEngine(provider, "global", [plan]);
+  return { providerId, provider };
+});
 
 export const globalObserveProviderId = resolveGlobalPlacement().pipe(
   Effect.map(({ desired, realized }) => realized ?? desired),

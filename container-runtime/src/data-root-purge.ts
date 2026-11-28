@@ -6,6 +6,7 @@ import { makePurgeCandidates, purgeKinds } from "./data-root-purge-candidates.ts
 import type { EngineHttpApi, EngineHttpRequest, ProviderErrorContext } from "./engine-api.ts";
 import { isSuccessStatus } from "./engine-api.ts";
 import { apiResponseFailure, missingApi, missingRequest } from "./engine-errors.ts";
+import { engineEndpointDisplay } from "./engine-identity.ts";
 import { BUILT_ARTIFACT_PREFIX, BUILT_ARTIFACT_STORE_LABEL } from "./image-build.ts";
 import { listContainerArtifacts, normalizeImageRef } from "./image-list.ts";
 import { removeContainerArtifact } from "./image-remove.ts";
@@ -37,7 +38,7 @@ export const preflightDataRootPurge = Effect.fn("DataRootPurge.preflight")(funct
   ctx: ProviderErrorContext,
   options: DataRootPurgeOptions,
 ) {
-  const endpoint = redactString(options.endpoint, redactorFor(ctx));
+  const endpoint = redactString(engineEndpointDisplay(options.endpoint), redactorFor(ctx));
   const ownership = yield* readDataRootAdoptionReceipts(ctx.providerId, options);
   const send = api.request;
   if (!send) return yield* missingApi(ctx, operation);

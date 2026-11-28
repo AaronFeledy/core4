@@ -148,9 +148,11 @@ const pruneAppsGc = Effect.fn("AppOperation.pruneAppsGc")(function* (
             outcome: "retained" as const,
             reason: "Evidence changed after confirmation; run apps:gc again.",
           };
+        // The GC provider filter scopes discovery, not permission to forget a different engine.
+        const { providerId: _filter, ...cleanup } = options;
         const destroyed = yield* destroyAppAtRoot(
           candidate.root,
-          { ...options, yes: true },
+          { ...cleanup, yes: true },
           "lando apps:gc --prune",
         );
         const remaining = yield* scanMissingAppRoots();

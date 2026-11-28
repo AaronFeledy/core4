@@ -34,6 +34,7 @@ import type {
   ArtifactRemovalRequest,
   ArtifactSelector,
   DoctorResourceNameQuery,
+  EngineIdentity,
   FileSyncSessionSpec,
   HealthcheckPlan,
   HostPlatform,
@@ -518,6 +519,8 @@ export class RuntimeProvider extends Context.Service<
     readonly platform: HostPlatform;
     /** Engine endpoint this provider talks to. Pull checks are keyed by it, not by provider id alone. */
     readonly runtimeIdentity?: string;
+    /** Storage identity from the provider's existing engine observation, not an endpoint cache key. */
+    readonly engineIdentity?: EngineIdentity;
     readonly capabilities: ProviderCapabilities;
     /** Apply honors the healthy-dependency continuation contract. Omission means unsupported. */
     readonly healthyDependencyContinuation?: true;

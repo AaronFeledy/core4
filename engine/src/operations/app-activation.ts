@@ -6,7 +6,7 @@ import { DateTime, Effect } from "effect";
 import type { ResolvedAppTarget } from "../landofile/app-resolution.ts";
 import { routeUrlRouterError } from "../lifecycle/route-url-bindings.ts";
 import { withLaunchVolumeCoordination } from "../lifecycle/volume-coordination.ts";
-import { ensureAppPlacementState } from "../providers/app-placement.ts";
+import { ensureAppPlacementState, requireOwningEngine } from "../providers/app-placement.ts";
 import { type PreparedRuntimeProvider, prepareProvider } from "../providers/prepared.ts";
 import { resolvePendingAcceleratedStart } from "./accelerated-start-journal.ts";
 import { digest, recordedStartCommand } from "./accelerated-start-record.ts";
@@ -132,6 +132,10 @@ export function withAppActivation<A, E, R>(
           request.operation === "start" &&
           digest(services ?? null) === digest(pending.record.services ?? null);
         const selectedProvider = yield* registry.select(plan);
+        yield* requireOwningEngine(selectedProvider, target.app.kind, [
+          placement.plan,
+          ...placement.superseded,
+        ]);
         const prepare = yield* Effect.cached(prepareProvider(selectedProvider));
         const assess = () =>
           assessDataVersions(

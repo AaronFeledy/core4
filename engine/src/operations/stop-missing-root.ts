@@ -11,6 +11,7 @@ import { RuntimeProviderRegistry } from "@lando/sdk/services";
 import { Effect } from "effect";
 import { routeOwnerFromPlan, routeOwnerFromRoot } from "../lifecycle/route-owner.ts";
 import { withdrawOwnerRoutes } from "../lifecycle/route-withdrawal.ts";
+import { requireOwningEngine } from "../providers/app-placement.ts";
 import { shellArg } from "../services/shell-quote.ts";
 import { readDiscardableStart } from "./accelerated-start-disposal.ts";
 import type { TeardownResolution } from "./applied-state-target.ts";
@@ -44,6 +45,7 @@ const stopMissingRootWriters = Effect.fnUntraced(function* (app: AppRef, resolut
     case "applied": {
       const target = resolution.target;
       const provider = yield* registry.select(target.plan);
+      yield* requireOwningEngine(provider, target.app.kind, [target.plan]);
       if ((yield* provider.getStatus).state !== "idle") {
         const outcome = yield* provider.bringDown(
           { app: target.plan.id, plan: target.plan },

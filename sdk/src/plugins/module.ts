@@ -69,7 +69,10 @@ export type ProviderPurgeResult = {
   readonly outsideScope: number;
 };
 
-export type ProviderPurgePreflight =
+export type ProviderPurgePreflight = {
+  /** Unreadable slots do not prove ownership; sweep only independently identified resources. */
+  readonly unreadableAppliedState?: readonly string[];
+} & (
   | { readonly kind: "skipped"; readonly endpoint: string; readonly reason: string }
   | {
       readonly kind: "reachable";
@@ -78,7 +81,8 @@ export type ProviderPurgePreflight =
       readonly apps: readonly { readonly appId: string; readonly appRoot: string }[];
       readonly syncPresent: boolean;
       readonly sweep: () => Effect.Effect<ProviderPurgeResult>;
-    };
+    }
+);
 
 export type ProviderPurgeHook = (input: {
   readonly platform: HostPlatform;

@@ -11,12 +11,12 @@ import {
   type GlobalAppPaths,
   GlobalAppService,
   type ProviderSelectionError,
-  RuntimeProviderRegistry,
+  type RuntimeProviderRegistry,
   type StateStore,
 } from "@lando/sdk/services";
 import { Effect } from "effect";
 
-import { globalCreateProviderId, resolveGlobalPlacement } from "../global-app/placement.ts";
+import { resolveGlobalPlacement, selectGlobalCreateProvider } from "../global-app/placement.ts";
 import {
   type GlobalResolution,
   projectEffectiveGlobalResolution,
@@ -112,9 +112,7 @@ export const readGlobalLandofile = Effect.fn("GlobalApp.readLandofile")(function
 export const loadGlobalPlan = Effect.fnUntraced(function* (
   options: { readonly services?: ReadonlyArray<string> } = {},
 ): Effect.fn.Return<LoadGlobalPlanResult, LoadGlobalPlanError, LoadGlobalPlanServices> {
-  const providerId = yield* globalCreateProviderId();
-  const registry = yield* RuntimeProviderRegistry;
-  const provider = yield* registry.select(providerId);
+  const { providerId, provider } = yield* selectGlobalCreateProvider();
   const loaded = yield* withGlobalResolutionCapabilities(
     providerId,
     provider.capabilities,

@@ -32,7 +32,7 @@ import {
   verifyActiveVolumeCoordination,
   withPlanVolumeCoordination,
 } from "../lifecycle/volume-coordination.ts";
-import { TeardownProvider, resolveAppPlacement } from "../providers/app-placement.ts";
+import { TeardownProvider, requireOwningEngine, resolveAppPlacement } from "../providers/app-placement.ts";
 import { shellArg } from "../services/shell-quote.ts";
 import { readDiscardableStart } from "./accelerated-start-disposal.ts";
 import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
@@ -154,6 +154,7 @@ const stopResolvedRuntime = Effect.fnUntraced(function* <E>(
   }
   yield* registry.readAppliedPlanStrict(validatedTarget.plan);
   const owningProvider = yield* registry.select(validatedTarget.plan);
+  yield* requireOwningEngine(owningProvider, target.app.kind, [placement.plan, ...placement.superseded]);
   const selected = requestedStopServices(options);
   if (selected !== undefined) {
     const services = yield* validateRequested(validatedTarget.plan, selected);
@@ -176,10 +177,11 @@ const stopResolvedRuntime = Effect.fnUntraced(function* <E>(
       id: placement.plan?.id ?? placement.superseded[0]?.id ?? validatedTarget.app.id,
     });
     yield* preflightStopApp(validatedTarget, runtimeState, execution.missingRoot === true);
-    superseded = yield* stopSupersededRealizations(
-      placement.superseded,
-      yield* registry.select(placement.plan ?? placement.superseded[0] ?? validatedTarget.plan),
+    const previousProvider = yield* registry.select(
+      placement.plan ?? placement.superseded[0] ?? validatedTarget.plan,
     );
+    yield* requireOwningEngine(previousProvider, target.app.kind, placement.superseded);
+    superseded = yield* stopSupersededRealizations(placement.superseded, previousProvider);
     // The kept earlier names stay applied until the next start or destroy retires them, and
     // without a realization under the current name nothing else runs at this root.
     if (placement.plan === undefined)
@@ -231,7 +233,7 @@ const stopResolvedRuntime = Effect.fnUntraced(function* <E>(
       }
     }
   }
-  const provider = yield* registry.select(validatedTarget.plan);
+  const provider = owningProvider;
   const stopOptions = {
     runInitEvents: execution.runInitEvents !== false,
     ...(execution.beforeStop === undefined ? {} : { beforeStop: execution.beforeStop }),

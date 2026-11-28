@@ -25,7 +25,8 @@ import {
 } from "@lando/sdk/services";
 import { Clock, DateTime, Effect, Option, Schema, Stream } from "effect";
 import { type ResolvedAppTarget, planDesiredApp } from "../landofile/app-resolution.ts";
-import { observedAppPlan } from "../providers/app-placement.ts";
+import { observedAppPlan, requireOwningEngine } from "../providers/app-placement.ts";
+import { SCRATCH_EXTENSION_KEY } from "../scratch-app/identity.ts";
 import { resolveAppliedLogsTarget } from "./applied-state-target.ts";
 
 export type LogsAppError = SdkLogsAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
@@ -192,6 +193,7 @@ export const validateSince = Effect.fnUntraced(function* (
 const servicesForPlan = Effect.fnUntraced(function* (
   plan: AppPlan,
   options: LogsAppOptions,
+  recorded: AppPlan = plan,
 ): Effect.fn.Return<
   { readonly services: ReadonlyArray<ServicePlan>; readonly provider: RuntimeProviderShape },
   SdkLogsAppError,
@@ -199,6 +201,15 @@ const servicesForPlan = Effect.fnUntraced(function* (
 > {
   const registry = yield* RuntimeProviderRegistry;
   const provider = yield* registry.select(plan);
+  yield* requireOwningEngine(
+    provider,
+    Object.hasOwn(plan.extensions, SCRATCH_EXTENSION_KEY)
+      ? "scratch"
+      : plan.id === "global"
+        ? "global"
+        : "user",
+    [recorded],
+  );
   if (provider.capabilities.serviceLogs !== true) {
     return yield* Effect.fail(
       new CapabilityError({
@@ -255,7 +266,7 @@ const resolvePlanServices = Effect.fnUntraced(function* (
       candidate.provider === plan.provider &&
       Schema.is(DependencyEnvironmentJob)(service?.extensions[DEPENDENCY_ENVIRONMENT_EXTENSION_KEY])
     ) {
-      const { services, provider } = yield* servicesForPlan(candidate, options);
+      const { services, provider } = yield* servicesForPlan(candidate, options, plan);
       return { plan: candidate, services, provider };
     }
   }
