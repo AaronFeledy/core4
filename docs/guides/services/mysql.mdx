@@ -228,13 +228,13 @@ If you have no restore point, use a verified export taken before the upgrade. To
       <Verify command="lando mysql -N -e 'SELECT VERSION()'" expect={{ stdout: { regex: "^8[.]0[.]" } }} />
       <Verify command="lando mysql -N -e 'SELECT body FROM notes'" expect={{ stdout: { regex: "still here" } }} />
     </Step>
-    <Hidden reason="Check that the old server reports the native downgrade refusal after stop">
+    <Hidden reason="Check that a stopped server's record blocks downgrade before apply">
       <Step name="stopped-refusal">
         <Run command="lando app:config:set services.db.type mysql:8.4" />
         <Run command="lando start" />
         <Run command="lando stop" />
         <Run command="lando app:config:set services.db.type mysql:8.0" />
-        <Verify command="lando start --format=json" expectExit={1} expect={{ stdout: { regex: '(?=.*"_tag":"ServiceNotReadyError")(?=.*"direction":"downgrade")(?=.*"dataVersion":"8[.]4")(?=.*"imageVersion":"8[.]0")(?=.*"evidence":"server")' } }} />
+        <Verify command="lando start --format=json" expectExit={1} expect={{ stdout: { regex: '(?=.*"_tag":"ServiceDataVersionError")(?=.*"direction":"downgrade")(?=.*"dataVersion":"8[.]4")(?=.*"imageVersion":"8[.]0")(?=.*"evidence":"record")' } }} />
       </Step>
     </Hidden>
     <Step name="cleanup"><Cleanup /><Run command="lando destroy -y --volumes" /></Step>

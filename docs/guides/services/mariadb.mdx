@@ -195,6 +195,8 @@ List the restore points for `db` and note the ID of the `upgrade` point for 10.1
 lando db:snapshots --service db
 ```
 
+If the point is listed as unverified, see [how to restore an unverified point](../tooling/db-import-export.mdx#restore-points-before-version-upgrades) before continuing.
+
 Pin the old series and restore the point. Replace `<id>` with the ID from the list. Restoring replaces the current database files, including changes made since the upgrade.
 
 ```sh
