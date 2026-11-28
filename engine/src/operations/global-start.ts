@@ -172,7 +172,7 @@ export const globalStart = Effect.fn("GlobalStart.start")(
               close,
             })
           : undefined;
-        const { provider, replacement, prior } =
+        const { provider, replacement, prior, strictPlan } =
           retained === undefined
             ? yield* prepareGlobalReplacement(loaded.plan, selectedProvider)
             : { ...retained, prior: retained.recordedPlan };
@@ -189,6 +189,7 @@ export const globalStart = Effect.fn("GlobalStart.start")(
             provider,
             services,
             ...(prior === undefined ? {} : { previousPlan: prior }),
+            ...(strictPlan === undefined ? {} : { volumeBaseline: strictPlan }),
             beforeApply: verifyAdmission,
             ...(replacement === undefined ? {} : { replacement }),
             ...(options.preparedOverlays === undefined ? {} : { preparedOverlays: options.preparedOverlays }),

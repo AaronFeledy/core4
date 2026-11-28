@@ -43,6 +43,7 @@
     "./schema/services/tomcat": "./src/schema/services/tomcat.ts",
     "./schema/services/varnish": "./src/schema/services/varnish.ts",
     "./docs/components": "./src/docs/components/index.ts",
+    "./engine-placement": "./src/engine-placement/index.ts",
     "./errors": "./src/errors/index.ts",
     "./services": "./src/services/index.ts",
     "./events": "./src/events/index.ts",

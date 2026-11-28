@@ -1,6 +1,6 @@
 import { routerEnabled } from "@lando/engine/config/router-config";
 import { resolveAppliedStateTarget } from "@lando/engine/operations/applied-state-target";
-import { observedAppPlan } from "@lando/engine/providers/app-placement";
+import { observedAppPlan, requireOwningEngine } from "@lando/engine/providers/app-placement";
 import { type HostProxyOpenerError, canOpenHost, openUrl } from "@lando/engine/services/host-opener";
 import { RedactionService } from "@lando/redaction/service";
 import type { InfoAppError } from "@lando/sdk/app";
@@ -228,7 +228,9 @@ export const openApp = Effect.fn("OpenApp.open")(function* (
       })),
   );
 
-  const connections = yield* collectOpenConnections(plan, options);
+  const provider = yield* registry.select(plan);
+  yield* requireOwningEngine(provider, "user", [plan]);
+  const connections = yield* collectOpenConnections(plan, options, provider);
   return yield* openForPlan(plan, options, connections);
 });
 

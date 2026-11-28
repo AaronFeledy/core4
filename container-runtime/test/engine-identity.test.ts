@@ -1,9 +1,6 @@
 import { expect, test } from "bun:test";
-import {
-  dockerEngineIdentity,
-  matchesEnginePlacement,
-  podmanEngineIdentity,
-} from "../src/engine-identity.ts";
+import { matchesEnginePlacement } from "@lando/sdk/engine-placement";
+import { dockerEngineIdentity, podmanEngineIdentity } from "../src/engine-identity.ts";
 
 test("Docker engine identity survives a connection alias, not daemon replacement", () => {
   const socket = "unix:///var/run/docker.sock";

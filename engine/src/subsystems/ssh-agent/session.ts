@@ -8,6 +8,7 @@ import { type RootOverrides, makeLandoPaths } from "@lando/paths";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import { withDeadline } from "@lando/sdk/command-result";
 import {
+  AppPlacementError,
   AppliedStateVersionError,
   ProviderUnavailableError,
   SshError,
@@ -26,6 +27,7 @@ import {
 } from "@lando/sdk/schema";
 import { GlobalAppService, PathsService, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { Duration, Effect, Option, Ref } from "effect";
+import { requireOwningEngine } from "../../providers/app-placement.ts";
 import { prepareHealthcheckAttempt } from "../healthcheck/attempt.ts";
 import { probeSshAgent } from "./agent-probe.ts";
 import type { AgentRelayUpstream } from "./relay.ts";
@@ -77,6 +79,7 @@ const inspectSshAgent = Effect.gen(function* () {
   if (plan === undefined)
     return { state: "stopped" as const, detail: "No applied global app plan for the SSH agent sidecar." };
   const provider = yield* registry.value.select(plan);
+  yield* requireOwningEngine(provider, "global", [plan]);
   const target = { app: plan.id, service: ServiceName.make("ssh-agent"), plan };
   const service = yield* provider.inspect(target);
   if (plan.identity?.dataRoot !== undefined && !ownsAppliedGlobalService(plan, service))
@@ -118,6 +121,7 @@ export const runtimeSshAgentCheck = withDeadline(inspectSshAgent, "5 seconds").p
   Effect.catchIf(
     (error) =>
       error instanceof AppliedStateVersionError ||
+      error instanceof AppPlacementError ||
       (error instanceof ProviderUnavailableError && error.operation === "applied-state.read"),
     (error) =>
       Effect.succeed<SshSidecarReadiness>({

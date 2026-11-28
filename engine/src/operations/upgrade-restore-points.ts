@@ -6,6 +6,7 @@ import { DataMover, EventService, StateStore } from "@lando/sdk/services";
 import { makeTaskTree, runWithTaskTree } from "@lando/sdk/task-progress";
 import { DateTime, Effect, Exit, Option } from "effect";
 import { mergeFailure, runAllAndMergeFailures } from "../lifecycle/failure-compensation.ts";
+import { coordinatedServiceVolume } from "../lifecycle/volume-coordination.ts";
 import type { PreparedRuntimeProvider } from "../providers/prepared.ts";
 import { registerBuildRedaction } from "../services/build-redaction.ts";
 import { withPrefetchedSourceArtifacts } from "../services/source-artifact.ts";
@@ -34,16 +35,27 @@ export const withUpgradeRestorePoints =
       readonly prepareUpgrade: PrepareUpgrade;
       readonly points: ReadonlyMap<ServiceName, SnapshotId>;
       readonly verifiedFrom: ReadonlyMap<ServiceName, string>;
+      /** Upgrades that may still see their recorded data; an absent locked volume drops one. */
+      readonly upgrades: readonly DataUpgrade[];
     }) => Effect.Effect<A, E, R>,
   ) =>
     Effect.fn("AppActivation.withUpgradeRestorePoints")(function* () {
       const points = new Map<ServiceName, SnapshotId>();
       const verifiedFrom = new Map<ServiceName, string>();
       const unverified = new Set<ServiceName>();
-      const stoppedChecks =
+      // Only an explicit absence under the held lock suppresses upgrade handling: a missing
+      // locator, a failed observation, or a provider that cannot locate keeps today's behavior.
+      const absentStores = new Set<string>();
+      for (const upgrade of [...input.upgrades, ...input.stoppedChecks]) {
+        const locator = yield* coordinatedServiceVolume(input.plan, upgrade.store);
+        if (locator?.presence === "absent") absentStores.add(upgrade.store);
+      }
+      const upgrades = input.upgrades.filter(({ store }) => !absentStores.has(store));
+      const stoppedChecks = (
         input.noSnapshot === true
-          ? [...input.stoppedChecks, ...input.upgrades.filter(({ source }) => source === "applied-plan")]
-          : input.stoppedChecks;
+          ? [...input.stoppedChecks, ...upgrades.filter(({ source }) => source === "applied-plan")]
+          : input.stoppedChecks
+      ).filter(({ store }) => !absentStores.has(store));
       for (const upgrade of stoppedChecks) {
         yield* captureRestorePoint({
           plan: input.plan,
@@ -51,8 +63,8 @@ export const withUpgradeRestorePoints =
           upgrade,
         }).pipe(Effect.catchTag("ServiceRestorePointError", () => Effect.void));
       }
-      if (input.noSnapshot === true || input.upgrades.length === 0)
-        return yield* body({ prepareUpgrade: Effect.void, points, verifiedFrom });
+      if (input.noSnapshot === true || upgrades.length === 0)
+        return yield* body({ prepareUpgrade: Effect.void, points, verifiedFrom, upgrades });
       const mover = yield* Effect.serviceOption(DataMover);
       const events = yield* EventService;
       const notice = (body: string) =>
@@ -63,7 +75,7 @@ export const withUpgradeRestorePoints =
       const discarded = new Set<SnapshotId>();
       const capture = Effect.gen(function* () {
         if (Option.isNone(mover)) {
-          for (const { service } of input.upgrades)
+          for (const { service } of upgrades)
             yield* notice(`No restore point was saved for ${service}: the data mover is unavailable.`);
           return;
         }
@@ -73,14 +85,14 @@ export const withUpgradeRestorePoints =
         const tree = makeTaskTree(events, {
           parentId: `upgrade-restore-point:${input.plan.id}`,
           label: `Save database upgrade restore points for ${input.plan.name}`,
-          children: input.upgrades.map(({ service }) => ({ id: service, label: `Save ${service}` })),
+          children: upgrades.map(({ service }) => ({ id: service, label: `Save ${service}` })),
           prefixChildIds: true,
         });
         yield* runWithTaskTree(
           tree,
           (active) =>
             Effect.gen(function* () {
-              for (const upgrade of input.upgrades) {
+              for (const upgrade of upgrades) {
                 const { service, label, to } = upgrade;
                 yield* notice(`Saving a restore point of ${service} before moving to ${label} ${to}…`);
                 yield* active.startTask(service);
@@ -111,7 +123,7 @@ export const withUpgradeRestorePoints =
         );
       });
       const prepareUpgrade = yield* Effect.cached(capture);
-      const activation = Effect.suspend(() => body({ prepareUpgrade, points, verifiedFrom }));
+      const activation = Effect.suspend(() => body({ prepareUpgrade, points, verifiedFrom, upgrades }));
       const settle = Effect.uninterruptibleMask((restore) =>
         Effect.gen(function* () {
           const exit = yield* Effect.exit(restore(activation));
@@ -146,7 +158,7 @@ export const withUpgradeRestorePoints =
               {
                 provider: input.provider,
                 services: Object.values(input.plan.services).filter(({ name }) =>
-                  input.upgrades.some(({ service }) => service === name),
+                  upgrades.some(({ service }) => service === name),
                 ),
                 options: {
                   refresh: input.refresh,

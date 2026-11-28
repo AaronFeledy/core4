@@ -1,6 +1,12 @@
 // allow: SIZE_OK — Keep the three Docker transports together for this behavior-preserving extraction; curl retirement is a separate change.
 import { createConnection, isIP } from "node:net";
 import { type ConnectionOptions, connect as createTlsConnection } from "node:tls";
+import {
+  dockerApiEndpointKey,
+  dockerHttpBaseUrl,
+  explicitDockerApiPrefixFromHost,
+  normalizeNamedPipePath,
+} from "@lando/sdk/engine-placement";
 import { ProviderCapabilityError, ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
 import { Effect } from "effect";
 import type {
@@ -18,14 +24,10 @@ import {
   type SocketHttpConnection,
   connectSocket,
   makeSocketHttpClient,
-  normalizeNamedPipePath,
   socketHttpConnection,
 } from "../transport.ts";
 import {
   type ResolvedDockerApiPrefix,
-  dockerApiEndpointKey,
-  dockerHttpBaseUrl,
-  explicitDockerApiPrefixFromHost,
   isDockerApiPrefixFailure,
   isDockerWaitRequest,
   learnDockerApiPrefix,

@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
 import { realpath } from "node:fs/promises";
 import { invokeOperation } from "@lando/core/cli/operations";
-import { ProviderUnavailableError } from "@lando/sdk/errors";
-import { AbsolutePath, ServiceName, appIdentityKey } from "@lando/sdk/schema";
+import { AppPlacementError, ProviderUnavailableError } from "@lando/sdk/errors";
+import { AbsolutePath, type EngineIdentity, ServiceName, appIdentityKey } from "@lando/sdk/schema";
 import { AppPlanner, LandofileService, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Cause, Effect, Layer } from "effect";
@@ -16,7 +16,15 @@ import {
   silentEventLayer,
 } from "../../_support/host-proxy-open-fixtures.ts";
 
-const fixture = async (failedService = "mailpit") => {
+const engine = (host: string): EngineIdentity => ({
+  fingerprint: host,
+  endpoint: `unix:///${host}/podman.sock`,
+});
+
+const fixture = async (
+  failedService = "mailpit",
+  placement?: { readonly recorded: EngineIdentity; readonly current?: EngineIdentity },
+) => {
   const appRoot = AbsolutePath.make(await realpath(process.cwd()));
   const plan = {
     ...makePlan(
@@ -28,6 +36,7 @@ const fixture = async (failedService = "mailpit") => {
     ),
     root: appRoot,
     identity: { appRoot, ownerKey: appIdentityKey("owner", appRoot) },
+    ...(placement === undefined ? {} : { engineIdentity: placement.recorded }),
   };
   const inspected: string[] = [];
   const failure = new ProviderUnavailableError({
@@ -38,6 +47,7 @@ const fixture = async (failedService = "mailpit") => {
   });
   const provider = {
     ...TestRuntimeProvider,
+    ...(placement?.current === undefined ? {} : { engineIdentity: placement.current }),
     inspect: (target: Parameters<typeof TestRuntimeProvider.inspect>[0]) => {
       inspected.push(String(target.service));
       if (target.service === failedService)
@@ -93,6 +103,67 @@ test.each([...selections])("public open isolates selected observations: %j", asy
     value: { targets: [{ service: "web", url: "https://web.myapp.lndo.site:4433" }] },
   });
   expect(inspected).toEqual(["web"]);
+});
+
+test("public open refuses a record from another engine before inspecting it", async () => {
+  // Given an applied record from one engine and a connection to another.
+  const { inspected, publicServices } = await fixture("mailpit", {
+    recorded: engine("first"),
+    current: engine("second"),
+  });
+
+  // When the public operation opens the app.
+  const failure = await Effect.runPromise(
+    Effect.flip(openApp({ print: true }).pipe(Effect.provide(publicServices))),
+  );
+
+  // Then it refuses before any provider member runs.
+  expect(failure).toBeInstanceOf(AppPlacementError);
+  if (failure instanceof AppPlacementError) {
+    expect(failure.message).toContain(engine("first").endpoint);
+    expect(failure.message).toContain(engine("second").endpoint);
+  }
+  expect(inspected).toEqual([]);
+});
+
+test("public open proceeds when the provider has no engine identity", async () => {
+  // Given a record that names an engine and a provider that cannot identify its own.
+  const { inspected, publicServices } = await fixture("mailpit", { recorded: engine("first") });
+
+  // When the public operation opens a selected service.
+  const result = await Effect.runPromise(
+    invokeOperation(openApp({ service: "web", print: true })).pipe(Effect.provide(publicServices)),
+  );
+
+  // Then placement does not judge the missing identity and the known service opens.
+  expect(result).toMatchObject({ ok: true, value: { targets: [{ service: "web" }] } });
+  expect(inspected).toEqual(["web"]);
+});
+
+test("host-proxy open refuses a record from another engine before inspecting it", async () => {
+  // Given the same mismatch as the public path, reached through the host-proxy worker.
+  const { plan, inspected, services } = await fixture("mailpit", {
+    recorded: engine("first"),
+    current: engine("second"),
+  });
+
+  // When the worker opens the app.
+  const result = await Effect.runPromise(
+    runOpenForHostProxy(plan, {
+      commandId: "app:open",
+      argv: ["open", "--print"],
+      cwd: plan.root,
+      tty: false,
+      env: {},
+    }).pipe(Effect.provide(services)),
+  );
+
+  // Then the envelope carries the refusal and nothing was inspected.
+  expect(result).toMatchObject({
+    exitCode: 1,
+    envelope: { ok: false, error: { _tag: "AppPlacementError" } },
+  });
+  expect(inspected).toEqual([]);
 });
 
 test.each([...selections])("host-proxy open isolates selected observations: %j", async (selection) => {

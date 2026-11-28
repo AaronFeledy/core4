@@ -15,6 +15,7 @@ import { Effect, Layer, Result } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 import { collectObservedConnections, observeService } from "../../operations/connection-collector.ts";
 import { observedPublicationConnection, serviceStateOf } from "../../operations/service-connections.ts";
+import { admitRecordedApp, planAppKind } from "../../providers/app-placement.ts";
 import { endpointScanPolicy } from "../../services/endpoint-scan.ts";
 import {
   SCANNER_ID,
@@ -206,7 +207,11 @@ export const layer: Layer.Layer<UrlScanner, never, RuntimeProviderRegistry | Htt
         listEndpoints: Effect.fn("UrlScanner.listEndpoints")(function* (appId, suppliedPlan) {
           const redactor = yield* resolveRedactor;
           const selected = Effect.gen(function* () {
-            if (suppliedPlan !== undefined) return yield* registry.select(suppliedPlan);
+            if (suppliedPlan !== undefined) {
+              const applied = yield* registry.readAppliedPlanStrict(suppliedPlan);
+              const provider = yield* registry.select(suppliedPlan);
+              return yield* admitRecordedApp(provider, planAppKind(suppliedPlan), [applied]);
+            }
             const inspectAppliedPlans = registry.appliedStateInventory;
             // The first provider that could not be inspected keeps its own tag and remediation.
             let uninspected: Effect.Error<ReturnType<typeof inspectAppliedPlans>> | undefined;
@@ -217,7 +222,10 @@ export const layer: Layer.Layer<UrlScanner, never, RuntimeProviderRegistry | Htt
                 continue;
               }
               const plan = inspected.success.plans.find((plan) => plan.id === appId && plan.provider === id);
-              if (plan !== undefined) return yield* registry.select(plan);
+              if (plan !== undefined) {
+                const provider = yield* registry.select(plan);
+                return yield* admitRecordedApp(provider, planAppKind(plan), [plan]);
+              }
               const issue = inspected.success.unreadable.find((entry) => inventoryProtectsApp(entry, appId));
               if (issue !== undefined) uninspected ??= protectedSlotError(id, issue, appId);
             }

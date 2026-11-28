@@ -2,12 +2,18 @@ import { withAgentContextEnv } from "@lando/engine/config/agent-env";
 import { resolveAgentEnvForwardAllowlist } from "@lando/engine/config/agent-env-policy";
 import { execExitUnobserved } from "@lando/engine/operations/exec-stream-drain";
 import { availableServiceList, unknownPlanServiceError } from "@lando/engine/operations/unknown-service";
-import { appliedServicePlan, selectCommandIdentity } from "@lando/engine/services/execution-identity";
+import { planAppKind, requireOwningEngine } from "@lando/engine/providers/app-placement";
+import {
+  appliedAppPlan,
+  appliedServicePlanFrom,
+  selectCommandIdentity,
+} from "@lando/engine/services/execution-identity";
 import { RedactionService, createPayloadValues } from "@lando/redaction/service";
 import { isStdioRendererIO } from "@lando/renderer/io";
 import { emitOptionalStderr, emitOptionalStdout } from "@lando/renderer/output";
 import type { AppPlanResolutionError } from "@lando/sdk/app";
 import {
+  type AppPlacementError,
   type DeprecatedSurfaceError,
   type ShellExecError,
   ShellRequiresTtyError,
@@ -112,6 +118,7 @@ export const ShellAppResult = Schema.Struct({
 export type ShellAppResult = typeof ShellAppResult.Type;
 
 export type ShellAppError =
+  | AppPlacementError
   | AppPlanResolutionError
   | ProviderError
   | DeprecatedSurfaceError
@@ -273,8 +280,10 @@ export const shellApp = Effect.fn("ShellApp.shell")(function* (
             stdinIsTTY: () => invocation.io.stdinIsTTY === true,
           });
     const service = yield* resolveService(options.service, plan);
+    const applied = yield* appliedAppPlan(registry, plan);
     const provider = yield* registry.select(plan);
-    const appliedService = yield* appliedServicePlan(registry, plan, String(service.name));
+    yield* requireOwningEngine(provider, planAppKind(plan), [applied]);
+    const appliedService = appliedServicePlanFrom(applied, String(service.name));
     const identity = selectCommandIdentity({
       cliUser: options.user,
       service: appliedService,

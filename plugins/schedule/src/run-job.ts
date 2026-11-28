@@ -1,3 +1,4 @@
+import { enginePlacementMismatch } from "@lando/sdk/engine-placement";
 import { PlanReplanRequiredError, ServiceExecError } from "@lando/sdk/errors";
 import { ServiceName, clonedServiceParent } from "@lando/sdk/schema";
 import {
@@ -76,6 +77,8 @@ export const runScheduleJob = Effect.fn("Schedule.runJob")(function* (input: {
     );
   }
   const provider = yield* registry.select(planned);
+  const mismatch = enginePlacementMismatch({ provider, kind: "user", records: [planned] });
+  if (mismatch !== undefined) return yield* Effect.fail(mismatch);
   // The timer runs this job inside the sidecar for its user group, so run there
   // too: the sidecar already carries the job's user, home, cwd, and environment.
   const sidecarName = ServiceName.make(job.sidecar);

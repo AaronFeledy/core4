@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { dockerApiEndpointKey } from "@lando/sdk/engine-placement";
 import { Effect } from "effect";
 import { makeDockerApiClient, resetDockerApiPrefixCache } from "../src/docker/api-client.ts";
-import { dockerApiEndpointKey, peekDockerApiPrefix } from "../src/docker/api-prefix.ts";
+import { peekDockerApiPrefix } from "../src/docker/api-prefix.ts";
 import { dockerRequestPrefix } from "../src/docker/api-version.ts";
 
 beforeEach(resetDockerApiPrefixCache);

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { makeRedactionService } from "@lando/redaction/service";
+import { normalizeNamedPipePath } from "@lando/sdk/engine-placement";
 import { ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
 import { Effect } from "effect";
 import {
@@ -10,11 +11,7 @@ import {
   resetDockerApiPrefixCache,
 } from "../src/docker/api-client.ts";
 import { DOCKER_API_PREFERRED_VERSION } from "../src/docker/api-version.ts";
-import {
-  ContainerTransportError,
-  type SocketHttpConnection,
-  normalizeNamedPipePath,
-} from "../src/transport.ts";
+import { ContainerTransportError, type SocketHttpConnection } from "../src/transport.ts";
 
 const ctx = {
   providerId: "custom-docker",

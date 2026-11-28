@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { type Server, type Socket, createServer } from "node:net";
+import { dockerApiEndpointKey } from "@lando/sdk/engine-placement";
 import { Effect } from "effect";
-
 import { makeDockerApiClient, resetDockerApiPrefixCache } from "../src/docker/api-client.ts";
-import { dockerApiEndpointKey, isDockerWaitRequest, peekDockerApiPrefix } from "../src/docker/api-prefix.ts";
+import { isDockerWaitRequest, peekDockerApiPrefix } from "../src/docker/api-prefix.ts";
 import { isDockerApiVersionError } from "../src/docker/api-version.ts";
 
 const ctx = { providerId: "docker", remediation: "Start Docker.", env: {} } as const;

@@ -1,4 +1,5 @@
 import { mapFailures } from "@lando/sdk/command-result";
+import { engineEndpointDisplay, matchesEnginePlacement } from "@lando/sdk/engine-placement";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import type { PluginStateStore, ProviderPurgePreflight } from "@lando/sdk/plugins";
 import type { AppliedStateInventory, EngineIdentity } from "@lando/sdk/schema";
@@ -6,7 +7,6 @@ import { Effect, Result } from "effect";
 import type { AppliedPlanStoreError } from "./applied-state.ts";
 import { type DataRootPurgeOptions, preflightDataRootPurge } from "./data-root-purge.ts";
 import type { EngineApiClient, ProviderErrorContext } from "./engine-api.ts";
-import { engineEndpointDisplay, matchesEnginePlacement } from "./engine-identity.ts";
 import { listResourceOwnershipRecords, openPurgeState } from "./resource-ownership-records.ts";
 
 type ListAppliedPlans = (

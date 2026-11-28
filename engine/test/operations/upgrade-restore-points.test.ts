@@ -28,6 +28,7 @@ const fixture = (
     readonly offlineVersion?: string;
     readonly recordBuild?: boolean;
     readonly recordPreStop?: boolean;
+    readonly absentVolume?: boolean;
     readonly slowHelper?: { readonly pullStarted: Deferred.Deferred<void> };
   } = {},
 ) => {
@@ -147,11 +148,15 @@ const fixture = (
     stateStore,
     dataMoverLayer: Layer.succeed(DataMover, mover),
     locateVolume: () =>
-      Effect.succeed({
-        nativeName: ref.store,
-        coordinationKey: physical.coordinationKey,
-        identity: physical,
-      }),
+      Effect.succeed(
+        input.absentVolume === true
+          ? { nativeName: ref.store, coordinationKey: physical.coordinationKey, presence: "absent" as const }
+          : {
+              nativeName: ref.store,
+              coordinationKey: physical.coordinationKey,
+              identity: physical,
+            },
+      ),
     inspect: (target) =>
       Effect.sync(
         () =>
@@ -431,6 +436,27 @@ test("an offline helper failure warns and captures an unverified point", async (
   const warnings = f.events.flatMap((event) => (event._tag === "message.warn" ? [event.body] : []));
   expect(warnings).toEqual([expect.stringMatching(/web.*could not be verified|could not verify.*web/iu)]);
 });
+
+test.each([false, true])(
+  "an upgrade whose locked data volume is absent saves nothing and reports no change (no-snapshot=%s)",
+  async (noSnapshot) => {
+    // Given a stopped database whose recorded volume was removed from under it.
+    const f = fixture({ state: "exited", absentVolume: true });
+
+    // When
+    const result = await Effect.runPromise(
+      startApp(noSnapshot ? { noSnapshot } : {}, f.target).pipe(Effect.provide(f.layer)),
+    );
+
+    // Then the existing data is gone, so there is no upgrade to announce or protect.
+    expect(f.actions).toEqual(["apply"]);
+    expect(f.snapshots.size).toBe(0);
+    expect(result.dataVersionChanges).toBeUndefined();
+    expect(f.events.some((event) => event._tag === "message.info" && /Moving web/iu.test(event.body))).toBe(
+      false,
+    );
+  },
+);
 
 test.each([
   ["11.4", "ServiceRestorePointError"],

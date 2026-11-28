@@ -31,6 +31,8 @@ export const applyScratchStartup = Effect.fn("ScratchApp.applyStartup")(function
     readonly certificates: PreparedCertificates;
     readonly landofileRouter?: RouterConfig;
     readonly preparedOverlays?: PreparedDebuggerOverlay;
+    /** The recorded scratch plan on a restart; a new scratch has none. */
+    readonly volumeBaseline?: AppPlan;
   },
   services: {
     readonly provider: PreparedRuntimeProvider;
@@ -65,6 +67,7 @@ export const applyScratchStartup = Effect.fn("ScratchApp.applyStartup")(function
       plan: runtimePlan,
       certificates: request.certificates,
       reconcile: false,
+      ...(request.volumeBaseline === undefined ? {} : { volumeBaseline: request.volumeBaseline }),
       beforeApply: verifyGlobalConsumerAdmission,
     }).pipe(
       Effect.provideService(EnvironmentValueResolver, services.environmentResolver),

@@ -2,7 +2,7 @@ import { canonicalJson, sha256Hex } from "@lando/sdk/digest";
 import { GlobalAppError } from "@lando/sdk/errors";
 import { type AppPlan, type ServiceConfig, ServicePlan, isActiveRunStatus } from "@lando/sdk/schema";
 import { GlobalAppService, RouterService, RuntimeProviderRegistry } from "@lando/sdk/services";
-import { Effect, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 
 import {
   activeGlobalPolicyChange,
@@ -29,6 +29,7 @@ import {
   assertGlobalResolution,
   projectEffectiveGlobalResolution,
 } from "../global-app/resolution.ts";
+import { requireOwningEngine } from "../providers/app-placement.ts";
 import { runtimeOnline } from "../providers/runtime-observation.ts";
 import { withReadOnlyLandofile } from "../services/landofile-live.ts";
 import { unavailableRouterReason } from "../subsystems/proxy/api.ts";
@@ -294,31 +295,36 @@ const changePolicy = Effect.fn("GlobalPolicy.change")(function* (
           ];
     }),
   ];
-  const observedApplied =
-    operation !== "enable" && applied !== undefined
-      ? yield* Effect.result(
-          Effect.gen(function* () {
-            const registry = yield* RuntimeProviderRegistry;
-            const provider = yield* registry.select(applied.provider);
-            if (!(yield* runtimeOnline(provider))) return undefined;
-            const observations = yield* provider.list({ app: applied.id, includeUnplanned: true });
-            const active = new Set(
-              observations
-                .filter(
-                  (service) =>
-                    service.appRoot === applied.root &&
-                    service.providerId === applied.provider &&
-                    isActiveRunStatus(service.status),
-                )
-                .map((service) => String(service.service)),
-            );
-            return {
-              ...applied,
-              services: Object.fromEntries(Object.entries(applied.services).filter(([id]) => active.has(id))),
-            };
-          }),
-        )
-      : undefined;
+  const observedApplied = yield* Effect.gen(function* () {
+    if (operation === "enable" || applied === undefined) return undefined;
+    const selected = yield* Effect.result(
+      Effect.flatMap(RuntimeProviderRegistry, (registry) => registry.select(applied.provider)),
+    );
+    if (Result.isFailure(selected)) return selected;
+    const provider = selected.success;
+    // A placement refusal is fatal, unlike an unavailable observation.
+    yield* requireOwningEngine(provider, "global", [applied]);
+    return yield* Effect.result(
+      Effect.gen(function* () {
+        if (!(yield* runtimeOnline(provider))) return undefined;
+        const observations = yield* provider.list({ app: applied.id, includeUnplanned: true });
+        const active = new Set(
+          observations
+            .filter(
+              (service) =>
+                service.appRoot === applied.root &&
+                service.providerId === applied.provider &&
+                isActiveRunStatus(service.status),
+            )
+            .map((service) => String(service.service)),
+        );
+        return {
+          ...applied,
+          services: Object.fromEntries(Object.entries(applied.services).filter(([id]) => active.has(id))),
+        };
+      }),
+    );
+  });
   const blockers =
     operation === "enable"
       ? []

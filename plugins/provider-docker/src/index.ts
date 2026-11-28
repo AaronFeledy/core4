@@ -79,9 +79,9 @@ import {
   postExactServiceLifecycle,
   postServiceLifecycle,
 } from "@lando/container-runtime/service-lifecycle";
-import { normalizeNamedPipePath } from "@lando/container-runtime/transport";
 import { waitForExit } from "@lando/container-runtime/wait-for-exit";
 import { mapFailures } from "@lando/sdk/command-result";
+import { normalizeNamedPipePath } from "@lando/sdk/engine-placement";
 import { ProviderCapabilityError, ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
 import type { LogFileAccess } from "@lando/sdk/log-follow";
 import { type PluginStateStore, definePlugin } from "@lando/sdk/plugins";

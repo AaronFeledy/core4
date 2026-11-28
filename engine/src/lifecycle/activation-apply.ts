@@ -2,12 +2,15 @@ import type { AppPlan } from "@lando/sdk/schema";
 import {
   EnvironmentValueResolver,
   type EnvironmentValueResolverSession,
+  EventService,
   StateStore,
 } from "@lando/sdk/services";
 import { Effect, Option } from "effect";
+import { publishCommandWarnings, recordCommandWarning } from "../landofile/command-warnings.ts";
 import type { PreparedRuntimeProvider } from "../providers/prepared.ts";
 import { makeActivationCredentialWorker } from "./activation-credentials.ts";
 import { HostMountPoints, prepareHostMountPoints } from "./host-mount-points.ts";
+import { recreatedVolumeWarnings } from "./recreated-volumes.ts";
 import { type PreparedRouteUrls, lowerRouteUrls } from "./route-url-bindings.ts";
 import { recordRouteUrlEvidence } from "./route-url-evidence.ts";
 import { type PreparedCertificates, stampPreparedCertificates } from "./service-certificates.ts";
@@ -33,6 +36,11 @@ export interface ActivationApply<E, R> {
   readonly beforeApply?: Effect.Effect<void, E, R>;
   readonly environment?: EnvironmentValueResolverSession;
   readonly previousPlan?: AppPlan | undefined;
+  /**
+   * The unfiltered recorded plan a recreated data volume is judged against. Defaults to
+   * `previousPlan`, which credentials own; a caller holding a wider record passes it here.
+   */
+  readonly volumeBaseline?: AppPlan | undefined;
   /** Full desired mount intent when completion uses an observation/recording view. */
   readonly credentialPlan?: AppPlan;
 }
@@ -85,6 +93,20 @@ export const applyActivation = Effect.fn("Activation.apply")(
             });
           }),
         });
+        const baseline = request.volumeBaseline ?? request.previousPlan;
+        const facts = applied.createdVolumes ?? [];
+        if (baseline !== undefined && facts.length > 0) {
+          const warnings = recreatedVolumeWarnings({
+            facts,
+            baseline,
+            engine: request.provider.engineIdentity,
+          });
+          // A host with no event channel still records the warning for machine output.
+          const events = yield* Effect.serviceOption(EventService);
+          yield* Option.isSome(events)
+            ? publishCommandWarnings(warnings).pipe(Effect.provideService(EventService, events.value))
+            : Effect.forEach(warnings, recordCommandWarning);
+        }
         const credentialChanges = yield* credentials?.finish(applied) ?? Effect.succeed([]);
         return { ...applied, ...(credentialChanges.length === 0 ? {} : { credentialChanges }) };
       }),

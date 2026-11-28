@@ -151,6 +151,87 @@ describe("BunDataMover.layer call-time provider", () => {
     }
   });
 
+  test("a snapshot refuses an app recorded on another engine before reading the volume", async () => {
+    const dir = await mkdtemp(resolve(process.cwd(), ".tmp-data-foreign-"));
+    const engine = (host: string) => ({ fingerprint: host, endpoint: `unix:///${host}/podman.sock` });
+    const plan: AppPlan & { readonly engineIdentity: { fingerprint: string; endpoint: string } } = {
+      valueModel: 1,
+      id: AppId.make("foreign"),
+      name: "Foreign app",
+      slug: "foreign",
+      root: absolute(dir),
+      identity: { appRoot: absolute(dir), ownerKey: "owner" },
+      provider: ProviderId.make("docker"),
+      services: {},
+      routes: [],
+      stores: [{ name: "data", scope: "app", kind: "data" }],
+      fileSync: [],
+      metadata: { resolvedAt: DateTime.makeUnsafe(0), source: "test", runtime: 4 },
+      extensions: {},
+      engineIdentity: engine("first"),
+    };
+    const observed: string[] = [];
+    const provider = RuntimeProvider.of({
+      ...TestRuntimeProvider,
+      id: plan.provider,
+      engineIdentity: engine("second"),
+      exportVolume: () => {
+        observed.push("exportVolume");
+        return Stream.empty;
+      },
+    });
+    try {
+      const result = await Effect.runPromise(
+        Effect.gen(function* () {
+          const state = yield* StateStore;
+          const access = yield* PrivateFileAccessService;
+          const scopedState = makePluginStateStore(state, absolute(dir), access);
+          const store = makeAppliedPlanStore({ providerId: "docker", layout: "per-app" });
+          yield* store.persistAppliedPlan(scopedState, plan);
+          const registry = makeTestRuntimeProviderRegistry({
+            list: Effect.succeed([plan.provider]),
+            select: () => Effect.succeed(provider),
+            appliedStateInventory: () => store.listAppliedPlans(scopedState, dir),
+            readAppliedPlanStrict: ({ id }) => store.loadAppliedPlanStrict(scopedState, id),
+          });
+          return yield* Effect.flatMap(DataMover, (mover) =>
+            mover.snapshot({ app: AppId.make("foreign"), store: "data" }),
+          ).pipe(
+            Effect.scoped,
+            Effect.result,
+            Effect.provide(
+              dataMoverLayer.pipe(
+                Layer.provide(
+                  Layer.mergeAll(
+                    Layer.succeed(StateStore, state),
+                    silentEvents,
+                    passthroughRedaction,
+                    Layer.succeed(PathsService, makeLandoPaths({ userDataRoot: dir })),
+                    Layer.succeed(RuntimeProviderRegistry, registry),
+                  ),
+                ),
+              ),
+            ),
+          );
+        }).pipe(Effect.provide(Layer.mergeAll(stateStoreLayer, PrivateFileAccessService.layer))),
+      );
+
+      expect(result).toMatchObject({
+        _tag: "Failure",
+        failure: {
+          _tag: "DataTransferError",
+          cause: { _tag: "AppPlacementError" },
+        },
+      });
+      if (result._tag === "Failure") {
+        expect(result.failure.remediation).toContain("lando destroy --provider=docker --yes");
+      }
+      expect(observed).toEqual([]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   test.each(["none", "select", "appliedPlans", "data-id", "stale-service-id", "bound-volume"] as const)(
     "selects the app plan past an unrelated provider's %s failure instead of accepting the bootstrap stub",
     async (broken) => {

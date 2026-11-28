@@ -98,15 +98,17 @@ export const appliedAppPlan = (
  * readable. Execution defaults must not follow a desired plan that the running
  * container does not realize.
  */
+export const appliedServicePlanFrom = (
+  applied: AppPlan | undefined,
+  serviceName: string,
+): ServicePlan | undefined =>
+  applied === undefined
+    ? undefined
+    : Object.values(applied.services).find((service) => String(service.name) === serviceName);
+
 export const appliedServicePlan = (
   registry: Context.Service.Shape<typeof RuntimeProviderRegistry>,
   plan: AppPlan,
   serviceName: string,
 ) =>
-  appliedAppPlan(registry, plan).pipe(
-    Effect.map((applied) =>
-      applied === undefined
-        ? undefined
-        : Object.values(applied.services).find((service) => String(service.name) === serviceName),
-    ),
-  );
+  appliedAppPlan(registry, plan).pipe(Effect.map((applied) => appliedServicePlanFrom(applied, serviceName)));

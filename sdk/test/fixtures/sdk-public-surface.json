@@ -692,6 +692,17 @@
       "decodeVerifyPropsEither"
     ],
     "./errno": ["FILE_IO_REASONS", "errnoCode", "fileIoReason", "isErrnoCode"],
+    "./engine-placement": [
+      "destroyCommand",
+      "dockerApiEndpointKey",
+      "dockerHttpBaseUrl",
+      "engineEndpointDisplay",
+      "engineIdentityFor",
+      "enginePlacementMismatch",
+      "explicitDockerApiPrefixFromHost",
+      "matchesEnginePlacement",
+      "normalizeNamedPipePath"
+    ],
     "./errors": [
       "AgentEnvPatternError",
       "AmbiguousCertificateAuthoritiesError",

@@ -191,6 +191,26 @@ If older starts left copies on two providers, retire the unwanted copy with `lan
 
 Two Docker contexts can also point to different engines. If Lando reports different engines, restore the original connection with `docker context use <name>` or `DOCKER_HOST` to keep using that copy. If the original engine is gone, run `lando destroy --provider=docker --yes` from the app directory, or `lando global:destroy --provider=docker --yes` for the global app. Explicit destroy cleans up the app on the **currently connected** engine and drops Lando's record. It does not connect to the old engine or remove anything left there.
 
+## Know which commands refuse a different engine
+
+Lando records the engine that holds an app's containers, so replacing the connection does not change which engine the records name. When the connection points somewhere else, these commands refuse before they touch the engine, and the failure names both connections:
+
+- `lando start`, `stop`, `restart`, `rebuild`, `destroy`, `info`, `logs`, and `exec`.
+- App tooling tasks and their `pre-*` and `post-*` events.
+- URL scanning and the SSH agent sidecar, which report the refusal rather than reading another engine's silence as a stopped or missing service.
+- `lando shell <service>`, `lando db:*` (including credential repair), `lando schedule:run`, `lando open`, and the data transfer commands that move a recorded app's volumes.
+- `lando global:enable`, `disable`, and `reconcile`, `lando global:rebuild`, and the other global policy commands.
+
+`lando poweroff` does not fail on that app. It skips it, reports why, and powers off the rest.
+
+Restore the original connection to keep using that copy. If the old engine is gone, run the explicit destroy the error names, such as `lando destroy --provider=docker --yes`, to drop Lando's record. Anything left on the old engine stays there.
+
+## Recover a recreated data volume
+
+If a data volume the record names is gone when an app starts, Lando creates it again and says so in one warning instead of treating the new volume as data to upgrade. The warning carries code `LANDO_DATA_VOLUME_RECREATED` with the app, service, volume, and mount target, so machine output and people see the same reason.
+
+For a database service, list snapshots with `lando db:snapshots`, then restore one with `lando db:restore <snapshot> --service <service>` if a snapshot exists. Otherwise re-import the data. Lando cannot recover the contents of a removed volume.
+
 ## Resolve a provider conflict
 
 If `lando doctor` reports a conflict between the managed Lando runtime and system Podman, pick one provider explicitly:

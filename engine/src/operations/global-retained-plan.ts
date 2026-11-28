@@ -70,7 +70,9 @@ export const prepareGlobalReplacement = Effect.fn("GlobalApp.prepareReplacement"
       }),
     );
   const provider = yield* prepareProvider(selectedProvider);
-  return { prior, provider, replacement: renamed ? placed : undefined };
+  // `placed` is the whole record, not the observation-filtered view: an absent container must not
+  // hide a volume the record still names.
+  return { prior, provider, replacement: renamed ? placed : undefined, strictPlan: placed };
 });
 
 export const retireGlobalReplacement = Effect.fn("GlobalApp.retireReplacement")(function* (
@@ -134,7 +136,10 @@ export const reconcileGlobalSiblings = Effect.fn("GlobalApp.reconcileSiblings")(
     readonly close: (ids: ReadonlySet<string>) => Set<string>;
   },
 ) {
-  const { prior, provider, replacement } = yield* prepareGlobalReplacement(desired, selectedProvider);
+  const { prior, provider, replacement, strictPlan } = yield* prepareGlobalReplacement(
+    desired,
+    selectedProvider,
+  );
   const registry = yield* RuntimeProviderRegistry;
   const dataRoot = desired.identity?.dataRoot;
   const receipts =
@@ -294,6 +299,7 @@ export const reconcileGlobalSiblings = Effect.fn("GlobalApp.reconcileSiblings")(
     provider,
     replacement,
     recordedPlan,
+    strictPlan,
     disabledIds,
     retainedIds: [...retained].sort(),
     selectedIds: [...selected],

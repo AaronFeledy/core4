@@ -1162,6 +1162,47 @@ describe("hostEvents runtime", () => {
     expect(invocations).toHaveLength(0);
   });
 
+  test("refuses a host event step recorded on another engine before inspecting it", async () => {
+    const invocations: ToolingInvocation[] = [];
+    const inspected: string[] = [];
+    const engine = (host: string) => ({ fingerprint: host, endpoint: `unix:///${host}/podman.sock` });
+    const inspecting = {
+      ...TestRuntimeProvider,
+      engineIdentity: engine("second"),
+      inspect: () => {
+        inspected.push("inspect");
+        return Effect.die("A foreign engine must not be inspected.");
+      },
+    };
+    const plan = hostPlan({ "post-start": [{ cmd: "echo web" }] });
+
+    const error = await Effect.runPromise(
+      Effect.flip(
+        runAppEvent(plan, "post-start").pipe(
+          Effect.provide(
+            Layer.mergeAll(
+              eventRuntime(invocations),
+              Layer.succeed(
+                RuntimeProviderRegistry,
+                makeTestRuntimeProviderRegistry({
+                  readAppliedPlanStrict: () => Effect.succeed({ ...plan, engineIdentity: engine("first") }),
+                  select: () => Effect.succeed(inspecting),
+                }),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(error._tag).toBe("LandofileEventStepFailedError");
+    if (error._tag !== "LandofileEventStepFailedError") throw error;
+    expect(error.outputTail).toContain("unix:///first/podman.sock");
+    expect(error.remediation).toContain("lando destroy --provider=test --yes");
+    expect(inspected).toEqual([]);
+    expect(invocations).toEqual([]);
+  });
+
   test("redacts registered secrets when inspect fails instead of skipping", async () => {
     // Given
     const secret = "host-inspect-secret-1237";

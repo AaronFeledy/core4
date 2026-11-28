@@ -7,7 +7,12 @@ import {
 } from "@lando/landofile/tooling-normalize";
 import { planRedactionValues } from "@lando/redaction/plan-values";
 
-import { ToolingCompileError, type ToolingExecError, type ToolingInputError } from "@lando/sdk/errors";
+import {
+  type AppPlacementError,
+  ToolingCompileError,
+  type ToolingExecError,
+  type ToolingInputError,
+} from "@lando/sdk/errors";
 import { type AppPlan, type HostTerminal, SecretRef, type ToolingTaskShape } from "@lando/sdk/schema";
 import {
   EnvironmentValueResolver,
@@ -23,6 +28,7 @@ import { Effect, Option, Schema, type Scope } from "effect";
 import { launcherServicesForPlan } from "../planner/effective-tooling.ts";
 import { isLauncherMarker } from "../planner/launchers.ts";
 import { primaryServiceName } from "../planner/primary-service.ts";
+import { admitRecordedApp, planAppKind } from "../providers/app-placement.ts";
 import { runtimeProviderService } from "../runtime/bootstrap-layer-support.ts";
 import { appliedAppPlan, selectCommandIdentity } from "../services/execution-identity.ts";
 import { validateHostShellSteps } from "../services/host-shell-validation.ts";
@@ -193,6 +199,7 @@ export const compileToolingInvocations = Effect.fnUntraced(function* (
 });
 
 export type ToolingExecutionError =
+  | AppPlacementError
   | ProviderSelectionError
   | ToolingCompileError
   | ToolingExecError
@@ -222,11 +229,20 @@ export const executeToolingInvocations = Effect.fnUntraced(function* (
   ToolingEngine | RuntimeProviderRegistry | EnvironmentValueResolver | Scope.Scope
 > {
   const session = yield* (yield* EnvironmentValueResolver).openSession();
-  const provider =
+  // Running-command defaults come from the applied plan: a container created
+  // before the project user existed has no mapping, so its commands must keep
+  // the old identity. Reuse this lookup for the placement verdict.
+  const appliedPlan = input.requiresProvider
+    ? yield* Effect.flatMap(RuntimeProviderRegistry, (registry) => appliedAppPlan(registry, input.plan))
+    : undefined;
+  const selected =
     input.provider ??
     (input.requiresProvider
       ? yield* Effect.flatMap(RuntimeProviderRegistry, (registry) => registry.select(input.plan))
       : runtimeProviderService);
+  const provider = input.requiresProvider
+    ? yield* admitRecordedApp(selected, planAppKind(input.plan), [appliedPlan])
+    : selected;
   let combined: ToolingEngineResult = {
     tool: input.tool,
     service: "",
@@ -234,15 +250,9 @@ export const executeToolingInvocations = Effect.fnUntraced(function* (
     stdout: "",
     stderr: "",
   };
-  // Running-command defaults come from the applied plan: a container created
-  // before the project user existed has no mapping, so its commands must keep
-  // the old identity. One lookup serves every container invocation.
   const primaryServiceName = Object.entries(input.plan.services).find(
     ([, service]) => service.primary === true,
   )?.[0];
-  const appliedPlan = input.requiresProvider
-    ? yield* Effect.flatMap(RuntimeProviderRegistry, (registry) => appliedAppPlan(registry, input.plan))
-    : undefined;
   const compared = new Set<string>();
   for (const typedInvocation of input.invocations) {
     let invocation = {

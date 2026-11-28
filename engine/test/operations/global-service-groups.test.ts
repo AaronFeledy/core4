@@ -12,6 +12,7 @@ import {
   DEBUGGER_HOST_ALIAS,
   GlobalConfig,
   HOST_GATEWAY_TARGET,
+  PortablePath,
   ProviderId,
   ServiceName,
   type ServicePlan,
@@ -146,6 +147,55 @@ const build = (plan: AppPlan) =>
       ]),
     ),
   });
+
+test("a recreated global data volume warns against the unfiltered record", async () => {
+  const mount = {
+    type: "volume" as const,
+    store: "mail-data",
+    target: PortablePath.make("/var/lib/mail"),
+    origin: "service" as const,
+    readOnly: false,
+  };
+  const mail = { ...service("mail"), mounts: [mount] };
+  const stores = [{ name: "mail-data", scope: "app" as const, kind: "data" as const }];
+  const plan = { ...planWith([mail]), stores };
+  // A stopped or missing container keeps the service out of the observation-filtered record.
+  const recordedPlan = planWith([]);
+  const volumeBaseline = {
+    ...planWith([mail]),
+    identity: { appRoot: root, ownerKey: "owner" },
+    stores,
+  };
+  const warnings = makeCommandWarnings(false);
+
+  await Effect.runPromise(
+    applyGlobalServiceGroups(
+      plan,
+      {
+        services: [mail],
+        recordedPlan,
+        volumeBaseline,
+        options: { reconcile: false },
+        provider: {
+          ...TestRuntimeProvider,
+          apply: () =>
+            Effect.succeed({
+              changed: true,
+              createdVolumes: [{ nativeName: "mail-data", generation: "second", ownerRoot: root }],
+            }),
+        },
+      },
+      build,
+    ).pipe(Effect.provideService(CommandWarnings, CommandWarnings.of(warnings))),
+  );
+
+  expect(await Effect.runPromise(warnings.list)).toMatchObject([
+    {
+      code: "LANDO_DATA_VOLUME_RECREATED",
+      context: { service: "mail", volume: "mail-data" },
+    },
+  ]);
+});
 
 test.each([false, true])(
   "bound sibling removals require a successful group build (failure: %s)",

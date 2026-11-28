@@ -1,4 +1,3 @@
-import { normalizeNamedPipePath } from "../transport.ts";
 import {
   type DockerApiNegotiationFail,
   dockerApiPrefixFor,
@@ -84,59 +83,6 @@ export const isDockerWaitRequest = (input: { readonly method: string; readonly p
 export const isDockerApiPrefixFailure = (
   value: ResolvedDockerApiPrefix | DockerApiNegotiationFail,
 ): value is DockerApiNegotiationFail => "ok" in value && value.ok === false;
-
-const prefixFromPathname = (pathname: string): string | undefined => {
-  const trimmed = pathname.replace(/\/+$/u, "");
-  return trimmed === "" || trimmed === "/" ? undefined : trimmed;
-};
-
-export const explicitDockerApiPrefixFromHost = (dockerHost: string): string | undefined => {
-  if (dockerHost.startsWith("tcp://")) {
-    try {
-      return prefixFromPathname(new URL(`http://${dockerHost.slice("tcp://".length)}`).pathname);
-    } catch {
-      return undefined;
-    }
-  }
-  if (dockerHost.startsWith("http://") || dockerHost.startsWith("https://")) {
-    try {
-      return prefixFromPathname(new URL(dockerHost).pathname);
-    } catch {
-      return undefined;
-    }
-  }
-  return undefined;
-};
-
-export const dockerHttpBaseUrl = (dockerHost: string): string => {
-  if (dockerHost.startsWith("tcp://")) return `http://${dockerHost.slice("tcp://".length)}`;
-  return dockerHost;
-};
-
-export const dockerApiEndpointKey = (dockerHost: string): string => {
-  if (dockerHost.startsWith("npipe:") || dockerHost.startsWith("\\\\.\\pipe\\")) {
-    return `npipe:${normalizeNamedPipePath(dockerHost)}`;
-  }
-  if (dockerHost.startsWith("unix://")) return `unix:${dockerHost.slice("unix://".length)}`;
-  if (dockerHost.startsWith("/")) return `unix:${dockerHost}`;
-  if (dockerHost.startsWith("tcp://")) {
-    try {
-      const parsed = new URL(`http://${dockerHost.slice("tcp://".length)}`);
-      return `tcp://${parsed.host}`;
-    } catch {
-      return dockerHost;
-    }
-  }
-  if (dockerHost.startsWith("http://") || dockerHost.startsWith("https://")) {
-    try {
-      const parsed = new URL(dockerHost);
-      return `${parsed.protocol}//${parsed.host}`;
-    } catch {
-      return dockerHost;
-    }
-  }
-  return dockerHost;
-};
 
 export const dockerApiPrefixFromEnv = (
   env: Readonly<Record<string, string | undefined>> = process.env,

@@ -247,6 +247,48 @@ test.each(["legacy", "scoped", "failed-build"] as const)(
   },
 );
 
+test("global rebuild refuses a record from another engine before removing anything", async () => {
+  const harness = makeHarness({ globalServiceIds: ["mail"] });
+  const engine = (host: string) => ({ fingerprint: host, endpoint: `unix:///${host}/podman.sock` });
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      yield* installAndLoadGlobalPlan();
+      const registry = yield* RuntimeProviderRegistry;
+      const removed: string[] = [];
+      const recorded = {
+        ...harness.globalAdmission.globalPlan,
+        engineIdentity: engine("first"),
+      };
+      const guarded = makeTestRuntimeProviderRegistry({
+        ...registry,
+        appliedPlansFor: (root, options) =>
+          root === harness.globalAdmission.root
+            ? Effect.succeed([recorded])
+            : registry.appliedPlansFor(root, options),
+        select: (target) =>
+          registry.select(target).pipe(
+            Effect.map((provider) => ({
+              ...provider,
+              engineIdentity: engine("second"),
+              bringDown: () => {
+                removed.push("bringDown");
+                return Effect.die("A foreign engine must not remove global services.");
+              },
+            })),
+          ),
+      });
+      const outcome = yield* globalRebuild().pipe(
+        Effect.provideService(RuntimeProviderRegistry, guarded),
+        Effect.result,
+      );
+      return { outcome, removed };
+    }).pipe(Effect.provide(harness.layer)),
+  );
+
+  expect(result.outcome).toMatchObject({ _tag: "Failure", failure: { _tag: "AppPlacementError" } });
+  expect(result.removed).toEqual([]);
+});
+
 test.each(["start", "selected start", "rebuild"] as const)(
   "global %s readies a powered-off runtime before apply",
   async (operation) => {

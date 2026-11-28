@@ -496,7 +496,7 @@ describe("SDK plan-carrying error channels", () => {
   });
 
   test("ToolingError retains its pre-refactor members", () => {
-    assertType<Equal<ToolingError, LegacyToolingError>>(true);
+    assertType<Equal<ToolingError, LegacyToolingError | import("@lando/sdk/errors").AppPlacementError>>(true);
     expect(true).toBe(true);
   });
 

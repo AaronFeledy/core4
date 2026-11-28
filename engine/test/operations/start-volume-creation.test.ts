@@ -1,16 +1,19 @@
 import { expect, test } from "bun:test";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
-import { type AppPlan, type VolumeIdentity, appIdentityKey } from "@lando/sdk/schema";
+import { type AppPlan, PortablePath, type VolumeIdentity, appIdentityKey } from "@lando/sdk/schema";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { volumeInitialization } from "@lando/state-store/volume-initialization";
 import { Effect, Result } from "effect";
 import { withResolvedCwd } from "../../src/landofile/app-resolution.ts";
+import { CommandWarnings, makeCommandWarnings } from "../../src/landofile/command-warnings.ts";
+import { RECREATED_DATA_VOLUME_CODE } from "../../src/lifecycle/recreated-volumes.ts";
 import { destroyApp } from "../../src/operations/destroy.ts";
+import { restartApp } from "../../src/operations/restart.ts";
 import { startApp } from "../../src/operations/start.ts";
 import { haltAppRuntime, stopApp } from "../../src/operations/stop.ts";
 import { resolveTeardownEvidence } from "../../src/providers/applied-state-resolution.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
-import { makeHarness, plan } from "./start-progress-topology-support.ts";
+import { makeHarness, plan, web } from "./start-progress-topology-support.ts";
 
 for (const operation of ["stop", "destroy"] as const) {
   test(`${operation} ${operation === "stop" ? "keeps" : "removes"} the retained owned network after a failed apply`, async () => {
@@ -236,4 +239,78 @@ test("start makes the provider ready before it locates plan volumes", async () =
   // Then
   expect(calls[0]).toBe("ensureReady");
   expect(calls).toContain("locateVolume");
+});
+
+const dataVolumeMount = {
+  type: "volume" as const,
+  store: "web-data",
+  target: PortablePath.make("/var/www/html"),
+  origin: "service" as const,
+  readOnly: false,
+};
+
+const withDataVolume = (app: AppPlan): AppPlan => ({
+  ...app,
+  identity: { appRoot: app.root, ownerKey: appIdentityKey("owner", app.root) },
+  services: { [web.name]: { ...web, mounts: [dataVolumeMount] } },
+  stores: [{ name: "web-data", scope: "app", kind: "data" }],
+});
+
+const recreatedVolumeRun = async (operation: "start" | "selected start" | "restart", recorded: boolean) => {
+  const plannedApp = withDataVolume(plan);
+  const warnings = makeCommandWarnings(false);
+  const harness = makeHarness({
+    plannedApp,
+    ...(recorded
+      ? {
+          appliedPlans: [withDataVolume(plan)],
+          resolveAppliedPlan: () => Effect.succeed(withDataVolume(plan)),
+        }
+      : { appliedPlans: [] }),
+    applyOutcome: () => ({
+      changed: true,
+      createdVolumes: [{ nativeName: "web-data", generation: "second", ownerRoot: plannedApp.root }],
+    }),
+  });
+  const target = {
+    plan: plannedApp,
+    root: plannedApp.root,
+    app: { kind: "user" as const, id: plannedApp.id, root: plannedApp.root },
+  };
+  const launch =
+    operation === "restart"
+      ? restartApp({}, target)
+      : startApp(operation === "selected start" ? { services: [web.name] } : {}, target);
+  await Effect.runPromise(
+    launch.pipe(
+      Effect.provide(harness.layer),
+      Effect.provideService(CommandWarnings, CommandWarnings.of(warnings)),
+    ),
+  );
+  return {
+    warnings: await Effect.runPromise(warnings.list),
+    printed: harness.events.filter((event) => event._tag === "message.warn").map((event) => event.body),
+  };
+};
+
+test.each(["start", "selected start", "restart"] as const)(
+  "%s warns once when a recorded data volume is recreated",
+  async (operation) => {
+    const result = await recreatedVolumeRun(operation, true);
+
+    expect(result.warnings).toHaveLength(1);
+    expect(result.warnings[0]).toMatchObject({
+      code: RECREATED_DATA_VOLUME_CODE,
+      context: { app: String(plan.id), service: "web", volume: "web-data", target: "/var/www/html" },
+    });
+    expect(result.printed).toHaveLength(1);
+    expect(result.printed[0]).toContain("recreated without its previous contents");
+  },
+);
+
+test("a first start with no recorded volume makes no recreated-volume claim", async () => {
+  const result = await recreatedVolumeRun("start", false);
+
+  expect(result.warnings).toEqual([]);
+  expect(result.printed).toEqual([]);
 });

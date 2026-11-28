@@ -1,3 +1,4 @@
+import { requireOwningEngine } from "@lando/engine/providers/app-placement";
 import type { HostProxyRunLandoExecutorInput } from "@lando/engine/subsystems/host-proxy/dispatch";
 import { RedactionService } from "@lando/redaction/service";
 import {
@@ -7,10 +8,10 @@ import {
 } from "@lando/sdk/command-result";
 import type { AppPlan, CommandResultEnvelope } from "@lando/sdk/schema";
 import { CommandResultEnvelope as CommandResultEnvelopeSchema } from "@lando/sdk/schema";
-import type {
-  EventService,
-  ProcessRunner,
-  RouterService,
+import {
+  type EventService,
+  type ProcessRunner,
+  type RouterService,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 import { Effect, Exit, Schema } from "effect";
@@ -43,7 +44,9 @@ export const runOpenForHostProxy = Effect.fn("HostProxy.runOpen")(function* (
       : yield* Effect.gen(function* () {
           const outcome = yield* Effect.exit(
             Effect.gen(function* () {
-              const connections = yield* collectOpenConnections(plan, parsed.options);
+              const provider = yield* (yield* RuntimeProviderRegistry).select(plan);
+              yield* requireOwningEngine(provider, "user", [plan]);
+              const connections = yield* collectOpenConnections(plan, parsed.options, provider);
               return yield* openForPlan(plan, parsed.options, connections);
             }),
           );
