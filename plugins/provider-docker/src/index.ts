@@ -111,7 +111,12 @@ import {
   persistAppliedPlan,
   removeAppliedPlan,
 } from "./applied-state.ts";
-import { type UnsupportedDockerContextError, resolveDockerHost } from "./docker-endpoint.ts";
+import {
+  type UnsupportedDockerEndpointError,
+  endpointLabel,
+  resolveDockerHost,
+  unsupportedEndpointDetails,
+} from "./docker-endpoint.ts";
 import { dockerEndpointCheck } from "./docker-endpoint-check.ts";
 import { makeIptablesForwardCheck } from "./iptables-forward-check.ts";
 import { dockerRuntimeForEndpoint, unreachableDockerRemediation } from "./runtime-hint.ts";
@@ -397,13 +402,13 @@ export const introspectProviderCapabilities = (
 export const makeDockerApiClient = (dockerHost: string): DockerApiClient =>
   makeRuntimeDockerApiClient(dockerHost, dockerContextForEnv({ ...process.env }));
 
-const unsupportedContextUnavailable = (error: UnsupportedDockerContextError) =>
+const unsupportedEndpointUnavailable = (error: UnsupportedDockerEndpointError) =>
   new ProviderUnavailableError({
     providerId: PROVIDER_ID,
     operation: "select",
     message: error.message,
     remediation: error.remediation,
-    details: { contextName: error.contextName, reason: error.reason },
+    details: { ...unsupportedEndpointDetails(error), reason: error.reason },
     cause: error,
   });
 
@@ -525,7 +530,7 @@ const makeRuntimeProviderWithContext = (
     env: options.env ?? process.env,
     ...(options.dockerHost === undefined ? {} : { dockerHost: options.dockerHost }),
   });
-  if (Result.isFailure(endpoint)) return Effect.fail(unsupportedContextUnavailable(endpoint.failure));
+  if (Result.isFailure(endpoint)) return Effect.fail(unsupportedEndpointUnavailable(endpoint.failure));
   const resolvedDockerHost = endpoint.success.host;
   const DOCKER_CTX: ProviderErrorContext = {
     ...diagnosticCtx,
@@ -870,8 +875,14 @@ export const plugin = definePlugin({
         id: runtimeProviderId,
         purge: Effect.fn("Docker.preflightPurge")(function* (input) {
           const resolved = resolveDockerHost(input);
-          if (Result.isFailure(resolved))
-            return yield* Effect.fail(unsupportedContextUnavailable(resolved.failure));
+          // Like an engine that does not answer: never substitute the default socket for it.
+          if (Result.isFailure(resolved)) {
+            return {
+              kind: "skipped" as const,
+              endpoint: endpointLabel(resolved.failure),
+              reason: resolved.failure.message,
+            };
+          }
           const endpoint = resolved.success.host;
           const ctx = dockerContextForEnv(input.env);
           return yield* preflightDataRootPurge(

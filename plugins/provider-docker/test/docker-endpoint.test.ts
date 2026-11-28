@@ -216,8 +216,8 @@ describe("unsupported Docker contexts fail closed", () => {
       ])
       .current("remote");
     const error = rejected({ platform: "linux", env: { DOCKER_CONFIG: config.dir } });
-    expect(error._tag).toBe("UnsupportedDockerContextError");
-    expect(error).toMatchObject({ contextName: "remote", reason: "tls" });
+    expect(error._tag).toBe("UnsupportedDockerEndpointError");
+    expect(error).toMatchObject({ source: { kind: "context", name: "remote" }, reason: "tls" });
     expect(error.message).toContain('"remote"');
     expect(error.remediation).toContain("docker context use");
   });
@@ -226,20 +226,23 @@ describe("unsupported Docker contexts fail closed", () => {
     const config = dockerConfig().context("secure", { Host: "https://remote.example:2376" });
     expect(
       rejected({ platform: "linux", env: { DOCKER_CONFIG: config.dir, DOCKER_CONTEXT: "secure" } }),
-    ).toMatchObject({ contextName: "secure", reason: "tls" });
+    ).toMatchObject({ source: { kind: "context", name: "secure" }, reason: "tls" });
   });
 
   test("a TCP context that skips TLS verification still uses TLS", () => {
     const config = dockerConfig().context("insecure", { Host: "tcp://127.0.0.1:2376", SkipTLSVerify: true });
     expect(
       rejected({ platform: "linux", env: { DOCKER_CONFIG: config.dir, DOCKER_CONTEXT: "insecure" } }),
-    ).toMatchObject({ contextName: "insecure", reason: "tls" });
+    ).toMatchObject({ source: { kind: "context", name: "insecure" }, reason: "tls" });
   });
 
   test("an ssh context names its scheme", () => {
     const config = dockerConfig().context("jump", { Host: "ssh://alice@build.example" });
     const error = rejected({ platform: "linux", env: { DOCKER_CONFIG: config.dir, DOCKER_CONTEXT: "jump" } });
-    expect(error).toMatchObject({ contextName: "jump", reason: "unsupported-endpoint" });
+    expect(error).toMatchObject({
+      source: { kind: "context", name: "jump" },
+      reason: "unsupported-endpoint",
+    });
     expect(error.message).toContain("ssh://");
     expect(error.remediation).toContain("DOCKER_CONTEXT");
   });
@@ -260,7 +263,27 @@ describe("unsupported Docker contexts fail closed", () => {
   });
 });
 
-describe("an unsupported context stops the provider before it talks to an engine", () => {
+describe("DOCKER_HOST and TLS", () => {
+  test.each([{ DOCKER_TLS_VERIFY: "1" }, { DOCKER_TLS: "1" }])(
+    "a TCP DOCKER_HOST that asks for TLS with %o fails closed",
+    (tls) => {
+      const error = rejected({ platform: "linux", env: { DOCKER_HOST: "tcp://127.0.0.1:2376", ...tls } });
+      expect(error).toMatchObject({ source: { kind: "DOCKER_HOST" }, reason: "tls" });
+      expect(error.remediation).toContain("DOCKER_TLS_VERIFY");
+    },
+  );
+
+  test("TLS variables do not apply to a socket DOCKER_HOST, as in the Docker CLI", () => {
+    expect(
+      resolved({
+        platform: "linux",
+        env: { DOCKER_HOST: "unix:///tmp/docker.sock", DOCKER_TLS_VERIFY: "1" },
+      }),
+    ).toEqual({ host: "unix:///tmp/docker.sock", source: { kind: "DOCKER_HOST" } });
+  });
+});
+
+describe("an unsupported endpoint stops the provider before it talks to an engine", () => {
   const tlsContext = () =>
     dockerConfig()
       .context("remote", { Host: "tcp://remote.example:2376" }, ["ca.pem", "cert.pem", "key.pem"])
@@ -273,7 +296,7 @@ describe("an unsupported context stops the provider before it talks to an engine
     expect(error.value).toBeInstanceOf(ProviderUnavailableError);
     expect(error.value).toMatchObject({
       providerId: "docker",
-      details: { contextName: "remote", reason: "tls" },
+      details: { source: "context", contextName: "remote", reason: "tls" },
     });
   };
 
@@ -286,19 +309,52 @@ describe("an unsupported context stops the provider before it talks to an engine
     );
   });
 
-  test("data-root purge", async () => {
+  test("a TLS DOCKER_HOST never receives a plaintext request", async () => {
+    let connections = 0;
+    const listener = Bun.listen({
+      hostname: "127.0.0.1",
+      port: 0,
+      socket: {
+        open() {
+          connections += 1;
+        },
+        data() {},
+      },
+    });
+    try {
+      const exit = await Effect.runPromiseExit(
+        makeRuntimeProvider({
+          platform: "linux",
+          env: { DOCKER_HOST: `tcp://127.0.0.1:${listener.port}`, DOCKER_TLS_VERIFY: "1" },
+        }),
+      );
+      const error = Exit.isFailure(exit) ? Cause.findErrorOption(exit.cause) : Option.none();
+      expect(Option.getOrUndefined(error)).toMatchObject({
+        _tag: "ProviderUnavailableError",
+        details: { source: "DOCKER_HOST", reason: "tls" },
+      });
+      expect(connections).toBe(0);
+    } finally {
+      listener.stop(true);
+    }
+  });
+
+  test("data-root purge skips the engine instead of sweeping the default socket", async () => {
     const config = tlsContext();
     const purge = plugin.runtimeProviders?.get(ProviderId.make("docker"))?.purge;
     if (purge === undefined) throw new Error("docker provider has no purge hook");
-    expectUnavailable(
-      await Effect.runPromiseExit(
-        purge({
-          platform: "linux",
-          env: { DOCKER_CONFIG: config.dir },
-          dataRoot: tempDir(),
-          buildStore: tempDir(),
-        }),
-      ),
+    const preflight = await Effect.runPromise(
+      purge({
+        platform: "linux",
+        env: { DOCKER_CONFIG: config.dir },
+        dataRoot: tempDir(),
+        buildStore: tempDir(),
+      }),
     );
+    expect(preflight).toEqual({
+      kind: "skipped",
+      endpoint: 'Docker context "remote"',
+      reason: 'Docker context "remote" connects over TLS, which the docker provider does not support.',
+    });
   });
 });

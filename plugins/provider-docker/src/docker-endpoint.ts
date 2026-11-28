@@ -21,24 +21,39 @@ export interface DockerEndpoint {
   readonly source: DockerEndpointSource;
 }
 
-const UnsupportedDockerContextReason = Schema.Literals([
+const UnsupportedDockerEndpointReason = Schema.Literals([
   "not-found",
   "invalid-metadata",
   "no-docker-endpoint",
   "unsupported-endpoint",
   "tls",
 ]);
-type UnsupportedDockerContextReason = typeof UnsupportedDockerContextReason.Type;
+type UnsupportedDockerEndpointReason = typeof UnsupportedDockerEndpointReason.Type;
 
-export class UnsupportedDockerContextError extends Schema.TaggedError<UnsupportedDockerContextError>()(
-  "UnsupportedDockerContextError",
+export class UnsupportedDockerEndpointError extends Schema.TaggedError<UnsupportedDockerEndpointError>()(
+  "UnsupportedDockerEndpointError",
   {
-    contextName: Schema.String,
-    reason: UnsupportedDockerContextReason,
+    source: Schema.Union([
+      Schema.Struct({ kind: Schema.Literal("DOCKER_HOST") }),
+      Schema.Struct({ kind: Schema.Literal("context"), name: Schema.String }),
+    ]),
+    reason: UnsupportedDockerEndpointReason,
     message: Schema.String,
     remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
+
+/** Flat, agent-readable fields naming what selected an unusable endpoint. */
+export const unsupportedEndpointDetails = (
+  error: UnsupportedDockerEndpointError,
+): { readonly source: "DOCKER_HOST" } | { readonly source: "context"; readonly contextName: string } =>
+  error.source.kind === "context"
+    ? { source: "context", contextName: error.source.name }
+    : { source: "DOCKER_HOST" };
+
+/** How a person names what selected an unusable endpoint, without repeating the endpoint. */
+export const endpointLabel = (error: UnsupportedDockerEndpointError): string =>
+  error.source.kind === "context" ? `Docker context "${error.source.name}"` : "DOCKER_HOST";
 
 interface SelectedContext {
   readonly name: string;
@@ -121,7 +136,7 @@ const canonicalHost = (host: string): string => {
     : host;
 };
 
-const unsupportedMessage = (name: string, reason: UnsupportedDockerContextReason, host: string): string => {
+const unsupportedMessage = (name: string, reason: UnsupportedDockerEndpointReason, host: string): string => {
   switch (reason) {
     case "not-found":
       return `Docker context "${name}" was not found.`;
@@ -143,25 +158,35 @@ const unsupportedMessage = (name: string, reason: UnsupportedDockerContextReason
 
 const unsupportedContext = (
   context: SelectedContext,
-  reason: UnsupportedDockerContextReason,
+  reason: UnsupportedDockerEndpointReason,
   host = "",
-): UnsupportedDockerContextError => {
+): UnsupportedDockerEndpointError => {
   const select =
     context.selectedBy === "DOCKER_CONTEXT"
       ? "Unset DOCKER_CONTEXT or point it at a context whose endpoint is a local socket or plain TCP host"
       : "Run `docker context use <name>` for a context whose endpoint is a local socket or plain TCP host";
-  return new UnsupportedDockerContextError({
-    contextName: context.name,
+  return new UnsupportedDockerEndpointError({
+    source: { kind: "context", name: context.name },
     reason,
     message: unsupportedMessage(context.name, reason, host),
     remediation: `${select}, or set DOCKER_HOST to the engine socket, then retry. \`docker context ls\` lists the contexts.`,
   });
 };
 
+const dockerHostTls = () =>
+  new UnsupportedDockerEndpointError({
+    source: { kind: "DOCKER_HOST" },
+    reason: "tls",
+    message:
+      "DOCKER_HOST asks for TLS (DOCKER_TLS_VERIFY or DOCKER_TLS is set), and the docker provider does not support TLS client certificates.",
+    remediation:
+      "Set DOCKER_HOST to the engine's local socket or a plain TCP endpoint and unset DOCKER_TLS_VERIFY and DOCKER_TLS, then retry.",
+  });
+
 const readContextEndpoint = (
   context: SelectedContext,
   configDir: string | undefined,
-): Result.Result<DockerEndpoint, UnsupportedDockerContextError> => {
+): Result.Result<DockerEndpoint, UnsupportedDockerEndpointError> => {
   if (configDir === undefined) return Result.fail(unsupportedContext(context, "not-found"));
   const digest = sha256Hex(context.name);
   const raw = readText(join(configDir, "contexts", "meta", digest, "meta.json"));
@@ -195,7 +220,7 @@ const readContextEndpoint = (
  */
 export const resolveDockerHost = (
   options: ResolveDockerHostOptions,
-): Result.Result<DockerEndpoint, UnsupportedDockerContextError> => {
+): Result.Result<DockerEndpoint, UnsupportedDockerEndpointError> => {
   const { env, platform } = options;
   const resolved = (host: string, source: DockerEndpointSource) =>
     Result.succeed({ host: canonicalHost(host), source });
@@ -208,7 +233,13 @@ export const resolveDockerHost = (
   const testSocket = nonEmpty(env.LANDO_TEST_DOCKER_SOCKET);
   if (testSocket !== undefined) return resolved(testSocket, { kind: "LANDO_TEST_DOCKER_SOCKET" });
   const dockerHost = nonEmpty(env.DOCKER_HOST);
-  if (dockerHost !== undefined) return resolved(dockerHost, { kind: "DOCKER_HOST" });
+  if (dockerHost !== undefined) {
+    // The Docker CLI turns TLS on for a TCP DOCKER_HOST when either variable is nonempty.
+    const asksForTls =
+      nonEmpty(env.DOCKER_TLS_VERIFY) !== undefined || nonEmpty(env.DOCKER_TLS) !== undefined;
+    if (asksForTls && dockerHost.startsWith("tcp://")) return Result.fail(dockerHostTls());
+    return resolved(dockerHost, { kind: "DOCKER_HOST" });
+  }
   const home = nonEmpty(env.HOME);
   if (family === "linux" && home !== undefined && env.LANDO_DOCKER_DESKTOP === "1") {
     return resolved(`${home}/.docker/desktop/docker.sock`, { kind: "LANDO_DOCKER_DESKTOP" });

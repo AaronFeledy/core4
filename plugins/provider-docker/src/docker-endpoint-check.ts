@@ -1,7 +1,11 @@
 import type { PluginDoctorCheckContribution, PluginDoctorReport } from "@lando/sdk/plugins";
 import { Effect, Result } from "effect";
 
-import { type DockerEndpointSource, resolveDockerHost } from "./docker-endpoint.ts";
+import {
+  type DockerEndpointSource,
+  resolveDockerHost,
+  unsupportedEndpointDetails,
+} from "./docker-endpoint.ts";
 
 const sourceContext = (source: DockerEndpointSource): Record<string, string> =>
   source.kind === "context" ? { source: "context", contextName: source.name } : { source: source.kind };
@@ -24,7 +28,7 @@ const endpointReport = (input: Parameters<PluginDoctorCheckContribution["run"]>[
       status: "fail",
       severity: "error",
       runtimeStatus: error.message,
-      context: { source: "context", contextName: error.contextName, reason: error.reason },
+      context: { ...unsupportedEndpointDetails(error), reason: error.reason },
       solutions: [{ kind: "manual", description: error.remediation }],
     }),
   });

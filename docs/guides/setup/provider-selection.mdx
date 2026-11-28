@@ -72,7 +72,7 @@ The `docker-endpoint` check reports the socket in `context.endpoint` and what ch
 
 If the engine behind that socket stops, Lando's error names the command that starts it again, such as `colima start` or `orb start`.
 
-Lando cannot connect through a context that uses TLS or `ssh://`. Doctor and `lando start` fail with the context name. Select a context whose endpoint is a local socket, or set `DOCKER_HOST` to the engine's socket, then retry.
+Lando cannot connect through a context that uses TLS or `ssh://`, or to a TCP `DOCKER_HOST` with `DOCKER_TLS_VERIFY` set. Doctor and `lando start` fail with the context name or `DOCKER_HOST` before sending anything. Select a context whose endpoint is a local socket, or set `DOCKER_HOST` to the engine's socket, then retry.
 
 ## How setup chooses a provider
 
