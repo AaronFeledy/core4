@@ -180,24 +180,24 @@ Pass `--no-snapshot` to start without saving a restore point only if you have an
 
 ## Go back to the old version
 
-If you set `type:` back to `mysql:8.0`, MySQL can't open data upgraded by 8.4. With the newer server running and its version verified, `lando start --format=json` reports `ServiceDataVersionError` with `dataVersion.direction: "downgrade"` and leaves 8.4 running. On a stopped service, the server's own refusal can instead appear under `ServiceNotReadyError`.
+List the restore points for `db` and note the ID of the `upgrade` point for 8.0:
 
-Set the type back and attempt to start:
+```sh
+lando db:snapshots --service db
+```
+
+Pin the old series and restore the point. Replace `<id>` with the ID from the list. Restoring replaces your current database files, including changes made since the upgrade.
 
 ```sh
 lando app:config:set services.db.type mysql:8.0
-lando start --format=json
-```
-
-The refusal names the restore point when one matches 8.0. Replace `<id>` with that ID. Restoring replaces your current database files, including changes made since the upgrade.
-
-```sh
 lando db:restore <id> --service db
 lando start
 lando mysql -N -e 'SELECT VERSION()'
 ```
 
 Check that the server reports 8.0 and that your app can read the recovered data. To keep the upgraded data instead, restore `type: mysql:8.4` or your previous `image:` without running `db:restore`.
+
+MySQL may not leave a readable version record. If the point is listed as unverified, add `--any-series` to `db:restore` only if you independently know the series of the saved data. If you start on the old series before restoring, Lando refuses a downgrade it can verify and names a matching verified point if one exists. Otherwise, the server's own downgrade refusal can appear under `ServiceNotReadyError`.
 
 If you have no restore point, use a verified export taken before the upgrade. To make one before changing versions, run `lando db:export before-upgrade.sql.gz --service db` while 8.0 still runs. Importing an export made on 8.4 into 8.0 isn't guaranteed to work. **Back up other services first:** `--volumes` deletes every service's data in the app. Run `lando destroy -y --volumes`, `lando start` on 8.0, then `lando db:import before-upgrade.sql.gz --service db --yes`.
 
@@ -219,10 +219,11 @@ If you have no restore point, use a verified export taken before the upgrade. To
     </Step>
     <Step name="refusal">
       <Run command="lando app:config:set services.db.type mysql:8.0" />
-      <Verify command="lando start --format=json" expectExit={1} expect={{ stdout: { regex: '(?=.*"_tag":"ServiceDataVersionError")(?=.*"direction":"downgrade")(?=.*lando db:restore [a-f0-9-]{36} --service db)' } }} />
+      <Verify command="lando start --format=json" expectExit={1} expect={{ stdout: { regex: '(?=.*"_tag":"ServiceDataVersionError")(?=.*"direction":"downgrade")', not: { regex: "lando db:restore" } } }} />
     </Step>
     <Step name="roll-back">
-      <Verify command="lando db:restore {{capture:restoreId}} --service db --yes --format=json" expect={{ stdout: { regex: '"nextStep":"Run `lando start`' } }} />
+      <Verify command="lando db:restore {{capture:restoreId}} --service db --yes --format=json" expectExit={1} expect={{ stdout: { regex: '"_tag":"SqlRecoveryUnavailableError"' } }} />
+      <Verify command="lando db:restore {{capture:restoreId}} --service db --any-series --yes --format=json" expect={{ stdout: { regex: '(?=.*"databaseLeftStopped":true)(?=.*"undoCommands")' } }} />
       <Run command="lando start" />
       <Verify command="lando mysql -N -e 'SELECT VERSION()'" expect={{ stdout: { regex: "^8[.]0[.]" } }} />
       <Verify command="lando mysql -N -e 'SELECT body FROM notes'" expect={{ stdout: { regex: "still here" } }} />

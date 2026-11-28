@@ -189,16 +189,16 @@ Pass `--no-snapshot` to start without saving a restore point only if you have an
 
 ## Go back to the old version
 
-MariaDB doesn't support downgrading data files that a newer series has created or upgraded. When Lando can verify the data version on a running service, it refuses before replacing the container:
+List the restore points for `db` and note the ID of the `upgrade` point for 10.11:
+
+```sh
+lando db:snapshots --service db
+```
+
+Pin the old series and restore the point. Replace `<id>` with the ID from the list. Restoring replaces the current database files, including changes made since the upgrade.
 
 ```sh
 lando app:config:set services.db.type mariadb:10.11
-lando start --format=json
-```
-
-The JSON error has `_tag: "ServiceDataVersionError"` and `dataVersion.direction: "downgrade"`. The newer server keeps running unchanged, and the error names the restore point when one matches 10.11. Use that ID below in place of `<id>`. Restoring replaces the current database files, including changes made since the upgrade.
-
-```sh
 lando db:restore <id> --service db
 lando start
 lando mariadb -N -e 'SELECT VERSION()'
@@ -206,7 +206,7 @@ lando mariadb -N -e 'SELECT VERSION()'
 
 Check that the server reports 10.11 and that your app can read the data you expected to recover. To keep the upgraded data instead, restore the newer `type:` or your previous `image:` without running `db:restore`.
 
-If the old container was already stopped, the official image's Lando launcher checks the files before starting MariaDB. That refusal has the same `dataVersion` fields under `ServiceNotReadyError` (or `ServiceStartError` when a dependent service is blocked). A service that sets `command:`, `entrypoint:`, or `build:` skips Lando's checks.
+If you start on the old series before restoring, Lando refuses a downgrade it can verify and names the matching verified point, if one exists. If Lando can't verify the files before replacing the container, the official image's Lando launcher still checks them before starting MariaDB. That refusal appears as `ServiceNotReadyError` (or `ServiceStartError` when a dependent service is blocked). A custom `command:`, `entrypoint:`, or `build:` skips these checks.
 
 If you have no restore point, use a verified export taken before the upgrade. To make one before changing versions, run `lando db:export before-upgrade.sql.gz --service db` while the old server is running. The export holds the configured database, not other databases or user accounts. Importing a dump made on the newer version into the older version isn't guaranteed to work. **Back up other services first:** `--volumes` deletes the data of every service in the app, not only `db`. With `type:` already set to the old version:
 
@@ -286,7 +286,7 @@ lando db:import before-upgrade.sql.gz --service db --yes
     <Step name="guard">
       <Run command="lando stop" />
       <Run command="lando app:config:set services.db.type mariadb:10.11" />
-      <Verify command="lando start --format=json" expectExit={1} expect={{ stdout: { regex: '(?=.*"_tag":"ServiceNotReadyError")(?=.*"direction":"downgrade")(?=.*"dataVersion":"11[.]4")(?=.*"imageVersion":"10[.]11")(?=.*"evidence":"guard")' } }} />
+      <Verify command="lando start --format=json" expectExit={1} expect={{ stdout: { regex: '(?=.*"_tag":"ServiceDataVersionError")(?=.*"direction":"downgrade")(?=.*"dataVersion":"11[.]4")(?=.*"imageVersion":"10[.]11")(?=.*"evidence":"record")' } }} />
     </Step>
     <Step name="fallback">
       <Run command="lando destroy -y --volumes" />

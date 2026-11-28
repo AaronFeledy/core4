@@ -254,9 +254,11 @@ Prune and purge delete native data through the recording provider before removin
 
 ## Restore points before version upgrades
 
-Before an in-place [MariaDB](../services/mariadb.mdx#change-versions) or [MySQL](../services/mysql.mdx#change-versions) upgrade, Lando saves the original data and prints the restore point ID. `lando db:snapshots --service db` lists it with the reason `upgrade`. Automatic retention never removes it. To delete it explicitly, preview and apply `lando db:snapshots:prune --recovery`.
+Before an in-place [MariaDB](../services/mariadb.mdx#change-versions) or [MySQL](../services/mysql.mdx#change-versions) upgrade, Lando saves the original data and prints the restore point ID. `lando db:snapshots --service db` lists it with the reason `upgrade`. Automatic retention keeps three non-upgrade recovery snapshots and leaves upgrade points alone. Explicit `lando db:snapshots:prune --recovery` includes upgrade points. Preview before deleting.
 
-To go back, set the service to the snapshot's version in your Landofile, then run `lando db:restore <id> --service db` using the listed ID. This replaces changes made since capture. If the applied server uses a different series, restore leaves it stopped so it can't reopen the restored files. Run `lando start` on the snapshot's version and check that your app can read the recovered data.
+To go back, set the service to the snapshot's exact series in your Landofile, then run `lando db:restore <id> --service db` using the listed ID. This replaces changes made since capture. If the point is unverified, add `--any-series` only after checking the series independently. This flag doesn't bypass the ownership or volume checks.
+
+If the applied server uses a different series, or the restored data series is unverified, restore leaves the database stopped so it can't reopen the restored files. Follow the restore output to start the correct series, then check that your app can read the recovered data. Restore also reports the undo point and the commands needed to use it.
 
 ## Confirm destructive work
 
