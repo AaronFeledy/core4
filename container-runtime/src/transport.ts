@@ -352,5 +352,3 @@ export const makeSocketHttpClient = (options: SocketHttpClientOptions): SocketHt
 
   return { request, stream };
 };
-
-export { normalizeNamedPipePath } from "@lando/sdk/engine-placement";

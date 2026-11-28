@@ -12,9 +12,9 @@ import {
   VOLUME_OWNER_LABEL,
 } from "@lando/container-runtime/labels";
 import { type AdoptionReceipt, decideDataRootOwnership } from "@lando/container-runtime/native-ownership";
-import { normalizeNamedPipePath } from "@lando/container-runtime/transport";
 import { CORE_VERSION } from "@lando/engine/version";
 import { makeLandoPaths, sameRealpath } from "@lando/paths";
+import { normalizeNamedPipePath } from "@lando/sdk/engine-placement";
 import { appliedStateVersionError, sanitizeStateWriter } from "@lando/sdk/errors";
 import { AbsolutePath, LANDO_DATA_ROOT_LABEL } from "@lando/sdk/schema";
 import type { ProcessRunner } from "@lando/sdk/services";

@@ -10,8 +10,8 @@ import {
   decodeChunkedBody,
   flushChunkedBufferAtEnd,
   makeSocketHttpClient,
-  normalizeNamedPipePath,
 } from "@lando/container-runtime/transport";
+import { normalizeNamedPipePath } from "@lando/sdk/engine-placement";
 
 type Bytes = Uint8Array<ArrayBufferLike>;
 

@@ -64,7 +64,6 @@ const resolveTarget = Effect.fn("DatabaseConvergence.resolveTarget")(function* (
   )
     return yield* rejected;
   const provider = yield* registry.select(plan).pipe(mapFailures(() => rejected));
-  // The applied record names the engine that holds the database; inspect nothing before judging it.
   yield* requireOwningEngine(provider, "user", [plan]);
   const desiredPlan = yield* planner
     .plan(landofile, provider.capabilities, {

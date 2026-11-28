@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { normalizeNamedPipePath } from "@lando/container-runtime/transport";
 import { sha256Hex } from "@lando/sdk/digest";
+import { normalizeNamedPipePath } from "@lando/sdk/engine-placement";
 import { type HostPlatform, hostPlatformFamily } from "@lando/sdk/schema";
 import { Result, Schema } from "effect";
 

@@ -9,8 +9,8 @@ import {
   RUNTIME_SHUTDOWN_KEY,
   parseRuntimeShutdownReceipt,
 } from "@lando/container-runtime/podman/runtime-shutdown";
-import { normalizeNamedPipePath } from "@lando/container-runtime/transport";
 import type { LandoPaths } from "@lando/paths";
+import { normalizeNamedPipePath } from "@lando/sdk/engine-placement";
 import type { ProcessRunner } from "@lando/sdk/services";
 import { type Context, Effect } from "effect";
 

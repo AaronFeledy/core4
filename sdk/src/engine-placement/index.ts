@@ -2,42 +2,19 @@ import { sha256Hex } from "../digest/index.ts";
 import { AppPlacementError } from "../errors/app.ts";
 import type { AppRef, AppliedAppPlan, EngineIdentity, ProviderId } from "../schema/index.ts";
 
-// ==== Endpoint normalization ====
-// One implementation for campaign identity and the transport adapters that reach the same engine.
-
 /** Windows named-pipe spelling shared by the transport adapters and endpoint identity. */
 export const normalizeNamedPipePath = (socketPath: string): string => {
   if (!socketPath.startsWith("npipe:")) return socketPath;
   const pipePath = socketPath.slice("npipe:".length);
-  const desktopPipe = pipePath.match(/^\/{2,4}\.\/pipe\/(.+)$/u);
-  if (desktopPipe !== null) {
-    return `\\\\.\\pipe\\${(desktopPipe[1] ?? "").replaceAll("/", "\\")}`;
-  }
-  return pipePath;
-};
-
-const prefixFromPathname = (pathname: string): string | undefined => {
-  const trimmed = pathname.replace(/\/+$/u, "");
-  return trimmed === "" || trimmed === "/" ? undefined : trimmed;
+  const [, desktopPipe] = pipePath.match(/^\/{2,4}\.\/pipe\/(.+)$/u) ?? [];
+  return desktopPipe === undefined ? pipePath : `\\\\.\\pipe\\${desktopPipe.replaceAll("/", "\\")}`;
 };
 
 /** A URL-shaped Docker endpoint's explicit API prefix, which may be secret. */
 export const explicitDockerApiPrefixFromHost = (dockerHost: string): string | undefined => {
-  if (dockerHost.startsWith("tcp://")) {
-    try {
-      return prefixFromPathname(new URL(`http://${dockerHost.slice("tcp://".length)}`).pathname);
-    } catch {
-      return undefined;
-    }
-  }
-  if (dockerHost.startsWith("http://") || dockerHost.startsWith("https://")) {
-    try {
-      return prefixFromPathname(new URL(dockerHost).pathname);
-    } catch {
-      return undefined;
-    }
-  }
-  return undefined;
+  const url = dockerHttpBaseUrl(dockerHost);
+  if (!url.startsWith("http://") && !url.startsWith("https://")) return undefined;
+  return URL.parse(url)?.pathname.replace(/\/+$/u, "") || undefined;
 };
 
 /** The HTTP base URL a Docker endpoint reaches over TCP. */
@@ -53,28 +30,11 @@ export const dockerApiEndpointKey = (dockerHost: string): string => {
   }
   if (dockerHost.startsWith("unix://")) return `unix:${dockerHost.slice("unix://".length)}`;
   if (dockerHost.startsWith("/")) return `unix:${dockerHost}`;
-  if (dockerHost.startsWith("tcp://")) {
-    try {
-      const parsed = new URL(`http://${dockerHost.slice("tcp://".length)}`);
-      return `tcp://${parsed.host}`;
-    } catch {
-      return dockerHost;
-    }
-  }
-  if (dockerHost.startsWith("http://") || dockerHost.startsWith("https://")) {
-    try {
-      const parsed = new URL(dockerHost);
-      return `${parsed.protocol}//${parsed.host}`;
-    } catch {
-      return dockerHost;
-    }
-  }
-  return dockerHost;
+  const tcp = dockerHost.startsWith("tcp://");
+  if (!tcp && !dockerHost.startsWith("http://") && !dockerHost.startsWith("https://")) return dockerHost;
+  const parsed = URL.parse(dockerHttpBaseUrl(dockerHost));
+  return parsed === null ? dockerHost : `${tcp ? "tcp:" : parsed.protocol}//${parsed.host}`;
 };
-
-// ==== Engine identity placement ====
-// A recorded plan claims placement for the engine that realized it. The rule lives here so an
-// SDK-only plugin reaches the same verdict as the engine, the providers, and the data mover.
 
 const connectionLabel = (endpoint: string, recorded = false): string => {
   const url = URL.parse(endpoint);

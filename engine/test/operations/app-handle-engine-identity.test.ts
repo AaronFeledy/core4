@@ -4,7 +4,7 @@ import { AppPlacementError } from "@lando/sdk/errors";
 import { type AppPlan, type EngineIdentity, appIdentityKey } from "@lando/sdk/schema";
 import type { RuntimeProviderShape } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { Effect, Result, Stream } from "effect";
+import { Effect, type Layer, Result, Stream } from "effect";
 import { destroyAppForTarget } from "../../src/operations/destroy.ts";
 import { execApp } from "../../src/operations/exec.ts";
 import { infoApp } from "../../src/operations/info.ts";
@@ -28,10 +28,6 @@ const target = { plan, root: plan.root, app: { kind: "user" as const, id: plan.i
 
 type Harness = ReturnType<typeof makeHarness>;
 
-/**
- * A provider hosting one running fake container, so an operation with no identity can finish,
- * and whose every member records its own name, so a refused one proves it made no provider call.
- */
 const testProvider = (current?: EngineIdentity): RuntimeProviderShape => ({
   ...TestRuntimeProvider,
   id: String(plan.provider),
@@ -80,64 +76,22 @@ const harnessFor = (current?: EngineIdentity, selected?: RuntimeProviderShape) =
 
 type Operation = {
   readonly name: string;
-  readonly run: (harness: Harness) => Promise<Result.Result<unknown, unknown>>;
+  readonly run: () => Effect.Effect<unknown, unknown, Layer.Success<Harness["layer"]>>;
 };
 
 const operations: ReadonlyArray<Operation> = [
-  {
-    name: "start",
-    run: (harness) =>
-      Effect.runPromise(
-        startAppForTarget(undefined, target).pipe(Effect.provide(harness.layer), Effect.result),
-      ),
-  },
-  {
-    name: "stop",
-    run: (harness) =>
-      Effect.runPromise(
-        stopAppForTarget(undefined, target).pipe(Effect.provide(harness.layer), Effect.result),
-      ),
-  },
-  {
-    name: "restart",
-    run: (harness) =>
-      Effect.runPromise(restartApp({}, target).pipe(Effect.provide(harness.layer), Effect.result)),
-  },
-  {
-    name: "rebuild",
-    run: (harness) =>
-      Effect.runPromise(rebuildApp({}, target).pipe(Effect.provide(harness.layer), Effect.result)),
-  },
-  {
-    name: "destroy",
-    run: (harness) =>
-      Effect.runPromise(
-        destroyAppForTarget(undefined, target).pipe(Effect.provide(harness.layer), Effect.result),
-      ),
-  },
-  {
-    name: "info",
-    run: (harness) =>
-      Effect.runPromise(infoApp(undefined, target).pipe(Effect.provide(harness.layer), Effect.result)),
-  },
-  {
-    name: "exec",
-    run: (harness) =>
-      Effect.runPromise(
-        execApp({ service: String(web.name), command: ["true"] }, target).pipe(
-          Effect.provide(harness.layer),
-          Effect.result,
-        ),
-      ),
-  },
-  {
-    name: "logs",
-    run: (harness) =>
-      Effect.runPromise(
-        logsAppForTarget(undefined, target).pipe(Effect.provide(harness.layer), Effect.result),
-      ),
-  },
+  { name: "start", run: () => startAppForTarget(undefined, target) },
+  { name: "stop", run: () => stopAppForTarget(undefined, target) },
+  { name: "restart", run: () => restartApp({}, target) },
+  { name: "rebuild", run: () => rebuildApp({}, target) },
+  { name: "destroy", run: () => destroyAppForTarget(undefined, target) },
+  { name: "info", run: () => infoApp(undefined, target) },
+  { name: "exec", run: () => execApp({ service: String(web.name), command: ["true"] }, target) },
+  { name: "logs", run: () => logsAppForTarget(undefined, target) },
 ];
+
+const run = <A, E>(effect: Effect.Effect<A, E, Layer.Success<Harness["layer"]>>, harness: Harness) =>
+  Effect.runPromise(effect.pipe(Effect.provide(harness.layer), Effect.result));
 
 const dispose = (harness: Harness) => rmSync(harness.userDataRoot, { recursive: true, force: true });
 
@@ -147,7 +101,7 @@ describe("App handle operations judge the applied record, not the desired plan",
     async (operation) => {
       const { harness, calls } = harnessFor(identity("second"));
       try {
-        const outcome = await operation.run(harness);
+        const outcome = await run(operation.run(), harness);
         if (!Result.isFailure(outcome)) throw new Error(`${operation.name} did not refuse`);
         expect(outcome.failure).toBeInstanceOf(AppPlacementError);
         if (outcome.failure instanceof AppPlacementError) {
@@ -164,7 +118,7 @@ describe("App handle operations judge the applied record, not the desired plan",
   test.each(operations)("$name proceeds when the provider has no engine identity", async (operation) => {
     const { harness, calls } = harnessFor(undefined);
     try {
-      const outcome = await operation.run(harness);
+      const outcome = await run(operation.run(), harness);
       expect(outcome._tag).toBe("Success");
       // Proceeding means real provider work, which is what a missing identity allows.
       expect(calls.length).toBeGreaterThan(0);
@@ -184,8 +138,8 @@ describe("App handle operations judge the applied record, not the desired plan",
     };
     const { harness, recorded } = harnessFor(identity("first"), withLogs);
     try {
-      const outcome = await operations.find((operation) => operation.name === "logs")?.run(harness);
-      expect(outcome?._tag).toBe("Success");
+      const outcome = await run(logsAppForTarget(undefined, target), harness);
+      expect(outcome._tag).toBe("Success");
       // The plan handed to the provider is the applied record, not the handle's desired plan.
       expect(seen).toEqual([recorded]);
     } finally {

@@ -38,9 +38,8 @@ export const collectOpenConnections = Effect.fn("OpenApp.collectConnections")(fu
   // One provider observation per candidate plan, so a caller that already admitted the app
   // never constructs the provider a second time.
   const collectPlan = Effect.fnUntraced(function* (candidate: AppPlan) {
-    const observations =
-      provider === undefined ? undefined : yield* collectPlanObservations(candidate, plan, provider);
-    return yield* collectPlanConnections(candidate, observations, plan);
+    const observations = yield* collectPlanObservations(candidate, plan, provider);
+    return yield* collectPlanConnections(candidate, observations);
   });
   const collect = (entry: (typeof entries)[number]) =>
     collectPlan({
