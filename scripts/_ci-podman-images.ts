@@ -15,20 +15,23 @@ export const servicesImagePullCommands = `
 ${identityImages.map((image) => `            pull_image docker.io/library/${image}`).join("\n")}
           fi`;
 
-const dockerHubMirrorConfig = `          # The managed daemon owns its registry config. Only CI Podman pulls load this override.
-          cat > "$RUNNER_TEMP/ci-docker-hub.conf" <<'EOF'
+const dockerHubMirrorConfig = `          # Only CI Podman pulls read this copy; the managed daemon keeps its own registry config.
+          {
+            cat "$LANDO_USER_DATA_ROOT/runtime/config/registries.conf"
+            cat <<'EOF'
+
           [[registry]]
           location = "docker.io"
 
           [[registry.mirror]]
           location = "mirror.gcr.io"
           EOF
+          } > "$RUNNER_TEMP/ci-registries.conf"
 `;
 
 export const podmanImagePullCommands = (mirrorDockerHub: boolean): string => {
   const mirrorEnv = mirrorDockerHub
-    ? `              CONTAINERS_REGISTRIES_CONF="$LANDO_USER_DATA_ROOT/runtime/config/registries.conf" \\
-              CONTAINERS_REGISTRIES_CONF_OVERRIDE="$RUNNER_TEMP/ci-docker-hub.conf" \\
+    ? `              CONTAINERS_REGISTRIES_CONF="$RUNNER_TEMP/ci-registries.conf" \\
 `
     : "";
   return `${mirrorDockerHub ? dockerHubMirrorConfig : ""}          pull_image() {

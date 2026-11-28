@@ -2362,19 +2362,22 @@ jobs:
           fi
           LANDO_PODMAN="$LANDO_USER_DATA_ROOT/runtime/bin/podman"
           LANDO_PODMAN_ARGS=(--root "$LANDO_USER_DATA_ROOT/runtime/storage" --runroot "$LANDO_USER_DATA_ROOT/runtime/run" --config "$LANDO_USER_DATA_ROOT/runtime/config")
-          # The managed daemon owns its registry config. Only CI Podman pulls load this override.
-          cat > "$RUNNER_TEMP/ci-docker-hub.conf" <<'EOF'
+          # Only CI Podman pulls read this copy; the managed daemon keeps its own registry config.
+          {
+            cat "$LANDO_USER_DATA_ROOT/runtime/config/registries.conf"
+            cat <<'EOF'
+
           [[registry]]
           location = "docker.io"
 
           [[registry.mirror]]
           location = "mirror.gcr.io"
           EOF
+          } > "$RUNNER_TEMP/ci-registries.conf"
           pull_image() {
             local image="$1"
             for attempt in 1 2 3; do
-              CONTAINERS_REGISTRIES_CONF="$LANDO_USER_DATA_ROOT/runtime/config/registries.conf" \
-              CONTAINERS_REGISTRIES_CONF_OVERRIDE="$RUNNER_TEMP/ci-docker-hub.conf" \
+              CONTAINERS_REGISTRIES_CONF="$RUNNER_TEMP/ci-registries.conf" \
               "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" pull "$image" && return 0
               if test "$attempt" -eq 3; then return 1; fi
               sleep $((attempt * 5))
