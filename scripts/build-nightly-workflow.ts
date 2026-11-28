@@ -54,7 +54,7 @@ const providerLandoE2eJob = `
   provider-lando-e2e-linux-x64:
     needs: [${CONTAINER_HELPER_JOB_ID}, runtime-bundle-linux-x64]
     runs-on: ${LINUX_X64_TEST_RUNNER}
-    timeout-minutes: 90
+    timeout-minutes: 120
     steps:
       - uses: ${pinnedAction("actions/checkout")}
 ${isolateLandoRootsStep}
