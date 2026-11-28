@@ -326,6 +326,7 @@ export const ensureGlobalServicesRunning = Effect.fnUntraced(
         plan: runtimePlan,
         credentialPlan: desiredFinalPlan,
         previousPlan: retained.recordedPlan,
+        ...(retained.strictPlan === undefined ? {} : { volumeBaseline: retained.strictPlan }),
         certificates,
         reconcile: false,
         recordedPlan: finalPlan,

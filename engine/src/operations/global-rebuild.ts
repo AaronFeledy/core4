@@ -41,6 +41,7 @@ import {
 } from "@lando/sdk/services";
 import { DateTime, Effect, Schema } from "effect";
 import { withGlobalRoutePublication } from "../global-app/activation-scope.ts";
+import { resolveGlobalPlacement } from "../global-app/placement.ts";
 import { selectPreparedProvider } from "../providers/prepared.ts";
 import { prepareDebuggerOverlay } from "../subsystems/start-overlay-registry.ts";
 import { globalAppRef, withGlobalLifecycleEvents } from "./global-common";
@@ -62,6 +63,10 @@ export type GlobalRebuildResult = typeof GlobalRebuildResultSchema.Type;
 export type GlobalRebuildError =
   | import("@lando/sdk/errors").RouteUrlBindingError
   | import("@lando/sdk/errors").CaError
+  | import("@lando/sdk/errors").AppResolveError
+  | import("@lando/sdk/errors").AppliedStateVersionError
+  | import("@lando/sdk/errors").NoProviderInstalledError
+  | import("@lando/sdk/errors").ProviderUnavailableError
   | import("@lando/sdk/services").FileSystemError
   | Effect.Error<ReturnType<typeof installAndLoadGlobalPlan>>
   | ServiceNotReadyError
@@ -119,6 +124,9 @@ export const globalRebuild = Effect.fn("GlobalRebuild.rebuild")(
     );
     const preparedOverlays = yield* prepareDebuggerOverlay(loaded.plan);
 
+    // The record a recreated volume is judged against. Installation already refused a record
+    // naming another engine through `selectGlobalCreateProvider`.
+    const { plan: recordedGlobal } = yield* resolveGlobalPlacement();
     const provider = yield* selectPreparedProvider(loaded.plan);
     const events = yield* EventService;
     const builder = yield* BuildOrchestrator;
@@ -158,6 +166,7 @@ export const globalRebuild = Effect.fn("GlobalRebuild.rebuild")(
           {
             provider,
             services,
+            ...(recordedGlobal === undefined ? {} : { volumeBaseline: recordedGlobal }),
             beforeApply: verifyAdmission,
             preparedOverlays,
             options: {

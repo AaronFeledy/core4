@@ -631,6 +631,7 @@ const makeScratchAppService = Effect.fnUntraced(function* (
         certificates,
         preparedOverlays,
         ...(landofileRouter === undefined ? {} : { landofileRouter }),
+        ...(placement.plan === undefined ? {} : { volumeBaseline: placement.plan }),
       },
       {
         provider,

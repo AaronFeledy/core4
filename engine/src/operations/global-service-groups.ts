@@ -63,6 +63,8 @@ export const applyGlobalServiceGroups = Effect.fn("GlobalServices.applyGroups")(
     readonly options: Pick<ApplyOptions, "complete" | "reconcile" | "signal">;
     readonly recordedPlan?: AppPlan;
     readonly previousPlan?: AppPlan;
+    /** The unfiltered record a recreated data volume is judged against. */
+    readonly volumeBaseline?: AppPlan;
     readonly recordedDisabledIds?: ReadonlyArray<string>;
     readonly bindings?: ReadonlyArray<ReadonlyArray<string>>;
     readonly removals?: ReadonlyArray<GlobalSiblingRemoval>;
@@ -123,6 +125,7 @@ export const applyGlobalServiceGroups = Effect.fn("GlobalServices.applyGroups")(
                 plan: runtimePlan,
                 credentialPlan: plan,
                 previousPlan: apply.previousPlan,
+                ...(apply.volumeBaseline === undefined ? {} : { volumeBaseline: apply.volumeBaseline }),
                 certificates,
                 ...apply.options,
                 environment: session,
