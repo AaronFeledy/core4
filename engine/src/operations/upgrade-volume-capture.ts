@@ -34,7 +34,7 @@ export const captureRestorePoint = Effect.fn("AppActivation.captureRestorePoint"
 }) {
   const { plan, upgrade, provider, publication } = input;
   const app = plan.name;
-  const { appliedPlan, service, target: destination, store, label, from, to, source } = upgrade;
+  const { appliedPlan, service, target: destination, store, label, from, to } = upgrade;
   const error = (reason: string, cause?: unknown) =>
     new ServiceRestorePointError({
       app,
@@ -107,8 +107,7 @@ export const captureRestorePoint = Effect.fn("AppActivation.captureRestorePoint"
   const contract = desired?.dataVersion;
   const depth = contract?.series?.depth;
   const verify = Effect.gen(function* () {
-    if (source !== "applied-plan" || contract === undefined || depth === undefined || desired === undefined)
-      return undefined;
+    if (contract === undefined || depth === undefined || desired === undefined) return undefined;
     const observed = yield* readOfflineVersion({ provider, appliedPlan, mount: privateMount, contract });
     if (observed !== undefined) yield* proveVolume;
     const comparison = observed === undefined ? undefined : compareDataSeries(observed, to, depth);
@@ -209,7 +208,7 @@ export const captureRestorePoint = Effect.fn("AppActivation.captureRestorePoint"
           dataVersion: {
             label,
             series: verified ?? from,
-            source: verified === undefined ? source : "record",
+            source: verified === undefined ? "applied-plan" : "record",
           },
         },
       },

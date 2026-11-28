@@ -342,6 +342,31 @@ test("labels a stopped database's snapshot with the record on disk, not the appl
   expect(f.captured[0]?.metadata?.dataVersion).toMatchObject({ series: "10.6", source: "record" });
 });
 
+test.each([
+  ["11.4", "ServiceRestorePointError"],
+  ["11.8", "ServiceDataVersionError"],
+] as const)("rechecks running admission evidence before capturing %s data", async (offlineVersion, tag) => {
+  const f = fixture({ offlineVersion });
+  const error = await Effect.runPromise(startApp({}, f.target).pipe(Effect.provide(f.layer), Effect.flip));
+
+  expect(error._tag).toBe(tag);
+  expect(f.actions).toEqual(["suspend", "resume"]);
+  expect(f.snapshots.size).toBe(0);
+});
+
+test.each([
+  [undefined, "10.11", "applied-plan"],
+  ["10.6", "10.6", "record"],
+] as const)(
+  "labels running database data using its locked observation %s",
+  async (offlineVersion, series, source) => {
+    const f = fixture(offlineVersion === undefined ? {} : { offlineVersion });
+    await Effect.runPromise(startApp({}, f.target).pipe(Effect.provide(f.layer)));
+
+    expect(f.captured[0]?.metadata?.dataVersion).toMatchObject({ series, source });
+  },
+);
+
 test.each([true, false])(
   "does not capture for an opt-out (%s) or unchanged database series",
   async (noSnapshot) => {

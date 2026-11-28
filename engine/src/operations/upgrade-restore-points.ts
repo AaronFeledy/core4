@@ -95,7 +95,7 @@ export const withUpgradeRestorePoints =
                 if (captured === undefined) continue;
                 const { handle, verified } = captured;
                 if (verified !== undefined) verifiedFrom.set(service, verified);
-                if (verified === undefined && upgrade.source === "applied-plan") unverified.add(service);
+                if (verified === undefined) unverified.add(service);
                 yield* notice(`Saved restore point ${handle.id} for ${service}.`);
                 yield* active.completeTask(service);
               }
