@@ -3,9 +3,9 @@ import { describe, expect, test } from "bun:test";
 import { hyperlink, stripAnsi } from "@lando/renderer/console-layout";
 import type { InfoAppResult } from "@lando/sdk/app";
 
-import { renderInfoAppResult } from "../../src/cli/commands/info-render.ts";
+import { buildInfoSummary, renderInfoAppResult } from "../../src/cli/commands/info-render.ts";
 import type { RenderContext } from "../../src/cli/renderer-boundary.ts";
-import { connections } from "./connection-fixtures";
+import { connections, routeRow } from "./connection-fixtures";
 
 const ESC = String.fromCharCode(27);
 
@@ -21,8 +21,19 @@ const result: InfoAppResult = {
       primary: true,
       status: "running",
       connections: [
-        ...connections(["https://my-app.lndo.site", "http://localhost:3000", "tcp://localhost:5432"]),
+        ...connections(["http://localhost:3000", "tcp://localhost:5432"]),
         ...connections(["http://web:3000"], "app"),
+      ],
+      routes: [
+        routeRow({
+          host: "my-app.lndo.site",
+          hostMatch: "exact",
+          protocol: "https",
+          port: 443,
+          pathPrefix: "",
+          url: "https://my-app.lndo.site",
+        }),
+        routeRow({ host: "*.wild.test", hostMatch: "pattern", protocol: "https", port: 443, pathPrefix: "" }),
       ],
     },
   ],
@@ -37,6 +48,22 @@ const tty = (noColor = false): RenderContext => ({
 });
 
 describe("renderInfoAppResult URL hyperlinks", () => {
+  test.each([true, false])(
+    "services recommend hostname selection only for patterns (present=%s)",
+    (hasPattern) => {
+      const services = result.services.map((service) => ({
+        ...service,
+        routes: service.routes.filter((route) => hasPattern || route.hostMatch === "exact"),
+      }));
+      const section = buildInfoSummary({ ...result, services }).sections.find(
+        ({ title }) => title === "services",
+      );
+      expect(section?.notes?.some((note) => note.includes("lando open <hostname>")) ?? false).toBe(
+        hasPattern,
+      );
+    },
+  );
+
   test("wraps printed http(s) endpoints in OSC 8 on a capable TTY", () => {
     const out = renderInfoAppResult(result, tty());
     expect(out).toContain(hyperlink("https://my-app.lndo.site", "https://my-app.lndo.site"));
@@ -113,6 +140,7 @@ describe("renderInfoAppResult URL hyperlinks", () => {
           primary: true,
           status: "running",
           connections: connections([longUrl]),
+          routes: [],
         },
       ],
     };
@@ -137,6 +165,7 @@ describe("renderInfoAppResult URL hyperlinks", () => {
       primary: true,
       status: "running",
       connections: connections(endpoints),
+      routes: [],
     });
     const out = renderInfoAppResult(
       { app: "my-app", services: [service("web", [shortUrl]), service("api", [longUrl])] },

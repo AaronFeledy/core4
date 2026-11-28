@@ -2,14 +2,14 @@ import { expect } from "bun:test";
 import { RequestPolicy } from "@lando/http-client/live";
 import { RedactionService, type RedactionServiceShape, makeRedactionService } from "@lando/redaction/service";
 import type { ScannerError } from "@lando/sdk/errors";
-import { AppId, type PublishedEndpoint, type ServiceName } from "@lando/sdk/schema";
+import { AppId, type PublishedEndpoint, type ServiceConnection, type ServiceName } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
 import { Cause, Clock, Duration, Effect, Exit, Fiber, Layer, Option } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientError from "effect/http/HttpClientError";
 import * as HttpClientResponse from "effect/http/HttpClientResponse";
 import { TestClock } from "effect/testing";
-import type { ScanSourceEndpoint } from "../../../src/subsystems/scanner/live.ts";
+import type { ScanSourceService } from "../../../src/subsystems/scanner/connection-targets.ts";
 
 export const drive = <A, E>(effect: Effect.Effect<A, E, never>): Promise<A> =>
   Effect.runPromise(effect.pipe(Effect.provide(TestClock.layer())));
@@ -56,7 +56,9 @@ export const publishedEndpoint = (
   service: ServiceName,
   protocol: PublishedEndpoint["protocol"],
   port: number,
-): ScanSourceEndpoint => ({
+): Extract<ServiceConnection, { readonly source: "publication"; readonly binding: "assigned" }> & {
+  readonly service: ServiceName;
+} => ({
   scope: "host",
   source: "publication",
   binding: "assigned",
@@ -71,10 +73,10 @@ export const publishedEndpoint = (
 });
 
 export const endpointsOf = (
-  endpoints: ReadonlyArray<ScanSourceEndpoint>,
+  endpoints: readonly ReturnType<typeof publishedEndpoint>[],
 ): {
   readonly calls: AppId[];
-  readonly listEndpoints: (app: AppId) => Effect.Effect<ReadonlyArray<ScanSourceEndpoint>, ScannerError>;
+  readonly listEndpoints: (app: AppId) => Effect.Effect<readonly ScanSourceService[], ScannerError>;
 } => {
   const calls: AppId[] = [];
   return {
@@ -82,7 +84,12 @@ export const endpointsOf = (
     listEndpoints: (app) =>
       Effect.sync(() => {
         calls.push(app);
-        return endpoints;
+        const grouped = Map.groupBy(endpoints, ({ service }) => service);
+        return Array.from(grouped, ([service, entries]) => ({
+          service,
+          connections: entries.map(({ service: _, ...connection }) => connection),
+          routes: [],
+        }));
       }),
   };
 };

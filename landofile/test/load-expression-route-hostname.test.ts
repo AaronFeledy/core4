@@ -86,7 +86,7 @@ test.each([
   }),
 );
 
-test.each([
+const forbiddenRouteSites = [
   [{ services: { web: { environment: [`URL=${publicUrl}`] } } }, ["services", "web", "environment", 0]],
   [{ services: { web: { command: publicUrl } } }, ["services", "web", "command"]],
   [{ services: { web: { command: "{{ service.url }}" } } }, ["services", "web", "command"]],
@@ -117,8 +117,16 @@ test.each([
     { events: { "post-start": [{ command: "app:info", flags: { site: publicUrl } }] } },
     ["events", "post-start", 0, "flags", "site"],
   ],
-  [{ tooling: { demo: { cmd: "curl {{ services[vars.name].url }}" } } }, ["tooling", "demo", "cmd"]],
-  [{ tooling: { demo: { cmd: "true", dir: "{{ services[vars.name].url }}" } } }, ["tooling", "demo", "dir"]],
+  [
+    { tooling: { demo: { cmd: "curl {{ services[vars.name].publicPort }}" } } },
+    ["tooling", "demo", "cmd"],
+    "{{ services.web.publicPort }}",
+  ],
+  [
+    { tooling: { demo: { cmd: "true", dir: "{{ services[vars.name].scheme }}" } } },
+    ["tooling", "demo", "dir"],
+    "{{ services.web.scheme }}",
+  ],
   [
     { tooling: { demo: { cmd: "true", dir: "{{ services.web[env.M] }}{{ services[env.NAME].url }}" } } },
     ["tooling", "demo", "dir"],
@@ -134,14 +142,27 @@ test.each([
     { services: { web: { environment: { URL: { _tag: "RouteText", parts: [] } } } } },
     ["services", "web", "environment", "URL"],
   ],
-])("locates forbidden public URL sites at %j", (value, path) =>
-  withApp(async (appRoot) => {
-    const result = await Effect.runPromise(resolveValue(appRoot, value).pipe(Effect.result));
-    expect(result).toMatchObject({
-      _tag: "Failure",
-      failure: { _tag: "LandofileValidationError", issues: [{ path, rule: "unsupported-expression" }] },
-    });
-  }),
+] as const;
+
+test.each(forbiddenRouteSites.map(([value, path, example]) => ({ value, path, example })))(
+  "locates forbidden public URL sites at $path",
+  ({ value, path, example }) =>
+    withApp(async (appRoot) => {
+      const result = await Effect.runPromise(resolveValue(appRoot, value).pipe(Effect.result));
+      expect(result).toMatchObject({
+        _tag: "Failure",
+        failure: {
+          _tag: "LandofileValidationError",
+          issues: [
+            {
+              path,
+              rule: "unsupported-expression",
+              ...(example === undefined ? {} : { suggestion: expect.stringContaining(example) }),
+            },
+          ],
+        },
+      });
+    }),
 );
 
 test.each(["info", "service"])("names the unsupported %s scope", (scope) =>
@@ -293,8 +314,8 @@ describe("landofile load-time route hostname expressions", () => {
   });
 });
 
-describe("hostname and origin route facts", () => {
-  test.each(["hostname", "origin"])(
+describe("additional route facts", () => {
+  test.each(["hostname", "origin", "publicPort", "scheme"])(
     "defers services.web.%s and service.%s in a service environment",
     (fact) =>
       withApp(async (appRoot) => {
@@ -338,6 +359,16 @@ describe("hostname and origin route facts", () => {
       { services: { web: { command: "{{ service.origin }}" } } },
       ["services", "web", "command"],
       "service.origin is not supported at services.web.command.",
+    ],
+    [
+      { services: { web: { command: "{{ service.publicPort }}" } } },
+      ["services", "web", "command"],
+      "service.publicPort is not supported at services.web.command.",
+    ],
+    [
+      { tooling: { demo: { cmd: "echo {{ service.scheme }}" } } },
+      ["tooling", "demo", "cmd"],
+      "service.scheme is not supported at tooling.demo.cmd.",
     ],
     [
       { tooling: { demo: { cmd: "true", dir: "{{ services.web.hostname }}" } } },

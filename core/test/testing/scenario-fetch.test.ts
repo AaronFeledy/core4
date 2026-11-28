@@ -6,16 +6,29 @@ import {
   requestScenarioRoute,
   resolveFetchUrl,
 } from "../../src/testing/scenario-fetch.ts";
+import infoFixture from "./fixtures/scenario-fetch-info.json";
 
-test("a route token uses the assigned host route rather than the app listener", async () => {
-  const info = Effect.promise(() =>
-    Bun.file(new URL("./fixtures/scenario-fetch-info.json", import.meta.url)).text(),
-  );
+test("a route token uses the assigned inactive exact route rather than an earlier pattern or app listener", async () => {
+  const info = Effect.succeed(JSON.stringify(infoFixture));
   const resolved = await Effect.runPromise(resolveFetchUrl("{{route:app}}/https-check.php?probe=1", info));
   expect(resolved.href).toBe("https://app.php-demo.lndo.site:38443/https-check.php?probe=1");
   expect(
     await Effect.runPromise(Effect.flip(resolveFetchUrl("{{route:no-such-service}}/", info))),
   ).toBeInstanceOf(ScenarioFetchError);
+});
+
+test("a route token fails when its only assigned host routes are patterns", async () => {
+  const services = infoFixture.result.services.map((service) => ({
+    ...service,
+    routes: service.routes.filter((row) => row.hostMatch !== "exact"),
+  }));
+  const info = Effect.succeed(
+    JSON.stringify({ ...infoFixture, result: { ...infoFixture.result, services } }),
+  );
+
+  const error = await Effect.runPromise(Effect.flip(resolveFetchUrl("{{route:app}}/health", info)));
+  expect(error).toBeInstanceOf(ScenarioFetchError);
+  expect(error.message).toContain("with a concrete hostname");
 });
 
 test("a pinned TLS request preserves the URL identity and does not follow a redirect", async () => {

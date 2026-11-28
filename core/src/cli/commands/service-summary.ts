@@ -1,6 +1,6 @@
 import type { SummaryTone } from "@lando/renderer/summary";
 import type { BuiltImageCleanup, StartedService } from "@lando/sdk/schema";
-import { scopedConnectionText } from "./connection-summary";
+import { appNetworkText, hostAddressText, routePatternText } from "./connection-summary";
 
 export const summaryToneFromTable = (
   table: Readonly<Record<string, SummaryTone>>,
@@ -46,10 +46,12 @@ export const SCRATCH_STATUS_TONES = {
 } as const satisfies Readonly<Record<string, SummaryTone>>;
 
 export const serviceStateRow = (service: StartedService): string => {
-  const host = scopedConnectionText(service.connections, "host");
-  const app = scopedConnectionText(service.connections, "app");
+  const host = hostAddressText(service);
+  const patterns = routePatternText(service);
+  const app = appNetworkText(service);
   const addresses = [
-    ...(host.length === 0 ? [] : [`Host: ${host}`]),
+    ...(host.length === 0 && patterns.length === 0 ? [] : [`Host: ${host || "-"}`]),
+    ...(patterns.length === 0 ? [] : [`Route patterns: ${patterns}`]),
     ...(app.length === 0 ? [] : [`App Network: ${app}`]),
   ];
   return `${service.name} (${service.state}) ${addresses.length === 0 ? "no endpoints" : addresses.join(" ")}`;

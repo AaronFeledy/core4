@@ -1,6 +1,6 @@
 import { routerEnabled } from "@lando/engine/config/router-config";
 import { collectPlanConnections } from "@lando/engine/operations/connection-collector";
-import type { AppPlan, StartedService } from "@lando/sdk/schema";
+import { type AppPlan, type StartedService, isWildcardHostname } from "@lando/sdk/schema";
 import { Effect } from "effect";
 
 import { type OpenTargetSelection, defaultHttpListeners, resolveOpenTargets } from "./open-targets";
@@ -9,15 +9,9 @@ export const collectOpenConnections = Effect.fn("OpenApp.collectConnections")(fu
   plan: AppPlan,
   selection: OpenTargetSelection,
 ) {
-  const routes = plan.routes.filter(
-    (route) =>
-      routerEnabled(plan) &&
-      !route.hostname.includes("*") &&
-      (selection.route === undefined || route.hostname === selection.route),
-  );
+  const routes = plan.routes.filter((route) => routerEnabled(plan) && !isWildcardHostname(route.hostname));
   const services = Object.fromEntries(
     Object.entries(plan.services).filter(([, service]) => {
-      if (selection.route !== undefined) return routes.some((route) => route.service === service.name);
       if (selection.service !== undefined && service.name !== selection.service) return false;
       if (selection.all === true)
         return (
@@ -40,7 +34,7 @@ export const collectOpenConnections = Effect.fn("OpenApp.collectConnections")(fu
       undefined,
       plan,
     );
-  if (selection.service === undefined && selection.route === undefined && selection.all !== true) {
+  if (selection.service === undefined && selection.all !== true) {
     const observed: StartedService[] = [];
     for (const entry of entries) {
       const listeners = defaultHttpListeners(entry[1].endpoints, entry[1].certs !== undefined);
@@ -56,10 +50,7 @@ export const collectOpenConnections = Effect.fn("OpenApp.collectConnections")(fu
         continue;
       const rows = yield* collect(entry);
       observed.push(...rows);
-      const routeRows = rows.map((row) => ({
-        ...row,
-        connections: row.connections.filter((connection) => connection.source === "route"),
-      }));
+      const routeRows = rows.map((row) => ({ ...row, connections: [] }));
       if (resolveOpenTargets(plan, selection, routeRows).length > 0) return rows;
     }
     for (const entry of entries) {

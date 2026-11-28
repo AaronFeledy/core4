@@ -91,7 +91,7 @@ If you are looking for a public surface or policy:
 | Container create-config identity and ordinary apply recreate | 05 | §5.3.2 |
 | Shutdown observations: `ServiceShutdownObservation`, `FileSyncQuiesceResult`, optional `shutdownObservations` on teardown receipts, no graceful/forced verdict | 05 | §5.3.3 |
 | Durable ownership manifest and verified teardown cleanup | 05 + 12 | §5.3.1 + §12.4.2 |
-| `AppPlan` and `ServicePlan` schema families; applied-state v1–v14 readers, v7-to-v8 `kind` migration, v9 `keepAlive` intent, v10 `RouteText` environments, v11 event-intent removal, v12 planned ports, v13 route-fact members, v14 optional database version intent, strict applied-map writers, newer-format protection on the stamp alone (`AppliedStateVersionError`), required contribution and registry inventory and targeted strict read | 05 | §5.3.1 + §5.5 + §5.5.2 |
+| `AppPlan` and `ServicePlan` schema families; applied-state v1–v15 readers, v7-to-v8 `kind` migration, v9 `keepAlive` intent, v10 `RouteText` environments, v11 event-intent removal, v12 planned ports, v13 route-fact members, v14 optional database version intent, v15 `publicPort` and `scheme` members, strict applied-map writers, newer-format protection on the stamp alone (`AppliedStateVersionError`), required contribution and registry inventory and targeted strict read | 05 | §5.3.1 + §5.5 + §5.5.2 |
 | Runtime-owned helper creation mount, logical/applied-plan exclusion, non-root cache permissions, and file-log delivery | 05 + 06 + 12 | §5.5 + §6.2.1 + §6.4 + §6.14.3 + §12.1 |
 | Environment values and executable-plan eligibility | 05 + 07 | §5.5.2 + §7.3.1 |
 | Provider extensions and error family, including `AppliedStateVersionError` | 05 | §5.6 + §5.7 |
@@ -111,7 +111,7 @@ If you are looking for a public surface or policy:
 | Native-health observations (including who schedules native checks, `serviceHealth`, and the managed Linux runtime's in-service scheduler) and readiness configuration metadata, without last-proof inference | 05 + 06 | §5.4 + §5.8.1 + §6.10 |
 | Certificates and trust injection | 06 | §6.8 |
 | Reserved service environment variables and agent context | 06 | §6.9 |
-| `ServiceInfo`, scoped `ServiceConnection`, and connection observation/projection | 06 | §6.10 |
+| `ServiceInfo`, scoped `ServiceConnection`, `ServiceRoute`, and `ScratchPublishedRoute` | 06 + 19 | §6.10 + §21.10 |
 | `InfoAppResult.appliedStateIssue` for a protected applied-state record | 05 + 06 + 08 | §5.5.2 + §6.10 + §8.2 |
 | `ServiceType` (including planned primary listen-port selection), `ServiceFeature`, and `AppFeature` contracts | 06 | §6.11 |
 | Provider-independent service/app endpoint declarations (`EndpointDeclaration.Encoded`, strict decode once, tagged feature failures), effective numeric route declarations before application, finalization replay from original inputs, immutable selection facts, and non-endpoint application | 06 | §6.11.0 + §6.11.4 |
@@ -228,7 +228,7 @@ If you are looking for a public surface or policy:
 | Managed-file ownership, ledger, and errors | 11 | §10.13 |
 | MCP service, catalog, transport, and errors | 11 | §10.14 |
 | MCP `lando://diagnostics` resource, authorization filtering, and repair without reconnecting | 11 | §10.14 |
-| Cache catalog and encodings | 12 | §12.1 + §12.2 |
+| Cache catalog and encodings, including app-plan revisions and scratch desired-plan cache misses | 12 | §12.1 + §12.2 + §12.7 |
 | `CompiledEventStep`, `AppliedAppPlan`, and the no-authored-input payload gate | 05 + 12 + 13 | §5.3.1 + §5.5 + §5.5.2 + §12.1 + §12.7.1 + §13.2 |
 | Atomic cache writes and persistent artifacts | 12 | §12.3 + §12.4 |
 | Managed-file transaction journal and recovery | 12 | §12.4.1 |

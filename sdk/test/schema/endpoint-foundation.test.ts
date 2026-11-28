@@ -256,7 +256,6 @@ const assigned = {
 test.each([
   { ...assigned, scope: "app", source: "listener", protocol: "tcp" },
   { ...assigned, scope: "host", source: "publication", protocol: "http" },
-  { ...assigned, scope: "host", source: "route", protocol: "http", pathPrefix: "/api" },
   {
     host: "127.0.0.1",
     endpoint: reference,
@@ -266,24 +265,12 @@ test.each([
     binding: "pending",
     state: "unknown",
   },
-  {
-    host: "app.lndo.site",
-    endpoint: reference,
-    scope: "host",
-    source: "route",
-    protocol: "https",
-    pathPrefix: "/api",
-    binding: "pending",
-    state: "inactive",
-  },
 ])("round trips a legal scoped connection: %j", (connection) => {
-  const decoded = Schema.decodeUnknownSync(sdk.ServiceConnection)(connection);
+  const decoded = Schema.decodeUnknownSync(sdk.ServiceConnection)(connection, { onExcessProperty: "error" });
   expect(Schema.encodeSync(sdk.ServiceConnection)(decoded)).toEqual(connection);
 });
 
 test.each([
-  { ...assigned, scope: "host", source: "route", protocol: "udp", pathPrefix: "/api" },
-  { ...assigned, scope: "app", source: "route", protocol: "http", pathPrefix: "/api" },
   { ...assigned, scope: "host", source: "route", protocol: "http" },
   {
     host: "localhost",

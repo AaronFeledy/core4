@@ -88,7 +88,7 @@ import { globalConfig } from "../../src/cli/commands/meta/global-config.ts";
 import { renderGlobalDestroyResult } from "../../src/cli/commands/meta/global-destroy.ts";
 import { globalInfo } from "../../src/cli/commands/meta/global-info.ts";
 import { followGlobalLogs, globalLogs } from "../../src/cli/commands/meta/global-logs.ts";
-import { globalStatus } from "../../src/cli/commands/meta/global-status.ts";
+import { globalStatus, renderGlobalStatusResult } from "../../src/cli/commands/meta/global-status.ts";
 import { renderGlobalStopResult } from "../../src/cli/commands/meta/global-stop.ts";
 import { testStateStoreLayer } from "../_support/landofile-layer.ts";
 import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
@@ -917,9 +917,7 @@ describe("meta:global command effects", () => {
           expect(harness.calls.routes).toHaveLength(1);
           expect(timeline).toContain("routes-observed");
           expect(timeline.indexOf("routes-applied")).toBeLessThan(timeline.indexOf("routes-observed"));
-          expect(
-            rows.flatMap((row) => row.connections).filter((connection) => connection.source === "route"),
-          ).toEqual([
+          expect(rows.flatMap((row) => row.routes)).toEqual([
             expect.objectContaining({ host: "mail.global.lndo.site", state: "inactive" }),
             expect.objectContaining({ host: "proxy.global.lndo.site", state: "inactive" }),
           ]);
@@ -1671,9 +1669,9 @@ describe("meta:global command effects", () => {
       expect(Object.keys(harness.calls.apply[0]?.plan.services ?? {})).toEqual(["mail"]);
       expect(harness.calls.routerSetups).toEqual([]);
       expect(harness.calls.routes).toEqual([{ app: "global", hostnames: ["mail.global.lndo.site"] }]);
-      expect(result.servicesStarted[0]?.connections).toContainEqual(
+      expect(result.servicesStarted[0]?.routes).toContainEqual(
         expect.objectContaining({
-          source: "route",
+          hostMatch: "exact",
           binding: "assigned",
           state: "active",
           url: "https://mail.global.lndo.site:444",
@@ -1705,9 +1703,9 @@ describe("meta:global command effects", () => {
           expect(job?.state).toBe("completed");
           expect(job?.connections.length).toBeGreaterThan(0);
           expect(job?.connections.every((connection) => connection.state === "inactive")).toBe(true);
-          expect(rows.find((row) => row.name === "proxy")?.connections).toContainEqual(
+          expect(rows.find((row) => row.name === "proxy")?.routes).toContainEqual(
             expect.objectContaining({
-              source: "route",
+              hostMatch: "exact",
               state: "active",
               url: "https://proxy.global.lndo.site:444",
             }),
@@ -1977,6 +1975,40 @@ describe("meta:global command effects", () => {
     });
   });
 
+  test("status reports wildcard routes outside the host and app-network connection columns", async () => {
+    await withHarness(async (harness) => {
+      await Effect.runPromise(
+        globalConfig({
+          subcommand: "set",
+          key: "services.mail.routes",
+          type: "json",
+          value: '[{"hostname":"*.mail.lndo.site","scheme":"https","endpoint":8080}]',
+        }).pipe(Effect.provide(harness.layer)),
+      );
+      await Effect.runPromise(globalStart().pipe(Effect.provide(harness.layer)));
+
+      const result = await Effect.runPromise(
+        globalStatus({ services: ["mail"] }).pipe(Effect.provide(harness.layer)),
+      );
+
+      expect(result.services[0]?.routes).toEqual([
+        expect.objectContaining({
+          host: "*.mail.lndo.site",
+          hostMatch: "pattern",
+          protocol: "https",
+          port: 444,
+        }),
+      ]);
+      expect(result.services[0]?.connections.map((row) => row.source)).not.toContain("route");
+      const lines = renderGlobalStatusResult(result).split("\n");
+      const header = lines.indexOf("service\tdesired\tstate\tpending\tHost\tApp Network");
+      expect(header).toBeGreaterThan(-1);
+      expect(lines[header + 1]?.split("\t")).toHaveLength(6);
+      expect(lines[header + 1]).not.toContain("*.mail.lndo.site");
+      expect(lines[header + 2]).toBe("mail\troute-pattern\t*.mail.lndo.site:444 [https pattern]");
+    });
+  });
+
   test("status with unknown --service fails before rendering an empty table", async () => {
     await withHarness(async (harness) => {
       await materializeDist(harness, {
@@ -1996,6 +2028,40 @@ describe("meta:global command effects", () => {
       expect(error.message).not.toContain("(no services)");
     });
   });
+
+  test.each([
+    [{ idle: true }, "stopped", "inactive"],
+    [{ offline: true }, "unknown", "unknown"],
+    [{ failInspect: true }, "running", "unknown"],
+  ] as const)(
+    "status keeps applied addresses without current inspection: %j",
+    async (condition, status, state) => {
+      const options = { idle: false, offline: false, failInspect: false };
+      await withHarness(async (harness) => {
+        await Effect.runPromise(
+          globalConfig({
+            subcommand: "set",
+            key: "services.mail.routes",
+            type: "json",
+            value: '[{"hostname":"mail.lndo.site","scheme":"https","endpoint":8080}]',
+          }).pipe(Effect.provide(harness.layer)),
+        );
+        await Effect.runPromise(globalStart().pipe(Effect.provide(harness.layer)));
+        Object.assign(options, condition);
+
+        const result = await Effect.runPromise(
+          globalStatus({ services: ["mail"] }).pipe(Effect.provide(harness.layer)),
+        );
+        expect(result.services[0]).toMatchObject({
+          status,
+          connections: expect.arrayContaining([
+            expect.objectContaining({ url: "http://localhost:8080", state }),
+          ]),
+          routes: [{ url: "https://mail.lndo.site:444", state }],
+        });
+      }, options);
+    },
+  );
 
   test("status shows desired catalog services before the global app is materialized", async () => {
     await withHarness(async (harness) => {
@@ -2098,7 +2164,12 @@ describe("meta:global command effects", () => {
         const result = await Effect.runPromise(globalStatus().pipe(Effect.provide(harness.layer)));
 
         expect(result.services.every((service) => service.status === "unknown")).toBe(true);
-        expect(result.services.flatMap((service) => service.connections)).toEqual([]);
+        const connections = result.services.flatMap((service) => service.connections);
+        if (missingAppliedState) {
+          expect(connections).toEqual([]);
+        } else {
+          expect(connections.map(({ state }) => state)).toEqual(["unknown", "unknown", "unknown", "unknown"]);
+        }
         expect(harness.calls.inspect).toEqual([]);
         expect(result.pending).toContainEqual(expect.objectContaining({ phase: "evidence" }));
         expect(result.diagnostics.join(" ")).toContain("incomplete ownership");
@@ -2117,7 +2188,12 @@ describe("meta:global command effects", () => {
 
       expect(result.runtimeState).toBe("available");
       expect(result.services.every((service) => service.status === "stopped")).toBe(true);
-      expect(result.services.flatMap((service) => service.connections)).toEqual([]);
+      expect(result.services.flatMap((service) => service.connections).map(({ state }) => state)).toEqual([
+        "inactive",
+        "inactive",
+        "inactive",
+        "inactive",
+      ]);
       expect(harness.calls.inspect).toEqual([]);
     }, options);
   });
@@ -3998,9 +4074,9 @@ describe("meta:global command effects", () => {
       expect(harness.calls.routes).toEqual([
         { app: "global", hostnames: ["mail.global.lndo.site", "proxy.global.lndo.site"] },
       ]);
-      expect(result.servicesRebuilt.find((service) => service.name === "mail")?.connections).toContainEqual(
+      expect(result.servicesRebuilt.find((service) => service.name === "mail")?.routes).toContainEqual(
         expect.objectContaining({
-          source: "route",
+          hostMatch: "exact",
           binding: "assigned",
           state: "active",
           url: "https://mail.global.lndo.site:444",
@@ -4028,9 +4104,9 @@ describe("meta:global command effects", () => {
       expect(harness.calls.routes).toEqual([
         { app: "global", hostnames: ["changed.lndo.site", "proxy.global.lndo.site"] },
       ]);
-      expect(result.servicesRebuilt.find((service) => service.name === "mail")?.connections).toContainEqual(
+      expect(result.servicesRebuilt.find((service) => service.name === "mail")?.routes).toContainEqual(
         expect.objectContaining({
-          source: "route",
+          hostMatch: "exact",
           state: "active",
           url: "https://changed.lndo.site:444",
         }),

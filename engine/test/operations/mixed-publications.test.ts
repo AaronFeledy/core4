@@ -32,7 +32,6 @@ test("keeps dynamic intent pending when only its sibling fixed binding is observ
     service,
     state: "running",
     publications,
-    routes: [],
   });
   // Then
   expect(
@@ -70,7 +69,6 @@ test("assigns dynamic aliases only to unreserved physical bindings across IP and
     service: planned,
     state: "running",
     publications,
-    routes: [],
   });
   // Then aliases share a single assigned physical binding, with typed listener metadata.
   expect(

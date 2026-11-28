@@ -2,14 +2,13 @@ import { describe, expect, test } from "bun:test";
 
 import { displayWidth, stripAnsi } from "@lando/renderer/console-layout";
 import type { RestartAppResult } from "@lando/sdk/app";
-import { PortNumber, type ServiceConnection } from "@lando/sdk/schema";
+import { PortNumber, type ServiceRoute } from "@lando/sdk/schema";
 import { buildRestartSummary, renderRestartAppResult } from "../../src/cli/commands/restart.ts";
 import type { RenderContext } from "../../src/cli/renderer-boundary.ts";
-import { connections } from "./connection-fixtures";
+import { connections, routeRow } from "./connection-fixtures";
 
-const pending: ServiceConnection = {
-  scope: "host",
-  source: "route",
+const pending: ServiceRoute = {
+  hostMatch: "exact",
   protocol: "https",
   host: "demo.lndo.site",
   pathPrefix: "/pending",
@@ -24,15 +23,31 @@ const result: RestartAppResult = {
     {
       name: "web",
       state: "running",
-      connections: [
-        ...connections(["https://demo.lndo.site/api", "http://demo.lndo.site/api"]),
-        ...connections(["http://web:3000"], "app"),
+      connections: connections(["http://web:3000"], "app"),
+      routes: [
+        routeRow({
+          host: "demo.lndo.site",
+          pathPrefix: "/api",
+          hostMatch: "exact",
+          protocol: "https",
+          port: 443,
+          url: "https://demo.lndo.site/api",
+        }),
+        routeRow({
+          host: "demo.lndo.site",
+          pathPrefix: "/api",
+          hostMatch: "exact",
+          protocol: "http",
+          port: 80,
+          url: "http://demo.lndo.site/api",
+        }),
         pending,
       ],
     },
     {
       name: "database",
       state: "stopped",
+      routes: [],
       connections: [
         ...connections(["postgresql://lando@localhost:5432/appdb"], "host", "inactive"),
         ...connections(["postgresql://lando@database:5432/appdb"], "app", "inactive"),
@@ -41,12 +56,13 @@ const result: RestartAppResult = {
     {
       name: "你好-worker",
       state: "unknown",
+      routes: [],
       connections: [
         ...connections(["http://localhost:4000"], "host", "unknown"),
         ...connections(["http://你好-worker:4000"], "app", "unknown"),
       ],
     },
-    { name: "migrate", state: "completed", connections: [] },
+    { name: "migrate", state: "completed", connections: [], routes: [] },
   ],
 };
 
@@ -59,7 +75,7 @@ const decorated = (columns: number): RenderContext => ({
 });
 
 const plainLine =
-  "restarted: connection-demo - web (running) Host: https://demo.lndo.site/api, http://demo.lndo.site/api, demo.lndo.site/pending → 3000/tcp [pending · not published; inactive] App Network: http://web:3000; database (stopped) Host: postgresql://lando@localhost:5432/appdb [inactive] App Network: postgresql://lando@database:5432/appdb [inactive]; 你好-worker (unknown) Host: http://localhost:4000 [unknown] App Network: http://你好-worker:4000 [unknown]; migrate (completed) no endpoints";
+  "restarted: connection-demo - web (running) Host: https://demo.lndo.site/api, http://demo.lndo.site/api, demo.lndo.site/pending → 3000/tcp [https; pending · not published; inactive] App Network: http://web:3000; database (stopped) Host: postgresql://lando@localhost:5432/appdb [inactive] App Network: postgresql://lando@database:5432/appdb [inactive]; 你好-worker (unknown) Host: http://localhost:4000 [unknown] App Network: http://你好-worker:4000 [unknown]; migrate (completed) no endpoints";
 
 describe("restart result rendering", () => {
   test("groups each service with both scopes under the quiet Restarted summary", () => {

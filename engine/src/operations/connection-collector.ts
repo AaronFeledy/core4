@@ -1,5 +1,11 @@
 import { completionIntentServices } from "@lando/container-runtime/dependency-gates";
-import type { AppPlan, ServiceContainerChange, ServiceState, StartedService } from "@lando/sdk/schema";
+import type {
+  AppPlan,
+  RouteEvidence,
+  ServiceContainerChange,
+  ServiceState,
+  StartedService,
+} from "@lando/sdk/schema";
 import {
   RouterService,
   RuntimeProviderRegistry,
@@ -14,51 +20,73 @@ import {
   projectServiceConnections,
   serviceStateOf,
 } from "./service-connections.ts";
+import { projectServiceRoutes } from "./service-routes.ts";
 
-export interface ObservedService {
+export interface ServiceAddressObservation {
   readonly name: string;
   readonly state: ServiceState;
+  readonly runtime?: Pick<ServiceRuntimeInfo, "publications">;
+}
+
+export interface ObservedService extends ServiceAddressObservation {
   readonly runtime: ServiceRuntimeInfo;
 }
 
 export type CollectedService = StartedService;
 
-export const collectObservedConnections = Effect.fn("Connections.collectObserved")(function* (
-  plan: AppPlan,
-  rows: readonly ObservedService[],
-) {
+export const observePlanRoutes = Effect.fnUntraced(function* (plan: AppPlan) {
   const router = yield* Effect.serviceOption(RouterService);
+  return router._tag === "Some" && plan.routes.length > 0
+    ? yield* router.value
+        .observeRoutes(routeOwnerFromPlan(plan), plan.routes)
+        .pipe(Effect.catchTag("ProxyError", () => Effect.succeed(undefined)))
+    : undefined;
+});
+
+export const projectObservedServices = (
+  plan: AppPlan,
+  rows: readonly ServiceAddressObservation[],
+  routeEvidence: RouteEvidence | undefined,
+) => {
   const enabled = routerEnabled(plan);
-  const routeEvidence =
-    router._tag === "Some" && plan.routes.length > 0
-      ? yield* router.value
-          .observeRoutes(routeOwnerFromPlan(plan), plan.routes)
-          .pipe(Effect.catchTag("ProxyError", () => Effect.succeed(undefined)))
-      : undefined;
   const services = Object.values(plan.services);
   return rows.map((row): CollectedService => {
     const service = services.find((service) => String(service.name) === row.name);
+    const publications = row.runtime?.publications ?? { status: "unknown" };
     return {
       name: row.name,
       state: row.state,
       connections:
         service === undefined
-          ? row.runtime.publications.status === "present"
-            ? row.runtime.publications.bindings.map((binding) =>
-                observedPublicationConnection(binding, row.state),
-              )
+          ? publications.status === "present"
+            ? publications.bindings.map((binding) => observedPublicationConnection(binding, row.state))
             : []
           : projectServiceConnections({
               plan,
               service,
               state: row.state,
-              publications: row.runtime.publications,
+              publications,
+            }),
+      routes:
+        service === undefined
+          ? []
+          : projectServiceRoutes({
+              service,
+              state: row.state,
               routes: plan.routes,
               routerEnabled: enabled,
               ...(routeEvidence === undefined ? {} : { routeEvidence }),
             }),
     };
   });
+};
+
+export const collectObservedConnections = Effect.fn("Connections.collectObserved")(function* (
+  plan: AppPlan,
+  rows: readonly ServiceAddressObservation[],
+) {
+  const routeEvidence = yield* observePlanRoutes(plan);
+  return projectObservedServices(plan, rows, routeEvidence);
 });
 
 export const observeService = (plan: AppPlan, runtime: ServiceRuntimeInfo): ObservedService => ({
@@ -102,7 +130,7 @@ export const startedServices = (
   rows: readonly CollectedService[],
   containers?: Readonly<Record<string, ServiceContainerChange>>,
 ): readonly StartedService[] =>
-  rows.map(({ name, state, connections }) => {
+  rows.map(({ name, state, connections, routes }) => {
     const container = containers?.[name];
-    return { name, state, connections, ...(container === undefined ? {} : { container }) };
+    return { name, state, connections, routes, ...(container === undefined ? {} : { container }) };
   });

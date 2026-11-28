@@ -225,17 +225,26 @@ describe("selected service start route URLs", () => {
     );
   });
 
-  test("refuses before apply when a running unselected consumer would see a different URL", async () => {
+  test.each([
+    { member: undefined, prior: "http://web.test:8080", hostname: "web-new.test", refuses: true },
+    { member: "publicPort", prior: "http://web.test:9080", hostname: "web.test", refuses: true },
+    { member: "scheme", prior: "http://web.test:9080", hostname: "web.test", refuses: false },
+  ] as const)("checks retained route facts before apply ($member, $prior)", async (row) => {
     const consumer = {
       ...redis,
       extensions: {
         ...redis.extensions,
-        "@lando/engine/realized-route-urls": { web: "http://web.test:8080" },
+        "@lando/engine/realized-route-urls": { web: row.prior },
       },
-      environment: publicUrl,
+      environment: {
+        PUBLIC_URL: {
+          _tag: "RouteText",
+          parts: [{ service: web.name, ...(row.member ? { member: row.member } : {}), encoding: "raw" }],
+        },
+      },
     } satisfies ServicePlan;
     const applied = appliedApp(consumer);
-    const desired: AppPlan = { ...applied, routes: [{ ...route, hostname: "web-new.test" }] };
+    const desired: AppPlan = { ...applied, routes: [{ ...route, hostname: row.hostname }] };
     const selected = runStart(desired, {
       services: [web.name],
       router: publicUrlRouter(),
@@ -243,6 +252,11 @@ describe("selected service start route URLs", () => {
       resolveAppliedPlan: () => Effect.succeed(applied),
     });
     const result = await Effect.runPromise(selected.operation.pipe(Effect.result));
+    if (!row.refuses) {
+      expect(result._tag).toBe("Success");
+      expect(Object.keys(selected.applyCalls[0]?.plan.services ?? {})).toEqual([web.name]);
+      return;
+    }
     expect(result).toMatchObject({
       _tag: "Failure",
       failure: {

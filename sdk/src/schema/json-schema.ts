@@ -557,6 +557,7 @@ import { ServiceContainerChange, ServiceInfo, ServiceInfoLogSource, StartedServi
 import { ServiceLauncherMarker, ServiceLaunchers } from "./service-launchers.ts";
 import { MountObservation, ObservedMount, ServiceInfoMount } from "./service-mount.ts";
 import { GeneratedCertificateEndpoint } from "./service-resolution.ts";
+import { ServiceRoute } from "./service-route.ts";
 import {
   BringDownOutcome,
   ContainerBringDownReceipt,
@@ -1011,6 +1012,7 @@ const basePublicSchemaRegistry = schemaRegistry({
   LogicalEndpoint,
   GeneratedCertificateEndpoint,
   ServiceConnection,
+  ServiceRoute,
   ServiceState,
   ServiceLauncherMarker,
   ServiceLaunchers,
@@ -1336,6 +1338,7 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   GeneratedCertificateEndpoint:
     "Owned launcher HTTPS listener that can serve the service's generated certificate.",
   ServiceConnection: "Scoped service connection with explicit binding and activity evidence.",
+  ServiceRoute: "Router route reported for a service, with binding and activity evidence.",
   ServiceState: "Shared observed and supervised service lifecycle vocabulary.",
   ServiceLauncherMarker: "Colon-prefixed kebab-case launcher marker such as :local-bin or :node-install-run.",
   ServiceLaunchers:

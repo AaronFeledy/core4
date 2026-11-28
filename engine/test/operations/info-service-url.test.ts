@@ -17,7 +17,7 @@ const route = (hostname: string, scheme: RoutePlan["scheme"], pathPrefix?: strin
 });
 
 const plain = route("plain.demo.lndo.site", "http");
-const wildcard = route("*.demo.lndo.site", "https");
+const wildcard = route("*.demo.lndo.site", "both");
 const secure = route("Web.Demo.lndo.site", "both", "/api");
 
 const authority = (hostname: string, scheme: ProxyAuthority["scheme"]): ProxyAuthority => ({
@@ -35,9 +35,13 @@ const urlOf = async (input: {
   readonly authorities?: readonly ProxyAuthority[];
   readonly routerEnabled?: boolean;
   readonly applied?: readonly RoutePlan[] | "unreadable";
+  readonly run?: "running" | "exited";
 }) => {
   const planned: AppPlan = {
     ...plan,
+    services: {
+      [web.name]: { ...web, endpoints: [{ kind: "internal", protocol: "http", port: 3000 }] },
+    },
     routes: [...input.routes],
     router: { enabled: input.routerEnabled ?? true },
   };
@@ -48,7 +52,7 @@ const urlOf = async (input: {
         app: planned.id,
         service: web.name,
         providerId: planned.provider,
-        status: "running" as const,
+        status: input.run ?? "running",
         publications: { status: "unknown" as const },
       }),
   };
@@ -102,10 +106,10 @@ describe("service url", () => {
   test("is absent while the primary route has no router authority", async () => {
     const row = await urlOf({ routes: [plain, secure], authorities: [authority(plain.hostname, "http")] });
     expect(row?.url).toBeUndefined();
-    expect(row?.connections.filter((row) => row.source === "route").map((row) => row.binding)).toEqual([
-      "assigned",
-      "pending",
-      "pending",
+    expect(row?.routes).toMatchObject([
+      { binding: "assigned", hostMatch: "exact" },
+      { binding: "pending", hostMatch: "exact" },
+      { binding: "pending", hostMatch: "exact" },
     ]);
   });
 
@@ -114,7 +118,33 @@ describe("service url", () => {
   });
 
   test("is absent without a concrete route", async () => {
-    expect(await urlOf({ routes: [wildcard] })).not.toHaveProperty("url");
+    const row = await urlOf({ routes: [wildcard] });
+    expect(row).not.toHaveProperty("url");
+    expect(row?.connections.filter((connection) => connection.scope === "host")).toEqual([]);
+    const routes = row?.routes;
+    expect(routes).toMatchObject([
+      { host: "*.demo.lndo.site", hostMatch: "pattern", protocol: "http", port: 38080 },
+      { host: "*.demo.lndo.site", hostMatch: "pattern", protocol: "https", port: 38443 },
+    ]);
+    expect(routes?.map((connection) => "url" in connection)).toEqual([false, false]);
+  });
+
+  test("keeps hostname patterns pending when the router reports no port", async () => {
+    const row = await urlOf({ routes: [wildcard], authorities: [] });
+    const routes = row?.routes;
+    expect(routes).toMatchObject([
+      { binding: "pending", hostMatch: "pattern", protocol: "http" },
+      { binding: "pending", hostMatch: "pattern", protocol: "https" },
+    ]);
+    expect(routes?.map((connection) => "port" in connection || "url" in connection)).toEqual([false, false]);
+  });
+
+  test("keeps the primary exact URL when the configured route is inactive", async () => {
+    const row = await urlOf({ routes: [wildcard, secure], run: "exited" });
+    expect(row?.url).toBe("https://web.demo.lndo.site:38443/api");
+    expect(
+      row?.routes.find((report) => report.hostMatch === "exact" && report.protocol === "https"),
+    ).toMatchObject({ binding: "assigned", state: "inactive" });
   });
 
   test("follows the applied route table over the shown plan", async () => {

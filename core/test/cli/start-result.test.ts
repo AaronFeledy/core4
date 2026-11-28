@@ -2,10 +2,11 @@ import { describe, expect, test } from "bun:test";
 
 import { displayWidth, stripAnsi } from "@lando/renderer/console-layout";
 import type { StartAppResult } from "@lando/sdk/app";
+import type { ServiceRoute } from "@lando/sdk/schema";
 import { startSpec } from "../../src/cli/command-specs/app/start.ts";
 import { buildStartSummary, renderStartAppResult } from "../../src/cli/commands/start-result.ts";
 import type { RenderContext } from "../../src/cli/renderer-boundary.ts";
-import { connections } from "./connection-fixtures";
+import { connections, routeRow } from "./connection-fixtures";
 
 const ESC = String.fromCharCode(27);
 const PINK = `${ESC}[95m`;
@@ -39,29 +40,97 @@ const readyResult: StartAppResult = {
     {
       name: "web",
       state: "running",
-      connections: connections(["http://localhost:3000", "https://my-app.lndo.site"]),
+      connections: connections(["http://localhost:3000"]),
+      routes: [
+        routeRow({
+          host: "my-app.lndo.site",
+          protocol: "https",
+          port: 443,
+          pathPrefix: "",
+          hostMatch: "exact",
+          url: "https://my-app.lndo.site",
+        }),
+      ],
     },
-    { name: "database", state: "ready", connections: connections(["tcp://localhost:5432"]) },
+    { name: "database", state: "ready", connections: connections(["tcp://localhost:5432"]), routes: [] },
   ],
 };
 
 const mixedResult: StartAppResult = {
   app: "my-app",
   servicesStarted: [
-    { name: "web", state: "running", connections: connections(["http://localhost:3000"]) },
+    { name: "web", state: "running", connections: connections(["http://localhost:3000"]), routes: [] },
     {
       name: "database",
       state: "completed",
       connections: connections(["tcp://localhost:5432"], "host", "inactive"),
+      routes: [],
     },
   ],
 };
 
 const emptyResult: StartAppResult = { app: "my-app", servicesStarted: [] };
 
+test.each([true, false])(
+  "start recommends hostname selection only for patterns (present=%s)",
+  (hasPattern) => {
+    const servicesStarted = readyResult.servicesStarted.map((service) =>
+      hasPattern && service.name === "web"
+        ? {
+            ...service,
+            routes: [
+              ...service.routes,
+              routeRow({
+                host: "*.wild.test",
+                hostMatch: "pattern",
+                protocol: "https",
+                port: 443,
+                pathPrefix: "",
+              }),
+            ],
+          }
+        : service,
+    );
+    const sections = buildStartSummary({ ...readyResult, servicesStarted }).sections;
+    const sectionsWithHint = sections.filter(({ notes }) =>
+      notes?.some((note) => note.includes("lando open <hostname>")),
+    );
+    expect(sectionsWithHint.map(({ title }) => title)).toEqual(hasPattern ? ["Route patterns"] : []);
+  },
+);
+
+test("lists both schemes of a pending exact route without linking either", () => {
+  const pending: ServiceRoute = {
+    host: "demo.lndo.site",
+    hostMatch: "exact",
+    pathPrefix: "/pending",
+    endpoint: { port: 3000, transport: "tcp", names: [], primary: true },
+    protocol: "https",
+    binding: "pending",
+    state: "inactive",
+  };
+  const summary = buildStartSummary({
+    app: "demo",
+    servicesStarted: [
+      {
+        name: "web",
+        state: "running",
+        connections: [],
+        routes: [{ ...pending, protocol: "http" }, pending],
+      },
+    ],
+  });
+  expect(summary.sections.find((section) => section.title === "Host")?.rows).toEqual([
+    { label: "demo.lndo.site/pending → 3000/tcp [https; pending · not published; inactive]" },
+    { label: "demo.lndo.site/pending → 3000/tcp [http; pending · not published; inactive]" },
+  ]);
+});
+
 const stayedDownResult: StartAppResult = {
   app: "my-app",
-  servicesStarted: [{ name: "web", state: "running", connections: connections(["http://localhost:3000"]) }],
+  servicesStarted: [
+    { name: "web", state: "running", connections: connections(["http://localhost:3000"]), routes: [] },
+  ],
   servicesStayedDown: ["redis", "worker"],
 };
 
@@ -72,11 +141,13 @@ const duplicateResult: StartAppResult = {
       name: "web",
       state: "running",
       connections: connections(["http://localhost:3000", "https://my-app.lndo.site"]),
+      routes: [],
     },
     {
       name: "api",
       state: "running",
       connections: connections(["http://localhost:3000", "http://localhost:8080"]),
+      routes: [],
     },
   ],
 };
@@ -87,18 +158,26 @@ const cjkResult: StartAppResult = {
     {
       name: "你好世界-web",
       state: "running",
+      routes: [],
       connections: [
         ...connections(["http://localhost:3000"]),
         ...connections(["http://你好世界-web:3000"], "app"),
       ],
     },
-    { name: "데이터베이스", state: "ready", connections: connections(["tcp://데이터베이스:5432"], "app") },
+    {
+      name: "데이터베이스",
+      state: "ready",
+      connections: connections(["tcp://데이터베이스:5432"], "app"),
+      routes: [],
+    },
   ],
 };
 
 const oneReadyResult: StartAppResult = {
   app: "my-app",
-  servicesStarted: [{ name: "web", state: "running", connections: connections(["http://localhost:3000"]) }],
+  servicesStarted: [
+    { name: "web", state: "running", connections: connections(["http://localhost:3000"]), routes: [] },
+  ],
 };
 
 // A moved database port: reachable from other services on the app network only.
@@ -109,9 +188,10 @@ const appNetworkResult: StartAppResult = {
       name: "web",
       state: "running",
       connections: [...connections(["https://my-app.lndo.site"]), ...connections(["http://web:3000"], "app")],
+      routes: [],
     },
-    { name: "db", state: "ready", connections: connections(["tcp://db:3307"], "app") },
-    { name: "worker", state: "completed", connections: [] },
+    { name: "db", state: "ready", connections: connections(["tcp://db:3307"], "app"), routes: [] },
+    { name: "worker", state: "completed", connections: [], routes: [] },
   ],
 };
 
@@ -295,7 +375,9 @@ describe("renderStartAppResult app-network addresses", () => {
   test("notes missing host URLs even when every service has an app-network address", () => {
     const summary = buildStartSummary({
       app: "my-app",
-      servicesStarted: [{ name: "db", state: "ready", connections: connections(["tcp://db:3307"], "app") }],
+      servicesStarted: [
+        { name: "db", state: "ready", connections: connections(["tcp://db:3307"], "app"), routes: [] },
+      ],
     });
     expect(summary.sections[0]?.rows).toEqual([]);
     expect(summary.sections[0]?.notes).toEqual(["No published endpoints."]);

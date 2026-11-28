@@ -152,11 +152,8 @@ test.each(["restart", "rebuild"] as const)(
     const rows = successOf(timed.exit).servicesStarted;
     expect(rows).toHaveLength(1);
     expect(rows[0]?.state).toBe("completed");
-    expect(rows[0]?.connections.map((connection) => connection.state)).toEqual([
-      "inactive",
-      "inactive",
-      "inactive",
-    ]);
+    expect(rows[0]?.connections.map((connection) => connection.state)).toEqual(["inactive", "inactive"]);
+    expect(rows[0]?.routes).toMatchObject([{ host: "job.example.test", state: "inactive" }]);
   },
 );
 

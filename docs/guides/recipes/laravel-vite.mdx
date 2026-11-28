@@ -26,13 +26,17 @@ services:
     port: 5173
     environment:
       APP_URL: "{{ services.appserver.url }}"
-      VITE_DEV_SERVER_URL: "{{ services.node.url }}"
+      DEV_SERVER_HOST: "{{ service.hostname }}"
+      DEV_SERVER_PORT: "{{ service.publicPort }}"
+      DEV_SERVER_SCHEME: "{{ service.scheme }}"
     routes:
       - hostname: "vite.{{ app.name }}.{{ proxy.defaultDomain }}"
         scheme: both
 ```
 
-`{{ services.<name>.url }}` is the URL the router publishes for that service, the same one `lando info` prints, port included when the router isn't on 443. Lando fills it in when it creates the container. Laravel reads `APP_URL` on `appserver`. Vite runs in `node`, so `node` gets the app URL too, plus its own URL as `VITE_DEV_SERVER_URL`.
+`{{ services.<name>.url }}` is the URL the router publishes for that service, the same one `lando info` prints, port included when the router isn't on 443. Lando fills it in when it creates the container. Laravel reads `APP_URL` on `appserver`. Vite runs in `node`, so `node` gets the app URL too.
+
+Vite's config wants `node`'s own address in pieces, not as one URL. `{{ service.hostname }}`, `{{ service.publicPort }}`, and `{{ service.scheme }}` are the hostname, router port, and scheme of the route on the service you're writing. `publicPort` is the port the browser dials, such as `443`, not the `5173` Vite listens on. See [Read a service's public URL](../landofile/expressions.mdx#read-a-services-public-url).
 
 Keep the rest of the recipe's `appserver` block, including any `environment` keys it already has, and leave `database`, `cache`, and `tooling` as they are. If you leave `endpoints: []` in place, `lando app:config:lint` reports `Route vite.vite-demo.lndo.site for service node does not resolve to an HTTP endpoint.`
 
@@ -50,10 +54,10 @@ Check what the two services received:
 
 ```sh
 lando exec appserver -- printenv APP_URL
-lando exec node -- printenv VITE_DEV_SERVER_URL
+lando exec node -- printenv DEV_SERVER_HOST DEV_SERVER_PORT DEV_SERVER_SCHEME
 ```
 
-On port 443, those print `https://vite-demo.lndo.site` and `https://vite.vite-demo.lndo.site`. If the router uses another port, both URLs include it, for example `:8443`. Use the printed URLs in the curl checks below. If the router later moves to another port, the next `lando start` recreates both services with the new URLs.
+On port 443, the first prints `https://vite-demo.lndo.site`, and the second prints `vite.vite-demo.lndo.site`, `443`, and `https` on three lines. If the router uses another port, such as `8443`, the URL includes it and `DEV_SERVER_PORT` is that port. Add it to the URLs in the curl checks below. If the router later moves to another port, the next `lando start` recreates both services with the new values.
 
 ## Point Laravel at MariaDB and the proxy
 
@@ -81,11 +85,10 @@ By default, `laravel-vite-plugin` allows cross-origin requests from `APP_URL`, l
 
 ## Point Vite at the proxy
 
-In `vite.config.js`, keep the skeleton's imports and `plugins` array as they are. Add the two `const` lines above `defineConfig` and replace only the `server` block:
+In `vite.config.js`, keep the skeleton's imports and `plugins` array as they are. Add the `const` line above `defineConfig` and replace only the `server` block:
 
 ```js
-const devServer = new URL(process.env.VITE_DEV_SERVER_URL ?? 'http://localhost:5173');
-const secure = devServer.protocol === 'https:';
+const host = process.env.DEV_SERVER_HOST ?? 'localhost';
 
 export default defineConfig({
     // keep your existing plugins
@@ -93,11 +96,11 @@ export default defineConfig({
         host: '0.0.0.0',
         port: 5173,
         strictPort: true,
-        allowedHosts: [devServer.hostname],
+        allowedHosts: [host],
         hmr: {
-            host: devServer.hostname,
-            protocol: secure ? 'wss' : 'ws',
-            clientPort: Number(devServer.port) || (secure ? 443 : 80),
+            host,
+            protocol: process.env.DEV_SERVER_SCHEME === 'https' ? 'wss' : 'ws',
+            clientPort: Number(process.env.DEV_SERVER_PORT ?? 5173),
         },
         watch: {
             ignored: ['**/storage/framework/views/**'],
@@ -106,7 +109,7 @@ export default defineConfig({
 });
 ```
 
-Nothing here names your app or a port. The `localhost` fallback only keeps `npm run build` working where the variable isn't set, such as a deploy pipeline. `URL.port` is empty when the router is on the scheme's default port, so `clientPort` falls back to `443` or `80`. Keep `server.port` at `5173`; that's the port inside the container. Lando's proxy terminates HTTPS and forwards HTTP and WebSocket traffic to Node on `5173`, so Vite listens on `0.0.0.0` without `server.https`. `allowedHosts` lets Vite answer the proxy hostname, and `strictPort` stops Vite from drifting off the declared endpoint.
+Nothing here names your app or the router's port. The `localhost` and `5173` fallbacks only keep `npm run build` working where the variables aren't set, such as a deploy pipeline. `clientPort` is the port the browser dials for the HMR socket, so it comes from `DEV_SERVER_PORT`. Keep `server.port` at `5173`; that's the port inside the container. Lando's proxy terminates HTTPS and forwards HTTP and WebSocket traffic to Node on `5173`, so Vite listens on `0.0.0.0` without `server.https`. `allowedHosts` lets Vite answer the proxy hostname, and `strictPort` stops Vite from drifting off the declared endpoint.
 
 Leave `server.origin` unset. The plugin builds the URL it writes to `public/hot` from the `hmr` settings. Setting `server.origin` overrides that URL and, unless you also configure `server.cors`, replaces the entire default CORS origin list with that one origin.
 
@@ -170,7 +173,9 @@ lando app:config --format=json
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"node\":\\s*\\{[^}]*\"type\":\\s*\"node:22\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"node\":\\s*\\{[^}]*\"port\":\\s*5173" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"hostname\":\\s*\"vite\\.\\{\\{ app\\.name \\}\\}\\.\\{\\{ proxy\\.defaultDomain \\}\\}\"" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"VITE_DEV_SERVER_URL\":\\s*\"\\{\\{ services\\.node\\.url \\}\\}\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"DEV_SERVER_HOST\":\\s*\"\\{\\{ service\\.hostname \\}\\}\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"DEV_SERVER_PORT\":\\s*\"\\{\\{ service\\.publicPort \\}\\}\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"DEV_SERVER_SCHEME\":\\s*\"\\{\\{ service\\.scheme \\}\\}\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"APP_URL\":\\s*\"\\{\\{ services\\.appserver\\.url \\}\\}\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"npm\":\\s*\\{[^}]*\"service\":\\s*\"node\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appserver\":\\s*\\{[^}]*\"framework\":\\s*\"laravel\"" } }} />
@@ -180,14 +185,14 @@ lando app:config --format=json
       <Cleanup />
     </Step>
   </Scenario>
-  <Scenario id="runtime-urls" layer="e2e" timeout={300000} render={false} reason="Check that PHP and Node receive their published URLs">
+  <Scenario id="runtime-urls" layer="e2e" timeout={300000} render={false} reason="Check that PHP receives its URL and Node receives its hostname, router port, and scheme">
     <Step name="start">
       <UseFixture name="laravel-vite" />
       <Run command="lando start --format=json" />
     </Step>
     <Step name="check-urls">
       <Verify command="lando exec appserver -- printenv APP_URL" expect={{ stdout: { regex: "^https://laravel-vite\\.lndo\\.site(?::[0-9]+)?/?\\s*$" } }} />
-      <Verify command="lando exec node -- printenv VITE_DEV_SERVER_URL" expect={{ stdout: { regex: "^https://vite\\.laravel-vite\\.lndo\\.site(?::[0-9]+)?/?\\s*$" } }} />
+      <Verify command="lando exec node -- printenv DEV_SERVER_HOST DEV_SERVER_PORT DEV_SERVER_SCHEME" expect={{ stdout: { regex: "^vite\\.laravel-vite\\.lndo\\.site\\r?\\n[0-9]+\\r?\\nhttps\\s*$" } }} />
     </Step>
     <Step name="cleanup">
       <Cleanup />

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { authoredInvocationSites, compileInvocationSites } from "@lando/landofile/compiled-sites";
 import type { LandoEvent } from "@lando/sdk/events";
-import type { AppPlan, EnvironmentValue, RoutePlan, ToolingTaskShape } from "@lando/sdk/schema";
+import type { AppPlan, EnvironmentValue, RoutePlan, RouteUrlPart, ToolingTaskShape } from "@lando/sdk/schema";
 import { EventService, RouterService, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect, Layer } from "effect";
@@ -22,7 +22,7 @@ const route: RoutePlan = {
   backend: { service: web.name, port: 3000, protocol: "http" },
 };
 
-const part = (member?: "hostname" | "origin") => ({
+const part = (member?: RouteUrlPart["member"]): RouteUrlPart => ({
   service: web.name,
   ...(member === undefined ? {} : { member }),
   encoding: "raw" as const,
@@ -121,20 +121,24 @@ describe("route fact drift", () => {
     expect(notices).toEqual([`${warnings[0]?.message} ${warnings[0]?.remediation}`]);
   });
 
-  test("records the warning for machine output without printing it", async () => {
-    const stale = applied(
-      { ORIGIN: { _tag: "RouteText", parts: [part("origin")] } },
-      "https://applied.test:9443/",
-    );
-    const { warnings, notices } = await resolve(stale, { machineOutput: true });
-    expect(warnings.map((warning) => [warning.code, warning.message])).toEqual([
-      [
-        "LANDO_ROUTE_URL_DRIFT",
-        "web's recorded environment has https://applied.test:9443 for services.web.origin, but it now resolves to https://applied.test:8443.",
-      ],
-    ]);
-    expect(notices).toEqual([]);
-  });
+  test.each([
+    ["origin", "https://applied.test:9443/", "https://applied.test:9443", "https://applied.test:8443"],
+    ["publicPort", "https://applied.test:9443/", "9443", "8443"],
+    ["scheme", "http://applied.test:8443/app", "http", "https"],
+  ] as const)(
+    "records a %s warning when it changes without printing it",
+    async (fact, url, before, after) => {
+      const stale = applied({ ROUTE_FACT: { _tag: "RouteText", parts: [part(fact)] } }, url);
+      const { warnings, notices } = await resolve(stale, { machineOutput: true });
+      expect(warnings.map((warning) => [warning.code, warning.message])).toEqual([
+        [
+          "LANDO_ROUTE_URL_DRIFT",
+          `web's recorded environment has ${before} for services.web.${fact}, but it now resolves to ${after}.`,
+        ],
+      ]);
+      expect(notices).toEqual([]);
+    },
+  );
 
   test.each([
     {
@@ -145,6 +149,21 @@ describe("route fact drift", () => {
     {
       name: "an origin reader after a path-only edit",
       environment: { ORIGIN: { _tag: "RouteText", parts: [part("origin")] } },
+      recorded: "https://applied.test:8443/old",
+    },
+    {
+      name: "a publicPort reader after a path-only edit",
+      environment: { PORT: { _tag: "RouteText", parts: [part("publicPort")] } },
+      recorded: "https://applied.test:8443/old",
+    },
+    {
+      name: "a scheme reader after a port move",
+      environment: { SCHEME: { _tag: "RouteText", parts: [part("scheme")] } },
+      recorded: "https://applied.test:9443/app",
+    },
+    {
+      name: "a scheme reader after a path-only edit",
+      environment: { SCHEME: { _tag: "RouteText", parts: [part("scheme")] } },
       recorded: "https://applied.test:8443/old",
     },
     {

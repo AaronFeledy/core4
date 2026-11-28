@@ -97,8 +97,9 @@ test("observes routes once for the plan and retains unmatched runtime rows witho
   expect(rows.at(-1)?.connections).toMatchObject([
     { protocol: "tcp", endpoint: { names: [], primary: false } },
   ]);
+  expect(rows.map((row) => row.routes)).toMatchObject([[{ host: "web.test", binding: "pending" }], [], []]);
   expect(rows.map((row) => Object.keys(row).sort())).toEqual(
-    Array.from({ length: 3 }, () => ["connections", "name", "state"]),
+    Array.from({ length: 3 }, () => ["connections", "name", "routes", "state"]),
   );
 });
 
@@ -159,7 +160,8 @@ test("observes cwd scratch routes under the scratch owner instead of the source 
     collectObservedConnections(scratch, [runtime]).pipe(Effect.provideService(RouterService, router)),
   );
 
-  expect(rows[0]?.connections.find((connection) => connection.source === "route")).toMatchObject({
+  expect(rows[0]?.routes[0]).toMatchObject({
+    hostMatch: "exact",
     url: "https://scratch.test:38443",
     state: "active",
   });

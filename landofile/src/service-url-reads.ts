@@ -7,15 +7,17 @@ import { PUBLIC_ROUTE_FACTS, type PublicRouteFact } from "@lando/sdk/schema";
  */
 export type ServiceUrlReadRefusal = "computed-service" | "computed-member" | "whole-service";
 
-export interface ServiceUrlReads {
+type RefusedRead =
+  | { readonly refusal: "computed-service"; readonly fact: PublicRouteFact }
+  | { readonly refusal: Exclude<ServiceUrlReadRefusal, "computed-service"> };
+
+export type ServiceUrlReads = {
   /**
-   * Services whose public route facts (`url`, `hostname`, `origin`) the expression reads through
-   * literal dot or bracket access, each with the facts read, in first-read order.
+   * Services whose public route facts (`url`, `hostname`, `origin`, `publicPort`, `scheme`) the
+   * expression reads through literal dot or bracket access, each with the facts read, in first-read order.
    */
   readonly services: ReadonlyMap<string, ReadonlySet<PublicRouteFact>>;
-  /** The first `services` read that names neither its service nor its member literally. */
-  readonly refusal?: ServiceUrlReadRefusal;
-}
+} & (RefusedRead | { readonly refusal?: never });
 
 /** A literal `services.<name>.<fact>` read, normalized from dot, bracket, and parenthesized forms. */
 export interface ServiceUrlReadPath {
@@ -72,7 +74,7 @@ type Classified =
       readonly rest: readonly PathSegment[];
     }
   | { readonly kind: "other" }
-  | { readonly kind: "refused"; readonly refusal: ServiceUrlReadRefusal };
+  | ({ readonly kind: "refused" } & RefusedRead);
 
 /** A literal non-URL member (`services[name].port`) is another fact's concern, never a URL read. */
 const classifySegments = (segments: readonly PathSegment[]): Classified => {
@@ -83,7 +85,7 @@ const classifySegments = (segments: readonly PathSegment[]): Classified => {
   if (!isPublicRouteFact(member)) return { kind: "other" };
   const service = staticName(first);
   return service === undefined
-    ? { kind: "refused", refusal: "computed-service" }
+    ? { kind: "refused", refusal: "computed-service", fact: member }
     : { kind: "route", service, fact: member, rest };
 };
 
@@ -98,12 +100,12 @@ export const serviceUrlReadPath = (node: ExpressionNode): ServiceUrlReadPath | u
 };
 
 /**
- * Every `services.<name>.<url|hostname|origin>` read in an expression, and whether any `services`
+ * Every `services.<name>.<url|hostname|origin|publicPort|scheme>` read, and whether any `services`
  * read is unclassifiable.
  */
 export const serviceUrlReads = (ast: ExpressionTemplate | ExpressionNode): ServiceUrlReads => {
   const services = new Map<string, Set<PublicRouteFact>>();
-  let refusal: ServiceUrlReadRefusal | undefined;
+  let refused: RefusedRead | undefined;
   const visitSegments = (segments: readonly PathSegment[]): void => {
     for (const segment of segments) if (segment.type === "dynamic") visit(segment.expr);
   };
@@ -128,9 +130,11 @@ export const serviceUrlReads = (ast: ExpressionTemplate | ExpressionNode): Servi
         // A computed-name route-fact read outranks other refusals: sites that admit no URL refuse only it.
         else if (
           classified.kind === "refused" &&
-          (refusal === undefined || classified.refusal === "computed-service")
-        )
-          refusal = classified.refusal;
+          (refused === undefined || classified.refusal === "computed-service")
+        ) {
+          const { kind: _, ...read } = classified;
+          refused = read;
+        }
         visitSegments(segments);
         return;
       }
@@ -156,7 +160,7 @@ export const serviceUrlReads = (ast: ExpressionTemplate | ExpressionNode): Servi
     for (const segment of ast.segments)
       if (segment.kind === "InterpolationSegment") visit(segment.expression);
   } else visit(ast);
-  return refusal === undefined ? { services } : { services, refusal };
+  return { services, ...refused };
 };
 
 /** True when the expression reads at least one public service route fact. */
@@ -164,8 +168,8 @@ export const readsServiceUrl = (ast: ExpressionTemplate | ExpressionNode): boole
   serviceUrlReads(ast).services.size > 0;
 
 /**
- * Whether an authored value path may read `{{ services.<name>.url }}` (or its `hostname` or
- * `origin`) at invocation: tooling commands, `cmds` steps, env values, and vars (literal, `sh`, and
+ * Whether a value path may read a public route fact (`url`, `hostname`, `origin`, `publicPort`, or
+ * `scheme`) at invocation: tooling commands, `cmds` steps, env values, and vars (literal, `sh`, and
  * var `env`), `toolingDefaults` env and literal vars, and Landofile event step `cmd`, `defer`,
  * `env`, and `if`. A v1 `hostEvents` step has only a command, so only its string form or `cmd` may.
  * Placement fields, selectors, Lando command inputs, task ids, and include fields never may.

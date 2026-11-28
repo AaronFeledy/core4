@@ -63,12 +63,6 @@ const publication = {
   source: Schema.Literal("publication").annotate({ description: "Direct host publication of the listener." }),
   protocol: network,
 };
-const route = {
-  scope: Schema.Literal("host").annotate({ description: "Connection is addressed from the host." }),
-  source: Schema.Literal("route").annotate({ description: "Router ingress connection." }),
-  protocol: Schema.Literals(["http", "https"]).annotate({ description: "External HTTP route scheme." }),
-  pathPrefix: Schema.String.annotate({ description: "Route path prefix retained in client URIs." }),
-};
 export const ServiceConnection = Schema.Union([
   Schema.Struct({
     ...common,
@@ -79,7 +73,5 @@ export const ServiceConnection = Schema.Union([
   }),
   Schema.Struct({ ...common, ...publication, ...assigned }),
   Schema.Struct({ ...common, ...publication, ...pending }),
-  Schema.Struct({ ...common, ...route, ...assigned }),
-  Schema.Struct({ ...common, ...route, ...pending }),
 ]);
 export type ServiceConnection = typeof ServiceConnection.Type;

@@ -341,7 +341,7 @@ test("lint reports route-fact reads that cannot resolve at invocation as errors"
         "tooling:",
         "  ping:",
         "    service: ':host'",
-        "    cmd: curl {{ services.web.hostname }} {{ services.ghost.origin }} {{ services.api.url }}",
+        "    cmd: curl {{ services.web.hostname }} {{ services.ghost.publicPort }} {{ services.api.scheme }}",
         "events:",
         "  pre-start:",
         "    - curl {{ services.api.url }}",
@@ -365,7 +365,7 @@ test("lint reports route-fact reads that cannot resolve at invocation as errors"
     expect(result.violations).toContainEqual(
       expect.objectContaining({
         reason: "unknown-service",
-        message: "services.ghost.origin names no service in this app.",
+        message: expect.stringContaining("services.ghost.publicPort is unavailable:"),
       }),
     );
     expect(result.valid).toBe(false);
@@ -433,7 +433,7 @@ test("lint tells a generated default route from a service with no HTTP listener 
         "tooling:",
         "  ping:",
         "    service: ':host'",
-        "    cmd: curl {{ services.web.url }} {{ services.cache.url }} {{ services.mystery.url }}",
+        "    cmd: curl {{ services.web.url }} {{ services.cache.scheme }} {{ services.mystery.url }}",
         "",
       ].join("\n"),
     );
@@ -445,18 +445,14 @@ test("lint tells a generated default route from a service with no HTTP listener 
         .filter((issue) => issue.rule === "landofile.tooling")
         .map((issue) => [issue.path.join("."), issue.reason, issue.message]),
     ).toEqual([
-      [
-        "tooling.ping.cmd",
-        "no-route",
-        "cache declares no routes and has no HTTP listener, so it gets no default route.",
-      ],
+      ["tooling.ping.cmd", "no-route", expect.stringContaining("services.cache.scheme is unavailable:")],
     ]);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
 });
 
-test.each(["url", "hostname", "origin"])(
+test.each(["url", "hostname", "origin", "publicPort", "scheme"])(
   "lint refuses a placement field that follows a var reading %s",
   async (fact) => {
     // Given

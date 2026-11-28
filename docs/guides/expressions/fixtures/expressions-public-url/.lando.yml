@@ -8,6 +8,8 @@ services:
       APP_URL: "{{ services.web.url }}"
       APP_HOST: "{{ service.hostname }}"
       APP_ORIGIN: "{{ service.origin }}"
+      APP_PORT: "{{ service.publicPort }}"
+      APP_SCHEME: "{{ service.scheme }}"
 proxy:
   web:
     - public-url.lndo.site:3000

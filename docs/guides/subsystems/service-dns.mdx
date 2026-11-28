@@ -18,10 +18,10 @@ lando start
 lando info
 ```
 
-`lando info` groups each service's connections by where you dial them from.
-Host connections are the addresses you reach from this machine: route URLs for
+`lando info` groups each service's addresses by where you dial them from.
+The Host row lists the addresses you reach from this machine: route URLs for
 your browser and published host ports, including a TCP port for a database you
-open from a desktop client. App Network connections are the addresses other
+open from a desktop client. The App Network row lists the addresses other
 services in the app use, spelled `protocol://<service>:<port>`, such as
 `tcp://database:3306`. A host URL is not the hostname PHP uses to reach MySQL;
 the App Network address is.

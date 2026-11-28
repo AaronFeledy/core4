@@ -174,5 +174,1065 @@
     "locations": [{ "surface": "schema:ServicePlan", "path": "$.anyOf" }],
     "justification": "Every existing ServicePlan arm gains only additive optional dataVersion. The arms keep their previous required fields and constraints; applied-state v14 decodes v13 records unchanged with the contract absent.",
     "persistedState": [{ "store": "applied-state", "version": 14 }]
+  },
+  {
+    "fingerprint": "sha256:3f3fbc997520cd8343c7a31525bdef180816f510b6949bee7ce78bc86e6b8460",
+    "changeKind": "unsupported-construct",
+    "locations": [
+      {
+        "surface": "command:apps:scratch:info",
+        "path": "$.routes.items.anyOf"
+      }
+    ],
+    "justification": "Unreleased. Router routes are reported in a required `routes` list beside `connections`; `connections` holds listeners and publications only. A wildcard route is a `hostMatch: pattern` entry with no `url`. Scratch route entries use the same address fields (`host`, `protocol`, `pathPrefix`, `hostMatch`) in place of `hostname` and `scheme`. No persisted store embeds these shapes."
+  },
+  {
+    "fingerprint": "sha256:c19085596235bb598224f12a8b7519198903d80d5da8e9c8cebfde576c27ed26",
+    "changeKind": "unsupported-construct",
+    "locations": [
+      {
+        "surface": "schema:ServiceConnection",
+        "path": "$.anyOf"
+      },
+      {
+        "surface": "schema:ServiceInfo",
+        "path": "$.connections.items.anyOf"
+      },
+      {
+        "surface": "schema:StartedService",
+        "path": "$.connections.items.anyOf"
+      }
+    ],
+    "justification": "Unreleased. Router routes are reported in a required `routes` list beside `connections`; `connections` holds listeners and publications only. A wildcard route is a `hostMatch: pattern` entry with no `url`. Scratch route entries use the same address fields (`host`, `protocol`, `pathPrefix`, `hostMatch`) in place of `hostname` and `scheme`. No persisted store embeds these shapes."
+  },
+  {
+    "fingerprint": "sha256:29a9f8e8f61be274ba3e87bba45621940e1b11c997ab655ccec86c61b1a180d1",
+    "changeKind": "property-added",
+    "locations": [
+      {
+        "surface": "schema:ServiceInfo",
+        "path": "$.routes"
+      },
+      {
+        "surface": "schema:StartedService",
+        "path": "$.routes"
+      }
+    ],
+    "justification": "Unreleased. Router routes are reported in a required `routes` list beside `connections`; `connections` holds listeners and publications only. A wildcard route is a `hostMatch: pattern` entry with no `url`. Scratch route entries use the same address fields (`host`, `protocol`, `pathPrefix`, `hostMatch`) in place of `hostname` and `scheme`. No persisted store embeds these shapes."
+  },
+  {
+    "fingerprint": "sha256:f32b6ae2ef742d02c289509d29538ce3bff8759b260baac8bb16570c6a2e640f",
+    "changeKind": "unsupported-construct",
+    "locations": [
+      {
+        "surface": "command:app:config",
+        "path": "$.anyOf"
+      },
+      {
+        "surface": "command:app:config:edit",
+        "path": "$.anyOf"
+      },
+      {
+        "surface": "command:app:config:set",
+        "path": "$.anyOf"
+      },
+      {
+        "surface": "command:app:config:unset",
+        "path": "$.anyOf"
+      },
+      {
+        "surface": "command:app:config:validate",
+        "path": "$.anyOf"
+      }
+    ],
+    "justification": "RouteUrlPart.member gains publicPort and scheme so {{ services.<name>.publicPort }} and {{ services.<name>.scheme }} lower from the same route and authority as the URL. Every previously accepted value remains accepted. Applied-state v15 records the members; v14 records decode unchanged and need no rewrite."
+  },
+  {
+    "fingerprint": "sha256:c6c45495e237671b3ce0f71f211745e889b7f02b656cd1595b96127f8b491890",
+    "changeKind": "unsupported-construct",
+    "locations": [
+      {
+        "surface": "command:meta:global:config",
+        "path": "$.anyOf"
+      },
+      {
+        "surface": "command:meta:global:config:edit",
+        "path": "$.anyOf"
+      },
+      {
+        "surface": "command:meta:global:config:set",
+        "path": "$.anyOf"
+      },
+      {
+        "surface": "command:meta:global:config:unset",
+        "path": "$.anyOf"
+      },
+      {
+        "surface": "command:meta:global:config:validate",
+        "path": "$.anyOf"
+      }
+    ],
+    "justification": "RouteUrlPart.member gains publicPort and scheme so {{ services.<name>.publicPort }} and {{ services.<name>.scheme }} lower from the same route and authority as the URL. Every previously accepted value remains accepted. Applied-state v15 records the members; v14 records decode unchanged and need no rewrite."
+  },
+  {
+    "fingerprint": "sha256:690ff23be434e80377d8ea3ebbb5a52280b7eb4fa7d9f60796bd2590997c2ae3",
+    "changeKind": "unsupported-construct",
+    "locations": [
+      {
+        "surface": "schema:AdminerServiceConfig",
+        "path": "$.environment.anyOf"
+      },
+      {
+        "surface": "schema:DotnetServiceConfig",
+        "path": "$.environment.anyOf"
+      },
+      {
+        "surface": "schema:LandofileShape",
+        "path": "$.toolingDefaults.env.anyOf"
+      },
+      {
+        "surface": "schema:LocalStackServiceConfig",
+        "path": "$.environment.anyOf"
+      },
+      {
+        "surface": "schema:MailhogServiceConfig",
+        "path": "$.environment.anyOf"
+      },
+      {
+        "surface": "schema:MailpitServiceConfig",
+        "path": "$.environment.anyOf"
+      },
+      {
+        "surface": "schema:MinIOServiceConfig",
+        "path": "$.environment.anyOf"
+      },
+      {
+        "surface": "schema:MssqlServiceConfig",
+        "path": "$.environment.anyOf"
+      },
+      {
+        "surface": "schema:MysqlServiceConfig",
+        "path": "$.environment.anyOf"
+      },
+      {
+        "surface": "schema:PhpMyAdminServiceConfig",
+        "path": "$.environment.anyOf"
+      },
+      {
+        "surface": "schema:PhpServiceConfig",
+        "path": "$.environment.anyOf"
+      },
+      {
+        "surface": "schema:RabbitMQServiceConfig",
+        "path": "$.environment.anyOf"
+      },
+      {
+        "surface": "schema:ServiceConfig",
+        "path": "$.environment.anyOf"
+      },
+      {
+        "surface": "schema:ServiceConfigInput",
+        "path": "$.environment.anyOf"
+      },
+      {
+        "surface": "schema:TemplateRenderContext",
+        "path": "$.landofile.toolingDefaults.env.anyOf"
+      },
+      {
+        "surface": "schema:TomcatServiceConfig",
+        "path": "$.environment.anyOf"
+      },
+      {
+        "surface": "schema:ToolingDefaultsShape",
+        "path": "$.env.anyOf"
+      },
+      {
+        "surface": "schema:ToolingStepShape",
+        "path": "$.env.anyOf"
+      },
+      {
+        "surface": "schema:ToolingTaskShape",
+        "path": "$.env.anyOf"
+      },
+      {
+        "surface": "schema:VarnishServiceConfig",
+        "path": "$.environment.anyOf"
+      }
+    ],
+    "justification": "RouteUrlPart.member gains publicPort and scheme so {{ services.<name>.publicPort }} and {{ services.<name>.scheme }} lower from the same route and authority as the URL. Every previously accepted value remains accepted. Applied-state v15 records the members; v14 records decode unchanged and need no rewrite."
+  },
+  {
+    "fingerprint": "sha256:84e8a2e364d09ffe734cc3f7e7fd8433c640e07e41b9d78632a5279062338fc8",
+    "changeKind": "unsupported-keyword",
+    "locations": [
+      {
+        "surface": "schema:AppPlan",
+        "path": "$.events.additionalProperties"
+      },
+      {
+        "surface": "schema:CurrentExecutableAppPlan",
+        "path": "$.events.additionalProperties"
+      },
+      {
+        "surface": "schema:DatasetContext",
+        "path": "$.plan.events.additionalProperties"
+      },
+      {
+        "surface": "schema:EventsPlan",
+        "path": "$.additionalProperties"
+      },
+      {
+        "surface": "schema:PostGlobalRebuildEvent",
+        "path": "$.plan.events.additionalProperties"
+      },
+      {
+        "surface": "schema:PostGlobalStartEvent",
+        "path": "$.plan.events.additionalProperties"
+      },
+      {
+        "surface": "schema:PostRestartEvent",
+        "path": "$.plan.events.additionalProperties"
+      },
+      {
+        "surface": "schema:PostScratchDestroyEvent",
+        "path": "$.plan.events.additionalProperties"
+      },
+      {
+        "surface": "schema:PostStartEvent",
+        "path": "$.plan.events.additionalProperties"
+      },
+      {
+        "surface": "schema:PreGlobalRebuildEvent",
+        "path": "$.plan.events.additionalProperties"
+      },
+      {
+        "surface": "schema:PreGlobalStartEvent",
+        "path": "$.plan.events.additionalProperties"
+      },
+      {
+        "surface": "schema:PreRestartEvent",
+        "path": "$.plan.events.additionalProperties"
+      },
+      {
+        "surface": "schema:PreScratchDestroyEvent",
+        "path": "$.plan.events.additionalProperties"
+      },
+      {
+        "surface": "schema:PreStartEvent",
+        "path": "$.plan.events.additionalProperties"
+      },
+      {
+        "surface": "schema:TunnelStartRequest",
+        "path": "$.plan.events.additionalProperties"
+      }
+    ],
+    "justification": "RouteUrlPart.member gains publicPort and scheme so {{ services.<name>.publicPort }} and {{ services.<name>.scheme }} lower from the same route and authority as the URL. Every previously accepted value remains accepted. Applied-state v15 records the members; v14 records decode unchanged and need no rewrite."
+  },
+  {
+    "fingerprint": "sha256:a190c6e8fdf9186d025daa823f8aa21966eaae1fbb73ab9ebf2eca5618c9d315",
+    "changeKind": "unsupported-keyword",
+    "locations": [
+      {
+        "surface": "schema:AppPlan",
+        "path": "$.services.additionalProperties"
+      },
+      {
+        "surface": "schema:AppliedAppPlan",
+        "path": "$.services.additionalProperties"
+      },
+      {
+        "surface": "schema:CurrentExecutableAppPlan",
+        "path": "$.services.additionalProperties"
+      },
+      {
+        "surface": "schema:DatasetContext",
+        "path": "$.plan.services.additionalProperties"
+      },
+      {
+        "surface": "schema:PostGlobalRebuildEvent",
+        "path": "$.plan.services.additionalProperties"
+      },
+      {
+        "surface": "schema:PostGlobalStartEvent",
+        "path": "$.plan.services.additionalProperties"
+      },
+      {
+        "surface": "schema:PostRestartEvent",
+        "path": "$.plan.services.additionalProperties"
+      },
+      {
+        "surface": "schema:PostScratchDestroyEvent",
+        "path": "$.plan.services.additionalProperties"
+      },
+      {
+        "surface": "schema:PostStartEvent",
+        "path": "$.plan.services.additionalProperties"
+      },
+      {
+        "surface": "schema:PreGlobalRebuildEvent",
+        "path": "$.plan.services.additionalProperties"
+      },
+      {
+        "surface": "schema:PreGlobalStartEvent",
+        "path": "$.plan.services.additionalProperties"
+      },
+      {
+        "surface": "schema:PreRestartEvent",
+        "path": "$.plan.services.additionalProperties"
+      },
+      {
+        "surface": "schema:PreScratchDestroyEvent",
+        "path": "$.plan.services.additionalProperties"
+      },
+      {
+        "surface": "schema:PreStartEvent",
+        "path": "$.plan.services.additionalProperties"
+      },
+      {
+        "surface": "schema:TunnelStartRequest",
+        "path": "$.plan.services.additionalProperties"
+      }
+    ],
+    "justification": "RouteUrlPart.member gains publicPort and scheme so {{ services.<name>.publicPort }} and {{ services.<name>.scheme }} lower from the same route and authority as the URL. Every previously accepted value remains accepted. Applied-state v15 records the members; v14 records decode unchanged and need no rewrite.",
+    "persistedState": [
+      {
+        "store": "applied-state",
+        "version": 15
+      }
+    ]
+  },
+  {
+    "fingerprint": "sha256:7ce09687f75f10beea8373a799c3b28d6861be65ca2e4411b2d60919678f458e",
+    "changeKind": "unsupported-construct",
+    "locations": [
+      {
+        "surface": "schema:CompiledLandofile",
+        "path": "$.anyOf"
+      }
+    ],
+    "justification": "RouteUrlPart.member gains publicPort and scheme so {{ services.<name>.publicPort }} and {{ services.<name>.scheme }} lower from the same route and authority as the URL. Every previously accepted value remains accepted. Applied-state v15 records the members; v14 records decode unchanged and need no rewrite."
+  },
+  {
+    "fingerprint": "sha256:33596574fb78d93fcff18cdf91fc8c41acd8859f5a2b686ce024ce795b9423f0",
+    "changeKind": "unsupported-construct",
+    "locations": [
+      {
+        "surface": "schema:ConfigTranslateDocumentSetInput",
+        "path": "$.currentLowerV4Fragments.items.fragment.anyOf"
+      },
+      {
+        "surface": "schema:ConfigTranslateEncodeInput",
+        "path": "$.fragment.anyOf"
+      },
+      {
+        "surface": "schema:ConfigTranslateLayerFragment",
+        "path": "$.fragment.anyOf"
+      },
+      {
+        "surface": "schema:ConfigTranslateOutput",
+        "path": "$.fragment.anyOf"
+      },
+      {
+        "surface": "schema:ConfigTranslateResult",
+        "path": "$.outputs.items.fragment.anyOf"
+      },
+      {
+        "surface": "schema:RecipeDecomposeResult",
+        "path": "$.fragment.anyOf"
+      }
+    ],
+    "justification": "RouteUrlPart.member gains publicPort and scheme so {{ services.<name>.publicPort }} and {{ services.<name>.scheme }} lower from the same route and authority as the URL. Every previously accepted value remains accepted. Applied-state v15 records the members; v14 records decode unchanged and need no rewrite."
+  },
+  {
+    "fingerprint": "sha256:a9f2a453a7b5567256123444fab22080cc8f02994a22f4c88eb837615a937be2",
+    "changeKind": "unsupported-construct",
+    "locations": [
+      {
+        "surface": "schema:ConfigTranslateEncodeInput",
+        "path": "$.context.events.anyOf"
+      },
+      {
+        "surface": "schema:LandofileAuthoringShapeWire",
+        "path": "$.events.anyOf"
+      }
+    ],
+    "justification": "RouteUrlPart.member gains publicPort and scheme so {{ services.<name>.publicPort }} and {{ services.<name>.scheme }} lower from the same route and authority as the URL. Every previously accepted value remains accepted. Applied-state v15 records the members; v14 records decode unchanged and need no rewrite."
+  },
+  {
+    "fingerprint": "sha256:faa58c628f0f3b65c9b33e3234733191b5bd4d34cb1da84fb542a10073b08357",
+    "changeKind": "unsupported-construct",
+    "locations": [
+      {
+        "surface": "schema:ConfigTranslateEncodeInput",
+        "path": "$.context.services.anyOf"
+      }
+    ],
+    "justification": "RouteUrlPart.member gains publicPort and scheme so {{ services.<name>.publicPort }} and {{ services.<name>.scheme }} lower from the same route and authority as the URL. Every previously accepted value remains accepted. Applied-state v15 records the members; v14 records decode unchanged and need no rewrite."
+  },
+  {
+    "fingerprint": "sha256:496709d3a144e273cc6a9f4088b11ae909e0915d90bfd9f1b9d1f011e68436c5",
+    "changeKind": "unsupported-construct",
+    "locations": [
+      {
+        "surface": "schema:ConfigTranslateEncodeInput",
+        "path": "$.context.tooling.anyOf"
+      },
+      {
+        "surface": "schema:LandofileAuthoringShapeWire",
+        "path": "$.tooling.anyOf"
+      }
+    ],
+    "justification": "RouteUrlPart.member gains publicPort and scheme so {{ services.<name>.publicPort }} and {{ services.<name>.scheme }} lower from the same route and authority as the URL. Every previously accepted value remains accepted. Applied-state v15 records the members; v14 records decode unchanged and need no rewrite."
+  },
+  {
+    "fingerprint": "sha256:1a9dd2dbe19311884936f5db311837bb5bd958738a193c66fa6ae1f866d2e1fa",
+    "changeKind": "unsupported-construct",
+    "locations": [
+      {
+        "surface": "schema:ConfigTranslateEncodeInput",
+        "path": "$.context.toolingDefaults.anyOf"
+      },
+      {
+        "surface": "schema:LandofileAuthoringShapeWire",
+        "path": "$.toolingDefaults.anyOf"
+      }
+    ],
+    "justification": "RouteUrlPart.member gains publicPort and scheme so {{ services.<name>.publicPort }} and {{ services.<name>.scheme }} lower from the same route and authority as the URL. Every previously accepted value remains accepted. Applied-state v15 records the members; v14 records decode unchanged and need no rewrite."
+  },
+  {
+    "fingerprint": "sha256:52e6e6aae1c4c81080173d5a3cb20f3ef69ba806e3b91b356db7e6ac22c1a84f",
+    "changeKind": "unsupported-construct",
+    "locations": [
+      {
+        "surface": "schema:ConfigTranslateInput",
+        "path": "$.anyOf"
+      }
+    ],
+    "justification": "RouteUrlPart.member gains publicPort and scheme so {{ services.<name>.publicPort }} and {{ services.<name>.scheme }} lower from the same route and authority as the URL. Every previously accepted value remains accepted. Applied-state v15 records the members; v14 records decode unchanged and need no rewrite."
+  },
+  {
+    "fingerprint": "sha256:42e3c34ec96cc75197c74b670716944f4bb8392d4bd32d8daedca504bbc80ef6",
+    "changeKind": "unsupported-construct",
+    "locations": [
+      {
+        "surface": "schema:DatabaseClientCreds",
+        "path": "$.password.anyOf"
+      },
+      {
+        "surface": "schema:DatabaseClientCreds",
+        "path": "$.rootPassword.anyOf"
+      },
+      {
+        "surface": "schema:DatabaseConnection",
+        "path": "$.creds.password.anyOf"
+      },
+      {
+        "surface": "schema:DatabaseConnection",
+        "path": "$.creds.rootPassword.anyOf"
+      },
+      {
+        "surface": "schema:EnvironmentValue",
+        "path": "$.anyOf"
+      },
+      {
+        "surface": "schema:MssqlServiceConfig",
+        "path": "$.creds.password.anyOf"
+      },
+      {
+        "surface": "schema:MssqlServiceConfig",
+        "path": "$.creds.rootPassword.anyOf"
+      },
+      {
+        "surface": "schema:MysqlServiceConfig",
+        "path": "$.creds.password.anyOf"
+      },
+      {
+        "surface": "schema:MysqlServiceConfig",
+        "path": "$.creds.rootPassword.anyOf"
+      },
+      {
+        "surface": "schema:PhpMyAdminServiceConfig",
+        "path": "$.creds.password.anyOf"
+      },
+      {
+        "surface": "schema:PhpMyAdminServiceConfig",
+        "path": "$.creds.rootPassword.anyOf"
+      },
+      {
+        "surface": "schema:ServiceConfig",
+        "path": "$.creds.password.anyOf"
+      },
+      {
+        "surface": "schema:ServiceConfig",
+        "path": "$.creds.rootPassword.anyOf"
+      },
+      {
+        "surface": "schema:ServiceConfigInput",
+        "path": "$.creds.password.anyOf"
+      },
+      {
+        "surface": "schema:ServiceConfigInput",
+        "path": "$.creds.rootPassword.anyOf"
+      },
+      {
+        "surface": "schema:ServiceCreds",
+        "path": "$.password.anyOf"
+      },
+      {
+        "surface": "schema:ServiceCreds",
+        "path": "$.rootPassword.anyOf"
+      },
+      {
+        "surface": "schema:ServiceCredsConfig",
+        "path": "$.password.anyOf"
+      },
+      {
+        "surface": "schema:ServiceCredsConfig",
+        "path": "$.rootPassword.anyOf"
+      }
+    ],
+    "justification": "RouteUrlPart.member gains publicPort and scheme so {{ services.<name>.publicPort }} and {{ services.<name>.scheme }} lower from the same route and authority as the URL. Every previously accepted value remains accepted. Applied-state v15 records the members; v14 records decode unchanged and need no rewrite.",
+    "persistedState": [
+      {
+        "store": "applied-state",
+        "version": 15
+      }
+    ]
+  },
+  {
+    "fingerprint": "sha256:83475867a210af43dfbea4e7ea0129e9d8ada35bbd427419d176d2dd62561e93",
+    "changeKind": "unsupported-keyword",
+    "locations": [
+      {
+        "surface": "schema:DatabaseLocalCheck",
+        "path": "$.environment.additionalProperties"
+      },
+      {
+        "surface": "schema:Environment",
+        "path": "$.additionalProperties"
+      },
+      {
+        "surface": "schema:IdentityScopedLandofile",
+        "path": "$.document.toolingDefaults.env.additionalProperties"
+      },
+      {
+        "surface": "schema:LoadScopedLandofile",
+        "path": "$.document.toolingDefaults.env.additionalProperties"
+      },
+      {
+        "surface": "schema:ServiceScopedLandofile",
+        "path": "$.document.toolingDefaults.env.additionalProperties"
+      }
+    ],
+    "justification": "RouteUrlPart.member gains publicPort and scheme so {{ services.<name>.publicPort }} and {{ services.<name>.scheme }} lower from the same route and authority as the URL. Every previously accepted value remains accepted. Applied-state v15 records the members; v14 records decode unchanged and need no rewrite.",
+    "persistedState": [
+      {
+        "store": "applied-state",
+        "version": 15
+      }
+    ]
+  },
+  {
+    "fingerprint": "sha256:a197cebd817c529573966c8dcb7214a2ef49621db4651f884fec8baee342363d",
+    "changeKind": "unsupported-construct",
+    "locations": [
+      {
+        "surface": "schema:EventStepPlan",
+        "path": "$.step.anyOf"
+      }
+    ],
+    "justification": "RouteUrlPart.member gains publicPort and scheme so {{ services.<name>.publicPort }} and {{ services.<name>.scheme }} lower from the same route and authority as the URL. Every previously accepted value remains accepted. Applied-state v15 records the members; v14 records decode unchanged and need no rewrite."
+  },
+  {
+    "fingerprint": "sha256:a15caa43c17ff8b800cb1b8b09d609baa283b2a097cb64e8061c90a7eda8b260",
+    "changeKind": "unsupported-construct",
+    "locations": [
+      {
+        "surface": "schema:IdentityScopedLandofile",
+        "path": "$.document.events.post-destroy.items.anyOf"
+      },
+      {
+        "surface": "schema:IdentityScopedLandofile",
+        "path": "$.document.events.post-init.items.anyOf"
+      },
+      {
+        "surface": "schema:IdentityScopedLandofile",
+        "path": "$.document.events.post-rebuild.items.anyOf"
+      },
+      {
+        "surface": "schema:IdentityScopedLandofile",
+        "path": "$.document.events.post-restart.items.anyOf"
+      },
+      {
+        "surface": "schema:IdentityScopedLandofile",
+        "path": "$.document.events.post-start.items.anyOf"
+      },
+      {
+        "surface": "schema:IdentityScopedLandofile",
+        "path": "$.document.events.post-stop.items.anyOf"
+      },
+      {
+        "surface": "schema:IdentityScopedLandofile",
+        "path": "$.document.events.pre-destroy.items.anyOf"
+      },
+      {
+        "surface": "schema:IdentityScopedLandofile",
+        "path": "$.document.events.pre-init.items.anyOf"
+      },
+      {
+        "surface": "schema:IdentityScopedLandofile",
+        "path": "$.document.events.pre-rebuild.items.anyOf"
+      },
+      {
+        "surface": "schema:IdentityScopedLandofile",
+        "path": "$.document.events.pre-restart.items.anyOf"
+      },
+      {
+        "surface": "schema:IdentityScopedLandofile",
+        "path": "$.document.events.pre-start.items.anyOf"
+      },
+      {
+        "surface": "schema:IdentityScopedLandofile",
+        "path": "$.document.events.pre-stop.items.anyOf"
+      },
+      {
+        "surface": "schema:LoadScopedLandofile",
+        "path": "$.document.events.post-destroy.items.anyOf"
+      },
+      {
+        "surface": "schema:LoadScopedLandofile",
+        "path": "$.document.events.post-init.items.anyOf"
+      },
+      {
+        "surface": "schema:LoadScopedLandofile",
+        "path": "$.document.events.post-rebuild.items.anyOf"
+      },
+      {
+        "surface": "schema:LoadScopedLandofile",
+        "path": "$.document.events.post-restart.items.anyOf"
+      },
+      {
+        "surface": "schema:LoadScopedLandofile",
+        "path": "$.document.events.post-start.items.anyOf"
+      },
+      {
+        "surface": "schema:LoadScopedLandofile",
+        "path": "$.document.events.post-stop.items.anyOf"
+      },
+      {
+        "surface": "schema:LoadScopedLandofile",
+        "path": "$.document.events.pre-destroy.items.anyOf"
+      },
+      {
+        "surface": "schema:LoadScopedLandofile",
+        "path": "$.document.events.pre-init.items.anyOf"
+      },
+      {
+        "surface": "schema:LoadScopedLandofile",
+        "path": "$.document.events.pre-rebuild.items.anyOf"
+      },
+      {
+        "surface": "schema:LoadScopedLandofile",
+        "path": "$.document.events.pre-restart.items.anyOf"
+      },
+      {
+        "surface": "schema:LoadScopedLandofile",
+        "path": "$.document.events.pre-start.items.anyOf"
+      },
+      {
+        "surface": "schema:LoadScopedLandofile",
+        "path": "$.document.events.pre-stop.items.anyOf"
+      },
+      {
+        "surface": "schema:ServiceScopedLandofile",
+        "path": "$.document.events.post-destroy.items.anyOf"
+      },
+      {
+        "surface": "schema:ServiceScopedLandofile",
+        "path": "$.document.events.post-init.items.anyOf"
+      },
+      {
+        "surface": "schema:ServiceScopedLandofile",
+        "path": "$.document.events.post-rebuild.items.anyOf"
+      },
+      {
+        "surface": "schema:ServiceScopedLandofile",
+        "path": "$.document.events.post-restart.items.anyOf"
+      },
+      {
+        "surface": "schema:ServiceScopedLandofile",
+        "path": "$.document.events.post-start.items.anyOf"
+      },
+      {
+        "surface": "schema:ServiceScopedLandofile",
+        "path": "$.document.events.post-stop.items.anyOf"
+      },
+      {
+        "surface": "schema:ServiceScopedLandofile",
+        "path": "$.document.events.pre-destroy.items.anyOf"
+      },
+      {
+        "surface": "schema:ServiceScopedLandofile",
+        "path": "$.document.events.pre-init.items.anyOf"
+      },
+      {
+        "surface": "schema:ServiceScopedLandofile",
+        "path": "$.document.events.pre-rebuild.items.anyOf"
+      },
+      {
+        "surface": "schema:ServiceScopedLandofile",
+        "path": "$.document.events.pre-restart.items.anyOf"
+      },
+      {
+        "surface": "schema:ServiceScopedLandofile",
+        "path": "$.document.events.pre-start.items.anyOf"
+      },
+      {
+        "surface": "schema:ServiceScopedLandofile",
+        "path": "$.document.events.pre-stop.items.anyOf"
+      }
+    ],
+    "justification": "RouteUrlPart.member gains publicPort and scheme so {{ services.<name>.publicPort }} and {{ services.<name>.scheme }} lower from the same route and authority as the URL. Every previously accepted value remains accepted. Applied-state v15 records the members; v14 records decode unchanged and need no rewrite."
+  },
+  {
+    "fingerprint": "sha256:10378bea49fa84f79891faefd4fb68fe1c2cb28c4fd08bafb0ec5051db3d9143",
+    "changeKind": "unsupported-keyword",
+    "locations": [
+      {
+        "surface": "schema:IdentityScopedLandofile",
+        "path": "$.document.events.additionalProperties"
+      },
+      {
+        "surface": "schema:LoadScopedLandofile",
+        "path": "$.document.events.additionalProperties"
+      },
+      {
+        "surface": "schema:ServiceScopedLandofile",
+        "path": "$.document.events.additionalProperties"
+      }
+    ],
+    "justification": "RouteUrlPart.member gains publicPort and scheme so {{ services.<name>.publicPort }} and {{ services.<name>.scheme }} lower from the same route and authority as the URL. Every previously accepted value remains accepted. Applied-state v15 records the members; v14 records decode unchanged and need no rewrite."
+  },
+  {
+    "fingerprint": "sha256:c359630cefe8a878dab71241dd722444f7744b0247e629c1ee9e43ced6405443",
+    "changeKind": "unsupported-keyword",
+    "locations": [
+      {
+        "surface": "schema:IdentityScopedLandofile",
+        "path": "$.document.services.patternProperties"
+      },
+      {
+        "surface": "schema:LandofileShape",
+        "path": "$.services.patternProperties"
+      },
+      {
+        "surface": "schema:LoadScopedLandofile",
+        "path": "$.document.services.patternProperties"
+      },
+      {
+        "surface": "schema:ServiceScopedLandofile",
+        "path": "$.document.services.patternProperties"
+      },
+      {
+        "surface": "schema:TemplateRenderContext",
+        "path": "$.landofile.services.patternProperties"
+      }
+    ],
+    "justification": "RouteUrlPart.member gains publicPort and scheme so {{ services.<name>.publicPort }} and {{ services.<name>.scheme }} lower from the same route and authority as the URL. Every previously accepted value remains accepted. Applied-state v15 records the members; v14 records decode unchanged and need no rewrite."
+  },
+  {
+    "fingerprint": "sha256:d5a9da5efcc464abc4c7ecf7ed278f2bf685850d8b03a30de0ef07992282cf32",
+    "changeKind": "unsupported-keyword",
+    "locations": [
+      {
+        "surface": "schema:IdentityScopedLandofile",
+        "path": "$.document.tooling.additionalProperties"
+      },
+      {
+        "surface": "schema:LoadScopedLandofile",
+        "path": "$.document.tooling.additionalProperties"
+      },
+      {
+        "surface": "schema:ServiceScopedLandofile",
+        "path": "$.document.tooling.additionalProperties"
+      }
+    ],
+    "justification": "RouteUrlPart.member gains publicPort and scheme so {{ services.<name>.publicPort }} and {{ services.<name>.scheme }} lower from the same route and authority as the URL. Every previously accepted value remains accepted. Applied-state v15 records the members; v14 records decode unchanged and need no rewrite."
+  },
+  {
+    "fingerprint": "sha256:aa60e94a5173ab3c39edce1396a4f524eedbf19a1c696ae5875db467fbd38d6d",
+    "changeKind": "unsupported-construct",
+    "locations": [
+      {
+        "surface": "schema:LandoEvent",
+        "path": "$.anyOf"
+      },
+      {
+        "surface": "schema:RendererPanelContext",
+        "path": "$.event.anyOf"
+      }
+    ],
+    "justification": "RouteUrlPart.member gains publicPort and scheme so {{ services.<name>.publicPort }} and {{ services.<name>.scheme }} lower from the same route and authority as the URL. Every previously accepted value remains accepted. Applied-state v15 records the members; v14 records decode unchanged and need no rewrite."
+  },
+  {
+    "fingerprint": "sha256:18b78a119ff9cefe6539f8d3074de0ca1faa77395c676517acc6942dbacf7625",
+    "changeKind": "unsupported-construct",
+    "locations": [
+      {
+        "surface": "schema:LandofileAuthoringFragment",
+        "path": "$.anyOf"
+      }
+    ],
+    "justification": "RouteUrlPart.member gains publicPort and scheme so {{ services.<name>.publicPort }} and {{ services.<name>.scheme }} lower from the same route and authority as the URL. Every previously accepted value remains accepted. Applied-state v15 records the members; v14 records decode unchanged and need no rewrite."
+  },
+  {
+    "fingerprint": "sha256:e310a460b8b647cd716466b8a80eac615c4fd91fb8e6d46ecf589898121a501b",
+    "changeKind": "unsupported-construct",
+    "locations": [
+      {
+        "surface": "schema:LandofileAuthoringFragmentWire",
+        "path": "$.anyOf"
+      }
+    ],
+    "justification": "RouteUrlPart.member gains publicPort and scheme so {{ services.<name>.publicPort }} and {{ services.<name>.scheme }} lower from the same route and authority as the URL. Every previously accepted value remains accepted. Applied-state v15 records the members; v14 records decode unchanged and need no rewrite."
+  },
+  {
+    "fingerprint": "sha256:1059700fcf4bdfb65325f3b4c35938f4fa1ecc32982bca1b41274a3c8140780a",
+    "changeKind": "unsupported-construct",
+    "locations": [
+      {
+        "surface": "schema:LandofileAuthoringShapeWire",
+        "path": "$.services.anyOf"
+      }
+    ],
+    "justification": "RouteUrlPart.member gains publicPort and scheme so {{ services.<name>.publicPort }} and {{ services.<name>.scheme }} lower from the same route and authority as the URL. Every previously accepted value remains accepted. Applied-state v15 records the members; v14 records decode unchanged and need no rewrite."
+  },
+  {
+    "fingerprint": "sha256:eb6a7d99814bbe316b0c5af340ea03444590e8ff92c67966fd976b37efabee3c",
+    "changeKind": "unsupported-construct",
+    "locations": [
+      {
+        "surface": "schema:LandofileShape",
+        "path": "$.events.post-destroy.items.anyOf"
+      },
+      {
+        "surface": "schema:LandofileShape",
+        "path": "$.events.post-init.items.anyOf"
+      },
+      {
+        "surface": "schema:LandofileShape",
+        "path": "$.events.post-rebuild.items.anyOf"
+      },
+      {
+        "surface": "schema:LandofileShape",
+        "path": "$.events.post-restart.items.anyOf"
+      },
+      {
+        "surface": "schema:LandofileShape",
+        "path": "$.events.post-start.items.anyOf"
+      },
+      {
+        "surface": "schema:LandofileShape",
+        "path": "$.events.post-stop.items.anyOf"
+      },
+      {
+        "surface": "schema:LandofileShape",
+        "path": "$.events.pre-destroy.items.anyOf"
+      },
+      {
+        "surface": "schema:LandofileShape",
+        "path": "$.events.pre-init.items.anyOf"
+      },
+      {
+        "surface": "schema:LandofileShape",
+        "path": "$.events.pre-rebuild.items.anyOf"
+      },
+      {
+        "surface": "schema:LandofileShape",
+        "path": "$.events.pre-restart.items.anyOf"
+      },
+      {
+        "surface": "schema:LandofileShape",
+        "path": "$.events.pre-start.items.anyOf"
+      },
+      {
+        "surface": "schema:LandofileShape",
+        "path": "$.events.pre-stop.items.anyOf"
+      },
+      {
+        "surface": "schema:TemplateRenderContext",
+        "path": "$.landofile.events.post-destroy.items.anyOf"
+      },
+      {
+        "surface": "schema:TemplateRenderContext",
+        "path": "$.landofile.events.post-init.items.anyOf"
+      },
+      {
+        "surface": "schema:TemplateRenderContext",
+        "path": "$.landofile.events.post-rebuild.items.anyOf"
+      },
+      {
+        "surface": "schema:TemplateRenderContext",
+        "path": "$.landofile.events.post-restart.items.anyOf"
+      },
+      {
+        "surface": "schema:TemplateRenderContext",
+        "path": "$.landofile.events.post-start.items.anyOf"
+      },
+      {
+        "surface": "schema:TemplateRenderContext",
+        "path": "$.landofile.events.post-stop.items.anyOf"
+      },
+      {
+        "surface": "schema:TemplateRenderContext",
+        "path": "$.landofile.events.pre-destroy.items.anyOf"
+      },
+      {
+        "surface": "schema:TemplateRenderContext",
+        "path": "$.landofile.events.pre-init.items.anyOf"
+      },
+      {
+        "surface": "schema:TemplateRenderContext",
+        "path": "$.landofile.events.pre-rebuild.items.anyOf"
+      },
+      {
+        "surface": "schema:TemplateRenderContext",
+        "path": "$.landofile.events.pre-restart.items.anyOf"
+      },
+      {
+        "surface": "schema:TemplateRenderContext",
+        "path": "$.landofile.events.pre-start.items.anyOf"
+      },
+      {
+        "surface": "schema:TemplateRenderContext",
+        "path": "$.landofile.events.pre-stop.items.anyOf"
+      }
+    ],
+    "justification": "RouteUrlPart.member gains publicPort and scheme so {{ services.<name>.publicPort }} and {{ services.<name>.scheme }} lower from the same route and authority as the URL. Every previously accepted value remains accepted. Applied-state v15 records the members; v14 records decode unchanged and need no rewrite."
+  },
+  {
+    "fingerprint": "sha256:49957304057bfaaa70b89b57de2f98a9e7e6bd679e74a2efddac151b4189d6d6",
+    "changeKind": "unsupported-keyword",
+    "locations": [
+      {
+        "surface": "schema:LandofileShape",
+        "path": "$.events.additionalProperties"
+      },
+      {
+        "surface": "schema:TemplateRenderContext",
+        "path": "$.landofile.events.additionalProperties"
+      }
+    ],
+    "justification": "RouteUrlPart.member gains publicPort and scheme so {{ services.<name>.publicPort }} and {{ services.<name>.scheme }} lower from the same route and authority as the URL. Every previously accepted value remains accepted. Applied-state v15 records the members; v14 records decode unchanged and need no rewrite."
+  },
+  {
+    "fingerprint": "sha256:c20a1dcc549eb9ea6a59529d55a0efb6e77a94413300fba232e63d89c24a633d",
+    "changeKind": "unsupported-keyword",
+    "locations": [
+      {
+        "surface": "schema:LandofileShape",
+        "path": "$.tooling.additionalProperties"
+      },
+      {
+        "surface": "schema:TemplateRenderContext",
+        "path": "$.landofile.tooling.additionalProperties"
+      }
+    ],
+    "justification": "RouteUrlPart.member gains publicPort and scheme so {{ services.<name>.publicPort }} and {{ services.<name>.scheme }} lower from the same route and authority as the URL. Every previously accepted value remains accepted. Applied-state v15 records the members; v14 records decode unchanged and need no rewrite."
+  },
+  {
+    "fingerprint": "sha256:d894e2f0540f454b1dc626f0327f507cc18c3b609a23fe1147124da99d4d0582",
+    "changeKind": "unsupported-construct",
+    "locations": [
+      {
+        "surface": "schema:RouteText",
+        "path": "$.parts.items.anyOf"
+      }
+    ],
+    "justification": "RouteUrlPart.member gains publicPort and scheme so {{ services.<name>.publicPort }} and {{ services.<name>.scheme }} lower from the same route and authority as the URL. Every previously accepted value remains accepted. Applied-state v15 records the members; v14 records decode unchanged and need no rewrite.",
+    "persistedState": [
+      {
+        "store": "applied-state",
+        "version": 15
+      }
+    ]
+  },
+  {
+    "fingerprint": "sha256:f20aab43a0abe24f13ec8c9d1983271f25ebccb55f5f362a1557548a29b687a3",
+    "changeKind": "enum-widened",
+    "locations": [
+      {
+        "surface": "schema:RouteUrlPart",
+        "path": "$.member"
+      }
+    ],
+    "justification": "RouteUrlPart.member gains publicPort and scheme so {{ services.<name>.publicPort }} and {{ services.<name>.scheme }} lower from the same route and authority as the URL. Every previously accepted value remains accepted. Applied-state v15 records the members; v14 records decode unchanged and need no rewrite.",
+    "persistedState": [
+      {
+        "store": "applied-state",
+        "version": 15
+      }
+    ]
+  },
+  {
+    "fingerprint": "sha256:f5285688815d225d15a88e35edaeb9438931bf509df4386cb478b3f953742037",
+    "changeKind": "unsupported-construct",
+    "locations": [
+      {
+        "surface": "schema:ServicePlan",
+        "path": "$.anyOf"
+      }
+    ],
+    "justification": "RouteUrlPart.member gains publicPort and scheme so {{ services.<name>.publicPort }} and {{ services.<name>.scheme }} lower from the same route and authority as the URL. Every previously accepted value remains accepted. Applied-state v15 records the members; v14 records decode unchanged and need no rewrite.",
+    "persistedState": [
+      {
+        "store": "applied-state",
+        "version": 15
+      }
+    ]
+  },
+  {
+    "fingerprint": "sha256:1285e9daabb908c32605069bb79e696cde481aefcdea29bedc4fc46176dfd7f1",
+    "changeKind": "unsupported-construct",
+    "locations": [
+      {
+        "surface": "schema:ToolingTaskInput",
+        "path": "$.anyOf"
+      }
+    ],
+    "justification": "RouteUrlPart.member gains publicPort and scheme so {{ services.<name>.publicPort }} and {{ services.<name>.scheme }} lower from the same route and authority as the URL. Every previously accepted value remains accepted. Applied-state v15 records the members; v14 records decode unchanged and need no rewrite."
+  },
+  {
+    "fingerprint": "sha256:696918242eece05b695c09f5a75e2762306a0066cbb986b7ec665393ce408946",
+    "changeKind": "unsupported-construct",
+    "locations": [
+      {
+        "surface": "schema:ToolingTaskShape",
+        "path": "$.cmds.items.anyOf"
+      }
+    ],
+    "justification": "RouteUrlPart.member gains publicPort and scheme so {{ services.<name>.publicPort }} and {{ services.<name>.scheme }} lower from the same route and authority as the URL. Every previously accepted value remains accepted. Applied-state v15 records the members; v14 records decode unchanged and need no rewrite."
+  },
+  {
+    "fingerprint": "sha256:abd62667df9676750202d62e1ba8e2a7b8f00522c90dd2bddad238d17505613e",
+    "changeKind": "unsupported-keyword",
+    "locations": [
+      {
+        "surface": "schema:ToolingTaskShape",
+        "path": "$.vars.additionalProperties"
+      }
+    ],
+    "justification": "RouteUrlPart.member gains publicPort and scheme so {{ services.<name>.publicPort }} and {{ services.<name>.scheme }} lower from the same route and authority as the URL. Every previously accepted value remains accepted. Applied-state v15 records the members; v14 records decode unchanged and need no rewrite."
+  },
+  {
+    "fingerprint": "sha256:51227b2792a9b9f51086837f09f4a26d1ea9741b091da8510f42837ef8a8cfbf",
+    "changeKind": "unsupported-construct",
+    "locations": [
+      {
+        "surface": "schema:ToolingVar",
+        "path": "$.anyOf"
+      }
+    ],
+    "justification": "RouteUrlPart.member gains publicPort and scheme so {{ services.<name>.publicPort }} and {{ services.<name>.scheme }} lower from the same route and authority as the URL. Every previously accepted value remains accepted. Applied-state v15 records the members; v14 records decode unchanged and need no rewrite."
   }
 ]

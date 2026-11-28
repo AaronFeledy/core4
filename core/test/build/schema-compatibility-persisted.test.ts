@@ -194,8 +194,8 @@ for (const verdict of ["breaking", "unknown"] as const) {
       storeVersions,
     });
     expect(result[0]?.accepted).toBe(false);
-    expect(result[0]?.message).toContain("Bump");
-    expect(result[0]?.message).toContain("migration");
+    expect(result[0]?.message).toContain("when older readers cannot decode newly written values");
+    expect(result[0]?.message).toContain("only if the current decoder cannot read them unchanged");
   });
 
   test.each([3, 4])(

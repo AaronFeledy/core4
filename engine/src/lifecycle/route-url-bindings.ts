@@ -13,6 +13,7 @@ import { Effect, Result } from "effect";
 import {
   type RouteFacts,
   primaryConcreteRoute,
+  routeAddress,
   routeFacts,
   routeUrlScheme,
 } from "../operations/connection-url.ts";
@@ -51,7 +52,7 @@ const unsupported = (service: string) =>
     remediation: "Select a router that reports its published authorities and run `lando start`.",
   });
 
-/** The facts a router authority gives a route, or undefined when the router reports none for it. */
+/** The facts a router authority gives an exact route, if it reports an authority for it. */
 export const authorizedRouteFacts = (
   route: RoutePlan,
   authorities: readonly ProxyAuthority[],
@@ -61,9 +62,9 @@ export const authorizedRouteFacts = (
     (candidate) =>
       candidate.scheme === scheme && candidate.hostname.toLowerCase() === route.hostname.toLowerCase(),
   );
-  return authority === undefined
-    ? undefined
-    : { authority, facts: routeFacts(route, scheme, authority.port) };
+  if (authority === undefined) return undefined;
+  const address = routeAddress(route, scheme, authority.port);
+  return address.hostMatch === "exact" ? { authority, facts: routeFacts(address) } : undefined;
 };
 
 export const prepareRouteUrlBindings = Effect.fn("Activation.prepareRouteUrlBindings")(function* (input: {
@@ -159,7 +160,7 @@ export const verifyPublishedRouteUrls = Effect.fn("Activation.verifyPublishedRou
         service,
         message: `The published router authority for ${service} changed during activation.`,
         remediation:
-          "The router moved to another port while this command ran. Run the same command again; Lando recreates the services that read the URL.",
+          "The published router authority changed during activation. Rerun the same command; Lando recreates services whose bound environment values changed.",
       });
   }
 });

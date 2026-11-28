@@ -6,12 +6,12 @@ import type { PreparedRouteUrls } from "./route-url-bindings.ts";
 
 const evidenceKey = "@lando/engine/realized-route-urls";
 
-/** `routeUrl` output: scheme, a hostname with no port separator, an optional port, then the path. */
+/** A route URL: scheme, a hostname with no port separator, an optional port, then the path. */
 const RECORDED_URL = /^(https?):\/\/([^/:]+)(?::(\d+))?(\/.*)?$/u;
 
 /**
  * The route facts a consumer was started with for a target, projected from the URL recorded as
- * evidence. Hostname and origin are pure functions of that URL, so the evidence stays URL-only;
+ * evidence. Every other fact is a pure function of that URL, so the evidence stays URL-only;
  * the projection splits it by hand, never through `new URL()`, which rewrites or rejects hostnames
  * routes admit. Undefined when the consumer has no evidence for the target.
  */
@@ -21,11 +21,14 @@ export const recordedRouteFacts = (consumer: ServicePlan, target: string): Route
   const url = evidence[target];
   const match = typeof url === "string" ? RECORDED_URL.exec(url) : null;
   if (match === null) return undefined;
-  const [, scheme, hostname = "", port] = match;
+  const [recordedUrl, scheme, hostname, port] = match;
+  if (scheme === undefined || hostname === undefined) return undefined;
   return {
-    url: match[0],
+    url: recordedUrl,
     hostname,
     origin: `${scheme}://${hostname}${port === undefined ? "" : `:${port}`}`,
+    publicPort: port ?? (scheme === "https" ? "443" : "80"),
+    scheme,
   };
 };
 

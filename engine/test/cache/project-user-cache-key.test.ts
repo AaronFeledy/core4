@@ -39,7 +39,7 @@ const base = (overrides: Partial<AppPlanCacheKeyInput> = {}): AppPlanCacheKeyInp
 
 describe("deriveAppPlanCacheKey project-user facts", () => {
   test("invalidates app plans from before generated nginx worker mapping", () => {
-    expect(APP_PLAN_CACHE_SCHEMA_VERSION).toBe(71n);
+    expect(APP_PLAN_CACHE_SCHEMA_VERSION).toBe(72n);
   });
 
   test("mapping support changes the key", () => {

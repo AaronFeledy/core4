@@ -8,4 +8,4 @@ services:
       - "80"
 proxy:
   web:
-    - docker-fallback.lndo.site
+    - docker-fallback.lndo.site:80

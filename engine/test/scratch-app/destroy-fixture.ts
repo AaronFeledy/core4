@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { makeAppliedPlanStore } from "@lando/container-runtime/applied-state";
 import { makeLandoPaths } from "@lando/paths";
 import {
   DataTransferError,
@@ -17,6 +18,7 @@ import {
   AppPlan,
   ProviderId,
   type ResourceOwnership,
+  type RoutePlan,
   type SnapshotInfo,
   appIdentityKey,
   planAppIdentity,
@@ -35,9 +37,11 @@ import {
   StateStore,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider, makeTestRouterService, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
+import { makePluginStateStore } from "@lando/state-store/plugin";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { makeStateStore } from "@lando/state-store/service";
 import { DateTime, Effect, Layer, Predicate, Stream } from "effect";
+import { resolveAppliedPlanEvidence } from "../../src/providers/applied-state-resolution.ts";
 import { RuntimeCwd } from "../../src/runtime/cwd.ts";
 import { SCRATCH_EXTENSION_KEY } from "../../src/scratch-app/identity.ts";
 import { SCRATCH_DESIRED_PLAN_VERSION } from "../../src/scratch-app/plan.ts";
@@ -89,6 +93,7 @@ interface DestroyFixtureOptions {
   readonly desiredPlanVersion?: number;
   /** Return the scratch app's applied plan from resolveAppliedPlan; defaults to none. */
   readonly appliedPlan?: true | "other-engine";
+  readonly appliedRoute?: RoutePlan;
   /** A newer receipt protects this scratch app, by name or as the provider's shared record. */
   readonly offlineNewerReceipt?: "app" | "provider";
   /**
@@ -264,6 +269,13 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
             supportedVersion: 10,
           },
         ];
+  const planStore = makeAppliedPlanStore({ providerId: "lando", layout: "per-app" });
+  const planState = makePluginStateStore(stateStore, AbsolutePath.make(root), ownerOnlyFileAccess);
+  if (options.appliedRoute !== undefined && applied !== undefined) {
+    await Effect.runPromise(
+      planStore.persistAppliedPlan(planState, { ...applied, routes: [options.appliedRoute] }),
+    );
+  }
   const providers = Layer.succeed(
     RuntimeProviderRegistry,
     makeTestRuntimeProviderRegistry({
@@ -285,7 +297,21 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
       appliedStateInventory: (provider) =>
         Effect.succeed({ plans: [], unreadable: provider === plan.provider ? unreadable : [] }),
       appliedPlansFor: () => Effect.sync(() => (applied === undefined ? [] : [applied])),
-      resolveAppliedPlan: () => Effect.sync(() => applied),
+      resolveAppliedPlan: (lookupRoot, app, lookup) =>
+        options.appliedRoute === undefined
+          ? Effect.sync(() => applied)
+          : resolveAppliedPlanEvidence(
+              lookupRoot,
+              [
+                {
+                  ...provider,
+                  id: plan.provider,
+                  appliedStateInventory: planStore.listAppliedPlans(planState, root),
+                },
+              ],
+              app,
+              lookup,
+            ),
       resolveTeardownEvidence: (lookupRoot) =>
         Effect.sync(() => {
           if (applied !== undefined) return { kind: "applied" as const, plan: applied };
@@ -357,6 +383,17 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
       RouterService,
       RouterService.of({
         ...makeTestRouterService(),
+        observeRoutes: (_owner, routes) =>
+          Effect.succeed({
+            configuredAuthorities: [],
+            observation: {
+              status: "present",
+              publications: routes.map((route) => ({
+                route,
+                authority: { hostname: route.hostname, scheme: "https", port: 8443 },
+              })),
+            },
+          }),
         removeRoutes: (owner) =>
           Effect.sync(() => {
             calls.push("routes");

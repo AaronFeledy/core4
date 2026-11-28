@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { makePodmanApiClient } from "@lando/container-runtime/podman/api-client";
 import { type ScenarioContext, ScenarioContextFactory } from "@lando/core/testing";
+import { isAddressedRoute } from "@lando/engine/operations/service-connections";
 import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
 import {
   TEMP_PODMAN_ROOT_SETUP_ARGS,
@@ -83,10 +84,8 @@ const infoUrl = Effect.fnUntraced(function* (scenario: ScenarioContext) {
   const { result } = Schema.decodeUnknownSync(Info)(yield* cli(scenario, ["info"]));
   const url = result.services
     .find(({ service }) => service === "web")
-    ?.connections.find(
-      (connection) =>
-        connection.source === "route" && connection.binding === "assigned" && connection.protocol === "https",
-    )?.url;
+    ?.routes.filter(isAddressedRoute)
+    .find((route) => route.protocol === "https")?.url;
   if (url === undefined) throw new Error("lando info published no assigned HTTPS URL for web");
   return new URL(url);
 });

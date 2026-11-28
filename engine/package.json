@@ -124,6 +124,7 @@
     "./operations/global-stop": "./src/operations/global-stop.ts",
     "./operations/global-teardown": "./src/operations/global-teardown.ts",
     "./operations/host-shell-warnings": "./src/operations/host-shell-warnings.ts",
+    "./operations/hostname-route": "./src/operations/hostname-route.ts",
     "./operations/info": "./src/operations/info.ts",
     "./operations/logs": "./src/operations/logs.ts",
     "./operations/logs-build": "./src/operations/logs-build.ts",

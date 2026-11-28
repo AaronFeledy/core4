@@ -8,6 +8,7 @@ import {
   type RoutePlan,
   type ValidationIssuePath,
   formatValidationIssuePath,
+  isWildcardHostname,
 } from "@lando/sdk/schema";
 import { Effect } from "effect";
 
@@ -36,7 +37,7 @@ const filterSemantics = (filter: RouteFilter): readonly unknown[] => {
   }
 };
 
-const semantics = (route: RoutePlan): string =>
+export const routeExecutionKey = (route: RoutePlan): string =>
   JSON.stringify([
     route.backend.service,
     route.backend.protocol,
@@ -62,7 +63,7 @@ export const makeRouteAccumulator = () => {
       route: RoutePlan,
       source: RouteSource,
     ): Effect.fn.Return<readonly { readonly index: number }[], RouteInputError> {
-      const execution = semantics(route);
+      const execution = routeExecutionKey(route);
       const refs: { readonly index: number }[] = [];
       const uncovered: ("http" | "https")[] = [];
       for (const scheme of schemes(route.scheme)) {
@@ -114,7 +115,7 @@ export const makeRouteAccumulator = () => {
  * cap shares the top of its band rather than crossing into the band above.
  */
 export const routePriority = (route: RoutePlan): number =>
-  (route.hostname.includes("*") ? ROUTE_PRIORITY_WILDCARD_BASE : ROUTE_PRIORITY_EXACT_BASE) +
+  (isWildcardHostname(route.hostname) ? ROUTE_PRIORITY_WILDCARD_BASE : ROUTE_PRIORITY_EXACT_BASE) +
   Math.min((route.pathPrefix ?? "/").length, ROUTE_PATH_WEIGHT_CAP);
 
 /** Stamps every route with its intrinsic rank, preserving accumulator indexes. */

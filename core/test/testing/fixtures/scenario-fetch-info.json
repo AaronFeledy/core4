@@ -25,19 +25,29 @@
             "scope": "app",
             "source": "listener",
             "protocol": "https"
+          }
+        ],
+        "routes": [
+          {
+            "host": "*.php-demo.lndo.site",
+            "endpoint": { "port": 443, "transport": "tcp", "names": ["app-https"], "primary": false },
+            "protocol": "https",
+            "pathPrefix": "",
+            "hostMatch": "pattern",
+            "binding": "assigned",
+            "port": 38443,
+            "state": "active"
           },
           {
             "host": "app.php-demo.lndo.site",
             "endpoint": { "port": 443, "transport": "tcp", "names": ["app-https"], "primary": false },
-            "scope": "host",
-            "source": "route",
             "protocol": "https",
             "pathPrefix": "",
+            "hostMatch": "exact",
             "binding": "assigned",
             "port": 38443,
             "url": "https://app.php-demo.lndo.site:38443",
-            "alternateUrls": [],
-            "state": "active"
+            "state": "inactive"
           }
         ]
       }

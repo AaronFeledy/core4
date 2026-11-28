@@ -31,6 +31,7 @@ const service = {
       state: "active",
     },
   ],
+  routes: [],
 } as const;
 
 test.each([
@@ -48,21 +49,39 @@ test.each([
 ])("shares state %s between info and startup", (state) => {
   expect(Schema.is(ServiceState)(state)).toBe(true);
   expect(Schema.decodeUnknownSync(ServiceInfo)({ ...service, status: state }).status).toBe(state);
-  expect(Schema.decodeUnknownSync(StartedService)({ name: "db", state, connections: [] }).state).toBe(state);
+  expect(
+    Schema.decodeUnknownSync(StartedService)({ name: "db", state, connections: [], routes: [] }).state,
+  ).toBe(state);
 });
 
 test("rejects unknown lifecycle strings instead of accepting arbitrary startup state", () => {
   expect(() =>
-    Schema.decodeUnknownSync(StartedService)({ name: "db", state: "ready-ish", connections: [] }),
+    Schema.decodeUnknownSync(StartedService)({ name: "db", state: "ready-ish", connections: [], routes: [] }),
   ).toThrow();
 });
 
-test("preserves connection addresses when info crosses the SDK boundary", () => {
-  // Given / When
-  const decoded = Schema.decodeUnknownSync(ServiceInfo)(service);
+test("preserves connections and routes when info crosses the SDK boundary", () => {
+  // Given
+  const input = {
+    ...service,
+    routes: [
+      {
+        protocol: "https",
+        host: "*.app.lndo.site",
+        endpoint: { port: 15432, transport: "tcp", names: [], primary: true },
+        pathPrefix: "/api",
+        hostMatch: "pattern",
+        binding: "assigned",
+        port: 8443,
+        state: "active",
+      },
+    ],
+  } satisfies typeof ServiceInfo.Encoded;
+  // When
+  const decoded = Schema.decodeUnknownSync(ServiceInfo)(input);
   const encoded = Schema.encodeSync(ServiceInfo)(decoded);
   // Then
-  expect(encoded).toEqual(service);
+  expect(encoded).toEqual(input);
 });
 
 test("preserves the historical certificate struct and typed generated consumer", () => {
@@ -250,8 +269,8 @@ test("rejects missing scoped connections when decoding service info", () => {
 });
 
 test.each([
-  { name: "db", state: "running", endpoints: [] },
-  { name: "db", state: "running", endpoints: [{ protocol: "tcp", port: 15432 }], internal: [] },
+  { name: "db", state: "running", routes: [], endpoints: [] },
+  { name: "db", state: "running", routes: [], endpoints: [{ protocol: "tcp", port: 15432 }], internal: [] },
 ])("rejects invalid startup address contracts: %j", (input) => {
   // Given / When / Then
   expect(() => Schema.decodeUnknownSync(StartedService)(input)).toThrow();

@@ -88,8 +88,9 @@ const SELF_ROUTE_FACTS: ReadonlySet<string> = new Set(PUBLIC_ROUTE_FACTS);
 
 /**
  * How an expression reads its own service: `route-fact` when a map-form environment value reads
- * only `service.url`, `service.hostname`, or `service.origin`; `supported` when it reads the
- * direct `service.port` at a site that has one (an environment value may mix it with route facts).
+ * only `service.url`, `service.hostname`, `service.origin`, `service.publicPort`, or `service.scheme`;
+ * `supported` when it reads the direct `service.port` at a site that has one (an environment
+ * value may mix it with route facts).
  */
 export const servicePortExpression = (template: ExpressionTemplate, path: ReadonlyArray<string | number>) => {
   const environment = isServiceEnvironmentValuePath(path);

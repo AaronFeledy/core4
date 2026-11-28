@@ -300,14 +300,15 @@ test.each([false, true])("GC brackets scratch reaps without a task tree, orphan=
   });
 });
 
-test("reading v2 desired state returns a miss before interpreting the plan", async () => {
-  await withDestroyFixture({ desiredPlanVersion: 2 }, async (f) => {
+test.each([2, 3])("v%i desired state misses without quarantine", async (version) => {
+  await withDestroyFixture({ desiredPlanVersion: version }, async (f) => {
     const bucket = await Effect.runPromise(
       openScratchPlan(AbsolutePath.make(join(f.instanceRoot, "plan.bin"))).pipe(
         Effect.provideService(StateStore, f.stateStore),
       ),
     );
     expect(await Effect.runPromise(bucket.get)).toBeNull();
+    expect(await Effect.runPromise(bucket.exists)).toBe(true);
   });
 });
 

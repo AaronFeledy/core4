@@ -33,7 +33,7 @@ test("startup and discovered scans use logical per-port paths and status codes",
   const http = requestSequence([httpStatus(418)]);
   const scanner = makeUrlScanner({ http: http.http, ...endpointsOf(connections) });
   // When
-  const startup = startupScanUrls(planned, [{ name: service, state: "running", connections }]);
+  const startup = startupScanUrls(planned, [{ name: service, state: "running", connections, routes: [] }]);
   const discovered = await drive(scanner.scan(plan.id, { plan: planned }));
   // Then
   expect(startup.map(({ url }) => url)).toEqual([
@@ -46,6 +46,42 @@ test("startup and discovered scans use logical per-port paths and status codes",
   ]);
 });
 
+test("discovered scans skip patterns and deduplicate after appending the scan path", async () => {
+  const http = requestSequence([httpStatus(200)]);
+  const { service: _, ...publication } = publishedEndpoint(service, "http", 19000);
+  const exactHost = {
+    host: "localhost",
+    protocol: "http",
+    port: 19000,
+    pathPrefix: "/",
+    endpoint: publication.endpoint,
+    binding: "assigned",
+    state: "active",
+  } as const;
+  const scanner = makeUrlScanner(
+    {
+      http: http.http,
+      listEndpoints: () =>
+        Effect.succeed([
+          {
+            service,
+            connections: [publication],
+            routes: [
+              { ...exactHost, host: "*.test", hostMatch: "pattern" },
+              { ...exactHost, hostMatch: "exact", url: "http://localhost:19000/" },
+            ],
+          },
+        ]),
+    },
+    { path: "/ready" },
+  );
+
+  const result = await drive(scanner.scan(plan.id));
+
+  expect(result.endpoints.map(({ url }) => url)).toEqual(["http://localhost:19000/ready"]);
+  expect(http.requests.map(({ url }) => url)).toEqual(["http://localhost:19000/ready"]);
+});
+
 test("post-start passes endpoint refs through to status-policy selection", async () => {
   // Given
   const http = requestSequence([httpStatus(418)]);
@@ -56,7 +92,7 @@ test("post-start passes endpoint refs through to status-policy selection", async
       scanner,
       plan: planned,
       events: { publish: () => Effect.void },
-      urls: startupScanUrls(planned, [{ name: service, state: "running", connections }]),
+      urls: startupScanUrls(planned, [{ name: service, state: "running", connections, routes: [] }]),
     }),
   );
   // Then
@@ -80,7 +116,7 @@ test("endpoint defaults never enable a plan-disabled service", async () => {
   };
   // When
   const result = await drive(scanner.scan(plan.id, { plan: disabled }));
-  const startup = startupScanUrls(disabled, [{ name: service, state: "running", connections }]);
+  const startup = startupScanUrls(disabled, [{ name: service, state: "running", connections, routes: [] }]);
   // Then
   expect(result.endpoints).toEqual([]);
   expect(startup).toEqual([]);
@@ -92,7 +128,7 @@ test("supplied refs select status policy without appending a second path or gues
   const http = requestSequence([httpStatus(418)]);
   const source = endpointsOf([]);
   const scanner = makeUrlScanner({ http: http.http, ...source });
-  const urls = startupScanUrls(planned, [{ name: service, state: "running", connections }]);
+  const urls = startupScanUrls(planned, [{ name: service, state: "running", connections, routes: [] }]);
   // When
   const result = await drive(scanner.scan(plan.id, { plan: planned, urls }));
   // Then
@@ -113,15 +149,16 @@ test("route prefixes are included exactly once with endpoint-specific paths", ()
     {
       name: service,
       state: "running",
-      connections: [
+      connections: [],
+      routes: [
         {
-          ...connection,
-          scope: "host",
+          host: "storage.test",
+          endpoint: connection.endpoint,
           binding: "assigned",
+          state: "active",
           protocol: "https",
           port: 443,
-          alternateUrls: [],
-          source: "route",
+          hostMatch: "exact",
           pathPrefix: "/storage",
           url: "https://storage.test/storage",
         },

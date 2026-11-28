@@ -238,11 +238,12 @@ describe("makeUrlScanner probe behavior", () => {
           ...(keepAlive ? { keepAlive } : {}),
         },
       } as const;
+      const { service: _, ...connection } = publishedEndpoint(web, "http", port);
       const scanner = makeUrlScanner(
         {
           http: http.http,
           listEndpoints: () =>
-            Effect.succeed([{ ...publishedEndpoint(web, "http", port), servicePlan: service }]),
+            Effect.succeed([{ service: web, connections: [connection], routes: [], servicePlan: service }]),
         },
         { okCodes },
       );
@@ -287,20 +288,42 @@ describe("makeUrlScanner probe behavior", () => {
   test("detectCollisions reports ports claimed by two or more distinct apps", async () => {
     const appOne = AppIdSchema.make("app-one");
     const appTwo = AppIdSchema.make("app-two");
+    const { service: _, ...publication } = publishedEndpoint(web, "http", 8080);
     const perApp = new Map([
       [
         appOne,
-        [
+        endpointsOf([
           publishedEndpoint(web, "http", 8080),
           publishedEndpoint(worker, "tcp", 9000),
           publishedEndpoint(db, "tcp", 9000),
-        ],
+        ]).listEndpoints(appOne),
       ],
-      [appTwo, [publishedEndpoint(web, "http", 8080)]],
+      [
+        appTwo,
+        Effect.succeed([
+          {
+            service: web,
+            connections: [publication],
+            routes: [
+              {
+                host: "web.test",
+                hostMatch: "exact",
+                protocol: "https",
+                port: 9000,
+                pathPrefix: "",
+                url: "https://web.test:9000",
+                endpoint: publication.endpoint,
+                binding: "assigned",
+                state: "active",
+              },
+            ],
+          },
+        ] as const),
+      ],
     ]);
     const scanner = makeUrlScanner({
       http: requestSequence([httpStatus(200)]).http,
-      listEndpoints: (app) => Effect.succeed(perApp.get(app) ?? []),
+      listEndpoints: (app) => perApp.get(app) ?? Effect.succeed([]),
     });
 
     const collisions = await drive(scanner.detectCollisions([appOne, appTwo]));

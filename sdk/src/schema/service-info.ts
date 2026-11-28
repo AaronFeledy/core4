@@ -9,14 +9,20 @@ import { BindMountPlan } from "./mounts.ts";
 import { PortablePath, ProjectUserExplanation, ServiceProjectUser } from "./primitives.ts";
 import { ServiceConnection, ServiceState } from "./service-connection.ts";
 import { ServiceInfoMount } from "./service-mount.ts";
+import { ServiceRoute } from "./service-route.ts";
 
 // ============================================================================
 // Provider-neutral connection addresses and runtime service metadata.
 // ============================================================================
 
-const connectionAddressFields = {
+const addressFields = {
   connections: Schema.Array(ServiceConnection).annotate({
-    description: "Configured scoped connections with explicit binding and observation state.",
+    description:
+      "Scoped network addresses: app-network listeners and host publications, with binding and observation state.",
+  }),
+  routes: Schema.Array(ServiceRoute).annotate({
+    description:
+      "Router routes that forward to this service: per route and external scheme, one entry for each router port, or one pending entry when the router has none. Only an assigned route with an exact host carries a URL.",
   }),
 };
 
@@ -71,7 +77,7 @@ export const StartedService = Schema.Struct({
   container: Schema.optionalKey(ServiceContainerChange).annotate({
     description: "What apply did to this service's container; absent when the provider does not report it.",
   }),
-  ...connectionAddressFields,
+  ...addressFields,
 });
 export type StartedService = typeof StartedService.Type;
 
@@ -170,7 +176,7 @@ export const ServiceInfo = Schema.Struct({
   providerInfo: Schema.optionalKey(Schema.Json).annotate({
     description: "Reserved JSON-safe provider-specific details, when explicitly supplied.",
   }),
-  ...connectionAddressFields,
+  ...addressFields,
   url: Schema.optionalKey(Schema.String).annotate({
     description:
       "Public URL that `{{ services.<name>.url }}` resolves to now: the address of the service's primary concrete route (the first HTTPS or `both` route with no wildcard hostname, otherwise the first such HTTP route) in the route table Lando last applied, or the planned routes before the app has been started, at the port the router reports for it. Absent when the service has no such route, the router is disabled or reports no port for the route, or the applied state cannot be read.",

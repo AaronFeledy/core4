@@ -32,6 +32,7 @@ test.each([
   const service: StartedService = {
     name: "web",
     state: "running",
+    routes: [],
     connections: [
       ...endpoints.map((url) => connection(url, "host")),
       ...internal.map((url) => connection(url, "app")),

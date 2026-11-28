@@ -41,6 +41,7 @@ import { mergeAnswerSources, parseAnswerFlags, readAnswersFile } from "../prompt
 import { type RenderContext, isDecoratedContext, summaryPaintOptions } from "../renderer-boundary";
 import { extractSpecAbortSignal } from "../spec/command-base";
 import { commandResultFormatAmong, specArgsOf, specFlagsOf, stringFlag } from "../spec/input-coercion";
+import { patternRouteText } from "./connection-summary";
 import { renderLogsAppResult } from "./logs";
 import { SCRATCH_STATUS_TONES, summaryToneFromTable } from "./service-summary";
 
@@ -149,7 +150,7 @@ export const ScratchInfoResultSchema = Schema.Struct({
   endpoints: Schema.Array(ScratchServiceEndpointsResultSchema),
   routes: Schema.optionalKey(Schema.Array(ScratchPublishedRoute)).annotate({
     description:
-      "Route URLs the router confirms for this scratch. Present only when the scratch declares enabled routes; empty when none are confirmed.",
+      "Routes the router confirms for this scratch. An exact entry carries its URL; a pattern entry has none. Present only when the scratch declares enabled routes; empty when none are confirmed.",
   }),
 });
 
@@ -496,7 +497,13 @@ export const renderScratchInfoResult = (
       ? []
       : result.routes.length === 0
         ? ["routes: (none confirmed by the router)"]
-        : ["routes:", ...result.routes.map(({ service, url }) => `  ${service} ${url}`)]),
+        : [
+            "routes:",
+            ...result.routes.map(
+              (route) =>
+                `  ${route.service} ${route.hostMatch === "exact" ? route.url : patternRouteText(route)}`,
+            ),
+          ]),
   ].join("\n");
 };
 

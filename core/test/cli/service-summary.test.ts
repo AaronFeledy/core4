@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { StartedService } from "@lando/sdk/schema";
-import { scopedConnectionText } from "../../src/cli/commands/connection-summary";
+import { addressFields, appNetworkText, hostAddressText } from "../../src/cli/commands/connection-summary";
 import {
   INFO_STATUS_TONES,
   SCRATCH_STATUS_TONES,
@@ -14,7 +14,7 @@ import {
   unchangedLine,
   volumesTrailer,
 } from "../../src/cli/commands/service-summary";
-import { connections } from "./connection-fixtures";
+import { connections, routeRow, service } from "./connection-fixtures";
 
 describe("service summary", () => {
   test("renders empty lifecycle rows without a separator", () => {
@@ -32,8 +32,9 @@ describe("service summary", () => {
         name: "web",
         state: "running",
         connections: [...connections(["https://app.test"]), ...connections(["http://web:3000"], "app")],
+        routes: [],
       },
-      { name: "db", state: "stopped", connections: [] },
+      { name: "db", state: "stopped", ...service([]) },
     ];
     // When
     const line = lifecycleLine("rebuilt", "app", serviceRowsText(services));
@@ -107,7 +108,7 @@ describe("service summary", () => {
     [["tcp://db:3306"], "tcp://db:3306"],
     [["https://app.test", "http://app.test"], "https://app.test, http://app.test"],
   ] as const)("renders endpoints %j", (endpoints, expected) => {
-    const result = scopedConnectionText(connections(endpoints), "host");
+    const result = hostAddressText(service(connections(endpoints)));
     expect(result).toBe(expected);
   });
 
@@ -116,20 +117,35 @@ describe("service summary", () => {
     [["tcp://db:3307"], "tcp://db:3307"],
     [["http://web:3000", "tcp://web:9000"], "http://web:3000, tcp://web:9000"],
   ] as const)("renders internal addresses %j with a placeholder when empty", (internal, expected) => {
-    const result = scopedConnectionText(connections(internal, "app"), "app");
+    const result = appNetworkText(service(connections(internal, "app")));
     expect(result).toBe(expected);
   });
 
-  test("says no endpoints only when host and app-network addresses are both empty", () => {
-    const result = serviceStateRow({ name: "db", state: "stopped", connections: [] });
+  test("says no endpoints only when all address lists are empty", () => {
+    const result = serviceStateRow({ name: "db", state: "stopped", ...service([]) });
     expect(result).toBe("db (stopped) no endpoints");
+  });
+
+  test("distinguishes a pattern-only service from an unpublished service", () => {
+    const addresses = service(
+      [],
+      [routeRow({ host: "*.wild.test", hostMatch: "pattern", protocol: "https", port: 443, pathPrefix: "" })],
+    );
+    expect(addressFields(addresses)).toEqual([
+      { label: "Host", value: "-" },
+      { label: "Route patterns", value: "*.wild.test [https pattern]" },
+      { label: "App Network", value: "-" },
+    ]);
+    expect(serviceStateRow({ name: "web", state: "running", ...addresses })).toBe(
+      "web (running) Host: - Route patterns: *.wild.test [https pattern]",
+    );
   });
 
   test("renders a service with ordered host endpoints", () => {
     const result = serviceStateRow({
       name: "web",
       state: "running",
-      connections: connections(["https://app.test", "http://app.test"]),
+      ...service(connections(["https://app.test", "http://app.test"])),
     });
     expect(result).toBe("web (running) Host: https://app.test, http://app.test");
   });
@@ -139,7 +155,7 @@ describe("service summary", () => {
     const result = serviceStateRow({
       name: "db",
       state: "ready",
-      connections: connections(["tcp://db:3307"], "app"),
+      ...service(connections(["tcp://db:3307"], "app")),
     });
     // Then the row names the address other services can reach.
     expect(result).toBe("db (ready) App Network: tcp://db:3307");
@@ -150,10 +166,10 @@ describe("service summary", () => {
     const result = serviceStateRow({
       name: "web",
       state: "running",
-      connections: [
+      ...service([
         ...connections(["https://app.test", "http://localhost:3000"]),
         ...connections(["http://web:3000", "tcp://web:9229"], "app"),
-      ],
+      ]),
     });
     expect(result).toBe(
       "web (running) Host: https://app.test, http://localhost:3000 App Network: http://web:3000, tcp://web:9229",

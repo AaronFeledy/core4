@@ -123,16 +123,22 @@ describe("applied plan state layouts", () => {
     expect(migrated).toBeDefined();
     expect(migrated?.plannedPort).toBeUndefined();
   });
-  test("reads a v12 route-text environment value as the URL it always named", () => {
-    // Given a v12 record whose environment holds a RouteText part without a member
+  test.each([
+    { version: 12, part: {}, fact: "the URL" },
+    { version: 13, part: { member: "origin" }, fact: "the origin" },
+    { version: 14, part: { member: "origin" }, fact: "the origin" },
+  ] as const)("reads a v$version route-text part as $fact it named", ({ version, part }) => {
     const encoded = Schema.encodeSync(AppPlan)(legacyPlan());
     const [name, service] = Object.entries(encoded.services)[0] ?? [];
     if (name === undefined || service === undefined)
       throw new Error("The historical plan fixture must contain a service.");
-    const route = { _tag: "RouteText", parts: [{ service: name, encoding: "raw" }, "/api"] } as const;
+    const route = {
+      _tag: "RouteText",
+      parts: [{ service: name, ...part, encoding: "raw" }, "/api"],
+    } as const;
     const raw = { ...encoded, services: { [name]: { ...service, environment: { APP_URL: route } } } };
     // When
-    const migrated = migrateAppliedPlan(raw, 12)?.services[ServiceName.make(name)];
+    const migrated = migrateAppliedPlan(raw, version)?.services[ServiceName.make(name)];
     // Then
     expect(migrated?.environment.APP_URL).toEqual(route);
   });
@@ -623,7 +629,7 @@ describe("applied plan records", () => {
       layout === "per-app"
         ? Schema.decodeUnknownSync(AppliedPlan)(raw)
         : Schema.decodeUnknownSync(AppliedPlans)(raw)[plan.id];
-    expect(APPLIED_STATE_VERSION).toBe(14);
+    expect(APPLIED_STATE_VERSION).toBe(15);
     expect(decoded).toEqual(Schema.decodeUnknownSync(AppliedAppPlan)(historicalWriterValue));
     expect(decoded).toEqual(record);
   });

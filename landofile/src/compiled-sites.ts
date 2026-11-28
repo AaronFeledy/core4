@@ -9,6 +9,7 @@ import {
 import { type ValueOrigins, isPlainRecord } from "@lando/sdk/landofile";
 import {
   EnvironmentValue,
+  PUBLIC_ROUTE_FACTS,
   type ParsedPendingSite,
   SecretRef,
   type ValidationIssuePath,
@@ -149,9 +150,8 @@ export const consumeSites = (input: {
     }
     const selfName = environmentSite ? site.path[1] : undefined;
     const self = typeof selfName === "string" ? input.context.services?.[selfName] : undefined;
-    // A service reads its own route facts as `service.url`, `service.hostname`, and `service.origin`.
     const selfRoute = isPlainRecord(self)
-      ? { url: self.url, hostname: self.hostname, origin: self.origin }
+      ? Object.fromEntries(PUBLIC_ROUTE_FACTS.map((fact) => [fact, self[fact]] as const))
       : undefined;
     const plannerSelf = isPlainRecord(input.context.service) ? input.context.service : undefined;
     const serviceSelf =

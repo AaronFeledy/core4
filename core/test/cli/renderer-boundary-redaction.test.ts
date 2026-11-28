@@ -464,6 +464,7 @@ test("start command hints remain usable when a secret explicitly matches the CLI
             name: "lando",
             state: "running" as const,
             connections: connections([`https://${customSecret}.test`]),
+            routes: [],
           },
         ],
       };

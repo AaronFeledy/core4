@@ -131,6 +131,9 @@ export {
   RouteHostname,
   RoutePathPrefix,
   certificateNameForHostname,
+  hostnameMatchesRoute,
+  isWildcardHostname,
+  routeHostnameMatchSource,
 } from "./hostname.ts";
 export * from "./image-reference.ts";
 export * from "./json-schema.ts";
@@ -195,6 +198,7 @@ export * from "./service-mount.ts";
 export * from "./service-probe.ts";
 export * from "./service-probe-url.ts";
 export * from "./service-resolution.ts";
+export * from "./service-route.ts";
 export * from "./service-run-observation.ts";
 export * from "./service-shutdown.ts";
 export * from "./services/index.ts";

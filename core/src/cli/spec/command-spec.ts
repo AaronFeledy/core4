@@ -1,6 +1,7 @@
 import { assertTopLevelAliasesClaimable } from "@lando/engine/operations/reserved-aliases";
 import { assertMcpAllowlistSafe } from "@lando/mcp/allowlist";
 import type { ProjectedFailure } from "@lando/sdk/command-result";
+import type { CommandInputValidationError } from "@lando/sdk/errors";
 import type { ExecutableCommandSpec } from "@lando/sdk/plugins";
 import type { CommandCompletion, DeprecationNotice, StreamFrameSchema } from "@lando/sdk/schema";
 import { Schema } from "effect";
@@ -85,6 +86,7 @@ export interface LandoCommandSpec<A = unknown, E = unknown, R = unknown>
     bivarianceHack(result: A, input: unknown): CommandCompletion;
   }["bivarianceHack"];
   readonly suppressDeprecationDiagnostics?: (input: unknown) => boolean;
+  readonly validateInput?: (input: unknown) => CommandInputValidationError | undefined;
   /**
    * Declares that this command's own `render` produces a genuine product
    * document for one machine format, so the boundary must not replace it with

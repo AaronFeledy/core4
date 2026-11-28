@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { serviceContainerName } from "@lando/container-runtime/plan";
 import { makePodmanApiClient } from "@lando/container-runtime/podman/api-client";
+import { isAddressedRoute } from "@lando/engine/operations/service-connections";
 import { makeLandoPaths } from "@lando/paths";
 import { appCertificateFiles } from "@lando/proxy-traefik";
 import { ProxyApplyError } from "@lando/sdk/errors";
@@ -13,7 +14,7 @@ import {
   AppId,
   CommandResultEnvelope,
   InfoAppResult,
-  type ServiceConnection,
+  type ServiceRoute,
   StartAppResult,
   appIdentityKey,
 } from "@lando/sdk/schema";
@@ -73,16 +74,14 @@ const landoCommand = (cwd: string, args: readonly string[]) => {
 
 const lando = (cwd: string, args: readonly string[]) => Effect.runPromise(landoCommand(cwd, args));
 
-const isHttpsRoute = (connection: ServiceConnection, hostname: string) =>
-  connection.scope === "host" &&
-  connection.source === "route" &&
-  connection.protocol === "https" &&
-  connection.binding === "assigned" &&
-  new URL(connection.url).protocol === "https:" &&
-  new URL(connection.url).hostname === hostname;
+const isHttpsRoute = (route: ServiceRoute, hostname: string) => {
+  if (!isAddressedRoute(route) || route.protocol !== "https") return false;
+  const url = new URL(route.url);
+  return url.protocol === "https:" && url.hostname === hostname;
+};
 
 const waitForActiveRoute = async (cwd: string, hostname: string) => {
-  let connections: ReadonlyArray<ServiceConnection> = [];
+  let routes: readonly ServiceRoute[] = [];
   const observed = await Effect.runPromise(
     runProbe(
       {
@@ -103,10 +102,8 @@ const waitForActiveRoute = async (cwd: string, hostname: string) => {
             const envelope = decodeInfoCliEnvelope(info.stdout);
             expect(envelope.ok).toBe(true);
             const result = Schema.decodeUnknownSync(InfoAppResult)(envelope.result);
-            connections = result.services.find((service) => service.service === "web")?.connections ?? [];
-            return connections.some(
-              (connection) => isHttpsRoute(connection, hostname) && connection.state === "active",
-            );
+            routes = result.services.find((service) => service.service === "web")?.routes ?? [];
+            return routes.some((route) => isHttpsRoute(route, hostname) && route.state === "active");
           },
           catch: (cause) => cause,
         });
@@ -114,7 +111,7 @@ const waitForActiveRoute = async (cwd: string, hostname: string) => {
     ),
   );
   expect(observed.outcome, JSON.stringify(observed)).toBe("green");
-  return connections;
+  return routes;
 };
 
 test.skipIf(!liveEnabled)(
@@ -155,7 +152,7 @@ test.skipIf(!liveEnabled)(
       expect(
         initialResult.servicesStarted
           .find((service) => service.name === "web")
-          ?.connections.some((connection) => isHttpsRoute(connection, initialHostname)),
+          ?.routes.some((route) => isHttpsRoute(route, initialHostname)),
       ).toBe(true);
       // File-provider reload is asynchronous. Prove live evidence before injecting the fault.
       await waitForActiveRoute(appRoot, initialHostname);
@@ -225,18 +222,15 @@ test.skipIf(!liveEnabled)(
       expect(
         result.servicesStarted
           .find((service) => service.name === "web")
-          ?.connections.some((connection) => isHttpsRoute(connection, newHostname)),
+          ?.routes.some((route) => isHttpsRoute(route, newHostname)),
       ).toBe(true);
-      const recoveredConnections = await waitForActiveRoute(appRoot, newHostname);
+      const recoveredRoutes = await waitForActiveRoute(appRoot, newHostname);
       expect(await inspectWeb(container)).toEqual(initial);
-      const httpEndpoint = recoveredConnections
-        .flatMap((connection) =>
-          connection.scope === "host" && connection.binding === "assigned" && connection.state === "active"
-            ? [new URL(connection.url)]
-            : [],
-        )
-        .find((url) => url.protocol === "http:" && url.hostname === newHostname);
-      if (httpEndpoint === undefined) throw new Error("Recovered web service has no new-host HTTP endpoint");
+      const httpRoute = recoveredRoutes
+        .filter(isAddressedRoute)
+        .find((route) => route.state === "active" && route.protocol === "http" && route.host === newHostname);
+      if (httpRoute === undefined) throw new Error("Recovered web service has no new-host HTTP endpoint");
+      const httpEndpoint = new URL(httpRoute.url);
       // Bun's fetch replaces a custom Host header, so request loopback with node:http and the
       // advertised authority; Traefik's file-provider reload is asynchronous after start completes.
       const routed = await Effect.runPromise(

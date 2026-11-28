@@ -2,7 +2,14 @@ import { inventoryProtectsApp, protectedSlotError } from "@lando/container-runti
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import { mapFailures } from "@lando/sdk/command-result";
 import { ProviderUnavailableError, ScannerError } from "@lando/sdk/errors";
-import { type AppId, type AppPlan, type EndpointRef, ServiceName, type ServicePlan } from "@lando/sdk/schema";
+import {
+  type AppId,
+  type AppPlan,
+  type EndpointRef,
+  ServiceName,
+  type ServicePlan,
+  isWildcardHostname,
+} from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
 import {
   type PortCollision,
@@ -14,23 +21,24 @@ import {
 import { Effect, Layer, Result } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 import { collectObservedConnections, observeService } from "../../operations/connection-collector.ts";
-import { observedPublicationConnection, serviceStateOf } from "../../operations/service-connections.ts";
+import {
+  activeHostHttpAddresses,
+  observedPublicationConnection,
+  serviceStateOf,
+} from "../../operations/service-connections.ts";
 import { endpointScanPolicy } from "../../services/endpoint-scan.ts";
+import { type ScanSourceService, appendScanPath, publishedHostPorts } from "./connection-targets.ts";
 import {
   SCANNER_ID,
-  type ScanSourceEndpoint,
   type UrlScanConfig,
   type UrlScannerDeps,
   defaultUrlScanConfig,
-  publishedHostPort,
   scanConfigFromPlan,
   scanTarget,
-  scanTargets,
 } from "./scan-target.ts";
 
 export {
   SCANNER_ID,
-  type ScanSourceEndpoint,
   type UrlScanConfig,
   type UrlScannerDeps,
   defaultUrlScanConfig,
@@ -65,23 +73,21 @@ export const makeUrlScanner = (
       const redactor = yield* resolveRedactor;
       const candidates =
         options?.urls === undefined
-          ? (yield* deps.listEndpoints(appId, options?.plan)).flatMap((endpoint) => {
-              const service = options?.plan?.services[endpoint.service] ?? endpoint.servicePlan;
-              const resolved = resolveConfig(service, endpoint.endpoint);
-              return resolved.enabled
-                ? scanTargets([endpoint], resolved.path).map((target) => ({
-                    target,
-                    config: resolved,
-                    service,
-                  }))
-                : [];
+          ? (yield* deps.listEndpoints(appId, options?.plan)).flatMap((source) => {
+              const service = options?.plan?.services[source.service] ?? source.servicePlan;
+              return activeHostHttpAddresses(source).flatMap(({ endpoint, url }) => {
+                const config = resolveConfig(service, endpoint);
+                if (!config.enabled) return [];
+                const target = { service: source.service, url: appendScanPath(url, config.path), endpoint };
+                return [{ target, config, service }];
+              });
             })
           : options.urls.flatMap((supplied) => {
-              const protocol = URL.parse(supplied.url)?.protocol;
-              const host = URL.parse(supplied.url)?.hostname;
+              const parsed = URL.parse(supplied.url);
               if (
-                (protocol !== undefined && protocol !== "http:" && protocol !== "https:") ||
-                host?.includes("*")
+                parsed !== null &&
+                ((parsed.protocol !== "http:" && parsed.protocol !== "https:") ||
+                  isWildcardHostname(parsed.hostname))
               )
                 return [];
               const service = options.plan?.services[supplied.service];
@@ -122,12 +128,12 @@ export const makeUrlScanner = (
       const claims = new Map<number, Array<{ appId: AppId; service: ServiceName }>>();
       for (const app of appIds) {
         const endpoints = yield* deps.listEndpoints(app);
-        for (const endpoint of endpoints) {
-          const hostPort = publishedHostPort(endpoint);
-          if (hostPort === undefined) continue;
-          const claimants = claims.get(hostPort) ?? [];
-          claimants.push({ appId: app, service: endpoint.service });
-          claims.set(hostPort, claimants);
+        for (const source of endpoints) {
+          for (const hostPort of publishedHostPorts(source)) {
+            const claimants = claims.get(hostPort) ?? [];
+            claimants.push({ appId: app, service: source.service });
+            claims.set(hostPort, claimants);
+          }
         }
       }
       const collisions: PortCollision[] = [];
@@ -158,7 +164,7 @@ const listEndpointsFromProvider = (provider: RuntimeProviderShape) =>
   Effect.fn("RuntimeProvider.listEndpoints")(function* (
     appId: AppId,
     suppliedPlan?: AppPlan,
-  ): Effect.fn.Return<ReadonlyArray<ScanSourceEndpoint>, ScannerError> {
+  ): Effect.fn.Return<ReadonlyArray<ScanSourceService>, ScannerError> {
     const redactor = yield* resolveRedactor;
     const plans =
       provider.appliedPlans === undefined
@@ -177,22 +183,21 @@ const listEndpointsFromProvider = (provider: RuntimeProviderShape) =>
         plan,
         infos.map((runtime) => observeService(plan, runtime)),
       );
-      return rows.flatMap((row) =>
-        row.connections.map((connection) => ({
-          ...connection,
-          service: ServiceName.make(row.name),
-          servicePlan: plan.services[ServiceName.make(row.name)],
-        })),
-      );
+      return rows.map(({ name, connections, routes }) => {
+        const service = ServiceName.make(name);
+        return { service, connections, routes, servicePlan: plan.services[service] };
+      });
     }
-    return infos.flatMap((runtime) =>
-      runtime.publications.status === "present"
-        ? runtime.publications.bindings.map((binding) => ({
-            ...observedPublicationConnection(binding, serviceStateOf(runtime)),
-            service: runtime.service,
-          }))
-        : [],
-    );
+    return infos.map((runtime) => ({
+      service: runtime.service,
+      connections:
+        runtime.publications.status === "present"
+          ? runtime.publications.bindings.map((binding) =>
+              observedPublicationConnection(binding, serviceStateOf(runtime)),
+            )
+          : [],
+      routes: [],
+    }));
   });
 
 export const layer: Layer.Layer<UrlScanner, never, RuntimeProviderRegistry | HttpClient.HttpClient> =

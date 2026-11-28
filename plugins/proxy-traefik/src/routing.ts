@@ -1,4 +1,10 @@
-import type { AppRouteOwner, ProxyAuthority, RoutePlan } from "@lando/sdk/schema";
+import {
+  type AppRouteOwner,
+  type ProxyAuthority,
+  type RoutePlan,
+  isWildcardHostname,
+  routeHostnameMatchSource,
+} from "@lando/sdk/schema";
 
 import type { BackendTransportPlan } from "./backend-transport.ts";
 import { TRAEFIK_HTTPS_PORT, TRAEFIK_HTTP_PORT } from "./ports.ts";
@@ -24,8 +30,8 @@ export const quoteRuleArgument = (value: string): string =>
   })}"`;
 
 export const routeRule = (route: RoutePlan): string => {
-  const host = route.hostname.includes("*")
-    ? `HostRegexp(${quoteRuleArgument(`^${route.hostname.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, (character) => (character === "*" ? "[a-z0-9-]+" : `\\${character}`))}$`)})`
+  const host = isWildcardHostname(route.hostname)
+    ? `HostRegexp(${quoteRuleArgument(routeHostnameMatchSource(route.hostname))})`
     : `Host(${quoteRuleArgument(route.hostname)})`;
   return route.pathPrefix === undefined
     ? host

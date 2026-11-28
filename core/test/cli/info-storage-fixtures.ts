@@ -19,6 +19,7 @@ export const service = (
   primary: false,
   status: "running",
   connections: connections([`http://localhost:${7700 + name.length}`]),
+  routes: [],
   ...(mounts === undefined ? {} : { mounts }),
   ...extra,
 });

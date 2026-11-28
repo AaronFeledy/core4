@@ -247,7 +247,38 @@ lando start
 lando info
 ```
 
-Use the HTTPS URLs and ports printed by `lando info`. Matching uses the scheme,
+`lando info` prints a URL, including the router port when needed, for each
+assigned exact route. A pending route has no URL yet. A wildcard route names
+many hostnames, so no single URL stands for it, and
+`lando info` lists it under Route patterns instead. With the router on the
+default HTTPS port, the `wild` service's entry there reads:
+
+```text
+*.route-order.lndo.site [https pattern]
+```
+
+In `lando info --format=json`, that route is an entry in the service's `routes`
+with `hostMatch: "pattern"`. It has a `port` and no `url`. These are its fields
+(`endpoint` is left out here):
+
+```json
+{
+  "host": "*.route-order.lndo.site",
+  "protocol": "https",
+  "pathPrefix": "",
+  "hostMatch": "pattern",
+  "port": 443,
+  "binding": "assigned",
+  "state": "active"
+}
+```
+
+An exact route has `hostMatch: "exact"` and a `url` once assigned. A plain
+`lando open` and terminal links in `lando info` use only active exact routes
+among the router entries. To reach a pattern route,
+[name a hostname it matches](#open-a-hostname-a-wildcard-matches).
+
+Matching uses the scheme,
 case-insensitive hostname and path prefix on the router's selected listener port.
 The shorthand `:port` selects a **backend** container port. It can declare an internal
 HTTP listener there when none exists, but it never opens a new public host port. Two
@@ -256,7 +287,8 @@ two public ports. Set public listener ports under `router:` instead.
 
 The proxy merges every running app into one router table, so this ordering spans
 all apps running at the same time, not just yours. Exact hostnames beat wildcard
-hostnames, then a longer path prefix beats a shorter one. A route's rank comes
+hostnames, then a longer path prefix beats a shorter one within the same band
+unless both prefixes reach the path weight cap. A route's rank comes
 only from its own hostname specificity and path prefix length, never from how
 many routes an app declares or the order you declare them in. The diagnostic
 fallback always sits below every app route. Two routes of equal specificity have
@@ -269,6 +301,46 @@ authored entries. `both` overlaps each individual scheme; it cannot hide a confl
 After layer merging, an omitted filter list equals an empty list for this conflict check. Filter `name` controls layer merging,
 not HTTP execution, so changing only that name does not create a distinct route.
 Layer precedence and filter merging happen before this check.
+
+## Open a hostname a wildcard matches
+
+Pass `lando open` a hostname and it opens that hostname through the route of
+this app that serves it:
+
+```sh
+lando open docs.route-order.lndo.site
+```
+
+Give only the hostname. Lando adds the scheme, the router port, and the route's
+path prefix. With the router on the default HTTPS port, this opens the `wild`
+service at `https://docs.route-order.lndo.site`. Add `--print` to see the URL without
+opening a browser. You can't combine a hostname with `--service` or `--all`.
+
+A wildcard matches a hostname by three rules:
+
+- Each `*` stands for one or more letters, digits, or hyphens.
+- A `*` never matches a dot, so it stays inside one label.
+- A `*` can be part of a label, as in `*-app.lndo.site`.
+
+| Route | Matches | Doesn't match |
+| --- | --- | --- |
+| `*.app.lndo.site` | `docs.app.lndo.site` | `app.lndo.site`, `a.b.app.lndo.site` |
+| `*-app.lndo.site` | `foo-app.lndo.site` | `-app.lndo.site`, `foo.app.lndo.site` |
+
+`lando open` prefers a published exact route for the hostname if no
+higher-priority rule answers its URL. If that service isn't running, the command
+fails and names it instead of falling back to a wildcard. If the router hasn't
+published the exact route, a published wildcard can still serve the hostname.
+For example, when both routes are published, `lando open app.route-order.lndo.site`
+opens `web`, not `wild`.
+
+Lando reads what the router has published, so start the app first. Only this
+app's routes are considered. A route of another running app can outrank yours in
+the shared router table, and `lando open` can't see that.
+
+The hostname has to be concrete. `lando open "*.route-order.lndo.site"` exits 2
+because a pattern names no single URL, and a hostname no route of this app
+matches exits 1 with the route hostnames the app declares.
 
 ## Add filters
 
@@ -423,6 +495,36 @@ Skip lint and `lando start` reports the same entries, at the same paths, in one 
     </Step>
     <Step name="cleanup">
       <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="wildcard-routes-reported-as-patterns" render={false} reason="Prove lando info and lando start report wildcard routes as hostname patterns with no URL, and concrete routes with one, and that lando open resolves a concrete hostname through the exact or wildcard route that serves it">
+    <Step name="start">
+      <UseFixture name="route-shorthand-demo" />
+      <Run command="lando start" />
+    </Step>
+    <Step name="open-hostname">
+      <Verify command={`lando open docs.app.lndo.site --print --jq '.result.targets[0].url'`} expect={{ stdout: { regex: "^\\s*https://docs\\.app\\.lndo\\.site:38443\\s*$" } }} />
+      <Verify command={`lando open foo-app.lndo.site --print --jq '.result.targets[0].url'`} expect={{ stdout: { regex: "^\\s*https://foo-app\\.lndo\\.site:38443\\s*$" } }} />
+      <Verify command={`lando open lets.combine.x.lndo.site --print --jq '.result.targets[0].url'`} expect={{ stdout: { regex: "^\\s*http://lets\\.combine\\.x\\.lndo\\.site:38080/everything/for-real\\s*$" } }} />
+      <Verify command={`lando open app.lndo.site --print --jq '.result.targets[0].url'`} expect={{ stdout: { regex: "^\\s*https://app\\.lndo\\.site:38443\\s*$" } }} />
+      <Verify command="lando open a.b.app.lndo.site --print --format=json" expectExit={1} expect={{ stdout: { regex: "\"_tag\":\\s*\"OpenTargetUnresolvedError\"" } }} />
+      <Verify command={`lando open "*.app.lndo.site" --print --format=json`} expectExit={2} expect={{ stdout: { regex: "\"_tag\":\\s*\"CommandInputValidationError\"" } }} />
+    </Step>
+    <Step name="inspect-info">
+      <Verify command={`lando info --jq '[.result.services[] | select(.service == "app") | .routes[] | select(.host == "*.app.lndo.site" and .protocol == "https") | .hostMatch][0]'`} expect={{ stdout: { regex: "^\\s*pattern\\s*$" } }} />
+      <Verify command={`lando info --jq '[.result.services[] | select(.service == "app") | .routes[] | select(.host == "lets.combine.*.lndo.site") | .hostMatch + " " + .pathPrefix + " " + (.port | tostring)][0]'`} expect={{ stdout: { regex: "^\\s*pattern /everything/for-real 38080\\s*$" } }} />
+      <Verify command={`lando info --jq '[.result.services[] | select(.service == "app") | .routes[] | select(.host == "app.lndo.site" and .protocol == "https") | .url][0]'`} expect={{ stdout: { regex: "^\\s*https://app\\.lndo\\.site:38443\\s*$" } }} />
+      <Verify command={`lando info --jq '[.result.services[] | .routes[] | select(.hostMatch == "pattern" and .url != null)] | length'`} expect={{ stdout: { regex: "^\\s*0\\s*$" } }} />
+      <Verify command={`lando info --jq '[.result.services[] | .connections[] | select(.source == "route")] | length'`} expect={{ stdout: { regex: "^\\s*0\\s*$" } }} />
+    </Step>
+    <Step name="inspect-start">
+      <Verify command={`lando start --jq '[.result.servicesStarted[] | .routes[] | select(.hostMatch == "pattern")] | length'`} expect={{ stdout: { regex: "^\\s*[1-9][0-9]*\\s*$" } }} />
+      <Verify command={`lando start --jq '[.result.servicesStarted[] | .routes[] | select(.hostMatch == "pattern" and .url != null)] | length'`} expect={{ stdout: { regex: "^\\s*0\\s*$" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
     </Step>
   </Scenario>
 

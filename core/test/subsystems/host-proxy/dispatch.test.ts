@@ -10,7 +10,6 @@ import type { LandoEvent } from "@lando/sdk/events";
 import { AbsolutePath } from "@lando/sdk/schema";
 import { EventService } from "@lando/sdk/services";
 import { Cause, Effect, Exit, Layer } from "effect";
-import { openOptionsFromRunLandoArgv } from "../../../src/cli/host-proxy/open-argv.ts";
 
 const appRef = { kind: "user" as const, id: "demo", root: AbsolutePath.make("/home/u/demo") };
 const mount = { containerRoot: "/app", hostRoot: "/home/u/demo" };
@@ -53,57 +52,6 @@ const baseEnvelope = {
   warnings: [],
   deprecations: [],
 };
-
-describe("openOptionsFromRunLandoArgv", () => {
-  test.each(["json", "yaml"])("parses equals-form app:open %s flags", (format) => {
-    const options = openOptionsFromRunLandoArgv(
-      ["open", "--service=web", "--route=https://web.demo.lndo.site", `--format=${format}`],
-      { tty: false },
-    );
-
-    expect(options).toEqual({
-      service: "web",
-      route: "https://web.demo.lndo.site",
-      json: true,
-      ttyPresent: false,
-    });
-  });
-
-  test("parses -j as the universal JSON format shortcut", () => {
-    const options = openOptionsFromRunLandoArgv(["open", "-j", "--print"], { tty: false });
-
-    expect(options).toEqual({
-      print: true,
-      json: true,
-      ttyPresent: false,
-    });
-  });
-
-  test("accepts --qr like --print so an in-container open does not launch a host browser", () => {
-    const options = openOptionsFromRunLandoArgv(["open", "--qr"], { tty: true });
-
-    expect(options).toEqual({
-      qr: true,
-      json: false,
-      ttyPresent: true,
-    });
-  });
-
-  test("keeps explicit text format ahead of later JSON shortcut", () => {
-    const options = openOptionsFromRunLandoArgv(["open", "--format=text", "-j"], { tty: false });
-
-    expect(options).toEqual({
-      json: false,
-      ttyPresent: false,
-    });
-  });
-
-  test("rejects unsupported --format values", () => {
-    expect(() => openOptionsFromRunLandoArgv(["open", "--format=xml"], { tty: false })).toThrow(
-      'Unsupported result format value "xml" from flag.',
-    );
-  });
-});
 
 describe("dispatchRunLando", () => {
   test("dispatches an allowed command and returns the executor envelope + exit code", async () => {
@@ -217,7 +165,7 @@ describe("dispatchRunLando", () => {
   test("never leaks a secret-bearing argv value into published events", async () => {
     const { events, layer } = recordingEvents();
     const request = buildRunLandoRequest({
-      argv: ["open", "--route", "https://user:s3cr3tpass@demo.lndo.site"],
+      argv: ["open", "https://user:s3cr3tpass@demo.lndo.site"],
       cwd: "/app",
       tty: false,
     });

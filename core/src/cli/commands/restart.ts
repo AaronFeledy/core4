@@ -5,7 +5,7 @@ import { type SummaryDocument, formatQuietSummary } from "@lando/renderer/summar
 import type { RestartAppResult } from "@lando/sdk/app";
 import type { RenderContext } from "../renderer-boundary";
 import { contextAllowsHyperlinks, isDecoratedContext, summaryPaintOptions } from "../renderer-boundary";
-import { connectionFields, unambiguousHostHttpUrls } from "./connection-summary";
+import { addressFields, unambiguousHostHttpUrls } from "./connection-summary";
 import { lifecycleLine, serviceRowsText } from "./service-summary";
 import { expectedCheckMessages, startOutcome, startStatusTone } from "./start-result";
 
@@ -18,7 +18,7 @@ export const buildRestartSummary = (result: RestartAppResult): SummaryDocument =
     label: service.name,
     tone: startStatusTone(service.state),
     value: service.state,
-    fields: connectionFields(service.connections),
+    fields: addressFields(service),
   }));
   return {
     title: "Restarted",
@@ -36,7 +36,7 @@ export const buildRestartSummary = (result: RestartAppResult): SummaryDocument =
 
 // Links must open from the host, so app-network and unverified addresses stay plain text.
 const restartHttpUrls = (result: RestartAppResult): ReadonlyArray<string> =>
-  unambiguousHostHttpUrls(result.servicesStarted.flatMap((service) => service.connections));
+  unambiguousHostHttpUrls(result.servicesStarted);
 
 export const renderRestartAppResult = (result: RestartAppResult, ctx?: RenderContext): string => {
   if (!isDecoratedContext(ctx)) {

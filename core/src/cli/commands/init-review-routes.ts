@@ -7,6 +7,7 @@ import {
   type EndpointPlan,
   RouteInput,
   RouterConfig,
+  isWildcardHostname,
   selectHttpEndpoint,
 } from "@lando/sdk/schema";
 import { Result, Schema } from "effect";
@@ -119,7 +120,7 @@ export const projectInitReviewRoutes = (
           !endpointsResolved ||
           ((endpointInput !== undefined || value.endpoint !== undefined) &&
             selectHttpEndpoint(endpoints, value.endpoint).status !== "selected") ||
-          value.hostname.includes("*")
+          isWildcardHostname(value.hostname)
         ) {
           unresolved++;
           continue;

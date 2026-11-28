@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { type ServiceConnection, ServiceName } from "@lando/sdk/schema";
+import { type ServiceConnection, ServiceName, type ServiceRoute } from "@lando/sdk/schema";
 import { Effect } from "effect";
 import { runPostStartScan, startupScanUrls } from "../../src/operations/post-start-scan.ts";
 import { plan, web } from "./start-progress-topology-support.ts";
@@ -37,21 +37,30 @@ test("scans only active assigned host HTTP connections and deduplicates them", (
       endpoint: assigned.endpoint,
     },
   ];
-  const urls = startupScanUrls(plan, [{ name: "web", state: "running", connections }]);
+  const urls = startupScanUrls(plan, [{ name: "web", state: "running", connections, routes: [] }]);
   expect(urls).toEqual([{ service: web.name, url: "http://localhost:8080/", endpoint: assigned.endpoint }]);
 });
 
-test.each([
-  "http://*.demo.test",
-  "https://wild.*.demo.test",
-  "http://web*.demo.test/prefix",
-  "https://%2A.demo.test",
-])("excludes wildcard %s without rejecting an asterisk in a path", (wildcard) => {
+test("skips a hostname pattern but scans a concrete route with an asterisk in its path", () => {
+  const url = "https://web.demo.test/files/*";
+  const exact = {
+    endpoint: host(url).endpoint,
+    host: "web.demo.test",
+    binding: "assigned",
+    state: "active",
+    protocol: "https",
+    port: 443,
+    pathPrefix: "/files/*",
+    hostMatch: "exact",
+    url,
+  } satisfies ServiceRoute;
+  const { url: _url, ...route } = exact;
+  const pattern = { ...route, host: "*.demo.test", hostMatch: "pattern" } satisfies ServiceRoute;
   const urls = startupScanUrls(plan, [
-    { name: "web", state: "running", connections: [host(wildcard), host("https://web.demo.test/files/*")] },
+    { name: "web", state: "running", connections: [], routes: [pattern, exact] },
   ]);
   expect(urls).toEqual([
-    { service: web.name, url: "https://web.demo.test/files/*/", endpoint: host(wildcard).endpoint },
+    { service: web.name, url: "https://web.demo.test/files/*/", endpoint: exact.endpoint },
   ]);
 });
 
@@ -69,8 +78,19 @@ test("preserves route prefixes when appending a configured scanner path", () => 
     {
       name: "web",
       state: "ready",
-      connections: [
-        { ...host("https://web.demo.test/api"), source: "route", protocol: "https", pathPrefix: "/api" },
+      connections: [],
+      routes: [
+        {
+          endpoint: host("https://web.demo.test/api").endpoint,
+          host: "web.demo.test",
+          binding: "assigned",
+          state: "active",
+          protocol: "https",
+          port: 443,
+          pathPrefix: "/api",
+          hostMatch: "exact",
+          url: "https://web.demo.test/api",
+        },
       ],
     },
   ]);

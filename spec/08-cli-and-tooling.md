@@ -74,7 +74,7 @@ The registry is authoritative for ids, aliases, bootstrap levels, flags, and res
 | `app:includes:verify` | none | `minimal` | Verify cached includes; `--format json\|table` |
 | `app:info` | `info` | `app` | Runtime info; repeatable `--service/-s` selects applied or desired-only services; `--format json\|table\|yaml`; result `app` is the current Landofile name when loading succeeds, otherwise the recorded applied name; optional `dataName` is present when the observed plan's recorded data name differs from `app`. Applied service observations retain their runtime identity (§6.10, §7.4). Optional `appliedStateIssue` reports a protected applied-state record with its remediation (§6.10). |
 | `app:logs` | `logs` | `app` | Stream logs; `--service`, `--follow`, `--tail`, `--since`, `--no-viewer`; `--build` prints the saved output of the most recent build instead (§6.13.6) |
-| `app:open` | `open` | `app` | Open or print URLs; `--service`, `--route`, `--all`, `--print` |
+| `app:open` | `open` | `app` | Open or print URLs; `[hostname]`, `--service`, `--all`, `--print`, `--qr`. `--print` and `--qr` skip browser launch; `--qr` also renders a QR code in human output. |
 | `app:pull` | `pull` | `app` | Pull remote datasets and optionally code (§10.12); `[<remote>@<env>]`, `--remote`, `--branch`, `--only`, `--fresh`, `--code`, `--no-snapshot`, `--allow-exposure`, `--force`, `--yes`, `--no-interactive`, `--format json` |
 | `app:push` | `push` | `app` | Push local datasets (§10.12); explicit `<remote>@<env>` and target bindings; `--remote`, `--branch`, `--only`, `--allow-exposure`, `--force`, `--yes`, `--no-interactive`, `--format json`. No code, fresh, or snapshot flags. |
 | `app:rebuild` | `rebuild` | `app` | Rebuild selected prerequisite closure; repeatable `--service/-s`; `--no-snapshot` skips database upgrade restore points (§6.15). |
@@ -102,7 +102,7 @@ The registry is authoritative for ids, aliases, bootstrap levels, flags, and res
 | `apps:poweroff` | `poweroff` | `scratch` | Stop user and global apps at their recorded roots; destroy scratch apps; `--keep-global`, `--keep-scratch` |
 | `apps:scratch:destroy` | `scratch:destroy` | `scratch` | Destroy by `<id>`; `--keep-volumes` |
 | `apps:scratch:gc` | `scratch:gc` | `scratch` | Report or reap orphans; `--prune` |
-| `apps:scratch:info` | `scratch:info` | `scratch` | Scratch info; `<id>`, `--service`, `--format` |
+| `apps:scratch:info` | `scratch:info` | `scratch` | Report mounts, network, service endpoints, and confirmed routes for the scratch selected by id or name; supports `--format`. |
 | `apps:scratch:list` | `scratch:list` | `scratch` | List registry and provider-label orphans; `--format table\|json` |
 | `apps:scratch:logs` | `scratch:logs` | `scratch` | Scratch logs; `<id>`, `--service`, `--follow`, `--tail`, `--since` |
 | `apps:scratch:run` | `scratch:run`, `run` | `scratch` | Scope-bound toolbox execution; `--keep` detaches |
@@ -265,7 +265,40 @@ In a batch update, failed-operation mutation safety applies to the affected plug
 
 #### 8.2.5 The `app:open` command
 
-`app:open` resolves only `http` or `https` targets. Default and `--service` selection admit connections targeting the union of the listeners the shared route-listener preference (§6.6) selects: an HTTP route's HTTP listener, and an HTTPS route's HTTPS listener only when the service holds a generated certificate (`ServicePlan.certs`); without one both schemes reach the plain primary or the single listener, so the union collapses to that listener. Neither selection uses list order. `--route` selects an explicit route hostname, and `--all` admits all eligible HTTP(S) connections. Hyperlink and open targets are `assigned`, `active`, non-wildcard host connections (§6.10). Default selection prefers the primary route, preferring HTTPS; `--service`, `--route`, and `--all` refine it. No target returns `OpenTargetUnresolvedError`; scheme violations use `HostProxyOpenUrlSchemeError` semantics. `--print` skips browser launch, and `--format json` returns targets. A headless host prints the URL and exits successfully. Events are `cli-app:open-*` plus `pre-open-url`/`post-open-url`.
+`app:open [hostname] [--service <name>] [--all] [--print] [--qr]` resolves only `http` or `https` targets. Scheme violations use `HostProxyOpenUrlSchemeError` semantics. `--print` and `--qr` skip browser launch; `--qr` also renders a QR code in human output. `--format json` returns targets. A headless host prints the URL and exits successfully. Events are `cli-app:open-*` plus `pre-open-url`/`post-open-url`.
+
+**Default, `--service`, and `--all`.** These selections take eligible exact routes or direct HTTP(S) publications from the §6.10 selector. Default and `--service` selection admit addresses targeting the union of the listeners the shared route-listener preference (§6.6) selects: an HTTP route's HTTP listener, and an HTTPS route's HTTPS listener only when the service holds a generated certificate (`ServicePlan.certs`); without one both schemes reach the plain primary or the single listener, so the union collapses to that listener. Neither selection uses listener list order. `--all` removes the default listener restriction. Eligible exact routes in the requested scope take precedence over direct publications. If no exact route qualifies, eligible direct publications are the fallback, including for pattern-only services. `--all` keeps every eligible HTTPS route address and suppresses an HTTP twin for the same service, hostname, and effective path prefix. An omitted prefix and `/` are the same for this comparison. Otherwise, select the first service in plan order with an eligible target and prefer HTTPS within that service. Apply the same URL parser check as for a hostname selection to each selected route. When nothing resolves, the diagnosis is the first of these that applies: a selection with the router enabled whose declared routes are non-empty and all patterns reports that the selection declares only hostname-pattern routes, with remediation to pass a hostname the pattern matches to `lando open`, add a route with a concrete hostname, or publish an HTTP port; otherwise the selection-miss and generic errors apply. The pattern diagnosis reads the plan, so it says what the app declares, not what is active, and it never guesses or probes a hostname the pattern matches.
+
+**`[hostname]`.** The positional opens one concrete hostname through the route of this app that serves it, exact or wildcard. The dispatcher validates hostname input before app bootstrap and command lifecycle events, including when global configuration is invalid. Each refusal below is a `CommandInputValidationError` with exit code 2 and target `app:open`.
+
+| Case | `field` / `kind` / `reason` |
+| --- | --- |
+| `--service` is also set | `service` / `flag` / `conflict` |
+| `--all` is also set | `all` / `flag` / `conflict` |
+| The value contains `*` (`isWildcardHostname`) | `hostname` / `arg` / `pattern` |
+| The value is not a `DomainName` | `hostname` / `arg` / `invalid` |
+
+The grammar is the concrete ASCII `DomainName` of §6.6: no raw Unicode, underscore, `*`, scheme, port, or path. The `invalid` message MUST NOT echo the value, so a pasted URL with credentials reaches no output or event. A valid hostname is lowercased. A target-selection miss is `OpenTargetUnresolvedError` with exit code 1, carrying `app` and `services`. Plan and provider failures retain their own tags.
+
+Resolution is per candidate URL and uses these definitions, with matching per §6.6 (`hostnameMatchesRoute`):
+
+- A **rule** is one route on one scheme and router port that the router reports published. Publication evidence, not service state, decides which rules exist: a rule whose backend is down still captures the requests it matches. There are no rules unless the route observation is `present`.
+- A **candidate** is a rule whose route hostname matches the requested hostname. Its URL is `scheme://hostname[:port]pathPrefix`.
+- A rule **answers** a candidate when it has the same scheme and port, its route hostname matches the requested hostname, and its path prefix is a string prefix of the candidate's path prefix (an absent prefix is `/` on the candidate and empty on the rule).
+- A candidate's **top** rules are the answering rules with the highest `RoutePlan.priority` (§6.6). A candidate absent from its own top rules is **shadowed** and dropped. An exact route therefore outranks a pattern only on the scheme, port, and path where it also matches.
+- Remaining candidates are ordered exact hostname before pattern, then `https` before `http`, then route-table order, then port.
+
+The steps, each failing with the first diagnosis that applies:
+
+1. When the router is disabled and a declared route matches, fail: routing is disabled. When no declared route matches, fail naming the declared route hostnames; when the hostname is a service name, the remediation adds `lando open --service <name>`. After plan resolution, these early misses do not observe router publication or inspect service containers.
+2. Observe the matching routes with one router call and compute the candidates. None: fail, the router is not serving the matching routes.
+3. When the hostname has any published, unshadowed exact route, consider only the exact candidates; otherwise consider the pattern candidates. Inspect only the services that own a considered candidate.
+4. Choose the first considered candidate whose route entry (same host, scheme, port, and path prefix) is `assigned` and `active`. None: fail naming the first considered route and its service as not running. Resolution MUST NOT fall back to a pattern candidate, of any scheme or service, when the hostname has a published, unshadowed exact route. An unpublished exact route does not prevent pattern fallback.
+5. When the chosen candidate's top rules name more than one service, fail as ambiguous, naming the URL, the services, and their route hostnames: Lando cannot guarantee which service answers.
+6. If the standard URL parser rejects the URL, changes its hostname, or normalizes its path away from the prefix used to select the rule, fail with `OpenTargetUnresolvedError`. Name the affected hostname or prefix and recommend a canonical spelling. Do not try another route.
+7. Otherwise the target is the chosen rule's service, the hostname, the scheme, and the URL.
+
+Resolution is app-local: it reads only this app's plan and this app's router evidence. A route of another running app can outrank the chosen one in the shared table (§6.6), and `app:open` cannot see that. The command description and user documentation MUST say "of this app".
 
 #### 8.2.6 The `meta:mcp` command
 
@@ -531,9 +564,9 @@ Safe interpolation follows §8.5.4 provenance in command text, var `sh` text bef
 
 Executable positions admit `event`, `vars`, `item`, `key`, `flags`, `args`, `raw`, and `task` as recorded invocation AST thunks. `flags` and `args` are complete bound `ToolingInputValues` maps; omitted optional inputs are missing, while empty strings and false remain values. Missing evaluation input fails with `ToolingInputError` naming the input and authored site, with remediation to pass it, declare a default, or use `default()`. `raw` is the passthrough array, available only without declared flags or args. For `app:db:dump`, task key `db:dump` yields `{ name: "db:dump", subnamespace: "db", commandNamespace: "app", canonicalId: "app:db:dump" }`; no subnamespace yields `""`. Planned scopes `service`, `sources`, `generates`, `checksum`, and `timestamp` fail loading with `NotImplementedError` naming the scope, unavailable invocation feature, authored path, and alternatives. This is a strict load failure, not a per-task normalization error (§8.5); lint reports every refusing read at its authored path with coordinates (§8.5.1). Bootstrap-sensitive references require the effective level (§7.3.1).
 
-The Landofile process-site `service.port` fact (§7.3.1) does not enable the tooling invocation scope `service`; event command leaves do not acquire that fact either. The self route-fact shorthands `service.url`, `service.hostname`, and `service.origin` are likewise refused at every tooling and event site (§7.3.1.1).
+The Landofile process-site `service.port` fact (§7.3.1) does not enable the tooling invocation scope `service`; event command leaves do not acquire that fact either. The self route-fact shorthands `service.url`, `service.hostname`, `service.origin`, `service.publicPort`, and `service.scheme` are likewise refused at every tooling and event site (§7.3.1.1).
 
-**Public route facts.** `{{ services.<name>.url }}`, `.hostname`, and `.origin` at the executable sites of §7.3.1.1 are invocation data resolved when the task or step runs and bound as data like `flags`. Admission, resolution timing, caller-var pruning, `ignoreError`, placement, and failures are specified there.
+**Public route facts.** `{{ services.<name>.url }}`, `.hostname`, `.origin`, `.publicPort`, and `.scheme` at the executable sites of §7.3.1.1 are invocation data resolved when the task or step runs and bound as data like `flags`. Admission, resolution timing, caller-var pruning, `ignoreError`, placement, and failures are specified there.
 
 **Provenance.** A segment is authored command text only when every read is authored and invocation-independent: captured load scopes (`env`, `host`, `app`, and peers) and literal task vars whose definitions read no invocation data and that no caller replaced. Everything else is data: invocation scopes, invocation-resolved public route facts, shell-computed vars, caller overrides even of literals, and literal vars transitively reading data through helpers, conditionals, computed access, or include/default composition. An unanalyzable `vars` read is data whenever the task has data vars. Substituted text MUST NOT be reparsed as a template.
 

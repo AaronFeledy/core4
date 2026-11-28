@@ -21,7 +21,7 @@ import {
   executionSiteAt,
   servicePortExpression,
 } from "@lando/sdk/landofile/execution-sites";
-import type { ParsedPendingSite } from "@lando/sdk/schema";
+import { PUBLIC_ROUTE_FACTS, type ParsedPendingSite } from "@lando/sdk/schema";
 import { Effect, Predicate, Result } from "effect";
 import { authoredSiteId } from "./compiled-sites.ts";
 import { recordExpressionEnvironment } from "./environment-dependencies.ts";
@@ -119,7 +119,7 @@ export const resolveLandofileLoadExpressions = (
         const suggestion =
           shell === undefined
             ? scopeRoots.some((root) => root === "info" || root === "service")
-              ? "Read a public route fact with `{{ services.<name>.url }}`, `.hostname`, or `.origin` in a service's map-form environment, a tooling command, env value, or var, or an event step; `{{ service.url }}`, `{{ service.hostname }}`, and `{{ service.origin }}` work only in a service's map-form environment."
+              ? `Read a public route fact with \`{{ services.<name>.<fact> }}\` (${PUBLIC_ROUTE_FACTS.join(", ")}) in a service's map-form environment, a tooling command, env value, or var, or an event step; \`{{ service.<fact> }}\` works only in a service's map-form environment.`
               : "Use {{ env.NAME }} for host values, $${NAME} for literal shell text, or a supported deferred scope."
             : shellParameterSuggestion(path, shell.name);
         throw new LandofileValidationError({

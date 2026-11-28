@@ -1,3 +1,5 @@
+import { effectiveRoutePath } from "@lando/engine/operations/connection-url";
+import { activeHostHttpAddresses } from "@lando/engine/operations/service-connections";
 import type { AppPlan, EndpointPlan, EndpointRef, StartedService } from "@lando/sdk/schema";
 import { routeListenerPreference, selectHttpEndpoint } from "@lando/sdk/schema";
 import { Schema } from "effect";
@@ -9,10 +11,10 @@ export const OpenTargetSchema = Schema.Struct({
   url: Schema.String,
 });
 export type OpenTarget = typeof OpenTargetSchema.Type;
+type SelectedOpenTarget = OpenTarget & { readonly routePath?: string };
 
 export interface OpenTargetSelection {
   readonly service?: string;
-  readonly route?: string;
   readonly all?: boolean;
 }
 
@@ -43,7 +45,7 @@ export const defaultHttpListeners = (
   );
 };
 
-const preferHttps = (targets: readonly OpenTarget[]): readonly OpenTarget[] => {
+const preferHttps = (targets: readonly SelectedOpenTarget[]): readonly SelectedOpenTarget[] => {
   const target = targets.find((target) => target.scheme === "https") ?? targets[0];
   return target === undefined ? [] : [target];
 };
@@ -52,38 +54,21 @@ export const resolveOpenTargets = (
   plan: Pick<AppPlan, "services">,
   selection: OpenTargetSelection,
   rows: readonly StartedService[],
-): readonly OpenTarget[] => {
+): readonly SelectedOpenTarget[] => {
   const candidates = rows.flatMap((row) =>
-    row.connections.flatMap((connection) => {
-      if (
-        connection.scope !== "host" ||
-        connection.binding !== "assigned" ||
-        connection.state !== "active" ||
-        connection.host.includes("*") ||
-        (connection.protocol !== "http" && connection.protocol !== "https")
-      )
-        return [];
-      return [
-        {
-          source: connection.source,
-          endpoint: connection.endpoint,
-          target: {
-            service: row.name,
-            hostname: connection.host,
-            scheme: connection.protocol,
-            url: connection.url,
-          } satisfies OpenTarget,
-        },
-      ];
-    }),
+    activeHostHttpAddresses(row).map((address) => ({
+      source: address.via,
+      endpoint: address.endpoint,
+      pathPrefix: address.pathPrefix,
+      target: {
+        service: row.name,
+        hostname: address.host,
+        scheme: address.protocol,
+        url: address.url,
+        ...(address.via === "route" ? { routePath: address.pathPrefix } : {}),
+      } satisfies SelectedOpenTarget,
+    })),
   );
-  if (selection.route !== undefined) {
-    return preferHttps(
-      candidates
-        .filter(({ source, target }) => source === "route" && target.hostname === selection.route)
-        .map(({ target }) => target),
-    );
-  }
   const listeners = new Map(
     Object.values(plan.services).map((service) => [
       String(service.name),
@@ -98,25 +83,26 @@ export const resolveOpenTargets = (
     );
   });
   const routes = scoped.filter(({ source }) => source === "route");
-  const targets = (routes.length > 0 ? routes : scoped).map(({ target }) => target);
   // HTTP and HTTPS observations of the same route remain one --all target.
   const distinct =
     routes.length === 0
-      ? targets
-      : targets.filter(
-          (target) =>
+      ? scoped
+      : routes.filter(
+          ({ target, pathPrefix }) =>
             target.scheme === "https" ||
-            !targets.some(
-              (other) =>
+            !routes.some(
+              ({ target: other, pathPrefix: otherPathPrefix }) =>
                 other.scheme === "https" &&
                 other.service === target.service &&
                 other.hostname === target.hostname &&
-                new URL(other.url).pathname === new URL(target.url).pathname,
+                effectiveRoutePath(otherPathPrefix) === effectiveRoutePath(pathPrefix),
             ),
         );
-  if (selection.all === true) return distinct;
+  if (selection.all === true) return distinct.map(({ target }) => target);
   for (const service of Object.values(plan.services)) {
-    const selected = preferHttps(distinct.filter((target) => target.service === service.name));
+    const selected = preferHttps(
+      distinct.flatMap(({ target }) => (target.service === service.name ? [target] : [])),
+    );
     if (selected.length > 0) return selected;
   }
   return [];

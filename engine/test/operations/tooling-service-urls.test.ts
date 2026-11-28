@@ -174,6 +174,8 @@ describe("tooling invocation service URLs", () => {
     ["url", "https://applied.test:8443/app"],
     ["hostname", "applied.test"],
     ["origin", "https://applied.test:8443"],
+    ["publicPort", "8443"],
+    ["scheme", "https"],
   ] as const)("resolves services.web.%s from the applied route and authority", async (fact, expected) => {
     // When the fact is read in argv and env, and separately in shell text
     const { result, calls } = await run(
@@ -195,16 +197,19 @@ describe("tooling invocation service URLs", () => {
     expect(calls).toMatchObject({ applied: 1, authorities: 1 });
   });
 
-  test("names the fact a site reads in its failure", async () => {
+  test.each(["hostname", "publicPort", "scheme"])("names %s in a failure to resolve it", async (fact) => {
     // When
-    const { result } = await run(hostTask({ cmd: ["echo", "{{ services.api.hostname }}"] }));
+    const { result } = await run(hostTask({ cmd: ["echo", `{{ services.api.${fact} }}`] }));
     // Then
     expect(result).toMatchObject({
       _tag: "Failure",
       failure: {
         _tag: "ToolingCompileError",
         issues: [
-          { reason: "unknown-service", message: "services.api.hostname names no service in this app." },
+          {
+            reason: "unknown-service",
+            message: expect.stringContaining(`services.api.${fact} is unavailable:`),
+          },
         ],
       },
     });
@@ -369,7 +374,10 @@ describe("tooling invocation service URLs", () => {
     },
   ])("fails with a located $reason issue for $name", async ({ service = "web", options, reason }) => {
     // When
-    const { result } = await run(hostTask({ cmd: ["echo", `{{ services.${service}.url }}`] }), options);
+    const { result } = await run(
+      hostTask({ cmd: ["echo", `{{ services.${service}.publicPort }}`] }),
+      options,
+    );
     // Then
     expect(result).toMatchObject({
       _tag: "Failure",
@@ -379,6 +387,7 @@ describe("tooling invocation service URLs", () => {
           {
             rule: "landofile.tooling",
             reason,
+            message: expect.stringContaining(`services.${service}.publicPort is unavailable:`),
             path: ["tooling", "probe", "cmd", 1],
             source: { file: "/app/.lando.yml", path: ["cmd", 1] },
           },

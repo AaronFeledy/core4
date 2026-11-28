@@ -30,6 +30,7 @@ tags: [docs, agent-native, info, json]
       <Verify command="lando app:info --format=json" expect={{ stdout: { regex: "\"connections\":\\s*\\[" } }} />
       <Verify command="lando app:info --format=json" expect={{ stdout: { regex: "\"scope\":\\s*\"app\"" } }} />
       <Verify command="lando app:info --format=json" expect={{ stdout: { regex: "\"url\":\\s*\"http://app:3000\"" } }} />
+      <Verify command={`lando app:info --jq '[.result.services[] | select(.routes == null or .connections == null)] | length'`} expect={{ stdout: { regex: "^\\s*0\\s*$" } }} />
     </Step>
     <Step name="cleanup">
       <Cleanup />
@@ -52,11 +53,11 @@ absent (it matches `app`).
 Read `hostProxy.runLando.availability` as configured provider support, not worker health: `available` means a selected service has the bridge configured and its provider supports it, `unavailable` includes a reason, and an absent `hostProxy` means no selected service is eligible.
 
 Each `services[]` entry names the service and its type and provider, whether
-it's primary, its current status, and its connections. It also carries safe
-facts from the plan when Lando has them:
+it's primary, its current status, and its connections and routes. It also
+carries safe facts from the plan when Lando has them:
 
 ```
-{ app, service, api, type, provider, primary, status, connections,
+{ app, service, api, type, provider, primary, status, connections, routes,
   artifact?, user?, workingDirectory?, home?, appMount?, mounts?,
   hostnames?, certs?, health?, logSources?, creds?, providerInfo? }
 ```
@@ -86,45 +87,71 @@ compare it with the check interval to judge freshness. These plan fields can be 
 and `providerInfo` is reserved for providers that explicitly supply JSON-safe
 details. Lando currently omits it.
 
-`connections` is a required array. It includes configured addresses and any host
-port bindings the provider observed that don't match a planned publication.
-An empty array means Lando has no connection addresses to report, not a missing
-field.
+`connections` is a required array. It holds the service's own listeners on the
+app network and the ports it publishes on the host, including any host port
+bindings the provider observed that don't match a planned publication. Router
+hostnames aren't in it; they're in `routes`, described below. An empty array
+means Lando has no connection addresses to report, not a missing field.
 Every connection carries:
 
 | Field | Meaning |
 | --- | --- |
 | `scope` | `app` for an address other services in this app dial, `host` for an address you reach from this machine |
-| `source` | `listener` (the service's own port on the app network), `publication` (a port published on the host), or `route` (a router hostname) |
-| `protocol` | `http`, `https`, `tcp`, or `udp`. Routes use the router's external scheme; other connections use the declared listener protocol, or `tcp`/`udp` for an unmatched observed host port. Lando never guesses HTTP |
-| `host` | Hostname or unbracketed IP address: the service key for `app` scope, `localhost`, a bind address, or a route hostname for `host` scope |
+| `source` | `listener` (the service's own port on the app network) or `publication` (a port published on the host) |
+| `protocol` | `http`, `https`, `tcp`, or `udp`: the declared listener protocol, or `tcp`/`udp` for an unmatched observed host port. Lando never guesses HTTP |
+| `host` | Hostname or unbracketed IP address: the service key for `app` scope, `localhost` or a bind address for `host` scope |
 | `endpoint` | The logical listener this connection comes from: `port`, `transport` (`tcp` or `udp`), its sorted `names`, and whether it is marked `primary` |
 | `binding` | `assigned` when the address has a port, `pending` when it doesn't have one yet |
-| `state` | `active`, `inactive`, or `unknown`. `active` means the service is running and, for a `host` address, Lando saw the port or route actually published. It never means the service is healthy |
+| `state` | `active`, `inactive`, or `unknown`. `active` means the service is running and, for a `host` address, Lando saw the port actually published. It never means the service is healthy |
 
-An `assigned` connection also carries `port`, a copyable `url` without any
+Every `assigned` connection also carries `port`, a copyable `url` without any
 password, and `alternateUrls` for the same address under another scheme. A
 `pending` connection has none of those. It's a configured host port that the
-provider hasn't assigned, or a route that no router is serving yet. Lando doesn't
-invent a port for it, and its `state` is only ever `inactive` or `unknown`. A
-`route` connection adds `pathPrefix`, which its `url` keeps.
+provider hasn't assigned. Lando doesn't invent a port for it, and its `state` is
+only ever `inactive` or `unknown`.
+
+`routes` is a required array too. It lists the router routes that forward to the
+service. For each route and external scheme, there is one entry for each router
+port the router has configured or is observed serving, or one `pending` entry
+when the router has none. An empty array means no route forwards to the service.
+Every route carries:
+
+| Field | Meaning |
+| --- | --- |
+| `host` | The published route hostname in lowercase: one concrete hostname, or a wildcard such as `*.app.lndo.site` |
+| `protocol` | `http` or `https`, the router's external scheme |
+| `pathPrefix` | The route's path prefix, which its `url` keeps. Empty when the route matches every path |
+| `hostMatch` | `exact` when `host` is one concrete hostname, `pattern` when `host` is a wildcard |
+| `endpoint` | The logical listener this route forwards to, in the same shape a connection uses |
+| `binding` | `assigned` when the router reports a port for the route, `pending` when it doesn't have one yet |
+| `state` | `active`, `inactive`, or `unknown`. `active` means the router reported the route loaded. A `pending` route is only ever `inactive` or `unknown` |
+
+An `assigned` route also carries `port`. A route has a `url` only when it is
+`assigned` and `hostMatch` is `exact`. A `pattern` route matches many hostnames,
+so no single URL names it: when it's `assigned` it has a `port` and no `url`.
+Routes have no `scope`, `source`, or `alternateUrls`.
 
 The demo's Node service listens on `3000`, and the Node type marks that listener
 primary, so its `endpoint` is `{ port: 3000, transport: "tcp", names: ["app"],
 primary: true }`. Its `app`-scope listener URL is `http://app:3000`, and its
-default route is a `host`-scope `route` connection for
+default route is a `routes` entry for
 `app.in-container-context-demo.lndo.site`. Unix sockets are not listed, and
 cross-app `<service>.<app>.internal` aliases are not connections.
 
-Only `host` connections that are `assigned`, `active`, and `http` or `https` on
-a non-wildcard hostname are hyperlinked by `lando info`, opened by `lando open`,
-or probed by the post-start scanner. `app`-scope addresses are never treated as
-clickable from the host.
+`lando info` hyperlinks, a plain `lando open`, and the post-start scanner all use
+the same set of addresses: `host` connections that are `assigned`, `active`, and
+`http` or `https`, plus routes that are `assigned`, `active`, and
+`hostMatch: "exact"`. So a plain `lando open` opens only active exact routes and
+active HTTP publications, and a `pattern` route is listed but never linked or
+probed. `lando open <hostname>` instead resolves that hostname against this
+app's published routes, patterns included, and returns the URL the router
+serves. `app`-scope addresses are never treated as clickable from the host.
 
-A stopped service keeps its configured connections with `state: inactive`, so
-the addresses stay readable and copyable. `unknown` means Lando could not
-observe the binding; it is not a failure and not a promise. No connection `state`
-proves the service is ready; use its healthcheck or a protocol probe for that.
+A stopped service keeps its configured connections and routes with
+`state: inactive`, so the addresses stay readable and copyable. `unknown` means
+Lando could not observe the binding; it is not a failure and not a promise. No
+`state` proves the service is ready; use its healthcheck or a protocol probe for
+that.
 
 When the app has been started, `app:info` describes the plan Lando last applied,
 not an edited Landofile you have not started yet. Run `lando start` to apply

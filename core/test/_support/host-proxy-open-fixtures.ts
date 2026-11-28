@@ -1,6 +1,4 @@
-import { collectPlanConnections } from "@lando/engine/operations/connection-collector";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
-import { buildCommandResultEnvelope, failureOutcomeFromCause } from "@lando/sdk/command-result";
 import {
   AbsolutePath,
   AppId,
@@ -11,16 +9,13 @@ import {
 } from "@lando/sdk/schema";
 import {
   EventService,
-  type LandoEvent,
   ProcessRunner,
   RouterService,
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider, makeTestRouterService, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
-import { DateTime, Effect, Exit, Layer, Stream } from "effect";
-
-import { type OpenAppOptions, OpenAppResultSchema, openForPlan } from "../../src/cli/commands/open.ts";
+import { DateTime, Effect, Layer, Stream } from "effect";
 
 export const route = (
   over: Pick<RoutePlan, "hostname" | "scheme"> & { readonly service: string },
@@ -66,15 +61,11 @@ export const makePlan = (routes: RoutePlan[], serviceNames: string[]): AppPlan =
   };
 };
 
-export const recordingEventLayer = () => {
-  const events: LandoEvent[] = [];
-  const layer = Layer.succeed(
+export const silentEventLayer = () =>
+  Layer.succeed(
     EventService,
     EventService.of({
-      publish: (event) =>
-        Effect.sync(() => {
-          events.push(event);
-        }),
+      publish: () => Effect.void,
       subscribe: () => Stream.die("unused event subscription"),
       subscribeQueue: Effect.die("unused event queue"),
       waitFor: () => Effect.die("unused event wait"),
@@ -83,10 +74,6 @@ export const recordingEventLayer = () => {
       query: () => Effect.die("unused event query"),
     }),
   );
-  return { events, layer };
-};
-
-export const silentEventLayer = () => recordingEventLayer().layer;
 
 export const redactionLayer = () => Layer.succeed(RedactionService, makeRedactionService());
 
@@ -147,26 +134,3 @@ export const commandServices = (
       }),
     ),
   );
-
-export const hostSideEnvelope = (plan: AppPlan, options: OpenAppOptions) => {
-  const program = Effect.gen(function* () {
-    const redactor = yield* (yield* RedactionService).forProfile("secrets");
-    const outcome = yield* Effect.exit(
-      Effect.gen(function* () {
-        const connections = yield* collectPlanConnections(plan);
-        return yield* openForPlan(plan, options, connections);
-      }),
-    );
-    const encoded = Exit.isSuccess(outcome)
-      ? { outcome: { _tag: "success" as const, value: outcome.value }, exitCode: 0 }
-      : { outcome: failureOutcomeFromCause(outcome.cause), exitCode: 1 };
-    const envelope = yield* buildCommandResultEnvelope({
-      command: "app:open",
-      resultSchema: OpenAppResultSchema,
-      outcome: encoded.outcome,
-      redactor,
-    });
-    return { envelope, exitCode: encoded.exitCode };
-  });
-  return Effect.runPromise(program.pipe(Effect.provide(commandServices(silentEventLayer()))));
-};

@@ -642,6 +642,20 @@ describe("selected service restart", () => {
       refuses: false,
       member: "origin",
     },
+    {
+      operation: "restart",
+      hostname: "web.test",
+      prior: "http://web.test:9080",
+      refuses: true,
+      member: "publicPort",
+    },
+    {
+      operation: "restart",
+      hostname: "web.test",
+      prior: "http://web.test:9080",
+      refuses: false,
+      member: "scheme",
+    },
     { operation: "restart", hostname: "web.test", prior: "http://web.test:8080/old", refuses: true },
     { operation: "restart", hostname: "web.test", prior: undefined, refuses: true, member: "hostname" },
   ] as const)(

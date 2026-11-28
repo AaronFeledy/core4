@@ -40,7 +40,7 @@ export const SERVICE_URL_REFUSED_EVENTS: ReadonlySet<string> = new Set<Landofile
 
 /**
  * The message and suggestion for a refused route-fact read. `fact` names the fact the site reads
- * (`url`, `hostname`, or `origin`) so the message names what the author wrote.
+ * (`url`, `hostname`, `origin`, `publicPort`, or `scheme`) so the message names what the author wrote.
  */
 export const serviceUrlFailureText = (
   reason: ServiceUrlFailureReason,
@@ -52,7 +52,7 @@ export const serviceUrlFailureText = (
   switch (reason) {
     case "event-phase":
       return {
-        message: `${expression} is not available during ${event}: ${
+        message: `${expression} is unavailable: during ${event}, ${
           event !== undefined && UNPUBLISHED_EVENTS.has(event)
             ? "the app has not published its routes yet"
             : "the app is no longer serving"
@@ -62,39 +62,39 @@ export const serviceUrlFailureText = (
       };
     case "unknown-service":
       return {
-        message: `${expression} names no service in this app.`,
+        message: `${expression} is unavailable: no service in this app has that name.`,
         suggestion: "Name a service declared in the Landofile.",
       };
     case "app-not-started":
       return {
-        message: `The app has not been started, so ${service} has no applied route yet.`,
+        message: `${expression} is unavailable: the app has not been started.`,
         suggestion: "Run `lando start`, then run this command again.",
       };
     case "applied-state-unreadable":
       return {
-        message: `Lando could not read the app's applied state, so it cannot tell which route ${service} last had.`,
+        message: `${expression} is unavailable: Lando could not read the app's applied state.`,
         suggestion: "Run `lando start` to rewrite the app's applied state, then retry.",
       };
     case "no-applied-route":
       return {
-        message: `${service} has no applied route with a concrete hostname.`,
+        message: `${expression} is unavailable: the service has no applied route with a concrete hostname.`,
         suggestion:
           "Run `lando start` to apply the app's routes; the service needs a route whose hostname has no wildcard.",
       };
     case "routing-disabled":
       return {
-        message: `The router is disabled for this app, so ${service} has no public route for ${expression}.`,
+        message: `${expression} is unavailable: the router is disabled for this app.`,
         suggestion: "Enable the router for this app and run `lando start`.",
       };
     case "router-unsupported":
       return {
-        message: `The selected router cannot report the address it serves ${service} on.`,
+        message: `${expression} is unavailable: the selected router cannot report the service's route address.`,
         suggestion:
           "Run `lando setup` to install a router that reports its route addresses, then `lando start`.",
       };
     case "authority-unavailable":
       return {
-        message: `The router has not recorded the port it serves ${service} on.`,
+        message: `${expression} is unavailable: Lando could not get a recorded router authority for the route.`,
         suggestion: "Run `lando start` so the router records its ports, then retry.",
       };
     default:
@@ -105,7 +105,8 @@ export const serviceUrlFailureText = (
 /**
  * Resolve every public route fact these invocation sites read: the address Lando last applied for
  * each service's primary concrete route, at the port the router recorded for it, projected into
- * its `url`, `hostname`, and `origin`. Fact-free sites read neither applied state nor the router.
+ * its `url`, `hostname`, `origin`, `publicPort`, and `scheme`. Fact-free sites read neither applied
+ * state nor the router.
  * A failure is a `ToolingCompileError` whose issues locate every site the failure affects: every
  * reading site for an app-wide failure, and the sites of each affected service otherwise. The
  * caller drops sites that will not run, and `effectivePath` maps a site to its effective

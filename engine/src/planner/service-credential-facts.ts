@@ -1,10 +1,13 @@
-import type { DatabaseConnection, PortNumber, RouteText, ServiceCreds } from "@lando/sdk/schema";
+import type {
+  DatabaseConnection,
+  PortNumber,
+  PublicRouteFact,
+  RouteText,
+  ServiceCreds,
+} from "@lando/sdk/schema";
 
-export interface ServiceExpressionFacts {
+export interface ServiceExpressionFacts extends Readonly<Record<PublicRouteFact, RouteText>> {
   readonly creds?: ServiceCreds;
-  readonly url: RouteText;
-  readonly hostname: RouteText;
-  readonly origin: RouteText;
   readonly port?: PortNumber;
 }
 
@@ -17,11 +20,17 @@ export const serviceExpressionFacts = (
   /** The type's planned listen port, published when the service has no database connection. */
   plannedPort?: PortNumber,
 ): ServiceExpressionFacts => {
+  const binding = (fact: PublicRouteFact): RouteText => ({
+    _tag: "RouteText",
+    parts: [{ service: name, ...(fact === "url" ? {} : { member: fact }), encoding: "raw" }],
+  });
   const route = {
-    url: { _tag: "RouteText", parts: [{ service: name, encoding: "raw" }] },
-    hostname: { _tag: "RouteText", parts: [{ service: name, member: "hostname", encoding: "raw" }] },
-    origin: { _tag: "RouteText", parts: [{ service: name, member: "origin", encoding: "raw" }] },
-  } satisfies Pick<ServiceExpressionFacts, "url" | "hostname" | "origin">;
+    url: binding("url"),
+    hostname: binding("hostname"),
+    origin: binding("origin"),
+    publicPort: binding("publicPort"),
+    scheme: binding("scheme"),
+  } satisfies Readonly<Record<PublicRouteFact, RouteText>>;
   if (service?.connection !== undefined)
     return { ...route, creds: service.connection.creds, port: service.connection.port };
   const port = plannedPort === undefined ? {} : { port: plannedPort };

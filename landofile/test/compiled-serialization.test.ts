@@ -175,6 +175,8 @@ test("serializes materialized route facts by their member and reloads them uncha
     url: { _tag: "RouteText", parts: [{ service, encoding: "raw" }] },
     hostname: { _tag: "RouteText", parts: [{ service, member: "hostname", encoding: "raw" }] },
     origin: { _tag: "RouteText", parts: [{ service, member: "origin", encoding: "raw" }] },
+    publicPort: { _tag: "RouteText", parts: [{ service, member: "publicPort", encoding: "raw" }] },
+    scheme: { _tag: "RouteText", parts: [{ service, member: "scheme", encoding: "raw" }] },
   });
   const context = { services: { web: facts("web"), api: facts("api") } };
   const compiled = await Effect.runPromise(
@@ -189,6 +191,8 @@ test("serializes materialized route facts by their member and reloads them uncha
                 environment: {
                   HOST: "{{ service.hostname }}",
                   ORIGIN: "{{ url.encodeComponent(services.api.origin) }}/x",
+                  PORT: "{{ service.publicPort }}",
+                  SCHEME: "{{ services.api.scheme }}",
                   URL: "{{ services.api.url }}",
                 },
               },
@@ -212,6 +216,8 @@ test("serializes materialized route facts by their member and reloads them uncha
             parts: [{ service: "api", member: "origin", encoding: "uri-component" }, "/x"],
           },
           URL: facts("api").url,
+          PORT: facts("web").publicPort,
+          SCHEME: facts("api").scheme,
         },
       },
     },

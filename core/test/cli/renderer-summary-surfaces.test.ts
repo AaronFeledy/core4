@@ -95,6 +95,7 @@ describe("app:info summary", () => {
         provider: "lando",
         primary: true,
         status: "running",
+        routes: [],
         connections: [
           ...connections(["postgresql://lando@localhost:5432/postgres"]),
           ...connections(["tcp://你好世界-database-service:5432"], "app"),
@@ -109,6 +110,7 @@ describe("app:info summary", () => {
         primary: false,
         status: "stopped",
         connections: [],
+        routes: [],
       },
     ],
   };
@@ -252,6 +254,7 @@ describe("global status summary", () => {
             desired: "enabled",
             pending: [],
             connections: connections(["http://localhost:80"]),
+            routes: [],
           },
         ],
       }),
@@ -278,6 +281,7 @@ describe("global status summary", () => {
           desired: "disabled",
           pending: [],
           connections: [],
+          routes: [],
         },
       ],
     });

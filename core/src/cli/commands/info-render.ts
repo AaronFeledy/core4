@@ -11,7 +11,14 @@ import type { ListenerAuthority } from "@lando/sdk/schema";
 import { escapeDiagnosticText } from "../diagnostic-text";
 import type { RenderContext } from "../renderer-boundary";
 import { contextAllowsHyperlinks, isDecoratedContext, summaryPaintOptions } from "../renderer-boundary";
-import { connectionFields, scopedConnectionText, unambiguousHostHttpUrls } from "./connection-summary";
+import {
+  ROUTE_PATTERN_OPEN_NOTE,
+  addressFields,
+  appNetworkText,
+  hostAddressValue,
+  plainRoutePatternRows,
+  unambiguousHostHttpUrls,
+} from "./connection-summary";
 import { fileSyncSection, plainFileSyncLines } from "./info-file-sync-render.ts";
 import { probeFields } from "./info-probes-render.ts";
 import { homeFields, plainStorageRows, storageFields, storageRemedy } from "./info-storage-render";
@@ -112,7 +119,7 @@ const jsonDetailsNote = (hasLogSources: boolean, hasStorage: boolean): string =>
   return `Run \`lando info --format=json\` for ${detailList.format(details)}.`;
 };
 
-export const buildInfoSummary = (result: InfoAppResult): SummaryDocument => {
+export const buildInfoSummary = (result: InfoAppResult, showOpenHint = true): SummaryDocument => {
   const hostProxy = result.hostProxy;
   const projectFiles = fileSyncSection(result.fileSync);
   const rows: SummaryRow[] = result.services.map((service) => {
@@ -127,7 +134,7 @@ export const buildInfoSummary = (result: InfoAppResult): SummaryDocument => {
         ...planMetadataFields(service),
         ...probeFields(service),
         ...(service.url === undefined ? [] : [{ label: "URL", value: service.url }]),
-        ...connectionFields(service.connections),
+        ...addressFields(service),
         ...storageFields(service),
         ...homeFields(service),
         ...(service.logSources === undefined ? [] : logSourceFields(service.logSources)),
@@ -138,6 +145,14 @@ export const buildInfoSummary = (result: InfoAppResult): SummaryDocument => {
   });
   const hasLogSources = result.services.some((service) => (service.logSources?.length ?? 0) > 0);
   const hasStorage = result.services.some((service) => (service.mounts?.length ?? 0) > 0);
+  const hasPatterns = result.services.some((service) =>
+    service.routes.some((route) => route.hostMatch === "pattern"),
+  );
+  const serviceNotes = [
+    ...(rows.length === 0 ? ["No services are defined for this app."] : []),
+    ...(hasLogSources || hasStorage ? [jsonDetailsNote(hasLogSources, hasStorage)] : []),
+    ...(hasPatterns && showOpenHint ? [ROUTE_PATTERN_OPEN_NOTE] : []),
+  ];
   const agentEnvSection =
     result.agentEnv === undefined
       ? []
@@ -173,11 +188,7 @@ export const buildInfoSummary = (result: InfoAppResult): SummaryDocument => {
       {
         title: "services",
         rows,
-        ...(rows.length === 0
-          ? { notes: ["No services are defined for this app."] }
-          : hasLogSources || hasStorage
-            ? { notes: [jsonDetailsNote(hasLogSources, hasStorage)] }
-            : {}),
+        ...(serviceNotes.length === 0 ? {} : { notes: serviceNotes }),
       },
       ...(projectFiles === undefined ? [] : [projectFiles]),
       ...(hostProxy?.runLando.availability !== "unavailable"
@@ -217,19 +228,21 @@ const hostProxyLines = (result: InfoAppResult): ReadonlyArray<string> => {
   return [`host-proxy\trunLando\t${hostProxy.runLando.availability}${reason}`];
 };
 
-// Links must open from the host, so app-network `internal` addresses are deliberately left out.
-const infoHttpUrls = (result: InfoAppResult): ReadonlyArray<string> =>
-  unambiguousHostHttpUrls(result.services.flatMap((service) => service.connections));
-
-export const renderInfoAppResult = (result: InfoAppResult, ctx?: RenderContext): string => {
+export const renderInfoAppResult = (
+  result: InfoAppResult,
+  ctx?: RenderContext,
+  showOpenHint = true,
+): string => {
   const rendered = isDecoratedContext(ctx)
-    ? formatSummary(buildInfoSummary(result), summaryPaintOptions(ctx))
+    ? formatSummary(buildInfoSummary(result, showOpenHint), summaryPaintOptions(ctx))
     : renderPlainInfoAppResult(result);
   const output =
     result.appliedStateIssue !== undefined
       ? `${rendered}\n\nApplied state: unknown. ${escapeDiagnosticText(result.appliedStateIssue.message)} ${escapeDiagnosticText(result.appliedStateIssue.remediation)}`
       : rendered;
-  return contextAllowsHyperlinks(ctx) ? linkKnownHttpUrls(output, infoHttpUrls(result)) : output;
+  return contextAllowsHyperlinks(ctx)
+    ? linkKnownHttpUrls(output, unambiguousHostHttpUrls(result.services))
+    : output;
 };
 
 const renderPlainInfoAppResult = (result: InfoAppResult): string => {
@@ -241,7 +254,7 @@ const renderPlainInfoAppResult = (result: InfoAppResult): string => {
   ];
   if (result.services.length === 0) return [`${result.app}`, "(no services)", ...extra].join("\n");
   const rows = result.services.flatMap((service) => {
-    const base = `${service.service}\t${service.status}\t${scopedConnectionText(service.connections, "host") || "not published"}\t${scopedConnectionText(service.connections, "app") || "-"}`;
+    const base = `${service.service}\t${service.status}\t${hostAddressValue(service)}\t${appNetworkText(service) || "-"}`;
     const logRows = (service.logSources ?? []).map((source) => {
       const reason = source.reason === undefined ? "" : `\t${source.reason}`;
       const location = source.strategy === "console" ? `console/${source.stream}` : source.path;
@@ -261,6 +274,7 @@ const renderPlainInfoAppResult = (result: InfoAppResult): string => {
     const urlRows = service.url === undefined ? [] : [`${service.service}\turl\t${service.url}`];
     return [
       base,
+      ...plainRoutePatternRows(service),
       ...urlRows,
       ...metadataRows,
       ...probes,
