@@ -118,6 +118,11 @@ export interface ScenarioRunOptions {
   readonly answers?: Readonly<Record<string, string>>;
   /** Hard timeout for a compiled CLI child. */
   readonly timeoutMs?: number;
+  /**
+   * Environment entries for this run only, merged over the scenario environment. A test that
+   * points Lando at a different container engine needs one endpoint per invocation.
+   */
+  readonly env?: Readonly<Record<string, string | undefined>>;
 }
 
 export interface ScenarioStartOptions {
@@ -741,7 +746,7 @@ const createScenarioRunCli = (
         provider,
         getWorkingDirectory,
         setWorkingDirectory,
-        env,
+        options?.env === undefined ? env : { ...env, ...options.env },
         signal,
       );
     });
@@ -764,7 +769,8 @@ const createE2eRunCli =
   (command, options) =>
     runInterruptibleCli(async (signal) => {
       const args = appendInitAnswers(command, options?.answers);
-      const { binary, exists } = await compiledLauncher(env);
+      const runEnv = options?.env === undefined ? env : { ...env, ...options.env };
+      const { binary, exists } = await compiledLauncher(runEnv);
       if (!exists) {
         return {
           command: args,
@@ -777,7 +783,7 @@ const createE2eRunCli =
 
       const cwd = getWorkingDirectory();
       const proc = Bun.spawn({
-        ...scenarioChild([binary, ...args], { cwd, env, mode: "compiled" }),
+        ...scenarioChild([binary, ...args], { cwd, env: runEnv, mode: "compiled" }),
         signal,
         ...(options?.timeoutMs === undefined ? {} : { timeout: options.timeoutMs, killSignal: "SIGKILL" }),
       });
