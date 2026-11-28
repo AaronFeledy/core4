@@ -12,7 +12,7 @@ const EXPECTED_OWNED_MATRICES = {
   },
   elasticsearch: { "8": "docker.elastic.co/elasticsearch/elasticsearch:8.19.25" },
   go: { "1.22": "golang:1.22", "1.23": "golang:1.23" },
-  mariadb: { "11.4": "mariadb:11.4" },
+  mariadb: { "10.11": "mariadb:10.11", "11.4": "mariadb:11.4", "11.8": "mariadb:11.8" },
   meilisearch: { "1": "getmeili/meilisearch:v1.11" },
   mongodb: { "7": "mongo:7" },
   mssql: {

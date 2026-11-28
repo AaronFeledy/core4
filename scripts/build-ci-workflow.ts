@@ -533,7 +533,9 @@ ${nodeImagePullLines}
           pull_image ${ELASTICSEARCH_DEFAULT_IMAGE}
           pull_image docker.io/getmeili/meilisearch:v1.11
           pull_image docker.io/axllent/mailpit:v1.30.1
+          pull_image docker.io/library/mariadb:10.11
           pull_image docker.io/library/mariadb:11.4
+          pull_image docker.io/library/mariadb:11.8
           pull_image docker.io/library/memcached:1.6
           pull_image docker.io/library/mongo:7
           pull_image docker.io/library/mysql:8.0

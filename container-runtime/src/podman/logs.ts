@@ -1,12 +1,18 @@
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { type LogFileAccess, followLogSources, logFollowLineChunks } from "@lando/sdk/log-follow";
-import type { AppPlan, ServiceName, ServicePlan } from "@lando/sdk/schema";
+import type { AppPlan, ServiceName } from "@lando/sdk/schema";
 import type { LogChunk, LogOptions, LogTarget, ProviderError } from "@lando/sdk/services";
-import { DateTime, type Effect, Option, type Scope, Stream } from "effect";
-import type { EngineHttpApi, EngineHttpRequest, ProviderErrorContext } from "../engine-api.ts";
-import { missingApi, missingService } from "../engine-errors.ts";
+import { Cause, DateTime, Effect, Option, Schema, type Scope, Stream } from "effect";
+import {
+  type EngineHttpApi,
+  type EngineHttpRequest,
+  type ProviderErrorContext,
+  isSuccessStatus,
+} from "../engine-api.ts";
+import { missingApi, missingService, serviceNotRunning } from "../engine-errors.ts";
 import { serviceContainerName } from "../plan.ts";
 import { httpStatusOf } from "../redact.ts";
+import { runStatusFromEngineState } from "../run-observation.ts";
 import { decodeLogStream } from "../streams.ts";
 
 export interface LogsOptions {
@@ -15,8 +21,6 @@ export interface LogsOptions {
   readonly logFileAccess?: LogFileAccess | Effect.Effect<LogFileAccess, ProviderError, Scope.Scope>;
   readonly ctx: ProviderErrorContext;
 }
-
-const containerName = (plan: AppPlan, service: ServicePlan) => serviceContainerName(plan, service.name);
 
 // Docker and Podman answer the logs and exec-create requests for a container that does not exist
 // with HTTP 404 before streaming anything.
@@ -27,6 +31,10 @@ const containerAbsent = (error: ProviderError): boolean =>
 const emptyWhenContainerAbsent = <A>(
   logs: Stream.Stream<A, ProviderError>,
 ): Stream.Stream<A, ProviderError> => logs.pipe(Stream.catchIf(containerAbsent, () => Stream.empty));
+
+const decodeInspectStatus = Schema.decodeUnknownOption(
+  Schema.fromJsonString(Schema.Struct({ State: Schema.Struct({ Status: Schema.String }) })),
+);
 
 const stream = (
   deps: { readonly api: EngineHttpApi; readonly ctx: ProviderErrorContext },
@@ -92,11 +100,12 @@ export const logs = (
     }
 
     const api = runtime.api;
+    const container = serviceContainerName(plan, service.name);
     const logFileAccess = runtime.logFileAccess;
     const logSources = options.sources ?? service.logSources ?? [];
     const selected = logSources.find((source) => source.id === options.source);
     if (selected !== undefined && selected.strategy !== "follow") {
-      return containerConsoleLogs(api, ctx, containerName(plan, service), service.name, {
+      return containerConsoleLogs(api, ctx, container, service.name, {
         ...options,
         sources: [selected],
       });
@@ -104,35 +113,64 @@ export const logs = (
     const since = fileSourceSince(options.since);
 
     return Stream.suspend(() => {
-      const fileStream =
+      const fileStream: Stream.Stream<LogChunk, ProviderError> =
         logFileAccess === undefined || !logSources.some((source) => source.strategy === "follow")
           ? Stream.empty
-          : emptyWhenContainerAbsent(
-              logFollowLineChunks(
-                followLogSources({
-                  service: service.name,
-                  sources: logSources,
-                  follow: options.follow ?? true,
-                  access: logFileAccess,
-                  ...(options.tail === undefined ? {} : { tail: options.tail }),
-                  ...(since === undefined ? {} : { since }),
-                  ...(options.source === undefined ? {} : { source: options.source }),
-                }),
-              ),
+          : logFollowLineChunks(
+              followLogSources({
+                service: service.name,
+                sources: logSources,
+                follow: options.follow ?? true,
+                access: logFileAccess,
+                ...(options.tail === undefined ? {} : { tail: options.tail }),
+                ...(since === undefined ? {} : { since }),
+                ...(options.source === undefined ? {} : { source: options.source }),
+              }),
             );
 
-      if (options.source !== undefined) {
-        return fileStream;
-      }
-
-      const consoleStream = containerConsoleLogs(
-        api,
-        ctx,
-        containerName(plan, service),
-        service.name,
-        options,
+      const files = fileStream.pipe(
+        Stream.catchCause((cause) => {
+          if (!cause.reasons.every(Cause.isFailReason)) return Stream.failCause(cause);
+          if (cause.reasons.every((reason) => containerAbsent(reason.error))) return Stream.empty;
+          if (api.request === undefined) return Stream.failCause(cause);
+          // Exec-create failure codes differ by engine.
+          return Stream.unwrap(
+            api.request({ method: "GET", path: `/containers/${encodeURIComponent(container)}/json` }).pipe(
+              Effect.option,
+              Effect.map((response) => {
+                if (Option.isNone(response)) return Stream.failCause(cause);
+                if (response.value.status === 404) return Stream.empty;
+                if (!isSuccessStatus(response.value.status)) return Stream.failCause(cause);
+                const decoded = decodeInspectStatus(response.value.body);
+                if (Option.isNone(decoded)) return Stream.failCause(cause);
+                const status = runStatusFromEngineState(decoded.value.State.Status);
+                switch (status) {
+                  case "created":
+                  case "exited":
+                  case "dead":
+                    return selected?.strategy === "follow"
+                      ? Stream.fail(serviceNotRunning(ctx, service.name, status))
+                      : Stream.empty;
+                  case "absent":
+                  case "running":
+                  case "paused":
+                  case "restarting":
+                  case "removing":
+                  case "unknown":
+                    return Stream.failCause(cause);
+                  default:
+                    return status satisfies never;
+                }
+              }),
+            ),
+          );
+        }),
       );
 
-      return Stream.merge(consoleStream, fileStream);
+      if (options.source !== undefined) {
+        return files;
+      }
+
+      return Stream.merge(containerConsoleLogs(api, ctx, container, service.name, options), files);
     });
   }).pipe(Stream.withSpan("RuntimeProvider.logs"));

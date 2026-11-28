@@ -8,7 +8,6 @@ import {
   firstReservedExtraArg,
   isNonCatalogArtifact,
 } from "../src/services/_extra-args.ts";
-import { mariadbServiceType } from "../src/services/mariadb.ts";
 import { memcachedServiceFeature } from "../src/services/memcached.ts";
 import { minioServiceFeature } from "../src/services/minio.ts";
 import { mongodbServiceType } from "../src/services/mongodb.ts";
@@ -243,28 +242,7 @@ describe("database extraArgs launchers", () => {
     expect(extraArgs(["-P", "1"])).toMatchObject({ index: 0 });
   });
 
-  test("mariadb and mongodb mark launchers for extraArgs", async () => {
-    const mariadb = decode({ type: "mariadb", extraArgs: ["--max-connections=10"] });
-    const mariadbResolution = await Effect.runPromise(
-      mariadbServiceType.resolve({
-        name: "db",
-        service: mariadb,
-        appRoot: "/srv/apps/myapp",
-        appName: "myapp",
-        metadata: { resolvedAt: "2026-01-01T00:00:00Z", source: "/srv/apps/myapp/.lando.yml", runtime: 4 },
-      }),
-    );
-    const mariadbCtx = recordFeatureContext({
-      serviceType: "mariadb",
-      normalizedConfig: mariadbResolution.normalizedConfig,
-      config: {},
-      connection: mariadbResolution.connection,
-    });
-    const { mariadbServiceFeature } = await import("../src/services/mariadb.ts");
-    await Effect.runPromise(mariadbServiceFeature.apply(mariadbCtx.ctx));
-    expect(mariadbCtx.calls.find((c) => c[0] === "setCommand")?.[1]).toEqual(["mariadbd", "--port=3306"]);
-    setCommandOptions(mariadbCtx.calls);
-
+  test("mongodb marks its launcher for extraArgs", async () => {
     const mongo = decode({ type: "mongodb", extraArgs: ["--wiredTigerCacheSizeGB", "0.5"] });
     const mongoResolution = await Effect.runPromise(
       mongodbServiceType.resolve({
