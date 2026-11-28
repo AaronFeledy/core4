@@ -9,7 +9,7 @@ import {
 } from "../../src/operations/accelerated-start-journal.ts";
 import { startApp } from "../../src/operations/start.ts";
 import { app } from "./accelerated-start-recovery-support.ts";
-import { databaseRuntime, versionedPlan } from "./data-version-support.ts";
+import { databaseRuntime, databaseVolume, versionedPlan } from "./data-version-support.ts";
 import {
   type FailurePoint,
   changedPlan,
@@ -39,9 +39,10 @@ test("a downgrade refuses before file-sync rotation can quiesce or remove the or
       previous,
       desired,
       inspect: () => Effect.succeed(original),
+      observeBoundVolume: () => Effect.succeed(databaseVolume(previous)),
       exec: (target) =>
         target.expectedContainerId === original.containerId
-          ? Effect.succeed({ exitCode: 0, stdout: "11.4.13-MariaDB\n\0", stderr: "" })
+          ? Effect.succeed({ exitCode: 0, stdout: "+11.4.13-MariaDB\n\0", stderr: "" })
           : Effect.die("Attempted to read a different container"),
     }),
   );

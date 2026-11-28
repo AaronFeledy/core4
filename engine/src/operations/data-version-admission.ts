@@ -7,8 +7,10 @@ import {
   type ServiceDataVersion,
   type ServiceName,
   type ServicePlan,
+  type VolumeMountPlan,
   compareDataSeries,
   parseDataVersionRecords,
+  planAppIdentity,
 } from "@lando/sdk/schema";
 import { EventService, type ProviderError } from "@lando/sdk/services";
 import { DateTime, Effect } from "effect";
@@ -28,55 +30,114 @@ type Series = NonNullable<ServiceDataVersion["series"]>;
 const dataMount = (service: ServicePlan, target: PortablePath) =>
   service.mounts.find((mount) => mount.type === "volume" && mount.target === target);
 
-const versionEvidence = Effect.fnUntraced(function* (input: {
-  readonly provider: PreparedRuntimeProvider;
-  readonly appliedPlan: AppPlan;
-  readonly service: ServiceName;
-  readonly contract: ServiceDataVersion;
-  readonly series: Series;
-  readonly appliedSeries: string | undefined;
-}) {
-  const { provider, appliedPlan, service, contract, series, appliedSeries } = input;
-  const target = { app: appliedPlan.id, service, plan: appliedPlan };
-  const runtime = yield* provider.inspect(target).pipe(Effect.catch(() => Effect.succeed(undefined)));
-  if (runtime?.status !== "running" || runtime.containerId === undefined) return undefined;
-  const paths = series.records.map(({ path }) => path);
-  // Read each file at most up to 4 KiB (+1 to recognize truncation), with one pinned exec.
-  const read = yield* provider
-    .exec(
-      { ...target, expectedContainerId: runtime.containerId },
-      {
-        command: [
-          "sh",
-          "-c",
-          `for file do head -c 4097 -- "$file" 2>/dev/null; printf '\\000'; done`,
-          "lando-data-version",
-          ...paths,
-        ],
-        raw: true,
-      },
+const immutableImageId = (value: string | undefined) =>
+  /^(?:sha256:)?([a-f0-9]{64})$/u.exec(value ?? "")?.[1];
+
+const versionEvidence = Effect.fnUntraced(
+  function* (input: {
+    readonly provider: PreparedRuntimeProvider;
+    readonly appliedPlan: AppPlan;
+    readonly service: ServicePlan;
+    readonly mount: VolumeMountPlan;
+    readonly contract: ServiceDataVersion;
+    readonly series: Series;
+    readonly appliedSeries: string | undefined;
+  }) {
+    const { provider, appliedPlan, service, mount, contract, series, appliedSeries } = input;
+    const target = { app: appliedPlan.id, service: service.name, plan: appliedPlan };
+    const runtime = yield* provider.inspect(target);
+    const root = planAppIdentity(appliedPlan).appRoot;
+    if (
+      runtime.status !== "running" ||
+      !runtime.containerId ||
+      runtime.app !== target.app ||
+      runtime.appRoot !== root ||
+      runtime.providerId !== appliedPlan.provider ||
+      runtime.service !== service.name ||
+      mount.subpath !== undefined ||
+      provider.observeBoundVolume === undefined
     )
-    .pipe(
+      return undefined;
+    const paths = series.records.map(({ path }) => path);
+    const shadows = (target: string, path: string) =>
+      target.startsWith(`${mount.target}/`) && (target === path || path.startsWith(`${target}/`));
+    if (
+      paths.length === 0 ||
+      paths.some(
+        (path) =>
+          !path.startsWith(`${mount.target}/`) ||
+          service.mounts.some(({ target }) => shadows(target, path)) ||
+          (runtime.mounts?.status === "present" &&
+            runtime.mounts.mounts.some(({ target }) => shadows(target, path))),
+      )
+    )
+      return undefined;
+    const bound = { ...target, expectedContainerId: runtime.containerId };
+    const volume = yield* provider.observeBoundVolume(bound, mount.target);
+    if (
+      volume.ref.store !== mount.store ||
+      volume.identity?.nativeName !== mount.store ||
+      volume.identity.ownerRoot !== root
+    )
+      return undefined;
+
+    // Read each file at most up to 4 KiB (+1 to recognize truncation), with one pinned exec.
+    const read = yield* provider.exec(bound, {
+      command: [
+        "sh",
+        "-c",
+        `for file do
+        test -x "\${file%/*}" || exit 1
+        resolved=$(readlink -f -- "$file") && test "$resolved" = "$file" || exit 1
+        if test -e "$file" || test -L "$file"; then
+          test -f "$file" && test ! -L "$file" || exit 1
+          printf '+'
+          head -c 4097 -- "$file" || exit 1
+        else
+          printf '-'
+        fi
+        printf '\\000'
+      done`,
+        "lando-data-version",
+        ...paths,
+      ],
+      raw: true,
+    });
+    if (read.exitCode !== 0) return undefined;
+    const contents = read.stdout.split("\0");
+    if (contents.length !== paths.length + 1 || contents.at(-1) !== "") return undefined;
+    const files = new Map<string, string>();
+    for (const [index, path] of paths.entries()) {
+      const frame = contents[index];
+      if (frame === "-") continue;
+      if (frame?.startsWith("+") !== true) return undefined;
+      const content = frame.slice(1);
+      if (Buffer.byteLength(content) <= 4096) files.set(path, content);
+    }
+    const version = parseDataVersionRecords(files, contract);
+    const artifact = service.artifact;
+    const expectedImage =
+      artifact?.kind === "ref"
+        ? immutableImageId(artifact.digest ?? artifact.ref.split("@").at(-1))
+        : undefined;
+    if (
+      runtime.health === "healthy" &&
+      appliedSeries !== undefined &&
+      expectedImage !== undefined &&
+      expectedImage === immutableImageId(runtime.imageIdentity) &&
+      (version === undefined
+        ? contents.slice(0, -1).every((frame) => frame === "-")
+        : compareDataSeries(appliedSeries, version, series.depth) === 1)
+    )
+      return { version: appliedSeries, source: "running-image" } satisfies Evidence;
+    return version === undefined ? undefined : ({ version, source: "record" } satisfies Evidence);
+  },
+  (effect) =>
+    effect.pipe(
       Effect.timeout("2 seconds"),
       Effect.catch(() => Effect.succeed(undefined)),
-    );
-  if (read === undefined || read.exitCode !== 0) return undefined;
-  const contents = read.stdout.split("\0");
-  if (contents.length !== paths.length + 1 || contents.at(-1) !== "") return undefined;
-  const files = new Map<string, string>();
-  for (const [index, path] of paths.entries()) {
-    const content = contents[index];
-    if (content !== undefined && Buffer.byteLength(content) <= 4096) files.set(path, content);
-  }
-  const version = parseDataVersionRecords(files, contract);
-  if (
-    runtime.health === "healthy" &&
-    appliedSeries !== undefined &&
-    (version === undefined || compareDataSeries(appliedSeries, version, series.depth) === 1)
-  )
-    return { version: appliedSeries, source: "running-image" } satisfies Evidence;
-  return version === undefined ? undefined : ({ version, source: "record" } satisfies Evidence);
-});
+    ),
+);
 
 export const assessDataVersions = Effect.fn("AppActivation.assessDataVersions")(function* (
   desired: AppPlan,
@@ -115,7 +176,8 @@ export const assessDataVersions = Effect.fn("AppActivation.assessDataVersions")(
       const evidence = yield* versionEvidence({
         provider: runtime,
         appliedPlan,
-        service: service.name,
+        service: applied,
+        mount: previousMount,
         contract,
         series,
         appliedSeries: appliedSeries?.image,

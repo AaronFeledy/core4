@@ -108,6 +108,7 @@ export const rotationHarness = Effect.fnUntraced(function* (
     readonly previous?: AppPlan;
     readonly inspect?: RuntimeProviderShape["inspect"];
     readonly exec?: RuntimeProviderShape["exec"];
+    readonly observeBoundVolume?: RuntimeProviderShape["observeBoundVolume"];
     readonly failAt?: FailurePoint;
     readonly extraSession?: boolean;
     readonly missingSession?: boolean;
@@ -213,6 +214,9 @@ export const rotationHarness = Effect.fnUntraced(function* (
     ...(options.previous === undefined ? {} : { resolveAppliedPlan: () => Effect.sync(() => applied) }),
     ...(options.inspect === undefined ? {} : { inspect: options.inspect }),
     ...(options.exec === undefined ? {} : { exec: options.exec }),
+    ...(options.observeBoundVolume === undefined
+      ? {}
+      : { providerOverrides: { observeBoundVolume: options.observeBoundVolume } }),
     fileSync: engine,
     onPublish: (event) =>
       Effect.sync(() => {

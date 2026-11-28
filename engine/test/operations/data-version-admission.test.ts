@@ -1,12 +1,13 @@
 import { expect, test } from "bun:test";
 import { ServiceExecError } from "@lando/sdk/errors";
+import { AbsolutePath } from "@lando/sdk/schema";
 import type { CommandSpec, ExecTarget } from "@lando/sdk/services";
 import { Effect } from "effect";
 import { withAppActivation } from "../../src/operations/app-activation.ts";
 import { rebuildApp } from "../../src/operations/rebuild.ts";
 import { restartApp } from "../../src/operations/restart.ts";
 import { startApp } from "../../src/operations/start.ts";
-import { databaseRuntime, versionedPlan } from "./data-version-support.ts";
+import { databaseRuntime, databaseVolume, versionedPlan } from "./data-version-support.ts";
 import { makeHarness, plan, web } from "./start-progress-topology-support.ts";
 
 const target = (desired: typeof plan) => ({
@@ -20,6 +21,7 @@ const setup = (input: {
   readonly to: string;
   readonly evidence: "record" | "running-image" | "stopped" | "exec-failure" | "oversized" | "no-record";
   readonly upgrade?: "in-place" | "unsupported";
+  readonly proof?: "wrong-app" | "wrong-store" | "wrong-image" | "read-failed";
 }) => {
   const previous = versionedPlan(plan, web, input.from);
   const desired = versionedPlan(plan, web, input.to, input.upgrade);
@@ -43,10 +45,11 @@ const setup = (input: {
           remediation: "Observe the current container.",
         }),
       );
+    if (input.proof === "read-failed") return Effect.succeed({ exitCode: 1, stdout: "", stderr: "" });
     const stdout =
       input.evidence === "running-image" || input.evidence === "no-record"
-        ? "\0"
-        : `${input.from}.13-MariaDB\n${input.evidence === "oversized" ? "x".repeat(4096) : ""}\0`;
+        ? "-\0"
+        : `+${input.from}.13-MariaDB\n${input.evidence === "oversized" ? "x".repeat(4096) : ""}\0`;
     return Effect.succeed({ exitCode: 0, stdout, stderr: "" });
   };
   const harness = makeHarness({
@@ -58,9 +61,24 @@ const setup = (input: {
         if (t.plan === undefined) return runtime;
         observations.push("inspect");
         if (input.evidence === "stopped") return { ...runtime, status: "exited", exitCode: 0 } as const;
-        if (input.evidence === "running-image") return { ...runtime, health: "healthy" } as const;
+        if (input.proof === "wrong-app") return { ...runtime, appRoot: AbsolutePath.make("/foreign") };
+        if (input.evidence === "running-image")
+          return {
+            ...runtime,
+            health: "healthy",
+            imageIdentity: input.proof === "wrong-image" ? `sha256:${"2".repeat(64)}` : runtime.imageIdentity,
+          } as const;
         return runtime;
       }),
+    providerOverrides: {
+      observeBoundVolume: (target, destination) => {
+        if (target.expectedContainerId !== "database-original" || destination !== "/var/lib/mysql")
+          return Effect.die("Unbound version volume observation");
+        return Effect.succeed(
+          databaseVolume(previous, input.proof === "wrong-store" ? "foreign" : undefined),
+        );
+      },
+    },
     exec,
     onPublish: (event) =>
       Effect.sync(() => {
@@ -123,6 +141,19 @@ test("a healthy running server supplies version evidence when the record is abse
       imageVersion: "10.11",
     },
   });
+});
+
+test.each([
+  ["wrong-app", "record", ["inspect"]],
+  ["wrong-store", "record", ["inspect"]],
+  ["wrong-image", "running-image", ["inspect", "read"]],
+  ["read-failed", "running-image", ["inspect", "read"]],
+] as const)("does not refuse activation with %s evidence", async (proof, evidence, observations) => {
+  const fixture = setup({ from: "11.4", to: "10.11", evidence, proof });
+  const result = await Effect.runPromise(startApp({}, fixture.target).pipe(Effect.provide(fixture.layer)));
+  expect(result.dataVersionChanges).toBeUndefined();
+  expect(fixture.mutations).toEqual(["apply"]);
+  expect(fixture.observations).toEqual([...observations]);
 });
 
 test("an unsupported upgrade refuses even though the old version is lower", async () => {
