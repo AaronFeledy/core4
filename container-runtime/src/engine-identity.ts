@@ -1,7 +1,11 @@
 import { sha256Hex } from "@lando/sdk/digest";
 import type { EngineIdentity } from "@lando/sdk/schema";
 import { Option, Schema } from "effect";
-import { dockerApiEndpointKey, dockerHttpBaseUrl } from "./docker/api-prefix.ts";
+import {
+  dockerApiEndpointKey,
+  dockerHttpBaseUrl,
+  explicitDockerApiPrefixFromHost,
+} from "./docker/api-prefix.ts";
 
 const Libpod = Schema.Struct({
   host: Schema.Struct({ hostname: Schema.NonEmptyString }),
@@ -14,24 +18,43 @@ const CompatibleStorage = Schema.Struct({
 });
 const Docker = Schema.Struct({ ID: Schema.NonEmptyString });
 
-export const engineEndpointDisplay = (endpoint: string): string => {
+const connectionLabel = (endpoint: string, recorded = false): string => {
   const url = URL.parse(endpoint);
   // Remote connection strings can contain credentials, including in query parameters.
   if (url === null)
     return endpoint.startsWith("/") || endpoint.startsWith("\\\\.\\pipe\\") ? endpoint : "unknown endpoint";
-  return `${url.protocol}//${url.host}${url.protocol === "unix:" || url.protocol === "npipe:" ? url.pathname : ""}`;
+  if (url.protocol === "unix:" || url.protocol === "npipe:")
+    return `${url.protocol}//${url.host}${url.pathname}`;
+  // One proxy can route different API prefixes to different daemons. A prefix itself can be secret.
+  const prefix = explicitDockerApiPrefixFromHost(endpoint);
+  const marker =
+    prefix !== undefined
+      ? `#prefix=${sha256Hex(prefix)}`
+      : recorded && /^#prefix=[a-f0-9]{64}$/u.test(url.hash)
+        ? url.hash
+        : "";
+  return `${url.protocol}//${url.host}${marker}`;
 };
+
+export const engineEndpointDisplay = (endpoint: string): string => connectionLabel(endpoint, true);
 
 const identity = (parts: readonly string[], endpoint: string): EngineIdentity => ({
   fingerprint: sha256Hex(JSON.stringify(parts)),
-  endpoint: engineEndpointDisplay(endpoint),
+  endpoint: connectionLabel(endpoint),
 });
 
+const canonicalConnection = (endpoint: string): string | undefined => {
+  const label = engineEndpointDisplay(endpoint);
+  if (label === "unknown endpoint") return undefined;
+  return dockerApiEndpointKey(dockerHttpBaseUrl(label)) + (URL.parse(label)?.hash ?? "");
+};
+
 // A replacement at the same address can reconcile; the same store at another address is an alias.
-export const matchesEnginePlacement = (recorded: EngineIdentity, current: EngineIdentity): boolean =>
-  recorded.fingerprint === current.fingerprint ||
-  dockerApiEndpointKey(dockerHttpBaseUrl(recorded.endpoint)) ===
-    dockerApiEndpointKey(dockerHttpBaseUrl(current.endpoint));
+export const matchesEnginePlacement = (recorded: EngineIdentity, current: EngineIdentity): boolean => {
+  if (recorded.fingerprint === current.fingerprint) return true;
+  const endpoint = canonicalConnection(recorded.endpoint);
+  return endpoint !== undefined && endpoint === canonicalConnection(current.endpoint);
+};
 // Podman's compatibility ID is random per request. Both API dialects describe
 // the same backing store by the host's name and graph root, not its run dir.
 export const podmanEngineIdentity = (info: unknown, endpoint: string) => {

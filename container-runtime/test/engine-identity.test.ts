@@ -1,5 +1,9 @@
 import { expect, test } from "bun:test";
-import { dockerEngineIdentity, podmanEngineIdentity } from "../src/engine-identity.ts";
+import {
+  dockerEngineIdentity,
+  matchesEnginePlacement,
+  podmanEngineIdentity,
+} from "../src/engine-identity.ts";
 
 test("Docker engine identity survives a connection alias, not daemon replacement", () => {
   const socket = "unix:///var/run/docker.sock";
@@ -8,8 +12,16 @@ test("Docker engine identity survives a connection alias, not daemon replacement
     { ID: "daemon-a" },
     "tcp://user:password@dev:2375/private?token=secret",
   );
-  if (local === undefined) throw new Error("Missing local engine identity");
-  expect(remote).toEqual({ fingerprint: local.fingerprint, endpoint: "tcp://dev:2375" });
+  if (local === undefined || remote === undefined) throw new Error("Missing engine identity");
+  expect(remote.fingerprint).toBe(local.fingerprint);
+  expect(remote.endpoint).toContain("tcp://dev:2375");
+  for (const privatePart of ["user", "password", "private", "token", "secret"])
+    expect(remote.endpoint).not.toContain(privatePart);
+  const replacement = dockerEngineIdentity({ ID: "daemon-b" }, "http://dev:2375/private/");
+  const other = dockerEngineIdentity({ ID: "daemon-b" }, "tcp://dev:2375/other");
+  if (!replacement || !other) throw new Error("Missing remote engine identity");
+  expect(matchesEnginePlacement(remote, replacement)).toBe(true);
+  expect(matchesEnginePlacement(remote, other)).toBe(false);
   expect(dockerEngineIdentity({ ID: "daemon-b" }, socket)?.fingerprint).not.toBe(local.fingerprint);
   expect(dockerEngineIdentity({}, socket)).toBeUndefined();
 });
