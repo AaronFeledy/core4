@@ -139,6 +139,8 @@ That means the app has to be running with the schedule applied. After you add a 
 
 When the app is stopped, or the sidecar has exited, the command fails with `ServiceExecError`. Its message says the sidecar isn't running, and its remediation is to run `lando start`.
 
+Lando checks which engine holds the app before it runs a job. If the app's record names a different container engine than the one you are connected to, `lando schedule:run` fails with `AppPlacementError` naming both connections, and nothing runs. See [Know which commands refuse a different engine](../setup/provider-selection.mdx#know-which-commands-refuse-a-different-engine) to restore the connection or drop the record.
+
 The job's output reaches your terminal as the job prints it: stdout on stdout, stderr on stderr. `lando schedule:run` returns the job's observed exit code. If the stream ends without a status, Lando reports `ServiceExecError` instead of success and does not run the job again. Check what the job changed before rerunning it.
 
 Scripts and agents read the same run as stream frames. With `--format=ndjson`, every line on stdout is one JSON frame. Each `stdout` or `stderr` frame carries a piece of the job's output as it arrives, `event` frames report Lando's own lifecycle events, and the last line is a single `result` frame that holds the command envelope:
