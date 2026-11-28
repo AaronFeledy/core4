@@ -1,0 +1,20 @@
+---
+id: reference-test-only
+provider: test
+diataxis: reference
+---
+
+# Reference page with a test-only scenario
+
+| Option | Meaning |
+|---|---|
+| `version` | Prints the CLI version |
+
+<Guide>
+  <Scenario id="version-form" render={false} reason="Pin the reference table's command without rendering it to readers">
+    <Step name="run">
+      <Run command="version" />
+      <Verify command="version" expect={{ stdout: { regex: "^\\d+[.]" } }} />
+    </Step>
+  </Scenario>
+</Guide>

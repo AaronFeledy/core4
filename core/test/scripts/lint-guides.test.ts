@@ -464,6 +464,36 @@ describe("lint:guides", () => {
     ]);
   });
 
+  test("accepts a reference page whose only scenario is test-only", async () => {
+    expect(await lintFixture("reference-test-only")).toEqual([]);
+  });
+
+  test("accepts an explanation page whose only scenario is test-only", async () => {
+    const sourcePath = "core/test/lint/guides/reference-test-only.mdx";
+    const content = await readFile(resolve(fixturesRoot, "reference-test-only.mdx"), "utf8");
+    const diagnostics = lintGuideContent(
+      sourcePath,
+      content.replace("diataxis: reference", "diataxis: explanation"),
+    ).diagnostics;
+    expect(diagnostics.map(formatGuideLintDiagnostic)).toEqual([]);
+  });
+
+  test("reports a reference page that still renders one scenario", async () => {
+    const sourcePath = "core/test/lint/guides/bad-diataxis.mdx";
+    const content = await readFile(resolve(fixturesRoot, "bad-diataxis.mdx"), "utf8");
+    const mixed = content.replace(
+      "</Guide>",
+      `  <Scenario id="hidden-regression" render={false} reason="Check a hidden command against the reference table">
+    <Step name="hidden">
+      <Run command="version" />
+    </Step>
+  </Scenario>
+</Guide>`,
+    );
+    const diagnostics = lintGuideContent(sourcePath, mixed).diagnostics.map(formatGuideLintDiagnostic);
+    expect(diagnostics).toEqual([expect.stringContaining("guide.diataxis")]);
+  });
+
   test("accepts a guide whose <Verify> matcher conforms to MatcherSchema", async () => {
     expect(await lintFixture("verify-matcher-green")).toEqual([]);
   });
