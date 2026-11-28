@@ -211,7 +211,7 @@ Renovate proposes updates early on Mondays, Central time, and waits until a rele
 
 - Minor and patch updates arrive as one `Bun packages` PR and one `GitHub Actions` PR. Each major update gets its own PR.
 - Security fixes for direct Bun dependencies and `overrides` arrive outside the weekly schedule, from the OSV advisory database.
-- Bun and Effect upgrades wait until you approve them on the Dependency Dashboard. A Bun PR moves `.bun-version`, `constraints.bun` in the Renovate configuration, every `engines.bun`, and `@types/bun` together. Finish it by updating the [runtime-bundle builder pins](#update-the-builder-pins), `BUN_LICENSE_PIN` in `scripts/compiled-binary-notices.ts`, and the Bun version the contributor docs name. Effect stays pinned in the root workspace catalog, which `core/test/build/effect-version-pin.test.ts` guards.
+- Bun and Effect upgrades wait until you approve them on the Dependency Dashboard. A Bun PR moves `.bun-version`, `constraints.bun` in the Renovate configuration, every `engines.bun`, and `@types/bun` together. Finish it by updating the [runtime-bundle builder pins](#update-the-builder-pins), `BUN_LICENSE_PIN` in `scripts/compiled-binary-notices.ts`, and the Bun version the contributor docs name. For Effect, follow the [Effect upgrade checks](#effect-upgrade-checks).
 - `@opentui/core` stays on 0.8.0 until upstream ships a native build without FFmpeg.
 
 Every action a generated workflow uses is pinned once in `.github/actions/pins.yml`, as a full commit labeled with its release: `owner/repo@<commit> # vX.Y.Z`. Generators read that file through `scripts/action-pins.ts`, and `core/test/build/action-pins.test.ts` fails when a committed workflow uses an action any other way. Renovate moves a pin in that file and in every committed workflow in one PR, writing the same text the generators write, so `codegen:check` passes without a regeneration step. It also proposes a fix when a pin's commit stops matching its release tag. Renovate never edits runner labels, job containers, or action inputs. To add an action or move a pin yourself, edit its line in `pins.yml` and run `bun run codegen`.
@@ -936,6 +936,24 @@ When adopting this workflow, replace the previous per-job required status checks
 The final `ci` job always runs. It requires successful selection and every selected gate. Any other result fails `ci`, including a failure, a cancellation, an unexpected skip, or GitHub's undocumented `abandoned` result for a job whose runner was lost. The gate prints one `<job>: <result>` line per unsuccessful job. Only policy-excluded jobs may be skipped. The dependency-audit workflow and scheduled self-hosted evidence workflows are not PR merge gates.
 
 If GitHub loses a runner before it starts any steps and the only other failures are summaries or gates failing because of that loss, CI automatically reruns the failed jobs once. An independent failure, a timeout after a step starts, or a later attempt does not trigger another automatic rerun. This behavior only takes effect once the retry workflow is on `main`, because GitHub runs `workflow_run` workflows from the default branch.
+
+## Effect upgrade checks
+
+Approve the Effect update on Renovate's Dependency Dashboard. The pin lives in the root workspace catalog in `package.json`; the PR also updates `bun.lock`. Run from the repository root on the update branch:
+
+```bash
+bun run bootstrap
+bun run codegen:check
+bun run check:schema-compatibility
+bun run typecheck
+bun run test:selection effect-upgrade
+bun run dev:guides docs/guides/agent-native/mcp.mdx --once
+bun run dev:guides docs/guides/plugins/authoring-new-plugin.mdx --once
+```
+
+Bootstrap regenerates the compiled decoders. The preset does not run guide scenarios or replace PR checks. The lockfile change selects the `runtime` CI profile.
+
+Check for stale pins with `git grep -n -F '<previous-version>'`, substituting the previous Effect version. Review the release notes for RPC, MCP, Stream, Layer, TestClock, and Schema changes. Check whether the release removes the need for workarounds tracked in [#2804](https://github.com/AaronFeledy/core4/issues/2804) ([Effect-TS/effect#11015](https://github.com/Effect-TS/effect/issues/11015)) and [#1835](https://github.com/AaronFeledy/core4/issues/1835) ([Effect-TS/effect#11016](https://github.com/Effect-TS/effect/issues/11016)).
 
 ## Bun upgrade smoke checks
 

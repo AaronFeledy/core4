@@ -6,8 +6,10 @@ import {
 import * as LandoEventService from "@lando/engine/services/event-service";
 import { EventError } from "@lando/sdk/errors";
 import { type EventFor, EventService, type EventServiceShape, type LandoEvent } from "@lando/sdk/services";
-import { Context, Effect, Layer, Queue, Stream } from "effect";
-import { makeLandoRuntime } from "../../src/runtime/layer.ts";
+import { Context, Effect, Layer, Queue, Result, Stream } from "effect";
+import { processInvocationContext } from "../../src/runtime/invocation-context.ts";
+import { makeLandoRuntime, prepareRuntime } from "../../src/runtime/layer.ts";
+import { makeProviderBootstrapBaseLayer } from "../../src/runtime/layers/provider.ts";
 
 const stubEventService = (
   publish: (event: LandoEvent) => Effect.Effect<void, EventError>,
@@ -33,6 +35,38 @@ const makeRecordingEventLayer = (tags: string[]): Layer.Layer<EventService> =>
   );
 
 describe("runtime bootstrap lifecycle", () => {
+  test("provider consumers share one commands completion and one service build", async () => {
+    let serviceBuilds = 0;
+    const services = Layer.effectDiscard(
+      Effect.sync(() => {
+        serviceBuilds++;
+      }),
+    );
+    const prepared = Result.getOrThrow(
+      prepareRuntime(
+        { bootstrap: "provider", plugins: { policy: "bundled-only" } },
+        undefined,
+        processInvocationContext(),
+      ),
+    );
+    const completions: EventServiceShape[] = [];
+    const layer = makeProviderBootstrapBaseLayer({
+      ...prepared.inputs,
+      pluginLayers: [services],
+      lifecycle: {
+        ...prepared.lifecycle,
+        complete: (level, events) =>
+          Effect.sync(() => {
+            if (level === "commands") completions.push(events);
+          }).pipe(Effect.andThen(prepared.lifecycle.complete(level, events))),
+      },
+    });
+    const context = await Effect.runPromise(Effect.scoped(Layer.build(layer)));
+    expect(completions).toHaveLength(1);
+    expect(completions[0]).toBe(Context.get(context, EventService));
+    expect(serviceBuilds).toBe(1);
+  });
+
   test("emits the app bootstrap sequence and before-exit before host finalizers", async () => {
     const ordering: string[] = [];
     const hostFinalizer = Layer.effectDiscard(

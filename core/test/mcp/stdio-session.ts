@@ -13,6 +13,7 @@ export const openStdioSession = (input: {
     stderr: "pipe",
   });
   const waiting = new Set<(message: Schema.JsonObject) => void>();
+  const messages: Schema.JsonObject[] = [];
   const stderr = new Response(child.stderr).text();
   const reader = (async () => {
     const decoder = new TextDecoder();
@@ -22,6 +23,7 @@ export const openStdioSession = (input: {
       for (let newline = pending.indexOf("\n"); newline >= 0; newline = pending.indexOf("\n")) {
         const message = Schema.decodeUnknownSync(Schema.JsonObject)(JSON.parse(pending.slice(0, newline)));
         pending = pending.slice(newline + 1);
+        messages.push(message);
         for (const waiter of waiting) waiter(message);
       }
     }
@@ -41,11 +43,14 @@ export const openStdioSession = (input: {
       waiting.add(settle);
     });
   let sequence = 0;
+  const sendRaw = async (text: string) => {
+    child.stdin.write(text);
+    await child.stdin.flush();
+  };
   const request = async (method: string, params: Schema.JsonObject = {}) => {
     const id = ++sequence;
     const response = waitFor((message) => message.id === id);
-    child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id, method, params })}\n`);
-    await child.stdin.flush();
+    await sendRaw(`${JSON.stringify({ jsonrpc: "2.0", id, method, params })}\n`);
     return response;
   };
   const initialize = async () => {
@@ -54,14 +59,13 @@ export const openStdioSession = (input: {
       capabilities: {},
       clientInfo: { name: "generations-stdio", version: "1" },
     });
-    child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" })}\n`);
-    await child.stdin.flush();
+    await sendRaw(`${JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" })}\n`);
     return initialized;
   };
   const finish = async () => {
     await child.stdin.end();
     const [exit, errors] = await Promise.all([child.exited, stderr, reader]);
-    return { exit, stderr: errors };
+    return { exit, stderr: errors, messages };
   };
-  return { child, waitFor, request, initialize, finish };
+  return { child, waitFor, sendRaw, request, initialize, finish };
 };

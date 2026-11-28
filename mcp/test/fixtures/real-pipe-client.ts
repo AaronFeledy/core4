@@ -81,10 +81,11 @@ export function startPipe(command: readonly string[], cwd: string) {
       waiters.delete(check);
     }
   };
-  const send = async (value: Schema.JsonObject) => {
-    child.stdin.write(`${JSON.stringify(value)}\n`);
+  const sendRaw = async (text: string) => {
+    child.stdin.write(text);
     await deadline(Promise.resolve(child.stdin.flush()), "fixture stdin flush");
   };
+  const send = (value: Schema.JsonObject) => sendRaw(`${JSON.stringify(value)}\n`);
   const response = async (id: string) => {
     await waitFor(() => messages.some((message) => message.id === id));
     const message = messages.find((message) => message.id === id);
@@ -96,6 +97,7 @@ export function startPipe(command: readonly string[], cwd: string) {
     messages,
     diagnostics,
     send,
+    sendRaw,
     response,
     waitFor,
     async closeInput() {

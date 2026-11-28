@@ -1,12 +1,12 @@
 import { resolve } from "node:path";
 import type { TestOwnershipIssue } from "./test-ownership.ts";
-import { type TestSelection, UNIT_SHARD_COUNT } from "./test-selections.ts";
+import { type ContributorTestPreset, type TestSelection, UNIT_SHARD_COUNT } from "./test-selections.ts";
 
 const record = (value: unknown): Readonly<Record<string, unknown>> | undefined =>
   typeof value === "object" && value !== null && !Array.isArray(value) ? { ...value } : undefined;
 
 interface WorkflowJob {
-  readonly runs: readonly string[];
+  readonly steps: readonly { readonly run: string; readonly enabled: boolean }[];
   readonly shards: readonly number[];
 }
 const parseJobs = (source: string): ReadonlyMap<string, WorkflowJob> => {
@@ -20,12 +20,12 @@ const parseJobs = (source: string): ReadonlyMap<string, WorkflowJob> => {
       return [
         id,
         {
-          runs: Array.isArray(steps)
+          steps: Array.isArray(steps)
             ? steps.flatMap((step: unknown) => {
                 const entry = record(step);
-                if (entry?.if === false || entry?.if === "false") return [];
-                const run = entry?.run;
-                return typeof run === "string" ? [run] : [];
+                return typeof entry?.run === "string"
+                  ? [{ run: entry.run, enabled: entry.if !== false && entry.if !== "false" }]
+                  : [];
               })
             : [],
           shards:
@@ -49,7 +49,13 @@ const invokes = (run: string, command: readonly string[]): boolean => {
 
 export const checkWorkflowBindings = async (
   root: string,
-  selections: readonly TestSelection[],
+  {
+    selections,
+    presets,
+  }: {
+    readonly selections: readonly TestSelection[];
+    readonly presets: readonly ContributorTestPreset[];
+  },
 ): Promise<readonly TestOwnershipIssue[]> => {
   const workflows = new Map<string, ReadonlyMap<string, WorkflowJob>>();
   for await (const path of new Bun.Glob("*.{yml,yaml}").scan({ cwd: root, onlyFiles: true })) {
@@ -57,14 +63,32 @@ export const checkWorkflowBindings = async (
   }
   const issues: TestOwnershipIssue[] = [];
   for (const [workflow, jobs] of workflows) {
-    for (const [job, { runs }] of jobs) {
-      for (const run of runs) {
-        if (/(?:^|[\s;&|])bun(?:[\t ]+--no-orphans)?[\t ]+test(?=$|[\s;&|])/mu.test(run))
+    for (const [job, { steps }] of jobs) {
+      for (const { run, enabled } of steps) {
+        if (enabled && /(?:^|[\s;&|])bun(?:[\t ]+--no-orphans)?[\t ]+test(?=$|[\s;&|])/mu.test(run))
           issues.push({
             code: "RAW_BUN_TEST",
             paths: [workflow, job],
             remediation:
               "Declare the files in scripts/test-selections.ts and replace raw Bun tests in the workflow generator with bun run test:selection <id>.",
+          });
+      }
+      for (const preset of presets) {
+        const ids = [preset.id, `"${preset.id}"`, `'${preset.id}'`];
+        // Even a disabled step must not declare a contributor preset.
+        if (
+          steps.some(({ run }) =>
+            ids.some((id) =>
+              ["test:selection", "scripts/run-test-selection.ts"].some(
+                (script) => invokes(run, ["bun", "run", script, id]) || invokes(run, ["bun", script, id]),
+              ),
+            ),
+          )
+        )
+          issues.push({
+            code: "WORKFLOW_PRESET",
+            paths: [preset.id, workflow, job],
+            remediation: "Remove the contributor preset from the workflow generator and run bun run codegen.",
           });
       }
     }
@@ -78,12 +102,12 @@ export const checkWorkflowBindings = async (
           "Declare an executing workflow job in scripts/test-selections.ts, or record an intentional gap in MANUAL_TESTS in scripts/test-ownership.ts.",
       });
     for (const { workflow, job } of selection.jobs) {
-      const runs = workflows.get(workflow)?.get(job)?.runs ?? [];
+      const steps = workflows.get(workflow)?.get(job)?.steps ?? [];
       const command =
         selection.runner === "go"
           ? ["bun", "run", "scripts/build-container-helper.ts", "--test"]
           : ["bun", "run", "test:selection", selection.id];
-      if (!runs.some((run) => invokes(run, command)))
+      if (!steps.some(({ run, enabled }) => enabled && invokes(run, command)))
         issues.push({
           code: "UNBOUND_SELECTION",
           paths: [selection.id, workflow, job],
@@ -95,8 +119,10 @@ export const checkWorkflowBindings = async (
   const unit = workflows.get("ci.yml")?.get("unit-tests-linux-x64-shard");
   const expected = Array.from({ length: UNIT_SHARD_COUNT }, (_, index) => index + 1);
   if (
-    !unit?.runs.some((run) =>
-      invokes(run, ["bun", "run", "test:unit:shard", `\${{ matrix.shard }}/${UNIT_SHARD_COUNT}`]),
+    !unit?.steps.some(
+      ({ run, enabled }) =>
+        enabled &&
+        invokes(run, ["bun", "run", "test:unit:shard", `\${{ matrix.shard }}/${UNIT_SHARD_COUNT}`]),
     ) ||
     JSON.stringify(unit.shards) !== JSON.stringify(expected)
   )

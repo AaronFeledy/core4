@@ -98,7 +98,7 @@ export const evolveHistoricalToolingSensitivity = (
   return normalizeJsonSchema(wireObject(visit(historical)));
 };
 
-/** Effect 4.1.4 emits Schema.Int safe-integer bounds; bare capture predates that. */
+/** Effect 4.1.4 and later emit Schema.Int safe-integer bounds; bare capture predates that. */
 const HISTORICAL_TOOLING_ARG_ORDER: JsonSchema = { minimum: 0, type: "integer" };
 const CURRENT_TOOLING_ARG_ORDER: JsonSchema = {
   maximum: 9007199254740991,

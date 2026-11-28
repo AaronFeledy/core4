@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { deadline, fixturePath } from "./fixtures/real-pipe-client";
-import { abandonment } from "./fixtures/real-pipe-scenarios";
+import { abandonment, framingRecovery } from "./fixtures/real-pipe-scenarios";
 
 const skipCompile = process.env.LANDO_SKIP_COMPILE_SMOKE === "1";
 let directory: string | undefined;
@@ -38,6 +38,15 @@ if (!skipCompile) {
 afterAll(async () => {
   if (directory !== undefined) await rm(directory, { recursive: true, force: true });
 });
+
+test.skipIf(skipCompile)(
+  "compiled real stdio ignores blank lines and recovers from malformed JSON outside the repo",
+  async () => {
+    if (binary === undefined || directory === undefined) throw new Error("Fixture compilation did not run");
+    await framingRecovery([binary], directory);
+  },
+  20_000,
+);
 
 for (const scenario of [
   { kind: "tool", shutdown: "EOF" },

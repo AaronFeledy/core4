@@ -56,7 +56,6 @@ The deprecation gate runs immediately after codegen. For Lando-owned surfaces, i
 | `compose-fixture-manifest` | Compose fixtures | Fixture rejection manifest | Derived drift and fixture tests |
 | `bundled-recipes` | Recipe ship list and manifests | Static recipe index; target embedded recipe assets | Derived drift and recipe tests |
 | `bundled-templates` | Template ship list and `templates/*/template.yml` | Static template index and embedded template trees | Derived drift and template tests |
-| `bootstrap-layers` | Service registry, bootstrap ranks, plugin contributions | One generated Layer per bootstrap level | Derived drift, boundary, and perf gates |
 | `schema-snapshot` | Public schema, command-result, and bundled-manifest registries | Schema artifacts, references, fixtures, package mirrors | Derived regeneration and schema compatibility |
 | `setup-plugin-flags` | Ship list and setup contributions | Setup flag metadata | Derived drift and command tests |
 | `mcp-allowlist` | Built-in command registry metadata and bundled command descriptors | MCP command allowlist | Derived drift and registry tests |
@@ -184,7 +183,7 @@ The following augment §15.C and define binary-shipping acceptance. The ROADMAP 
 - A relocated binary reads bundled plugins, recipes, command metadata, schemas, its in-container helper executables, and its one OpenTUI native asset without build-tree or sidecar files.
 - Each target's relocated PTY smoke loads exactly its matching OpenTUI native package; non-TTY, JSON, and level-`none` paths do not load it.
 - The binary contains Mutagen client code and its manifest but no Mutagen executable; setup downloads verified helpers only when provider capabilities require them.
-- The binary uses bytecode, generated bootstrap layers, the single native dispatcher, and meets the §2.1 performance budgets and §13.6 TTY renderer process-exit overhead gate.
+- The binary uses bytecode, statically declared bootstrap tiers, the single native dispatcher, and meets the §2.1 performance budgets and §13.6 TTY renderer process-exit overhead gate.
 - External plugins load from contained package roots, may use Bun-supported ESM or TypeScript, resolve local dependencies, and fail in isolation with tagged errors.
 - `bun run codegen:check` detects committed and newly untracked catalog drift while gitignored derived trees pass their consumer gates.
 - Bundled plugin and recipe membership changes are generator-driven; built-in command metadata remains owned only by the native command registry.

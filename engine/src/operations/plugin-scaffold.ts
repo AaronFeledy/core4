@@ -2,6 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { PluginManifest } from "@lando/sdk/schema";
 import { Schema } from "effect";
+import effectPackage from "effect/package.json";
 
 export const PLUGIN_NEW_TEMPLATE_IDS = [
   "service-type",
@@ -97,7 +98,7 @@ const renderPackageJson = (input: PluginScaffoldInput): string => {
       landoPlugin: manifest,
       dependencies: {
         "@lando/sdk": "^4.0.0",
-        effect: "4.1.4",
+        effect: effectPackage.version,
       },
       devDependencies: {
         "@types/bun": "^1.4.0",

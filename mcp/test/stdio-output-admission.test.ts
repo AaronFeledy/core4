@@ -1,10 +1,12 @@
 import { expect, test } from "bun:test";
+import { McpService } from "@lando/mcp/service";
 import type { McpTransportError } from "@lando/sdk/errors";
-import { Deferred, Effect, Fiber, Stdio, Stream } from "effect";
+import { Deferred, Effect, Fiber, PlatformError, Stdio, Stream } from "effect";
 import { forEach as forEachChunk } from "effect/Sink";
 import { TestClock } from "effect/testing";
 import { guardStdio } from "../src/stdio-guard";
 import { makeStdioClient } from "../src/testing";
+import { serverLayer } from "./server";
 import { expectMcpTransportFailure } from "./stdio-transport-test-support";
 
 const controlledOutput = Effect.fnUntraced(function* () {
@@ -138,69 +140,122 @@ test("clean EOF remains the first terminal outcome when an admitted write later 
   expect(observed._tag).toBe("Success");
 });
 
-test("malformed JSON waits for the stdout lane without interleaving a parse-error frame", async () => {
-  const observed = await Effect.runPromise(
-    Effect.scoped(
+test.each([
+  { count: 1, outcome: "release" },
+  { count: 20, outcome: "release" },
+  { count: 1, outcome: "deadline" },
+  { count: 20, outcome: "deadline" },
+  { count: 1, outcome: "EOF" },
+] as const)(
+  "stdio handles $count malformed lines behind a held write on $outcome",
+  async ({ count, outcome }) => {
+    const parseError = { jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } };
+    const admitted = { jsonrpc: "2.0", id: "admitted", result: {} };
+    await Effect.runPromise(
       Effect.gen(function* () {
-        // Given a writer held after a prefix, and malformed input on the independent parse path.
-        const output = yield* controlledOutput();
-        const frame = '{"jsonrpc":"2.0","id":1,"result":{}}\n';
-        const writer = yield* output.write(frame).pipe(Effect.forkScoped);
-        yield* Deferred.await(output.started);
-        const reader = yield* Stream.runDrain(output.guarded.stdio.stdin).pipe(Effect.forkScoped);
-        yield* output.client.raw(new TextEncoder().encode("{bad}\n"));
-        yield* Effect.yieldNow;
-        const callsWhileBlocked = output.calls();
-        // When the admitted frame is released.
-        yield* Deferred.succeed(output.release, undefined);
-        yield* Fiber.join(writer);
-        yield* Fiber.join(reader);
-        // Then both complete frames are serialized and the parse failure is retained.
-        return {
-          callsWhileBlocked,
-          text: output.chunks.join(""),
-          frame,
-          exit: yield* Effect.exit(Deferred.await(output.terminal)),
-        };
-      }),
-    ),
-  );
-  expect(observed.callsWhileBlocked).toBe(1);
-  const messages = observed.text
-    .trim()
-    .split("\n")
-    .map((line) => JSON.parse(line));
-  expect(messages).toEqual([
-    JSON.parse(observed.frame),
-    { jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } },
-  ]);
-  expect(expectMcpTransportFailure(observed.exit)?.message).toBe(
-    "MCP stdio received a malformed JSON frame.",
-  );
-});
+        const client = yield* makeStdioClient();
+        const service = yield* McpService;
+        const started = yield* Deferred.make<void>();
+        const release = yield* Deferred.make<void>();
+        const inputClosed = yield* Deferred.make<void>();
+        let observeWrites = false;
+        let calls = 0;
+        const stdio = Stdio.make({
+          ...client.stdio,
+          stdin: client.stdio.stdin.pipe(Stream.ensuring(Deferred.succeed(inputClosed, undefined))),
+          stdout: () =>
+            forEachChunk((chunk: string | Uint8Array) => {
+              const write = (part: string | Uint8Array) =>
+                Stream.run(Stream.make(part), client.stdio.stdout());
+              if (!observeWrites || ++calls > 1) return write(chunk);
+              const text = typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk);
+              return write(text.slice(0, 5)).pipe(
+                Effect.andThen(Deferred.succeed(started, undefined)),
+                Effect.andThen(Deferred.await(release)),
+                Effect.andThen(write(text.slice(5))),
+              );
+            }),
+        });
+        const fiber = yield* service
+          .serve({ transport: "stdio" })
+          .pipe(Effect.provideService(Stdio.Stdio, stdio), Effect.forkScoped);
+        yield* client.initialize();
+        observeWrites = true;
+        const ping = yield* client.sendRequest("ping", {}, "admitted");
+        yield* Deferred.await(started);
+        yield* client.raw(new TextEncoder().encode("{bad}\n".repeat(count)));
+        yield* TestClock.adjust("0 millis");
+        expect(calls).toBe(1);
+        switch (outcome) {
+          case "release":
+            yield* Deferred.succeed(release, undefined);
+            yield* Effect.raceFirst(
+              Effect.gen(function* () {
+                expect(yield* ping.response).toEqual(admitted);
+                let errors = 0;
+                while (errors < count) if ((yield* client.next).id === null) errors++;
+                expect((yield* client.request("ping")).result).toEqual({});
+              }),
+              Fiber.join(fiber).pipe(Effect.andThen(Effect.never)),
+            );
+            yield* client.close;
+            yield* Fiber.join(fiber);
+            expect(
+              (yield* client.messages).filter((message) => message.id === "admitted" || message.id === null),
+            ).toEqual([admitted, ...Array.from({ length: count }, () => parseError)]);
+            break;
+          case "deadline":
+            yield* TestClock.adjust("5 seconds");
+            expect(expectMcpTransportFailure(yield* Fiber.await(fiber))?.message).toBe(
+              "MCP stdio stdout write exceeded the 5 second deadline.",
+            );
+            expect(calls).toBe(1);
+            expect((yield* client.messages).map((message) => message.id)).toEqual([1]);
+            break;
+          case "EOF":
+            yield* client.close;
+            yield* Deferred.await(inputClosed);
+            yield* Deferred.succeed(release, undefined);
+            yield* Fiber.join(fiber);
+            expect(calls).toBe(1);
+            expect((yield* client.messages).slice(1)).toEqual([admitted]);
+            break;
+          default:
+            outcome satisfies never;
+        }
+      }).pipe(Effect.scoped, Effect.provide(serverLayer()), Effect.provide(TestClock.layer())),
+    );
+  },
+);
 
-test("malformed input cannot overwrite the first blocked-writer failure", async () => {
-  const observed = await Effect.runPromise(
-    Effect.scoped(
+test.each(["stdin", "stdout"] as const)(
+  "stdio ends on a typed %s failure without retrying",
+  async (channel) => {
+    let attempts = 0;
+    const fault = PlatformError.systemError({ _tag: "Unknown", module: "Stdio", method: channel });
+    const fail = Effect.suspend(() => {
+      attempts++;
+      return Effect.fail(fault);
+    });
+    const exit = await Effect.runPromise(
       Effect.gen(function* () {
-        // Given malformed input whose direct error writer waits behind a blocked RPC frame.
-        const output = yield* controlledOutput();
-        const writer = yield* output.write("blocked\n").pipe(Effect.forkScoped);
-        yield* Deferred.await(output.started);
-        const reader = yield* Stream.runDrain(output.guarded.stdio.stdin).pipe(Effect.forkScoped);
-        yield* output.client.raw(new TextEncoder().encode("{bad}\n"));
-        yield* Effect.yieldNow;
-        // When the first writer fails at its deadline, closing admission.
-        yield* TestClock.adjust("5 seconds");
-        yield* Fiber.join(writer);
-        yield* Fiber.join(reader);
-        // Then the queued parse-error write never starts and timeout remains the first failure.
-        return { calls: output.calls(), exit: yield* Effect.exit(Deferred.await(output.terminal)) };
-      }),
-    ).pipe(Effect.provide(TestClock.layer())),
-  );
-  expect(observed.calls).toBe(1);
-  expect(expectMcpTransportFailure(observed.exit)?.message).toBe(
-    "MCP stdio stdout write exceeded the 5 second deadline.",
-  );
-});
+        const client = yield* makeStdioClient();
+        const service = yield* McpService;
+        const stdio = Stdio.make({
+          ...client.stdio,
+          stdin: channel === "stdin" ? Stream.fromEffect(fail) : client.stdio.stdin,
+          stdout: channel === "stdout" ? () => forEachChunk(() => fail) : client.stdio.stdout,
+        });
+        const fiber = yield* service
+          .serve({ transport: "stdio" })
+          .pipe(Effect.provideService(Stdio.Stdio, stdio), Effect.forkScoped);
+        if (channel === "stdout") yield* client.sendRequest("ping");
+        return yield* Fiber.await(fiber);
+      }).pipe(Effect.scoped, Effect.provide(serverLayer()), Effect.timeout("4 seconds")),
+    );
+    expect(expectMcpTransportFailure(exit)?.message).toBe(
+      channel === "stdin" ? "MCP stdio input failed while reading a frame." : fault.message,
+    );
+    expect(attempts).toBe(1);
+  },
+);

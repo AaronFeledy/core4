@@ -1,6 +1,6 @@
 import type { TestInventoryEntry, TestOwnershipIssue } from "./test-ownership.ts";
-import { resolveTestSelection } from "./test-selection-files.ts";
-import type { TestSelection } from "./test-selections.ts";
+import { isIntegrationTest, resolveTestSelection } from "./test-selection-files.ts";
+import type { ContributorTestPreset, TestSelection } from "./test-selections.ts";
 import { checkWorkflowBindings } from "./test-workflow-bindings.ts";
 
 export const checkInventoryOwnership = async (input: {
@@ -8,6 +8,7 @@ export const checkInventoryOwnership = async (input: {
   readonly unknown: readonly string[];
   readonly files: readonly string[];
   readonly selections: readonly TestSelection[];
+  readonly presets: readonly ContributorTestPreset[];
   readonly manual: Readonly<Record<string, string>>;
   readonly workflowRoot: string;
 }): Promise<readonly TestOwnershipIssue[]> => {
@@ -36,13 +37,37 @@ export const checkInventoryOwnership = async (input: {
       });
   }
   const discovered = input.files.filter((path) => !unknown.has(path));
-  for (const selection of input.selections) {
+  for (const selection of [...input.selections, ...input.presets]) {
     for (const selector of selection.paths) {
       if (resolveTestSelection({ ...selection, paths: [selector] }, discovered).length === 0)
         issues.push({
           code: "STALE_SELECTOR",
           paths: [selection.id, selector],
           remediation: "Fix or remove the unmatched selector in scripts/test-selections.ts.",
+        });
+    }
+  }
+  const prerequisiteFreeOwners = new Set([
+    "unit",
+    ...input.selections
+      .filter((selection) => selection.needs === undefined && !selection.usesInheritedLivePodmanRoots)
+      .map((selection) => selection.id),
+  ]);
+  const presetEligible = new Set(
+    input.entries
+      .filter(
+        (entry) =>
+          !isIntegrationTest(entry.path) && entry.owners.some((owner) => prerequisiteFreeOwners.has(owner)),
+      )
+      .map((entry) => entry.path),
+  );
+  for (const preset of input.presets) {
+    for (const path of resolveTestSelection(preset, discovered)) {
+      if (!presetEligible.has(path))
+        issues.push({
+          code: "PRESET_FILE",
+          paths: [preset.id, path],
+          remediation: "A contributor preset may only run prerequisite-free tests already owned by CI.",
         });
     }
   }
@@ -55,7 +80,7 @@ export const checkInventoryOwnership = async (input: {
         remediation: "Remove the missing test from MANUAL_TESTS in scripts/test-ownership.ts.",
       });
   }
-  issues.push(...(await checkWorkflowBindings(input.workflowRoot, input.selections)));
+  issues.push(...(await checkWorkflowBindings(input.workflowRoot, input)));
   return issues.sort(
     (a, b) => a.code.localeCompare(b.code) || a.paths.join("\0").localeCompare(b.paths.join("\0")),
   );

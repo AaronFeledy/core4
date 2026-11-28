@@ -11,7 +11,7 @@ import { BUILT_IN_COMMAND_IDS } from "../../cli/generated/command-ids.ts";
 import type { MinimalBootstrapLayerInputs } from "./minimal.ts";
 import { makePluginsBootstrapBaseLayer } from "./plugins.ts";
 
-export const makeCommandsBootstrapBaseLayer = (inputs: MinimalBootstrapLayerInputs) => {
+export const makeCommandsBootstrapBaseLayer = <R>(inputs: MinimalBootstrapLayerInputs<R>) => {
   const pluginsBase = makePluginsBootstrapBaseLayer(inputs);
   const landofileServiceLayer = EngineLandofileServiceLayer.layerDefault.pipe(Layer.provide(pluginsBase));
   const userAppResolverLayer = UserAppResolverLayer.layer.pipe(Layer.provide(landofileServiceLayer));

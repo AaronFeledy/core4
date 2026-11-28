@@ -17,7 +17,7 @@ export interface BootstrapLayerPluginDiscovery {
   readonly disable: ReadonlyArray<string>;
 }
 
-export interface BootstrapLayerInputs {
+export interface BootstrapLayerInputs<R = unknown> {
   readonly runtimeLayerFactory: Context.Service.Shape<typeof RuntimeLayerFactory>;
   readonly lifecycle: BootstrapLifecycleTracker;
   readonly loggerMode: LoggerMode;
@@ -28,7 +28,7 @@ export interface BootstrapLayerInputs {
   readonly rendererMode: LibraryRendererMode;
   readonly telemetryEnabled: boolean;
   readonly pluginDiscovery: BootstrapLayerPluginDiscovery;
-  readonly pluginLayers: ReadonlyArray<Layer.Layer<unknown, unknown, unknown>>;
+  readonly pluginLayers: ReadonlyArray<Layer.Layer<never, unknown, R>>;
   /** Replaces the bundled provider registry for every provider-level consumer (test hosts). */
   readonly runtimeProviderRegistry?: Layer.Layer<RuntimeProviderRegistry>;
   readonly pluginManifests: ReadonlyArray<ResolvedPluginInput>;
