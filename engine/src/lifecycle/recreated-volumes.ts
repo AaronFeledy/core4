@@ -74,7 +74,7 @@ export const recreatedVolumeWarnings = (input: RecreatedVolumeInput): readonly C
       code: RECREATED_DATA_VOLUME_CODE,
       message: `The ${mounted.service.name} data volume ${store.name} was recreated without its previous contents.${
         recordedEngine !== undefined
-          ? ` The container engine at ${recordedEngine} is not the one this app last ran on; resetting or reinstalling an engine removes its volumes.`
+          ? ` The engine now answering at ${recordedEngine} is not the one this app last ran on there; resetting or reinstalling an engine removes its volumes.`
           : ""
       }`,
       remediation: remediation(mounted.service),
