@@ -1122,7 +1122,7 @@ Published schemas are `CommandResultFormat` (`text|json|table|yaml|ndjson`), `Fa
 | `result` | Optional command `resultSchema` value |
 | `error` | Optional primary `TaggedErrorJson`; non-empty `error.additionalErrors` carries ordered, non-recursive additional tagged failures with required `role` |
 | `error.cause` | Optional recursively projected wrapped tagged failure, retaining its message and diagnostic fields; omitted for non-tagged causes |
-| `error.context` | Optional structured diagnostic context owned by the failing operation; activation reports the snapshot IDs it committed as `restorePointIds` (§6.15) |
+| `error.context` | Optional structured diagnostic context owned by the failing operation; activation reports retained `restorePointIds` separately from `discardedRestorePointIds` (§6.15) |
 | `output` | Optional `CommandOutput`: bounded, redacted text chunks with channel/provenance and an explicit truncation flag; mandatory for completed MCP command responses; carries the collected child output of Bun-backed commands under `json`/`yaml` (§8.2.4) |
 | `warnings` | `CommandWarning[]` |
 | `deprecations` | `DeprecationUse[]` |

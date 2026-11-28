@@ -60,6 +60,7 @@ export const withUpgradeRestorePoints =
           Effect.flatMap((timestamp) => events.publish(MessageInfoEvent.make({ body, timestamp }))),
         );
       const prepared: UndoCapture[] = [];
+      const discarded = new Set<SnapshotId>();
       const capture = Effect.gen(function* () {
         if (Option.isNone(mover)) {
           for (const { service } of input.upgrades)
@@ -91,6 +92,7 @@ export const withUpgradeRestorePoints =
                     mover: mover.value,
                     onPrepare: (undo) => prepared.push(undo),
                     onCommit: (snapshot) => points.set(service, snapshot.id),
+                    onDiscard: (snapshot) => discarded.add(snapshot.id),
                   },
                 });
                 if (captured === undefined) continue;
@@ -127,10 +129,14 @@ export const withUpgradeRestorePoints =
           const cause = Exit.isFailure(cleanup)
             ? mergeFailure(exit.cause, cleanup.cause, "rollback")
             : exit.cause;
+          const retained = [...points.values()].filter((id) => !discarded.has(id));
           return yield* Effect.failCause(
             points.size === 0
               ? cause
-              : annotateFailureContext(cause, { restorePointIds: [...points.values()] }),
+              : annotateFailureContext(cause, {
+                  ...(retained.length === 0 ? {} : { restorePointIds: retained }),
+                  ...(discarded.size === 0 ? {} : { discardedRestorePointIds: [...discarded] }),
+                }),
           );
         }),
       ).pipe(Effect.provideService(UpgradeTeardown, new Set()));

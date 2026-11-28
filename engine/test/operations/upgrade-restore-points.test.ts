@@ -298,7 +298,7 @@ test("cancelling after snapshot commit resumes the original and removes the comm
   if (Exit.isSuccess(exit)) throw new Error("expected capture to be interrupted");
   const outcome = failureOutcomeFromCause(exit.cause);
   expect(outcome.kind).toBe("none");
-  expect(outcome.failureContext?.restorePointIds).toEqual([id]);
+  expect(outcome.failureContext).toEqual({ discardedRestorePointIds: [id] });
   expect(f.actions).toEqual(["suspend", "capture", "resume"]);
   expect(f.status()).toBe("running");
   expect([...f.snapshots]).toEqual([]);

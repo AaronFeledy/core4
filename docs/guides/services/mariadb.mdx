@@ -245,7 +245,9 @@ lando db:import before-upgrade.sql.gz --service db --yes
       <Verify command="lando exec db -- printenv MARIADB_AUTO_UPGRADE" expect={{ stdout: { regex: "^1\\s*$" } }} />
       <Run command={`lando mariadb -e "CREATE TABLE notes (body TEXT); INSERT INTO notes VALUES ('still here');"`} />
       <Run command="lando app:config:set services.db.type mariadb:11.4" />
-      <Verify command="lando start --format=json" expect={{ stdout: { regex: '"restorePoint":"[a-f0-9-]{36}"' } }} />
+      <Run command='lando app:config:set events.post-restart "[\"exit 7\"]"' />
+      <Verify command="lando restart --format=json" expectExit={1} expect={{ stdout: { regex: '"error":\\{"_tag":"LandofileEventStepFailedError"[^\\n]*"context":\\{"restorePointIds":\\["[a-f0-9-]{36}"\\]\\}' } }} />
+      <Run command="lando app:config:unset events.post-restart" />
       <Verify command="lando exec db -- cat /var/lib/mysql/mariadb_upgrade_info" expect={{ stdout: { regex: "^11[.]4[.]" } }} />
       <Verify command="lando db:snapshots --service db --format=json" expect={{ stdout: { regex: '"recoveryReason":"upgrade"' } }} />
       <Run command="lando db:snapshots --service db --format=json" capture={{ name: "restoreId", json: "snapshots.0.id" }} />

@@ -31,6 +31,7 @@ export const captureRestorePoint = Effect.fn("AppActivation.captureRestorePoint"
     readonly mover: DataMover["Service"];
     readonly onPrepare: (undo: UndoCapture) => void;
     readonly onCommit: (handle: SnapshotHandle) => void;
+    readonly onDiscard: (handle: SnapshotHandle) => void;
   };
 }) {
   const { plan, upgrade, provider, publication } = input;
@@ -139,7 +140,7 @@ export const captureRestorePoint = Effect.fn("AppActivation.captureRestorePoint"
     if (isIdleRunStatus(runtime.status)) yield* verify;
     return undefined;
   }
-  const { mover, onPrepare, onCommit } = publication;
+  const { mover, onPrepare, onCommit, onDiscard } = publication;
   const { suspend, resume } = provider;
   const wasRunning = runtime.status === "running";
   let handle: SnapshotHandle | undefined;
@@ -184,6 +185,7 @@ export const captureRestorePoint = Effect.fn("AppActivation.captureRestorePoint"
         ),
       ),
     );
+    onDiscard(handle);
     return `Removed unused restore point ${id} for ${service}: the original database was not replaced.`;
   });
   if (wasRunning) {
