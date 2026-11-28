@@ -112,8 +112,6 @@ export const machineTerminalFor = <A>(
 
 export interface MachineTerminalInput<A> {
   readonly outcome: CommandResultOutcome & { readonly value?: A };
-  /** The result buffered data frames come from, when the outcome no longer carries it. */
-  readonly framesFrom?: A;
   readonly redactionTokens: ReadonlyArray<string>;
   readonly deprecations: ReadonlyArray<DeprecationUse>;
 }
@@ -219,14 +217,11 @@ export const makeMachineResultEmitters = <A>(deps: MachineResultEmitterDeps<A>) 
         return [yield* applyJq(line, outcome)];
       }
       case "frames": {
-        const source = input.framesFrom ?? outcome.value;
         const data =
-          terminal.buffered && source !== undefined ? yield* encodeDataFrames(source, redactor) : [];
-        // --jq runs on the redacted envelope, not the StreamFrame wrapper.
-        const args = { ...envelope, resultSchema, outcome };
-        const result = willRunJq(outcome)
-          ? yield* applyJq(yield* encodeCommandResult({ ...args, format: "json" }), outcome)
-          : yield* encodeStreamResultFrame(args);
+          terminal.buffered && outcome.value !== undefined
+            ? yield* encodeDataFrames(outcome.value, redactor)
+            : [];
+        const result = yield* encodeStreamResultFrame({ ...envelope, resultSchema, outcome });
         return [...data, result];
       }
       case "report": {
@@ -258,12 +253,9 @@ export const makeMachineResultEmitters = <A>(deps: MachineResultEmitterDeps<A>) 
     if (Result.isSuccess(prepared)) return { lines: prepared.success, exitCode };
     if (!(prepared.failure instanceof JqExpressionError)) return yield* Effect.fail(prepared.failure);
     onJqFailure(prepared.failure);
-    // The data already produced stays; only the result is replaced.
-    const { value } = input.outcome;
     const lines = yield* prepareTerminal(terminal, {
       ...input,
       outcome: { _tag: "failure", error: prepared.failure, additionalErrors: [] },
-      ...(value === undefined ? {} : { framesFrom: value }),
     });
     return { lines, exitCode: 2 };
   });

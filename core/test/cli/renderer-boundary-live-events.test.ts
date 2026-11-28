@@ -2,8 +2,8 @@ import { expect, test } from "bun:test";
 import * as LandoEventService from "@lando/engine/services/event-service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { StreamFrame } from "@lando/sdk/schema";
-import { EventService, StreamFrameSink } from "@lando/sdk/services";
-import { Effect, Layer, Option, Schema } from "effect";
+import { EventService, StreamFrameSink, collectExecStream } from "@lando/sdk/services";
+import { Effect, Layer, Option, Schema, Stream } from "effect";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary";
 
 const timestamp = "2026-10-30T00:00:00.000Z";
@@ -184,27 +184,36 @@ test("live and buffered JSON event frames have identical redacted bytes", async 
   expect(outputs[1]).not.toContain(secret);
 });
 
-test("live JSON applies jq only to the terminal envelope, not event or data frames", async () => {
-  // Given
+test("live jq discards child output without buffering it; notifications still reach stderr", async () => {
   const io = createBufferedRendererIO();
-  // When
   await runWithRendererHandling(
     Effect.gen(function* () {
       yield* (yield* EventService).publish({ _tag: "message.info", body: "starting", timestamp });
-      yield* emitOutput();
-      return {};
+      yield* (yield* EventService).publish({ _tag: "notify.desktop", title: "Done", urgency: "success" });
+      const sink = yield* Effect.serviceOption(StreamFrameSink);
+      return yield* collectExecStream(
+        Stream.make(
+          { kind: "stdout", chunk: new TextEncoder().encode("child stdout\n") },
+          { kind: "stderr", chunk: new TextEncoder().encode("child stderr\n") },
+          { exitCode: 0 },
+        ),
+        sink,
+        { failure: () => "child did not exit" },
+      );
     }),
-    { ...options, jqExpression: ".ok", io },
+    {
+      ...options,
+      resultSchema: Schema.Struct({
+        exitCode: Schema.Number,
+        stdout: Schema.optionalKey(Schema.String),
+        stderr: Schema.optionalKey(Schema.String),
+      }),
+      jqExpression: ".result",
+      io,
+    },
   );
-  // Then
-  const lines = io.stdoutLines();
-  expect(lines.at(-1)).toBe("true");
-  const frames = lines.slice(0, -1).map(decodeFrame);
-  expect(frames.filter((frame) => frame._tag === "event")).toMatchObject([
-    { _tag: "event", event: "message.info", payload: { body: "starting" } },
-  ]);
-  expect(frames.filter((frame) => frame._tag === "stdout")).toEqual([{ _tag: "stdout", chunk: "out\n" }]);
-  expect(io.stderr()).toBe("");
+  expect(JSON.parse(io.stdout())).toEqual({ exitCode: 0 });
+  expect(JSON.parse(io.stderr())).toMatchObject({ _tag: "notify.desktop", title: "Done" });
 });
 
 test("live event delivery does not flush a held partial data line", async () => {

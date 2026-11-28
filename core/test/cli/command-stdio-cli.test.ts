@@ -8,16 +8,14 @@ const cli = new URL("../../bin/lando.ts", import.meta.url).pathname;
 const landofileNotFound = { ok: false, error: { _tag: "LandofileNotFoundError" } };
 const lastJsonLine = (text: string): unknown => JSON.parse(text.trim().split("\n").at(-1) ?? "");
 
-// db:export streams live, so json is a frame sequence, --jq selects the result
-// envelope after the event frames, and yaml collects one document.
 test.each([
   ["--format=json", lastJsonLine, { _tag: "result", envelope: landofileNotFound }],
-  ["--json=service", lastJsonLine, { _tag: "result", envelope: landofileNotFound }],
-  ["--jq=.", lastJsonLine, landofileNotFound],
+  ["--json=service", JSON.parse, landofileNotFound],
+  ["--jq=.", JSON.parse, landofileNotFound],
   ["--format=yaml", (text: string): unknown => Bun.YAML.parse(text), landofileNotFound],
 ] as const)(
   "writes a lifecycle failure only to stderr when dump stdout is requested for %j",
-  async (control, parseLast, expected) => {
+  async (control, parseResult, expected) => {
     const cwd = await mkdtemp(join(tmpdir(), "lando-payload-result-"));
     try {
       const child = Bun.spawn([process.execPath, cli, "db:export", "-", control], {
@@ -34,7 +32,7 @@ test.each([
 
       expect(exitCode).toBe(1);
       expect(stdout).toBe("");
-      expect(parseLast(stderr)).toMatchObject(expected);
+      expect(parseResult(stderr)).toMatchObject(expected);
     } finally {
       await rm(cwd, { recursive: true, force: true });
     }
