@@ -2,8 +2,9 @@ import { afterAll, beforeAll, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { FRAMING_CASES } from "./fixtures/framing-cases";
 import { deadline, fixturePath } from "./fixtures/real-pipe-client";
-import { abandonment, framingRecovery } from "./fixtures/real-pipe-scenarios";
+import { abandonment, runFramingCase } from "./fixtures/real-pipe-scenarios";
 
 const skipCompile = process.env.LANDO_SKIP_COMPILE_SMOKE === "1";
 let directory: string | undefined;
@@ -39,14 +40,16 @@ afterAll(async () => {
   if (directory !== undefined) await rm(directory, { recursive: true, force: true });
 });
 
-test.skipIf(skipCompile)(
-  "compiled real stdio ignores blank lines and recovers from malformed JSON outside the repo",
-  async () => {
-    if (binary === undefined || directory === undefined) throw new Error("Fixture compilation did not run");
-    await framingRecovery([binary], directory);
-  },
-  20_000,
-);
+for (const row of FRAMING_CASES.filter((row) => row.pipe === "both")) {
+  test.skipIf(skipCompile)(
+    `compiled real stdio framing outside the repo: ${row.id}`,
+    async () => {
+      if (binary === undefined || directory === undefined) throw new Error("Fixture compilation did not run");
+      await runFramingCase([binary], directory, row);
+    },
+    20_000,
+  );
+}
 
 for (const scenario of [
   { kind: "tool", shutdown: "EOF" },

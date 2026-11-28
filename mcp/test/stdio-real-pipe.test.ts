@@ -1,10 +1,15 @@
 import { expect, test } from "bun:test";
+import { FRAMING_CASES } from "./fixtures/framing-cases";
 import { sourceCommand, startPipe } from "./fixtures/real-pipe-client";
-import { abandonment, framingRecovery, successfulCall } from "./fixtures/real-pipe-scenarios";
+import { abandonment, runFramingCase, successfulCall } from "./fixtures/real-pipe-scenarios";
 
-test("real stdio ignores blank lines and recovers from malformed JSON", async () => {
-  await framingRecovery(sourceCommand, import.meta.dir);
-}, 20_000);
+test.each(FRAMING_CASES.filter((row) => row.pipe !== undefined))(
+  "real stdio framing: $id",
+  async (row) => {
+    await runFramingCase(sourceCommand, import.meta.dir, row);
+  },
+  20_000,
+);
 
 test("real stdio preserves the exact successful payload before EOF", async () => {
   // Given an initialized real-process MCP connection.

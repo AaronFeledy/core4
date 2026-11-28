@@ -1,7 +1,8 @@
 import { McpRuntimeConfig, McpService } from "@lando/mcp/service";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import * as RendererStdio from "@lando/renderer/stdio";
-import { Cause, Effect, Exit, Layer, Schema } from "effect";
+import { McpTransportError } from "@lando/sdk/errors";
+import { Cause, Effect, Exit, Layer, Option, Schema } from "effect";
 import { testAppGenerations } from "../../src/testing.ts";
 import { TestMcpCommandExecutor } from "../executor";
 
@@ -98,18 +99,22 @@ const serve = Effect.scoped(
 // A broken shutdown must time out in the parent, not masquerade as a clean exit.
 const keepalive = setInterval(() => {}, 1_000);
 Effect.runPromiseExit(Effect.raceFirst(sigterm, serve))
-  .then((exit) =>
-    Effect.runPromise(
-      record(
-        Exit.isFailure(exit)
-          ? {
-              event: "serverExit",
-              exit: exit._tag,
-              interruptedOnly: Cause.hasInterruptsOnly(exit.cause),
-              cause: Schema.decodeUnknownSync(Schema.Json)(JSON.parse(JSON.stringify(exit.cause))),
-            }
-          : { event: "serverExit", exit: exit._tag },
-      ),
-    ),
-  )
+  .then((exit) => {
+    if (Exit.isSuccess(exit)) return Effect.runPromise(record({ event: "serverExit", exit: "Success" }));
+    const interruptedOnly = Cause.hasInterruptsOnly(exit.cause);
+    const failure = Cause.findErrorOption(exit.cause);
+    const error =
+      Option.isSome(failure) && failure.value instanceof McpTransportError ? failure.value : undefined;
+    if (!interruptedOnly) process.exitCode = 1;
+    return Effect.runPromise(
+      record({
+        event: "serverExit",
+        exit: "Failure",
+        interruptedOnly,
+        ...(error === undefined
+          ? {}
+          : { error: { _tag: error._tag, message: error.message, remediation: error.remediation } }),
+      }),
+    );
+  })
   .finally(() => clearInterval(keepalive));

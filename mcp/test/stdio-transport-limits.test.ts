@@ -7,7 +7,7 @@ import { StreamFrameSink } from "@lando/sdk/services";
 import { Deferred, Effect, Fiber, Layer, Schema, Stdio, Stream } from "effect";
 import { forEach as forEachChunk } from "effect/Sink";
 import { TestClock } from "effect/testing";
-import { eventLayer, serverLayer, startServer, toolErrorObject } from "./server";
+import { eventLayer, resultObject, serverLayer, startServer, toolErrorObject } from "./server";
 import { expectMcpTransportFailure } from "./stdio-transport-test-support";
 
 test("stdio-outbound-deadline-disconnects", async () => {
@@ -147,7 +147,7 @@ test("stdio-outstanding-request-cap-rejects-the-257th-as-busy-with-default-concu
       Effect.gen(function* () {
         const release = yield* Deferred.make<void>();
         const spec = {
-          id: "app:info",
+          id: "app:config:get",
           summary: "Info",
           resultSchema: Schema.Struct({}),
           run: () =>
@@ -181,12 +181,14 @@ test("stdio-outstanding-request-cap-rejects-the-257th-as-busy-with-default-concu
         const observedMaximum = maximum;
         yield* Deferred.succeed(release, undefined);
         const results = yield* Effect.forEach(calls, (call) => call.response);
-        return { busy, results, observedMaximum };
+        return { busy, busyId: last.id, results, observedMaximum };
       }),
     ),
   );
   expect(observed.observedMaximum).toBe(4);
   expect(observed.results).toHaveLength(257);
+  expect(observed.busy).toMatchObject({ jsonrpc: "2.0", id: observed.busyId });
+  expect(observed.results.filter((message) => resultObject(message).isError === false)).toHaveLength(256);
   expect(events.filter((event) => event._tag === "pre-mcp-call")).toHaveLength(257);
   expect(events.filter((event) => event._tag === "post-mcp-call")).toHaveLength(257);
   expect(events.filter((event) => event._tag === "post-mcp-call" && event.outcome === "failure")).toEqual([
@@ -197,9 +199,16 @@ test("stdio-outstanding-request-cap-rejects-the-257th-as-busy-with-default-concu
     message: "Server busy",
     remediation: "Restart the MCP client with healthy piped stdin/stdout and retry the request.",
   });
-  expect(Schema.decodeUnknownSync(Schema.JsonObject)(observed.busy.result).structuredContent).toMatchObject({
+  const busy = Schema.decodeUnknownSync(
+    Schema.Struct({
+      content: Schema.Array(Schema.Struct({ type: Schema.Literal("text"), text: Schema.String })),
+      structuredContent: Schema.JsonObject,
+    }),
+  )(observed.busy.result);
+  expect(JSON.parse(busy.content[0]?.text ?? "null")).toEqual(busy.structuredContent);
+  expect(busy.structuredContent).toMatchObject({
     apiVersion: "v4",
-    command: "app:info",
+    command: "app:config:get",
     ok: false,
     warnings: [],
     deprecations: [],

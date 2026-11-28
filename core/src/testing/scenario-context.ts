@@ -56,10 +56,18 @@ import {
   requestScenarioRoute,
   resolveFetchUrl,
 } from "./scenario-fetch.ts";
+import {
+  ScenarioProcessError,
+  errorTagFromStderr,
+  scenarioChild,
+  startScenarioProcess,
+} from "./scenario-process";
 import { makeScenarioProvider } from "./scenario-provider.ts";
 import { type TestRuntime, makeTestRuntime } from "./test-runtime";
 
 const repoRoot = resolve(dirname(realpathSync(fileURLToPath(import.meta.url))), "../../..");
+
+export { ScenarioProcessError } from "./scenario-process";
 
 /**
  * Scenario runner layer used by generated guide tests.
@@ -95,7 +103,9 @@ export interface ScenarioRunResult {
   readonly stderr: string;
   /** Process exit code or in-process command status. */
   readonly exitCode: number;
-  /** Redacted events this invocation published; empty for the compiled e2e runner. */
+  /** Signal reported by the child process, when it was terminated by a signal. */
+  readonly signal?: NodeJS.Signals | number;
+  /** Redacted events this invocation published; empty for child runs. */
   readonly events: ReadonlyArray<LandoEvent>;
 }
 
@@ -108,6 +118,26 @@ export interface ScenarioRunOptions {
   readonly answers?: Readonly<Record<string, string>>;
   /** Hard timeout for a compiled CLI child. */
   readonly timeoutMs?: number;
+}
+
+export interface ScenarioStartOptions {
+  /** Keep stdin open for writes. The default is EOF at spawn. */
+  readonly stdin?: "pipe";
+}
+
+export interface ScenarioCliProcess {
+  readonly command: readonly string[];
+  /** Write and flush bytes to the child's input. */
+  readonly write: (text: string) => Effect.Effect<void, ScenarioProcessError>;
+  /** Send EOF. Repeated calls are safe. */
+  readonly closeInput: Effect.Effect<void>;
+  /** Find the first matching stdout line since spawn, with a bounded wait. */
+  readonly stdoutLine: (
+    matches: (line: string) => boolean,
+    options?: { readonly timeoutMs?: number },
+  ) => Effect.Effect<string, ScenarioProcessError>;
+  /** Await exit and output, recording a run frame at most once. */
+  readonly result: Effect.Effect<ScenarioRunResult, ScenarioProcessError>;
 }
 
 /**
@@ -195,6 +225,14 @@ export interface ScenarioContext {
     options?: ScenarioRunOptions,
   ) => Effect.Effect<ScenarioRunResult, unknown>;
   /**
+   * Starts a real CLI child in the current scenario working directory. Default-layer
+   * dialogues must be host-only: roots isolate state, not access to host providers.
+   */
+  readonly startCli: (
+    command: string | ReadonlyArray<string>,
+    options?: ScenarioStartOptions,
+  ) => Effect.Effect<ScenarioCliProcess, ScenarioProcessError | GuideCommandSyntaxError, Scope.Scope>;
+  /**
    * Rejects shell commands, which are not implemented for guide scenarios.
    * @param command Shell command from a guide `<Run shell="...">` block.
    * @returns A failed effect with `NotImplementedError`.
@@ -219,7 +257,7 @@ export interface ScenarioContext {
   ) => Effect.Effect<() => void, never, Scope.Scope | R>;
   /**
    * Redacted events published by every in-process CLI invocation in this scenario, in order.
-   * Compiled e2e invocations run in a child process and contribute none.
+   * Child invocations do not contribute events.
    */
   readonly events: ReadonlyArray<LandoEvent>;
   /** Transcript buffer for this scenario. */
@@ -276,11 +314,6 @@ const parseCommand = (
 
 const withoutLandoPrefix = (argv: ReadonlyArray<string>): ReadonlyArray<string> =>
   argv[0] === "lando" || argv[0] === "lando4" ? argv.slice(1) : argv;
-
-const errorTagFromStderr = (stderr: string): string | undefined => {
-  const match = /code:\s*([A-Za-z0-9_]+)/.exec(stderr) ?? /"code"\s*:\s*"([A-Za-z0-9_]+)"/.exec(stderr);
-  return match?.[1];
-};
 
 const shellNotImplemented = (command: string): NotImplementedError =>
   new NotImplementedError({
@@ -717,6 +750,11 @@ const createScenarioRunCli = (
 const compiledBinaryPath = (env: Readonly<Record<string, string | undefined>>): string =>
   resolve(env.LANDO_SCENARIO_E2E_BINARY ?? fileURLToPath(new URL("../../dist/lando", import.meta.url)));
 
+const compiledLauncher = async (env: Readonly<Record<string, string | undefined>>) => {
+  const binary = compiledBinaryPath(env);
+  return { binary, exists: await Bun.file(binary).exists() };
+};
+
 const createE2eRunCli =
   (
     getWorkingDirectory: () => string,
@@ -726,8 +764,8 @@ const createE2eRunCli =
   (command, options) =>
     runInterruptibleCli(async (signal) => {
       const args = appendInitAnswers(command, options?.answers);
-      const binary = compiledBinaryPath(env);
-      if (!(await Bun.file(binary).exists())) {
+      const { binary, exists } = await compiledLauncher(env);
+      if (!exists) {
         return {
           command: args,
           stdout: "",
@@ -739,15 +777,7 @@ const createE2eRunCli =
 
       const cwd = getWorkingDirectory();
       const proc = Bun.spawn({
-        cmd: [binary, ...args],
-        cwd,
-        env: {
-          ...env,
-          BUN_BE_BUN: undefined,
-          LANDO_DISALLOW_BUN_BE_BUN_REENTRY: undefined,
-        },
-        stdout: "pipe",
-        stderr: "pipe",
+        ...scenarioChild([binary, ...args], { cwd, env, mode: "compiled" }),
         signal,
         ...(options?.timeoutMs === undefined ? {} : { timeout: options.timeoutMs, killSignal: "SIGKILL" }),
       });
@@ -763,6 +793,7 @@ const createE2eRunCli =
         stdout,
         stderr,
         exitCode,
+        ...(proc.signalCode === null ? {} : { signal: proc.signalCode }),
         events: [],
       } satisfies Omit<ScenarioRunResult, "_tag">;
       const errorTag = errorTagFromStderr(stderr);
@@ -893,7 +924,16 @@ const makeScenarioContext = (
     };
   });
 
-  const e2eEnv = options.e2eEnv ?? process.env;
+  const env =
+    runnerKind === "e2e"
+      ? (options.e2eEnv ?? process.env)
+      : {
+          ...process.env,
+          LANDO_USER_DATA_ROOT: join(testDir, "host", "data"),
+          LANDO_USER_CACHE_ROOT: join(testDir, "host", "cache"),
+          LANDO_USER_CONF_ROOT: join(testDir, "host", "config"),
+          LANDO_SYSTEM_PLUGIN_ROOT: join(testDir, "host", "system-plugins"),
+        };
   const context = ScenarioContext.of({
     guideId: options.guideId,
     scenarioId: options.scenarioId,
@@ -910,17 +950,45 @@ const makeScenarioContext = (
       getWorkingDirectory,
       setWorkingDirectory,
       runnerKind,
-      runnerKind === "e2e"
-        ? e2eEnv
-        : {
-            ...process.env,
-            LANDO_USER_DATA_ROOT: join(testDir, "host", "data"),
-            LANDO_USER_CACHE_ROOT: join(testDir, "host", "cache"),
-            LANDO_USER_CONF_ROOT: join(testDir, "host", "config"),
-            LANDO_SYSTEM_PLUGIN_ROOT: join(testDir, "host", "system-plugins"),
-          },
+      env,
       options,
     ),
+    startCli: Effect.fn("ScenarioContext.startCli")(function* (command, startOptions) {
+      const args = yield* parseCommand(command);
+      let launcher: readonly string[];
+      if (runnerKind === "e2e") {
+        const { binary, exists } = yield* Effect.promise(() => compiledLauncher(env));
+        if (!exists) {
+          return yield* new ScenarioProcessError({
+            reason: "missing-binary",
+            message: `Compiled Lando binary not found: ${binary}`,
+            remediation: "Build Lando or select a compiled binary in LANDO_SCENARIO_E2E_BINARY.",
+            stderr: "",
+          });
+        }
+        launcher = [binary];
+      } else {
+        launcher = [
+          process.execPath,
+          "--no-env-file",
+          fileURLToPath(new URL("../../bin/lando.ts", import.meta.url)),
+        ];
+      }
+      return yield* startScenarioProcess(
+        scenarioChild([...launcher, ...args], {
+          cwd: getWorkingDirectory(),
+          env,
+          mode: runnerKind === "e2e" ? "compiled" : "host-only",
+        }),
+        {
+          command: args,
+          ...startOptions,
+          ...(hiddenDepth === 0
+            ? { record: (frame: ScenarioTranscriptFrame) => transcriptFrames.push(frame) }
+            : {}),
+        },
+      );
+    }),
     shell: (command) => Effect.fail(shellNotImplemented(command)),
     inspect: createInspect(testDir, events, transcriptFrames, appendFrame),
     hidden,
@@ -964,7 +1032,7 @@ const makeScenarioContext = (
         ),
       );
       const url = yield* resolveFetchUrl(props.url, info);
-      const ca = url.protocol === "https:" ? yield* readScenarioCa(getWorkingDirectory(), e2eEnv) : undefined;
+      const ca = url.protocol === "https:" ? yield* readScenarioCa(getWorkingDirectory(), env) : undefined;
       return yield* requestScenarioRoute(url, props, ca);
     }),
   } satisfies E2eScenarioContext;

@@ -81,8 +81,8 @@ export function startPipe(command: readonly string[], cwd: string) {
       waiters.delete(check);
     }
   };
-  const sendRaw = async (text: string) => {
-    child.stdin.write(text);
+  const sendRaw = async (text: string | Uint8Array) => {
+    await deadline(Promise.resolve(child.stdin.write(text)), "fixture stdin write");
     await deadline(Promise.resolve(child.stdin.flush()), "fixture stdin flush");
   };
   const send = (value: Schema.JsonObject) => sendRaw(`${JSON.stringify(value)}\n`);

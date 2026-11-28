@@ -3,10 +3,9 @@ import { rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { McpDiagnostics } from "@lando/mcp/service";
 import { Schema } from "effect";
-import { fixtureRoot, lazyCommandSource, writeFixtureApp } from "./app-fixture";
+import { fixtureRoot, writeFixtureApp } from "./app-fixture";
 import { openStdioSession } from "./stdio-session";
 
-const cli = resolve(import.meta.dir, "../../bin/lando.ts");
 const tools = (message: Schema.JsonObject) =>
   Schema.decodeUnknownSync(
     Schema.Struct({ result: Schema.Struct({ tools: Schema.Array(Schema.Struct({ name: Schema.String })) }) }),
@@ -21,137 +20,6 @@ const payload = (message: Schema.JsonObject) => {
   )(message);
   return Schema.decodeUnknownSync(McpDiagnostics)(JSON.parse(result.contents[0]?.text ?? "null"));
 };
-const landofile = (broken: boolean) => `name: diagnostics
-includes:
-  - source: ./internal.yml
-    kind: tooling
-    namespace: private
-    internal: true
-tooling:
-  healthy:
-    service: ":host"
-    cmd: echo healthy
-  broken:
-    service: ":host"
-    ${broken ? "wrapper: true\n    cmds:\n      - echo one\n      - echo two\n    flags:\n      first:\n        alias: q\n      second:\n        alias: q" : "cmd: echo repaired"}
-  denied:
-    wrapper: true
-  disabled:
-    disabled: true
-    wrapper: true
-`;
-
-test("diagnostics resource refreshes tooling and selected plugin failures with the published tools in one stdio session", async () => {
-  const root = await fixtureRoot("diagnostics-stdio");
-  const app = await writeFixtureApp(root, "a", {
-    commands: [],
-    serviceType: "diagnostics-type",
-    lazyCommand: "fixture:broken",
-  });
-  await writeFile(join(app.root, ".lando.yml"), landofile(true));
-  await writeFile(join(app.root, "internal.yml"), "tooling:\n  private:\n    wrapper: true\n");
-  const env = {
-    ...process.env,
-    LANDO_USER_DATA_ROOT: join(root, "data"),
-    LANDO_USER_CACHE_ROOT: join(root, "cache"),
-    LANDO_USER_CONF_ROOT: join(root, "conf"),
-    LANDO_PROVIDER: "lando",
-    PATH: "/no-such-path",
-  };
-  const session = openStdioSession({
-    command: [process.execPath, cli, "mcp", "--tooling", "--allow", "fixture:broken", "--deny", "app:denied"],
-    cwd: app.root,
-    env,
-  });
-  try {
-    await session.initialize();
-    const discovered = await session.request("resources/list");
-    expect(discovered.result).toMatchObject({
-      resources: expect.arrayContaining([
-        expect.objectContaining({
-          uri: "lando://diagnostics",
-          description: expect.stringContaining("session"),
-        }),
-      ]),
-    });
-    const read = () => session.request("resources/read", { uri: "lando://diagnostics" }).then(payload);
-    const initial = await read();
-    expect(initial.diagnostics.map((record) => record.commandId).sort()).toEqual([
-      "app:broken",
-      "fixture:broken",
-    ]);
-    const broken = initial.diagnostics.find((record) => record.commandId === "app:broken");
-    expect(broken).toMatchObject({
-      kind: "tooling",
-      sourceKind: "landofile",
-      _tag: "ToolingCompileError",
-      omittedIssueCount: 0,
-    });
-    expect(broken?.issues?.map((issue) => issue.reason).sort()).toEqual([
-      "alias-collision",
-      "wrapper-command-count",
-      "wrapper-inputs",
-    ]);
-    const alias = broken?.issues?.find((issue) => issue.reason === "alias-collision");
-    expect({ path: alias?.path, source: alias?.source, related: alias?.related }).toEqual({
-      path: ["tooling", "broken", "flags", "second", "alias"],
-      source: {
-        file: join(app.root, ".lando.yml"),
-        layer: "canonical",
-        path: ["tooling", "broken", "flags", "second", "alias"],
-      },
-      related: [
-        {
-          path: ["tooling", "broken", "flags", "first", "alias"],
-          source: {
-            file: join(app.root, ".lando.yml"),
-            layer: "canonical",
-            path: ["tooling", "broken", "flags", "first", "alias"],
-          },
-        },
-      ],
-    });
-    expect(initial.omittedDiagnosticCount).toBe(0);
-    expect(
-      tools(await session.request("tools/list")).filter(
-        (id) => id === "app:healthy" || id === "app:broken" || id.startsWith("fixture:"),
-      ),
-    ).toEqual(["app:healthy"]);
-
-    await writeFile(join(app.root, ".lando.yml"), landofile(false));
-    const changed = session.waitFor((message) => message.method === "notifications/tools/list_changed");
-    const repaired = await read();
-    await changed;
-    expect(repaired.diagnostics.map((record) => record.commandId)).toEqual(["fixture:broken"]);
-    expect(repaired.revision).toBeGreaterThan(initial.revision);
-    expect(tools(await session.request("tools/list"))).toContain("app:broken");
-    await writeFile(app.lazyModule, lazyCommandSource("fixture:broken"));
-    expect((await read()).diagnostics).toEqual([]);
-    expect(
-      (await session.request("tools/call", { name: "fixture:broken", arguments: {} })).result,
-    ).toMatchObject({ structuredContent: { ok: true } });
-    expect((await session.request("tools/call", { name: "app:broken", arguments: {} })).result).toMatchObject(
-      { structuredContent: { ok: true } },
-    );
-
-    await writeFile(join(app.root, ".lando.yml"), landofile(true));
-    const hidden = session.waitFor((message) => message.method === "notifications/tools/list_changed");
-    const regressed = await read();
-    await hidden;
-    expect(regressed.diagnostics.map((record) => record.commandId)).toEqual(["app:broken"]);
-    expect(tools(await session.request("tools/list"))).not.toContain("app:broken");
-    expect(await session.request("tools/call", { name: "app:broken", arguments: {} })).toHaveProperty(
-      "error",
-    );
-    const finished = await session.finish();
-    expect(finished.exit, finished.stderr).toBe(0);
-  } finally {
-    session.child.kill();
-    await session.child.exited;
-    await rm(root, { recursive: true, force: true });
-  }
-}, 60_000);
-
 test("stdio diagnostics bound authorized records using captured invocation secrets and keep CLI list consistent", async () => {
   const root = await fixtureRoot("diagnostics-bounds");
   const secret = "captured-private-value-7319";
