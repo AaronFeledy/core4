@@ -3,13 +3,11 @@ import { mkdir, mkdtemp, readdir, rm, symlink } from "node:fs/promises";
 import { delimiter, dirname, resolve } from "node:path";
 
 import { resolveGeneratedGuideTestRoot } from "../../../scripts/build-guide-scenarios.ts";
-
 import {
-  computeAffectedGuides,
   missingGeneratedGuideIds,
-  parseDevGuidesArgs,
   pruneOrphanGeneratedGuides,
-} from "../../../scripts/dev-guides.ts";
+} from "../../../scripts/guides/dev-guides-pipeline.ts";
+import { computeAffectedGuides, parseDevGuidesArgs } from "../../../scripts/guides/dev-guides-selection.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const generatedRoot = resolve(repoRoot, "test/scenarios/generated/guides");
@@ -49,13 +47,27 @@ interface SpawnResult {
   readonly stdout: string;
   readonly stderr: string;
   readonly generatedGuideIds: readonly string[];
+  /** True when a pre-seeded file outside the requested guides survived the run. */
+  readonly seedSurvived?: boolean;
 }
 
-const runDevGuides = async (args: ReadonlyArray<string>): Promise<SpawnResult> => {
+interface RunDevGuidesOptions {
+  readonly seed?: { readonly guideId: string; readonly file: string };
+}
+
+const runDevGuides = async (
+  args: ReadonlyArray<string>,
+  options: RunDevGuidesOptions = {},
+): Promise<SpawnResult> => {
   const isolatedParent = resolve(repoRoot, "node_modules/.cache");
   await mkdir(isolatedParent, { recursive: true });
   const isolatedGeneratedRoot = await mkdtemp(resolve(isolatedParent, "lando-dev-guides-generated-"));
   try {
+    if (options.seed !== undefined) {
+      const seedDir = resolve(isolatedGeneratedRoot, options.seed.guideId);
+      await mkdir(seedDir, { recursive: true });
+      await Bun.write(resolve(seedDir, options.seed.file), "// pre-seeded\n");
+    }
     const proc = Bun.spawn({
       cmd: [process.execPath, "run", "scripts/dev-guides.ts", ...args],
       cwd: repoRoot,
@@ -73,17 +85,27 @@ const runDevGuides = async (args: ReadonlyArray<string>): Promise<SpawnResult> =
       new Response(proc.stderr).text(),
     ]);
     const generatedGuideIds = await readdir(isolatedGeneratedRoot).catch(() => []);
-    return { exitCode, stdout, stderr, generatedGuideIds };
+    const seedSurvived =
+      options.seed === undefined
+        ? undefined
+        : await Bun.file(resolve(isolatedGeneratedRoot, options.seed.guideId, options.seed.file)).exists();
+    return {
+      exitCode,
+      stdout,
+      stderr,
+      generatedGuideIds,
+      ...(seedSurvived === undefined ? {} : { seedSurvived }),
+    };
   } finally {
     await rm(isolatedGeneratedRoot, { force: true, recursive: true });
   }
 };
 
 describe("dev:guides argument parsing", () => {
-  test("defaults to watch mode with no single guide", () => {
+  test("defaults to watch mode with no guide path", () => {
     const options = parseDevGuidesArgs([]);
     expect(options.once).toBe(false);
-    expect(options.singleGuidePath).toBeUndefined();
+    expect(options.guidePaths).toEqual([]);
   });
 
   test("parses --once", () => {
@@ -92,14 +114,17 @@ describe("dev:guides argument parsing", () => {
 
   test("parses a single-guide path positional", () => {
     const options = parseDevGuidesArgs(["docs/guides/sample.mdx"]);
-    expect(options.singleGuidePath).toBe("docs/guides/sample.mdx");
+    expect(options.guidePaths).toEqual(["docs/guides/sample.mdx"]);
     expect(options.once).toBe(false);
   });
 
-  test("parses a single-guide path with --once together", () => {
-    const options = parseDevGuidesArgs(["--once", "docs/guides/sample.mdx"]);
+  test("accepts several guide paths only with --once", () => {
+    const options = parseDevGuidesArgs(["--once", "docs/guides/one.mdx", "docs/guides/two.mdx"]);
     expect(options.once).toBe(true);
-    expect(options.singleGuidePath).toBe("docs/guides/sample.mdx");
+    expect(options.guidePaths).toEqual(["docs/guides/one.mdx", "docs/guides/two.mdx"]);
+    expect(() => parseDevGuidesArgs(["docs/guides/one.mdx", "docs/guides/two.mdx"])).toThrow(
+      "only with --once",
+    );
   });
 
   test("rejects unknown flags", () => {
@@ -318,6 +343,42 @@ describe.serial("dev:guides one-shot pipeline", () => {
       const exitCode = await proc.exited;
       expect(sawBanner).toBe(true);
       expect(exitCode).toBe(0);
+    } finally {
+      await removeGuide(guideId);
+    }
+  }, 60000);
+});
+
+describe.serial("dev:guides one-shot batch", () => {
+  test("runs two green guides in one pass and leaves a third guide's output alone", async () => {
+    const firstId = "dev-guides-batch-one";
+    const secondId = "dev-guides-batch-two";
+    try {
+      const firstPath = await writeGuide(firstId, guideContent(firstId));
+      const secondPath = await writeGuide(secondId, guideContent(secondId));
+      const result = await runDevGuides(["--once", firstPath, secondPath], {
+        seed: { guideId: "app-lifecycle", file: "marker.test.ts" },
+      });
+
+      expect(result.exitCode, [result.stdout, result.stderr].join(String.fromCharCode(10))).toBe(0);
+      expect(`${result.stdout}${result.stderr}`).toContain("2 pass");
+      expect(result.generatedGuideIds).toContain(firstId);
+      expect(result.generatedGuideIds).toContain(secondId);
+      expect(result.seedSurvived).toBe(true);
+    } finally {
+      await removeGuide(firstId);
+      await removeGuide(secondId);
+    }
+  }, 60000);
+
+  test("an unknown second path exits 2 and names it", async () => {
+    const guideId = "dev-guides-batch-known";
+    try {
+      const path = await writeGuide(guideId, guideContent(guideId));
+      const result = await runDevGuides(["--once", path, "docs/guides/not-a-guide.mdx"]);
+
+      expect(result.exitCode).toBe(2);
+      expect(result.stderr).toContain("no guide found at docs/guides/not-a-guide.mdx");
     } finally {
       await removeGuide(guideId);
     }

@@ -110,7 +110,7 @@ const run = async (
 };
 
 const selectedGuide = async (guideId: string): Promise<GuideScenarioAst> => {
-  const guide = (await buildGuideScenarioAst(REPO_ROOT, { onlyGuide: guideId }))[0];
+  const guide = (await buildGuideScenarioAst(REPO_ROOT, { onlyGuides: [guideId] }))[0];
   if (guide === undefined) throw new Error(`Guide not found: ${guideId}`);
   return guide;
 };

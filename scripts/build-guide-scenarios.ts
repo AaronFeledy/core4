@@ -71,10 +71,10 @@ export const resolveHostGuidePlatform = (
   }
 };
 export interface BuildGuideScenarioOptions {
-  readonly onlyGuide?: string;
+  readonly onlyGuides?: readonly string[];
 }
 interface EmitGuideScenarioOptions {
-  readonly clearGuideId?: string;
+  readonly clearGuideIds?: readonly string[];
 }
 
 export const buildGuideScenarioAst = async (
@@ -87,8 +87,9 @@ export const buildGuideScenarioAst = async (
       parseGuideScenarioAst(sourcePath, await Bun.file(resolve(root, sourcePath)).text()),
     ),
   );
+  const only = options.onlyGuides === undefined ? undefined : new Set(options.onlyGuides);
   return asts
-    .filter((guide) => options.onlyGuide === undefined || guide.frontmatter.id === options.onlyGuide)
+    .filter((guide) => only === undefined || only.has(guide.frontmatter.id))
     .sort((a, b) => a.sourcePath.localeCompare(b.sourcePath));
 };
 export const publicTranscriptRelativePath = (
@@ -162,10 +163,12 @@ export const emitPublicTranscripts = async (
       }),
     ),
   );
-  await rm(resolveContainedClearTarget(root, outputRoot, options.clearGuideId), {
-    force: true,
-    recursive: true,
-  });
+  for (const guideId of options.clearGuideIds ?? [undefined]) {
+    await rm(resolveContainedClearTarget(root, outputRoot, guideId), {
+      force: true,
+      recursive: true,
+    });
+  }
   for (const output of outputs) {
     await mkdir(dirname(resolve(root, output.path)), { recursive: true });
     await Bun.write(resolve(root, output.path), output.content);
@@ -187,10 +190,12 @@ export const emitGuideScenarioTests = async (
       })),
     ),
   );
-  await rm(resolveContainedClearTarget(root, outputRoot, options.clearGuideId), {
-    force: true,
-    recursive: true,
-  });
+  for (const guideId of options.clearGuideIds ?? [undefined]) {
+    await rm(resolveContainedClearTarget(root, outputRoot, guideId), {
+      force: true,
+      recursive: true,
+    });
+  }
   for (const output of outputs) {
     await mkdir(dirname(resolve(root, output.path)), { recursive: true });
     await Bun.write(resolve(root, output.path), output.content);
@@ -203,27 +208,27 @@ export const buildGuideScenarioTests = async (
   options: BuildGuideScenarioOptions = {},
 ): Promise<ReadonlyArray<string>> =>
   emitGuideScenarioTests(await buildGuideScenarioAst(root, options), root, outputRoot, {
-    ...(options.onlyGuide === undefined ? {} : { clearGuideId: options.onlyGuide }),
+    ...(options.onlyGuides === undefined ? {} : { clearGuideIds: options.onlyGuides }),
   });
 export const parseBuildGuideScenarioArgs = (args: ReadonlyArray<string>): BuildGuideScenarioOptions => {
-  const options: { onlyGuide?: string } = {};
+  const only: Array<typeof GuideId.Type> = [];
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
     if (arg === "--only") {
       const value = args[index + 1];
       if (value === undefined || value.startsWith("--")) throw new Error("--only requires a guide id");
-      options.onlyGuide = decodeGuideIdArg(value);
+      only.push(decodeGuideIdArg(value));
       index += 1;
-    } else if (arg?.startsWith("--only=")) options.onlyGuide = decodeGuideIdArg(arg.slice("--only=".length));
+    } else if (arg?.startsWith("--only=")) only.push(decodeGuideIdArg(arg.slice("--only=".length)));
     else throw new Error(`Unknown build-guide-scenarios flag: ${arg}`);
   }
-  return options;
+  return only.length === 0 ? {} : { onlyGuides: only };
 };
 if (import.meta.main) {
   try {
     const options = parseBuildGuideScenarioArgs(Bun.argv.slice(2));
     const asts = await buildGuideScenarioAst(REPO_ROOT, options);
-    const clearOptions = options.onlyGuide === undefined ? {} : { clearGuideId: options.onlyGuide };
+    const clearOptions = options.onlyGuides === undefined ? {} : { clearGuideIds: options.onlyGuides };
     const written = await emitGuideScenarioTests(asts, REPO_ROOT, GENERATED_GUIDE_TEST_ROOT, clearOptions);
     await emitPublicTranscripts(asts, REPO_ROOT, PUBLIC_TRANSCRIPT_ROOT, clearOptions);
     process.stdout.write(`${JSON.stringify(written, null, 2)}\n`);
