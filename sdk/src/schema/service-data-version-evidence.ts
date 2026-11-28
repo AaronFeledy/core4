@@ -67,7 +67,8 @@ export const classifyDataVersionRefusal = (
   input: { readonly exitCode: number | undefined; readonly lines: readonly string[] },
 ): { readonly finding: ServiceDataVersionFinding; readonly hint?: string } | undefined => {
   if (input.exitCode === 0) return undefined;
-  for (const line of input.lines) {
+  const newestFirst = input.lines.toReversed();
+  for (const line of newestFirst) {
     const marker = markerPattern.exec(line);
     if (marker === null) continue;
     const dataVersion = capturedVersion(marker, "data");
@@ -76,15 +77,17 @@ export const classifyDataVersionRefusal = (
       return { finding: { direction: "downgrade", evidence: "guard", dataVersion, imageVersion } };
     }
   }
-  for (const refusal of contract.refusals) {
+  const nativePatterns = contract.refusals.flatMap((refusal) => {
     if (
       refusal.exitCodes !== undefined &&
       (input.exitCode === undefined || !refusal.exitCodes.includes(input.exitCode))
     )
-      continue;
+      return [];
     const pattern = compilePattern(refusal.pattern, "u");
-    if (pattern === undefined) continue;
-    for (const line of input.lines) {
+    return pattern === undefined ? [] : [{ refusal, pattern }];
+  });
+  for (const line of newestFirst) {
+    for (const { refusal, pattern } of nativePatterns) {
       const match = pattern.exec(line);
       if (match === null) continue;
       const dataVersion = capturedVersion(match, "data");

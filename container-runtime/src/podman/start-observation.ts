@@ -1,5 +1,5 @@
-import { Option, Schema } from "effect";
-import { runStatusFromEngineState } from "../run-observation.ts";
+import { DateTime, Option, Schema } from "effect";
+import { containerStartedAt, runStatusFromEngineState } from "../run-observation.ts";
 
 const InspectState = Schema.Struct({
   Status: Schema.optionalKey(Schema.String),
@@ -8,6 +8,7 @@ const InspectState = Schema.Struct({
   Restarting: Schema.optionalKey(Schema.Boolean),
   Dead: Schema.optionalKey(Schema.Boolean),
   ExitCode: Schema.optionalKey(Schema.Unknown),
+  StartedAt: Schema.optionalKey(Schema.String),
 });
 
 const StartInspect = Schema.Struct({
@@ -40,10 +41,12 @@ export const startObservation = (body: unknown) => {
   if (status !== "exited" && status !== "dead") return { status: "unknown" as const };
   const restart = Schema.decodeUnknownOption(RestartConfig)(HostConfig);
   const policy = Option.getOrUndefined(restart)?.RestartPolicy.Name;
-  if (status === "dead") return { status, policy, exitCode: undefined };
+  const startedAt = containerStartedAt(state);
+  const since = startedAt === undefined ? undefined : DateTime.formatIso(startedAt);
+  if (status === "dead") return { status, policy, exitCode: undefined, since };
   const exitCode =
     typeof state.ExitCode === "number" && Number.isSafeInteger(state.ExitCode) && state.ExitCode >= 0
       ? state.ExitCode
       : undefined;
-  return { status, exitCode, policy };
+  return { status, exitCode, policy, since };
 };

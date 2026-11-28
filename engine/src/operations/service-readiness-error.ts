@@ -1,6 +1,8 @@
 import {
   dataVersionRemediation,
+  startupFailureLogLines,
   startupFailureLogLookback,
+  startupLogsCommand,
 } from "@lando/container-runtime/data-version-diagnostic";
 import { completionIntentServices } from "@lando/container-runtime/dependency-gates";
 import { listenerAuthorityAction, listenerDiagnostic } from "@lando/container-runtime/listener-diagnostic";
@@ -52,11 +54,10 @@ export interface ReadinessTarget {
 }
 
 export const readinessCommands = (target: ReadinessTarget) => {
-  if (target.plan.extensions["@lando/core/scratch"] !== undefined)
-    return { logs: `lando scratch logs ${target.plan.id}`, retry: undefined };
-  if (String(target.plan.id) === "global")
-    return { logs: `lando global:logs -s ${target.service}`, retry: "lando global:start" };
-  return { logs: `lando logs -s ${target.service}`, retry: "lando start" };
+  const logs = startupLogsCommand(target.plan, target.service);
+  if (target.plan.extensions["@lando/core/scratch"] !== undefined) return { logs, retry: undefined };
+  if (String(target.plan.id) === "global") return { logs, retry: "lando global:start" };
+  return { logs, retry: "lando start" };
 };
 
 export const isSupervisedTarget = (target: ReadinessTarget): boolean => {
@@ -90,8 +91,15 @@ export const failReadiness = Effect.fn("ServiceReadiness.fail")(function* (
   const redactor = yield* redactorForReadiness;
   const service = target.plan.services[target.service];
   const runtime = evidence.runtime;
-  const terminalContract =
-    runtime?.status === "exited" || runtime?.status === "dead" ? service?.dataVersion : undefined;
+  const terminal =
+    service?.dataVersion !== undefined &&
+    (runtime?.status === "exited" || runtime?.status === "dead") &&
+    runtime.containerId !== undefined &&
+    runtime.lastStartedAt !== undefined
+      ? { runtime, contract: service.dataVersion, since: runtime.lastStartedAt }
+      : undefined;
+  const tail = startupFailureLogLookback(terminal?.contract);
+  const logTarget = { app: target.plan.id, service: target.service };
   const diagnose = evidence.reason === "healthcheck-failed" || evidence.reason === "healthcheck-timeout";
   const [listener, logEvidence] = yield* Effect.all(
     [
@@ -104,32 +112,47 @@ export const failReadiness = Effect.fn("ServiceReadiness.fail")(function* (
           )
         : Effect.succeed(undefined),
       Stream.runCollect(
-        target.provider.logs(
-          { app: target.plan.id, service: target.service },
-          { follow: false, tail: startupFailureLogLookback(terminalContract) },
-        ),
-      ).pipe(
-        Effect.map((chunks) => {
-          if (chunks.length === 0) return undefined;
-          const raw = chunks.map((chunk) => chunk.line).join("\n");
-          const dataVersion =
-            terminalContract !== undefined
-              ? classifyDataVersionRefusal(terminalContract, {
-                  exitCode: runtime?.exitCode,
-                  lines: raw.split("\n"),
-                })
-              : undefined;
-          return {
-            tail: {
-              service: String(target.service),
-              ...capRedactedLogLines(redactor.redactString(raw).split("\n")),
-              ...(evidence.runtime?.exitCode === undefined ? {} : { exitCode: evidence.runtime.exitCode }),
-              ...(evidence.reason === "healthcheck-timeout" ? { timedOut: true } : {}),
-            },
-            credentialState: classifyCredentialState(service?.connection, runtime?.exitCode, raw),
-            dataVersion,
-          };
+        target.provider.logs(logTarget, {
+          follow: false,
+          tail,
+          ...(terminal === undefined ? {} : { since: terminal.since.toISOString(), sources: [] }),
         }),
+      ).pipe(
+        Effect.flatMap(
+          Effect.fnUntraced(function* (chunks) {
+            if (chunks.length === 0) return undefined;
+            const raw = chunks.map((chunk) => chunk.line).join("\n");
+            const dataVersion =
+              terminal !== undefined
+                ? classifyDataVersionRefusal(terminal.contract, {
+                    exitCode: terminal.runtime.exitCode,
+                    lines: startupFailureLogLines(chunks, terminal.since.getTime(), tail),
+                  })
+                : undefined;
+            const current =
+              dataVersion === undefined
+                ? undefined
+                : yield* target.provider
+                    .inspect({ ...logTarget, plan: target.plan })
+                    .pipe(Effect.catch(() => Effect.succeed(undefined)));
+            const sameIncarnation =
+              current !== undefined &&
+              terminal !== undefined &&
+              readinessIncarnation(terminal.runtime, current) === "same" &&
+              current.status === terminal.runtime.status &&
+              current.exitCode === terminal.runtime.exitCode;
+            return {
+              tail: {
+                service: String(target.service),
+                ...capRedactedLogLines(redactor.redactString(raw).split("\n")),
+                ...(evidence.runtime?.exitCode === undefined ? {} : { exitCode: evidence.runtime.exitCode }),
+                ...(evidence.reason === "healthcheck-timeout" ? { timedOut: true } : {}),
+              },
+              credentialState: classifyCredentialState(service?.connection, runtime?.exitCode, raw),
+              dataVersion: sameIncarnation ? dataVersion : undefined,
+            };
+          }),
+        ),
         Effect.timeout(Duration.seconds(4)),
         Effect.catchCause((cause) =>
           Cause.hasInterruptsOnly(cause) ? Effect.interrupt : Effect.succeed(undefined),
@@ -157,7 +180,9 @@ export const failReadiness = Effect.fn("ServiceReadiness.fail")(function* (
     reason: evidence.reason,
     remediation:
       dataVersion !== undefined && service !== undefined
-        ? redactor.redactString(dataVersionRemediation(target.plan, service, dataVersion))
+        ? redactor.redactString(
+            `Run \`${commands.logs}\` to inspect the failure. ${dataVersionRemediation(target.plan, service, dataVersion)}`,
+          )
         : evidence.reason === "inspect-failed"
           ? "Run `lando doctor` to diagnose and restore the provider, then retry start."
           : `${action === undefined ? "" : `${redactor.redactString(action)}\n`}${diagnostic?.authority === undefined ? "" : `${redactor.redactString(diagnostic.authority)}\n`}Run \`${commands.logs}\` to diagnose the service and fix it.${commands.retry === undefined || credentials.length > 0 ? "" : ` Then retry \`${commands.retry}\`.`}${healthcheckRemediation}${credentials}`,

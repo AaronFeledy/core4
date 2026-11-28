@@ -47,7 +47,12 @@ import { removeRuntimeContainer } from "../container-removal.ts";
 import { nativeStartIntervalNs } from "../create-values.ts";
 import { sharedNetworkLabels } from "../data-root-labels.ts";
 import { type AdoptionReceipt, dataRootRefusal, decideDataRootOwnership } from "../data-root-ownership.ts";
-import { dataVersionRemediation, startupFailureLogLookback } from "../data-version-diagnostic.ts";
+import {
+  dataVersionRemediation,
+  startupFailureLogLines,
+  startupFailureLogLookback,
+  startupLogsCommand,
+} from "../data-version-diagnostic.ts";
 import { completionIntentServices } from "../dependency-gates.ts";
 import { type LifecycleDialect, libpodLifecycleDialect } from "../dialect.ts";
 import type {
@@ -198,6 +203,7 @@ interface StartResult {
   readonly startFailure?: {
     readonly status: "exited" | "dead" | "not-running";
     readonly exitCode?: number;
+    readonly since?: string;
   };
 }
 
@@ -1280,6 +1286,7 @@ const startService = Effect.fnUntraced(function* (
           ...("exitCode" in observed && observed.exitCode !== undefined
             ? { exitCode: observed.exitCode }
             : {}),
+          ...("since" in observed && observed.since !== undefined ? { since: observed.since } : {}),
         },
       };
     }
@@ -1393,11 +1400,12 @@ const terminalDependency = (
     }) !== "not-expected"
   )
     return undefined;
+  const incarnation = { containerId, ...(state.since === undefined ? {} : { since: state.since }) };
   return state.status === "dead"
-    ? { status: "dead", containerId }
+    ? { status: "dead", ...incarnation }
     : {
         status: "exited",
-        containerId,
+        ...incarnation,
         ...(state.exitCode === undefined ? {} : { exitCode: state.exitCode }),
       };
 };
@@ -1439,10 +1447,9 @@ const captureServiceLogTail = Effect.fnUntraced(
     plan: AppPlan,
     service: ServicePlan,
     extras?: {
-      readonly containerId?: string;
+      readonly exit?: DependencyExit;
       readonly exitCode?: number;
       readonly timedOut?: boolean;
-      readonly classifyDataVersion?: boolean;
     },
   ): Effect.fn.Return<
     | {
@@ -1452,14 +1459,17 @@ const captureServiceLogTail = Effect.fnUntraced(
     | undefined,
     ProviderError
   > {
-    const contract = extras?.classifyDataVersion === true ? service.dataVersion : undefined;
+    const exit = extras?.exit;
+    const since = service.dataVersion === undefined ? undefined : exit?.since;
+    const contract = since === undefined ? undefined : service.dataVersion;
+    const tail = startupFailureLogLookback(contract);
     const collected = yield* Stream.runCollect(
       containerConsoleLogs(
         deps.api,
         deps.options.ctx,
-        extras?.containerId ?? containerName(plan, service),
+        exit?.containerId ?? containerName(plan, service),
         service.name,
-        { follow: false, tail: startupFailureLogLookback(contract), sources: [] },
+        { follow: false, tail, sources: [], ...(since === undefined ? {} : { since }) },
       ),
     );
     if (collected.length === 0) return undefined;
@@ -1467,12 +1477,27 @@ const captureServiceLogTail = Effect.fnUntraced(
     const redactor = Option.isSome(provided) ? provided.value : deps.redactor;
     const raw = collected.map((chunk) => chunk.line).join("\n");
     const dataVersion =
-      contract !== undefined
+      contract !== undefined && since !== undefined
         ? classifyDataVersionRefusal(contract, {
             exitCode: extras?.exitCode,
-            lines: raw.split("\n"),
+            lines: startupFailureLogLines(
+              collected,
+              DateTime.toEpochMillis(DateTime.makeUnsafe(since)),
+              tail,
+            ),
           })
         : undefined;
+    const current =
+      dataVersion === undefined || exit === undefined
+        ? undefined
+        : yield* inspectStartedContainer(deps, { plan, service, nativeId: exit.containerId }).pipe(
+            Effect.catch(() => Effect.succeed(undefined)),
+          );
+    const sameIncarnation =
+      current?._tag === "Observed" &&
+      current.state.status === exit?.status &&
+      current.state.since === since &&
+      current.state.exitCode === exit.exitCode;
     const redacted = redactor.redactString(raw);
     const { lines, truncated } = capRedactedLogLines(redacted.split("\n"));
     return {
@@ -1483,7 +1508,7 @@ const captureServiceLogTail = Effect.fnUntraced(
         ...(extras?.exitCode === undefined ? {} : { exitCode: extras.exitCode }),
         ...(extras?.timedOut === true ? { timedOut: true } : {}),
       },
-      ...(dataVersion === undefined ? {} : { dataVersion }),
+      ...(dataVersion === undefined || !sameIncarnation ? {} : { dataVersion }),
     };
   },
   (effect) =>
@@ -1728,12 +1753,13 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
       const containerId = started.startedIdentity;
       if (containerId === undefined || failure.status === "not-running")
         return { changed: started.changed, dependencyUnavailable: { reason: "unverified" as const } };
+      const incarnation = { containerId, ...(failure.since === undefined ? {} : { since: failure.since }) };
       const terminalExit: DependencyExit =
         failure.status === "dead"
-          ? { status: "dead", containerId }
+          ? { status: "dead", ...incarnation }
           : {
               status: "exited",
-              containerId,
+              ...incarnation,
               ...(failure.exitCode === undefined ? {} : { exitCode: failure.exitCode }),
             };
       return { changed: started.changed, terminalExit };
@@ -1842,8 +1868,9 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
       );
       if (inspected._tag === "Unavailable") return { dependencyUnavailable: { reason: inspected.reason } };
       const observed = inspected.state;
+      const since = "since" in observed && observed.since !== undefined ? { since: observed.since } : {};
       if (observed.status === "dead") {
-        return { dependencyExit: { status: "dead", containerId: nativeId } };
+        return { dependencyExit: { status: "dead", containerId: nativeId, ...since } };
       }
       if (observed.status === "exited") {
         const exitCode = observed.exitCode;
@@ -1855,6 +1882,7 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
           dependencyExit: {
             status: "exited",
             containerId: nativeId,
+            ...since,
             ...(exitCode === undefined ? {} : { exitCode }),
           },
         };
@@ -1903,7 +1931,7 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
       aborted || dependency === undefined || blocked.dependencyUnavailable !== undefined
         ? Effect.succeed(undefined)
         : captureServiceLogTail(deps, plan, dependency, {
-            ...(exit === undefined ? {} : { containerId: exit.containerId, classifyDataVersion: true }),
+            ...(exit === undefined ? {} : { exit }),
             ...(exitCode === undefined ? {} : { exitCode }),
             ...(blocked.timedOut === true ? { timedOut: true } : {}),
           });
@@ -1965,7 +1993,9 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
           message: `${exitMessage}${diagnostic === undefined ? "" : `Dependency ${blocked.dependency}: ${diagnostic.finding}. `}Service ${blocked.service} could not start because dependency gate ${blocked.unmetGate} was not satisfied.`,
           remediation:
             dataVersion !== undefined && dependency !== undefined
-              ? deps.redactor.redactString(dataVersionRemediation(plan, dependency, dataVersion))
+              ? deps.redactor.redactString(
+                  `Run \`${startupLogsCommand(plan, dependency.name)}\` to inspect the failure. ${dataVersionRemediation(plan, dependency, dataVersion)}`,
+                )
               : `${action === undefined ? "" : `${deps.redactor.redactString(action)}\n`}${diagnostic?.authority === undefined ? "" : `${deps.redactor.redactString(diagnostic.authority)}\n`}${dependencyGateRemediation(plan, blocked.dependency)}`,
           ...(dataVersion === undefined ? {} : { dataVersion: dataVersion.finding }),
           ...(listener === undefined ? {} : { listener }),

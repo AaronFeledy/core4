@@ -25,7 +25,7 @@ import { gateId, gateNodeId } from "./dependency-gates.ts";
 import { type ScheduleEdge, type ScheduleGraph, runDependencySchedule } from "./dependency-schedule.ts";
 import { boundHealthcheckAttempt, runHealthcheckPhases } from "./healthcheck-probe.ts";
 
-export type DependencyExit = { readonly containerId: string } & (
+export type DependencyExit = { readonly containerId: string; readonly since?: string } & (
   | { readonly status: "exited"; readonly exitCode?: number }
   | { readonly status: "dead"; readonly exitCode?: never }
 );

@@ -179,6 +179,7 @@ const makeApi = (options: {
                     Running: false,
                     Status: "exited",
                     ExitCode: options.completionExitCode,
+                    StartedAt: "2026-10-09T00:00:00Z",
                   },
                 }),
               };
@@ -280,7 +281,7 @@ describe("bringUp start-failure log tail", () => {
         }),
       },
     } satisfies AppPlan;
-    const { api } = makeApi({
+    const { api, requests } = makeApi({
       completionExitCode: 1,
       logsFor: {
         [serviceContainerName(plan, "db")]: [
@@ -303,6 +304,9 @@ describe("bringUp start-failure log tail", () => {
       imageVersion: "10.11",
     });
     expect(error.remediation).toContain("lando db:export dump.sql.gz --service db");
+    expect(error.remediation).toContain("lando logs -s db");
+    const request = requests.find((entry) => entry.includes("/logs?"));
+    expect(logsQuery(request ?? "").get("since")).toBe("2026-10-09T00:00:00.000Z");
     expect(error.remediation).not.toContain("Repair the provider");
   });
 

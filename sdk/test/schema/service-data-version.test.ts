@@ -47,3 +47,29 @@ test("recognizes a guarded server downgrade without a vendor pattern", () => {
   });
   expect(classifyDataVersionRefusal(contract, { exitCode: 0, lines })).toBeUndefined();
 });
+
+test("prefers the newest refusal within each evidence class, with guard evidence first", () => {
+  const patterns = {
+    ...contract,
+    refusals: [
+      { pattern: "downgrade (?<data>[\\d.]+)", direction: "downgrade" },
+      { pattern: "upgrade (?<data>[\\d.]+)", direction: "upgrade" },
+    ],
+  } satisfies ServiceDataVersion;
+  const lines = ["downgrade 11.4", "upgrade 10.6"];
+  expect(classifyDataVersionRefusal(patterns, { exitCode: 1, lines })?.finding).toEqual({
+    direction: "upgrade",
+    evidence: "server",
+    dataVersion: "10.6",
+  });
+  expect(
+    classifyDataVersionRefusal(patterns, {
+      exitCode: 1,
+      lines: [
+        "lando-data-version-refused data=11.4 image=10.11: old",
+        "lando-data-version-refused data=11.8 image=10.11: current",
+        ...lines,
+      ],
+    })?.finding,
+  ).toEqual({ direction: "downgrade", evidence: "guard", dataVersion: "11.8", imageVersion: "10.11" });
+});
