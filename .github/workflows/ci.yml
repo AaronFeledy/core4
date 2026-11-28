@@ -2362,9 +2362,19 @@ jobs:
           fi
           LANDO_PODMAN="$LANDO_USER_DATA_ROOT/runtime/bin/podman"
           LANDO_PODMAN_ARGS=(--root "$LANDO_USER_DATA_ROOT/runtime/storage" --runroot "$LANDO_USER_DATA_ROOT/runtime/run" --config "$LANDO_USER_DATA_ROOT/runtime/config")
+          # The managed daemon owns its registry config. Only CI Podman pulls load this override.
+          cat > "$RUNNER_TEMP/ci-docker-hub.conf" <<'EOF'
+          [[registry]]
+          location = "docker.io"
+
+          [[registry.mirror]]
+          location = "mirror.gcr.io"
+          EOF
           pull_image() {
             local image="$1"
             for attempt in 1 2 3; do
+              CONTAINERS_REGISTRIES_CONF="$LANDO_USER_DATA_ROOT/runtime/config/registries.conf" \
+              CONTAINERS_REGISTRIES_CONF_OVERRIDE="$RUNNER_TEMP/ci-docker-hub.conf" \
               "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" pull "$image" && return 0
               if test "$attempt" -eq 3; then return 1; fi
               sleep $((attempt * 5))
@@ -2379,17 +2389,6 @@ jobs:
             done
           }
           if test "${{ matrix.suite }}" = services; then
-            # The managed daemon owns its registries.conf. Mirror only these CI CLI pulls
-            # into the daemon's image store, so live tests still use the original image names.
-            export CONTAINERS_REGISTRIES_CONF="$LANDO_USER_DATA_ROOT/runtime/config/registries.conf"
-            export CONTAINERS_REGISTRIES_CONF_OVERRIDE="$RUNNER_TEMP/ci-docker-hub.conf"
-            cat > "$CONTAINERS_REGISTRIES_CONF_OVERRIDE" <<'EOF'
-          [[registry]]
-          location = "docker.io"
-
-          [[registry.mirror]]
-          location = "mirror.gcr.io"
-          EOF
             pull_image docker.io/library/php:8.1-apache-bookworm
             pull_image docker.io/library/php:8.1-fpm-bookworm
             pull_image docker.io/library/php:8.1-cli-bookworm

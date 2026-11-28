@@ -5,8 +5,8 @@ import {
 } from "@lando/service-lando/services/default-images";
 import nodeReleases from "../plugins/service-lando/node/releases.json" with { type: "json" };
 import { setupBunSteps } from "./_bun-workflow.ts";
+import { podmanImagePullCommands, servicesImagePullCommands } from "./_ci-podman-images.ts";
 import { applyCiSelection, ciResultSteps } from "./_ci-selection-workflow.ts";
-import { servicesImagePullCommands } from "./_ci-services-images.ts";
 import { formatGeneratedPaths } from "./_codegen-output.ts";
 import {
   CONTAINER_HELPER_ARM64_JOB_ID,
@@ -511,14 +511,7 @@ const landoRuntimeBundleSetupSteps = (mode: "provider-matrix" | "standard" | "ni
 ${landoManagedPodmanRuntimeDirCommands}
           LANDO_PODMAN="$LANDO_USER_DATA_ROOT/runtime/bin/podman"
           LANDO_PODMAN_ARGS=(--root "$LANDO_USER_DATA_ROOT/runtime/storage" --runroot "$LANDO_USER_DATA_ROOT/runtime/run" --config "$LANDO_USER_DATA_ROOT/runtime/config")
-          pull_image() {
-            local image="$1"
-            for attempt in 1 2 3; do
-              "$LANDO_PODMAN" "\${LANDO_PODMAN_ARGS[@]}" pull "$image" && return 0
-              if test "$attempt" -eq 3; then return 1; fi
-              sleep $((attempt * 5))
-            done
-          }
+${podmanImagePullCommands(mode === "provider-matrix")}
           docker_pull_image() {
             local image="$1"
             for attempt in 1 2 3; do
