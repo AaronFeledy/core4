@@ -275,7 +275,7 @@ services:
 
 ## Change versions
 
-Back up the database first. Don't jump straight from `mongo:7` to a later 8.x image. MongoDB checks the feature compatibility version (FCV) stored in the data. If it rejects the change, `lando start --format=json` reports `dataVersion.direction: "incompatible"` under `ServiceNotReadyError` for a standalone service, or `ServiceStartError` if a dependent service is blocked.
+Back up the database first. Lando doesn't save an automatic upgrade restore point for MongoDB. Don't jump straight from `mongo:7` to a later 8.x image. MongoDB checks the feature compatibility version (FCV) stored in the data. If it rejects the change, `lando start --format=json` reports `dataVersion.direction: "incompatible"` under `ServiceNotReadyError` for a standalone service, or `ServiceStartError` if a dependent service is blocked.
 
 Restore `mongo:7`, start it again, and set FCV to `7.0` from the app directory:
 
