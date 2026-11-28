@@ -172,7 +172,7 @@ Changing the MariaDB version keeps the data volume. Lando sets `MARIADB_AUTO_UPG
    lando app:config:set services.db.type mariadb:11.4
    ```
 
-3. Start the app. Lando announces the in-place upgrade from 10.11 to 11.4, even if you stopped 10.11 after the export. The image backs up its system tables and runs `mariadb-upgrade` before the service reports ready:
+3. Start the app. Lando announces the in-place upgrade from 10.11 to 11.4 even if you stopped 10.11 after exporting. The image backs up its system tables and runs `mariadb-upgrade` before the service reports ready:
 
    ```sh
    lando start
@@ -187,7 +187,7 @@ Changing the MariaDB version keeps the data volume. Lando sets `MARIADB_AUTO_UPG
 
    Both should name the new version, and your tables should still be there. Run your app's tests to check that its queries still work on the new server.
 
-On later starts with the same version, the image skips the upgrade. To stop the image from running `mariadb-upgrade` on its own, set `MARIADB_AUTO_UPGRADE: "0"` under the service's `environment:`. Your value replaces Lando's. An unchanged version record does not guarantee that a downgrade is safe.
+On later starts with the same version, the image skips the upgrade. To stop the image from running `mariadb-upgrade` automatically, override Lando's default with `MARIADB_AUTO_UPGRADE: "0"` under the service's `environment:`. An unchanged version record doesn't prove a downgrade is safe.
 
 ## Go back to the old version
 
@@ -198,7 +198,7 @@ lando app:config:set services.db.type mariadb:10.11
 lando start --format=json
 ```
 
-The JSON error has `_tag: "ServiceDataVersionError"` and `dataVersion.direction: "downgrade"`. `dataVersion.dataVersion` is the series on disk (`11.4`), and `dataVersion.imageVersion` is the requested series (`10.11`). The newer server keeps running. Restore the newer `type:` if you want to keep using that data.
+The JSON error has `_tag: "ServiceDataVersionError"` and `dataVersion.direction: "downgrade"`. `dataVersion.dataVersion` is the series on disk (`11.4`), and `dataVersion.imageVersion` is the requested series (`10.11`). The newer server keeps running. Restore the newer `type:` to keep using that data.
 
 If the old container was already stopped, the official image's Lando launcher checks the files before starting MariaDB. That refusal has the same `dataVersion` fields under `ServiceNotReadyError` (or `ServiceStartError` when a dependent service is blocked). A service that sets `command:`, `entrypoint:`, or `build:` skips Lando's checks.
 

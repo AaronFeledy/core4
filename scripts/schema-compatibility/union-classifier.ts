@@ -40,20 +40,18 @@ const preservesValues = (
         if (oldValue.length !== newValue.length) return false;
         if (!oldValue.every((arm) => newValue.some((candidate) => preservesValues(arm, candidate, mode))))
           return false;
-        const partners = newValue.map((arm) =>
-          oldValue.find((candidate) => preservesValues(candidate, arm, mode)),
-        );
-        if (partners.some((partner) => partner === undefined)) return false;
         // An old value can't carry a key no closed old arm declared, so an optional key that is new
         // to the whole union can't change which arm an old value matches.
         const declared = new Set(oldValue.flatMap(propertyNames));
-        const added = newValue.flatMap((arm, index) => {
-          const own = new Set(propertyNames(partners[index] ?? {}));
-          return propertyNames(arm).filter((name) => !own.has(name));
-        });
-        return (
-          added.length === 0 || (oldValue.every(isClosedStruct) && added.every((name) => !declared.has(name)))
-        );
+        const closed = oldValue.every(isClosedStruct);
+        for (const arm of newValue) {
+          const partner = oldValue.find((candidate) => preservesValues(candidate, arm, mode));
+          if (partner === undefined) return false;
+          const own = new Set(propertyNames(partner));
+          if (propertyNames(arm).some((name) => !own.has(name) && (!closed || declared.has(name))))
+            return false;
+        }
+        return true;
       }
       case "properties": {
         if (!isJsonObject(oldValue) || !isJsonObject(newValue)) return false;

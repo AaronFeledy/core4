@@ -20,7 +20,7 @@ import {
   MYSQL_DATA as DATA_TARGET,
   applyDatabaseVersion,
   databaseVersionFeature,
-  isStockDatabaseProcess,
+  stockDatabaseImage,
 } from "./_data-version.ts";
 import {
   MYSQL_FAMILY_EXTRA_ARGS,
@@ -158,7 +158,7 @@ const applyMariadbFeature = (ctx: ServiceFeatureContext): void => {
   if (processOwned) return;
 
   const custom = isNonCatalogArtifact(service, CATALOG_IMAGES);
-  const official = isStockDatabaseProcess(service, image, "mariadb");
+  const official = stockDatabaseImage(service, image, "mariadb") !== undefined;
   const daemon = ["mariadbd", `--port=${port}`];
   const commandOptions = custom ? undefined : MYSQL_FAMILY_EXTRA_ARGS;
   if (official) {

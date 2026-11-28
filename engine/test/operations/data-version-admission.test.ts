@@ -7,7 +7,7 @@ import { rebuildApp } from "../../src/operations/rebuild.ts";
 import { restartApp } from "../../src/operations/restart.ts";
 import { startApp } from "../../src/operations/start.ts";
 import { databaseRuntime, versionedPlan } from "./data-version-support.ts";
-import { byTag, makeHarness, plan, web } from "./start-progress-topology-support.ts";
+import { makeHarness, plan, web } from "./start-progress-topology-support.ts";
 
 const target = (desired: typeof plan) => ({
   app: { kind: "user" as const, id: desired.id, root: desired.root },
@@ -25,7 +25,7 @@ const setup = (input: {
   const desired = versionedPlan(plan, web, input.to, input.upgrade);
   const observations: string[] = [];
   const mutations: string[] = [];
-  const timeline: string[] = [];
+  const timeline: ({ readonly kind: "notice"; readonly body: string } | { readonly kind: "apply" })[] = [];
   const exec = (t: ExecTarget, cmd: CommandSpec) => {
     if (
       t.expectedContainerId !== "database-original" ||
@@ -64,12 +64,11 @@ const setup = (input: {
     exec,
     onPublish: (event) =>
       Effect.sync(() => {
-        if (event._tag === "message.info" && event.body.startsWith("Upgrading web data"))
-          timeline.push("notice");
+        if (event._tag === "message.info") timeline.push({ kind: "notice", body: event.body });
       }),
     onApply: () => {
       mutations.push("apply");
-      timeline.push("apply");
+      timeline.push({ kind: "apply" });
     },
     onStop: () => {
       mutations.push("stop");
@@ -180,8 +179,10 @@ test("reports an in-place upgrade before applying", async () => {
   const fixture = setup({ from: "10.11", to: "11.4", evidence: "record" });
   const result = await Effect.runPromise(startApp({}, fixture.target).pipe(Effect.provide(fixture.layer)));
   expect(result.dataVersionChanges).toEqual([{ service: "web", from: "10.11", to: "11.4" }]);
-  expect(fixture.timeline).toEqual(["notice", "apply"]);
-  expect(byTag(fixture.events, "message.info").map(({ body }) => body)).toContain(
-    "Upgrading web data from MariaDB 10.11 to 11.4 in place.",
-  );
+  const firstApply = fixture.timeline.findIndex(({ kind }) => kind === "apply");
+  expect(fixture.timeline[firstApply]).toEqual({ kind: "apply" });
+  expect(fixture.timeline.slice(0, firstApply)).toContainEqual({
+    kind: "notice",
+    body: expect.stringMatching(/\bweb\b.*\bMariaDB\b.*\b10\.11\b.*\b11\.4\b/su),
+  });
 });

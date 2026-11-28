@@ -192,7 +192,7 @@ For vector search on Postgres 18, [use a pgvector image](./postgres-pgvector.mdx
 
 PostgreSQL can't open an existing data directory from a different major. If you change `postgres:16` to `postgres:17` while 16 is still running, `lando start --format=json` reports `ServiceDataVersionError` with `dataVersion.direction: "upgrade"` and leaves 16 running. If the old server was stopped, the native refusal reports the same versions under `ServiceNotReadyError`.
 
-Move the data through a dump. The volume-deletion step removes every service's data in the app, not only this database. Verify the export and back up any other service data before continuing:
+To move the data, export it and restore it on the new major. Before deleting volumes, verify the export and back up other services: volume deletion removes every service's data in the app.
 
 1. Export it while the old major still runs: `lando db:export dump.sql.gz --service db`
 2. Delete the old data volume: `lando destroy -y --volumes`

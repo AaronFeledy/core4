@@ -112,7 +112,7 @@ export const failReadiness = Effect.fn("ServiceReadiness.fail")(function* (
         Effect.map((chunks) => {
           if (chunks.length === 0) return undefined;
           const raw = chunks.map((chunk) => chunk.line).join("\n");
-          const version =
+          const dataVersion =
             terminalContract !== undefined
               ? classifyDataVersionRefusal(terminalContract, {
                   exitCode: runtime?.exitCode,
@@ -126,8 +126,8 @@ export const failReadiness = Effect.fn("ServiceReadiness.fail")(function* (
               ...(evidence.runtime?.exitCode === undefined ? {} : { exitCode: evidence.runtime.exitCode }),
               ...(evidence.reason === "healthcheck-timeout" ? { timedOut: true } : {}),
             },
-            credentialState: classifyCredentialState(service?.connection, evidence.runtime?.exitCode, raw),
-            version,
+            credentialState: classifyCredentialState(service?.connection, runtime?.exitCode, raw),
+            dataVersion,
           };
         }),
         Effect.timeout(Duration.seconds(4)),
@@ -140,7 +140,7 @@ export const failReadiness = Effect.fn("ServiceReadiness.fail")(function* (
   );
   const name = String(target.service);
   const commands = readinessCommands(target);
-  const version = logEvidence?.version;
+  const dataVersion = logEvidence?.dataVersion;
   const credentials = credentialRemediation(service?.connection, logEvidence?.credentialState);
   const diagnostic =
     listener !== undefined && service !== undefined ? listenerDiagnostic(listener, service) : undefined;
@@ -156,13 +156,13 @@ export const failReadiness = Effect.fn("ServiceReadiness.fail")(function* (
     providerId: String(target.provider.id),
     reason: evidence.reason,
     remediation:
-      version !== undefined && service !== undefined
-        ? redactor.redactString(dataVersionRemediation(target.plan, service, version))
+      dataVersion !== undefined && service !== undefined
+        ? redactor.redactString(dataVersionRemediation(target.plan, service, dataVersion))
         : evidence.reason === "inspect-failed"
           ? "Run `lando doctor` to diagnose and restore the provider, then retry start."
           : `${action === undefined ? "" : `${redactor.redactString(action)}\n`}${diagnostic?.authority === undefined ? "" : `${redactor.redactString(diagnostic.authority)}\n`}Run \`${commands.logs}\` to diagnose the service and fix it.${commands.retry === undefined || credentials.length > 0 ? "" : ` Then retry \`${commands.retry}\`.`}${healthcheckRemediation}${credentials}`,
     ...(listener === undefined ? {} : { listener }),
-    ...(version === undefined ? {} : { dataVersion: version.finding }),
+    ...(dataVersion === undefined ? {} : { dataVersion: dataVersion.finding }),
     ...(evidence.runtime?.exitCode === undefined ? {} : { exitCode: evidence.runtime.exitCode }),
     ...(evidence.runtime === undefined ? {} : { state: redactor.redactString(evidence.runtime.status) }),
     ...(evidence.attempts === undefined ? {} : { attempts: evidence.attempts }),

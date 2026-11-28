@@ -76,25 +76,27 @@ const contracts = {
 
 type Repository = keyof typeof contracts;
 
-export const isStockDatabaseProcess = (service: ServiceConfig, image: string, repository: Repository) =>
-  service.build === undefined &&
-  service.command === undefined &&
-  service.entrypoint === undefined &&
-  canonicalImageReference(image).replace(/[:@][^/]*$/u, "") === `docker.io/library/${repository}`;
+export const stockDatabaseImage = (service: ServiceConfig, image: string, repository: Repository) => {
+  if (service.build !== undefined || service.command !== undefined || service.entrypoint !== undefined)
+    return undefined;
+  const reference = canonicalImageReference(image);
+  return reference.replace(/[:@][^/]*$/u, "") === `docker.io/library/${repository}` ? reference : undefined;
+};
 
 export const databaseVersionFeature = (
   repository: Repository,
   input: { readonly id: string; readonly service: ServiceConfig; readonly image: string },
 ): FeatureRef => {
   const { id, service, image } = input;
-  if (!isStockDatabaseProcess(service, image, repository)) return { id };
+  const reference = stockDatabaseImage(service, image, repository);
+  if (reference === undefined) return { id };
   const base: ServiceDataVersion = contracts[repository];
   const { series, ...contract } = base;
   const pgdata = service.environment?.PGDATA;
   if (series === undefined || (repository === "postgres" && pgdata !== undefined && pgdata !== base.target))
     return { id, config: { dataVersion: contract } };
 
-  const tag = /:([^:@/]+)$/u.exec(image.includes("@") ? "" : canonicalImageReference(image))?.[1];
+  const tag = reference.includes("@") ? undefined : /:([^:@/]+)$/u.exec(reference)?.[1];
   const numericTag = /^(\d+(?:\.\d+)*)(?:-[\w.-]+)?$/u.exec(tag ?? "")?.[1];
   const parts = numericTag?.split(".");
   const version =

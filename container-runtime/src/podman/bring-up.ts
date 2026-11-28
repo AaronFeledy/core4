@@ -18,7 +18,6 @@ import {
   type ServiceStartLogTail,
 } from "@lando/sdk/errors";
 import { PostServiceStartEvent, PreServiceStartEvent } from "@lando/sdk/events";
-import type { ListenerObservation, ServiceDataVersionFinding, VolumeCreationFact } from "@lando/sdk/schema";
 import {
   type AppPlan,
   type AppRef,
@@ -28,11 +27,14 @@ import {
   type HostPlatform,
   LANDO_DATA_ROOT_LABEL,
   LANDO_SHARED_CROSS_APP_NETWORK,
+  type ListenerObservation,
   ProviderId,
   type ServiceContainerChange,
+  type ServiceDataVersionFinding,
   ServiceName,
   type ServiceNetworkAttachment,
   type ServicePlan,
+  type VolumeCreationFact,
   classifyDataVersionRefusal,
   landoAppNetworkName,
   landoExternalNetworkNames,

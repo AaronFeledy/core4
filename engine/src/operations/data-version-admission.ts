@@ -16,8 +16,6 @@ import type { PreparedRuntimeProvider } from "../providers/prepared.ts";
 
 export interface DataUpgrade {
   readonly service: ServiceName;
-  readonly target: PortablePath;
-  readonly store: string;
   readonly label: string;
   readonly from: string;
   readonly to: string;
@@ -131,8 +129,6 @@ export const assessDataVersions = Effect.fn("AppActivation.assessDataVersions")(
         if (upgrade === undefined || compareDataSeries(from, upgrade.from, series.depth) === 1)
           upgrade = {
             service: service.name,
-            target: contract.target,
-            store: mount.store,
             label: contract.label,
             from,
             to,

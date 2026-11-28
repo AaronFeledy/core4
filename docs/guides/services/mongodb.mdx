@@ -289,7 +289,7 @@ Set `image: mongo:8.0` and run `lando start`. Confirm that your app can read its
 lando mongosh --quiet --eval 'db.adminCommand({ setFeatureCompatibilityVersion: "8.0", confirm: true })'
 ```
 
-For a later 8.x release, follow [MongoDB's upgrade instructions](https://www.mongodb.com/docs/manual/release-notes/) for the target version. Follow each required intermediate version and FCV change instead of using the floating `mongo:8` tag.
+To upgrade to a later 8.x release, use [MongoDB's upgrade instructions](https://www.mongodb.com/docs/manual/release-notes/) to step through the required versions and FCV changes. Don't use the floating `mongo:8` tag for this upgrade.
 
   <Scenario id="change-versions" layer="e2e" timeout={600000} render>
     <Hidden reason="Start the stock MongoDB 7 service">
