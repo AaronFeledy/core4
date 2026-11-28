@@ -172,7 +172,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3]
+        shard: [1, 2, 3, 4]
         runs-on: [ubuntu-26.04]
     runs-on: ${{ matrix.runs-on }}
     timeout-minutes: 25
@@ -204,7 +204,7 @@ jobs:
         run: chmod +x core/container-helper/dist/linux-*/lando-container-helper
 
       - name: Unit test shard
-        run: bun run test:unit:shard ${{ matrix.shard }}/3
+        run: bun run test:unit:shard ${{ matrix.shard }}/4
 
       - name: Report job timing
         if: always()

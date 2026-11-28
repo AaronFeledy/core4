@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readdir } from "node:fs/promises";
 import { resolve } from "node:path";
+import { unitShardCommands } from "../../../scripts/test-shards.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const runbookPath = resolve(repoRoot, "docs/contributing/ci.md");
@@ -62,8 +63,7 @@ describe("ci runbook", () => {
     expect(runbook).toContain("bun run scripts/check-boundaries.ts <rule-id>");
     expect(runbook).toContain("scripts/boundary/rules/");
     expect(runbook).toContain("bun run test:unit");
-    expect(runbook).toContain("bun run test:unit:shard 1/3");
-    expect(runbook).toContain("bun --no-orphans test --shard=i/3 --timings=.bun-test-timings.json");
+    expect(unitShardCommands()).toEqual(runbook.match(/^bun run test:unit:shard \d+\/\d+$/gm) ?? []);
     expect(runbook).toContain("`--parallel --no-isolate` was tried on the shard runtime and rejected");
     expect(runbook).toContain("bun run scripts/update-test-timings.ts");
     expect(runbook).toContain("refresh-test-timings-linux-x64");

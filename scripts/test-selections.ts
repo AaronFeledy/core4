@@ -21,7 +21,7 @@ export interface ContributorTestPreset extends TestSelectors {
   readonly kind: "preset";
 }
 
-export const UNIT_SHARD_COUNT = 3;
+export const UNIT_SHARD_COUNT = 4;
 export const NIGHTLY_TIER_TESTS = [
   "core/test/scripts/codegen-ci.test.ts",
   "core/test/build/linux-acceptance-criteria-10-14.test.ts",

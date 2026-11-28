@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type { TestInventoryOptions } from "../../../../scripts/test-ownership.ts";
-import type { TestSelection } from "../../../../scripts/test-selections.ts";
+import { type TestSelection, UNIT_SHARD_COUNT } from "../../../../scripts/test-selections.ts";
 
 export const createTestSelectionFixture = async () => {
   const root = await mkdtemp(join(tmpdir(), "lando-test-selection-"));
@@ -26,7 +26,7 @@ export const createTestSelectionFixture = async () => {
   ] as const satisfies readonly TestSelection[];
   const workflow = async (
     run = "bun run test:selection live",
-    shards: readonly number[] = [1, 2, 3],
+    shards: readonly number[] = Array.from({ length: UNIT_SHARD_COUNT }, (_, i) => i + 1),
     options: { readonly if?: boolean | string; readonly unitRun?: string } = {},
   ) =>
     put(
@@ -36,7 +36,9 @@ export const createTestSelectionFixture = async () => {
           live: { steps: [{ run, ...(options.if === undefined ? {} : { if: options.if }) }] },
           "unit-tests-linux-x64-shard": {
             strategy: { matrix: { shard: shards } },
-            steps: [{ run: options.unitRun ?? "bun run test:unit:shard ${{ matrix.shard }}/3" }],
+            steps: [
+              { run: options.unitRun ?? `bun run test:unit:shard \${{ matrix.shard }}/${UNIT_SHARD_COUNT}` },
+            ],
           },
         },
       }),

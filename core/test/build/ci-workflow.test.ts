@@ -595,12 +595,12 @@ describe("ci workflow", () => {
     expect(unitTestShards.indexOf("Download container helper")).toBeLessThan(
       unitTestShards.indexOf("Unit test shard"),
     );
-    expect(unitTestShards).toContain("        shard: [1, 2, 3]");
+    expect(unitTestShards).toContain("        shard: [1, 2, 3, 4]");
     expect(unitTestShards).toContain("        runs-on: [ubuntu-26.04]");
     expect(unitTestShards).toContain("    runs-on: ${{ matrix.runs-on }}");
     expect(unitTestShards).toContain("    timeout-minutes: 25");
     expect(unitTestShards).toContain("      - name: Unit test shard");
-    expect(unitTestShards).toContain("        run: bun run test:unit:shard ${{ matrix.shard }}/3");
+    expect(unitTestShards).toContain("        run: bun run test:unit:shard ${{ matrix.shard }}/4");
     expect(unitTests).toContain("    needs: [selection, unit-tests-linux-x64-shard]");
     expect(unitTests).toContain("always() && !cancelled()");
     expect(unitTests).toContain("run: bun run scripts/validate-ci.ts");

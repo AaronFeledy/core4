@@ -120,7 +120,7 @@ test.each([false, "false"])(
   "a literally disabled workflow step cannot bind a selection: %s",
   async (disabled) => {
     await using fixture = await createTestSelectionFixture();
-    await fixture.workflow("bun run test:selection live", [1, 2, 3], { if: disabled });
+    await fixture.workflow("bun run test:selection live", undefined, { if: disabled });
     const { issues } = await checkTestOwnership(fixture.options);
     expect(issues.map((issue) => [issue.code, issue.paths])).toEqual([
       ["UNBOUND_SELECTION", ["live", "ci.yml", "live"]],
@@ -128,11 +128,11 @@ test.each([false, "false"])(
   },
 );
 
-test.each(["", "1/3", "${{ matrix.shard }}", "${{ matrix.shard }}/4"])(
+test.each(["", "1/4", "${{ matrix.shard }}", "${{ matrix.shard }}/3"])(
   "unit binding requires the declared shard argument: %s",
   async (argument) => {
     await using fixture = await createTestSelectionFixture();
-    await fixture.workflow("bun run test:selection live", [1, 2, 3], {
+    await fixture.workflow("bun run test:selection live", undefined, {
       unitRun: `bun run test:unit:shard ${argument}`,
     });
     const { issues } = await checkTestOwnership(fixture.options);
