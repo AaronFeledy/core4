@@ -7,12 +7,22 @@ import type { DbCommandResult } from "../schemas.ts";
 /** Names the snapshot a restore used and the undo point an import, reset, or restore saved. */
 export const renderRecoveryHint = (result: DbCommandResult): string =>
   [
-    ...(result.snapshotId === undefined ? [] : [`Restored snapshot ${result.snapshotId}.`]),
-    ...(result.recoverySnapshotId === undefined
+    ...(result.snapshotId === undefined
       ? []
       : [
-          `Saved recovery snapshot ${result.recoverySnapshotId}. To undo, run: lando db:restore ${result.recoverySnapshotId} --service ${result.service} --yes`,
+          `Restored snapshot ${result.snapshotId}${result.restoredSeries === undefined ? "" : ` (data series ${result.restoredSeries})`}.`,
+          ...(result.databaseLeftStopped === true ? ["The database was left stopped."] : []),
         ]),
+    ...(result.recoverySnapshotId === undefined
+      ? []
+      : result.undoCommands === undefined
+        ? [
+            `Saved recovery snapshot ${result.recoverySnapshotId}. To undo, run: lando db:restore ${result.recoverySnapshotId} --service ${result.service} --yes`,
+          ]
+        : [
+            `Saved recovery snapshot ${result.recoverySnapshotId}. Verify its data series before undoing this restore, then run:`,
+            ...result.undoCommands,
+          ]),
     ...(result.nextStep === undefined ? [] : [result.nextStep]),
   ].join("\n");
 

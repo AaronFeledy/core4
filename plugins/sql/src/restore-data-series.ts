@@ -42,16 +42,13 @@ export const planSeriesRestore = Effect.fn("Sql.planSeriesRestore")(function* (i
     verifiedSeries !== undefined && compareDataSeries(verifiedSeries, current.image, current.depth) === 0;
   const matchesDesired =
     verifiedSeries !== undefined && compareDataSeries(verifiedSeries, requested.image, requested.depth) === 0;
-  const pin = `${metadata.family}:${snapshot?.series ?? requested.image}`;
+  const pin = `lando app:config:set services.${service.name}.type ${metadata.family}:${snapshot?.series ?? requested.image}`;
   return {
     currentDataVersion: { label: applied.label, series: current.image, source: "applied-plan" as const },
     desiredSeries: { image: requested.image, depth: requested.depth, anySeries },
     resume: matchesApplied,
-    nextStep:
-      matchesApplied && matchesDesired
-        ? undefined
-        : matchesDesired
-          ? "Run `lando start` to start the database on the restored series."
-          : `Set \`services.${service.name}.type\` to \`${pin}\` (or pin a matching image), then run \`lando start\`.`,
+    restoredSeries: verifiedSeries,
+    startCommands: matchesDesired ? ["lando start"] : [pin, "lando start"],
+    undoPin: `lando app:config:set services.${service.name}.type ${metadata.family}:${current.image}`,
   };
 });

@@ -41,7 +41,7 @@ import { waitForSqlDatabase } from "./readiness.ts";
 import { runPhysicalOperation, withPhysicalVolumeLock } from "./recovery.ts";
 import { planSeriesRestore } from "./restore-data-series.ts";
 import { resumeSqlRuntime } from "./runtime-observation.ts";
-import type { DbCommandStep } from "./schemas.ts";
+import type { DbCommandResult, DbCommandStep } from "./schemas.ts";
 import { executeSeed } from "./seed.ts";
 import { precheckSeedEligibility } from "./seed-eligibility.ts";
 import { resolveSeedSource } from "./seed-source.ts";
@@ -300,6 +300,9 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
     };
     let snapshotId: string | undefined;
     let nextStep: string | undefined;
+    let restoreOutcome:
+      | Pick<DbCommandResult, "restoredSeries" | "databaseLeftStopped" | "startCommands" | "undoCommands">
+      | undefined;
     let listedSnapshots: ReadonlyArray<SnapshotInfo> | undefined;
     let prunedSnapshotIds: ReadonlyArray<SnapshotId> | undefined;
     let retentionApplied: boolean | undefined;
@@ -410,13 +413,15 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
           desiredDataVersion: deps.desiredDataVersion,
           anySeries: input.anySeries === true,
         });
-        yield* runPhysical({
+        const databaseLeftStopped = yield* runPhysical({
           reason: "restore",
           body: Effect.fnUntraced(function* (context) {
             yield* context.verifyVolume;
             yield* context.verifyStopped;
             yield* deps.restore(handle, context.volume);
-            if (context.running && (seriesRestore?.resume ?? true)) yield* context.resume;
+            const resume = context.running && (seriesRestore?.resume ?? true);
+            if (resume) yield* context.resume;
+            return !resume;
           }),
           resumeAfterSnapshot: false,
           preflight: (context) =>
@@ -425,7 +430,32 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
           retainSnapshotIds: [restoreSource.id],
           ...(seriesRestore === undefined ? {} : { offlineDataVersion: seriesRestore.currentDataVersion }),
         });
-        nextStep = seriesRestore?.nextStep;
+        if (seriesRestore !== undefined) {
+          const { restoredSeries, startCommands, undoPin } = seriesRestore;
+          const undoId = completionReceipt?.recoverySnapshotId;
+          restoreOutcome = {
+            databaseLeftStopped,
+            ...(restoredSeries === undefined
+              ? {}
+              : { restoredSeries, ...(databaseLeftStopped ? { startCommands } : {}) }),
+            ...(undoId === undefined
+              ? {}
+              : {
+                  undoCommands: [
+                    undoPin,
+                    `lando db:restore ${undoId} --service ${target.name} --any-series`,
+                    "lando start",
+                  ],
+                }),
+          };
+          if (databaseLeftStopped)
+            nextStep =
+              restoredSeries === undefined
+                ? "Verify the restored data series and pin it in the Landofile before running `lando start`."
+                : `Run ${startCommands.map((command) => `\`${command}\``).join(", then ")} to start the database on the restored series.`;
+        } else {
+          restoreOutcome = { databaseLeftStopped };
+        }
         break;
       }
       case "seed":
@@ -484,6 +514,7 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
         : {}),
       ...(snapshotId === undefined ? {} : { snapshotId }),
       ...(nextStep === undefined ? {} : { nextStep }),
+      ...restoreOutcome,
       ...(completionReceipt === undefined || completionReceipt.operation === "snapshot"
         ? {}
         : { recoverySnapshotId: completionReceipt.recoverySnapshotId }),
