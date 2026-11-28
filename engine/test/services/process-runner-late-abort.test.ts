@@ -53,8 +53,9 @@ for (const mode of ["captured request", "captured fiber", "ordinary request", "s
            }`
         : ""
     }`;
-      // A shell leader avoids Bun's CI orphan reaper; the socket owns fixture teardown.
-      const leader = '"$1" -e "$2" </dev/null & exit 7';
+      // The descendant must outlive this shell even if Bun starts before the shell exits.
+      // The socket, not Bun's inherited parent-death watchdog, owns fixture teardown.
+      const leader = 'unset BUN_FEATURE_FLAG_NO_ORPHANS; "$1" -e "$2" </dev/null & exit 7';
       const spawn = spyOn(Bun, "spawn");
       const controller = new AbortController();
       let released = false;
