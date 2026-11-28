@@ -262,7 +262,7 @@ describe("provider-docker capabilities", () => {
       Result.getOrThrow(
         resolveDockerHost({ platform: "wsl", env: { HOME: "/home/alice", LANDO_DOCKER_DESKTOP: "1" } }),
       ).host,
-    ).toBe("/home/alice/.docker/desktop/docker.sock");
+    ).toBe("unix:///home/alice/.docker/desktop/docker.sock");
     expect(provider.capabilities.bindMountPerformance).toBe("slow");
   });
 
@@ -490,7 +490,10 @@ describe("provider-docker capabilities", () => {
       ),
     );
 
-    expect(createdHosts).toEqual(["/var/run/docker.sock", "/home/alice/.docker/desktop/docker.sock"]);
+    expect(createdHosts).toEqual([
+      "unix:///var/run/docker.sock",
+      "unix:///home/alice/.docker/desktop/docker.sock",
+    ]);
     expect(provider.capabilities.bindMountPerformance).toBe("native");
     expect(desktopProvider.capabilities.bindMountPerformance).toBe("slow");
   });

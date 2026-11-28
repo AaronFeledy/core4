@@ -4,7 +4,6 @@ import {
   negotiateDockerApiVersion,
 } from "@lando/container-runtime/docker/api-version";
 import { layer as makeProviderLayer } from "@lando/provider-docker";
-import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { RuntimeProvider } from "@lando/sdk/services";
 import { Effect } from "effect";
 
@@ -66,37 +65,7 @@ describe("provider-docker isAvailable", () => {
     expect(status._tag).toBe("ProviderUnavailableError");
     expect(status.message).toContain("1.43-1.44");
     expect(status.message).toContain("1.50-1.55");
-  });
-
-  test("getStatus names the runtime to start when a Colima socket is unreachable", async () => {
-    const unreachable = new ProviderUnavailableError({
-      providerId: "docker",
-      operation: "info",
-      message: "engine unreachable",
-      remediation: "unused",
-    });
-    let infoCalls = 0;
-    const provider = await Effect.runPromise(
-      RuntimeProvider.pipe(
-        Effect.provide(
-          makeProviderLayer({
-            platform: "linux",
-            dockerHost: "/home/alice/.colima/default/docker.sock",
-            env: {},
-            dockerApi: {
-              info: Effect.suspend(() => {
-                infoCalls += 1;
-                return infoCalls === 1 ? Effect.succeed({}) : Effect.fail(unreachable);
-              }),
-            },
-          }),
-        ),
-      ),
-    );
-    const status = await Effect.runPromise(provider.getStatus.pipe(Effect.flip));
-    expect(status._tag).toBe("ProviderUnavailableError");
-    expect(status.remediation).toContain("Start Colima (`colima start`)");
-    expect(status.remediation).toContain("lando doctor --provider=docker");
+    expect(status.remediation).toContain("DOCKER_API_VERSION");
   });
 
   test("an operation that cannot connect names the runtime to start", async () => {
@@ -109,10 +78,15 @@ describe("provider-docker isAvailable", () => {
     // When
     const inspect = provider.inspectResourceNames?.({ kind: "volume", limit: 1 });
     if (inspect === undefined) throw new Error("docker provider has no resource inspector");
-    const error = await Effect.runPromise(Effect.flip(inspect));
+    const failures = await Promise.all([
+      Effect.runPromise(Effect.flip(provider.getStatus)),
+      Effect.runPromise(Effect.flip(inspect)),
+    ]);
 
     // Then
-    expect(error._tag).toBe("ProviderUnavailableError");
-    expect(error.remediation).toStartWith("Start Colima (`colima start`)");
+    for (const error of failures) {
+      expect(error._tag).toBe("ProviderUnavailableError");
+      expect(error.remediation).toStartWith("Start Colima (`colima start`)");
+    }
   });
 });

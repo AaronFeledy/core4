@@ -142,15 +142,6 @@ const DOCKER_CTX_BASE = {
     "Run `lando doctor --provider=docker` to inspect the Docker provider, then retry `lando start`.",
 } as const;
 
-const unreachableDocker = (error: ProviderUnavailableError, dockerHost: string, platform: HostPlatform) =>
-  new ProviderUnavailableError({
-    providerId: error.providerId,
-    operation: "getStatus",
-    message: error.message,
-    remediation: unreachableDockerRemediation(dockerHost, platform),
-    cause: error,
-  });
-
 const DOCKER_CTX: ProviderErrorContext = { ...DOCKER_CTX_BASE, env: {} };
 
 const dockerContextForEnv = (env: ProviderErrorContext["env"]): ProviderErrorContext => ({
@@ -261,6 +252,21 @@ const isVmMediatedDockerHost = (platform: HostPlatform, dockerHost: string): boo
   return dockerRuntimeForEndpoint(dockerHost, platform)?.vmMediated === true;
 };
 
+/**
+ * The volume relay reaches its host broker through Docker Desktop's `host.docker.internal` gateway.
+ * A Linux VM runtime without that gateway gets no delivery rather than one that cannot connect.
+ */
+const agentSocketDelivery = (
+  platform: HostPlatform,
+  dockerHost: string,
+): "bind-directory" | "volume-relay" | undefined => {
+  if (!isVmMediatedDockerHost(platform, dockerHost)) return "bind-directory";
+  const runtime = dockerRuntimeForEndpoint(dockerHost, platform);
+  return hostPlatformFamily(platform) === "linux" && runtime?.hostGateway === false
+    ? undefined
+    : "volume-relay";
+};
+
 /** Engine facts that only a live endpoint reports. Omitted facts take the conservative default. */
 export interface DockerEngineFacts {
   readonly containerTargets?: ReadonlyArray<HostProxyContainerTarget>;
@@ -302,6 +308,7 @@ export const dockerCapabilitiesForHost = (
   // non-root project user. A local rootful engine writes real host ids and
   // can renumber a catalog account to them during the image build.
   const vmMediated = isVmMediatedDockerHost(platform, dockerHost);
+  const agentDelivery = agentSocketDelivery(platform, dockerHost);
   const bindOwnership = vmMediated
     ? ("unknown" as const)
     : usernsRemap
@@ -316,7 +323,7 @@ export const dockerCapabilitiesForHost = (
     serviceHealth: "native",
     artifactBuild: true,
     artifactPull: true,
-    bindMountPerformance: isVmMediatedDockerHost(platform, dockerHost) ? "slow" : "native",
+    bindMountPerformance: vmMediated ? "slow" : "native",
     serializesVolumeCopyUp: false,
     volumeSnapshot: "none",
     serviceFileCopy: "native",
@@ -335,9 +342,7 @@ export const dockerCapabilitiesForHost = (
     composeProjectFields: { supported: ["configs"] },
     providerExtensions: [],
     hostProxy: hostProxyCapabilities(platform, containerTargets, "host.docker.internal"),
-    agentSocket: {
-      delivery: isVmMediatedDockerHost(platform, dockerHost) ? "volume-relay" : "bind-directory",
-    },
+    ...(agentDelivery === undefined ? {} : { agentSocket: { delivery: agentDelivery } }),
   });
   return withPreservedPathVerdict(
     capabilities,
@@ -639,7 +644,7 @@ const makeRuntimeProviderWithContext = (
       platform,
       runtimeIdentity: resolvedDockerHost,
       capabilities: resolvedCapabilities,
-      ...(isVmMediatedDockerHost(platform, resolvedDockerHost)
+      ...(agentSocketDelivery(platform, resolvedDockerHost) === "volume-relay"
         ? {
             openAgentSocketBridge: makeDockerDesktopAgentSocketBridge({
               api: dockerApi,
@@ -661,14 +666,7 @@ const makeRuntimeProviderWithContext = (
               Effect.map(({ plans }) => plans),
             ),
       setup: Effect.fn("RuntimeProvider.setup")(() => Effect.void),
-      getStatus: dockerApi.info.pipe(
-        Effect.as({ state: "running" as const, message: "ready" }),
-        mapFailures((error) =>
-          error instanceof ProviderUnavailableError
-            ? unreachableDocker(error, resolvedDockerHost, platform)
-            : error,
-        ),
-      ),
+      getStatus: dockerApi.info.pipe(Effect.as({ state: "running" as const, message: "ready" })),
       getVersions: dockerApi.info.pipe(
         Effect.map((info) => {
           const runtime =

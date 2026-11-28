@@ -92,14 +92,17 @@ describe("Docker endpoint precedence", () => {
         platform: "linux",
         env: { HOME: home, LANDO_DOCKER_DESKTOP: "1", DOCKER_CONFIG: config.dir, DOCKER_CONTEXT: "colima" },
       }),
-    ).toEqual({ host: `${home}/.docker/desktop/docker.sock`, source: { kind: "LANDO_DOCKER_DESKTOP" } });
+    ).toEqual({
+      host: `unix://${home}/.docker/desktop/docker.sock`,
+      source: { kind: "LANDO_DOCKER_DESKTOP" },
+    });
   });
 
   test("with no override or context, the platform default applies", () => {
     const empty = tempDir();
     for (const platform of ["linux", "wsl", "darwin"] as const) {
       expect(resolved({ platform, env: { DOCKER_CONFIG: empty } })).toEqual({
-        host: "/var/run/docker.sock",
+        host: "unix:///var/run/docker.sock",
         source: { kind: "default" },
       });
     }
@@ -150,7 +153,7 @@ describe("Docker CLI context", () => {
     });
     expect(
       resolved({ platform: "linux", env: { DOCKER_CONFIG: config.dir, DOCKER_CONTEXT: "default" } }),
-    ).toEqual({ host: "/var/run/docker.sock", source: { kind: "default" } });
+    ).toEqual({ host: "unix:///var/run/docker.sock", source: { kind: "default" } });
   });
 
   test("an unreadable config.json selects no context, as in the Docker CLI", () => {
@@ -169,6 +172,25 @@ describe("Docker CLI context", () => {
       host: "npipe://./pipe/dockerDesktopLinuxEngine",
       source: { kind: "context", name: "desktop-linux" },
     });
+  });
+
+  test("every spelling of one socket resolves to the same endpoint", () => {
+    const config = dockerConfig()
+      .context("engine", { Host: "unix:///var/run/docker.sock" })
+      .context("pipe", { Host: "npipe:////./pipe/docker_engine" });
+    const linux = (env: Record<string, string>) => resolved({ platform: "linux", env }).host;
+    const windows = (env: Record<string, string>) => resolved({ platform: "win32", env }).host;
+    expect(linux({ DOCKER_CONFIG: config.dir, DOCKER_CONTEXT: "engine" })).toBe(
+      "unix:///var/run/docker.sock",
+    );
+    expect(linux({ DOCKER_HOST: "/var/run/docker.sock" })).toBe("unix:///var/run/docker.sock");
+    expect(linux({})).toBe("unix:///var/run/docker.sock");
+    expect(windows({ DOCKER_CONFIG: config.dir, DOCKER_CONTEXT: "pipe" })).toBe(
+      "npipe://./pipe/docker_engine",
+    );
+    expect(windows({ DOCKER_HOST: "npipe:////./pipe/docker_engine" })).toBe("npipe://./pipe/docker_engine");
+    expect(windows({ DOCKER_HOST: "\\\\.\\pipe\\docker_engine" })).toBe("npipe://./pipe/docker_engine");
+    expect(windows({})).toBe("npipe://./pipe/docker_engine");
   });
 
   test("a plain TCP context resolves to its host", () => {
@@ -200,6 +222,13 @@ describe("unsupported Docker contexts fail closed", () => {
     expect(error.remediation).toContain("docker context use");
   });
 
+  test("an https context", () => {
+    const config = dockerConfig().context("secure", { Host: "https://remote.example:2376" });
+    expect(
+      rejected({ platform: "linux", env: { DOCKER_CONFIG: config.dir, DOCKER_CONTEXT: "secure" } }),
+    ).toMatchObject({ contextName: "secure", reason: "tls" });
+  });
+
   test("a TCP context that skips TLS verification still uses TLS", () => {
     const config = dockerConfig().context("insecure", { Host: "tcp://127.0.0.1:2376", SkipTLSVerify: true });
     expect(
@@ -213,6 +242,13 @@ describe("unsupported Docker contexts fail closed", () => {
     expect(error).toMatchObject({ contextName: "jump", reason: "unsupported-endpoint" });
     expect(error.message).toContain("ssh://");
     expect(error.remediation).toContain("DOCKER_CONTEXT");
+  });
+
+  test("an unparsable endpoint is reported without echoing it", () => {
+    const config = dockerConfig().context("odd", { Host: "alice:s3cret@build.example" });
+    const error = rejected({ platform: "linux", env: { DOCKER_CONFIG: config.dir, DOCKER_CONTEXT: "odd" } });
+    expect(error.reason).toBe("unsupported-endpoint");
+    expect(error.message).not.toContain("s3cret");
   });
 
   test("a missing, unreadable, or endpoint-less context", () => {

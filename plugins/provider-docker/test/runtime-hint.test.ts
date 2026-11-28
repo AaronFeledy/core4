@@ -58,3 +58,22 @@ describe("Linux bind performance by Docker runtime", () => {
     },
   );
 });
+
+describe("agent socket delivery by Docker runtime", () => {
+  test.each([
+    ["linux", "/var/run/docker.sock", "bind-directory"],
+    ["linux", "/home/alice/.docker/desktop/docker.sock", "volume-relay"],
+    ["darwin", "/Users/alice/.colima/default/docker.sock", "volume-relay"],
+    ["win32", "npipe://./pipe/docker_engine", "volume-relay"],
+  ] as const)("declares %s %s as %s", (platform, endpoint, delivery) => {
+    expect(dockerCapabilitiesForHost(platform, endpoint).agentSocket).toEqual({ delivery });
+  });
+
+  test.each([
+    "/home/alice/.colima/default/docker.sock",
+    "/home/alice/.lima/docker/sock/docker.sock",
+    "/home/alice/.rd/docker.sock",
+  ])("declares no delivery for a Linux VM without Docker Desktop's host gateway at %s", (endpoint) => {
+    expect(dockerCapabilitiesForHost("linux", endpoint).agentSocket).toBeUndefined();
+  });
+});

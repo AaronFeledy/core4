@@ -106,16 +106,18 @@ const selectedContext = (configDir: string | undefined, env: Env): SelectedConte
 
 const isSocketHost = (host: string): boolean => host.startsWith("unix://") || host.startsWith("npipe://");
 
-const isTcpHost = (host: string): boolean =>
-  host.startsWith("tcp://") || host.startsWith("http://") || host.startsWith("https://");
+const PIPE_PREFIX = "\\\\.\\pipe\\";
 
-/** Docker writes `npipe:////./pipe/<name>`; Lando's default spells the same pipe `npipe://./pipe/<name>`. */
-const normalizeContextHost = (host: string): string => {
-  if (!host.startsWith("npipe://")) return host;
-  const windowsPath = normalizeNamedPipePath(host);
-  const pipePrefix = "\\\\.\\pipe\\";
-  return windowsPath.startsWith(pipePrefix)
-    ? `npipe://./pipe/${windowsPath.slice(pipePrefix.length).replaceAll("\\", "/")}`
+/**
+ * One spelling per socket, because the endpoint keys volume coordination: a path is `unix://<path>`,
+ * the spelling the Podman providers use for the same key, and Docker's `npipe:////./pipe/<name>` and
+ * `\\.\pipe\<name>` are Lando's `npipe://./pipe/<name>`.
+ */
+const canonicalHost = (host: string): string => {
+  if (host.startsWith("/")) return `unix://${host}`;
+  const windowsPath = host.startsWith("npipe:") ? normalizeNamedPipePath(host) : host;
+  return windowsPath.startsWith(PIPE_PREFIX)
+    ? `npipe://./pipe/${windowsPath.slice(PIPE_PREFIX.length).replaceAll("\\", "/")}`
     : host;
 };
 
@@ -127,8 +129,13 @@ const unsupportedMessage = (name: string, reason: UnsupportedDockerContextReason
       return `Docker context "${name}" has unreadable metadata.`;
     case "no-docker-endpoint":
       return `Docker context "${name}" has no Docker endpoint.`;
-    case "unsupported-endpoint":
-      return `Docker context "${name}" uses the ${host.split("://")[0]}:// scheme, which the docker provider cannot connect to.`;
+    case "unsupported-endpoint": {
+      // Only the scheme: the rest of the host can carry credentials.
+      const scheme = /^([a-z][a-z0-9+.-]*):\/\//iu.exec(host)?.[1];
+      return scheme === undefined
+        ? `Docker context "${name}" has an endpoint the docker provider cannot parse.`
+        : `Docker context "${name}" uses the ${scheme}:// scheme, which the docker provider cannot connect to.`;
+    }
     case "tls":
       return `Docker context "${name}" connects over TLS, which the docker provider does not support.`;
   }
@@ -166,20 +173,19 @@ const readContextEndpoint = (
   if (endpoint === undefined || host === undefined) {
     return Result.fail(unsupportedContext(context, "no-docker-endpoint"));
   }
-  if (isSocketHost(host)) {
-    return Result.succeed({
-      host: normalizeContextHost(host),
-      source: { kind: "context", name: context.name },
-    });
+  const source = { kind: "context", name: context.name } as const;
+  if (isSocketHost(host)) return Result.succeed({ host: canonicalHost(host), source });
+  if (host.startsWith("https://")) return Result.fail(unsupportedContext(context, "tls", host));
+  if (!host.startsWith("tcp://") && !host.startsWith("http://")) {
+    return Result.fail(unsupportedContext(context, "unsupported-endpoint", host));
   }
-  if (!isTcpHost(host)) return Result.fail(unsupportedContext(context, "unsupported-endpoint", host));
   // TLS files live beside the metadata store, never in meta.json, and apply only to TCP endpoints.
   const tlsDir = join(configDir, "contexts", "tls", digest, "docker");
   const usesTls =
     endpoint.SkipTLSVerify === true ||
     ["ca.pem", "cert.pem", "key.pem"].some((file) => existsSync(join(tlsDir, file)));
   if (usesTls) return Result.fail(unsupportedContext(context, "tls", host));
-  return Result.succeed({ host, source: { kind: "context", name: context.name } });
+  return Result.succeed({ host, source });
 };
 
 /**
@@ -191,7 +197,8 @@ export const resolveDockerHost = (
   options: ResolveDockerHostOptions,
 ): Result.Result<DockerEndpoint, UnsupportedDockerContextError> => {
   const { env, platform } = options;
-  const resolved = (host: string, source: DockerEndpointSource) => Result.succeed({ host, source });
+  const resolved = (host: string, source: DockerEndpointSource) =>
+    Result.succeed({ host: canonicalHost(host), source });
   if (options.dockerHost !== undefined) return resolved(options.dockerHost, { kind: "option" });
   const family = hostPlatformFamily(platform);
   const windowsTestSocket = nonEmpty(env.LANDO_TEST_WINDOWS_DOCKER_SOCKET);
