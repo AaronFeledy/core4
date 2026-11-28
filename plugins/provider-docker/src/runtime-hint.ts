@@ -1,103 +1,56 @@
 import { type HostPlatform, hostPlatformFamily } from "@lando/sdk/schema";
 
-export type DockerRuntimeHintId =
-  | "colima"
-  | "lima"
-  | "orbstack"
-  | "rancher-desktop"
-  | "docker-desktop"
-  | "linux-engine"
-  | "rootless";
-
-export interface DockerRuntimeHint {
-  readonly id: DockerRuntimeHintId;
-  readonly runtime: string;
-  readonly startCommand?: string;
+/** A local Docker runtime recognized by the socket path it publishes. */
+export interface DockerRuntime {
+  readonly name: string;
   readonly vmMediated: boolean;
+  readonly startCommand?: string;
 }
 
-const endpointPath = (endpoint: string): string => {
-  const raw = endpoint.startsWith("unix://") ? endpoint.slice("unix://".length) : endpoint;
-  return raw.replaceAll("\\", "/");
-};
+const socketPath = (endpoint: string): string =>
+  (endpoint.startsWith("unix://") ? endpoint.slice("unix://".length) : endpoint).replaceAll("\\", "/");
 
-const hint = (
-  id: DockerRuntimeHintId,
-  runtime: string,
-  vmMediated: boolean,
-  startCommand?: string,
-): DockerRuntimeHint => ({
-  id,
-  runtime,
-  vmMediated,
-  ...(startCommand === undefined ? {} : { startCommand }),
-});
-
-/**
- * Classify a Docker endpoint path as a known local runtime.
- * Unrecognized endpoints return `undefined`; callers must not invent a fallback runtime.
- */
-export const runtimeHintForEndpoint = (endpoint: string): DockerRuntimeHint | undefined => {
-  const path = endpointPath(endpoint);
-
-  const colima = path.match(/(?:^|\/)\.colima\/([^/]+)\/docker\.sock$/u);
-  const colimaProfile = colima?.[1];
+/** Returns undefined for an endpoint no known runtime publishes; callers must not guess one. */
+export const dockerRuntimeForEndpoint = (
+  endpoint: string,
+  platform: HostPlatform,
+): DockerRuntime | undefined => {
+  const path = socketPath(endpoint);
+  const colimaProfile = /(?:^|\/)\.colima\/([^/]+)\/docker\.sock$/u.exec(path)?.[1];
   if (colimaProfile !== undefined) {
-    return hint(
-      "colima",
-      "Colima",
-      true,
-      colimaProfile === "default" ? "colima start" : `colima start --profile ${colimaProfile}`,
-    );
+    return {
+      name: "Colima",
+      vmMediated: true,
+      startCommand: colimaProfile === "default" ? "colima start" : `colima start --profile ${colimaProfile}`,
+    };
   }
-
-  const lima = path.match(/(?:^|\/)\.lima\/([^/]+)\/sock\/docker\.sock$/u);
-  const limaInstance = lima?.[1];
+  const limaInstance = /(?:^|\/)\.lima\/([^/]+)\/sock\/docker\.sock$/u.exec(path)?.[1];
   if (limaInstance !== undefined) {
-    return hint("lima", "Lima", true, `limactl start ${limaInstance}`);
+    return { name: "Lima", vmMediated: true, startCommand: `limactl start ${limaInstance}` };
   }
-
   if (/(?:^|\/)\.orbstack\/run\/docker\.sock$/u.test(path)) {
-    return hint("orbstack", "OrbStack", true, "orb start");
+    return { name: "OrbStack", vmMediated: true, startCommand: "orb start" };
   }
-
-  if (/(?:^|\/)\.rd\/docker\.sock$/u.test(path)) {
-    return hint("rancher-desktop", "Rancher Desktop", true);
+  if (/(?:^|\/)\.rd\/docker\.sock$/u.test(path)) return { name: "Rancher Desktop", vmMediated: true };
+  if (/(?:^|\/)\.docker\/(?:run|desktop)\//u.test(path)) return { name: "Docker Desktop", vmMediated: true };
+  if (hostPlatformFamily(platform) === "linux" && /^\/run\/user\/\d+\/docker\.sock$/u.test(path)) {
+    return { name: "rootless Docker", vmMediated: false, startCommand: "systemctl --user start docker" };
   }
-
-  if (/(?:^|\/)\.docker\/(?:run|desktop)(?:\/|$)/u.test(path)) {
-    return hint("docker-desktop", "Docker Desktop", true);
+  // On WSL this socket may be Docker Desktop's integration, so only native Linux names the engine.
+  if (platform === "linux" && (path === "/var/run/docker.sock" || path === "/run/docker.sock")) {
+    return { name: "Docker Engine", vmMediated: false, startCommand: "sudo systemctl start docker" };
   }
-
-  if (/(?:^|\/)run\/user\/\d+\/docker\.sock$/u.test(path)) {
-    return hint("rootless", "rootless Docker", false, "systemctl --user start docker");
-  }
-
-  if (path === "/var/run/docker.sock") {
-    return hint("linux-engine", "Docker Engine", false, "sudo systemctl start docker");
-  }
-
   return undefined;
 };
 
-const DOCTOR_POINTER =
-  "Run `lando doctor --provider=docker` to inspect the Docker provider, then retry `lando start`.";
-
-const hintAppliesOnPlatform = (hint: DockerRuntimeHint, platform: HostPlatform): boolean => {
-  const family = hostPlatformFamily(platform);
-  if (hint.id === "linux-engine" || hint.id === "rootless") return family === "linux";
-  return true;
-};
-
 export const unreachableDockerRemediation = (endpoint: string, platform: HostPlatform): string => {
-  const classified = runtimeHintForEndpoint(endpoint);
-  const hint =
-    classified !== undefined && hintAppliesOnPlatform(classified, platform) ? classified : undefined;
+  const runtime = dockerRuntimeForEndpoint(endpoint, platform);
   const start =
-    hint === undefined
+    runtime === undefined
       ? "Start Docker Desktop or Docker Engine"
-      : hint.startCommand === undefined
-        ? `Start ${hint.runtime}`
-        : `Start ${hint.runtime} (\`${hint.startCommand}\`)`;
-  return `${start}, verify access to the configured Docker socket, then retry the command. ${DOCTOR_POINTER}`;
+      : runtime.startCommand === undefined
+        ? `Start ${runtime.name}`
+        : `Start ${runtime.name} (\`${runtime.startCommand}\`)`;
+  // The endpoint stays out of this text: a DOCKER_HOST or context URL can carry credentials.
+  return `${start}, then retry. Run \`lando doctor --provider=docker\` to see which endpoint Lando resolved and why.`;
 };

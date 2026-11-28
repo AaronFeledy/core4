@@ -98,4 +98,21 @@ describe("provider-docker isAvailable", () => {
     expect(status.remediation).toContain("Start Colima (`colima start`)");
     expect(status.remediation).toContain("lando doctor --provider=docker");
   });
+
+  test("an operation that cannot connect names the runtime to start", async () => {
+    // Given a Colima socket that does not exist, reached through the real transport
+    const dockerHost = `/tmp/lando-${process.pid}-absent/.colima/default/docker.sock`;
+    const provider = await Effect.runPromise(
+      RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ platform: "darwin", env: {}, dockerHost }))),
+    );
+
+    // When
+    const inspect = provider.inspectResourceNames?.({ kind: "volume", limit: 1 });
+    if (inspect === undefined) throw new Error("docker provider has no resource inspector");
+    const error = await Effect.runPromise(Effect.flip(inspect));
+
+    // Then
+    expect(error._tag).toBe("ProviderUnavailableError");
+    expect(error.remediation).toStartWith("Start Colima (`colima start`)");
+  });
 });

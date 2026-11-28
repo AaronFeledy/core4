@@ -1,34 +1,13 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { normalizeNamedPipePath } from "@lando/container-runtime/transport";
 import { sha256Hex } from "@lando/sdk/digest";
 import { type HostPlatform, hostPlatformFamily } from "@lando/sdk/schema";
-import { Schema } from "effect";
+import { Result, Schema } from "effect";
 
-/**
- * Docker host precedence, first match wins:
- * 1. explicit `dockerHost` option
- * 2. `LANDO_TEST_WINDOWS_DOCKER_SOCKET` (win32) then `LANDO_TEST_DOCKER_SOCKET`
- * 3. `DOCKER_HOST`
- * 4. `LANDO_DOCKER_DESKTOP` (Linux-family Desktop socket)
- * 5. Docker CLI context (`DOCKER_CONTEXT`, else `currentContext`)
- * 6. platform default (`npipe://./pipe/docker_engine` on win32, else `/var/run/docker.sock`)
- */
-export const DOCKER_HOST_PRECEDENCE = [
-  "option",
-  "LANDO_TEST_* sockets",
-  "DOCKER_HOST",
-  "LANDO_DOCKER_DESKTOP",
-  "Docker context",
-  "platform default",
-] as const;
+type Env = Readonly<Record<string, string | undefined>>;
 
-export const DEFAULT_UNIX_DOCKER_HOST = "/var/run/docker.sock";
-export const DEFAULT_WINDOWS_DOCKER_HOST = "npipe://./pipe/docker_engine";
-
-export type DockerContextFileReader = (path: string) => string | undefined;
-
-export type DockerHostSource =
+export type DockerEndpointSource =
   | { readonly kind: "option" }
   | { readonly kind: "LANDO_TEST_WINDOWS_DOCKER_SOCKET" }
   | { readonly kind: "LANDO_TEST_DOCKER_SOCKET" }
@@ -37,40 +16,48 @@ export type DockerHostSource =
   | { readonly kind: "context"; readonly name: string }
   | { readonly kind: "default" };
 
-export interface ResolvedDockerHost {
+export interface DockerEndpoint {
   readonly host: string;
-  readonly source: DockerHostSource;
+  readonly source: DockerEndpointSource;
 }
 
-export type UnsupportedDockerContextReason =
-  | "tls"
-  | "missing-endpoint"
-  | "unusable-endpoint"
-  | "missing-meta"
-  | "invalid-meta";
+const UnsupportedDockerContextReason = Schema.Literals([
+  "not-found",
+  "invalid-metadata",
+  "no-docker-endpoint",
+  "unsupported-endpoint",
+  "tls",
+]);
+type UnsupportedDockerContextReason = typeof UnsupportedDockerContextReason.Type;
 
 export class UnsupportedDockerContextError extends Schema.TaggedError<UnsupportedDockerContextError>()(
   "UnsupportedDockerContextError",
   {
     contextName: Schema.String,
-    reason: Schema.Literals(["tls", "missing-endpoint", "unusable-endpoint", "missing-meta", "invalid-meta"]),
+    reason: UnsupportedDockerContextReason,
     message: Schema.String,
     remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 
-export type DockerHostResolution =
-  | { readonly ok: true; readonly host: string; readonly source: DockerHostSource }
-  | { readonly ok: false; readonly error: UnsupportedDockerContextError };
-
-export interface ResolveDockerHostDetailsOptions {
-  readonly dockerHost?: string;
-  readonly platform: HostPlatform;
-  readonly env?: Readonly<Record<string, string | undefined>>;
-  readonly readFile?: DockerContextFileReader;
+interface SelectedContext {
+  readonly name: string;
+  readonly selectedBy: "DOCKER_CONTEXT" | "config";
 }
 
-export const readDockerContextFile: DockerContextFileReader = (path) => {
+export interface ResolveDockerHostOptions {
+  readonly platform: HostPlatform;
+  readonly env: Env;
+  readonly dockerHost?: string;
+}
+
+// The Docker CLI treats an empty variable as unset.
+const nonEmpty = (value: string | undefined): string | undefined => {
+  const trimmed = value?.trim();
+  return trimmed === undefined || trimmed.length === 0 ? undefined : trimmed;
+};
+
+const readText = (path: string): string | undefined => {
   try {
     return readFileSync(path, "utf8");
   } catch {
@@ -78,169 +65,151 @@ export const readDockerContextFile: DockerContextFileReader = (path) => {
   }
 };
 
-export const dockerConfigDirFromEnv = (
-  env: Readonly<Record<string, string | undefined>>,
-): string | undefined => {
-  if (env.DOCKER_CONFIG !== undefined && env.DOCKER_CONFIG.length > 0) return env.DOCKER_CONFIG;
-  const home = env.HOME ?? env.USERPROFILE;
-  return home === undefined || home.length === 0 ? undefined : join(home, ".docker");
+const DockerConfigFile = Schema.fromJsonString(
+  Schema.Struct({ currentContext: Schema.optional(Schema.String) }),
+);
+
+const ContextMetadata = Schema.fromJsonString(
+  Schema.Struct({
+    Endpoints: Schema.optional(
+      Schema.Struct({
+        docker: Schema.optional(
+          Schema.Struct({
+            Host: Schema.optional(Schema.String),
+            SkipTLSVerify: Schema.optional(Schema.Boolean),
+          }),
+        ),
+      }),
+    ),
+  }),
+);
+
+/** `DOCKER_CONFIG`, else `.docker` under the home directory Go's `os.UserHomeDir` reports. */
+const dockerConfigDir = (platform: HostPlatform, env: Env): string | undefined => {
+  const explicit = nonEmpty(env.DOCKER_CONFIG);
+  if (explicit !== undefined) return explicit;
+  const home = nonEmpty(hostPlatformFamily(platform) === "win32" ? env.USERPROFILE : env.HOME);
+  return home === undefined ? undefined : join(home, ".docker");
 };
 
-export const dockerContextMetaPath = (dockerConfigDir: string, contextName: string): string =>
-  join(dockerConfigDir, "contexts", "meta", sha256Hex(contextName), "meta.json");
-
-export const dockerHostSourceLabel = (source: DockerHostSource): string =>
-  source.kind === "context" ? `context ${source.name}` : source.kind;
-
-const resolved = (host: string, source: DockerHostSource): DockerHostResolution => ({
-  ok: true,
-  host,
-  source,
-});
-
-const unsupportedMessage = (contextName: string, reason: UnsupportedDockerContextReason): string => {
-  switch (reason) {
-    case "tls":
-      return `Docker context "${contextName}" uses TLS, which the docker provider does not support.`;
-    case "missing-meta":
-      return `Docker context "${contextName}" metadata was not found.`;
-    case "invalid-meta":
-      return `Docker context "${contextName}" metadata is invalid.`;
-    case "missing-endpoint":
-      return `Docker context "${contextName}" has no Docker endpoint.`;
-    case "unusable-endpoint":
-      return `Docker context "${contextName}" endpoint is not a local socket or TCP host.`;
-  }
+const selectedContext = (configDir: string | undefined, env: Env): SelectedContext | undefined => {
+  const fromEnv = nonEmpty(env.DOCKER_CONTEXT);
+  if (fromEnv !== undefined) return { name: fromEnv, selectedBy: "DOCKER_CONTEXT" };
+  if (configDir === undefined) return undefined;
+  const raw = readText(join(configDir, "config.json"));
+  // The Docker CLI warns about an unreadable config.json and continues without a context.
+  const config =
+    raw === undefined ? undefined : Result.getOrUndefined(Schema.decodeUnknownResult(DockerConfigFile)(raw));
+  const name = nonEmpty(config?.currentContext);
+  return name === undefined ? undefined : { name, selectedBy: "config" };
 };
 
-export const unsupportedDockerContext = (
-  contextName: string,
-  reason: UnsupportedDockerContextReason,
-): UnsupportedDockerContextError =>
-  new UnsupportedDockerContextError({
-    contextName,
-    reason,
-    message: unsupportedMessage(contextName, reason),
-    remediation:
-      "Use a Docker context without TLS whose endpoint is a local socket or TCP host, or set DOCKER_HOST to that endpoint, then retry. Run `lando doctor --provider=docker` to inspect the Docker provider.",
-  });
+const isSocketHost = (host: string): boolean => host.startsWith("unix://") || host.startsWith("npipe://");
 
-const objectRecord = (value: unknown): Record<string, unknown> | undefined =>
-  typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : undefined;
+const isTcpHost = (host: string): boolean =>
+  host.startsWith("tcp://") || host.startsWith("http://") || host.startsWith("https://");
 
-const contextNameFromEnv = (env: Readonly<Record<string, string | undefined>>): string | undefined => {
-  const name = env.DOCKER_CONTEXT?.trim();
-  return name === undefined || name.length === 0 ? undefined : name;
-};
-
-const currentContextFromConfig = (
-  configDir: string,
-  readFile: DockerContextFileReader,
-): string | undefined => {
-  const raw = readFile(join(configDir, "config.json"));
-  if (raw === undefined) return undefined;
-  try {
-    const currentContext = objectRecord(JSON.parse(raw) as unknown)?.currentContext;
-    return typeof currentContext === "string" && currentContext.trim().length > 0
-      ? currentContext.trim()
-      : undefined;
-  } catch {
-    return undefined;
-  }
-};
-
-const hasTlsMaterial = (value: unknown): boolean => {
-  const material = objectRecord(value);
-  return material !== undefined && Object.keys(material).length > 0;
-};
-
-const isUsableDockerEndpoint = (host: string): boolean =>
-  host.startsWith("unix://") ||
-  host.startsWith("npipe:") ||
-  host.startsWith("\\\\.\\pipe\\") ||
-  host.startsWith("tcp://") ||
-  host.startsWith("http://") ||
-  host.startsWith("https://") ||
-  host.startsWith("/");
-
-/** Canonicalize npipe Host values to the same `npipe://./pipe/...` form as the win32 default. */
-export const normalizeDockerContextHost = (host: string): string => {
-  if (!host.startsWith("npipe:") && !host.startsWith("\\\\.\\pipe\\")) return host;
-  const windowsPath = normalizeNamedPipePath(host.startsWith("npipe:") ? host : `npipe:${host}`);
+/** Docker writes `npipe:////./pipe/<name>`; Lando's default spells the same pipe `npipe://./pipe/<name>`. */
+const normalizeContextHost = (host: string): string => {
+  if (!host.startsWith("npipe://")) return host;
+  const windowsPath = normalizeNamedPipePath(host);
   const pipePrefix = "\\\\.\\pipe\\";
-  if (!windowsPath.startsWith(pipePrefix)) return host;
-  return `npipe://./pipe/${windowsPath.slice(pipePrefix.length).replaceAll("\\", "/")}`;
+  return windowsPath.startsWith(pipePrefix)
+    ? `npipe://./pipe/${windowsPath.slice(pipePrefix.length).replaceAll("\\", "/")}`
+    : host;
 };
 
-const readNamedDockerContext = (
-  contextName: string,
+const unsupportedMessage = (name: string, reason: UnsupportedDockerContextReason, host: string): string => {
+  switch (reason) {
+    case "not-found":
+      return `Docker context "${name}" was not found.`;
+    case "invalid-metadata":
+      return `Docker context "${name}" has unreadable metadata.`;
+    case "no-docker-endpoint":
+      return `Docker context "${name}" has no Docker endpoint.`;
+    case "unsupported-endpoint":
+      return `Docker context "${name}" uses the ${host.split("://")[0]}:// scheme, which the docker provider cannot connect to.`;
+    case "tls":
+      return `Docker context "${name}" connects over TLS, which the docker provider does not support.`;
+  }
+};
+
+const unsupportedContext = (
+  context: SelectedContext,
+  reason: UnsupportedDockerContextReason,
+  host = "",
+): UnsupportedDockerContextError => {
+  const select =
+    context.selectedBy === "DOCKER_CONTEXT"
+      ? "Unset DOCKER_CONTEXT or point it at a context whose endpoint is a local socket or plain TCP host"
+      : "Run `docker context use <name>` for a context whose endpoint is a local socket or plain TCP host";
+  return new UnsupportedDockerContextError({
+    contextName: context.name,
+    reason,
+    message: unsupportedMessage(context.name, reason, host),
+    remediation: `${select}, or set DOCKER_HOST to the engine socket, then retry. \`docker context ls\` lists the contexts.`,
+  });
+};
+
+const readContextEndpoint = (
+  context: SelectedContext,
   configDir: string | undefined,
-  readFile: DockerContextFileReader,
-): DockerHostResolution => {
-  if (configDir === undefined) {
-    return { ok: false, error: unsupportedDockerContext(contextName, "missing-meta") };
+): Result.Result<DockerEndpoint, UnsupportedDockerContextError> => {
+  if (configDir === undefined) return Result.fail(unsupportedContext(context, "not-found"));
+  const digest = sha256Hex(context.name);
+  const raw = readText(join(configDir, "contexts", "meta", digest, "meta.json"));
+  if (raw === undefined) return Result.fail(unsupportedContext(context, "not-found"));
+  const meta = Schema.decodeUnknownResult(ContextMetadata)(raw);
+  if (Result.isFailure(meta)) return Result.fail(unsupportedContext(context, "invalid-metadata"));
+  const endpoint = meta.success.Endpoints?.docker;
+  const host = nonEmpty(endpoint?.Host);
+  if (endpoint === undefined || host === undefined) {
+    return Result.fail(unsupportedContext(context, "no-docker-endpoint"));
   }
-  const raw = readFile(dockerContextMetaPath(configDir, contextName));
-  if (raw === undefined) {
-    return { ok: false, error: unsupportedDockerContext(contextName, "missing-meta") };
+  if (isSocketHost(host)) {
+    return Result.succeed({
+      host: normalizeContextHost(host),
+      source: { kind: "context", name: context.name },
+    });
   }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw) as unknown;
-  } catch {
-    return { ok: false, error: unsupportedDockerContext(contextName, "invalid-meta") };
-  }
-  const meta = objectRecord(parsed);
-  if (meta === undefined) {
-    return { ok: false, error: unsupportedDockerContext(contextName, "invalid-meta") };
-  }
-  if (hasTlsMaterial(meta.TLSMaterial)) {
-    return { ok: false, error: unsupportedDockerContext(contextName, "tls") };
-  }
-  const endpoint = objectRecord(objectRecord(meta.Endpoints)?.docker);
-  if (endpoint === undefined) {
-    return { ok: false, error: unsupportedDockerContext(contextName, "missing-endpoint") };
-  }
-  if (endpoint.SkipTLSVerify === true) {
-    return { ok: false, error: unsupportedDockerContext(contextName, "tls") };
-  }
-  const host = typeof endpoint.Host === "string" ? endpoint.Host.trim() : "";
-  if (host.length === 0) {
-    return { ok: false, error: unsupportedDockerContext(contextName, "missing-endpoint") };
-  }
-  if (!isUsableDockerEndpoint(host)) {
-    return { ok: false, error: unsupportedDockerContext(contextName, "unusable-endpoint") };
-  }
-  return resolved(normalizeDockerContextHost(host), { kind: "context", name: contextName });
+  if (!isTcpHost(host)) return Result.fail(unsupportedContext(context, "unsupported-endpoint", host));
+  // TLS files live beside the metadata store, never in meta.json, and apply only to TCP endpoints.
+  const tlsDir = join(configDir, "contexts", "tls", digest, "docker");
+  const usesTls =
+    endpoint.SkipTLSVerify === true ||
+    ["ca.pem", "cert.pem", "key.pem"].some((file) => existsSync(join(tlsDir, file)));
+  if (usesTls) return Result.fail(unsupportedContext(context, "tls", host));
+  return Result.succeed({ host, source: { kind: "context", name: context.name } });
 };
 
-export const resolveDockerHostDetails = (options: ResolveDockerHostDetailsOptions): DockerHostResolution => {
-  const env = options.env ?? {};
-  const readFile = options.readFile ?? readDockerContextFile;
+/**
+ * First match wins: explicit option, `LANDO_TEST_*` sockets, `DOCKER_HOST`, `LANDO_DOCKER_DESKTOP`,
+ * the Docker CLI context (`DOCKER_CONTEXT`, else `currentContext` in `config.json`), then the
+ * platform default. The reserved `default` context means the platform default, as in the Docker CLI.
+ */
+export const resolveDockerHost = (
+  options: ResolveDockerHostOptions,
+): Result.Result<DockerEndpoint, UnsupportedDockerContextError> => {
+  const { env, platform } = options;
+  const resolved = (host: string, source: DockerEndpointSource) => Result.succeed({ host, source });
   if (options.dockerHost !== undefined) return resolved(options.dockerHost, { kind: "option" });
-
-  const family = hostPlatformFamily(options.platform);
-  if (family === "win32" && env.LANDO_TEST_WINDOWS_DOCKER_SOCKET !== undefined) {
-    return resolved(env.LANDO_TEST_WINDOWS_DOCKER_SOCKET, { kind: "LANDO_TEST_WINDOWS_DOCKER_SOCKET" });
+  const family = hostPlatformFamily(platform);
+  const windowsTestSocket = nonEmpty(env.LANDO_TEST_WINDOWS_DOCKER_SOCKET);
+  if (family === "win32" && windowsTestSocket !== undefined) {
+    return resolved(windowsTestSocket, { kind: "LANDO_TEST_WINDOWS_DOCKER_SOCKET" });
   }
-  if (env.LANDO_TEST_DOCKER_SOCKET !== undefined) {
-    return resolved(env.LANDO_TEST_DOCKER_SOCKET, { kind: "LANDO_TEST_DOCKER_SOCKET" });
+  const testSocket = nonEmpty(env.LANDO_TEST_DOCKER_SOCKET);
+  if (testSocket !== undefined) return resolved(testSocket, { kind: "LANDO_TEST_DOCKER_SOCKET" });
+  const dockerHost = nonEmpty(env.DOCKER_HOST);
+  if (dockerHost !== undefined) return resolved(dockerHost, { kind: "DOCKER_HOST" });
+  const home = nonEmpty(env.HOME);
+  if (family === "linux" && home !== undefined && env.LANDO_DOCKER_DESKTOP === "1") {
+    return resolved(`${home}/.docker/desktop/docker.sock`, { kind: "LANDO_DOCKER_DESKTOP" });
   }
-  if (env.DOCKER_HOST !== undefined) return resolved(env.DOCKER_HOST, { kind: "DOCKER_HOST" });
-  if (family === "linux" && env.HOME !== undefined && env.LANDO_DOCKER_DESKTOP === "1") {
-    return resolved(`${env.HOME}/.docker/desktop/docker.sock`, { kind: "LANDO_DOCKER_DESKTOP" });
-  }
-
-  const configDir = dockerConfigDirFromEnv(env);
-  const contextName =
-    contextNameFromEnv(env) ??
-    (configDir === undefined ? undefined : currentContextFromConfig(configDir, readFile));
-  if (contextName !== undefined && contextName !== "default") {
-    return readNamedDockerContext(contextName, configDir, readFile);
-  }
-
-  if (family === "win32") return resolved(DEFAULT_WINDOWS_DOCKER_HOST, { kind: "default" });
-  return resolved(DEFAULT_UNIX_DOCKER_HOST, { kind: "default" });
+  const configDir = dockerConfigDir(platform, env);
+  const context = selectedContext(configDir, env);
+  if (context !== undefined && context.name !== "default") return readContextEndpoint(context, configDir);
+  return family === "win32"
+    ? resolved("npipe://./pipe/docker_engine", { kind: "default" })
+    : resolved("/var/run/docker.sock", { kind: "default" });
 };

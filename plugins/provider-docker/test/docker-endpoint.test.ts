@@ -1,380 +1,268 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { sha256Hex } from "@lando/sdk/digest";
+import { ProviderUnavailableError } from "@lando/sdk/errors";
+import { ProviderId } from "@lando/sdk/schema";
+import { Cause, Effect, Exit, Option, Result } from "effect";
 
-import {
-  DEFAULT_UNIX_DOCKER_HOST,
-  DEFAULT_WINDOWS_DOCKER_HOST,
-  DOCKER_HOST_PRECEDENCE,
-  type DockerContextFileReader,
-  dockerContextMetaPath,
-  dockerHostSourceLabel,
-  normalizeDockerContextHost,
-  resolveDockerHostDetails,
-} from "../src/docker-context.ts";
-import { npipeSocketPath } from "../src/index.ts";
+import { makeRuntimeProvider, plugin, resolveDockerHost } from "../src/index.ts";
+import { dockerConfig, removeDockerConfigs, tempDir } from "./support/docker-config.ts";
 
-const CONFIG_DIR = "/tmp/lando-docker-config";
-const configPath = join(CONFIG_DIR, "config.json");
+afterEach(removeDockerConfigs);
 
-const files = (entries: Record<string, string | undefined>): DockerContextFileReader => {
-  const store = new Map(Object.entries(entries));
-  return (path) => store.get(path);
+const COLIMA = "unix:///Users/alice/.colima/default/docker.sock";
+
+const resolved = (options: Parameters<typeof resolveDockerHost>[0]) => {
+  const result = resolveDockerHost(options);
+  if (Result.isFailure(result)) throw new Error(`expected an endpoint, got ${result.failure.message}`);
+  return result.success;
 };
 
-const metaJson = (host: string, extra: Record<string, unknown> = {}): string =>
-  JSON.stringify({
-    Endpoints: { docker: { Host: host, ...extra } },
-    ...("TLSMaterial" in extra ? { TLSMaterial: extra.TLSMaterial } : {}),
+const rejected = (options: Parameters<typeof resolveDockerHost>[0]) => {
+  const result = resolveDockerHost(options);
+  if (Result.isSuccess(result)) throw new Error(`expected a failure, got ${result.success.host}`);
+  return result.failure;
+};
+
+describe("Docker endpoint precedence", () => {
+  test("an explicit host wins over every environment source", () => {
+    const config = dockerConfig().context("colima", { Host: COLIMA }).current("colima");
+    const env = {
+      DOCKER_CONFIG: config.dir,
+      LANDO_TEST_WINDOWS_DOCKER_SOCKET: "npipe://./pipe/win-test",
+      LANDO_TEST_DOCKER_SOCKET: "/tmp/test.sock",
+      DOCKER_HOST: "unix:///tmp/docker.sock",
+      DOCKER_CONTEXT: "colima",
+    };
+    for (const platform of ["linux", "win32"] as const) {
+      expect(resolved({ platform, dockerHost: "tcp://127.0.0.1:2375", env })).toEqual({
+        host: "tcp://127.0.0.1:2375",
+        source: { kind: "option" },
+      });
+    }
   });
 
-const contextFiles = (
-  name: string,
-  host: string,
-  extra: Record<string, unknown> = {},
-  currentContext = name,
-): Record<string, string> => ({
-  [configPath]: JSON.stringify({ currentContext }),
-  [dockerContextMetaPath(CONFIG_DIR, name)]: metaJson(host, extra),
-});
-
-const envWithConfig = (env: Record<string, string | undefined> = {}) => ({
-  DOCKER_CONFIG: CONFIG_DIR,
-  ...env,
-});
-
-describe("Docker host precedence", () => {
-  test("spells the resolution order in code", () => {
-    expect(DOCKER_HOST_PRECEDENCE).toEqual([
-      "option",
-      "LANDO_TEST_* sockets",
-      "DOCKER_HOST",
-      "LANDO_DOCKER_DESKTOP",
-      "Docker context",
-      "platform default",
-    ]);
-  });
-
-  test("explicit dockerHost wins over test sockets, DOCKER_HOST, Desktop, and context", () => {
-    const readFile = files(contextFiles("colima", "unix:///home/alice/.colima/default/docker.sock"));
-    const result = resolveDockerHostDetails({
-      platform: "linux",
-      dockerHost: "tcp://127.0.0.1:2375",
-      env: envWithConfig({
-        LANDO_TEST_DOCKER_SOCKET: "/tmp/test.sock",
-        DOCKER_HOST: "unix:///tmp/docker.sock",
-        HOME: "/home/alice",
-        LANDO_DOCKER_DESKTOP: "1",
-        DOCKER_CONTEXT: "colima",
-      }),
-      readFile,
-    });
-    expect(result).toEqual({ ok: true, host: "tcp://127.0.0.1:2375", source: { kind: "option" } });
-  });
-
-  test("LANDO_TEST_WINDOWS_DOCKER_SOCKET wins over LANDO_TEST_DOCKER_SOCKET on win32", () => {
-    const result = resolveDockerHostDetails({
-      platform: "win32",
-      env: {
-        LANDO_TEST_WINDOWS_DOCKER_SOCKET: "npipe://./pipe/win-test",
-        LANDO_TEST_DOCKER_SOCKET: "tcp://generic.example:2375",
-        DOCKER_HOST: "tcp://env.example:2375",
-      },
-      readFile: files({}),
-    });
-    expect(result).toEqual({
-      ok: true,
+  test("test sockets win over DOCKER_HOST, the Windows one first on win32", () => {
+    const env = {
+      LANDO_TEST_WINDOWS_DOCKER_SOCKET: "npipe://./pipe/win-test",
+      LANDO_TEST_DOCKER_SOCKET: "tcp://generic.example:2375",
+      DOCKER_HOST: "tcp://env.example:2375",
+    };
+    expect(resolved({ platform: "win32", env })).toEqual({
       host: "npipe://./pipe/win-test",
       source: { kind: "LANDO_TEST_WINDOWS_DOCKER_SOCKET" },
     });
-  });
-
-  test("LANDO_TEST_DOCKER_SOCKET wins over DOCKER_HOST, Desktop, and context", () => {
-    const result = resolveDockerHostDetails({
-      platform: "linux",
-      env: envWithConfig({
-        LANDO_TEST_DOCKER_SOCKET: "/tmp/test.sock",
-        DOCKER_HOST: "unix:///tmp/docker.sock",
-        HOME: "/home/alice",
-        LANDO_DOCKER_DESKTOP: "1",
-        DOCKER_CONTEXT: "colima",
-      }),
-      readFile: files(contextFiles("colima", "unix:///home/alice/.colima/default/docker.sock")),
-    });
-    expect(result).toEqual({
-      ok: true,
-      host: "/tmp/test.sock",
+    const generic = {
+      host: "tcp://generic.example:2375",
       source: { kind: "LANDO_TEST_DOCKER_SOCKET" },
-    });
+    } as const;
+    expect(resolved({ platform: "linux", env })).toEqual(generic);
+    const { LANDO_TEST_WINDOWS_DOCKER_SOCKET: _windows, ...withoutWindowsSocket } = env;
+    expect(resolved({ platform: "win32", env: withoutWindowsSocket })).toEqual(generic);
   });
 
-  test("DOCKER_HOST wins over LANDO_DOCKER_DESKTOP and context", () => {
-    const result = resolveDockerHostDetails({
-      platform: "linux",
-      env: envWithConfig({
-        DOCKER_HOST: "unix:///tmp/docker.sock",
-        HOME: "/home/alice",
-        LANDO_DOCKER_DESKTOP: "1",
-        DOCKER_CONTEXT: "colima",
-      }),
-      readFile: files(contextFiles("colima", "unix:///home/alice/.colima/default/docker.sock")),
-    });
-    expect(result).toEqual({
-      ok: true,
-      host: "unix:///tmp/docker.sock",
-      source: { kind: "DOCKER_HOST" },
-    });
+  test("DOCKER_HOST wins over DOCKER_CONTEXT and the platform default, as in the Docker CLI", () => {
+    const config = dockerConfig().context("colima", { Host: COLIMA });
+    const env = {
+      DOCKER_CONFIG: config.dir,
+      DOCKER_HOST: "tcp://env.example:2375",
+      DOCKER_CONTEXT: "colima",
+    };
+    for (const platform of ["linux", "darwin", "win32"] as const) {
+      expect(resolved({ platform, env })).toEqual({
+        host: "tcp://env.example:2375",
+        source: { kind: "DOCKER_HOST" },
+      });
+    }
   });
 
-  test("LANDO_DOCKER_DESKTOP wins over context on Linux", () => {
-    const result = resolveDockerHostDetails({
-      platform: "linux",
-      env: envWithConfig({
-        HOME: "/home/alice",
-        LANDO_DOCKER_DESKTOP: "1",
-        DOCKER_CONTEXT: "colima",
-      }),
-      readFile: files(contextFiles("colima", "unix:///home/alice/.colima/default/docker.sock")),
-    });
-    expect(result).toEqual({
-      ok: true,
-      host: "/home/alice/.docker/desktop/docker.sock",
-      source: { kind: "LANDO_DOCKER_DESKTOP" },
-    });
-  });
-
-  test("Docker context wins over the platform default, including win32 npipe", () => {
-    const linux = resolveDockerHostDetails({
-      platform: "linux",
-      env: envWithConfig({ DOCKER_CONTEXT: "colima" }),
-      readFile: files(contextFiles("colima", "unix:///home/alice/.colima/default/docker.sock")),
-    });
-    const windows = resolveDockerHostDetails({
-      platform: "win32",
-      env: envWithConfig({ DOCKER_CONTEXT: "desktop-linux" }),
-      readFile: files(contextFiles("desktop-linux", "npipe:////./pipe/dockerDesktopLinuxEngine")),
-    });
-    expect(linux).toEqual({
-      ok: true,
-      host: "unix:///home/alice/.colima/default/docker.sock",
+  test("an empty DOCKER_HOST is unset and the context applies", () => {
+    const config = dockerConfig().context("colima", { Host: COLIMA }).current("colima");
+    expect(resolved({ platform: "darwin", env: { DOCKER_CONFIG: config.dir, DOCKER_HOST: "" } })).toEqual({
+      host: COLIMA,
       source: { kind: "context", name: "colima" },
     });
-    expect(windows).toEqual({
-      ok: true,
+  });
+
+  test("LANDO_DOCKER_DESKTOP wins over the context on Linux", () => {
+    const home = tempDir();
+    const config = dockerConfig().context("colima", { Host: COLIMA });
+    expect(
+      resolved({
+        platform: "linux",
+        env: { HOME: home, LANDO_DOCKER_DESKTOP: "1", DOCKER_CONFIG: config.dir, DOCKER_CONTEXT: "colima" },
+      }),
+    ).toEqual({ host: `${home}/.docker/desktop/docker.sock`, source: { kind: "LANDO_DOCKER_DESKTOP" } });
+  });
+
+  test("with no override or context, the platform default applies", () => {
+    const empty = tempDir();
+    for (const platform of ["linux", "wsl", "darwin"] as const) {
+      expect(resolved({ platform, env: { DOCKER_CONFIG: empty } })).toEqual({
+        host: "/var/run/docker.sock",
+        source: { kind: "default" },
+      });
+    }
+    expect(resolved({ platform: "win32", env: { DOCKER_CONFIG: empty } })).toEqual({
+      host: "npipe://./pipe/docker_engine",
+      source: { kind: "default" },
+    });
+  });
+});
+
+describe("Docker CLI context", () => {
+  test("follows currentContext from config.json", () => {
+    const config = dockerConfig()
+      .context("orbstack", { Host: "unix:///Users/alice/.orbstack/run/docker.sock" })
+      .current("orbstack");
+    expect(resolved({ platform: "darwin", env: { DOCKER_CONFIG: config.dir } })).toEqual({
+      host: "unix:///Users/alice/.orbstack/run/docker.sock",
+      source: { kind: "context", name: "orbstack" },
+    });
+  });
+
+  test("DOCKER_CONTEXT wins over currentContext", () => {
+    const config = dockerConfig()
+      .context("colima", { Host: COLIMA })
+      .context("orbstack", { Host: "unix:///Users/alice/.orbstack/run/docker.sock" })
+      .current("orbstack");
+    expect(
+      resolved({ platform: "darwin", env: { DOCKER_CONFIG: config.dir, DOCKER_CONTEXT: "colima" } }),
+    ).toEqual({ host: COLIMA, source: { kind: "context", name: "colima" } });
+  });
+
+  test("finds the config under HOME on Unix and USERPROFILE on Windows", () => {
+    const home = tempDir();
+    dockerConfig(join(home, ".docker")).context("colima", { Host: COLIMA }).current("colima");
+    const context = { kind: "context", name: "colima" } as const;
+    expect(resolved({ platform: "darwin", env: { HOME: home } }).source).toEqual(context);
+    expect(resolved({ platform: "win32", env: { USERPROFILE: home, HOME: tempDir() } }).source).toEqual(
+      context,
+    );
+    expect(resolved({ platform: "win32", env: { HOME: home } }).source).toEqual({ kind: "default" });
+  });
+
+  test("the reserved default context means the platform default", () => {
+    const config = dockerConfig().current("default");
+    expect(resolved({ platform: "win32", env: { DOCKER_CONFIG: config.dir } })).toEqual({
+      host: "npipe://./pipe/docker_engine",
+      source: { kind: "default" },
+    });
+    expect(
+      resolved({ platform: "linux", env: { DOCKER_CONFIG: config.dir, DOCKER_CONTEXT: "default" } }),
+    ).toEqual({ host: "/var/run/docker.sock", source: { kind: "default" } });
+  });
+
+  test("an unreadable config.json selects no context, as in the Docker CLI", () => {
+    const config = dockerConfig();
+    writeFileSync(join(config.dir, "config.json"), "{not json");
+    expect(resolved({ platform: "linux", env: { DOCKER_CONFIG: config.dir } }).source).toEqual({
+      kind: "default",
+    });
+  });
+
+  test("Docker Desktop's Windows named pipe uses the same spelling as the default pipe", () => {
+    const config = dockerConfig()
+      .context("desktop-linux", { Host: "npipe:////./pipe/dockerDesktopLinuxEngine", SkipTLSVerify: false })
+      .current("desktop-linux");
+    expect(resolved({ platform: "win32", env: { DOCKER_CONFIG: config.dir } })).toEqual({
       host: "npipe://./pipe/dockerDesktopLinuxEngine",
       source: { kind: "context", name: "desktop-linux" },
     });
   });
 
-  test("platform default is last: unix socket, else win32 npipe", () => {
-    expect(resolveDockerHostDetails({ platform: "linux", env: {}, readFile: files({}) })).toEqual({
-      ok: true,
-      host: DEFAULT_UNIX_DOCKER_HOST,
-      source: { kind: "default" },
-    });
-    expect(resolveDockerHostDetails({ platform: "darwin", env: {}, readFile: files({}) })).toEqual({
-      ok: true,
-      host: DEFAULT_UNIX_DOCKER_HOST,
-      source: { kind: "default" },
-    });
-    expect(resolveDockerHostDetails({ platform: "win32", env: {}, readFile: files({}) })).toEqual({
-      ok: true,
-      host: DEFAULT_WINDOWS_DOCKER_HOST,
-      source: { kind: "default" },
-    });
+  test("a plain TCP context resolves to its host", () => {
+    const config = dockerConfig().context("tcp", { Host: "tcp://127.0.0.1:2375", SkipTLSVerify: false });
+    expect(
+      resolved({ platform: "linux", env: { DOCKER_CONFIG: config.dir, DOCKER_CONTEXT: "tcp" } }).host,
+    ).toBe("tcp://127.0.0.1:2375");
+  });
+
+  test("TLS files are ignored for a socket endpoint, as the Docker CLI ignores them", () => {
+    const config = dockerConfig().context("colima", { Host: COLIMA }, ["ca.pem"]).current("colima");
+    expect(resolved({ platform: "darwin", env: { DOCKER_CONFIG: config.dir } }).host).toBe(COLIMA);
   });
 });
 
-describe("Docker CLI context resolution", () => {
-  test("stores context metadata under the lowercase hex SHA-256 of the UTF-8 name", () => {
-    expect(dockerContextMetaPath(CONFIG_DIR, "colima")).toBe(
-      join(CONFIG_DIR, "contexts", "meta", sha256Hex("colima"), "meta.json"),
+describe("unsupported Docker contexts fail closed", () => {
+  test("a TCP context with stored TLS files", () => {
+    const config = dockerConfig()
+      .context("remote", { Host: "tcp://remote.example:2376", SkipTLSVerify: false }, [
+        "ca.pem",
+        "cert.pem",
+        "key.pem",
+      ])
+      .current("remote");
+    const error = rejected({ platform: "linux", env: { DOCKER_CONFIG: config.dir } });
+    expect(error._tag).toBe("UnsupportedDockerContextError");
+    expect(error).toMatchObject({ contextName: "remote", reason: "tls" });
+    expect(error.message).toContain('"remote"');
+    expect(error.remediation).toContain("docker context use");
+  });
+
+  test("a TCP context that skips TLS verification still uses TLS", () => {
+    const config = dockerConfig().context("insecure", { Host: "tcp://127.0.0.1:2376", SkipTLSVerify: true });
+    expect(
+      rejected({ platform: "linux", env: { DOCKER_CONFIG: config.dir, DOCKER_CONTEXT: "insecure" } }),
+    ).toMatchObject({ contextName: "insecure", reason: "tls" });
+  });
+
+  test("an ssh context names its scheme", () => {
+    const config = dockerConfig().context("jump", { Host: "ssh://alice@build.example" });
+    const error = rejected({ platform: "linux", env: { DOCKER_CONFIG: config.dir, DOCKER_CONTEXT: "jump" } });
+    expect(error).toMatchObject({ contextName: "jump", reason: "unsupported-endpoint" });
+    expect(error.message).toContain("ssh://");
+    expect(error.remediation).toContain("DOCKER_CONTEXT");
+  });
+
+  test("a missing, unreadable, or endpoint-less context", () => {
+    const config = dockerConfig().rawContext("broken", "{not json").context("empty", {});
+    const env = (name: string) => ({ DOCKER_CONFIG: config.dir, DOCKER_CONTEXT: name });
+    expect(rejected({ platform: "linux", env: env("missing") }).reason).toBe("not-found");
+    expect(rejected({ platform: "linux", env: env("broken") }).reason).toBe("invalid-metadata");
+    expect(rejected({ platform: "linux", env: env("empty") }).reason).toBe("no-docker-endpoint");
+  });
+});
+
+describe("an unsupported context stops the provider before it talks to an engine", () => {
+  const tlsContext = () =>
+    dockerConfig()
+      .context("remote", { Host: "tcp://remote.example:2376" }, ["ca.pem", "cert.pem", "key.pem"])
+      .current("remote");
+
+  const expectUnavailable = (exit: Exit.Exit<unknown, unknown>) => {
+    if (!Exit.isFailure(exit)) throw new Error("expected a failure");
+    const error = Cause.findErrorOption(exit.cause);
+    if (Option.isNone(error)) throw new Error(`expected a typed failure, got ${Cause.pretty(exit.cause)}`);
+    expect(error.value).toBeInstanceOf(ProviderUnavailableError);
+    expect(error.value).toMatchObject({
+      providerId: "docker",
+      details: { contextName: "remote", reason: "tls" },
+    });
+  };
+
+  test("provider construction", async () => {
+    const config = tlsContext();
+    expectUnavailable(
+      await Effect.runPromiseExit(
+        makeRuntimeProvider({ platform: "linux", env: { DOCKER_CONFIG: config.dir } }),
+      ),
     );
-    expect(sha256Hex("colima")).toMatch(/^[0-9a-f]{64}$/u);
   });
 
-  test("reads the named context from the SHA-256 metadata directory", () => {
-    const path = dockerContextMetaPath(CONFIG_DIR, "colima");
-    const readFile: DockerContextFileReader = (candidate) => {
-      expect(candidate).toBe(path);
-      return metaJson("unix:///home/alice/.colima/default/docker.sock");
-    };
-    const result = resolveDockerHostDetails({
-      platform: "linux",
-      env: envWithConfig({ DOCKER_CONTEXT: "colima" }),
-      readFile,
-    });
-    expect(result.ok).toBe(true);
-    if (result.ok) expect(result.host).toBe("unix:///home/alice/.colima/default/docker.sock");
-  });
-
-  test("DOCKER_CONTEXT wins over currentContext", () => {
-    const result = resolveDockerHostDetails({
-      platform: "linux",
-      env: envWithConfig({ DOCKER_CONTEXT: "colima" }),
-      readFile: files({
-        [configPath]: JSON.stringify({ currentContext: "orbstack" }),
-        [dockerContextMetaPath(CONFIG_DIR, "colima")]: metaJson(
-          "unix:///home/alice/.colima/default/docker.sock",
-        ),
-        [dockerContextMetaPath(CONFIG_DIR, "orbstack")]: metaJson(
-          "unix:///home/alice/.orbstack/run/docker.sock",
-        ),
-      }),
-    });
-    expect(result).toEqual({
-      ok: true,
-      host: "unix:///home/alice/.colima/default/docker.sock",
-      source: { kind: "context", name: "colima" },
-    });
-  });
-
-  test("uses currentContext from config.json when DOCKER_CONTEXT is unset", () => {
-    const result = resolveDockerHostDetails({
-      platform: "linux",
-      env: envWithConfig(),
-      readFile: files(contextFiles("orbstack", "unix:///home/alice/.orbstack/run/docker.sock")),
-    });
-    expect(result).toEqual({
-      ok: true,
-      host: "unix:///home/alice/.orbstack/run/docker.sock",
-      source: { kind: "context", name: "orbstack" },
-    });
-  });
-
-  test("does not read meta.json when the context name is default", () => {
-    const readPaths: string[] = [];
-    const result = resolveDockerHostDetails({
-      platform: "linux",
-      env: envWithConfig({ DOCKER_CONTEXT: "default" }),
-      readFile: (path) => {
-        readPaths.push(path);
-        return metaJson("unix:///should-not-use.sock");
-      },
-    });
-    expect(result).toEqual({
-      ok: true,
-      host: DEFAULT_UNIX_DOCKER_HOST,
-      source: { kind: "default" },
-    });
-    expect(readPaths.some((path) => path.includes("contexts/meta"))).toBe(false);
-  });
-
-  test("treats currentContext default as the platform default", () => {
-    const result = resolveDockerHostDetails({
-      platform: "win32",
-      env: envWithConfig(),
-      readFile: files({ [configPath]: JSON.stringify({ currentContext: "default" }) }),
-    });
-    expect(result).toEqual({
-      ok: true,
-      host: DEFAULT_WINDOWS_DOCKER_HOST,
-      source: { kind: "default" },
-    });
-  });
-
-  test("accepts npipe Host values and normalizes them like the win32 default", () => {
-    const host = "npipe:////./pipe/docker_engine";
-    expect(normalizeDockerContextHost(host)).toBe(DEFAULT_WINDOWS_DOCKER_HOST);
-    expect(npipeSocketPath(normalizeDockerContextHost(host))).toBe(
-      npipeSocketPath(DEFAULT_WINDOWS_DOCKER_HOST),
-    );
-    const result = resolveDockerHostDetails({
-      platform: "win32",
-      env: envWithConfig({ DOCKER_CONTEXT: "desktop" }),
-      readFile: files(contextFiles("desktop", host)),
-    });
-    expect(result).toEqual({
-      ok: true,
-      host: DEFAULT_WINDOWS_DOCKER_HOST,
-      source: { kind: "context", name: "desktop" },
-    });
-  });
-
-  test("fails closed on TLSMaterial without falling back to the default socket", () => {
-    const result = resolveDockerHostDetails({
-      platform: "linux",
-      env: envWithConfig({ DOCKER_CONTEXT: "remote" }),
-      readFile: files({
-        [dockerContextMetaPath(CONFIG_DIR, "remote")]: JSON.stringify({
-          TLSMaterial: { docker: ["ca.pem", "cert.pem", "key.pem"] },
-          Endpoints: { docker: { Host: "tcp://remote.example:2376" } },
+  test("data-root purge", async () => {
+    const config = tlsContext();
+    const purge = plugin.runtimeProviders?.get(ProviderId.make("docker"))?.purge;
+    if (purge === undefined) throw new Error("docker provider has no purge hook");
+    expectUnavailable(
+      await Effect.runPromiseExit(
+        purge({
+          platform: "linux",
+          env: { DOCKER_CONFIG: config.dir },
+          dataRoot: tempDir(),
+          buildStore: tempDir(),
         }),
-      }),
-    });
-    expect(result.ok).toBe(false);
-    if (result.ok) throw new Error("expected unsupported TLS context");
-    expect(result.error._tag).toBe("UnsupportedDockerContextError");
-    expect(result.error.contextName).toBe("remote");
-    expect(result.error.reason).toBe("tls");
-    expect(result.error.message).toContain("remote");
-  });
-
-  test("fails closed when SkipTLSVerify is set", () => {
-    const result = resolveDockerHostDetails({
-      platform: "linux",
-      env: envWithConfig({ DOCKER_CONTEXT: "insecure" }),
-      readFile: files(contextFiles("insecure", "tcp://127.0.0.1:2376", { SkipTLSVerify: true })),
-    });
-    expect(result.ok).toBe(false);
-    if (result.ok) throw new Error("expected unsupported TLS context");
-    expect(result.error.reason).toBe("tls");
-    expect(result.error.contextName).toBe("insecure");
-  });
-
-  test("fails closed on an ssh endpoint without falling back", () => {
-    const result = resolveDockerHostDetails({
-      platform: "linux",
-      env: envWithConfig({ DOCKER_CONTEXT: "jump" }),
-      readFile: files(contextFiles("jump", "ssh://user@host")),
-    });
-    expect(result.ok).toBe(false);
-    if (result.ok) throw new Error("expected unusable endpoint");
-    expect(result.error.reason).toBe("unusable-endpoint");
-    expect(result.error.contextName).toBe("jump");
-  });
-
-  test("reports missing meta.json for a named context", () => {
-    const result = resolveDockerHostDetails({
-      platform: "linux",
-      env: envWithConfig({ DOCKER_CONTEXT: "missing" }),
-      readFile: files({}),
-    });
-    expect(result.ok).toBe(false);
-    if (result.ok) throw new Error("expected missing meta");
-    expect(result.error.reason).toBe("missing-meta");
-    expect(result.error.contextName).toBe("missing");
-  });
-
-  test("reports invalid meta.json for a named context", () => {
-    const result = resolveDockerHostDetails({
-      platform: "linux",
-      env: envWithConfig({ DOCKER_CONTEXT: "broken" }),
-      readFile: files({ [dockerContextMetaPath(CONFIG_DIR, "broken")]: "{not-json" }),
-    });
-    expect(result.ok).toBe(false);
-    if (result.ok) throw new Error("expected invalid meta");
-    expect(result.error.reason).toBe("invalid-meta");
-    expect(result.error.contextName).toBe("broken");
-  });
-
-  test("missing config.json with no DOCKER_CONTEXT uses the platform default", () => {
-    const result = resolveDockerHostDetails({
-      platform: "linux",
-      env: envWithConfig(),
-      readFile: files({}),
-    });
-    expect(result).toEqual({
-      ok: true,
-      host: DEFAULT_UNIX_DOCKER_HOST,
-      source: { kind: "default" },
-    });
-  });
-
-  test("labels doctor sources as DOCKER_HOST, context <name>, LANDO_DOCKER_DESKTOP, or default", () => {
-    expect(dockerHostSourceLabel({ kind: "DOCKER_HOST" })).toBe("DOCKER_HOST");
-    expect(dockerHostSourceLabel({ kind: "context", name: "colima" })).toBe("context colima");
-    expect(dockerHostSourceLabel({ kind: "LANDO_DOCKER_DESKTOP" })).toBe("LANDO_DOCKER_DESKTOP");
-    expect(dockerHostSourceLabel({ kind: "default" })).toBe("default");
+      ),
+    );
   });
 });
