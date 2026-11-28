@@ -12,7 +12,7 @@ import {
   localUnitTestCommand,
   localUnitTestCommands,
   runLocalUnitTests,
-  shardedUnitTestCommand,
+  selectUnitShard,
   unitShardCommands,
 } from "../../../scripts/test-shards.ts";
 import { timingRefreshCommand } from "../../../scripts/update-test-timings.ts";
@@ -21,11 +21,12 @@ const repoRoot = new URL("../../..", import.meta.url);
 
 describe("test shards", () => {
   test("prints the CI shard commands without running tests", () => {
-    expect(UNIT_SHARD_COUNT).toBe(3);
+    expect(UNIT_SHARD_COUNT).toBe(4);
     expect(unitShardCommands()).toEqual([
-      "bun run test:unit:shard 1/3",
-      "bun run test:unit:shard 2/3",
-      "bun run test:unit:shard 3/3",
+      "bun run test:unit:shard 1/4",
+      "bun run test:unit:shard 2/4",
+      "bun run test:unit:shard 3/4",
+      "bun run test:unit:shard 4/4",
     ]);
   });
 
@@ -66,29 +67,19 @@ describe("test shards", () => {
     }
   });
 
-  test("hands shard balance to bun --shard --timings", async () => {
-    expect(shardedUnitTestCommand("1/3")).toEqual([
-      process.execPath,
-      "--no-orphans",
-      "test",
-      "--timeout=20000",
-      "--shard=1/3",
-      `--timings=${TEST_TIMINGS_FILE}`,
+  test("balances a heavy file away from its path neighbors and assigns untimed files", () => {
+    const files = ["new", "d", "c", "b", "a"];
+    const timings = new Map([
+      ["a", 10],
+      ["b", 16],
+      ["c", 30],
+      ["d", 20],
     ]);
-    expect(shardedUnitTestCommand("2/3", { updateTimings: true })).toEqual([
-      process.execPath,
-      "--no-orphans",
-      "test",
-      "--timeout=20000",
-      "--shard=2/3",
-      `--timings=${TEST_TIMINGS_FILE}`,
-      "--update-timings",
+    expect(["1/3", "2/3", "3/3"].map((spec) => selectUnitShard(files, spec, timings))).toEqual([
+      ["c"],
+      ["b", "d"],
+      ["a", "new"],
     ]);
-
-    const source = await Bun.file(new URL("scripts/test-shards.ts", repoRoot)).text();
-    expect(source).not.toContain("WEIGHT_HINTS");
-    expect(source).not.toContain("shardFiles");
-    expect(source).toContain("--no-orphans");
   });
 });
 
@@ -116,9 +107,11 @@ test("bounds Windows command lines while preserving every collected file exactly
 test("local, shard and timings commands select exact files rather than matching path suffixes", async () => {
   const root = await mkdtemp(join(tmpdir(), "test-exact-selection-"));
   const file = "core/test/unit.test.ts";
+  const otherShard = "core/test/other.test.ts";
   try {
     for (const [path, body] of [
       [file, 'test("intended unit", () => {});'],
+      [otherShard, 'test("other shard", () => { throw new Error("other shard selected"); });'],
       [
         "docs/test/core/test/unit.test.ts",
         'test("excluded docs", () => { throw new Error("excluded fixture selected"); });',
@@ -129,7 +122,16 @@ test("local, shard and timings commands select exact files rather than matching 
     }
     for (const command of [
       localUnitTestCommand([file]),
-      shardedUnitTestCommand("1/1", {}, [file]),
+      localUnitTestCommand(
+        selectUnitShard(
+          [otherShard, file],
+          "1/2",
+          new Map([
+            [file, 2],
+            [otherShard, 1],
+          ]),
+        ),
+      ),
       timingRefreshCommand([file]),
     ]) {
       const child = Bun.spawn([...command], { cwd: root, stdout: "pipe", stderr: "pipe" });

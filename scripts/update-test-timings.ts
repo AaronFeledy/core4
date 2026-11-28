@@ -2,7 +2,7 @@
 /**
  * Refresh committed `.bun-test-timings.json` from the collected shard file set.
  *
- * Native `bun test --shard` balances from this file.
+ * The unit shard planner balances from this file.
  * The ownership inventory supplies the same unit file set to local and CI runs.
  */
 import { mkdtemp, readFile, rename, rm } from "node:fs/promises";

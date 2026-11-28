@@ -114,7 +114,9 @@ bun run check:runtime-bundle-manifest
 
 The `unit-tests-linux-x64` job aggregates a `unit-tests-linux-x64-shard` matrix on `ubuntu-26.04`. The selected profile controls whether those shards run; each selected suite still runs in full. Library, recipe, Linux guide, and provider test jobs also use Ubuntu 26.04 rather than running twice on different Ubuntu releases. Builds stay on `ubuntu-24.04` for the older glibc reference.
 
-`scripts/test-shards.ts` runs the unit file set with `bun --no-orphans test --shard=i/3 --timings=.bun-test-timings.json`, passing every file as an exact path. The unit set is every `*.test.ts` file in a workspace `test/` tree or beside `scripts/` that Git tracks or would track, minus the files a dedicated selection keeps for itself: library, recipes, docs and the nightly tier. Ignored local files, such as anything under `.local/`, never enter it. Shard balance comes from the committed timings file.
+`scripts/test-shards.ts` assigns files from longest to shortest using `.bun-test-timings.json`. Each file goes to the shard with the lowest estimated total, and new files use the median measured duration. This keeps one long suite from taking all the files that sort before it, as it can with Bun's contiguous `--shard` split. The runner passes only the selected files as exact paths to `bun --no-orphans test`.
+
+The unit set is every `*.test.ts` file in a workspace `test/` tree or beside `scripts/` that Git tracks or would track, minus the files a dedicated selection keeps for itself: library, recipes, docs and the nightly tier. Ignored local files, such as anything under `.local/`, never enter it.
 
 Name a suite for what it needs. A `*.test.ts` file runs without a live engine and joins the unit shards automatically. A `*.integration.test.ts` file needs an engine socket, a native non-Linux host, a compiled binary or an opt-in variable, so it runs only in a job that provides one. Split a mixed suite and share its fixtures: each provider's fake-client contract lives in `contract.test.ts` and its live cases in `contract.integration.test.ts`. Podman Desktop fake-client cases live in `plugins/provider-podman/test/desktop.test.ts`, and the native desktop contract in `desktop.integration.test.ts`.
 
@@ -152,9 +154,10 @@ Bun 1.4 `--parallel --no-isolate` was tried on the shard runtime and rejected be
 `bun run test` prints the exact shard commands CI runs:
 
 ```bash
-bun run test:unit:shard 1/3
-bun run test:unit:shard 2/3
-bun run test:unit:shard 3/3
+bun run test:unit:shard 1/4
+bun run test:unit:shard 2/4
+bun run test:unit:shard 3/4
+bun run test:unit:shard 4/4
 ```
 
 Refresh the committed `.bun-test-timings.json` after a suite-shape change:

@@ -3,13 +3,10 @@
  * Deterministic unit-test sharding for CI.
  *
  * Default (no args): print the shard commands CI should run, one per line.
- * `--run <i>/<n>`: execute shard `i` of `n` via `bun --no-orphans test --shard`.
- * Do not pass `--update-timings` with `--run`: a single shard would overwrite
- * the committed full timings file. Refresh with `update-test-timings.ts`.
+ * `--run <i>/<n>`: execute shard `i` of `n` via `bun --no-orphans test`.
+ * Refresh the full timings file with `update-test-timings.ts`.
  *
  * The ownership inventory supplies the same unit file set to local and CI runs.
- *
- * Balance comes from `bun test --shard --timings=.bun-test-timings.json`.
  */
 import { resolve } from "node:path";
 import { collectTestInventory, isUnitTest } from "./test-ownership.ts";
@@ -115,31 +112,71 @@ const parseShardSpec = (spec: string): { readonly index: number; readonly count:
   return { index, count };
 };
 
-export const shardedUnitTestCommand = (
-  spec: string,
-  options: { readonly updateTimings?: boolean } = {},
-  files: readonly string[] = [],
-): ReadonlyArray<string> => {
-  const { index, count } = parseShardSpec(spec);
-  return [
-    process.execPath,
-    "--no-orphans",
-    "test",
-    ...SHARD_RUNTIME_FLAGS,
-    `--shard=${index}/${count}`,
-    `--timings=${TEST_TIMINGS_FILE}`,
-    ...(options.updateTimings === true ? ["--update-timings"] : []),
-    ...testFileArguments(files),
-  ];
+const readTimings = async (): Promise<ReadonlyMap<string, number>> => {
+  const document: unknown = await Bun.file(resolve(REPO_ROOT, TEST_TIMINGS_FILE)).json();
+  if (
+    typeof document !== "object" ||
+    document === null ||
+    !("version" in document) ||
+    document.version !== 1 ||
+    !("files" in document) ||
+    typeof document.files !== "object" ||
+    document.files === null ||
+    Array.isArray(document.files)
+  ) {
+    throw new TypeError(`invalid timings document: ${TEST_TIMINGS_FILE}`);
+  }
+  const timings = new Map<string, number>();
+  for (const [file, ms] of Object.entries(document.files)) {
+    if (typeof ms !== "number" || !Number.isSafeInteger(ms) || ms < 0) {
+      throw new TypeError(`invalid timing for ${file} in ${TEST_TIMINGS_FILE}`);
+    }
+    timings.set(file, ms);
+  }
+  return timings;
 };
 
-const runShard = async (spec: string, options: { readonly updateTimings: boolean }): Promise<never> => {
-  const files = await collectShardedTestFiles();
-  if (files.length === 0) {
-    throw new Error(`shard ${spec} resolved to zero test files`);
+export const selectUnitShard = (
+  files: readonly string[],
+  spec: string,
+  timings: ReadonlyMap<string, number>,
+): readonly string[] => {
+  const { index, count } = parseShardSpec(spec);
+  if (!Number.isSafeInteger(count) || count > files.length) {
+    throw new RangeError(`cannot split ${files.length} files into ${count} nonempty shards`);
   }
-  console.error(`[test-shards] shard ${spec}: ${files.length} collected files`);
-  process.exit(await runUnitTestCommand(shardedUnitTestCommand(spec, options, files)));
+  const known = files
+    .flatMap((file) => {
+      const ms = timings.get(file);
+      return ms === undefined ? [] : [ms];
+    })
+    .sort((a, b) => a - b);
+  const median = known[Math.floor(known.length / 2)] ?? 1;
+  const weight = (file: string): number => Math.max(1, timings.get(file) ?? median);
+
+  // Bun packs contiguous path ranges. Assign the largest files first so one
+  // large file doesn't inherit every smaller file that sorts before it.
+  const shards: { readonly files: string[]; load: number }[] = Array.from({ length: count }, () => ({
+    files: [],
+    load: 0,
+  }));
+  for (const file of files.toSorted().sort((a, b) => weight(b) - weight(a))) {
+    const shard = shards.reduce((lightest, candidate) =>
+      candidate.load < lightest.load ? candidate : lightest,
+    );
+    shard.files.push(file);
+    shard.load += weight(file);
+  }
+  const selected = shards[index - 1];
+  if (selected === undefined) throw new RangeError(`shard index ${index} is not in the plan`);
+  return selected.files.sort();
+};
+
+const runShard = async (spec: string): Promise<void> => {
+  const files = await collectShardedTestFiles();
+  const selected = selectUnitShard(files, spec, await readTimings());
+  console.error(`[test-shards] shard ${spec}: ${selected.length}/${files.length} files`);
+  process.exitCode = await runLocalUnitTests(selected, runUnitTestCommand);
 };
 
 const main = async (): Promise<void> => {
@@ -163,15 +200,13 @@ const main = async (): Promise<void> => {
       throw new Error(`--run requires a shard spec, e.g. --run 1/${UNIT_SHARD_COUNT}`);
     }
     if (updateTimings) {
-      throw new Error(
-        "--update-timings on one shard would overwrite the committed full timings file; use bun run scripts/update-test-timings.ts",
-      );
+      throw new Error("to refresh the full timings file, use bun run scripts/update-test-timings.ts");
     }
     const unknown = rest.filter((arg) => arg !== spec && arg !== "--update-timings");
     if (unknown.length > 0) {
       throw new Error(`unknown arguments: ${unknown.join(" ")}`);
     }
-    await runShard(spec, { updateTimings });
+    await runShard(spec);
     return;
   }
   if (args.length > 0) {
