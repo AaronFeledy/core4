@@ -29,12 +29,9 @@ export const guardPurgePlacement = Effect.fn("DataRootPurge.guardPlacement")(fun
   const { plans, unreadable } = yield* inventory(state, pluginRoot).pipe(
     mapFailures((cause) => failure(cause.message, cause.remediation)),
   );
-  const protectedSlot = unreadable[0];
-  if (protectedSlot !== undefined)
-    return yield* failure(
-      `Cannot verify the engine recorded in ${protectedSlot.path}.`,
-      "Restore readable applied state before retrying purge.",
-    );
+  const observation = unreadable.length
+    ? { ...found, unreadableAppliedState: unreadable.map(({ path }) => path) }
+    : found;
 
   const claims = plans.flatMap(({ engineIdentity }) =>
     engineIdentity === undefined ? [] : [engineIdentity],
@@ -53,17 +50,17 @@ export const guardPurgePlacement = Effect.fn("DataRootPurge.guardPlacement")(fun
     );
   });
   yield* prove;
-  if (found.kind === "skipped") {
+  if (observation.kind === "skipped") {
     if (plans.length || (yield* listResourceOwnershipRecords(providerId, pluginRoot, state)).length)
       return yield* failure(
         `Purge skipped ${found.endpoint}, but ${providerId} still has recorded resources.`,
         `Restore access to the ${providerId} engine that holds those resources and retry purge.`,
       );
-    return found;
+    return observation;
   }
-  if (!claims.length) return found;
+  if (!claims.length) return observation;
   return {
-    ...found,
+    ...observation,
     sweep: Effect.fn("DataRootPurge.sweepRecorded")(function* () {
       const result = yield* Effect.result(prove);
       if (Result.isFailure(result))
@@ -74,7 +71,7 @@ export const guardPurgePlacement = Effect.fn("DataRootPurge.guardPlacement")(fun
           failed: [],
           outsideScope: 0,
         };
-      return yield* found.sweep();
+      return yield* observation.sweep();
     }),
   };
 });

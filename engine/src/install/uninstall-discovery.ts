@@ -72,6 +72,10 @@ export const makePrepareUninstallCleanup =
       }
       const found = result.success;
       if (!found) return [];
+      for (const path of found.unreadableAppliedState ?? [])
+        details.push(
+          `${providerId}: unreadable applied state at ${path}; resources without independent ownership evidence are retained.`,
+        );
       switch (found.kind) {
         case "skipped":
           details.push(
