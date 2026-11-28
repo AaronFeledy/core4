@@ -1282,7 +1282,7 @@ describe("ci workflow", () => {
     expect(providerIntegration).toContain(
       '          LANDO_PODMAN_ARGS=(--root "$LANDO_USER_DATA_ROOT/runtime/storage" --runroot "$LANDO_USER_DATA_ROOT/runtime/run" --config "$LANDO_USER_DATA_ROOT/runtime/config")',
     );
-    expect(providerIntegration).toContain("          pull_image docker.io/library/node:22-alpine");
+    expect(providerIntegration).toContain("            docker.io/library/node:22-alpine\n");
     expect(providerIntegration).not.toContain("podman system service");
     expect(providerIntegration).toContain(
       '          echo "LANDO_TEST_PODMAN_SOCKET=$LANDO_USER_DATA_ROOT/runtime/run/podman.sock" >> "$GITHUB_ENV"',
@@ -1316,19 +1316,19 @@ describe("ci workflow", () => {
     expect(providerIntegration).toContain("      - name: Pre-pull container images");
     expect(providerIntegration).toContain("          for attempt in 1 2 3; do");
     expect(providerIntegration).toContain(
-      "          # Every supported Node major is pre-pulled from the service-type table.",
+      "            # Every supported Node major is pre-pulled from the service-type table.",
     );
-    expect(providerIntegration).toContain("          pull_image docker.io/library/node:22");
-    expect(providerIntegration).toContain("          pull_image docker.io/library/node:24");
-    expect(providerIntegration).toContain("          pull_image docker.io/library/node:26");
-    expect(providerIntegration).toContain("          pull_image docker.io/library/node:22-alpine");
-    expect(providerIntegration).toContain("          pull_image docker.io/library/postgres:16");
-    expect(providerIntegration).toContain("          pull_image docker.io/library/postgres:16-alpine");
-    expect(providerIntegration).toContain("          pull_image docker.io/library/golang:1.22");
-    expect(providerIntegration).toContain("          pull_image docker.io/library/alpine:3.21");
-    expect(providerIntegration).toContain("          pull_image docker.io/axllent/mailpit:v1.30.1");
-    expect(providerIntegration).toContain("          pull_image docker.io/library/memcached:1.6");
-    expect(providerIntegration).toContain("          pull_image docker.io/valkey/valkey:8");
+    expect(providerIntegration).toContain("            docker.io/library/node:22\n");
+    expect(providerIntegration).toContain("            docker.io/library/node:24\n");
+    expect(providerIntegration).toContain("            docker.io/library/node:26\n");
+    expect(providerIntegration).toContain("            docker.io/library/node:22-alpine\n");
+    expect(providerIntegration).toContain("            docker.io/library/postgres:16\n");
+    expect(providerIntegration).toContain("            docker.io/library/postgres:16-alpine\n");
+    expect(providerIntegration).toContain("            docker.io/library/golang:1.22\n");
+    expect(providerIntegration).toContain("            docker.io/library/alpine:3.21\n");
+    expect(providerIntegration).toContain("            docker.io/axllent/mailpit:v1.30.1\n");
+    expect(providerIntegration).toContain("            docker.io/library/memcached:1.6\n");
+    expect(providerIntegration).toContain("            docker.io/valkey/valkey:8\n");
     expect(providerIntegration).toContain("          docker_pull_image docker.io/library/node:22-alpine");
 
     expect(providerIntegration).toContain("      - name: Teardown Lando runtime");

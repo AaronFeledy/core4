@@ -1,11 +1,6 @@
 import { resolve } from "node:path";
-import {
-  ELASTICSEARCH_DEFAULT_IMAGE,
-  NGINX_DEFAULT_IMAGE,
-} from "@lando/service-lando/services/default-images";
-import nodeReleases from "../plugins/service-lando/node/releases.json" with { type: "json" };
 import { setupBunSteps } from "./_bun-workflow.ts";
-import { podmanImagePullCommands, servicesImagePullCommands } from "./_ci-podman-images.ts";
+import { podmanImagePullCommands, podmanPullFunctionCommands } from "./_ci-podman-images.ts";
 import { applyCiSelection, ciResultSteps } from "./_ci-selection-workflow.ts";
 import { formatGeneratedPaths } from "./_codegen-output.ts";
 import {
@@ -426,24 +421,9 @@ const pinnedHelperImageRef = (name: "sqliteHelper" | "dataHelper"): string => {
 };
 const sqliteHelperImageRef = pinnedHelperImageRef("sqliteHelper");
 const dataHelperImageRef = pinnedHelperImageRef("dataHelper");
-// Pre-pull every supported Node major from the committed release pin so an LTS move needs no CI edit.
-// Reading the pin, not the plugin, keeps every workflow generator free of generated-module ordering.
-const nodeImagePullLines = nodeReleases.releases
-  .map((entry) => `          pull_image docker.io/library/node:${entry.major}`)
-  .join("\n");
-
 const landoRuntimeBundleSetupSteps = (mode: "provider-matrix" | "standard" | "nightly-guides"): string => {
   const engineFlags = (flags: string): string =>
     mode === "provider-matrix" ? ` \${{ matrix.suite == 'engine' && '${flags}' || '' }}` : "";
-  const nightlyDatabaseImages =
-    mode === "nightly-guides"
-      ? `
-          # Version-change guides that do not run in the PR smoke lane.
-          pull_image docker.io/library/mysql:8.4
-          pull_image docker.io/library/postgres:17
-          pull_image docker.io/library/mongo:8.0
-          pull_image docker.io/library/mongo:8.3`
-      : "";
   return `      - name: Download current-commit Linux x64 runtime bundle
         uses: ${pinnedAction("actions/download-artifact")}
         with:
@@ -511,7 +491,7 @@ const landoRuntimeBundleSetupSteps = (mode: "provider-matrix" | "standard" | "ni
 ${landoManagedPodmanRuntimeDirCommands}
           LANDO_PODMAN="$LANDO_USER_DATA_ROOT/runtime/bin/podman"
           LANDO_PODMAN_ARGS=(--root "$LANDO_USER_DATA_ROOT/runtime/storage" --runroot "$LANDO_USER_DATA_ROOT/runtime/run" --config "$LANDO_USER_DATA_ROOT/runtime/config")
-${podmanImagePullCommands(mode === "provider-matrix")}
+${podmanPullFunctionCommands(mode === "provider-matrix")}
           docker_pull_image() {
             local image="$1"
             for attempt in 1 2 3; do
@@ -519,34 +499,8 @@ ${podmanImagePullCommands(mode === "provider-matrix")}
               if test "$attempt" -eq 3; then return 1; fi
               sleep $((attempt * 5))
             done
-          }${mode === "provider-matrix" ? servicesImagePullCommands : ""}
-          pull_image docker.io/library/alpine:3.21
-          # Every supported Node major is pre-pulled from the service-type table.
-${nodeImagePullLines}
-          pull_image docker.io/library/node:22-alpine
-          pull_image docker.io/library/adminer:6
-          pull_image quay.io/keycloak/keycloak:26.8
-          pull_image docker.io/library/postgres:16
-          pull_image docker.io/library/postgres:16-alpine
-          pull_image docker.io/library/postgres:18
-          pull_image docker.io/library/httpd:2.4-alpine
-          pull_image docker.io/library/redis:7
-          pull_image docker.io/library/busybox:1.37
-          pull_image docker.io/library/golang:1.22
-          pull_image ${ELASTICSEARCH_DEFAULT_IMAGE}
-          pull_image docker.io/getmeili/meilisearch:v1.11
-          pull_image docker.io/axllent/mailpit:v1.30.1
-          pull_image docker.io/library/mariadb:10.11
-          pull_image docker.io/library/mariadb:11.4
-          pull_image docker.io/library/mariadb:11.8
-          pull_image docker.io/library/memcached:1.6
-          pull_image docker.io/library/mongo:7
-          pull_image docker.io/library/mysql:8.0
-          pull_image docker.io/library/${NGINX_DEFAULT_IMAGE}
-          pull_image docker.io/opensearchproject/opensearch:2
-          pull_image docker.io/library/solr:9
-          pull_image docker.io/library/traefik:v3.3
-          pull_image docker.io/valkey/valkey:8${nightlyDatabaseImages}
+          }
+${podmanImagePullCommands(mode)}
           docker_pull_image docker.io/library/node:22-alpine
           docker_pull_image docker.io/library/node:22
           docker_pull_image docker.io/library/alpine:3.20
