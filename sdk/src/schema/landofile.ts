@@ -1153,6 +1153,9 @@ export type ToolingDefaultsShape = typeof ToolingDefaultsShape.Type;
  * - `desc:` / `description:` / `summary:` — short help text. `desc` is
  *   accepted as an alias for `description` by script-backed tooling.
  * - `flags:` / `args:` / `disabled:` — shared tooling input declarations and visibility.
+ * - `env:` — literal environment values for the script process, plus public
+ *   route facts such as `{{ services.web.url }}` that Lando resolves when the
+ *   script runs. Names cannot be `LANDO` or start with `LANDO_`.
  *
  * Unsupported fields (`aliases`, `topLevelAlias`, `bootstrap`,
  * `passThrough`, `sources`, `generates`, `status`,
@@ -1170,6 +1173,10 @@ export const BunShellScriptFrontMatter = Schema.Struct({
   description: Schema.optionalKey(Schema.String),
   summary: Schema.optionalKey(Schema.String),
   ...ToolingAuthoredInputFields,
+  env: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)).annotateKey({
+    description:
+      "Environment values for the script process: literal text, or a public service route fact such as {{ services.web.url }} that Lando resolves when the script runs.",
+  }),
   disabled: Schema.optionalKey(Schema.Boolean),
 });
 export type BunShellScriptFrontMatter = typeof BunShellScriptFrontMatter.Type;

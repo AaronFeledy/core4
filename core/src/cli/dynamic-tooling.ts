@@ -159,6 +159,9 @@ const runDynamicBunShellTooling = async (
       : context.io.stdin === undefined
         ? "none"
         : "piped";
+  // A script that reads a route fact needs the applied plan and router, so only it boots the app
+  // tier; every other script keeps the provider-free minimal path.
+  const readsRouteFacts = route.availability._tag === "Ready" && route.availability.readsRouteFacts === true;
   return runWithProcessAbortSignal(
     (signal) => {
       const effect = withKeyboardHandoff(
@@ -191,12 +194,9 @@ const runDynamicBunShellTooling = async (
       );
       return runCompiledCommand(
         effect,
-        makeLandoRuntime(
-          cliRuntimeOptions({
-            bootstrap: "minimal",
-            plugins: { policy: "discovery" },
-          }),
-        ),
+        readsRouteFacts
+          ? makeLandoRuntime(cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" } }))
+          : makeLandoRuntime(cliRuntimeOptions({ bootstrap: "minimal", plugins: { policy: "discovery" } })),
         renderRunToolingResult,
         {
           ...dynamicToolingOptions,

@@ -268,6 +268,7 @@ const runTask = Effect.fnUntraced(function* (
       {
         name: leaf.task,
         cwd: String(options.plan.root),
+        plan: options.plan,
         ...(options.signal === undefined ? {} : { signal: options.signal }),
       },
       String(options.plan.root),

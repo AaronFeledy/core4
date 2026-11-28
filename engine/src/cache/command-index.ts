@@ -7,14 +7,19 @@ import {
 import type { VersionConstraintEntry } from "@lando/landofile/version-constraint";
 import type { ToolingDiagnostic } from "@lando/sdk/command-result";
 import { sha256Hex } from "@lando/sdk/digest";
-import type { LandofileShape, ToolingInputDeclaration, ToolingRunSummary } from "@lando/sdk/schema";
+import type {
+  LandofileShape,
+  ToolingInputDeclaration,
+  ToolingRunSummary,
+  ValidationIssue,
+} from "@lando/sdk/schema";
 import { canonicalCacheJson } from "./canonical.ts";
 import { isAppCommandIndexPayload } from "./command-index-validation.ts";
 import type { CommandScriptFingerprint } from "./command-script-freshness.ts";
 
 import type { ProjectFileFingerprint } from "./project-file-fingerprint.ts";
 
-export const COMMAND_INDEX_SCHEMA_VERSION = 15n;
+export const COMMAND_INDEX_SCHEMA_VERSION = 16n;
 
 export const APP_COMMAND_MAGIC = new Uint8Array([0x4c, 0x43, 0x41, 0x43]);
 
@@ -35,6 +40,8 @@ export interface ReadyCommandIndexEntry extends CommandIdentity {
   readonly input: ToolingInputDeclaration;
   readonly wrapper?: true;
   readonly runs?: ToolingRunSummary;
+  /** A script whose front-matter `env` reads a public route fact, so its run needs the app tier. */
+  readonly readsRouteFacts?: true;
 }
 
 export interface DisabledCommandIndexEntry extends CommandIdentity {
@@ -43,6 +50,7 @@ export interface DisabledCommandIndexEntry extends CommandIdentity {
   readonly service?: never;
   readonly wrapper?: never;
   readonly runs?: never;
+  readonly readsRouteFacts?: never;
   readonly diagnostic?: never;
   readonly source: { readonly path: string; readonly task: string };
 }
@@ -53,6 +61,10 @@ export type CommandLoadError =
       readonly _tag: string;
       readonly message: string;
       readonly remediation?: string;
+      /** Located script findings, when the content failure has them. */
+      readonly issues?: readonly ValidationIssue[];
+      readonly omittedIssueCount?: number;
+      readonly source?: { readonly path: string; readonly task: string };
     };
 
 export interface UnavailableCommandIndexEntry extends CommandIdentity {
@@ -61,6 +73,7 @@ export interface UnavailableCommandIndexEntry extends CommandIdentity {
   readonly service?: never;
   readonly wrapper?: never;
   readonly runs?: never;
+  readonly readsRouteFacts?: never;
   readonly diagnostic: CommandLoadError;
 }
 

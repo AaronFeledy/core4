@@ -11,6 +11,7 @@ export const FRONT_MATTER_REMEDIATION = `Wrap the front-matter in \`# ---\` mark
 export interface BunShellFrontMatterProblem {
   readonly file: string;
   readonly path: readonly (string | number)[];
+  readonly reason?: string;
   readonly message: string;
   readonly line?: number;
   readonly column?: number;
@@ -70,15 +71,19 @@ export const inspectBunShellScriptFrontMatter = Effect.fnUntraced(function* (
   content: string,
 ): Effect.fn.Return<{
   readonly frontMatter?: BunShellScriptFrontMatter;
+  /** The parsed block, when YAML parsing succeeded, for aggregating independent findings. */
+  readonly document?: unknown;
   readonly problems: readonly BunShellFrontMatterProblem[];
 }> {
   const region = findRegion(content.split(/\r?\n/));
   const problem = (
     error: BunShellScriptFrontMatterError | NotImplementedError,
     path: readonly (string | number)[] = [],
+    reason?: string,
   ): BunShellFrontMatterProblem => ({
     file: scriptPath,
     path,
+    ...(reason === undefined ? {} : { reason }),
     message: error.message,
     suggestion: error.remediation,
     error,
@@ -92,7 +97,9 @@ export const inspectBunShellScriptFrontMatter = Effect.fnUntraced(function* (
       path: scriptPath,
       remediation: FRONT_MATTER_REMEDIATION,
     });
-    return { problems: [problem(error)] };
+    return {
+      problems: [problem(error, [], region === "missing" ? "missing-front-matter" : "invalid-front-matter")],
+    };
   }
 
   // Blank padding keeps YAML error lines in physical script coordinates.
@@ -130,7 +137,7 @@ export const inspectBunShellScriptFrontMatter = Effect.fnUntraced(function* (
     return {
       problems: [
         {
-          ...problem(error),
+          ...problem(error, [], "invalid-yaml"),
           ...(cause instanceof LandofileParseError && cause.line !== undefined ? { line: cause.line } : {}),
           ...(cause instanceof LandofileParseError && cause.column !== undefined
             ? { column: cause.column }
@@ -149,7 +156,7 @@ export const inspectBunShellScriptFrontMatter = Effect.fnUntraced(function* (
         remediation: "Remove the field from the .bun.sh front-matter; this surface is not supported.",
       });
       problems.push({
-        ...problem(error, [unsupported]),
+        ...problem(error, [unsupported], "unsupported-key"),
         ...bunShellFrontMatterCoordinates(content, [unsupported]),
       });
     }
@@ -163,7 +170,13 @@ export const inspectBunShellScriptFrontMatter = Effect.fnUntraced(function* (
         new BunShellScriptFrontMatterError({
           message: `.bun.sh front-matter at ${scriptPath} is malformed.`,
           path: scriptPath,
-          issues: validationIssuesFromCause(cause, { fallback: "Invalid .bun.sh front-matter." }),
+          issues: validationIssuesFromCause(cause, { fallback: "Invalid .bun.sh front-matter." }).map(
+            (issue) => ({
+              ...issue,
+              reason: "invalid-front-matter",
+              source: { layer: "script" as const, file: scriptPath, path: issue.path },
+            }),
+          ),
           remediation: FRONT_MATTER_REMEDIATION,
         }),
     ),
@@ -173,14 +186,18 @@ export const inspectBunShellScriptFrontMatter = Effect.fnUntraced(function* (
     for (const issue of decoded.failure.issues ?? []) {
       if (typeof issue.path[0] === "string" && UNSUPPORTED_KEYS.has(issue.path[0])) continue;
       problems.push({
-        ...problem(decoded.failure, issue.path),
+        ...problem(decoded.failure, issue.path, issue.reason ?? "invalid-front-matter"),
         message: issue.message,
         suggestion: issue.suggestion ?? decoded.failure.remediation,
         ...bunShellFrontMatterCoordinates(content, issue.path),
       });
     }
   }
-  return { ...(decoded._tag === "Success" ? { frontMatter: decoded.success } : {}), problems };
+  return {
+    document: parsed,
+    ...(decoded._tag === "Success" ? { frontMatter: decoded.success } : {}),
+    problems,
+  };
 });
 
 export const parseBunShellScriptFrontMatter = Effect.fnUntraced(function* (

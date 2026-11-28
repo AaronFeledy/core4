@@ -337,8 +337,11 @@ These fields accept the expression:
 | `toolingDefaults` | `env` values and literal `vars` |
 | Landofile `events` steps | `cmd`, `defer`, `env` values, and `if` |
 | `hostEvents` steps in `config.yml` | `cmd` |
+| `.lando/scripts/*.bun.sh` front matter | `env` values |
 
-Write the service name literally for a public route fact. The `{{ service.url }}`, `{{ service.hostname }}`, `{{ service.origin }}`, `{{ service.publicPort }}`, and `{{ service.scheme }}` shorthands only work in a service's `environment`. Tooling and events also reject `services[vars.name].url`, a computed fact name, and a read of a whole `services.web` entry. In Landofile tooling and project events, a computed service name can select a named non-route fact, such as `{{ services[vars.name].port }}` for the selected service's container port.
+A script declares the facts it needs in its front-matter `env` map and reads them as ordinary environment values. See [Smoke test the running site](../tooling/bun-shell-scripts.mdx#smoke-test-the-running-site).
+
+Write the service name literally for a public route fact. The `{{ service.url }}`, `{{ service.hostname }}`, `{{ service.origin }}`, `{{ service.publicPort }}`, and `{{ service.scheme }}` shorthands only work in a service's `environment`. Tooling, events, and script `env` values also reject `services[vars.name].url`, a computed fact name, and a read of a whole `services.web` entry. A script `env` value admits nothing else: other scopes such as `{{ env.HOME }}`, `${NAME}` shell parameters, and `LANDO` or `LANDO_*` keys refuse when the script is read. In Landofile tooling and project events, a computed service name can select a named non-route fact, such as `{{ services[vars.name].port }}` for the selected service's container port.
 
 The fields that decide where a command runs (`service`, `user`, and `dir`) can't read a route fact directly or through a var's default. If the caller supplies that var, Lando uses the supplied value without checking its default for placement. `lando app:config:lint` still checks the authored default. `for` selectors, event `task` and `command` IDs, inputs passed to a Lando command, and include conditions can't read a route fact either.
 

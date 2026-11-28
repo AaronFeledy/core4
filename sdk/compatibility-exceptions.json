@@ -1234,5 +1234,16 @@
       }
     ],
     "justification": "RouteUrlPart.member gains publicPort and scheme so {{ services.<name>.publicPort }} and {{ services.<name>.scheme }} lower from the same route and authority as the URL. Every previously accepted value remains accepted. Applied-state v15 records the members; v14 records decode unchanged and need no rewrite."
+  },
+  {
+    "fingerprint": "sha256:773a2ca5e9b768b6ef16ca51f33eba477ffdf66acb8a49e874649289a98ff054",
+    "changeKind": "union-widened",
+    "locations": [
+      {
+        "surface": "command:cli:help",
+        "path": "$.anyOf"
+      }
+    ],
+    "justification": "Unreleased. A Bun Shell script's cached load diagnostic now carries located, bounded, redacted front-matter issues so CLI help and MCP can name the key to fix; the help descriptor's tooling loadError union gains that arm. Existing arms are unchanged."
   }
 ]

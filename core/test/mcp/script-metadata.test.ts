@@ -13,6 +13,7 @@ import { LandofileService } from "@lando/sdk/services";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Context, Effect, Layer } from "effect";
 import { mcpRegistryWithToolingEntries } from "../../src/cli/commands/meta/mcp.ts";
+import { toolingCatalogFromCache } from "../../src/cli/commands/meta/mcp-tooling-catalog.ts";
 import * as BunShellRunner from "../_support/shell-runner.ts";
 import { withCwd } from "../_support/temp-cwd.ts";
 import { environmentResolverLayer, literalLandofile } from "../_support/value-contracts.ts";
@@ -116,6 +117,70 @@ test.each([false, true])("exposes named script inputs only with tooling=%s", asy
           args: { properties: { target: { type: "string" } }, required: ["target"] },
         },
       });
+  });
+});
+
+test("projects located script findings into MCP diagnostics", async () => {
+  await withScript(async (root) => {
+    // Given a script whose env value reads another scope
+    await writeFile(
+      join(root, ".lando/scripts/broken.bun.sh"),
+      '# ---\n# env:\n#   SITE: "{{ env.HOME }}"\n# ---\necho x\n',
+    );
+    // When
+    const entries = compileInspectedAppCommands({
+      sourcePath: root,
+      landofile: {},
+      inspection: await Effect.runPromise(inspectBunShellScripts({ appRoot: root })),
+      redact: createRedactor("secrets").redactString,
+    });
+    const catalog = toolingCatalogFromCache("revision", entries);
+    // Then the diagnostic names the file, the key, and the reason
+    expect(catalog.unavailable).toMatchObject([
+      {
+        commandId: "app:broken",
+        sourceKind: "bun-script",
+        issues: [
+          {
+            reason: "other-scope",
+            path: ["env", "SITE"],
+            source: {
+              layer: "script",
+              file: join(root, ".lando/scripts/broken.bun.sh"),
+              path: ["env", "SITE"],
+            },
+          },
+        ],
+      },
+    ]);
+  });
+});
+
+test("merges every finding for one script into its MCP diagnostic", async () => {
+  await withScript(async (root) => {
+    // Given an unsupported key beside a refused env value
+    await writeFile(
+      join(root, ".lando/scripts/broken.bun.sh"),
+      '# ---\n# engine: custom\n# env:\n#   SITE: "{{ env.HOME }}"\n# ---\necho x\n',
+    );
+    // When
+    const entries = compileInspectedAppCommands({
+      sourcePath: root,
+      landofile: {},
+      inspection: await Effect.runPromise(inspectBunShellScripts({ appRoot: root })),
+      redact: createRedactor("secrets").redactString,
+    });
+    const catalog = toolingCatalogFromCache("revision", entries);
+    // Then both located findings are visible to the agent
+    expect(catalog.unavailable).toMatchObject([
+      {
+        commandId: "app:broken",
+        issues: [
+          { reason: "unsupported-key", path: ["engine"] },
+          { reason: "other-scope", path: ["env", "SITE"] },
+        ],
+      },
+    ]);
   });
 });
 

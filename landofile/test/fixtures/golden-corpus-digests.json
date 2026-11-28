@@ -80,8 +80,12 @@
       "digest": "fab07a0f379902450c5926603a2858069d4c12018e4208646164bdadf8d2a4f4"
     },
     {
+      "fixture": "docs/guides/bun-shell-scripts/fixtures/route-fact-refusal",
+      "digest": "d804f3e0d274ef162a60026418694990776064042f2ae5ad4168170300b8e4b2"
+    },
+    {
       "fixture": "docs/guides/bun-shell-scripts/fixtures/scripts-demo",
-      "digest": "11fe427cdb5fbba8502a2c3688914f5a5b473613ffba114d1a1563481c392884"
+      "digest": "5d9430ae3101cc9c235fb83376a77bd7f6ba7ad82fa6ffdcf4348a56215a0cce"
     },
     {
       "fixture": "docs/guides/bun-shell-scripts/fixtures/service-front-matter",

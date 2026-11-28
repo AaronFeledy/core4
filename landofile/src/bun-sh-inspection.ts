@@ -5,7 +5,9 @@ import {
   NotImplementedError,
   causeMessage,
 } from "@lando/sdk/errors";
-import { Effect, Result } from "effect";
+import { isPlainRecord } from "@lando/sdk/landofile";
+import { BunShellScriptFrontMatter } from "@lando/sdk/schema";
+import { Effect, Result, Schema } from "effect";
 import type {
   BunShellScriptDiscoveryError,
   BunShellScriptProblem,
@@ -14,6 +16,51 @@ import type {
 import { bunShellFrontMatterCoordinates, inspectBunShellScriptFrontMatter } from "./bun-sh-frontmatter.ts";
 import { canonicalIdFromRelativePath } from "./bun-sh-identity.ts";
 import { normalizeBunShellScript } from "./bun-sh-metadata.ts";
+
+/** Drop each invalid top-level key so the remaining fields can be normalized together. */
+const semanticProblems = (input: {
+  readonly document: unknown;
+  readonly scriptPath: string;
+  readonly relativePath: string;
+  readonly content: string;
+  readonly covered: readonly BunShellScriptProblem[];
+}): readonly BunShellScriptProblem[] => {
+  if (!isPlainRecord(input.document)) return [];
+  const coveredKeys = new Set(
+    input.covered.flatMap((problem) => (typeof problem.path[0] === "string" ? [problem.path[0]] : [])),
+  );
+  const candidate = Object.fromEntries(
+    Object.entries(input.document).filter(([key]) => !coveredKeys.has(key)),
+  );
+  const decoded = Schema.decodeUnknownResult(BunShellScriptFrontMatter)(candidate, {
+    onExcessProperty: "error",
+  });
+  if (Result.isFailure(decoded)) return [];
+  const canonical = canonicalIdFromRelativePath(input.relativePath);
+  if (canonical === null) return [];
+  const frontMatter = decoded.success;
+  const script: DiscoveredBunShellScript = {
+    id: canonical.id,
+    name: canonical.name,
+    path: input.scriptPath,
+    relativePath: input.relativePath,
+    service: frontMatter.service ?? ":host",
+    summary: frontMatter.description ?? frontMatter.desc ?? frontMatter.summary ?? "",
+    frontMatter,
+  };
+  const normalized = normalizeBunShellScript(script);
+  if (Result.isSuccess(normalized)) return [];
+  const error = normalized.failure;
+  return (error.issues ?? []).map((issue) => ({
+    file: input.scriptPath,
+    path: issue.path,
+    ...(issue.reason === undefined ? {} : { reason: issue.reason }),
+    message: issue.message,
+    suggestion: issue.suggestion ?? error.remediation,
+    error,
+    ...bunShellFrontMatterCoordinates(input.content, issue.path),
+  }));
+};
 
 export const inspectScriptContent = Effect.fnUntraced(function* (
   scriptPath: string,
@@ -44,7 +91,19 @@ export const inspectScriptContent = Effect.fnUntraced(function* (
     };
   const inspected = yield* inspectBunShellScriptFrontMatter(scriptPath, content);
   const { frontMatter } = inspected;
-  if (frontMatter === undefined || inspected.problems.length > 0) return { problems: inspected.problems };
+  if (frontMatter === undefined || inspected.problems.length > 0)
+    return {
+      problems: [
+        ...inspected.problems,
+        ...semanticProblems({
+          document: inspected.document,
+          scriptPath,
+          relativePath,
+          content,
+          covered: inspected.problems,
+        }),
+      ],
+    };
   const canonical = canonicalIdFromRelativePath(relativePath);
   if (canonical === null)
     return {

@@ -8,13 +8,14 @@ import {
   ToolingCompileError,
   ToolingExecError,
 } from "@lando/sdk/errors";
-import type { Environment, ToolingInputRevision, ToolingInvocationInput } from "@lando/sdk/schema";
+import type { AppPlan, Environment, ToolingInputRevision, ToolingInvocationInput } from "@lando/sdk/schema";
 import { EnvironmentValueResolver, EventService, ShellRunner } from "@lando/sdk/services";
 import { Effect, Option } from "effect";
 import { HostExecutionDefaults } from "../services/host-execution-context.ts";
 import { validateHostShellScript } from "../services/host-shell-validation.ts";
 import { resolveScriptPath, runHostScript } from "../services/host-tooling-engine.ts";
 import { recoverToolingShellResult } from "../services/tooling-shell-result.ts";
+import { resolveBunShellScriptEnv } from "./bun-script-env.ts";
 import { EventInvocationSignal } from "./event-invocation.ts";
 import { commandAliasConflictError, reservedTopLevelAliasOwner } from "./reserved-aliases.ts";
 import {
@@ -43,7 +44,22 @@ interface BunShellScriptOptions {
   readonly env?: Environment;
   readonly hostIo?: "stdin" | "terminal";
   readonly signal?: AbortSignal;
+  /** The caller's plan, so route-fact env values resolve without planning the app again. */
+  readonly plan?: AppPlan;
 }
+
+const withRouteEnv = Effect.fnUntraced(function* (
+  prepared: PreparedBunShellScript,
+  appRoot: string,
+  plan: AppPlan | undefined,
+) {
+  const routeEnv = yield* resolveBunShellScriptEnv({
+    task: prepared.metadata,
+    appRoot,
+    plan,
+  });
+  return { ...prepared, routeEnv } satisfies PreparedBunShellScript;
+});
 
 /** Admits the script's inputs and rejects syntax Bun Shell cannot run, before any progress or side effect. */
 const prepareHostScript = Effect.fnUntraced(function* (
@@ -67,11 +83,10 @@ const executePreparedBunShellScript = Effect.fnUntraced(function* (
   const cwd = options.cwd ?? appRoot;
   const session = yield* (yield* EnvironmentValueResolver).openSession();
   const resolved = options.env === undefined ? {} : yield* session.resolveEnvironment(options.env);
-  const env = bunShellScriptEnvironment(
-    prepared,
-    (yield* HostExecutionDefaults)?.env ?? process.env,
-    resolved,
-  );
+  const env = bunShellScriptEnvironment(prepared, (yield* HostExecutionDefaults)?.env ?? process.env, {
+    ...(prepared.routeEnv ?? {}),
+    ...resolved,
+  });
   const shell = yield* Effect.serviceOption(ShellRunner);
   if (Option.isNone(shell))
     return yield* Effect.fail(
@@ -117,7 +132,8 @@ export const runBunShellScript = Effect.fnUntraced(function* (
   appRoot: string,
   options: BunShellScriptOptions,
 ) {
-  const prepared = yield* prepareHostScript(script, appRoot, options);
+  const scriptInputs = yield* prepareHostScript(script, appRoot, options);
+  const prepared = yield* withRouteEnv(scriptInputs, appRoot, options.plan);
   return yield* withBunShellScriptInputs(prepared, executePreparedBunShellScript(prepared, appRoot, options));
 });
 
@@ -131,6 +147,7 @@ export const runBunShellTooling = Effect.fn("AppOperation.bunShellTooling")(func
     readonly hostIo?: "stdin" | "terminal";
     readonly signal?: AbortSignal;
     readonly relativePath?: string;
+    readonly plan?: AppPlan;
   },
   appRoot: string,
 ) {
@@ -145,7 +162,8 @@ export const runBunShellTooling = Effect.fn("AppOperation.bunShellTooling")(func
     );
   }
 
-  const prepared = yield* prepareHostScript(script, appRoot, options);
+  const scriptInputs = yield* prepareHostScript(script, appRoot, options);
+  const prepared = yield* withRouteEnv(scriptInputs, appRoot, options.plan);
   return yield* withBunShellScriptInputs(
     prepared,
     Effect.gen(function* () {

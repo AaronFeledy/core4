@@ -7,7 +7,6 @@ import { ToolingCommandUnavailableError } from "@lando/sdk/errors";
 import { Effect } from "effect";
 import { CliInvocation } from "../../../runtime/invocation-context";
 import { toolingCacheRecovery } from "../../tooling-cache-status";
-import { isToolingDiagnostic } from "../../tooling-unavailable";
 import { toolingSpecFromRegistered } from "./mcp-tooling";
 
 export const toolingCatalogFromCache = (
@@ -20,25 +19,25 @@ export const toolingCatalogFromCache = (
     switch (command._tag) {
       case "Disabled":
         return [];
-      case "Unavailable":
+      case "Unavailable": {
+        const diagnostic = command.diagnostic;
         unavailable.push({
           commandId: command.id,
           kind: "tooling",
           sourceKind: command.sourceKind === "tooling" ? "landofile" : "bun-script",
-          _tag: command.diagnostic._tag,
-          message: command.diagnostic.message,
-          ...(command.diagnostic.remediation === undefined
+          _tag: diagnostic._tag,
+          message: diagnostic.message,
+          ...(diagnostic.remediation === undefined ? {} : { remediation: diagnostic.remediation }),
+          ...(diagnostic.issues === undefined
             ? {}
-            : { remediation: command.diagnostic.remediation }),
-          ...(isToolingDiagnostic(command.diagnostic)
-            ? {
-                issues: command.diagnostic.issues,
-                omittedIssueCount: command.diagnostic.omittedIssueCount,
-                ...(command.diagnostic.source === undefined ? {} : { source: command.diagnostic.source }),
-              }
-            : {}),
+            : {
+                issues: diagnostic.issues,
+                omittedIssueCount: diagnostic.omittedIssueCount ?? 0,
+              }),
+          ...(diagnostic.source === undefined ? {} : { source: diagnostic.source }),
         });
         return [];
+      }
       case "Ready":
         return [{ spec: toolingSpecFromRegistered({ ...command, hidden: false }), kind: "tooling" as const }];
       default:

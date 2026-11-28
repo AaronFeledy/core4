@@ -81,6 +81,20 @@ test.each([
   ]);
 });
 
+test("carries the stable reason for a semantic env refusal", async () => {
+  const { root, result } = await lint({
+    "bad.bun.sh": '# ---\n# env:\n#   SITE: "{{ env.HOME }}"\n# ---\necho hi',
+  });
+  expect(result.violations).toEqual([
+    expect.objectContaining({
+      rule: "script.front-matter",
+      reason: "other-scope",
+      path: ["env", "SITE"],
+      source: { layer: "script", file: join(root, ".lando/scripts", "bad.bun.sh"), path: ["env", "SITE"] },
+    }),
+  ]);
+});
+
 test("reports YAML errors in physical script coordinates", async () => {
   const { result } = await lint({
     "bad.bun.sh": "#!/usr/bin/env bun\n\n# ---\n# desc: valid\n# flags: {invalid: true}\n# ---\necho hi",

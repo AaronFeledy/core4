@@ -41,6 +41,7 @@ Every script opens with a front-matter block. It sits on the first lines of the 
 | `flags` | Named options with aliases, defaults, choices, required values, and boolean switches |
 | `args` | Named positional arguments with ordering, defaults, choices, and required values |
 | `arguments` | Set `false` to reject positional arguments; do not combine it with declared `args` |
+| `env` | Environment values for the script process: literal text, or a public service route fact such as `{{ services.web.url }}` |
 | `disabled` | `true` hides the command and refuses execution; omitted or `false` keeps it enabled |
 
 Use indented YAML mappings for `flags` and `args`, as in the next example. Front matter uses the same restricted YAML parser as a Landofile, not a separate shell-comment syntax. Quote strings containing YAML punctuation; inside a single-quoted value, double an apostrophe, as in `# desc: 'Print the team''s greeting'`.
@@ -53,7 +54,7 @@ Here is an app with a healthy `build.bun.sh` and a `bad.bun.sh` that has no fron
 
 ```console
 $ lando app:cache:refresh
-⚠ .bun.sh script at /tmp/myapp/.lando/scripts/bad.bun.sh is missing the front-matter block. Run lando app:config:lint to see every finding. Wrap the front-matter in `# ---` markers, prefix every line with `# `, and use only service, desc, description, summary, flags, args, arguments, disabled.
+⚠ .bun.sh script at /tmp/myapp/.lando/scripts/bad.bun.sh is missing the front-matter block. Run lando app:config:lint to see every finding. Wrap the front-matter in `# ---` markers, prefix every line with `# `, and use only service, desc, description, summary, flags, args, arguments, env, disabled.
 refreshed: myapp (2 commands)
 ```
 
@@ -81,7 +82,7 @@ Calling the broken script fails with its own error and exits 1. The report start
 ```console
 $ lando bad
 .bun.sh script at /tmp/myapp/.lando/scripts/bad.bun.sh is missing the front-matter block.
-  ↳ Wrap the front-matter in `# ---` markers, prefix every line with `# `, and use only service, desc, description, summary, flags, args, arguments, disabled.
+  ↳ Wrap the front-matter in `# ---` markers, prefix every line with `# `, and use only service, desc, description, summary, flags, args, arguments, env, disabled.
 code: BunShellScriptFrontMatterError
 ```
 
@@ -429,29 +430,32 @@ Lando resolves the working directory before starting a command, so relative path
 
 ## Smoke test the running site
 
-A host command can fetch the app through its public URL. A script can't read Landofile expressions, so declare this one as a host task in `.lando.yml`, where `{{ services.web.url }}` is the address the router publishes for `web`:
+A script can fetch the app through its public URL. Declare the address in the front-matter `env` map, where `{{ services.web.url }}` is the address the router publishes for `web`. Save this as `.lando/scripts/smoke.bun.sh`:
 
-```yaml
-tooling:
-  smoke:
-    description: Fetch a path from the running site and fail loudly
-    service: ":host"
-    args:
-      path:
-        order: 0
-        required: true
-        description: Path to fetch, such as version.txt
-    cmd: [curl, -sf, "{{ services.web.url }}/{{ args.path }}"]
+```sh
+# ---
+# description: Fetch a path from the running site and fail loudly
+# env:
+#   SITE_URL: "{{ services.web.url }}"
+# args:
+#   path:
+#     order: 0
+#     required: true
+#     description: Path to fetch, such as version.txt
+# ---
+curl -sf "$SITE_URL/$LANDO_ARG_PATH"
 ```
 
-Start the app, then run the task:
+Start the app, then run the script:
 
 ```sh
 lando start
 lando smoke version.txt
 ```
 
-Lando fills in the URL each time the task runs, including a port such as `:8443` when 443 was taken. Before the first `lando start` there's no address to read, so the task fails without running `curl`. [Use the URL in tooling and events](../landofile/expressions.mdx#use-the-url-in-tooling-and-events) covers where the expression works. To keep the logic in a script, pass the URL as an argument from a task like this one, for example `cmd: [bash, ./scripts/smoke.sh, "{{ services.web.url }}"]`.
+Lando fills in `SITE_URL` each time the script runs, including a port such as `:8443` when 443 was taken. Before the first `lando start` there's no address to read, so the script fails without running `curl`. The other facts work the same way: `{{ services.web.hostname }}`, `{{ services.web.origin }}`, `{{ services.web.publicPort }}`, and `{{ services.web.scheme }}`. [Use the URL in tooling and events](../landofile/expressions.mdx#use-the-url-in-tooling-and-events) covers each one, and when a fact is available.
+
+An `env` value takes literal text and those route facts, nothing else, and Lando passes it as data rather than expanding it again. A computed service name, another scope such as `{{ env.HOME }}`, a `${NAME}` shell parameter, or a `LANDO` or `LANDO_*` key refuses with `BunShellScriptFrontMatterError`, and `lando app:config:lint` reports it before you run the script. `LANDO` and `LANDO_*` are reserved whatever their case. Quote values that YAML would otherwise read as numbers or booleans, such as `'443'` or `'false'`. A refused expression suggests doubling the opening braces to `{{{{`; quoting a value does not turn off interpolation. Lint reports every independent front-matter finding in one pass, and each carries a stable `reason` such as `other-scope` or `non-route-fact`. A script that reads no route fact never reads applied state or the router. A route fact does not register a redaction value; normal redaction still applies to the child environment.
 
 That prints the stamped SHA. Ask for a path that does not exist and `curl -f` exits `22`, so `lando smoke` exits `22` too. You can use that exit code in a git hook.
 
@@ -587,7 +591,29 @@ lando stamp abc1234
     </Step>
   </Scenario>
 
-  <Scenario id="smoke-published-url" layer="e2e" timeout={300000} render={false} reason="Run the host smoke task against the URL the router publishes">
+  <Scenario id="script-route-facts" render={false} reason="A script reads declared route facts from applied state and refuses before start">
+    <Step name="scaffold-route-facts"><UseFixture name="scripts-demo" /></Step>
+    <Step name="lint-route-facts">
+      <Verify command="lando app:config:lint --format=json --jq '.result.valid'" expect={{ stdout: "true\n" }} />
+      <Verify command={`lando app:config:lint --format=json --jq '[.result.violations[] | select(.rule | startswith("script."))] | length'`} expect={{ stdout: "0\n" }} />
+    </Step>
+    <Step name="refuse-unstarted-route-facts">
+      <Verify command="lando smoke version.txt --format=json" expectExit={1} expect={{ stdout: { regex: "\"reason\":\\s*\"app-not-started\"[\\s\\S]*\"path\":\\s*\\[\\s*\"env\",\\s*\"SITE_URL\"\\s*\\]" } }} />
+    </Step>
+    <Step name="cleanup-route-facts"><Cleanup /></Step>
+  </Scenario>
+
+  <Scenario id="route-fact-refusal" render={false} reason="Lint reports script env values that are not literal text or a literal route fact">
+    <Step name="lint-route-fact-refusal">
+      <UseFixture name="route-fact-refusal" />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"valid\":\\s*false" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"env\",\\s*\"SITE_URL\"\\s*\\]" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"env\",\\s*\"LANDO_URL\"\\s*\\]" } }} />
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="smoke-published-url" layer="e2e" timeout={300000} render={false} reason="Run the smoke script against the URL the router publishes">
     <Step name="scaffold-smoke">
       <UseFixture name="scripts-demo" />
       <Run command="lando build" />
