@@ -99,6 +99,20 @@ describe("container engine error mapping", () => {
     expect(error.cause).toBe(cause);
   });
 
+  test("names the unreachable remediation only for connect failures", () => {
+    // Given a provider that knows how to start its engine
+    const startable = { ...ctx, unreachableRemediation: "Start Colima (`colima start`), then retry." };
+    const failure = (kind: "connect" | "read") =>
+      new ContainerTransportError({ kind, operation: "transport", message: "Socket failed." });
+
+    // When / Then
+    expect(transportFailure(startable, "ping", failure("connect")).remediation).toBe(
+      "Start Colima (`colima start`), then retry.",
+    );
+    expect(transportFailure(startable, "ping", failure("read")).remediation).toBe(ctx.remediation);
+    expect(transportFailure(ctx, "ping", failure("connect")).remediation).toBe(ctx.remediation);
+  });
+
   test("passes through provider API errors", () => {
     // Given
     const cause = new ProviderUnavailableError({

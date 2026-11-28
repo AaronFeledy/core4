@@ -74,14 +74,24 @@ interface DockerPrefixSession {
   readonly env?: Readonly<Record<string, string | undefined>>;
 }
 
-const unavailable = (ctx: ProviderErrorContext) => (operation: string, message: string, details?: unknown) =>
-  new ProviderUnavailableError({
-    providerId: ctx.providerId,
-    operation,
-    message: redactString(withApiReason(message, details, redactorFor(ctx)), redactorFor(ctx)),
-    ...(details === undefined ? {} : { details: redactDetails(details, redactorFor(ctx)) }),
-    remediation: "Install or start the selected runtime provider, then re-run the failed command.",
-  });
+const unavailable =
+  (ctx: ProviderErrorContext) =>
+  (
+    operation: string,
+    message: string,
+    details?: unknown,
+    remediation = "Install or start the selected runtime provider, then re-run the failed command.",
+  ) =>
+    new ProviderUnavailableError({
+      providerId: ctx.providerId,
+      operation,
+      message: redactString(withApiReason(message, details, redactorFor(ctx)), redactorFor(ctx)),
+      ...(details === undefined ? {} : { details: redactDetails(details, redactorFor(ctx)) }),
+      remediation,
+    });
+
+// curl exits 7 when it cannot connect to the socket at all.
+const CURL_COULD_NOT_CONNECT = 7;
 
 const parseInfoJson = (response: DockerHttpResponse, ctx: ProviderErrorContext) =>
   response.body.length === 0
@@ -483,14 +493,16 @@ export const makeUnixDockerApiClient = (
               combinedAbortSignal(request.signal, signal),
             );
             if (spawned.exitCode !== 0) {
+              const unreachable = spawned.exitCode === CURL_COULD_NOT_CONNECT;
               throw unavailable(ctx)(
                 "docker-api",
-                `Docker API request failed with exit code ${spawned.exitCode}${spawned.exitCode === 7 ? ": could not connect to the engine" : ""}.`,
+                `Docker API request failed with exit code ${spawned.exitCode}${unreachable ? ": could not connect to the engine" : ""}.`,
                 {
                   method: request.method,
                   path: request.path,
                   stderr: spawned.stderr,
                 },
+                unreachable ? ctx.unreachableRemediation : undefined,
               );
             }
             const parsed = parseCurlHttp(spawned.stdout);
