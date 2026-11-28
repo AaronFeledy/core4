@@ -6,6 +6,7 @@ import {
 import nodeReleases from "../plugins/service-lando/node/releases.json" with { type: "json" };
 import { setupBunSteps } from "./_bun-workflow.ts";
 import { applyCiSelection, ciResultSteps } from "./_ci-selection-workflow.ts";
+import { servicesImagePullCommands } from "./_ci-services-images.ts";
 import { formatGeneratedPaths } from "./_codegen-output.ts";
 import {
   CONTAINER_HELPER_ARM64_JOB_ID,
@@ -525,7 +526,7 @@ ${landoManagedPodmanRuntimeDirCommands}
               if test "$attempt" -eq 3; then return 1; fi
               sleep $((attempt * 5))
             done
-          }
+          }${mode === "provider-matrix" ? servicesImagePullCommands : ""}
           pull_image docker.io/library/alpine:3.21
           # Every supported Node major is pre-pulled from the service-type table.
 ${nodeImagePullLines}
