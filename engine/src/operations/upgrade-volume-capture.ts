@@ -17,6 +17,7 @@ import { readOfflineVersion } from "./data-version-records.ts";
 import { catalogMount } from "./database-convergence/target.ts";
 import { markStartMutation } from "./start-incomplete-notice.ts";
 import { refuseDataVersion } from "./upgrade-restore-remediation.ts";
+import { UpgradeTeardown } from "./upgrade-teardown-boundary.ts";
 
 const observeBounded = Effect.timeout("2 seconds");
 
@@ -143,6 +144,11 @@ export const captureRestorePoint = Effect.fn("AppActivation.captureRestorePoint"
   const wasRunning = runtime.status === "running";
   let handle: SnapshotHandle | undefined;
   const undo = Effect.gen(function* () {
+    const teardown = yield* UpgradeTeardown;
+    if (teardown?.has(appliedPlan.id))
+      return handle === undefined
+        ? undefined
+        : `Kept restore point ${handle.id} for ${service}: teardown of the original runtime has begun.`;
     const current = yield* inspect;
     if (
       current.containerId !== containerId ||

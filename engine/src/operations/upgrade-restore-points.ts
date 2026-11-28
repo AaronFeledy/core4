@@ -11,6 +11,7 @@ import { registerBuildRedaction } from "../services/build-redaction.ts";
 import { withPrefetchedSourceArtifacts } from "../services/source-artifact.ts";
 import type { DataUpgrade } from "./data-version-admission.ts";
 import { restoreCommand } from "./upgrade-restore-remediation.ts";
+import { UpgradeTeardown } from "./upgrade-teardown-boundary.ts";
 import { type UndoCapture, captureRestorePoint } from "./upgrade-volume-capture.ts";
 
 export type PrepareUpgrade = Effect.Effect<
@@ -132,7 +133,7 @@ export const withUpgradeRestorePoints =
               : annotateFailureContext(cause, { restorePointIds: [...points.values()] }),
           );
         }),
-      );
+      ).pipe(Effect.provideService(UpgradeTeardown, new Set()));
       const result =
         Option.isSome(mover) && input.provider.capabilities.artifactPull
           ? yield* withPrefetchedSourceArtifacts(

@@ -31,6 +31,7 @@ import {
 } from "./file-sync-acquire.ts";
 import { fileSyncBundle } from "./file-sync-bundle.ts";
 import { withShutdownObservations } from "./shutdown-observations.ts";
+import { markUpgradeTeardown } from "./upgrade-teardown-boundary.ts";
 
 export type RetirementReceipt = {
   readonly appIds: readonly string[];
@@ -127,6 +128,7 @@ export const prepareSupersededRealizations = Effect.fn("AppOperation.prepareSupe
           yield* disposal.quiesceRetained;
           const quiesced = yield* disposal.dispose;
           observations.push(quiesced.shutdownObservations);
+          yield* markUpgradeTeardown(old.id);
           yield* cleanupAppWorkers(app, "retire");
           const outcome = yield* provider.bringDown(
             { app: old.id, plan: old },

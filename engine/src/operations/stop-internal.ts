@@ -51,6 +51,7 @@ import { idleStopEventPlan, stopIdleApp } from "./stop-idle.ts";
 import { mergeContainerReceipts, servicesTakenDown } from "./stop-receipts.ts";
 import { absentPlannedServices } from "./stop-selection.ts";
 import { stopUnplannedContainers } from "./stop-unplanned.ts";
+import { markUpgradeTeardown } from "./upgrade-teardown-boundary.ts";
 
 export type StopAppError = SdkStopAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
 export type { StopAppOptions, StopAppResult } from "@lando/sdk/app";
@@ -317,6 +318,7 @@ const stopAppWithResolvedPlan = Effect.fnUntraced(function* (
     // An unfinished attempt may not have created any session yet; there is nothing to drain.
     if (runtimeState === "running" && sessions.length > 0) yield* maybeFileSync.value.appLifecycle.drain(ref);
   } else if (runtimeState === "running" && appliedFileSync.status === "accelerated") {
+    yield* markUpgradeTeardown(teardownPlan.id);
     const terminate = terminateFileSyncSessions(
       ref,
       fileSyncAvailable ? sessions : undefined,
