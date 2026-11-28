@@ -46,7 +46,7 @@ export const guardPurgePlacement = Effect.fn("DataRootPurge.guardPlacement")(fun
     const endpoints = [...new Set(missing.map(({ endpoint }) => engineEndpointDisplay(endpoint)))].join(", ");
     return yield* failure(
       `Purge at ${found.endpoint} cannot verify all recorded ${providerId} engines: ${endpoints}.`,
-      `Reconnect to ${endpoints} and retry. If multiple engines hold apps, destroy those realizations on their owning engines before purging.`,
+      `Reconnect to ${endpoints} and retry. If an engine is gone for good, run \`lando destroy --provider=${providerId} --yes\` in each of its apps first to drop Lando's record.`,
     );
   });
   yield* prove;
@@ -54,7 +54,7 @@ export const guardPurgePlacement = Effect.fn("DataRootPurge.guardPlacement")(fun
     if (plans.length || (yield* listResourceOwnershipRecords(providerId, pluginRoot, state)).length)
       return yield* failure(
         `Purge skipped ${found.endpoint}, but ${providerId} still has recorded resources.`,
-        `Restore access to the ${providerId} engine that holds those resources and retry purge.`,
+        `Restore access to the ${providerId} engine that holds those resources and retry purge. If that engine is gone for good, run \`lando destroy --provider=${providerId} --yes\` in each of its apps first to drop Lando's record.`,
       );
     return observation;
   }
