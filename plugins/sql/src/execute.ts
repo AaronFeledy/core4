@@ -408,6 +408,7 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
           source: restoreSource,
           service,
           desiredDataVersion: deps.desiredDataVersion,
+          anySeries: input.anySeries === true,
         });
         yield* runPhysical({
           reason: "restore",

@@ -139,7 +139,7 @@ export function withAppActivation<A, E, R>(
             prepare,
           );
         // Resuming, retiring a name, and rotating file sync can all replace containers while keeping their data.
-        let dataUpgrades = yield* assess();
+        let assessment = yield* assess();
         if (pending !== null && !sameAttempt) {
           const previous = digest(placement.plan ?? null);
           const { signal, managed } = request;
@@ -154,7 +154,7 @@ export function withAppActivation<A, E, R>(
             { beforeStart: managed?.resume?.beforeStart ?? Effect.void },
           );
           placement = yield* ensureAppPlacementState(target.app, plan.provider);
-          if (previous !== digest(placement.plan ?? null)) dataUpgrades = yield* assess();
+          if (previous !== digest(placement.plan ?? null)) assessment = yield* assess();
           if (digest(services ?? null) !== digest(pending.record.services ?? null)) {
             const events = yield* EventService;
             yield* events.publish(
@@ -180,13 +180,15 @@ export function withAppActivation<A, E, R>(
           return retired;
         });
         // Rotation and retirement can replace the original too. Hold their volumes before capture.
-        const capture = dataUpgrades.length > 0 && request.noSnapshot !== true;
+        const { stoppedChecks, dataUpgrades } = assessment;
+        const capture = (dataUpgrades.length > 0 && request.noSnapshot !== true) || stoppedChecks.length > 0;
         const retiredBeforeCapture = capture ? undefined : yield* prepareTransitions;
         const stateStore = yield* StateStore;
         const withRestorePoints = withUpgradeRestorePoints({
           plan: selectedPlan,
           provider,
           upgrades: dataUpgrades,
+          stoppedChecks,
           noSnapshot: request.noSnapshot,
           refresh: request.operation === "rebuild",
         });
@@ -202,7 +204,7 @@ export function withAppActivation<A, E, R>(
           provider,
           stateStore,
           body: withRestorePoints(
-            Effect.fnUntraced(function* (points) {
+            Effect.fnUntraced(function* (points, verifiedFrom) {
               const retired = capture ? yield* prepareTransitions : retiredBeforeCapture;
               yield* claimAppDataIdentity(target);
               let preparedTargets: readonly PreparedFileSyncTarget[] | undefined;
@@ -227,11 +229,15 @@ export function withAppActivation<A, E, R>(
                     ? placement.plan
                     : yield* preflightSelectedRelaunch(target, selectedPlan, request.operation);
               }
-              yield* publishDataUpgradeNotices(dataUpgrades);
+              const verifiedUpgrades = dataUpgrades.map((upgrade) => ({
+                ...upgrade,
+                from: verifiedFrom.get(upgrade.service) ?? upgrade.from,
+              }));
+              yield* publishDataUpgradeNotices(verifiedUpgrades);
               if (resumed === undefined) yield* runAppInitEvents(plan);
               const dataVersionChanges = [
                 ...(resumed?.dataVersionChanges ?? []),
-                ...dataUpgrades.map(({ service, from, to }) => {
+                ...verifiedUpgrades.map(({ service, from, to }) => {
                   const restorePoint = points.get(service);
                   return { service, from, to, ...(restorePoint === undefined ? {} : { restorePoint }) };
                 }),
@@ -241,7 +247,7 @@ export function withAppActivation<A, E, R>(
                 target,
                 provider,
                 placement,
-                dataUpgrades,
+                dataUpgrades: verifiedUpgrades,
                 removedByResume: resumed?.servicesRemoved ?? [],
                 ...(dataVersionChanges.length === 0 ? {} : { dataVersionChanges }),
               };

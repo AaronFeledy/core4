@@ -8,8 +8,9 @@ export const planSeriesRestore = Effect.fn("Sql.planSeriesRestore")(function* (i
   readonly source: SnapshotInfo;
   readonly service: SqlPlanService;
   readonly desiredDataVersion: SqlCommandDeps["desiredDataVersion"];
+  readonly anySeries: boolean;
 }) {
-  const { service, source, desiredDataVersion } = input;
+  const { service, source, desiredDataVersion, anySeries } = input;
   const metadata = source.metadata;
   if (metadata === undefined) return undefined;
   const snapshot = metadata.dataVersion;
@@ -19,15 +20,14 @@ export const planSeriesRestore = Effect.fn("Sql.planSeriesRestore")(function* (i
   const desired = yield* desiredDataVersion?.(service.name) ?? Effect.succeed(undefined);
   const requested = desired?.series;
   if (
-    snapshot === undefined ||
     applied === undefined ||
     desired === undefined ||
     current?.image === undefined ||
     requested?.image === undefined ||
     applied.target !== desired.target ||
     current.depth !== requested.depth ||
-    snapshot.label !== applied.label ||
-    snapshot.label !== desired.label
+    applied.label !== desired.label ||
+    (snapshot !== undefined && snapshot.label !== applied.label)
   )
     return yield* new SqlRecoveryUnavailableError({
       service: service.name,
@@ -37,12 +37,15 @@ export const planSeriesRestore = Effect.fn("Sql.planSeriesRestore")(function* (i
       remediation:
         "Use the original database service and select the snapshot's series in the Landofile, then retry.",
     });
-  const matchesApplied = compareDataSeries(snapshot.series, current.image, current.depth) === 0;
-  const matchesDesired = compareDataSeries(snapshot.series, requested.image, requested.depth) === 0;
-  const pin = `${metadata.family}:${snapshot.series}`;
+  const verifiedSeries = snapshot?.source === "applied-plan" ? undefined : snapshot?.series;
+  const matchesApplied =
+    verifiedSeries !== undefined && compareDataSeries(verifiedSeries, current.image, current.depth) === 0;
+  const matchesDesired =
+    verifiedSeries !== undefined && compareDataSeries(verifiedSeries, requested.image, requested.depth) === 0;
+  const pin = `${metadata.family}:${snapshot?.series ?? requested.image}`;
   return {
     currentDataVersion: { label: applied.label, series: current.image, source: "applied-plan" as const },
-    desiredSeries: { image: requested.image, depth: requested.depth },
+    desiredSeries: { image: requested.image, depth: requested.depth, anySeries },
     resume: matchesApplied,
     nextStep:
       matchesApplied && matchesDesired

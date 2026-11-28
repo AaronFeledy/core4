@@ -19,13 +19,18 @@ const fixture = async (input: {
   readonly applied: string;
   readonly desired: string;
   readonly running?: boolean;
+  readonly verified?: boolean;
 }) => {
   const f = await makeRetentionTestDeps({ password: "lando", initiallyRunning: input.running ?? true });
   const service = f.deps.plan.services.database;
   if (service === undefined) throw new Error("fixture requires a database service");
   const point = await Effect.runPromise(
     f.snapshot("upgrade", {
-      dataVersion: { label: "MySQL", series: "8.0", source: "record" },
+      dataVersion: {
+        label: "MySQL",
+        series: "8.0",
+        source: input.verified === false ? "applied-plan" : "record",
+      },
     }),
   );
   const deps = {
@@ -43,7 +48,6 @@ const fixture = async (input: {
 test.each([
   ["8.4", "8.0", true, ["lock", "suspend", "restore"], /lando start/u],
   ["8.4", "8.0", false, ["lock", "restore"], /lando start/u],
-  ["8.4", "8.4", true, ["lock", "suspend", "restore"], /services\.database\.type.*mysql:8\.0/u],
   ["8.0", "8.0", true, ["lock", "suspend", "restore", "resume"], undefined],
 ] as const)(
   "restores 8.0 with applied=%s and desired=%s and initially running=%s without querying the server version",
@@ -65,12 +69,26 @@ test.each([
   },
 );
 
-test("refuses an upgrade restore point newer than the desired series before stopping or replacing data", async () => {
-  const f = await fixture({ applied: "8.4", desired: "5.7" });
-  const error = await Effect.runPromise(executeDbCommand(f.deps, f.options).pipe(Effect.flip));
-  expect(error).toMatchObject({ _tag: "SqlRecoveryUnavailableError" });
-  expect(f.harness.lifecycle()).toEqual(["lock"]);
-  expect(f.captured).toEqual([]);
+test.each([
+  ["5.7", true],
+  ["8.4", true],
+  ["8.0", false],
+] as const)(
+  "refuses a snapshot not proven to match desired series %s (verified=%s) before stopping or replacing data",
+  async (desired, verified) => {
+    const f = await fixture({ applied: "8.4", desired, verified });
+    const error = await Effect.runPromise(executeDbCommand(f.deps, f.options).pipe(Effect.flip));
+    expect(error).toMatchObject({ _tag: "SqlRecoveryUnavailableError" });
+    expect(f.harness.lifecycle()).toEqual(["lock"]);
+    expect(f.captured).toEqual([]);
+  },
+);
+
+test("an explicitly accepted unverified snapshot leaves the database stopped", async () => {
+  const f = await fixture({ applied: "8.0", desired: "8.0", verified: false });
+  const result = await Effect.runPromise(executeDbCommand(f.deps, { ...f.options, anySeries: true }));
+  expect(result.snapshotId).toBe(f.point.id);
+  expect(f.harness.lifecycle()).toEqual(["lock", "suspend", "restore"]);
 });
 
 test("refuses to replace files if the database starts again during the undo snapshot", async () => {

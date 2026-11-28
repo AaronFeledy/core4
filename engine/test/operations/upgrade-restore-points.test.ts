@@ -24,6 +24,7 @@ const fixture = (
     readonly failure?: "pull" | "capture" | "apply" | "replacement";
     readonly failResume?: boolean;
     readonly afterSnapshotCommit?: Effect.Effect<void>;
+    readonly offlineVersion?: string;
   } = {},
 ) => {
   const from = input.from ?? "10.11";
@@ -63,7 +64,13 @@ const fixture = (
     message: "Cannot pull the selected artifact.",
     remediation: "Check the connection.",
   });
-  const snapshot = (series: string, snapshotId: string, createdAt: number) => ({
+  const snapshot = (
+    series: string,
+    snapshotId: string,
+    createdAt: number,
+    source: "record" | "applied-plan" = "record",
+    generation = physical.generation,
+  ) => ({
     id: SnapshotId.make(snapshotId),
     store: ref,
     owner,
@@ -73,10 +80,10 @@ const fixture = (
     metadata: {
       service: web.name,
       recoveryReason: "upgrade" as const,
-      volumeInstanceId: physical.generation,
+      volumeInstanceId: generation,
       family: "mariadb",
       imageIdentity: original.imageIdentity,
-      dataVersion: { label: "MariaDB", series, source: "record" as const },
+      dataVersion: { label: "MariaDB", series, source },
     },
   });
   const mover = DataMover.of({
@@ -112,7 +119,13 @@ const fixture = (
     listSnapshots: (filter) =>
       Effect.succeed(
         filter.ownerKey === owner.ownerKey && filter.service === web.name && filter.store === ref.store
-          ? [snapshot(to, "older", 1), snapshot(to, "newest-matching", 2), snapshot("5.5", "wrong-series", 3)]
+          ? [
+              snapshot(to, "older", 1),
+              snapshot(to, "newest-matching", 2),
+              snapshot("5.5", "wrong-series", 3),
+              snapshot(to, "unverified", 4, "applied-plan"),
+              snapshot(to, "old-volume", 5, "record", "previous-volume"),
+            ]
           : [],
       ),
   });
@@ -164,6 +177,20 @@ const fixture = (
         target.expectedContainerId === native.containerId
           ? Effect.succeed({ ref, identity: physical })
           : Effect.fail(failure),
+      run: (spec) =>
+        Effect.sync(() => {
+          if (
+            status !== "exited" ||
+            spec.mounts?.[0]?.readOnly !== true ||
+            spec.mounts[0].store !== ref.store
+          )
+            throw new Error("Offline version read did not use the stopped, read-only database volume.");
+          return {
+            exitCode: 0,
+            stdout: input.offlineVersion === undefined ? "-\0" : `+${input.offlineVersion}.7-MariaDB\n\0`,
+            stderr: "",
+          };
+        }),
       suspend: (_target, identity) => changeOriginal(identity, "exited"),
       resume: (_target, identity) =>
         input.failResume === true ? Effect.fail(failure) : changeOriginal(identity, "running"),
@@ -273,6 +300,33 @@ test("an already-stopped database gets an upgrade restore point without resuming
     dataVersion: { label: "MariaDB", series: "10.11", source: "applied-plan" },
   });
   expect(f.captured[0]?.metadata?.version).toBeUndefined();
+});
+
+test.each([
+  ["10.11", "11.4", "ServiceRestorePointError"],
+  ["11.4", "10.11", "ServiceDataVersionError"],
+] as const)(
+  "a stopped service planned at %s cannot upgrade from a false baseline to %s",
+  async (from, to, tag) => {
+    const f = fixture({ from, to, state: "exited", offlineVersion: "11.4" });
+    const error = await Effect.runPromise(startApp({}, f.target).pipe(Effect.provide(f.layer), Effect.flip));
+
+    expect(error._tag).toBe(tag);
+    if (error._tag === "ServiceDataVersionError")
+      expect(error.dataVersion).toMatchObject({
+        direction: "downgrade",
+        evidence: "record",
+        imageVersion: "10.11",
+      });
+    expect(f.actions).toEqual([]);
+    expect(f.snapshots.size).toBe(0);
+  },
+);
+
+test("labels a stopped database's snapshot with the record on disk, not the applied image", async () => {
+  const f = fixture({ state: "exited", offlineVersion: "10.6" });
+  await Effect.runPromise(startApp({}, f.target).pipe(Effect.provide(f.layer)));
+  expect(f.captured[0]?.metadata?.dataVersion).toMatchObject({ series: "10.6", source: "record" });
 });
 
 test.each([true, false])(

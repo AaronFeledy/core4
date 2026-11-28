@@ -6,19 +6,20 @@ import {
   type AppPlan,
   type PortablePath,
   type ServiceDataVersion,
+  type ServiceDataVersionFinding,
   type ServiceName,
   type ServicePlan,
   type VolumeMountPlan,
   compareDataSeries,
   isIdleRunStatus,
-  parseDataVersionRecords,
   planAppIdentity,
   planDataId,
 } from "@lando/sdk/schema";
 import { EventService, type ProviderError } from "@lando/sdk/services";
 import { DateTime, Effect } from "effect";
 import type { PreparedRuntimeProvider } from "../providers/prepared.ts";
-import { upgradeRestoreRemediation } from "./upgrade-restore-points.ts";
+import { decodeVersionRecords, versionRecordCommand } from "./data-version-records.ts";
+import { upgradeRestoreRemediation } from "./upgrade-restore-remediation.ts";
 
 export interface DataUpgrade {
   readonly service: ServiceName;
@@ -31,7 +32,11 @@ export interface DataUpgrade {
   readonly source: Evidence["source"] | "applied-plan";
 }
 
-type Evidence = { readonly version: string; readonly source: "record" | "running-image" };
+type Evidence = {
+  readonly version: string;
+  readonly source: "record" | "running-image";
+  readonly generation: string;
+};
 type Series = NonNullable<ServiceDataVersion["series"]>;
 
 const dataMount = (service: ServicePlan, target: PortablePath) =>
@@ -61,7 +66,7 @@ const versionEvidence = Effect.fnUntraced(
       runtime.service !== service.name
     )
       return undefined;
-    if (isIdleRunStatus(runtime.status)) return "no-record" as const;
+    if (isIdleRunStatus(runtime.status)) return "stopped" as const;
     if (
       runtime.status !== "running" ||
       !runtime.containerId ||
@@ -96,41 +101,10 @@ const versionEvidence = Effect.fnUntraced(
       return undefined;
 
     // Read each file at most up to 4 KiB (+1 to recognize truncation), with one pinned exec.
-    const read = yield* provider.exec(bound, {
-      command: [
-        "sh",
-        "-c",
-        `for file do
-        test -x "\${file%/*}" || exit 1
-        resolved=$(readlink -f -- "$file") && test "$resolved" = "$file" || exit 1
-        if test -e "$file" || test -L "$file"; then
-          test -f "$file" && test ! -L "$file" || exit 1
-          printf '+'
-          head -c 4097 -- "$file" || exit 1
-        else
-          printf '-'
-        fi
-        printf '\\000'
-      done`,
-        "lando-data-version",
-        ...paths,
-      ],
-      raw: true,
-    });
-    if (read.exitCode !== 0) return undefined;
-    const contents = read.stdout.split("\0");
-    if (contents.pop() !== "" || contents.length !== paths.length) return undefined;
-    const files = new Map<string, string>();
-    let allMissing = true;
-    for (const [index, path] of paths.entries()) {
-      const frame = contents[index];
-      if (frame === "-") continue;
-      if (frame?.startsWith("+") !== true) return undefined;
-      allMissing = false;
-      const content = frame.slice(1);
-      if (Buffer.byteLength(content) <= 4096) files.set(path, content);
-    }
-    const version = parseDataVersionRecords(files, contract);
+    const read = yield* provider.exec(bound, { command: versionRecordCommand(paths), raw: true });
+    const records = decodeVersionRecords(read, paths, contract);
+    if (records === undefined) return undefined;
+    const { version, missing } = records;
     const artifact = service.artifact;
     const expectedImage =
       artifact?.kind === "ref"
@@ -141,11 +115,16 @@ const versionEvidence = Effect.fnUntraced(
       appliedSeries !== undefined &&
       expectedImage !== undefined &&
       expectedImage === immutableImageId(runtime.imageIdentity) &&
-      (version === undefined ? allMissing : compareDataSeries(appliedSeries, version, series.depth) === 1)
+      (version === undefined ? missing : compareDataSeries(appliedSeries, version, series.depth) === 1)
     )
-      return { version: appliedSeries, source: "running-image" } satisfies Evidence;
-    if (version !== undefined) return { version, source: "record" } satisfies Evidence;
-    return allMissing ? ("no-record" as const) : undefined;
+      return {
+        version: appliedSeries,
+        source: "running-image",
+        generation: volume.identity.generation,
+      } satisfies Evidence;
+    if (version !== undefined)
+      return { version, source: "record", generation: volume.identity.generation } satisfies Evidence;
+    return missing ? ("no-record" as const) : undefined;
   },
   (effect) =>
     effect.pipe(
@@ -154,12 +133,61 @@ const versionEvidence = Effect.fnUntraced(
     ),
 );
 
+export const refuseDataVersion = Effect.fnUntraced(function* (input: {
+  readonly desired: AppPlan;
+  readonly appliedPlan: AppPlan;
+  readonly service: ServicePlan;
+  readonly mount: VolumeMountPlan;
+  readonly label: string;
+  readonly depth: 1 | 2;
+  readonly providerId: string;
+  readonly finding: ServiceDataVersionFinding & { readonly imageVersion: string };
+  readonly generation: string;
+  readonly stopped?: boolean;
+}) {
+  const { desired, appliedPlan, service, mount, label, depth, providerId, finding, generation } = input;
+  const { dataVersion: from, imageVersion: to } = finding;
+  const applied = appliedPlan.services[service.name];
+  const data =
+    finding.evidence === "running-image"
+      ? `data last opened by ${label} ${from}`
+      : `data with recorded ${label} version ${from}`;
+  const restore =
+    finding.direction === "downgrade"
+      ? yield* upgradeRestoreRemediation({
+          plan: appliedPlan,
+          service: service.name,
+          store: mount.store,
+          label,
+          depth,
+          series: to,
+          family: service.connection?.family,
+          generation,
+        })
+      : undefined;
+  const unchanged =
+    input.stopped === true
+      ? "the previous container was not replaced"
+      : "the previous container is still running unchanged";
+  return yield* new ServiceDataVersionError({
+    app: desired.name,
+    service: service.name,
+    providerId,
+    image: service.artifact?.kind === "ref" ? service.artifact.ref : to,
+    ...(applied?.artifact?.kind === "ref" ? { appliedImage: applied.artifact.ref } : {}),
+    dataVersion: finding,
+    message: `Service ${service.name}: ${unchanged}. ${label} ${to} cannot open ${data}.`,
+    remediation: [restore, dataVersionRemediation(desired, service, { finding })].filter(Boolean).join(" "),
+  });
+});
+
 export const assessDataVersions = Effect.fn("AppActivation.assessDataVersions")(function* (
   desired: AppPlan,
   appliedPlans: readonly AppPlan[],
   provider: Effect.Effect<PreparedRuntimeProvider, ProviderError>,
 ) {
   const dataUpgrades: DataUpgrade[] = [];
+  const stoppedChecks: DataUpgrade[] = [];
   for (const service of Object.values(desired.services)) {
     const contract = service.dataVersion;
     const series = contract?.series;
@@ -198,12 +226,24 @@ export const assessDataVersions = Effect.fn("AppActivation.assessDataVersions")(
         appliedSeries: appliedSeries?.image,
       });
       if (observation === undefined) continue;
-      const evidence = observation === "no-record" ? undefined : observation;
+      const evidence = typeof observation === "string" ? undefined : observation;
       const from = evidence?.version ?? appliedSeries?.image;
       if (from === undefined) continue;
       const to = series.image;
       const comparison = compareDataSeries(from, to, series.depth);
       if (comparison === undefined || comparison === 0) continue;
+      if (observation === "stopped" && comparison === 1 && series.upgrade === "in-place") {
+        stoppedChecks.push({
+          service: service.name,
+          target: contract.target,
+          store: mount.store,
+          appliedPlan,
+          label: contract.label,
+          from,
+          to,
+          source: "applied-plan",
+        });
+      }
       if (comparison === -1 && series.upgrade === "in-place") {
         if (upgrade === undefined || compareDataSeries(from, upgrade.from, series.depth) === 1)
           upgrade = {
@@ -225,38 +265,21 @@ export const assessDataVersions = Effect.fn("AppActivation.assessDataVersions")(
         dataVersion: from,
         imageVersion: to,
       } as const;
-      const data =
-        evidence.source === "running-image"
-          ? `data last opened by ${contract.label} ${from}`
-          : `data with recorded ${contract.label} version ${from}`;
-      const restore =
-        comparison === 1
-          ? yield* upgradeRestoreRemediation({
-              plan: appliedPlan,
-              service: service.name,
-              store: mount.store,
-              label: contract.label,
-              depth: series.depth,
-              series: to,
-              family: service.connection?.family,
-            })
-          : undefined;
-      return yield* new ServiceDataVersionError({
-        app: desired.name,
-        service: service.name,
+      return yield* refuseDataVersion({
+        desired,
+        appliedPlan,
+        service,
+        mount,
+        label: contract.label,
+        depth: series.depth,
         providerId: runtime.id,
-        image: service.artifact?.kind === "ref" ? service.artifact.ref : to,
-        ...(applied.artifact?.kind === "ref" ? { appliedImage: applied.artifact.ref } : {}),
-        dataVersion: finding,
-        message: `Service ${service.name}: the previous container is still running unchanged. ${contract.label} ${to} cannot open ${data}.`,
-        remediation: [restore, dataVersionRemediation(desired, service, { finding })]
-          .filter(Boolean)
-          .join(" "),
+        finding,
+        generation: evidence.generation,
       });
     }
     if (upgrade !== undefined) dataUpgrades.push(upgrade);
   }
-  return dataUpgrades;
+  return { dataUpgrades, stoppedChecks };
 });
 
 export const publishDataUpgradeNotices = Effect.fnUntraced(function* (dataUpgrades: readonly DataUpgrade[]) {

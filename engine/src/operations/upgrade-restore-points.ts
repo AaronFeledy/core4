@@ -18,14 +18,13 @@ import { coordinatedServiceVolume } from "../lifecycle/volume-coordination.ts";
 import type { PreparedRuntimeProvider } from "../providers/prepared.ts";
 import { registerBuildRedaction } from "../services/build-redaction.ts";
 import { withPrefetchedSourceArtifacts } from "../services/source-artifact.ts";
-import type { DataUpgrade } from "./data-version-admission.ts";
+import { type DataUpgrade, refuseDataVersion } from "./data-version-admission.ts";
+import { readOfflineVersion } from "./data-version-records.ts";
 import { catalogMount } from "./database-convergence/target.ts";
 import { markStartMutation } from "./start-incomplete-notice.ts";
+import { restoreCommand } from "./upgrade-restore-remediation.ts";
 
 const observeBounded = Effect.timeout("2 seconds");
-
-const restoreCommand = (id: SnapshotId, service: ServiceName) =>
-  `lando db:restore ${id} --service ${service}`;
 
 type UndoCapture = Effect.Effect<string | undefined, ServiceRestorePointError>;
 
@@ -34,11 +33,13 @@ const captureRestorePoint = Effect.fn("AppActivation.captureRestorePoint")(funct
   readonly plan: AppPlan;
   readonly upgrade: DataUpgrade;
   readonly provider: PreparedRuntimeProvider;
-  readonly mover: DataMover["Service"];
-  readonly onPrepare: (undo: UndoCapture) => void;
-  readonly onCommit: (handle: SnapshotHandle) => void;
+  readonly publication?: {
+    readonly mover: DataMover["Service"];
+    readonly onPrepare: (undo: UndoCapture) => void;
+    readonly onCommit: (handle: SnapshotHandle) => void;
+  };
 }) {
-  const { app, plan, upgrade, provider, mover, onPrepare, onCommit } = input;
+  const { app, plan, upgrade, provider, publication } = input;
   const { appliedPlan, service, target: destination, store, label, from, to, source } = upgrade;
   const error = (reason: string, cause?: unknown) =>
     new ServiceRestorePointError({
@@ -61,7 +62,7 @@ const captureRestorePoint = Effect.fn("AppActivation.captureRestorePoint")(funct
     privateMount?.target !== destination ||
     privateMount.store !== store ||
     observeVolume === undefined ||
-    expected === undefined
+    expected?.identity === undefined
   )
     return yield* error("the provider could not prove the coordinated database storage.");
   const inspect = provider.inspect(target).pipe(
@@ -99,6 +100,42 @@ const captureRestorePoint = Effect.fn("AppActivation.captureRestorePoint")(funct
     }),
   );
   const volume = yield* proveVolume;
+  const desired = plan.services[service];
+  const contract = desired?.dataVersion;
+  const depth = contract?.series?.depth;
+  const verify = Effect.gen(function* () {
+    if (source !== "applied-plan" || contract === undefined || depth === undefined || desired === undefined)
+      return undefined;
+    const observed = yield* readOfflineVersion({ provider, appliedPlan, mount: privateMount, contract });
+    const comparison = observed === undefined ? undefined : compareDataSeries(observed, to, depth);
+    if (observed !== undefined && comparison === 1)
+      return yield* refuseDataVersion({
+        desired: plan,
+        appliedPlan,
+        service: desired,
+        mount: privateMount,
+        label,
+        depth,
+        providerId: provider.id,
+        finding: { direction: "downgrade", evidence: "record", dataVersion: observed, imageVersion: to },
+        generation: volume.physical.generation,
+        stopped: true,
+      });
+    if (publication !== undefined && comparison === 0)
+      return yield* new ServiceRestorePointError({
+        app,
+        service,
+        dataVersion: { label, from: to, to },
+        message: `${service} already contains ${label} ${to} data. No upgrade restore point was saved.`,
+        remediation: "Run the command again with `--no-snapshot` to start on the series already on disk.",
+      });
+    return comparison === -1 ? observed : undefined;
+  });
+  if (publication === undefined) {
+    if (isIdleRunStatus(runtime.status)) yield* verify;
+    return undefined;
+  }
+  const { mover, onPrepare, onCommit } = publication;
   const { suspend, resume } = provider;
   const wasRunning = runtime.status === "running";
   let handle: SnapshotHandle | undefined;
@@ -141,7 +178,8 @@ const captureRestorePoint = Effect.fn("AppActivation.captureRestorePoint")(funct
   } else {
     onPrepare(undo);
   }
-  return yield* Effect.scoped(
+  const verified = yield* verify;
+  const saved = yield* Effect.scoped(
     mover.snapshot(
       volume.ref,
       {
@@ -153,7 +191,11 @@ const captureRestorePoint = Effect.fn("AppActivation.captureRestorePoint")(funct
           family,
           imageIdentity,
           recoveryReason: "upgrade",
-          dataVersion: { label, series: from, source },
+          dataVersion: {
+            label,
+            series: verified ?? from,
+            source: verified === undefined ? source : "record",
+          },
         },
       },
       (captured) => {
@@ -165,6 +207,7 @@ const captureRestorePoint = Effect.fn("AppActivation.captureRestorePoint")(funct
     Effect.provideService(RuntimeProvider, provider),
     mapFailures((cause) => error("the snapshot could not be written.", cause)),
   );
+  return { handle: saved, verified };
 });
 
 export const withUpgradeRestorePoints =
@@ -172,13 +215,29 @@ export const withUpgradeRestorePoints =
     readonly plan: AppPlan;
     readonly provider: PreparedRuntimeProvider;
     readonly upgrades: readonly DataUpgrade[];
+    readonly stoppedChecks: readonly DataUpgrade[];
     readonly noSnapshot: boolean | undefined;
     readonly refresh: boolean;
   }) =>
-  <A, E, R>(body: (points: ReadonlyMap<ServiceName, SnapshotId>) => Effect.Effect<A, E, R>) =>
+  <A, E, R>(
+    body: (
+      points: ReadonlyMap<ServiceName, SnapshotId>,
+      verifiedFrom: ReadonlyMap<ServiceName, string>,
+    ) => Effect.Effect<A, E, R>,
+  ) =>
     Effect.fn("AppActivation.withUpgradeRestorePoints")(function* () {
       const points = new Map<ServiceName, SnapshotId>();
-      if (input.noSnapshot === true || input.upgrades.length === 0) return yield* body(points);
+      const verifiedFrom = new Map<ServiceName, string>();
+      const unverified = new Set<ServiceName>();
+      for (const upgrade of input.stoppedChecks) {
+        yield* captureRestorePoint({
+          app: input.plan.name,
+          plan: input.plan,
+          provider: input.provider,
+          upgrade,
+        }).pipe(Effect.catchTag("ServiceRestorePointError", () => Effect.void));
+      }
+      if (input.noSnapshot === true || input.upgrades.length === 0) return yield* body(points, verifiedFrom);
       const mover = yield* Effect.serviceOption(DataMover);
       const events = yield* EventService;
       const notice = (body: string) =>
@@ -194,19 +253,24 @@ export const withUpgradeRestorePoints =
             continue;
           }
           yield* notice(`Saving a restore point of ${service} before moving to ${label} ${to}…`);
-          const handle = yield* captureRestorePoint({
+          const captured = yield* captureRestorePoint({
             app: input.plan.name,
             plan: input.plan,
             provider: input.provider,
-            mover: mover.value,
             upgrade,
-            onPrepare: (undo) => prepared.push(undo),
-            onCommit: (snapshot) => points.set(service, snapshot.id),
+            publication: {
+              mover: mover.value,
+              onPrepare: (undo) => prepared.push(undo),
+              onCommit: (snapshot) => points.set(service, snapshot.id),
+            },
           });
-          points.set(service, handle.id);
+          if (captured === undefined) continue;
+          const { handle, verified } = captured;
+          if (verified !== undefined) verifiedFrom.set(service, verified);
+          if (verified === undefined && upgrade.source === "applied-plan") unverified.add(service);
           yield* notice(`Saved restore point ${handle.id} for ${service}.`);
         }
-        return yield* body(points);
+        return yield* body(points, verifiedFrom);
       });
       const settle = Effect.uninterruptibleMask((restore) =>
         Effect.gen(function* () {
@@ -252,40 +316,10 @@ export const withUpgradeRestorePoints =
           : yield* settle;
       for (const [service, id] of points) {
         yield* notice(
-          `Restore point ${id} is available for ${service}. To roll back, set the original database version, run \`${restoreCommand(id, service)}\`, then run \`lando start\`.`,
+          unverified.has(service)
+            ? `Restore point ${id} is available for ${service}, but its data series could not be verified. Check the series independently before using \`${restoreCommand(id, service)} --any-series\`.`
+            : `Restore point ${id} is available for ${service}. To roll back, set the original database version, run \`${restoreCommand(id, service)}\`, then run \`lando start\`.`,
         );
       }
       return result;
     });
-
-export const upgradeRestoreRemediation = Effect.fnUntraced(function* (input: {
-  readonly plan: AppPlan;
-  readonly service: ServiceName;
-  readonly store: string;
-  readonly label: string;
-  readonly depth: 1 | 2;
-  readonly series: string;
-  readonly family: string | undefined;
-}) {
-  const mover = yield* Effect.serviceOption(DataMover);
-  if (Option.isNone(mover) || input.family === undefined) return undefined;
-  const owner = planAppIdentity(input.plan);
-  const snapshots = yield* mover.value
-    .listSnapshots({
-      app: planDataId(input.plan),
-      ownerKey: owner.ownerKey,
-      store: input.store,
-      service: input.service,
-    })
-    .pipe(Effect.catch(() => Effect.succeed([])));
-  const match = snapshots.findLast(
-    ({ metadata }) =>
-      metadata?.recoveryReason === "upgrade" &&
-      metadata.family === input.family &&
-      metadata.dataVersion?.label === input.label &&
-      compareDataSeries(metadata.dataVersion.series, input.series, input.depth) === 0,
-  );
-  return match === undefined
-    ? undefined
-    : `To roll back, run \`${restoreCommand(match.id, input.service)}\`, then \`lando start\`.`;
-});

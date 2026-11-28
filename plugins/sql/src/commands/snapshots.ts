@@ -29,7 +29,7 @@ export const renderDbSnapshots = (result: DbCommandResult, nowMs: number): strin
         snapshot.id,
         `  size: ${ByteSize.format(ByteSize.bytes(snapshot.sizeBytes))}`,
         `  age: ${formatSnapshotAge(DateTime.toEpochMillis(snapshot.createdAt), nowMs)}`,
-        `  version: ${metadata === undefined ? "unknown" : `${metadata.family} ${metadata.version ?? metadata.dataVersion?.series ?? "unknown"}`}`,
+        `  version: ${metadata === undefined ? "unknown" : `${metadata.family} ${metadata.version ?? metadata.dataVersion?.series ?? "unknown"}${metadata.dataVersion?.source === "applied-plan" ? " (unverified)" : ""}`}`,
         `  label: ${snapshot.label ?? "-"}`,
         `  recovery reason: ${metadata?.recoveryReason ?? "unknown"}`,
         `  ownership: ${ownership}`,
