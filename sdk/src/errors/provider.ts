@@ -134,6 +134,7 @@ export class ServiceRestorePointError extends Schema.TaggedError<ServiceRestoreP
     app: Schema.String,
     service: Schema.String,
     dataVersion: Schema.Struct({ label: Schema.String, from: Schema.String, to: Schema.String }),
+    cause: Schema.optionalKey(Schema.Unknown),
     message: Schema.String,
     remediation: Remediation,
   },

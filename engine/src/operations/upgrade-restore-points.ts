@@ -1,6 +1,6 @@
-import { mapFailures } from "@lando/sdk/command-result";
+import { annotateFailureContext, mapFailures } from "@lando/sdk/command-result";
 import { ServiceRestorePointError } from "@lando/sdk/errors";
-import { MessageInfoEvent, MessageWarnEvent } from "@lando/sdk/events";
+import { MessageInfoEvent } from "@lando/sdk/events";
 import {
   type AppPlan,
   type ServiceName,
@@ -12,13 +12,15 @@ import {
   planDataId,
 } from "@lando/sdk/schema";
 import { DataMover, EventService, RuntimeProvider, StateStore } from "@lando/sdk/services";
-import { DateTime, Effect, Option } from "effect";
+import { DateTime, Effect, Exit, Option } from "effect";
+import { mergeFailure, runAllAndMergeFailures } from "../lifecycle/failure-compensation.ts";
 import { coordinatedServiceVolume } from "../lifecycle/volume-coordination.ts";
 import type { PreparedRuntimeProvider } from "../providers/prepared.ts";
 import { registerBuildRedaction } from "../services/build-redaction.ts";
 import { withPrefetchedSourceArtifacts } from "../services/source-artifact.ts";
 import type { DataUpgrade } from "./data-version-admission.ts";
 import { catalogMount } from "./database-convergence/target.ts";
+import { markStartMutation } from "./start-incomplete-notice.ts";
 
 const observeBounded = Effect.timeout("2 seconds");
 
@@ -29,19 +31,22 @@ type UndoCapture = Effect.Effect<string | undefined, ServiceRestorePointError>;
 
 const captureRestorePoint = Effect.fn("AppActivation.captureRestorePoint")(function* (input: {
   readonly app: string;
+  readonly plan: AppPlan;
   readonly upgrade: DataUpgrade;
   readonly provider: PreparedRuntimeProvider;
   readonly mover: DataMover["Service"];
   readonly onPrepare: (undo: UndoCapture) => void;
+  readonly onCommit: (handle: SnapshotHandle) => void;
 }) {
-  const { app, upgrade, provider, mover, onPrepare } = input;
+  const { app, plan, upgrade, provider, mover, onPrepare, onCommit } = input;
   const { appliedPlan, service, target: destination, store, label, from, to, source } = upgrade;
-  const error = (reason: string) =>
+  const error = (reason: string, cause?: unknown) =>
     new ServiceRestorePointError({
       app,
       service,
       dataVersion: { label, from, to },
       message: `Could not save a restore point for ${service}: ${reason}`,
+      ...(cause === undefined ? {} : { cause }),
       remediation:
         "Check free disk space and the database volume, then retry. Pass `--no-snapshot` only if you have a backup or accept upgrading without a restore point.",
     });
@@ -109,13 +114,18 @@ const captureRestorePoint = Effect.fn("AppActivation.captureRestorePoint")(funct
         : `Kept restore point ${handle.id} for ${service}: the original database could not be confirmed unchanged.`;
     if (wasRunning && current.status !== "running" && resume !== undefined)
       yield* resume(target, identity).pipe(
-        mapFailures(() => error("the original database could not resume.")),
+        mapFailures((cause) =>
+          error(
+            `the original database could not resume${handle === undefined ? "" : `; kept restore point ${handle.id}`}.`,
+            cause,
+          ),
+        ),
       );
     if (handle === undefined) return;
     const id = handle.id;
     yield* mover.removeSnapshot(handle).pipe(
       Effect.provideService(RuntimeProvider, provider),
-      mapFailures(() => error(`unused restore point ${id} could not be removed.`)),
+      mapFailures((cause) => error(`unused restore point ${id} could not be removed.`, cause)),
     );
     return `Removed unused restore point ${id} for ${service}: the original database was not replaced.`;
   });
@@ -124,37 +134,36 @@ const captureRestorePoint = Effect.fn("AppActivation.captureRestorePoint")(funct
       return yield* error("the provider cannot safely stop and resume this exact container.");
     yield* Effect.gen(function* () {
       onPrepare(undo);
+      yield* markStartMutation(plan);
       yield* suspend(target, identity).pipe(mapFailures(() => error("the database could not be stopped.")));
     }).pipe(Effect.uninterruptible);
     yield* proveVolume;
   } else {
     onPrepare(undo);
   }
-  const snapshot = Effect.scoped(
-    mover.snapshot(volume.ref, {
-      format: "tar.gz",
-      ...(owner.repoGroupKey === undefined ? {} : { repoGroupKey: owner.repoGroupKey }),
-      metadata: {
-        service,
-        volumeInstanceId: volume.physical.generation,
-        family,
-        imageIdentity,
-        recoveryReason: "upgrade",
-        dataVersion: { label, series: from, source },
+  return yield* Effect.scoped(
+    mover.snapshot(
+      volume.ref,
+      {
+        format: "tar.gz",
+        ...(owner.repoGroupKey === undefined ? {} : { repoGroupKey: owner.repoGroupKey }),
+        metadata: {
+          service,
+          volumeInstanceId: volume.physical.generation,
+          family,
+          imageIdentity,
+          recoveryReason: "upgrade",
+          dataVersion: { label, series: from, source },
+        },
       },
-    }),
+      (captured) => {
+        handle = captured;
+        onCommit(captured);
+      },
+    ),
   ).pipe(
     Effect.provideService(RuntimeProvider, provider),
-    mapFailures(() => error("the snapshot could not be written.")),
-  );
-  return yield* Effect.uninterruptibleMask((restore) =>
-    restore(snapshot).pipe(
-      Effect.tap((captured) =>
-        Effect.sync(() => {
-          handle = captured;
-        }),
-      ),
-    ),
+    mapFailures((cause) => error("the snapshot could not be written.", cause)),
   );
 });
 
@@ -187,36 +196,41 @@ export const withUpgradeRestorePoints =
           yield* notice(`Saving a restore point of ${service} before moving to ${label} ${to}…`);
           const handle = yield* captureRestorePoint({
             app: input.plan.name,
+            plan: input.plan,
             provider: input.provider,
             mover: mover.value,
             upgrade,
             onPrepare: (undo) => prepared.push(undo),
+            onCommit: (snapshot) => points.set(service, snapshot.id),
           });
           points.set(service, handle.id);
           yield* notice(`Saved restore point ${handle.id} for ${service}.`);
         }
         return yield* body(points);
-      }).pipe(
-        Effect.onError(() =>
-          Effect.forEach(
-            prepared.toReversed(),
-            (undo) =>
-              Effect.gen(function* () {
-                const message = yield* undo;
-                if (message !== undefined) yield* notice(message);
-              }).pipe(
-                Effect.catch((failure) =>
-                  DateTime.now.pipe(
-                    Effect.flatMap((timestamp) =>
-                      events.publish(MessageWarnEvent.make({ body: failure.message, timestamp })),
-                    ),
-                    Effect.catch((failure) => Effect.logWarning(failure.message)),
-                  ),
-                ),
+      });
+      const settle = Effect.uninterruptibleMask((restore) =>
+        Effect.gen(function* () {
+          const exit = yield* Effect.exit(restore(activation));
+          if (Exit.isSuccess(exit)) return exit.value;
+          const cleanup = yield* Effect.exit(
+            runAllAndMergeFailures(
+              prepared.toReversed().map((undo) =>
+                Effect.gen(function* () {
+                  const message = yield* undo;
+                  if (message !== undefined) yield* notice(message).pipe(Effect.ignoreCause);
+                }),
               ),
-            { discard: true },
-          ),
-        ),
+            ),
+          );
+          const cause = Exit.isFailure(cleanup)
+            ? mergeFailure(exit.cause, cleanup.cause, "rollback")
+            : exit.cause;
+          return yield* Effect.failCause(
+            points.size === 0
+              ? cause
+              : annotateFailureContext(cause, { restorePointIds: [...points.values()] }),
+          );
+        }),
       );
       const result =
         Option.isSome(mover) && input.provider.capabilities.artifactPull
@@ -233,9 +247,9 @@ export const withUpgradeRestorePoints =
                   redactor: (yield* registerBuildRedaction(input.plan)).redactor,
                 },
               },
-              activation,
+              settle,
             )
-          : yield* activation;
+          : yield* settle;
       for (const [service, id] of points) {
         yield* notice(
           `Restore point ${id} is available for ${service}. To roll back, set the original database version, run \`${restoreCommand(id, service)}\`, then run \`lando start\`.`,

@@ -1323,7 +1323,7 @@ export const makeDataMoverService = (
           );
         }),
       ),
-    snapshot: Effect.fn("DataMover.snapshot")(function* (store, opts) {
+    snapshot: Effect.fn("DataMover.snapshot")(function* (store, opts, onCommit) {
       const provider = yield* selectedProvider;
       if (opts?.volumeSnapshot === "native" && provider.capabilities.volumeSnapshot !== "native") {
         return yield* Effect.fail(
@@ -1466,7 +1466,8 @@ export const makeDataMoverService = (
             ...(opts?.metadata === undefined ? {} : { metadata: opts.metadata }),
             ...(sourceGeneration === undefined ? {} : { sourceVolumeGeneration: sourceGeneration }),
           };
-          const bucket = yield* openSnapshot(persistence, snapshotHandle(info));
+          const handle = snapshotHandle(info);
+          const bucket = yield* openSnapshot(persistence, handle);
           // The sidecar is the commit point. The write runs uninterruptibly so its outcome is
           // observable; after a failure, the sidecar's presence decides whether data was committed
           // (keep the artifact) or not (roll it back). An unknown answer keeps the artifact.
@@ -1475,6 +1476,7 @@ export const makeDataMoverService = (
               Effect.tap(() =>
                 Effect.sync(() => {
                   sidecarCommitted = true;
+                  onCommit?.(handle);
                 }),
               ),
               Effect.tapError(() =>
@@ -1498,7 +1500,7 @@ export const makeDataMoverService = (
               timestamp: yield* DateTime.now,
             }),
           );
-          return snapshotHandle(info);
+          return handle;
         }),
       ).pipe(
         Effect.tapCause(
@@ -1875,7 +1877,7 @@ export const layerWithPrivateFileAccess: Layer.Layer<
         transferStream: (spec) =>
           service(appFromEndpoint(spec.from) === undefined ? spec.to : spec.from).transferStream(spec),
         read: (from) => service(from).read(from),
-        snapshot: (store, opts) => service(store).snapshot(store, opts),
+        snapshot: (store, opts, onCommit) => service(store).snapshot(store, opts, onCommit),
         restore: (handle, store, opts) => service(store).restore(handle, store, opts),
         listSnapshots: (filter) => service().listSnapshots(filter),
         resolveSnapshot: (reference, scope) => service().resolveSnapshot(reference, scope),

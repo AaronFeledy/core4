@@ -1,10 +1,11 @@
 import { expect, test } from "bun:test";
+import { failureOutcomeFromCause, taggedErrorJson } from "@lando/sdk/command-result";
 import { DataTransferError, ProviderUnavailableError } from "@lando/sdk/errors";
 import { PortNumber, SnapshotId, type VolumeIdentity, planAppIdentity, planDataId } from "@lando/sdk/schema";
 import { DataMover, type ServiceRuntimeIdentity, type ServiceRuntimeInfo } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { withPhysicalVolumeLock } from "@lando/state-store/volume-lock";
-import { DateTime, Effect, Layer } from "effect";
+import { DateTime, Deferred, Effect, Exit, Fiber, Layer } from "effect";
 import { rebuildApp } from "../../src/operations/rebuild.ts";
 import { restartApp } from "../../src/operations/restart.ts";
 import { startApp } from "../../src/operations/start.ts";
@@ -21,6 +22,8 @@ const fixture = (
     readonly to?: string;
     readonly state?: "running" | "exited";
     readonly failure?: "pull" | "capture" | "apply" | "replacement";
+    readonly failResume?: boolean;
+    readonly afterSnapshotCommit?: Effect.Effect<void>;
   } = {},
 ) => {
   const from = input.from ?? "10.11";
@@ -78,7 +81,7 @@ const fixture = (
   });
   const mover = DataMover.of({
     ...emptySnapshots,
-    snapshot: (store, opts) =>
+    snapshot: (store, opts, onCommit) =>
       withPhysicalVolumeLock(
         stateStore.service,
         { key: physical.coordinationKey, name: physical.nativeName, mode: "exclusive" },
@@ -93,8 +96,11 @@ const fixture = (
               message: "Disk is full.",
               remediation: "Free space before retrying.",
             });
+          const handle = { id, ownerKey: owner.ownerKey, store };
           snapshots.add(id);
-          return { id, ownerKey: owner.ownerKey, store };
+          onCommit?.(handle);
+          yield* input.afterSnapshotCommit ?? Effect.void;
+          return handle;
         }),
       ).pipe(Effect.catchTag("StateStoreError", Effect.die)),
     removeSnapshot: (handle) =>
@@ -159,7 +165,8 @@ const fixture = (
           ? Effect.succeed({ ref, identity: physical })
           : Effect.fail(failure),
       suspend: (_target, identity) => changeOriginal(identity, "exited"),
-      resume: (_target, identity) => changeOriginal(identity, "running"),
+      resume: (_target, identity) =>
+        input.failResume === true ? Effect.fail(failure) : changeOriginal(identity, "running"),
     },
     onStop: () => actions.push("stop"),
     onDestroy: () => actions.push("teardown"),
@@ -223,9 +230,39 @@ test.each([
     if (error._tag === "ServiceRestorePointError") {
       expect(error.dataVersion).toEqual({ label: "MariaDB", from: "10.11", to: "11.4" });
       expect(error.remediation).toContain("--no-snapshot");
+      expect(error.cause).toBeInstanceOf(DataTransferError);
     }
   },
 );
+
+test("a failed resume preserves the primary failure and reports the kept point and rollback error", async () => {
+  const f = fixture({ failure: "apply", failResume: true });
+  const exit = await Effect.runPromiseExit(startApp({}, f.target).pipe(Effect.provide(f.layer)));
+
+  if (Exit.isSuccess(exit)) throw new Error("expected activation to fail");
+  const failure = failureOutcomeFromCause(exit.cause);
+  expect(taggedErrorJson(failure.error)._tag).toBe("ProviderUnavailableError");
+  expect(failure.additionalErrors.map(({ role, error }) => [role, taggedErrorJson(error)._tag])).toEqual([
+    ["rollback", "ServiceRestorePointError"],
+  ]);
+  expect(failure.failureContext?.restorePointIds).toEqual([id]);
+  expect([...f.snapshots]).toEqual([id]);
+  expect(f.status()).toBe("exited");
+});
+
+test("cancelling after snapshot commit resumes the original and removes the committed point", async () => {
+  const committed = Deferred.makeUnsafe<void>();
+  const f = fixture({
+    afterSnapshotCommit: Deferred.succeed(committed, undefined).pipe(Effect.andThen(Effect.never)),
+  });
+  const fiber = Effect.runFork(startApp({}, f.target).pipe(Effect.provide(f.layer)));
+  await Effect.runPromise(Deferred.await(committed).pipe(Effect.timeout("5 seconds")));
+  await Effect.runPromise(Fiber.interrupt(fiber));
+
+  expect(f.actions).toEqual(["suspend", "capture", "resume"]);
+  expect(f.status()).toBe("running");
+  expect([...f.snapshots]).toEqual([]);
+});
 
 test("an already-stopped database gets an upgrade restore point without resuming it for observation", async () => {
   const f = fixture({ state: "exited" });
