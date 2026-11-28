@@ -129,7 +129,7 @@ On handled `SIGINT` or `SIGTERM`, the runner MUST forward the signal to the chil
 
 `check:test-ownership` runs in static CI and `gate:pr`. It checks test-file locations, selection ownership, selector matches and committed-workflow bindings; naming and mixed-suite splits are review requirements. Ownership records selection, not successful execution, so a skipped case is not acceptance evidence.
 
-A test file's name MUST state its prerequisites: `*.test.ts` runs without a live engine, native non-Linux host, compiled binary or opt-in variable, and `*.integration.test.ts` needs one of them. A mixed suite MUST be split so its prerequisite-free cases run in unit shards. PR unit shards, local unit runs, timings refresh and default affected-test eligibility MUST consume one unit file set: every Git-visible `*.test.ts` in a workspace `test/` tree (workspaces follow the root manifest) or beside repository scripts, minus files a dedicated selection excludes. A test file anywhere else MUST fail the gate.
+A test file's name MUST state its prerequisites: `*.test.ts` runs without a live engine, native non-Linux host, compiled binary or opt-in variable, and `*.integration.test.ts` needs one of them. A mixed suite MUST be split so its prerequisite-free cases run in unit shards. PR unit shards, local unit runs, timings refresh and default affected-test eligibility MUST consume one unit file set: every Git-visible `*.test.ts` in a workspace `test/` tree (workspaces follow the root manifest) or beside repository scripts, minus files a dedicated selection excludes. A test file anywhere else MUST fail the gate. Affected selection also lists and runs the home-guide scenarios a change selects, apart from that unit file set (§19.12).
 
 Every other test a workflow step runs MUST be a named selection in one catalog, invoked by ID through one runner that passes exact paths to Bun rather than substring filters. Workflows MUST NOT run `bun test` directly. The provider acceptance matrix keeps its own check plan, which its runner executes as data; ownership reads that plan directly. Each selection MUST declare the jobs that run it, and the gate MUST prove from the committed workflows that each declared job invokes it. Each selection path MUST match at least one test file. Every `*.integration.test.ts` file MUST be run by a selection or listed as a manual gap with its prerequisites. A filtered invocation such as `--test-name-pattern` MUST NOT count as running a whole file. Generated guide scenarios belong to the guide pipeline (§19.7, §19.11). The Go helper's `*_test.go` files belong to the containerized helper builder.
 
@@ -166,7 +166,7 @@ Each selected per-platform static job MUST run the source two-process native loc
 - `bun test`, `bun run typecheck`, `bun run docs:check`, and Biome checks pass.
 - Codegen pure drift, schema compatibility, schema/docs generation, and the Starlight build pass.
 - Provider, plugin-abstraction, library API, machine-output, deprecation, redaction, managed-file, coexistence, scenario, recipe, executable-guide, and applicable renderer/OpenTUI contracts pass.
-- `lint:guides`, guide coverage, public transcript, source-mapper, and guide component-schema gates pass (§19).
+- `lint:guides`, guide coverage, guide drift, public transcript, source-mapper, and guide component-schema gates pass (§19.10).
 - The Linux x64 perf suite and e2e smoke pass; per-PR macOS and Windows perf results are advisory but nightly failures block release.
 - Recipe suites pass on Linux x64, and scenario suites pass on every platform the selected profile includes.
 - Boundary gates pass through the shared `check:boundaries` surface, with package seams primary and residual AST rules limited to behavior package edges cannot express.
@@ -178,7 +178,7 @@ Each selected per-platform static job MUST run the source two-process native loc
 - Public `@lando/core` or `@lando/sdk` additions have documentation and the corresponding library/schema tests.
 - Install/update/uninstall/shellenv changes pass side-by-side coexistence; network-sensitive changes pass offline-after-build coverage.
 
-`bun run codegen:check` is pure drift only. Semantic gates remain separate: `check:guide-coverage`, `check:schema-compatibility`, `check:public-transcripts`, and `check:boundaries`, which runs the package-DAG and behavioral boundary rules.
+`bun run codegen:check` is pure drift only. Semantic gates remain separate: `check:guide-coverage`, `check:schema-compatibility`, `check:public-transcripts`, and `check:boundaries`, which runs the package-DAG and behavioral boundary rules. `check:guide-drift` is a guide gate (§19.10), not one of these.
 
 ### 13.5 Distribution
 
@@ -199,7 +199,7 @@ Releases include public schema and command-schema artifacts, declaration bundles
 
 ### 13.6 CI matrix
 
-The `merge_group` event runs CI with the same path selection as `pull_request`, comparing the merge group's base and head SHAs.
+The `merge_group` event runs CI with the same path selection as `pull_request`, comparing the merge group's base and head SHAs. Event-gated checks keep their own condition: `check:guide-drift` runs only on `pull_request`, so merge-queue (`merge_group`) and push-to-main runs skip it (§19.10).
 
 Pull requests select a cumulative CI profile from their changed paths. `docs` runs the static gates and the docs job on Linux x64. `guides` adds the schema, library, recipe and container-helper jobs, the Linux x64 build and runtime bundle, and Linux x64 and Windows x64 guide scenarios with the Linux `@smoke` e2e subset. `runtime` adds the unit shards, isolation regressions, macOS process-signal tests, the Linux arm64 runtime bundle and the performance gates. `providers` adds live Linux x64 provider integration. Pushes to `main`, manual dispatches, and changes to `.bun-version` or a platform build path select broad CI, which also runs every platform job in the table below.
 

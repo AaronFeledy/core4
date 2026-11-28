@@ -220,7 +220,7 @@ See the illustrative [executable guide shape](examples.md#executable-guide-shape
 
 ## Coverage
 
-1. PRD `## Guide Coverage` when a PRD owns it.
+1. When the guide is a feature's home, an entry in `scripts/guides/home-guides.ts` naming the guide and the source paths it covers. Add the entry only after a scenario in the guide exercises those sources; a page that only mentions the feature in prose is not its home.
 2. `Shipped` row in `docs/guides/INDEX.md`.
 3. `bun run check:guide-coverage`.
 
@@ -233,9 +233,12 @@ Passing structural lint or a test-provider scenario does not verify the install.
 ```bash
 bun run lint:guides
 bun run dev:guides docs/guides/<path>.mdx --once
+bun run test:affected
 bun run check:guide-coverage
 bun run check:public-transcripts
 ```
+
+`bun run test:affected` lists the home guides your change selects and whether each scenario variant will run; add `--run` to run them.
 
 If static tests string-match guide phrases, update the test or restore the required phrase.
 

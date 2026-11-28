@@ -103,7 +103,7 @@ Built and not listed below: the Effect runtime and SDK contracts; the service-ty
 | Error, event, service, template-step, API-report, acceptance-index, Mutagen-client, and plugin-template generators | §17.2 | Not started | |
 | Guide case files | §19.7 | Not started | Guide discovery reads only `.mdx`. Tracked in #2523. |
 | Background scenario runs | §19.4 | Partial | `ScenarioContext.startCli` supports scoped pipe dialogues on both layers. Workspace-file readiness and caller signal delivery remain in #2524. |
-| Home guides own feature tests | §19.1, §19.9 | Not started | No source-to-home-guide map beyond three PRD coverage sections (#2525). Duplicate live suites: #2526. Migration of `core/test/live`: #2528. |
+| Home guides own feature tests | §19.1, §19.9, §19.10, §19.12 | Partial | The home-guide map, its coverage gate, the guide drift gate, and affected selection of home-guide scenarios are built. The map has rows only where a scenario exercises the source, with one documented exception: `data-helper-reclaim` is owned by `docs/guides/tutorial/app-lifecycle.mdx` because that page documents the behavior, although its scenarios do not exercise reclamation. Shared and unexercised sources are unmapped. Case files neither satisfy drift nor select a guide until they compile (#2523). Duplicate live suites: #2526. Migration of `core/test/live`: #2528. |
 | `<Run shell>` | §19.3 | Contract only | The harness fails it with `NotImplementedError`; build or remove it in #2527. |
 | Multi-provider apps | §5.9 | Not started | One provider per app. |
 | §14.2 extension constraints: OS-keychain store, persistent agent, explicit `global:` dependencies, service-type `topLevelAlias` | §14.2 | Not started | Each has its trigger condition in §14.2. |
