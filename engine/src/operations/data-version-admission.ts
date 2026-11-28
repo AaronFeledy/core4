@@ -115,17 +115,18 @@ const versionEvidence = Effect.fnUntraced(
     });
     if (read.exitCode !== 0) return undefined;
     const contents = read.stdout.split("\0");
-    if (contents.length !== paths.length + 1 || contents.at(-1) !== "") return undefined;
+    if (contents.pop() !== "" || contents.length !== paths.length) return undefined;
     const files = new Map<string, string>();
+    let allMissing = true;
     for (const [index, path] of paths.entries()) {
       const frame = contents[index];
       if (frame === "-") continue;
       if (frame?.startsWith("+") !== true) return undefined;
+      allMissing = false;
       const content = frame.slice(1);
       if (Buffer.byteLength(content) <= 4096) files.set(path, content);
     }
     const version = parseDataVersionRecords(files, contract);
-    const missing = contents.slice(0, -1).every((frame) => frame === "-");
     const artifact = service.artifact;
     const expectedImage =
       artifact?.kind === "ref"
@@ -136,11 +137,11 @@ const versionEvidence = Effect.fnUntraced(
       appliedSeries !== undefined &&
       expectedImage !== undefined &&
       expectedImage === immutableImageId(runtime.imageIdentity) &&
-      (version === undefined ? missing : compareDataSeries(appliedSeries, version, series.depth) === 1)
+      (version === undefined ? allMissing : compareDataSeries(appliedSeries, version, series.depth) === 1)
     )
       return { version: appliedSeries, source: "running-image" } satisfies Evidence;
     if (version !== undefined) return { version, source: "record" } satisfies Evidence;
-    return missing ? ("no-record" as const) : undefined;
+    return allMissing ? ("no-record" as const) : undefined;
   },
   (effect) =>
     effect.pipe(

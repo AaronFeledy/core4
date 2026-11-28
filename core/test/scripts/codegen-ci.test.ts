@@ -1,9 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { delimiter, dirname, resolve } from "node:path";
+import { canonicalImageReference } from "@lando/sdk/schema";
 import * as Schema from "effect/Schema";
 import { pinnedAction } from "../../../scripts/action-pins.ts";
+import { renderCiWorkflow } from "../../../scripts/build-ci-workflow.ts";
+import { renderNightlyWorkflow } from "../../../scripts/build-nightly-workflow.ts";
 import { CI_PLATFORMS, releaseBinaryFileName } from "../../../scripts/ci-platforms";
+import { e2eCommandArgvs } from "../../../scripts/guides/coverage-lint-input.ts";
+import { parseGuideScenarioAst } from "../../../scripts/guides/parser.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const packageJsonPath = resolve(repoRoot, "package.json");
@@ -23,25 +28,23 @@ const providerMatrixWorkflowGeneratorPath = resolve(repoRoot, "scripts/build-pro
 const runtimeBundleWorkflowGeneratorPath = resolve(repoRoot, "scripts/build-runtime-bundle-workflow.ts");
 const codegenTestTimeout = 90_000;
 
-const guideImagePrepull = (workflow: string, job: string) => {
+const prepulledImages = (workflow: string, job: string) => {
   const { jobs } = Schema.decodeUnknownSync(
     Schema.Struct({
       jobs: Schema.Record(
         Schema.String,
         Schema.Struct({
-          steps: Schema.optionalKey(
-            Schema.Array(
-              Schema.Struct({
-                name: Schema.optionalKey(Schema.String),
-                run: Schema.optionalKey(Schema.String),
-              }),
-            ),
-          ),
+          steps: Schema.optionalKey(Schema.Array(Schema.Struct({ run: Schema.optionalKey(Schema.String) }))),
         }),
       ),
     }),
   )(Bun.YAML.parse(workflow));
-  return jobs[job]?.steps?.find(({ name }) => name === "Pre-pull container images")?.run;
+  const commands = jobs[job]?.steps?.map(({ run }) => run).join("\n") ?? "";
+  const images = new Set<string>();
+  for (const [, image] of commands.matchAll(/^[ \t]*pull_image[ \t]+(\S+)[ \t]*$/gm)) {
+    if (image !== undefined) images.add(canonicalImageReference(image));
+  }
+  return images;
 };
 
 const generatedHeader =
@@ -105,6 +108,27 @@ const changedLines = (
 };
 
 describe("ci workflow codegen", () => {
+  test("pre-pulls the versions selected by each database guide lane", async () => {
+    const nightly = prepulledImages(renderNightlyWorkflow(), "provider-lando-e2e-linux-x64");
+    const smoke = prepulledImages(renderCiWorkflow(), "guide-e2e-linux-x64-runner");
+    const missing: string[] = [];
+    for (const name of ["mariadb", "mysql", "mongodb", "postgres"]) {
+      const path = `docs/guides/services/${name}.mdx`;
+      const guide = parseGuideScenarioAst(path, await Bun.file(resolve(repoRoot, path)).text());
+      for (const scenario of guide.scenarios) {
+        const isSmoke = scenario.tags?.includes("@smoke") || guide.frontmatter.tags?.includes("@smoke");
+        for (const [lando, command, key, ref] of e2eCommandArgvs({ ...guide, scenarios: [scenario] })) {
+          if (lando !== "lando" || command !== "app:config:set" || ref === undefined) continue;
+          if (key !== "services.db.type" && key !== "services.db.image") continue;
+          const image = canonicalImageReference(ref);
+          if (!nightly.has(image)) missing.push(`nightly: ${name}/${scenario.id}: ${image}`);
+          if (isSmoke && !smoke.has(image)) missing.push(`smoke: ${name}/${scenario.id}: ${image}`);
+        }
+      }
+    }
+    expect(missing).toEqual([]);
+  });
+
   test(
     "runs guide scenario codegen before schema snapshots",
     async () => {
@@ -189,19 +213,6 @@ describe("ci workflow codegen", () => {
       expect(firstWorkflow.startsWith(`${generatedNightlyHeader}\n`)).toBe(true);
       expect(firstWorkflow).toContain("provider-lando-e2e-linux-x64:");
       expect(firstWorkflow).toContain("Run e2e guide scenarios");
-      const nightlyPulls = guideImagePrepull(firstWorkflow, "provider-lando-e2e-linux-x64");
-      const smokePulls = guideImagePrepull(
-        await readFile(workflowPath, "utf8"),
-        "guide-e2e-linux-x64-runner",
-      );
-      for (const image of ["mariadb:10.11", "mariadb:11.4"]) {
-        expect(smokePulls).toContain(`pull_image docker.io/library/${image}\n`);
-        expect(nightlyPulls).toContain(`pull_image docker.io/library/${image}\n`);
-      }
-      for (const image of ["mysql:8.4", "postgres:17", "mongo:8.0", "mongo:8.3"]) {
-        expect(nightlyPulls).toContain(`pull_image docker.io/library/${image}\n`);
-        expect(smokePulls).not.toContain(`pull_image docker.io/library/${image}\n`);
-      }
       expect(firstWorkflow).toContain("Run live integration suites");
       expect(firstWorkflow).toContain("service-listeners-linux-x64:");
       expect(firstWorkflow).toContain('LANDO_TEST_LISTENERS_STRICT: "1"');
