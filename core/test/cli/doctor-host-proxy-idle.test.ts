@@ -23,6 +23,7 @@ test.each([
       const result = await Effect.runPromise(
         diagnoseHostProxyWorker({
           current: false,
+          runDir: root,
           maxProbeServices: 1,
           record: {
             appId: "test",
@@ -41,23 +42,17 @@ test.each([
             HostProxyDoctorFileSystem,
             HostProxyDoctorFileSystem.of({
               readRoot: () => Effect.die("not used"),
-              socketMetadata: (path) =>
+              socketMetadata: () => Effect.succeed(undefined),
+              socketDirectoryPrivate: () =>
                 Effect.sync(() => {
                   inspections += 1;
-                  return path === root
-                    ? {
-                        type: "directory" as const,
-                        mode: privateDirectory ? 0o700 : 0o755,
-                        owned: true,
-                        privateDirectory,
-                      }
-                    : undefined;
+                  return privateDirectory;
                 }),
             }),
           ),
         ),
       );
-      expect(inspections).toBe(2);
+      expect(inspections).toBe(1);
       if (!("status" in result)) throw new Error("expected a privacy finding");
       expect(result.status).toBe(status);
       if (idle) {
@@ -66,11 +61,10 @@ test.each([
         expect(result.context.reachability).toBe("skipped");
         expect(result.solutions).toHaveLength(privateDirectory ? 0 : 1);
       } else {
+        expect(result.context.privateRunDirectory).toBe("true");
+        expect(result.context.reachability).toBe("unreachable");
         expect(result.solutions).toHaveLength(1);
         expect(result.solutions[0]?.command).toBe("lando start");
-        expect(result.solutions[0]?.description).toContain(
-          privateDirectory ? "worker is not running" : "ownership",
-        );
       }
     } finally {
       await rm(root, { recursive: true, force: true });

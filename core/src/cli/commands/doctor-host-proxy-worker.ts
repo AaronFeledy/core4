@@ -1,4 +1,8 @@
-import { dirname } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import {
+  HOST_PROXY_SOCKET_NAME,
+  hostProxyContainerDirectory,
+} from "@lando/engine/subsystems/host-proxy/run-directory";
 import type {
   HostProxyWorkerRecord,
   LegacyHostProxyWorkerRecord,
@@ -31,8 +35,22 @@ const WORKER_STOPPED: DoctorSolution = {
 const PRIVATE_DIRECTORY_REQUIRED: DoctorSolution = {
   kind: "manual",
   description:
-    "The host proxy requires a socket owned by you inside a non-symlink, owner-only (0700) run directory. Restore directory ownership and private access, then run `lando start` for this app on the host.",
-  command: "lando start",
+    "Run `lando start` from the app if the only change was granting extra read or traverse access to its own run or container directory. Lando recreates that layout. Otherwise, inspect the path first: restore missing directories, replace symlinks with real directories, and correct ownership or access before starting.",
+};
+const LEGACY_PRIVATE_DIRECTORY_REQUIRED: DoctorSolution = {
+  kind: "manual",
+  description:
+    "Inspect the legacy host-proxy run directory. Restore an owner-only directory owned by you, not a symlink, before running `lando start` from the app.",
+};
+const SOCKET_PATH_REQUIRED: DoctorSolution = {
+  kind: "manual",
+  description:
+    "The host-proxy worker record does not name a socket in the expected location. Inspect the worker state before starting the app.",
+};
+const SOCKET_REQUIRED: DoctorSolution = {
+  kind: "manual",
+  description:
+    "The host-proxy endpoint is not a socket owned by you. Inspect the endpoint's type and ownership before starting the app.",
 };
 
 const containerGatewayMatches = (containerUrl: string, gateway: string): boolean => {
@@ -44,19 +62,20 @@ const containerGatewayMatches = (containerUrl: string, gateway: string): boolean
   }
 };
 
-type DiagnoseWorkerOptions =
+type DiagnoseWorkerOptions = {
+  readonly doctor: HostProxyTransportDoctorOptions;
+  readonly runDir: string;
+  readonly maxProbeServices: number;
+} & (
   | {
-      readonly doctor: HostProxyTransportDoctorOptions;
       readonly record: HostProxyWorkerRecord;
       readonly current: true;
-      readonly maxProbeServices: number;
     }
   | {
-      readonly doctor: HostProxyTransportDoctorOptions;
       readonly record: LegacyHostProxyWorkerRecord;
       readonly current: false;
-      readonly maxProbeServices: number;
-    };
+    }
+);
 
 const baseCheck = (
   context: Record<string, string>,
@@ -103,47 +122,60 @@ export const diagnoseHostProxyWorker = Effect.fnUntraced(function* (
     ]);
   }
   if (record.transport === "unix-socket" && !bridgedGuestSocket) {
-    const socketMetadata =
-      record.socketPath === undefined ? undefined : yield* fileSystem.socketMetadata(record.socketPath);
-    const privateDirectory =
-      record.socketPath === undefined
-        ? undefined
-        : yield* fileSystem.socketMetadata(dirname(record.socketPath));
+    const { socketPath } = record;
+    const layout = options.current ? "container" : "run-directory";
+    const endpointMatches =
+      socketPath !== undefined &&
+      (options.current
+        ? socketPath === join(hostProxyContainerDirectory(options.runDir), HOST_PROXY_SOCKET_NAME)
+        : dirname(socketPath) === options.runDir && resolve(socketPath) === socketPath);
     const directoryPrivate =
-      socketMetadata?.privateDirectory === true ||
-      (privateDirectory?.type === "directory" && privateDirectory.owned && privateDirectory.mode === 0o700);
+      endpointMatches && (yield* fileSystem.socketDirectoryPrivate(socketPath, layout));
+    const directorySolution = endpointMatches
+      ? options.current
+        ? PRIVATE_DIRECTORY_REQUIRED
+        : LEGACY_PRIVATE_DIRECTORY_REQUIRED
+      : SOCKET_PATH_REQUIRED;
+    const privacyContext = {
+      ...context,
+      privateRunDirectory: String(directoryPrivate),
+      ...(endpointMatches
+        ? {}
+        : { failure: socketPath === undefined ? "socket-path-missing" : "socket-path-mismatch" }),
+    };
     if (doctor.runtimeIdle === true)
       return {
         ...baseCheck(
-          { ...context, privateRunDirectory: String(directoryPrivate), reachability: "skipped" },
+          { ...privacyContext, reachability: "skipped" },
           directoryPrivate ? "pass" : "warn",
-          directoryPrivate ? [] : [PRIVATE_DIRECTORY_REQUIRED],
+          directoryPrivate ? [] : [directorySolution],
         ),
         name: "host-proxy-privacy",
       };
-    const controlProbe = yield* probeWorker(record);
-    const reachable =
-      controlProbe === "live" &&
-      socketMetadata?.type === "socket" &&
-      socketMetadata.owned &&
-      socketMetadata.privateDirectory;
+    const socketMetadata = endpointMatches ? yield* fileSystem.socketMetadata(socketPath) : undefined;
+    const controlProbe =
+      directoryPrivate && socketMetadata?.type === "socket" && socketMetadata.owned
+        ? yield* probeWorker(record)
+        : undefined;
+    const reachable = controlProbe === "live";
     return baseCheck(
       {
-        ...context,
+        ...privacyContext,
         reachability: reachable ? "reachable" : "unreachable",
         socketType: socketMetadata?.type ?? "missing",
         socketMode:
           socketMetadata === undefined ? "missing" : socketMetadata.mode.toString(8).padStart(4, "0"),
         socketOwned: String(socketMetadata?.owned ?? false),
-        privateRunDirectory: String(socketMetadata?.privateDirectory ?? false),
-        ...(!reachable && controlProbe !== "live" ? { failure: "control-probe-failed" } : {}),
+        ...(controlProbe === "dead" ? { failure: "control-probe-failed" } : {}),
       },
       reachable ? "pass" : "warn",
       reachable
         ? []
-        : directoryPrivate && (socketMetadata === undefined || socketMetadata.owned)
-          ? [WORKER_STOPPED]
-          : [PRIVATE_DIRECTORY_REQUIRED],
+        : !directoryPrivate
+          ? [directorySolution]
+          : socketMetadata !== undefined && (socketMetadata.type !== "socket" || !socketMetadata.owned)
+            ? [SOCKET_REQUIRED]
+            : [WORKER_STOPPED],
     );
   }
 

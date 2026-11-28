@@ -1,6 +1,9 @@
 import { lstat, readdir } from "node:fs/promises";
 import { dirname } from "node:path";
-
+import {
+  verifyHostProxyContainerDirectory,
+  verifyHostProxyRunDirectory,
+} from "@lando/engine/subsystems/host-proxy/run-directory";
 import { Context, Effect, Layer } from "effect";
 
 export type HostProxyDoctorRootState =
@@ -18,10 +21,14 @@ export interface HostProxyDoctorFileSystemShape {
         readonly type: "socket" | "directory" | "other";
         readonly mode: number;
         readonly owned: boolean;
-        readonly privateDirectory: boolean;
       }
     | undefined
   >;
+  /** Whether the directory holding the socket passes the engine's rule for that record layout. */
+  readonly socketDirectoryPrivate: (
+    socketPath: string,
+    layout: "container" | "run-directory",
+  ) => Effect.Effect<boolean>;
 }
 
 export class HostProxyDoctorFileSystem extends Context.Service<
@@ -52,22 +59,28 @@ export class HostProxyDoctorFileSystem extends Context.Service<
         Effect.promise(async () => {
           try {
             const metadata = await lstat(path);
-            const directory = await lstat(dirname(path));
             return {
               type: metadata.isSocket() ? "socket" : metadata.isDirectory() ? "directory" : "other",
               mode: metadata.mode & 0o777,
               owned: metadata.uid === process.getuid?.(),
-              privateDirectory:
-                directory.isDirectory() &&
-                !directory.isSymbolicLink() &&
-                (directory.mode & 0o777) === 0o700 &&
-                directory.uid === process.getuid?.(),
             } as const;
           } catch (error) {
             if (error instanceof Error) return undefined;
             throw error;
           }
         }),
+      ),
+      socketDirectoryPrivate: Effect.fn("HostProxyDoctorFileSystem.socketDirectoryPrivate")(
+        (socketPath, layout) =>
+          Effect.promise(() => {
+            const directory = dirname(socketPath);
+            const verify =
+              layout === "container" ? verifyHostProxyContainerDirectory : verifyHostProxyRunDirectory;
+            return verify(directory).then(
+              () => true,
+              () => false,
+            );
+          }),
       ),
     }),
   );
