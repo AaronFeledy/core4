@@ -623,9 +623,18 @@ describe("applied plan records", () => {
       layout === "per-app"
         ? Schema.decodeUnknownSync(AppliedPlan)(raw)
         : Schema.decodeUnknownSync(AppliedPlans)(raw)[plan.id];
-    expect(APPLIED_STATE_VERSION).toBe(13);
+    expect(APPLIED_STATE_VERSION).toBe(14);
     expect(decoded).toEqual(Schema.decodeUnknownSync(AppliedAppPlan)(historicalWriterValue));
     expect(decoded).toEqual(record);
+  });
+
+  test.each(["per-app", "record"] as const)("migrates v13 %s without a data version contract", (layout) => {
+    const encoded = Schema.encodeSync(AppPlan)(record);
+    const migrated =
+      layout === "per-app"
+        ? migrateAppliedPlan(encoded, 13)
+        : migrateAppliedPlansRecordWithCoordinate({ [plan.id]: encoded }, 13);
+    expect(migrated).toEqual(layout === "per-app" ? record : { [plan.id]: record });
   });
   const writingStateStore = (written: unknown[]): PluginStateStore => ({
     open: <A, I>(_spec: PluginStateBucketSpec<A, I>): Effect.Effect<StateBucket<A>, StateStoreError> =>

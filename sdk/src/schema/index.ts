@@ -184,6 +184,8 @@ export * from "./resource-ownership.ts";
 export { RouteFilter, RouteFilterKind } from "./route-filter.ts";
 export * from "./schedule.ts";
 export * from "./service-connection.ts";
+export * from "./service-data-version.ts";
+export * from "./service-data-version-evidence.ts";
 export * from "./service-dependency.ts";
 export * from "./service-feature-validation.ts";
 export * from "./service-info.ts";

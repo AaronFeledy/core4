@@ -70,6 +70,7 @@ import type {
   SecretNotFoundError,
   SecretReferenceInvalidError,
   SecretStoreUnavailableError,
+  ServiceDataVersionError,
   ServiceNotFoundError,
   ServiceNotReadyError,
   ShellExecError,
@@ -256,6 +257,7 @@ export type StartAppError =
   | CaError
   | FileSystemError
   | ServiceNotReadyError
+  | ServiceDataVersionError
   | UserLandofileError
   | AppPlannerError
   | ProviderSelectionError

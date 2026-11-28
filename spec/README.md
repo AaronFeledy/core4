@@ -91,7 +91,7 @@ If you are looking for a public surface or policy:
 | Container create-config identity and ordinary apply recreate | 05 | §5.3.2 |
 | Shutdown observations: `ServiceShutdownObservation`, `FileSyncQuiesceResult`, optional `shutdownObservations` on teardown receipts, no graceful/forced verdict | 05 | §5.3.3 |
 | Durable ownership manifest and verified teardown cleanup | 05 + 12 | §5.3.1 + §12.4.2 |
-| `AppPlan` and `ServicePlan` schema families; applied-state v1–v13 readers, v7-to-v8 `kind` migration, v9 `keepAlive` intent, v10 `RouteText` environments, v11 event-intent removal, v12 planned ports, v13 route-fact members, strict applied-map writers, newer-format protection on the stamp alone (`AppliedStateVersionError`), required contribution and registry inventory and targeted strict read | 05 | §5.3.1 + §5.5 + §5.5.2 |
+| `AppPlan` and `ServicePlan` schema families; applied-state v1–v14 readers, v7-to-v8 `kind` migration, v9 `keepAlive` intent, v10 `RouteText` environments, v11 event-intent removal, v12 planned ports, v13 route-fact members, v14 optional database version intent, strict applied-map writers, newer-format protection on the stamp alone (`AppliedStateVersionError`), required contribution and registry inventory and targeted strict read | 05 | §5.3.1 + §5.5 + §5.5.2 |
 | Runtime-owned helper creation mount, logical/applied-plan exclusion, non-root cache permissions, and file-log delivery | 05 + 06 + 12 | §5.5 + §6.2.1 + §6.4 + §6.14.3 + §12.1 |
 | Environment values and executable-plan eligibility | 05 + 07 | §5.5.2 + §7.3.1 |
 | Provider extensions and error family, including `AppliedStateVersionError` | 05 | §5.6 + §5.7 |

@@ -30,6 +30,7 @@ export const recordFeatureContext = (
     setHealthcheck: record("setHealthcheck"),
     setReadiness: record("setReadiness"),
     setListenerAuthority: record("setListenerAuthority"),
+    setDataVersion: record("setDataVersion"),
     setCerts: record("setCerts"),
     setEntrypoint: record("setEntrypoint"),
     setCommand: record("setCommand"),

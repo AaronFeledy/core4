@@ -115,6 +115,9 @@ export const rebuildApp = Effect.fn("AppOperation.rebuild")(function* (
         servicesRebuilt: start.servicesStarted.map((service) => service.name),
         servicesStarted: start.servicesStarted,
         ...(start.credentialChanges === undefined ? {} : { credentialChanges: start.credentialChanges }),
+        ...(admitted.dataVersionChanges === undefined
+          ? {}
+          : { dataVersionChanges: admitted.dataVersionChanges }),
         ...(start.checks === undefined ? {} : { checks: start.checks }),
         ...(start.servicesRemoved === undefined ? {} : { servicesRemoved: start.servicesRemoved }),
       };

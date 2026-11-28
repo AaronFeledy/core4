@@ -107,5 +107,44 @@
       }
     ],
     "justification": "ProviderSetupPlan and its closed provider-only change union are replaced by the open HostChange contract (with HostChangePlanEntry and HostChangeOutcome), which covers provider, CA, router, and core host changes with exact commands, consent class, requirement, and undo. The removed schema was never persisted and never shipped in a release."
+  },
+  {
+    "fingerprint": "sha256:2047bf0bb7fe56199df170a24f6e4a54b52759289bb0b8e4bf84b257d877605d",
+    "changeKind": "unsupported-keyword",
+    "locations": [
+      { "surface": "schema:AppPlan", "path": "$.services.additionalProperties" },
+      { "surface": "schema:AppliedAppPlan", "path": "$.services.additionalProperties" },
+      { "surface": "schema:CurrentExecutableAppPlan", "path": "$.services.additionalProperties" },
+      { "surface": "schema:DatasetContext", "path": "$.plan.services.additionalProperties" },
+      { "surface": "schema:PostGlobalRebuildEvent", "path": "$.plan.services.additionalProperties" },
+      { "surface": "schema:PostGlobalStartEvent", "path": "$.plan.services.additionalProperties" },
+      { "surface": "schema:PostRestartEvent", "path": "$.plan.services.additionalProperties" },
+      { "surface": "schema:PostScratchDestroyEvent", "path": "$.plan.services.additionalProperties" },
+      { "surface": "schema:PostStartEvent", "path": "$.plan.services.additionalProperties" },
+      { "surface": "schema:PreGlobalRebuildEvent", "path": "$.plan.services.additionalProperties" },
+      { "surface": "schema:PreGlobalStartEvent", "path": "$.plan.services.additionalProperties" },
+      { "surface": "schema:PreRestartEvent", "path": "$.plan.services.additionalProperties" },
+      { "surface": "schema:PreScratchDestroyEvent", "path": "$.plan.services.additionalProperties" },
+      { "surface": "schema:PreStartEvent", "path": "$.plan.services.additionalProperties" },
+      { "surface": "schema:TunnelStartRequest", "path": "$.plan.services.additionalProperties" }
+    ],
+    "justification": "AppPlan and AppliedAppPlan services, including the same plans embedded in events and other surfaces, gain only the additive optional ServicePlan.dataVersion field. Applied-state v14 reads v13 records unchanged with the contract absent.",
+    "persistedState": [{ "store": "applied-state", "version": 14 }]
+  },
+  {
+    "fingerprint": "sha256:b4d4bc04f7f4efd10a8b933abb0d44f2e658e686e9323451685c7a13b6af3e67",
+    "changeKind": "unsupported-construct",
+    "locations": [
+      { "surface": "schema:LandoEvent", "path": "$.anyOf" },
+      { "surface": "schema:RendererPanelContext", "path": "$.event.anyOf" }
+    ],
+    "justification": "Plan-embedding events and the renderer's view of those events gain only additive optional ServicePlan.dataVersion fields inside the embedded plan. No event tag, required field, or previous event shape changes."
+  },
+  {
+    "fingerprint": "sha256:59c994b5b481c17140a74e2b23d892da1fdfee735540d31c06bb69bd33f482fc",
+    "changeKind": "unsupported-construct",
+    "locations": [{ "surface": "schema:ServicePlan", "path": "$.anyOf" }],
+    "justification": "Every existing ServicePlan arm gains only additive optional dataVersion. The arms keep their previous required fields and constraints; applied-state v14 decodes v13 records unchanged with the contract absent.",
+    "persistedState": [{ "store": "applied-state", "version": 14 }]
   }
 ]

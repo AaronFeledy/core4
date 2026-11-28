@@ -31,6 +31,7 @@ import type {
   PortablePath,
   ProviderCapabilities,
   ServiceConfig,
+  ServiceDataVersion,
   ServiceFeatureValidationResult,
   TmpfsMountPlan,
   VolumeMountPlan,
@@ -215,6 +216,7 @@ export interface ServiceFeatureContext {
   setReadiness(readiness: HealthcheckPlan): void;
   /** Set structured listener ownership and configuration advice, not an observed failure cause. */
   setListenerAuthority(authority: ListenerAuthority): void;
+  setDataVersion(contract: ServiceDataVersion): void;
   /** Set the service certificate plan. */
   setCerts(certs: CertificatePlan): void;
   /** Set the service entrypoint. */

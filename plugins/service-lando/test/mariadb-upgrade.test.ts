@@ -108,62 +108,61 @@ test("rejects extraArgs for an official noncatalog tag", async () => {
 });
 
 test.skipIf(process.platform === "win32").each([
-  ["mariadb_upgrade_info", "11.4.13-MariaDB", "10.11", "11.4"],
-  ["mysql_upgrade_info", "10.11.19-MariaDB", "10.6", "10.11"],
-  ["mariadb_upgrade_info", "10.11.23-MariaDB", "10.11", undefined],
-  ["mysql_upgrade_info", "10.6.19-MariaDB", "10.11", undefined],
-  [undefined, undefined, "10.11", undefined],
-  ["mariadb_upgrade_info", "garbage", "10.11", undefined],
-] as const)("checks datadir record %s (%s) against running %s", async (record, value, running, newer) => {
-  const plan = await planMariadb({ extraArgs: ["--max-connections=10", "--init-connect=SELECT 1"] });
-  if (!Array.isArray(plan.command)) throw new Error("MariaDB downgrade guard requires a command argv");
+  ["mariadb_upgrade_info", "11.4.13-MariaDB", "10.11", "11.4", undefined],
+  ["mysql_upgrade_info", "10.11.19-MariaDB", "10.6", "10.11", undefined],
+  ["mariadb_upgrade_info", "10.11.23-MariaDB", "10.11", undefined, undefined],
+  ["mysql_upgrade_info", "10.6.19-MariaDB", "10.11", undefined, undefined],
+  [undefined, undefined, "10.11", undefined, undefined],
+  ["mariadb_upgrade_info", "garbage", "10.11", undefined, undefined],
+  ["mariadb_upgrade_info", "11.4.13-MariaDB", "10.11", "11.8", "11.8.6-MariaDB"],
+] as const)(
+  "checks datadir record %s (%s) against running %s",
+  async (record, value, running, newer, legacy) => {
+    const plan = await planMariadb({ extraArgs: ["--max-connections=10", "--init-connect=SELECT 1"] });
+    if (!Array.isArray(plan.command)) throw new Error("MariaDB downgrade guard requires a command argv");
 
-  const datadir = await mkdtemp(join(tmpdir(), "lando-mariadb-upgrade-"));
-  try {
-    if (record !== undefined) await Bun.write(join(datadir, record), `${value}\n`);
-    const daemon = join(datadir, "mariadbd");
-    const entrypoint = join(datadir, "docker-entrypoint.sh");
-    await Bun.write(
-      daemon,
-      `#!/bin/sh\n[ "$1" = --version ] || exit 99\nprintf '%s\\n' 'mariadbd  Ver ${running}.19-MariaDB-ubu2204 for debian-linux-gnu'\n`,
-    );
-    await Bun.write(entrypoint, "#!/bin/sh\nprintf '%s\\n' \"$@\"\n");
-    await Promise.all([chmod(daemon, 0o755), chmod(entrypoint, 0o755)]);
+    const datadir = await mkdtemp(join(tmpdir(), "lando-mariadb-upgrade-"));
+    try {
+      if (record !== undefined) await Bun.write(join(datadir, record), `${value}\n`);
+      if (legacy !== undefined) await Bun.write(join(datadir, "mysql_upgrade_info"), `${legacy}\n`);
+      const daemon = join(datadir, "mariadbd");
+      const entrypoint = join(datadir, "docker-entrypoint.sh");
+      await Bun.write(
+        daemon,
+        `#!/bin/sh\n[ "$1" = --version ] || exit 99\nprintf '%s\\n' 'mariadbd  Ver ${running}.19-MariaDB-ubu2204 for debian-linux-gnu'\n`,
+      );
+      await Bun.write(entrypoint, "#!/bin/sh\nprintf '%s\\n' \"$@\"\n");
+      await Promise.all([chmod(daemon, 0o755), chmod(entrypoint, 0o755)]);
 
-    const result = Bun.spawnSync(
-      plan.command.map((arg, index) => (index === 2 ? arg.replaceAll("/var/lib/mysql", datadir) : arg)),
-      {
-        env: {
-          PATH: [datadir, "/usr/bin", "/bin"].join(delimiter),
-          LANDO_SERVICE_NAME: "db",
+      const result = Bun.spawnSync(
+        plan.command.map((arg, index) => (index === 2 ? arg.replaceAll("/var/lib/mysql", datadir) : arg)),
+        {
+          env: {
+            PATH: [datadir, "/usr/bin", "/bin"].join(delimiter),
+          },
+          stdout: "pipe",
+          stderr: "pipe",
         },
-        stdout: "pipe",
-        stderr: "pipe",
-      },
-    );
+      );
 
-    if (newer !== undefined) {
-      expect(result.exitCode).toBe(1);
-      expect(result.stdout.toString()).toBe("");
-      const refusal = result.stderr.toString();
-      expect(refusal).toContain(`MariaDB ${running}`);
-      expect(refusal).toContain(`MariaDB ${newer}`);
-      expect(refusal).toContain(`services.db.image to mariadb:${newer}`);
-      expect(refusal).toContain("every service's data");
-      for (const action of ["lando db:export", "lando destroy --volumes", "lando db:import"]) {
-        expect(refusal).toContain(action);
+      if (newer !== undefined) {
+        expect(result.exitCode).toBe(1);
+        expect(result.stdout.toString()).toBe("");
+        const refusal = result.stderr.toString().trimEnd().split("\n");
+        expect(refusal).toHaveLength(1);
+        expect(refusal[0]).toStartWith(`lando-data-version-refused data=${newer} image=${running}:`);
+      } else {
+        expect(result.exitCode).toBe(0);
+        expect(result.stderr.toString()).toBe("");
+        expect(result.stdout.toString().trimEnd().split("\n")).toEqual([
+          "mariadbd",
+          "--port=3306",
+          "--max-connections=10",
+          "--init-connect=SELECT 1",
+        ]);
       }
-    } else {
-      expect(result.exitCode).toBe(0);
-      expect(result.stderr.toString()).toBe("");
-      expect(result.stdout.toString().trimEnd().split("\n")).toEqual([
-        "mariadbd",
-        "--port=3306",
-        "--max-connections=10",
-        "--init-connect=SELECT 1",
-      ]);
+    } finally {
+      await rm(datadir, { recursive: true, force: true });
     }
-  } finally {
-    await rm(datadir, { recursive: true, force: true });
-  }
-});
+  },
+);

@@ -18,7 +18,11 @@ import { APP_ROOT_LABEL } from "../labels.ts";
 import { containerOwnershipLabels } from "../native-ownership.ts";
 import { serviceContainerName } from "../plan.ts";
 import { redactDetails, redactorFor, withApiReason } from "../redact.ts";
-import { type EngineContainerState, runObservationFromInspectState } from "../run-observation.ts";
+import {
+  type EngineContainerState,
+  containerStartedAt,
+  runObservationFromInspectState,
+} from "../run-observation.ts";
 import { inspectContainerLabels } from "./bring-up-recreate.ts";
 import { mountObservationFromInspect } from "./inspect-mounts.ts";
 
@@ -83,15 +87,6 @@ const request = (
   operation: string,
 ): Effect.Effect<EngineHttpResponse, ProviderError> =>
   deps.api.request === undefined ? Effect.fail(missingApi(deps.ctx, operation)) : deps.api.request(input);
-
-const lastStartedAt = (inspect: ContainerInspect): Date | undefined => {
-  const startedAt = inspect.State?.StartedAt;
-  if (startedAt === undefined || startedAt.length === 0 || startedAt.startsWith("0001-")) {
-    return undefined;
-  }
-  const parsed = DateTime.make(startedAt);
-  return Option.isNone(parsed) ? undefined : DateTime.toDate(parsed.value);
-};
 
 export const inspect = Effect.fn("RuntimeProvider.inspect")(function* (
   plan: AppPlan,
@@ -164,7 +159,7 @@ export const inspect = Effect.fn("RuntimeProvider.inspect")(function* (
     };
   }
   const run = runObservationFromInspectState(decoded.State);
-  const startedAt = lastStartedAt(decoded);
+  const startedAt = containerStartedAt(decoded.State);
   return {
     app: plan.id,
     appRoot: plan.root,
@@ -177,7 +172,7 @@ export const inspect = Effect.fn("RuntimeProvider.inspect")(function* (
       : {}),
     publications: publicationObservationFromInspect(decoded),
     mounts: mountObservationFromInspect(decoded),
-    ...(startedAt === undefined ? {} : { lastStartedAt: startedAt }),
+    ...(startedAt === undefined ? {} : { lastStartedAt: DateTime.toDate(startedAt) }),
     labels,
   };
 });

@@ -8,7 +8,11 @@ import {
   ServiceName,
   plannedFileSyncSessions,
 } from "@lando/sdk/schema";
-import { type FileSyncEngineShape, RuntimeProviderRegistry } from "@lando/sdk/services";
+import {
+  type FileSyncEngineShape,
+  RuntimeProviderRegistry,
+  type RuntimeProviderShape,
+} from "@lando/sdk/services";
 import { TestFileSyncEngine, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { DateTime, Effect, Layer } from "effect";
 import { FileSyncResolver } from "../../src/plugins/file-sync-resolver.ts";
@@ -101,6 +105,10 @@ export const ordinaryPlan: AppPlan = {
 export const rotationHarness = Effect.fnUntraced(function* (
   options: {
     readonly desired?: AppPlan;
+    readonly previous?: AppPlan;
+    readonly inspect?: RuntimeProviderShape["inspect"];
+    readonly exec?: RuntimeProviderShape["exec"];
+    readonly observeBoundVolume?: RuntimeProviderShape["observeBoundVolume"];
     readonly failAt?: FailurePoint;
     readonly extraSession?: boolean;
     readonly missingSession?: boolean;
@@ -113,9 +121,10 @@ export const rotationHarness = Effect.fnUntraced(function* (
   } = {},
 ) {
   const desired = options.desired ?? changedPlan;
+  const previous = options.previous ?? oldPlan;
   const calls: string[] = [];
   const cleanedPlans: AppPlan[] = [];
-  let applied: AppPlan | undefined = options.fresh ? undefined : oldPlan;
+  let applied: AppPlan | undefined = options.fresh ? undefined : previous;
   const disposal = disposalPhaseTracker("active");
   let failure = options.failAt;
   const trip = (point: FailurePoint) =>
@@ -133,7 +142,7 @@ export const rotationHarness = Effect.fnUntraced(function* (
   });
   const sessions = options.fresh
     ? []
-    : oldPlan.fileSync.map(({ session }) => info(session, `old-${session.service}`));
+    : previous.fileSync.map(({ session }) => info(session, `old-${session.service}`));
   if (options.extraSession && sessions[0] !== undefined)
     sessions.push(info({ ...sessions[0].spec, mountKey: "foreign" }, "foreign"));
   if (options.missingSession) sessions.pop();
@@ -202,6 +211,12 @@ export const rotationHarness = Effect.fnUntraced(function* (
   };
   const harness = makeHarness({
     plannedApp: desired,
+    ...(options.previous === undefined ? {} : { resolveAppliedPlan: () => Effect.sync(() => applied) }),
+    ...(options.inspect === undefined ? {} : { inspect: options.inspect }),
+    ...(options.exec === undefined ? {} : { exec: options.exec }),
+    ...(options.observeBoundVolume === undefined
+      ? {}
+      : { providerOverrides: { observeBoundVolume: options.observeBoundVolume } }),
     fileSync: engine,
     onPublish: (event) =>
       Effect.sync(() => {
@@ -228,7 +243,7 @@ export const rotationHarness = Effect.fnUntraced(function* (
     quiesceForFileSync: ({ plan }: { readonly plan?: AppPlan }) =>
       Effect.gen(function* () {
         calls.push("quiesce");
-        if (plan !== oldPlan) return yield* Effect.die("quiesced desired plan");
+        if (plan !== previous) return yield* Effect.die("quiesced desired plan");
         yield* trip("quiesce");
         return {};
       }),
@@ -241,7 +256,7 @@ export const rotationHarness = Effect.fnUntraced(function* (
     bringDown: (selector: Parameters<typeof base.bringDown>[0], opts: Parameters<typeof base.bringDown>[1]) =>
       Effect.gen(function* () {
         calls.push("retire");
-        if (selector.plan !== oldPlan || opts.volumes || opts.purgeCaches || opts.removeState !== true)
+        if (selector.plan !== previous || opts.volumes || opts.purgeCaches || opts.removeState !== true)
           return yield* Effect.die("unsafe retirement");
         yield* trip("retire");
         applied = undefined;

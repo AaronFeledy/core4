@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { redactProviderError } from "@lando/redaction/provider-error";
 import { FailureRoleAnnotation, failureOutcomeFromCause } from "@lando/sdk/command-result";
 import { ProviderInternalError, ServiceStartError } from "@lando/sdk/errors";
 import {
@@ -6,6 +7,7 @@ import {
   AppId,
   type AppPlan,
   type ListenerAuthority,
+  PortablePath,
   ProviderId,
   ServiceName,
   type ServicePlan,
@@ -177,6 +179,7 @@ const makeApi = (options: {
                     Running: false,
                     Status: "exited",
                     ExitCode: options.completionExitCode,
+                    StartedAt: "2026-10-09T00:00:00Z",
                   },
                 }),
               };
@@ -265,6 +268,48 @@ const expectServiceStartError = (error: unknown): ServiceStartError => {
 };
 
 describe("bringUp start-failure log tail", () => {
+  test("preserves dependency data version evidence through provider redaction even when the display cap drops the line", async () => {
+    const original = dependentPlan();
+    const plan = {
+      ...original,
+      services: {
+        [dbName]: servicePlan(dbName, false, {
+          dataVersion: { label: "MariaDB", target: PortablePath.make("/var/lib/mysql"), refusals: [] },
+        }),
+        [webName]: servicePlan(webName, true, {
+          dependsOn: [{ service: dbName, condition: "service_completed_successfully", required: true }],
+        }),
+      },
+    } satisfies AppPlan;
+    const { api, requests } = makeApi({
+      completionExitCode: 1,
+      logsFor: {
+        [serviceContainerName(plan, "db")]: [
+          rawConsole("lando-data-version-refused data=11.4 image=10.11: MariaDB cannot open the data."),
+          rawConsole("x".repeat(4100)),
+        ],
+      },
+    });
+    const raw = await Effect.runPromise(
+      bringUp(plan, { api, ctx, startFailureRemediation: () => "Repair the provider." }).pipe(Effect.flip),
+    );
+    const error = expectServiceStartError(redactProviderError(raw, createRedactor("secrets")));
+    expect(error.service).toBe("web");
+    expect(error.logTail).toMatchObject({ service: "db", truncated: true, exitCode: 1 });
+    expect(error.logTail?.lines.join("\n")).not.toContain("lando-data-version-refused");
+    expect(error.dataVersion).toEqual({
+      direction: "downgrade",
+      evidence: "guard",
+      dataVersion: "11.4",
+      imageVersion: "10.11",
+    });
+    expect(error.remediation).toContain("lando db:export dump.sql.gz --service db");
+    expect(error.remediation).toContain("lando logs -s db");
+    const request = requests.find((entry) => entry.includes("/logs?"));
+    expect(logsQuery(request ?? "").get("since")).toBe("2026-10-09T00:00:00.000Z");
+    expect(error.remediation).not.toContain("Repair the provider");
+  });
+
   test("omits listener authority when a completed-successfully dependency gate fails", async () => {
     // Given
     const original = dependentPlan();

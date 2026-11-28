@@ -120,7 +120,12 @@ export const restartApp = Effect.fn("AppOperation.restart")(
           ...(selected === undefined ? {} : { services: [...selected] }),
         });
         yield* publishAndRunAppEvent(plan, "post-restart", postRestart);
-        return result;
+        return {
+          ...result,
+          ...(admitted.dataVersionChanges === undefined
+            ? {}
+            : { dataVersionChanges: admitted.dataVersionChanges }),
+        };
       }),
     );
   },

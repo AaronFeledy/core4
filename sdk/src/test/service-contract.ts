@@ -373,6 +373,9 @@ const makeRecordingServiceFeatureContext = (input: ServiceFeatureContractHarness
     setListenerAuthority(authority) {
       recorded.settings.listenerAuthority = authority;
     },
+    setDataVersion(contract) {
+      recorded.settings.dataVersion = contract;
+    },
     setCerts(certs) {
       recorded.settings.certs = certs;
     },

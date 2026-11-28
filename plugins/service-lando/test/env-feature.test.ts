@@ -32,6 +32,7 @@ const featureContext = (config: Readonly<Record<string, unknown>> = {}) => {
     setHealthcheck() {},
     setReadiness() {},
     setListenerAuthority() {},
+    setDataVersion() {},
     setCerts() {},
     setEntrypoint() {},
     setCommand() {},

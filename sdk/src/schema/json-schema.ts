@@ -545,6 +545,12 @@ import { OwnedResourcesCleanupResult, ResourceOwnership } from "./resource-owner
 import { RouteFilter, RouteFilterKind } from "./route-filter.ts";
 import { CronExpression, ScheduleConfig, ScheduleJob, ScheduleJobName } from "./schedule.ts";
 import { ServiceConnection, ServiceState } from "./service-connection.ts";
+import {
+  ServiceDataVersion,
+  ServiceDataVersionFinding,
+  ServiceDataVersionRecord,
+  ServiceDataVersionRefusal,
+} from "./service-data-version.ts";
 import { ServiceDependencyCondition } from "./service-dependency.ts";
 import { ServiceFeatureValidationResult } from "./service-feature-validation.ts";
 import { ServiceContainerChange, ServiceInfo, ServiceInfoLogSource, StartedService } from "./service-info.ts";
@@ -816,6 +822,10 @@ const basePublicSchemaRegistry = schemaRegistry({
   CertificatePlan,
   CertificateSpec,
   ListenerAuthority,
+  ServiceDataVersion,
+  ServiceDataVersionFinding,
+  ServiceDataVersionRecord,
+  ServiceDataVersionRefusal,
   CertificateMaterial,
   CertificatePairPreparation,
   PreparedCertificatePair,

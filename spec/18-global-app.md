@@ -152,6 +152,8 @@ Library hosts MAY request this level through `makeLandoRuntime({ bootstrapLevel:
 
 #### 20.6.2 Lifecycle event scope
 
+Global start, restart, rebuild, and `ensureRunning` use terminal database startup classification (§6.7) only. They do not run user-app database version admission or return `dataVersionChanges` (§6.15).
+
 The `Global` scope extends §3.5 with every event below:
 
 | Operation | Events |

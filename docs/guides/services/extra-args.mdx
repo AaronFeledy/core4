@@ -107,9 +107,9 @@ These catalog types accept a non-empty `extraArgs:` list on a Lando-owned launch
 | `valkey` | port, append-only persistence | same style as Redis |
 | `memcached` | port | `-m`, `-c` |
 | `minio` | API and console bind addresses | server flags after the image entrypoint |
-| `postgres` | planned port, `config.server` | `-c max_connections=200` |
-| `mysql` | planned port, `config.server` | `--max-connections=77` |
-| `mariadb` | planned port, `config.server` | `--max-connections=77` |
+| `postgres` | planned port, `config.server`, `-D`, `-c data_directory=...` | `-c max_connections=200` |
+| `mysql` | planned port, `config.server`, `--datadir` | `--max-connections=77` |
+| `mariadb` | planned port, `config.server`, `--datadir` | `--max-connections=77` |
 | `mongodb` | planned port, `config.server` | `--wiredTigerCacheSizeGB`, `0.5` |
 
 The catalog database launchers preserve the image entrypoint, pin the planned port, and keep any `config.server` flag. MariaDB's launcher also [refuses a downgrade](./mariadb.mdx#go-back-to-the-old-version) before the server starts. Custom images and Compose builds of these types reject `extraArgs:`.

@@ -58,6 +58,12 @@ const epochMillis = (timestamp: string | undefined): number | undefined => {
   return Option.isNone(parsed) ? undefined : DateTime.toEpochMillis(parsed.value);
 };
 
+export const containerStartedAt = (state: Pick<EngineContainerState, "StartedAt"> | undefined) => {
+  const timestamp = state?.StartedAt;
+  if (!timestamp || timestamp.startsWith("0001-")) return undefined;
+  return Option.getOrUndefined(DateTime.make(timestamp));
+};
+
 /**
  * When the engine last finished a check in the current run: the `End` of the newest health-log
  * entry that started at or after `StartedAt`, as a UTC ISO-8601 string with millisecond precision.
