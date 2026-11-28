@@ -1,14 +1,21 @@
 import { expect, test } from "bun:test";
 import { rmSync } from "node:fs";
 import { makeLandoPaths } from "@lando/paths";
-import { AppResolveError, ProviderUnavailableError, appliedStateVersionError } from "@lando/sdk/errors";
+import {
+  AppPlacementError,
+  AppResolveError,
+  ProviderUnavailableError,
+  appliedStateVersionError,
+} from "@lando/sdk/errors";
+import type { EngineIdentity } from "@lando/sdk/schema";
+import type { RuntimeProviderShape } from "@lando/sdk/services";
 import {
   DatabaseCredentialConvergence,
   PathsService,
   RuntimeProviderRegistry,
   UserAppResolver,
 } from "@lando/sdk/services";
-import { makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
 import { Effect, Layer } from "effect";
 import { layer } from "../../src/operations/database-credential-convergence.ts";
 import { identityPlan, identityTarget } from "./data-identity-support.ts";
@@ -99,3 +106,78 @@ test.each(["newer discovery", "unreadable discovery", "newer slot", "mismatch", 
     }
   },
 );
+
+const engine = (host: string): EngineIdentity => ({
+  fingerprint: host,
+  endpoint: `unix:///${host}/podman.sock`,
+});
+
+const engineIdentityRun = async (current?: EngineIdentity) => {
+  const plan = identityPlan("db-app");
+  const { landofile } = identityTarget(plan);
+  if (landofile === undefined) throw new Error("Expected the fixture Landofile");
+  const recorded = { ...plan, engineIdentity: engine("first") };
+  const calls: string[] = [];
+  const provider = new Proxy<RuntimeProviderShape>(
+    {
+      ...TestRuntimeProvider,
+      id: String(plan.provider),
+      ...(current === undefined ? {} : { engineIdentity: current }),
+    },
+    {
+      get(source, property, receiver) {
+        const value = Reflect.get(source, property, receiver);
+        return typeof value === "function"
+          ? (...args: ReadonlyArray<unknown>) => {
+              calls.push(String(property));
+              return (value as (...inner: ReadonlyArray<unknown>) => unknown).apply(source, [...args]);
+            }
+          : value;
+      },
+    },
+  );
+  const registry = makeTestRuntimeProviderRegistry({
+    resolveAppliedPlan: () => Effect.succeed(recorded),
+    readAppliedPlanStrict: () => Effect.succeed(recorded),
+    select: () => Effect.succeed(provider),
+  });
+  const harness = makeHarness({ plannedApp: plan });
+  try {
+    const dependencies = Layer.mergeAll(
+      harness.layer,
+      Layer.succeed(RuntimeProviderRegistry, registry),
+      Layer.succeed(UserAppResolver, {
+        current: Effect.succeed(landofile),
+        load: () => Effect.succeed(landofile),
+      }),
+      Layer.succeed(PathsService, makeLandoPaths({ userDataRoot: harness.userDataRoot })),
+    );
+    const outcome = await Effect.runPromise(
+      Effect.flatMap(DatabaseCredentialConvergence, (service) =>
+        service.reconcile({ root: plan.root, apply: true }),
+      ).pipe(Effect.result, Effect.provide(layer.pipe(Layer.provide(dependencies)))),
+    );
+    return { outcome, calls };
+  } finally {
+    rmSync(harness.userDataRoot, { recursive: true, force: true });
+  }
+};
+
+test("credential convergence refuses a record from another engine before inspecting it", async () => {
+  const { outcome, calls } = await engineIdentityRun(engine("second"));
+
+  if (outcome._tag !== "Failure") throw new Error("expected credential convergence to refuse");
+  expect(outcome.failure).toBeInstanceOf(AppPlacementError);
+  if (outcome.failure instanceof AppPlacementError) {
+    expect(outcome.failure.message).toContain(engine("first").endpoint);
+    expect(outcome.failure.message).toContain(engine("second").endpoint);
+  }
+  expect(calls).toEqual([]);
+});
+
+test("credential convergence proceeds when the provider has no engine identity", async () => {
+  const { outcome } = await engineIdentityRun(undefined);
+
+  if (outcome._tag === "Failure" && outcome.failure instanceof AppPlacementError)
+    throw new Error("a missing identity must not refuse placement");
+});

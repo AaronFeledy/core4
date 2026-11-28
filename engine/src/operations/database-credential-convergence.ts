@@ -14,6 +14,7 @@ import {
 } from "@lando/sdk/services";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Effect, Equal, Layer } from "effect";
+import { requireOwningEngine } from "../providers/app-placement.ts";
 import { withAppMutationLock } from "./app-mutation-lock.ts";
 import { catalogDatabase } from "./database-convergence/catalog.ts";
 import { prepareReconciliation } from "./database-convergence/reconcile.ts";
@@ -63,6 +64,8 @@ const resolveTarget = Effect.fn("DatabaseConvergence.resolveTarget")(function* (
   )
     return yield* rejected;
   const provider = yield* registry.select(plan).pipe(mapFailures(() => rejected));
+  // The applied record names the engine that holds the database; inspect nothing before judging it.
+  yield* requireOwningEngine(provider, "user", [plan]);
   const desiredPlan = yield* planner
     .plan(landofile, provider.capabilities, {
       kind: "user",
