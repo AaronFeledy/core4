@@ -1,5 +1,6 @@
 import { sha256Hex } from "@lando/sdk/digest";
-import type { EngineIdentity } from "@lando/sdk/schema";
+import { AppPlacementError } from "@lando/sdk/errors";
+import type { AppRef, AppliedAppPlan, EngineIdentity, ProviderId } from "@lando/sdk/schema";
 import { Option, Schema } from "effect";
 import {
   dockerApiEndpointKey,
@@ -50,6 +51,58 @@ export const matchesEnginePlacement = (recorded: EngineIdentity, current: Engine
   if (recorded.fingerprint === current.fingerprint) return true;
   const endpoint = canonicalConnection(recorded.endpoint);
   return endpoint !== undefined && endpoint === canonicalConnection(current.endpoint);
+};
+
+export const destroyCommand = (app: Pick<AppRef, "kind" | "id">, provider: ProviderId): string => {
+  switch (app.kind) {
+    case "global":
+      return `lando global:destroy --provider=${provider} --yes`;
+    case "scratch":
+      return `lando scratch:destroy ${app.id} --keep-volumes --yes`;
+    case "user":
+      return `lando destroy --provider=${provider} --yes`;
+  }
+};
+
+export type EnginePlacementRecord = Pick<AppliedAppPlan, "id" | "provider" | "root" | "engineIdentity">;
+
+export interface EnginePlacementCheck {
+  readonly provider: { readonly id: string; readonly engineIdentity?: EngineIdentity | undefined };
+  readonly kind: AppRef["kind"];
+  readonly records: readonly (EnginePlacementRecord | undefined)[];
+}
+
+/**
+ * The placement refusal for a record that names another engine, or `undefined` when this engine
+ * holds (or might hold) every record. Records without an identity and providers without one are
+ * not judged: there is nothing to compare.
+ */
+export const enginePlacementMismatch = (input: EnginePlacementCheck): AppPlacementError | undefined => {
+  const current = input.provider.engineIdentity;
+  if (current === undefined) return undefined;
+  for (const plan of input.records) {
+    if (plan === undefined || plan.provider !== input.provider.id) continue;
+    const recorded = plan.engineIdentity;
+    if (recorded === undefined || matchesEnginePlacement(recorded, current)) continue;
+    const app = { kind: input.kind, root: plan.root, id: plan.id };
+    const owningEndpoint = engineEndpointDisplay(recorded.endpoint);
+    let reconnect = `Restore the connection to ${owningEndpoint}`;
+    if (input.provider.id === "docker")
+      reconnect += " with `docker context use <name>` or by setting DOCKER_HOST";
+    else if (input.provider.id === "podman") reconnect += " by setting DOCKER_HOST";
+    const retire =
+      input.kind === "scratch"
+        ? ` If that engine is gone, run \`lando scratch:destroy ${app.id}\` to retire the scratch. Anything left on the old engine is not removed.`
+        : ` If that engine is gone, run \`${destroyCommand(app, plan.provider)}\` to drop Lando's record. Anything left on the old engine is not removed.`;
+    return new AppPlacementError({
+      app,
+      desiredProviderId: input.provider.id,
+      realizedProviderId: plan.provider,
+      message: `App ${plan.id} was realized at ${owningEndpoint}, but ${engineEndpointDisplay(current.endpoint)} now connects to a different engine.`,
+      remediation: `${reconnect}.${retire}`,
+    });
+  }
+  return undefined;
 };
 
 // Podman's compatibility ID is random per request. Both API dialects describe

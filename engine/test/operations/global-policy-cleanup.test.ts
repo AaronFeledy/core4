@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AbsolutePath, AppId, PluginManifest, ProviderId, appIdentityKey } from "@lando/sdk/schema";
-import { StateStore } from "@lando/sdk/services";
+import { RuntimeProviderRegistry, StateStore } from "@lando/sdk/services";
 import { Cause, Effect, Exit, Schema } from "effect";
 import { readGlobalPolicy } from "../../src/global-app/enablement.ts";
 import { GlobalPolicyReconciliationError } from "../../src/global-app/errors.ts";
@@ -35,6 +35,46 @@ const withFixture = async (use: (f: ReturnType<typeof makeGlobalLifecycleFixture
     await rm(directory, { recursive: true, force: true });
   }
 };
+
+test("disable refuses a global record from another engine before observing it", async () => {
+  await withFixture(async (f) => {
+    const engine = (host: string) => ({ fingerprint: host, endpoint: `unix:///${host}/podman.sock` });
+    const observed: string[] = [];
+    const provider = new Proxy(
+      { ...f.provider, engineIdentity: engine("second") },
+      {
+        get(target, property, receiver) {
+          const value = Reflect.get(target, property, receiver);
+          return typeof value === "function"
+            ? (...args: ReadonlyArray<unknown>) => {
+                observed.push(String(property));
+                return (value as (...inner: ReadonlyArray<unknown>) => unknown).apply(target, [...args]);
+              }
+            : value;
+        },
+      },
+    );
+    const recorded = { ...f.planFor(["mail", "sibling"]), engineIdentity: engine("first") };
+    f.setApplied(recorded);
+
+    const error = await Effect.runPromise(
+      Effect.flip(
+        globalDisable({ selectors: ["mail"] }).pipe(
+          Effect.provideService(RuntimeProviderRegistry, {
+            ...f.registry,
+            select: () => Effect.succeed(provider),
+          }),
+          Effect.provide(f.layer),
+        ),
+      ),
+    );
+
+    expect(error._tag).toBe("AppPlacementError");
+    expect(error.message).toContain("unix:///first/podman.sock");
+    expect(observed).toEqual([]);
+    expect(f.removed).toEqual([]);
+  });
+});
 
 test("disable withdraws confirmed-missing planned service routes without claiming removal", async () => {
   await withFixture(async (f) => {

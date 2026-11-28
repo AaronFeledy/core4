@@ -22,12 +22,14 @@ import {
   type LandoEvent,
   ProcessRunner,
   RuntimeProviderRegistry,
+  type RuntimeProviderShape,
   ShellRunner,
 } from "@lando/sdk/services";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { DateTime, Effect, Option } from "effect";
 import { mapFailureErrors } from "../lifecycle/failure-compensation.ts";
 import { invocationAuthorityForPlan, sitesUnder } from "../planner/invocation-authority.ts";
+import { admitRecordedApp, planAppKind } from "../providers/app-placement.ts";
 import { EventCommandExecutor } from "../services/event-command-executor.ts";
 import { registerPlanRedaction } from "../services/plan-redaction.ts";
 import { type EventRuntimeError, isEventRuntimeError } from "../tooling/event-errors.ts";
@@ -92,10 +94,11 @@ const hostStepService = (step: EventStep, primary: string | undefined): string |
   return primary;
 };
 
-const inspectHostContainer = Effect.fnUntraced(function* (plan: AppPlan, service: string) {
-  const registry = yield* Effect.serviceOption(RuntimeProviderRegistry);
-  if (Option.isNone(registry)) return undefined;
-  const provider = yield* registry.value.select(plan);
+const inspectHostContainer = Effect.fnUntraced(function* (
+  plan: AppPlan,
+  service: string,
+  provider: RuntimeProviderShape,
+) {
   return yield* provider.inspect({ app: plan.id, service: ServiceName.make(service), plan }).pipe(
     Effect.map((info) => info.status),
     Effect.catch((error) =>
@@ -113,6 +116,17 @@ const resolveCompiledSteps = Effect.fnUntraced(function* (
 ) {
   const compiled = plan.events?.[event] ?? [];
   const primary = Object.entries(plan.services).find(([, service]) => service.primary === true)?.[0];
+  // Read the applied record once and admit it before any step inspects a container, so a
+  // different engine's silence never becomes evidence that a service is down.
+  const provider = yield* Effect.cached(
+    Effect.gen(function* () {
+      const registry = yield* Effect.serviceOption(RuntimeProviderRegistry);
+      if (Option.isNone(registry)) return undefined;
+      const applied = yield* registry.value.readAppliedPlanStrict(plan);
+      const selected = yield* registry.value.select(plan);
+      return (yield* admitRecordedApp(selected, planAppKind(plan), [applied])).provider;
+    }),
+  );
   const resolved: EventStepPlan[] = [];
   for (const entry of compiled) {
     if (entry.status !== "active") {
@@ -129,7 +143,10 @@ const resolveCompiledSteps = Effect.fnUntraced(function* (
       resolved.push(entry);
       continue;
     }
-    const status = yield* inspectHostContainer(plan, service).pipe(
+    const status = yield* Effect.gen(function* () {
+      const selected = yield* provider;
+      return selected === undefined ? undefined : yield* inspectHostContainer(plan, service, selected);
+    }).pipe(
       mapFailures((error) =>
         eventError(error, event, entry.step, context.redactor, entry.source, entry.sourceIndex),
       ),

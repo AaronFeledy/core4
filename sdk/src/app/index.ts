@@ -434,6 +434,7 @@ export interface ToolingOptions {
 }
 
 export type ToolingError =
+  | AppPlacementError
   | CommandAliasConflictError
   | UserLandofileError
   | AppPlannerError

@@ -1,7 +1,7 @@
+import { destroyCommand } from "@lando/container-runtime/engine-identity";
 import { AppResolveError } from "@lando/sdk/errors";
 import { type AbsolutePath, type AppRef, ProviderId, type ResourceOwnership } from "@lando/sdk/schema";
 import type { AppliedOrphanGroup } from "@lando/sdk/services";
-import { destroyCommand } from "./app-placement.ts";
 
 const NAMED_CONTAINERS = 5;
 

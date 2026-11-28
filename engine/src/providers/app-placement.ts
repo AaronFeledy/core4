@@ -1,4 +1,4 @@
-import { engineEndpointDisplay, matchesEnginePlacement } from "@lando/container-runtime/engine-identity";
+import { destroyCommand, enginePlacementMismatch } from "@lando/container-runtime/engine-identity";
 import { AppPlacementError, AppResolveError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -11,22 +11,12 @@ import {
 import { RuntimeProviderRegistry, type RuntimeProviderShape } from "@lando/sdk/services";
 import { Context, Effect } from "effect";
 import { canonicalMissingAppRoot } from "../operations/app-mutation-lock.ts";
+import { SCRATCH_EXTENSION_KEY } from "../scratch-app/identity.ts";
 import { matchesAppPlanIdentity } from "./app-plan-identity.ts";
 
 export const TeardownProvider = Context.Reference<ProviderId | undefined>("@lando/engine/TeardownProvider", {
   defaultValue: () => undefined,
 });
-
-export const destroyCommand = (app: Pick<AppRef, "kind" | "id">, provider: ProviderId): string => {
-  switch (app.kind) {
-    case "global":
-      return `lando global:destroy --provider=${provider} --yes`;
-    case "scratch":
-      return `lando scratch:destroy ${app.id} --keep-volumes --yes`;
-    case "user":
-      return `lando destroy --provider=${provider} --yes`;
-  }
-};
 
 /** Applied plans claim placement; inventories alone do not. This never contacts a runtime. */
 export const resolveAppPlacement = Effect.fn("AppPlacement.resolve")(function* (
@@ -103,33 +93,35 @@ export const requireOwningEngine = (
   kind: AppRef["kind"],
   plans: readonly (Pick<AppliedAppPlan, "id" | "provider" | "root" | "engineIdentity"> | undefined)[],
 ): Effect.Effect<void, AppPlacementError> => {
-  const current = provider.engineIdentity;
-  if (current === undefined) return Effect.void;
-  for (const plan of plans) {
-    if (plan === undefined || plan.provider !== provider.id) continue;
-    const recorded = plan.engineIdentity;
-    if (recorded === undefined || matchesEnginePlacement(recorded, current)) continue;
-    const app = { kind, root: plan.root, id: plan.id };
-    const owningEndpoint = engineEndpointDisplay(recorded.endpoint);
-    let reconnect = `Restore the connection to ${owningEndpoint}`;
-    if (provider.id === "docker") reconnect += " with `docker context use <name>` or by setting DOCKER_HOST";
-    else if (provider.id === "podman") reconnect += " by setting DOCKER_HOST";
-    const retire =
-      kind === "scratch"
-        ? ` If that engine is gone, run \`lando scratch:destroy ${app.id}\` to retire the scratch. Anything left on the old engine is not removed.`
-        : ` If that engine is gone, run \`${destroyCommand(app, plan.provider)}\` to drop Lando's record. Anything left on the old engine is not removed.`;
-    return Effect.fail(
-      new EngineMismatchError({
-        app,
-        desiredProviderId: provider.id,
-        realizedProviderId: plan.provider,
-        message: `App ${plan.id} was realized at ${owningEndpoint}, but ${engineEndpointDisplay(current.endpoint)} now connects to a different engine.`,
-        remediation: `${reconnect}.${retire}`,
-      }),
-    );
-  }
-  return Effect.void;
+  const mismatch = enginePlacementMismatch({ provider, kind, records: plans });
+  if (mismatch === undefined) return Effect.void;
+  return Effect.fail(
+    new EngineMismatchError({
+      app: mismatch.app,
+      desiredProviderId: mismatch.desiredProviderId,
+      realizedProviderId: mismatch.realizedProviderId,
+      message: mismatch.message,
+      remediation: mismatch.remediation,
+    }),
+  );
 };
+
+/** Refuses before the caller uses `provider` when a record names another engine. */
+export const admitRecordedApp = (
+  provider: RuntimeProviderShape,
+  kind: AppRef["kind"],
+  records: readonly (Pick<AppliedAppPlan, "id" | "provider" | "root" | "engineIdentity"> | undefined)[],
+): Effect.Effect<
+  {
+    readonly provider: RuntimeProviderShape;
+    readonly records: typeof records;
+  },
+  AppPlacementError
+> => requireOwningEngine(provider, kind, records).pipe(Effect.as({ provider, records }));
+
+/** The app kind a plan realizes, for wording a refusal's retirement command. */
+export const planAppKind = (plan: Pick<AppPlan, "extensions">): "scratch" | "user" =>
+  Object.hasOwn(plan.extensions, SCRATCH_EXTENSION_KEY) ? "scratch" : "user";
 
 export const observedAppPlan = Effect.fn("AppPlacement.observedPlan")(function* (
   plan: AppPlan,

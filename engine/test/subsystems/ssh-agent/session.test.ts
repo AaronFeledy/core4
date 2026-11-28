@@ -112,6 +112,27 @@ test("reports unknown SSH attribution with upgrade advice for newer global state
   expect(result.detail).toContain(protection.remediation);
 });
 
+test("reports unknown SSH attribution when the record names another engine", async () => {
+  const engine = (host: string) => ({ fingerprint: host, endpoint: `unix:///${host}/podman.sock` });
+  const provider = {
+    ...runningProvider,
+    engineIdentity: engine("second"),
+    inspect: () => Effect.die("A foreign engine must not be inspected."),
+  };
+
+  const recorded = { ...applied, engineIdentity: engine("first") };
+  const result = await Effect.runPromise(
+    runtimeSshAgentCheck.pipe(
+      Effect.provideService(GlobalAppService, globalApp),
+      withProvider(provider, recorded),
+    ),
+  );
+
+  expect(result.state).toBe("unknown");
+  expect(result.detail).toContain("unix:///first/podman.sock");
+  expect(result.detail).toContain(`lando global:destroy --provider=${applied.provider} --yes`);
+});
+
 test("builds a read-only passthrough bind when the socket uses a host directory", () => {
   // Given
   const directory = AbsolutePath.make("/relay/socket");

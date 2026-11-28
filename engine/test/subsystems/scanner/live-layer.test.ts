@@ -185,6 +185,32 @@ describe("ProviderUrlScanner.layer", () => {
     expect(result.endpoints[0]?.outcome).toBe("green");
   });
 
+  test("refuses an app recorded on another engine before inspecting it", async () => {
+    const engine = (host: string) => ({ fingerprint: host, endpoint: `unix:///${host}/podman.sock` });
+    const inspected: string[] = [];
+    const provider = {
+      ...TestRuntimeProvider,
+      id: plan.provider,
+      engineIdentity: engine("second"),
+      appliedPlans: Effect.succeed([{ ...plan, id: appId, engineIdentity: engine("first") }]),
+      inspect: ({ service }: { readonly service: ServiceName }) => {
+        inspected.push(String(service));
+        return Effect.die("A foreign engine must not be inspected.");
+      },
+    } satisfies RuntimeProviderShape;
+
+    const error = await driveExit(
+      provideScanner(provider, requestSequence([httpStatus(200)])).pipe(
+        Effect.flatMap((scanner) => scanner.scan(appId)),
+      ),
+    ).then(failureOf);
+
+    expect(error._tag).toBe("ScannerError");
+    expect(error.message).toContain("unix:///first/podman.sock");
+    expect(error.remediation).toContain(`lando destroy --provider=${plan.provider} --yes`);
+    expect(inspected).toEqual([]);
+  });
+
   test("maps provider list failures to ScannerError", async () => {
     const http = requestSequence([httpStatus(200)]);
     const provider = {
