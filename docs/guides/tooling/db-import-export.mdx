@@ -258,7 +258,7 @@ Before an in-place [MariaDB](../services/mariadb.mdx#change-versions) or [MySQL]
 
 Restoring replaces changes made since capture. Set the service to the snapshot's exact series in your Landofile, then run `lando db:restore <id> --service db` with the listed ID. If the point is unverified, add `--any-series` only after checking the series independently. Ownership and volume checks still apply.
 
-If the applied server uses a different series or the restored series is unverified, restore leaves the database stopped so it can't reopen the files. Follow the restore output to start the correct series, then check that your app can read the recovered data. The output also lists the undo point and how to use it.
+If the applied server uses a different series or the restored series is unverified, restore leaves the database stopped so it can't reopen the files. Follow the restore output to start the correct series, then check that your app can read the recovered data. The output also lists the undo point. If it's unverified, independently verify its data series and pin that series before restoring it.
 
 ## Confirm destructive work
 

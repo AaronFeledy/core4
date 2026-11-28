@@ -19,7 +19,9 @@ export const DbCommandResult = Schema.Struct({
   restoredSeries: Schema.optionalKey(Schema.String),
   databaseLeftStopped: Schema.optionalKey(Schema.Boolean),
   startCommands: Schema.optionalKey(Schema.Array(Schema.String)),
-  undoCommands: Schema.optionalKey(Schema.Array(Schema.String)),
+  undoPrerequisite: Schema.optionalKey(
+    Schema.Struct({ verified: Schema.Literal(false), step: Schema.Literal("verify-data-series") }),
+  ),
   recoverySnapshotId: Schema.optionalKey(Schema.String),
   recoveryPath: Schema.optionalKey(Schema.String),
   recoverySkipped: Schema.optionalKey(Schema.Literal("database-missing")),

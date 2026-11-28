@@ -302,7 +302,7 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
     let snapshotId: string | undefined;
     let nextStep: string | undefined;
     let restoreOutcome:
-      | Pick<DbCommandResult, "restoredSeries" | "databaseLeftStopped" | "startCommands" | "undoCommands">
+      | Pick<DbCommandResult, "restoredSeries" | "databaseLeftStopped" | "startCommands" | "undoPrerequisite">
       | undefined;
     let listedSnapshots: ReadonlyArray<SnapshotInfo> | undefined;
     let prunedSnapshotIds: ReadonlyArray<SnapshotId> | undefined;
@@ -432,22 +432,13 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
           ...(seriesRestore === undefined ? {} : { offlineDataVersion: seriesRestore.currentDataVersion }),
         });
         if (seriesRestore !== undefined) {
-          const { restoredSeries, startCommands, undoPin } = seriesRestore;
-          const undoId = completionReceipt?.recoverySnapshotId;
+          const { restoredSeries, startCommands } = seriesRestore;
           restoreOutcome = {
             databaseLeftStopped,
             ...(restoredSeries === undefined
               ? {}
               : { restoredSeries, ...(databaseLeftStopped ? { startCommands } : {}) }),
-            ...(undoId === undefined
-              ? {}
-              : {
-                  undoCommands: [
-                    undoPin,
-                    `lando db:restore ${undoId} --service ${target.name} --any-series`,
-                    "lando start",
-                  ],
-                }),
+            undoPrerequisite: { verified: false, step: "verify-data-series" },
           };
           if (databaseLeftStopped)
             nextStep =

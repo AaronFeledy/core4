@@ -15,13 +15,12 @@ export const renderRecoveryHint = (result: DbCommandResult): string =>
         ]),
     ...(result.recoverySnapshotId === undefined
       ? []
-      : result.undoCommands === undefined
+      : result.undoPrerequisite === undefined
         ? [
             `Saved recovery snapshot ${result.recoverySnapshotId}. To undo, run: lando db:restore ${result.recoverySnapshotId} --service ${result.service} --yes`,
           ]
         : [
-            `Saved recovery snapshot ${result.recoverySnapshotId}. Verify its data series before undoing this restore, then run:`,
-            ...result.undoCommands,
+            `Saved recovery snapshot ${result.recoverySnapshotId}. Its data series is unverified. Before undoing this restore, independently verify the snapshot's data series and pin that series in the Landofile.`,
           ]),
     ...(result.nextStep === undefined ? [] : [result.nextStep]),
   ].join("\n");

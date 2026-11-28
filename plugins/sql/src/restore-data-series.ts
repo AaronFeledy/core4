@@ -49,6 +49,5 @@ export const planSeriesRestore = Effect.fn("Sql.planSeriesRestore")(function* (i
     resume: matchesApplied,
     restoredSeries: verifiedSeries,
     startCommands: matchesDesired ? ["lando start"] : [pin, "lando start"],
-    undoPin: `lando app:config:set services.${service.name}.type ${metadata.family}:${current.image}`,
   };
 });

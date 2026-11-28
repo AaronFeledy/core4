@@ -221,7 +221,7 @@ If you have no restore point, use a verified export taken before the upgrade. To
     </Step>
     <Step name="roll-back">
       <Verify command="lando db:restore {{capture:restoreId}} --service db --yes --format=json" expectExit={1} expect={{ stdout: { regex: '"_tag":"SqlRecoveryUnavailableError"' } }} />
-      <Verify command="lando db:restore {{capture:restoreId}} --service db --any-series --yes --format=json" expect={{ stdout: { regex: '(?=.*"databaseLeftStopped":true)(?=.*"undoCommands")' } }} />
+      <Verify command="lando db:restore {{capture:restoreId}} --service db --any-series --yes --format=json" expect={{ stdout: { regex: '(?=.*"databaseLeftStopped":true)(?=.*"undoPrerequisite":\\{"verified":false,"step":"verify-data-series"\\})' } }} />
       <Run command="lando start" />
       <Verify command="lando mysql -N -e 'SELECT VERSION()'" expect={{ stdout: { regex: "^8[.]0[.]" } }} />
       <Verify command="lando mysql -N -e 'SELECT body FROM notes'" expect={{ stdout: { regex: "still here" } }} />

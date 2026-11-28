@@ -58,11 +58,10 @@ test.each([
     expect(f.harness.lifecycle()).toEqual(lifecycle);
     expect(result.restoredSeries).toBe("8.0");
     expect(result.databaseLeftStopped).toBe(!lifecycle.some((action) => action === "resume"));
-    expect(result.undoCommands).toEqual([
-      `lando app:config:set services.database.type mysql:${applied}`,
-      `lando db:restore ${result.recoverySnapshotId} --service database --any-series`,
-      "lando start",
-    ]);
+    expect(result).toMatchObject({
+      undoPrerequisite: { verified: false, step: "verify-data-series" },
+    });
+    expect(result).not.toHaveProperty("undoCommands");
     if (nextStep === undefined) expect(result.nextStep).toBeUndefined();
     else expect(result.nextStep).toMatch(nextStep);
     if (applied !== desired) expect(result.nextStep).not.toContain("services.database.type");
