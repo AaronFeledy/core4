@@ -100,7 +100,7 @@ export const requireOwningEngine = (
   provider: RuntimeProviderShape,
   kind: AppRef["kind"],
   plans: readonly (Pick<AppliedAppPlan, "id" | "provider" | "root" | "engineIdentity"> | undefined)[],
-) => {
+): Effect.Effect<void, AppPlacementError> => {
   const current = provider.engineIdentity;
   if (current === undefined) return Effect.void;
   for (const plan of plans) {
@@ -114,7 +114,7 @@ export const requireOwningEngine = (
     else if (provider.id === "podman") reconnect += " by setting DOCKER_HOST";
     const retire =
       kind === "scratch"
-        ? ""
+        ? ` If that engine is gone, run \`lando scratch:destroy ${app.id}\` to retire the scratch. Anything left on the old engine is not removed.`
         : ` If that engine is gone, run \`${destroyCommand(app, plan.provider)}\` to drop Lando's record. Anything left on the old engine is not removed.`;
     return Effect.fail(
       new AppPlacementError({

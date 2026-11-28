@@ -1,4 +1,5 @@
 import { makeLandoPaths, normalizeHostPlatform } from "@lando/paths";
+import { AppPlacementError, ScratchAppError } from "@lando/sdk/errors";
 import {
   ConfigService,
   type FileSystem,
@@ -116,6 +117,20 @@ export const poweroff = Effect.fn("AppsPoweroff.poweroff")(function* (
       .destroy(target.id, { keepVolumes: false, reason: "poweroff" })
       .pipe(Effect.result);
     if (Result.isFailure(destroyed)) {
+      const error = destroyed.failure;
+      if (error instanceof ScratchAppError && error.cause instanceof AppPlacementError) {
+        const mismatch = error.cause;
+        keptScratch += 1;
+        apps.push({
+          kind: "scratch",
+          appId: target.id,
+          appRoot: mismatch.app.root,
+          providerId: mismatch.realizedProviderId,
+          outcome: "skipped",
+          reason: mismatch.message,
+        });
+        continue;
+      }
       failures.push({
         kind: "scratch",
         appId: target.id,

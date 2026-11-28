@@ -45,6 +45,8 @@ export const renderPoweroffResult = (result: PoweroffResult): string => {
   if (destroyed.length > 0)
     lines.push(`Destroyed scratch apps: ${destroyed.map((app) => labelApp(app, duplicates)).join(", ")}`);
   for (const app of result.apps) {
+    if (app.outcome === "skipped" && app.reason !== undefined)
+      lines.push(`Skipped ${labelApp(app, duplicates)}: ${app.reason}`);
     const hook = app.landofileEvents;
     if (hook?.status !== "failed") continue;
     const { message, remediation } = hook.stepFailure;
@@ -58,7 +60,10 @@ export const renderPoweroffResult = (result: PoweroffResult): string => {
   }
   if (lines.length === 0) lines.push("No Lando apps to power off.");
   if (result.keptGlobalApp) lines.push("kept global app running");
-  if (result.keptScratchApps > 0) {
+  if (
+    result.keptScratchApps > 0 &&
+    !result.apps.some((app) => app.kind === "scratch" && app.outcome === "skipped")
+  ) {
     const plural = result.keptScratchApps === 1 ? "" : "s";
     lines.push(`kept ${result.keptScratchApps} scratch app${plural} running`);
   }

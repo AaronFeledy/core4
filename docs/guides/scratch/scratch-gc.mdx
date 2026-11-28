@@ -65,6 +65,10 @@ its id from `lando scratch:list` and run:
 lando scratch:destroy <id>
 ```
 
+If `lando scratch:gc --prune` or `lando poweroff` skips a scratch because it belongs to a different engine, reconnect to the recorded engine to destroy it there.
+
+If that engine is gone, `lando scratch:destroy <id>` cleans up on the current engine and removes the local record. Resources may still exist on the old engine. If you reconnect later, run `lando scratch:gc` to list orphans, then `lando scratch:gc --prune` to remove verified scratch containers and volumes.
+
 Destroying a scratch app keeps the newest image Lando built for each of its services for up to seven days, the same way `lando destroy` does. The next scratch app of the same stack reuses those images instead of building them again.
 
 ## Next

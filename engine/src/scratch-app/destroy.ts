@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { causeRemediation, mapFailures } from "@lando/sdk/command-result";
 import { AppPlacementError, ScratchAppError } from "@lando/sdk/errors";
 import {
+  MessageWarnEvent,
   PostDestroyEvent,
   PostScratchDestroyEvent,
   PostStopEvent,
@@ -19,7 +20,7 @@ import {
   RuntimeProviderRegistry,
   StateStore,
 } from "@lando/sdk/services";
-import { DateTime, Effect, Option } from "effect";
+import { DateTime, Effect, Option, Result } from "effect";
 import { routeOwnerFromPlan, routeOwnerFromRoot, routeOwnerFromScratch } from "../lifecycle/route-owner.ts";
 import { withdrawOwnerRoutes } from "../lifecycle/route-withdrawal.ts";
 import { removeServiceCertificates } from "../lifecycle/service-certificate-paths.ts";
@@ -98,7 +99,18 @@ export const makeScratchReaper = Effect.gen(function* () {
         },
       };
       const provider = plan === undefined ? undefined : yield* providers.select(plan);
-      if (provider !== undefined) yield* requireOwningEngine(provider, "scratch", [recorded]);
+      if (provider !== undefined) {
+        const placement = yield* Effect.result(requireOwningEngine(provider, "scratch", [recorded]));
+        if (Result.isFailure(placement)) {
+          if (reason !== "explicit") return yield* placement.failure;
+          yield* events.publish(
+            MessageWarnEvent.make({
+              body: `${placement.failure.message} Resources may remain on the recorded engine. Reconnect to it and run \`lando scratch:gc --prune\` to remove verified orphans.`,
+              timestamp: DateTime.nowUnsafe(),
+            }),
+          );
+        }
+      }
       const orphan =
         plan === undefined && !input.materializationOnly
           ? yield* scanner.prepareScratch(input.id, keepVolumes)

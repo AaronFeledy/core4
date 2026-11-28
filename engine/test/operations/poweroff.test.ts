@@ -35,6 +35,7 @@ import { pendingStartBucketSpec } from "../../src/operations/accelerated-start-r
 import { PoweroffStopError, poweroff } from "../../src/operations/poweroff.ts";
 import { HostMaintenanceRegistry } from "../../src/runtime/host-maintenance.ts";
 import { globalPlanAt, globalTeardownHarness } from "../../src/testing/global-teardown.ts";
+import { seedScratchPlan, withDestroyFixture } from "../scratch-app/destroy-fixture.ts";
 import { layerTransactionGuard } from "../services/landofile-layer.ts";
 import { emptySnapshotsLayer } from "./data-mover-support.ts";
 
@@ -305,6 +306,31 @@ const withRoots = async <A>(
 };
 
 describe("poweroff operation", () => {
+  test("skips a scratch on another engine and destroys the next scratch", () =>
+    withDestroyFixture({ appliedPlan: "other-engine" }, async (f) => {
+      const id = AppId.make("scratch-next-654321");
+      const instanceRoot = join(dirname(f.instanceRoot), id);
+      const root = AbsolutePath.make(join(instanceRoot, "root"));
+      await mkdir(root, { recursive: true });
+      await seedScratchPlan(instanceRoot, { ...f.plan, id, root });
+      f.entries.set(id, { ...f.entry, id, rootPath: root });
+      const harness = await makeHarness({ roots: [] });
+      const result = await Effect.runPromise(
+        Effect.flatMap(ScratchAppService, (scratch) =>
+          poweroff({ keepGlobal: true }).pipe(
+            Effect.provideService(ScratchAppService, scratch),
+            Effect.provide(harness.layer),
+          ),
+        ).pipe(Effect.provide(f.layer)),
+      );
+      expect(result.apps.filter((app) => app.kind === "scratch")).toMatchObject([
+        { appId: f.id, outcome: "skipped", reason: expect.stringContaining("tcp://old.example:2375") },
+        { appId: id, outcome: "destroyed" },
+      ]);
+      expect(result.keptScratchApps).toBe(1);
+      expect([...f.entries.keys()]).toEqual([f.id]);
+      expect(f.receipt()?.id).toBe(f.id);
+    }));
   test.each(["unreadable", "missing"] as const)(
     "stops labeled apps with an %s ownership inventory",
     async (state) => {

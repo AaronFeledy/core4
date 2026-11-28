@@ -13,6 +13,7 @@ export const PoweroffAppResultSchema = Schema.Struct({
   appRoot: Schema.String,
   providerId: Schema.String,
   outcome: PoweroffAppOutcome,
+  reason: Schema.optionalKey(Schema.String),
   servicesStopped: Schema.optionalKey(StopAppResult.fields.servicesStopped),
   landofileEvents: StopAppResult.fields.landofileEvents,
   shutdownObservations: StopAppResult.fields.shutdownObservations,
