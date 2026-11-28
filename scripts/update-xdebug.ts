@@ -2,7 +2,7 @@
 import { resolve } from "node:path";
 import { causeMessage } from "@lando/sdk/errors";
 import { Schema } from "effect";
-import { SUPPORTED_PHP_VERSIONS } from "../plugins/service-lando/src/services/php-via.ts";
+import { SUPPORTED_PHP_VERSIONS } from "../plugins/service-lando/src/services/default-images.ts";
 import { writeFormattedOutput } from "./_codegen-output.ts";
 import {
   XDEBUG_PINS_PATH,

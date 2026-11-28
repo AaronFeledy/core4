@@ -5,7 +5,7 @@ import { makePodmanApiClient } from "@lando/provider-lando";
 import type { ServiceImageIdentity } from "@lando/sdk/services";
 import { Effect, Schema, Stream } from "effect";
 import { serviceTypes } from "../src/index.ts";
-import { PHP_VIA_MODES, phpImageFor } from "../src/services/php-via.ts";
+import { PHP_VIA_MODES, phpImageFor } from "../src/services/default-images.ts";
 import { STATIC_SERVER_IMAGES } from "../src/services/static.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
 

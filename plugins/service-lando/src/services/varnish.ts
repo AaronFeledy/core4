@@ -15,6 +15,7 @@ import {
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { tcpProbe } from "./_tcp-probe.ts";
 import { resolveBindSource } from "./_volume-helpers.ts";
+import { VARNISH_IMAGES } from "./default-images.ts";
 
 export const DEFAULT_PORT = Schema.decodeUnknownSync(PortNumber)(80);
 export const VARNISH_LISTENER = {
@@ -27,11 +28,7 @@ export const VARNISH_LISTENER = {
 const DEFAULT_BACKEND_PORT = "80";
 const VCL_TARGET = "/etc/varnish/default.vcl";
 const GENERATED_VCL_PATH = "/tmp/lando-backend.vcl";
-const VERSIONS = ["6", "7"] as const;
-const ARTIFACTS = {
-  "6": "varnish:6",
-  "7": "varnish:7",
-} as const;
+const VERSIONS = Object.keys(VARNISH_IMAGES);
 
 export const VARNISH_FEATURE_ID = "service-lando.varnish";
 export const VARNISH_VCL_TARGET = VCL_TARGET;
@@ -75,7 +72,7 @@ const applyVarnishFeature = (ctx: ServiceFeatureContext): void => {
   const port = selectPort(service);
   const backend = service.backend ?? "";
 
-  ctx.setArtifact({ kind: "ref", ref: service.image ?? ARTIFACTS["7"] });
+  ctx.setArtifact({ kind: "ref", ref: service.image ?? VARNISH_IMAGES["7"] });
   ctx.addEnv("VARNISH_BACKEND_HOST", backend);
   ctx.addEnv("VARNISH_BACKEND_PORT", service.environment?.VARNISH_BACKEND_PORT ?? DEFAULT_BACKEND_PORT);
   // Primary HTTP loopback works for both Lando and authored launchers; varnishadm needs the management interface.
@@ -141,9 +138,9 @@ const makeVarnishServiceType = (id: string, image: string): ServiceType => ({
     "Put flags in command: or configure VCL through config.vcl / backend:.",
   ),
   versions: VERSIONS,
-  artifacts: ARTIFACTS,
+  artifacts: VARNISH_IMAGES,
   identity:
-    image === ARTIFACTS["6"]
+    image === VARNISH_IMAGES["6"]
       ? rootIdentity()
       : {
           defaultUser: "varnish",
@@ -183,6 +180,6 @@ const makeVarnishServiceType = (id: string, image: string): ServiceType => ({
   },
 });
 
-export const varnish6ServiceType = makeVarnishServiceType("varnish:6", ARTIFACTS["6"]);
-export const varnish7ServiceType = makeVarnishServiceType("varnish:7", ARTIFACTS["7"]);
-export const varnishServiceType = makeVarnishServiceType("varnish", ARTIFACTS["7"]);
+export const varnish6ServiceType = makeVarnishServiceType("varnish:6", VARNISH_IMAGES["6"]);
+export const varnish7ServiceType = makeVarnishServiceType("varnish:7", VARNISH_IMAGES["7"]);
+export const varnishServiceType = makeVarnishServiceType("varnish", VARNISH_IMAGES["7"]);

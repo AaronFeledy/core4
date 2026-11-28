@@ -1,5 +1,5 @@
 import type { ServiceBuildStepIntent } from "@lando/sdk/services";
-import type { SupportedPhpVersion } from "./php-via.ts";
+import type { SupportedPhpVersion } from "./default-images.ts";
 
 export const PHP_BASELINE_STEP_ID = "service-lando.php:baseline" as const;
 export const PHP_BASELINE_INI_PATH = "/usr/local/etc/php/conf.d/10-lando-baseline.ini";

@@ -1,13 +1,13 @@
 import {
   PHP_VIA_MODES,
   SUPPORTED_PHP_VERSIONS,
+  VARNISH_IMAGES,
   phpImageFor,
-} from "../plugins/service-lando/src/services/php-via.ts";
-import { varnishServiceType } from "../plugins/service-lando/src/services/varnish.ts";
+} from "@lando/service-lando/services/default-images";
 
 const identityImages = [
   ...SUPPORTED_PHP_VERSIONS.flatMap((version) => PHP_VIA_MODES.map((via) => phpImageFor(version, via))),
-  ...Object.values(varnishServiceType.artifacts ?? {}),
+  ...Object.values(VARNISH_IMAGES),
 ];
 
 export const servicesImagePullCommands = `

@@ -4,6 +4,7 @@ import type { ServiceType } from "@lando/sdk/services";
 import { Schema } from "effect";
 
 import { serviceTypes } from "../src/index.ts";
+import { phpImageFor } from "../src/services/default-images.ts";
 import { LANDO_ERROR_PAGES_BUILD_STEP_ID } from "../src/services/http-errors.ts";
 import {
   PHP_FEATURE_ID,
@@ -13,7 +14,6 @@ import {
   php86ServiceType,
   phpServiceFeature,
 } from "../src/services/php.ts";
-import { phpImageFor } from "../src/services/php-via.ts";
 import { apacheLauncherDirectives } from "./support/apache-directives.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
 

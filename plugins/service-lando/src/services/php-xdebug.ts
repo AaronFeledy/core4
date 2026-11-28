@@ -3,7 +3,7 @@ import { DEBUGGER_HOST_ALIAS } from "@lando/sdk/schema";
 import type { ServiceBuildStepIntent } from "@lando/sdk/services";
 
 import { ServiceConfigIssue } from "./_feature-helpers.ts";
-import type { PhpVia, SupportedPhpVersion } from "./php-via.ts";
+import type { PhpVia, SupportedPhpVersion } from "./default-images.ts";
 import pins from "./php-xdebug-pins.json" with { type: "json" };
 
 type PhpXdebugRelease = {

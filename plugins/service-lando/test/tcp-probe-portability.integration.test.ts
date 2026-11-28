@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
 import { tcpProbe } from "../src/services/_tcp-probe.ts";
+import { SUPPORTED_PHP_VERSIONS, phpImageFor } from "../src/services/default-images.ts";
 import { TOMCAT_CATALOG } from "../src/services/generated/tomcat-catalog.ts";
-import { SUPPORTED_PHP_VERSIONS, phpImageFor } from "../src/services/php-via.ts";
 
 const images = [
   { image: "mongo:7", port: 27017, command: [] },

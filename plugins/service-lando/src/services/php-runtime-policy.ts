@@ -2,7 +2,7 @@ import { AppFeatureMutationConflictError } from "@lando/sdk/errors";
 import { type ServiceConfig, canonicalImageReference, sameImageReference } from "@lando/sdk/schema";
 import type { AppFeatureServiceView } from "@lando/sdk/services";
 import { Effect, Result, Schema } from "effect";
-import { type PhpVia, phpImageFor } from "./php-via.ts";
+import { type PhpVia, phpImageFor } from "./default-images.ts";
 
 export const PHP_RUNTIME_POLICY_KEY = "@lando/service-lando/php-runtime-policy";
 export const PhpBaseFamily = Schema.Literals(["debian-bookworm", "debian-bullseye"]);

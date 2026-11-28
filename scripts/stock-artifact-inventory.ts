@@ -2,14 +2,14 @@ import { canonicalImageReference } from "@lando/sdk/schema";
 import { serviceTypes } from "../plugins/service-lando/src/index.ts";
 import { MAILPIT_IMAGE } from "../plugins/service-lando/src/mailpit-constants.ts";
 import { DEFAULT_IMAGE as APACHE_IMAGE } from "../plugins/service-lando/src/services/apache.ts";
-import { DEFAULT_IMAGE as LOCALSTACK_IMAGE } from "../plugins/service-lando/src/services/localstack.ts";
-import { MAILHOG_IMAGE } from "../plugins/service-lando/src/services/mailhog.ts";
-import { DEFAULT_IMAGE as MEMCACHED_IMAGE } from "../plugins/service-lando/src/services/memcached.ts";
 import {
   PHP_VIA_MODES,
   SUPPORTED_PHP_VERSIONS,
   phpImageFor,
-} from "../plugins/service-lando/src/services/php-via.ts";
+} from "../plugins/service-lando/src/services/default-images.ts";
+import { DEFAULT_IMAGE as LOCALSTACK_IMAGE } from "../plugins/service-lando/src/services/localstack.ts";
+import { MAILHOG_IMAGE } from "../plugins/service-lando/src/services/mailhog.ts";
+import { DEFAULT_IMAGE as MEMCACHED_IMAGE } from "../plugins/service-lando/src/services/memcached.ts";
 import { STATIC_SERVER_IMAGES } from "../plugins/service-lando/src/services/static.ts";
 import { DEFAULT_IMAGE as VALKEY_IMAGE } from "../plugins/service-lando/src/services/valkey.ts";
 

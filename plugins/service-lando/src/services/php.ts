@@ -6,6 +6,7 @@ import { UNSUPPORTED_LAUNCHER_EXTRA_ARGS_REMEDIATION } from "./_extra-args.ts";
 import { ServiceConfigIssue, rootIdentity, serviceTypeResolve } from "./_feature-helpers.ts";
 import { resolveWebroot } from "./_webroot.ts";
 import { apacheGeneratedCertificateEndpoint } from "./apache-native-tls.ts";
+import { SUPPORTED_PHP_VERSIONS, type SupportedPhpVersion, phpImageFor } from "./default-images.ts";
 import { drupalLocalLauncher } from "./drupal-local-launcher.ts";
 import { resolvePhpComposerPackages } from "./php-composer-packages.ts";
 import { resolvePhpDbClient } from "./php-db-client.ts";
@@ -13,18 +14,10 @@ import { PHP_COMPOSER_CACHE, PHP_FEATURE_ID } from "./php-feature.ts";
 import { phpLocalLauncher } from "./php-local-launcher.ts";
 import { assertPhpComposerCompatible, resolvePhpComposer } from "./php-prerequisites.ts";
 import { PHP_RUNTIME_POLICY_KEY, resolvePhpRuntimePolicy } from "./php-runtime-policy.ts";
-import {
-  SUPPORTED_PHP_VERSIONS,
-  type SupportedPhpVersion,
-  assertPhpViaKeys,
-  phpImageFor,
-  phpListenPort,
-  phpLogSources,
-  phpPlannedPort,
-  resolvePhpVia,
-} from "./php-via.ts";
+import { assertPhpViaKeys, phpListenPort, phpLogSources, phpPlannedPort, resolvePhpVia } from "./php-via.ts";
 import { phpXdebugTooling, resolvePhpXdebug } from "./php-xdebug.ts";
 
+export { SUPPORTED_PHP_VERSIONS, type SupportedPhpVersion } from "./default-images.ts";
 export {
   PHP_BASELINE_INI_PATH,
   PHP_BASELINE_STEP_ID,
@@ -48,8 +41,6 @@ export {
   PHP_FPM_LOG_SOURCES,
   PHP_LISTENER,
   PHP_LISTENERS,
-  SUPPORTED_PHP_VERSIONS,
-  type SupportedPhpVersion,
 } from "./php-via.ts";
 export const APP_MOUNT_TARGET = "/app";
 const PhpVersion = Schema.Literals(SUPPORTED_PHP_VERSIONS);
