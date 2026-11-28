@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { dirname } from "node:path";
 import { volumeWitnessImage } from "@lando/container-runtime/data-plane";
-import { preflightRecordedPurge } from "@lando/container-runtime/data-root-purge";
+import { preflightDataRootPurge } from "@lando/container-runtime/data-root-purge";
 import { libpodPullDialect, libpodWaitDialect } from "@lando/container-runtime/dialect";
 import type {
   EngineHttpRequest,
@@ -2110,10 +2110,10 @@ export const plugin = definePlugin({
               ? WINDOWS_MANAGED_MACHINE_PIPE
               : runtimeLayoutPaths(input.dataRoot, input.platform).providerSocketPath;
           const ctx = providerContextForEnv(input.env);
-          return yield* preflightRecordedPurge(ctx, { ...input, pluginId: PLUGIN_NAME }, listAppliedPlans, {
-            api: makeRuntimePodmanApiClient(endpoint, ctx),
+          return yield* preflightDataRootPurge(makeRuntimePodmanApiClient(endpoint, ctx), ctx, {
+            ...input,
             endpoint,
-            identify: podmanEngineIdentity,
+            pluginId: PLUGIN_NAME,
           });
         }),
         declaredCapabilities: (platform, arch) =>
