@@ -162,7 +162,7 @@ export const runTooling = Effect.fn("AppOperation.tooling")(function* (
 
   if (task === undefined) {
     if (appRoot !== undefined) {
-      const scriptResult = yield* runBunShellTooling(options, appRoot);
+      const scriptResult = yield* runBunShellTooling({ ...options, plan }, appRoot);
       if (scriptResult !== undefined) return scriptResult;
     }
     const planValues = yield* registerPlanRedaction(plan);

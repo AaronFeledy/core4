@@ -138,11 +138,13 @@ const isEntry = (value: unknown): value is CommandIndexEntry => {
   switch (own(value, "_tag")) {
     case "Ready":
       return (
-        exactCacheKeys(value, [...common, "input", "service", "wrapper", "runs"]) &&
+        exactCacheKeys(value, [...common, "input", "service", "wrapper", "runs", "readsRouteFacts"]) &&
         isInput(own(value, "input")) &&
         (!Object.hasOwn(value, "service") || isString(value.service)) &&
         (!Object.hasOwn(value, "wrapper") || value.wrapper === true) &&
-        (!Object.hasOwn(value, "runs") || isRuns(value.runs))
+        (!Object.hasOwn(value, "runs") || isRuns(value.runs)) &&
+        (!Object.hasOwn(value, "readsRouteFacts") ||
+          (value.readsRouteFacts === true && value.sourceKind === "bun-script"))
       );
     case "Disabled": {
       const source = own(value, "source");

@@ -51,6 +51,60 @@ test.each(["source", "_tag", "visibility", "sourceKind"])("requires disabled %s"
     decodeAppCommandIndex(currentAbiBytes("LCAC", { ...app, entries: [without(disabled, key)] })),
   ).toBeNull();
 });
+const unavailableWithIssues = (issues: readonly object[]) => ({
+  ...unavailable,
+  diagnostic: {
+    _tag: "BunShellScriptFrontMatterError",
+    message: "Invalid env declarations",
+    remediation: "Correct the script's env declarations.",
+    issues,
+    omittedIssueCount: 0,
+  },
+});
+
+test("round-trips a bounded script diagnostic with located issues", () => {
+  // Given one issue located at the script's front-matter key
+  const issue = {
+    reason: "other-scope",
+    path: ["env", "SITE"],
+    message: "env.SITE reads {{ env.* }}, which a script env value cannot.",
+    source: { layer: "script", file: "/app/.lando/scripts/check.bun.sh", path: ["env", "SITE"] },
+  };
+  // When / Then the decoder retains it
+  expect(
+    decodeAppCommandIndex(currentAbiBytes("LCAC", { ...app, entries: [unavailableWithIssues([issue])] }))
+      ?.entries,
+  ).toMatchObject([{ diagnostic: { issues: [issue], omittedIssueCount: 0 } }]);
+  // And rejects more than the bounded issue count
+  expect(
+    decodeAppCommandIndex(
+      currentAbiBytes("LCAC", {
+        ...app,
+        entries: [unavailableWithIssues(Array.from({ length: 9 }, () => issue))],
+      }),
+    ),
+  ).toBeNull();
+});
+
+test("accepts readsRouteFacts only on a Ready bun-script entry", () => {
+  // Given one script entry that reads route facts and one tooling entry carrying the same flag
+  const script = {
+    id: "app:smoke",
+    summary: "Smoke",
+    _tag: "Ready",
+    sourceKind: "bun-script",
+    visibility: "public",
+    input,
+    readsRouteFacts: true,
+  };
+  const tooling = { ...entry, readsRouteFacts: true };
+  // Then
+  expect(
+    decodeAppCommandIndex(currentAbiBytes("LCAC", { ...app, entries: [script] }))?.entries,
+  ).toMatchObject([{ id: "app:smoke", readsRouteFacts: true }]);
+  expect(decodeAppCommandIndex(currentAbiBytes("LCAC", { ...app, entries: [tooling] }))).toBeNull();
+});
+
 test("rejects cyclic unallowlisted diagnostic content without throwing", () => {
   const cause: { cause?: object } = {};
   cause.cause = cause;

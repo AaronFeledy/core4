@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { mkdir, rm, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { authoredInvocationSites, compileInvocationSites } from "@lando/landofile/compiled-sites";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { AppliedStateVersionError, ConfigExpressionError } from "@lando/sdk/errors";
@@ -31,6 +33,7 @@ import { testEnvironmentResolverLayerFor } from "../environment-values.ts";
 import { publicUrlRouter } from "../lifecycle/route-url-fixture.ts";
 import { ownerOnlyFileAccess } from "../private-file-access.ts";
 import { plan, web } from "./start-progress-topology-support.ts";
+import { scriptHostLayer } from "./tooling-bun-script-support.ts";
 
 const route: RoutePlan = {
   hostname: "applied.test",
@@ -73,6 +76,7 @@ const runEvent = async (
   const redaction = makeRedactionService();
   const resolver = testEnvironmentResolverLayerFor(redaction);
   const layer = Layer.mergeAll(
+    scriptHostLayer,
     BunProcessRunner.layer,
     resolver,
     LandoEventService.layer.pipe(Layer.provide(resolver)),
@@ -305,6 +309,94 @@ describe("event step service URLs", () => {
         issues: [{ reason: "app-not-started" }],
       },
     });
+  });
+
+  test("a task: script step cannot be excused from an event-phase refusal", async () => {
+    // Given a script that reads a route fact, run as an excused pre-start step
+    const scripts = join(String(plan.root), ".lando/scripts");
+    await mkdir(scripts, { recursive: true });
+    await writeFile(
+      join(scripts, "smoke.bun.sh"),
+      ["# ---", "# env:", '#   SITE: "{{ services.web.url }}"', "# ---", 'printf "%s" "$SITE"', ""].join(
+        "\n",
+      ),
+    );
+    try {
+      // When
+      const { result } = await runEvent("pre-start", {
+        "pre-start": [{ task: "smoke", ignoreError: true }],
+      });
+      // Then
+      expect(result).toMatchObject({
+        _tag: "Failure",
+        failure: {
+          _tag: "LandofileEventStepFailedError",
+          kind: "task",
+          outputTail: "",
+          issues: [{ reason: "event-phase", path: ["env", "SITE"] }],
+        },
+      });
+    } finally {
+      await rm(join(String(plan.root), ".lando"), { recursive: true, force: true });
+    }
+  });
+
+  test("a task: script step resolves the applied route in a post-start step", async () => {
+    // Given
+    const scripts = join(String(plan.root), ".lando/scripts");
+    const marker = join(String(plan.root), "script-url");
+    await mkdir(scripts, { recursive: true });
+    await writeFile(
+      join(scripts, "smoke.bun.sh"),
+      [
+        "# ---",
+        "# env:",
+        '#   SITE: "{{ services.web.url }}"',
+        "# ---",
+        `printf "%s" "$SITE" > ${marker}`,
+        "",
+      ].join("\n"),
+    );
+    try {
+      // When
+      const { result } = await runEvent("post-start", { "post-start": [{ task: "smoke" }] });
+      // Then
+      expect(result._tag).toBe("Success");
+      expect(await Bun.file(marker).text()).toBe(URL);
+    } finally {
+      await rm(join(String(plan.root), ".lando"), { recursive: true, force: true });
+    }
+  });
+
+  test.each([
+    ["{{ 443 }}", "non-text-value"],
+    ["{{ default() }}", "invalid-env-value"],
+  ] as const)("a task: script env failure %s cannot be excused by ignoreError", async (value, reason) => {
+    // Given a script whose env value fails validation without reading a route fact
+    const scripts = join(String(plan.root), ".lando/scripts");
+    await mkdir(scripts, { recursive: true });
+    await writeFile(
+      join(scripts, "smoke.bun.sh"),
+      ["# ---", "# env:", `#   SITE: "${value}"`, "# ---", 'echo "$SITE"', ""].join("\n"),
+    );
+    try {
+      // When it runs as an excused pre-start step
+      const { result } = await runEvent("pre-start", {
+        "pre-start": [{ task: "smoke", ignoreError: true }],
+      });
+      // Then the step that never ran still fails the event, located at its key
+      expect(result).toMatchObject({
+        _tag: "Failure",
+        failure: {
+          _tag: "LandofileEventStepFailedError",
+          kind: "task",
+          outputTail: "",
+          issues: [{ reason, path: ["env", "SITE"] }],
+        },
+      });
+    } finally {
+      await rm(join(String(plan.root), ".lando"), { recursive: true, force: true });
+    }
   });
 
   test("attributes a deferred step's unresolvable URL condition to that step", async () => {

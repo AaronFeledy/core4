@@ -1,5 +1,5 @@
 import { ToolingCompileError } from "@lando/sdk/errors";
-import { ToolingInputDeclaration, ToolingRunSummary } from "@lando/sdk/schema";
+import { ToolingInputDeclaration, ToolingRunSummary, ValidationIssue } from "@lando/sdk/schema";
 import { Schema } from "effect";
 import { PluginCommandDiagnostic } from "./plugin-command-catalog";
 import type { ToolingAvailability } from "./tooling-route";
@@ -87,6 +87,16 @@ const toolingDiagnostic = Schema.Struct({
   omittedIssueCount: ToolingCompileError.fields.omittedIssueCount,
 });
 
+/** A script content failure carries located issues under a non-tooling tag. */
+const scriptDiagnostic = Schema.Struct({
+  _tag: Schema.String,
+  message: Schema.String,
+  remediation: Schema.optionalKey(Schema.String),
+  issues: Schema.Array(ValidationIssue),
+  omittedIssueCount: Schema.optionalKey(Schema.Number),
+  source: Schema.optionalKey(Schema.Struct({ path: Schema.String, task: Schema.String })),
+});
+
 const builtInDescriptor = Schema.Struct({
   ...fields,
   source: Schema.Literal("built-in"),
@@ -96,7 +106,7 @@ const builtInDescriptor = Schema.Struct({
 const toolingDescriptor = Schema.Struct({
   ...fields,
   source: Schema.Literal("tooling"),
-  loadError: Schema.optionalKey(Schema.Union([toolingDiagnostic, PluginCommandDiagnostic])),
+  loadError: Schema.optionalKey(Schema.Union([toolingDiagnostic, scriptDiagnostic, PluginCommandDiagnostic])),
   input: Schema.optionalKey(ToolingInputDeclaration),
   runs: Schema.optionalKey(ToolingRunSummary).annotate({
     description: "Bounded summary of what this task runs.",

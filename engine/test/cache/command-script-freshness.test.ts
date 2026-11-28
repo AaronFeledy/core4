@@ -97,6 +97,20 @@ test.each(["desc", "description", "summary", "service"])(
   },
 );
 
+test("env front-matter edits stale routing so route facts re-resolve", async () => {
+  await withCache(async (root, _cacheRoot, path) => {
+    // Given the same body under an env value that reads a route fact and one that does not
+    await writeFile(
+      path,
+      '# ---\n# desc: Probe\n# env:\n#   SITE_URL: "{{ services.web.url }}"\n# ---\necho after\n',
+    );
+    const fingerprints = await commandScriptFingerprints(root);
+    await writeFile(path, '# ---\n# desc: Probe\n# env:\n#   SITE_URL: "literal"\n# ---\necho after\n');
+    // When / Then
+    expect(await commandScriptsFresh(root, fingerprints)).toBe(false);
+  });
+});
+
 test("an added script leaves the index usable for routing", async () => {
   await withCache(async (root, cacheRoot) => {
     await writeFile(join(root, ".lando/scripts/new.bun.sh"), "# ---\n# ---\necho new\n");

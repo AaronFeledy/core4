@@ -66,31 +66,28 @@ export const isCommandLoadError = (value: unknown): value is CommandLoadError =>
     (typeof value.remediation === "string" && Buffer.byteLength(JSON.stringify(value.remediation)) > 1024)
   )
     return false;
-  const valid =
-    value._tag !== "ToolingCompileError"
-      ? exactCacheKeys(value, ["_tag", "message", "remediation"])
-      : exactCacheKeys(value, [
-          "_tag",
-          "tool",
-          "source",
-          "message",
-          "remediation",
-          "issues",
-          "omittedIssueCount",
-        ]) &&
-        typeof value.tool === "string" &&
-        Buffer.byteLength(JSON.stringify(value.tool)) <= 1024 &&
-        typeof value.remediation === "string" &&
-        denseArray(value.issues) &&
-        value.issues.length <= 8 &&
-        value.issues.every(issue) &&
-        typeof value.omittedIssueCount === "number" &&
+  const tooling = value._tag === "ToolingCompileError";
+  const keys = ["_tag", "message", "remediation", "issues", "omittedIssueCount", "source"];
+  if (!exactCacheKeys(value, tooling ? [...keys, "tool"] : keys)) return false;
+  if (
+    tooling &&
+    (typeof value.tool !== "string" ||
+      Buffer.byteLength(JSON.stringify(value.tool)) > 1024 ||
+      typeof value.remediation !== "string")
+  )
+    return false;
+  return (
+    ((!tooling && !Object.hasOwn(value, "issues")) ||
+      (denseArray(value.issues) && value.issues.length <= 8 && value.issues.every(issue))) &&
+    ((!tooling && !Object.hasOwn(value, "omittedIssueCount")) ||
+      (typeof value.omittedIssueCount === "number" &&
         Number.isSafeInteger(value.omittedIssueCount) &&
-        value.omittedIssueCount >= 0 &&
-        (!Object.hasOwn(value, "source") ||
-          (cacheMapping(value.source) &&
-            exactCacheKeys(value.source, ["path", "task"]) &&
-            typeof value.source.path === "string" &&
-            typeof value.source.task === "string"));
-  return valid && Buffer.byteLength(JSON.stringify(value)) <= 16 * 1024;
+        value.omittedIssueCount >= 0)) &&
+    (!Object.hasOwn(value, "source") ||
+      (cacheMapping(value.source) &&
+        exactCacheKeys(value.source, ["path", "task"]) &&
+        typeof value.source.path === "string" &&
+        typeof value.source.task === "string")) &&
+    Buffer.byteLength(JSON.stringify(value)) <= 16 * 1024
+  );
 };

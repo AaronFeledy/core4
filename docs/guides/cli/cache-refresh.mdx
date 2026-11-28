@@ -51,7 +51,7 @@ For example, with a `bad.bun.sh` that has no front matter next to a healthy scri
 {
   "code": "LANDO_SCRIPT_INVALID",
   "message": ".bun.sh script at /tmp/myapp/.lando/scripts/bad.bun.sh is missing the front-matter block.",
-  "remediation": "Run lando app:config:lint to see every finding. Wrap the front-matter in `# ---` markers, prefix every line with `# `, and use only service, desc, description, summary, flags, args, arguments, disabled.",
+  "remediation": "Run lando app:config:lint to see every finding. Wrap the front-matter in `# ---` markers, prefix every line with `# `, and use only service, desc, description, summary, flags, args, arguments, env, disabled.",
   "context": {
     "path": "/tmp/myapp/.lando/scripts/bad.bun.sh"
   }

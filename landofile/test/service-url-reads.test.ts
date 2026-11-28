@@ -57,6 +57,41 @@ describe("serviceUrlReads", () => {
   });
 });
 
+describe("serviceUrlReads reads", () => {
+  test.each([
+    ["{{ services.web.url }}", [{ kind: "route", service: "web", fact: "url" }]],
+    ["{{ (services).web.url }}", [{ kind: "route", service: "web", fact: "url" }]],
+    ['{{ services["web"].port }}', [{ kind: "named", service: "web", member: "port" }]],
+    ["{{ services.web.creds.user }}", [{ kind: "named", service: "web", member: "creds" }]],
+    ["{{ services[vars.name].port }}", [{ kind: "unanalyzable", refusal: "computed-service" }]],
+    ["{{ services[true ? 'web' : 'db'].port }}", [{ kind: "unanalyzable", refusal: "computed-service" }]],
+    ["{{ services[vars.name].url }}", [{ kind: "unanalyzable", refusal: "computed-service", fact: "url" }]],
+    ["{{ services.web[vars.member] }}", [{ kind: "unanalyzable", refusal: "computed-member" }]],
+    ["{{ services.web }}", [{ kind: "unanalyzable", refusal: "whole-service" }]],
+    ["{{ services }}", [{ kind: "unanalyzable", refusal: "whole-service" }]],
+    [
+      "{{ services.web.url }} then {{ services.db.port }}",
+      [
+        { kind: "route", service: "web", fact: "url" },
+        { kind: "named", service: "db", member: "port" },
+      ],
+    ],
+  ] as const)("classifies every services read in %s", (text, expected) => {
+    // When
+    const reads = serviceUrlReads(parse(text));
+    // Then
+    expect(reads.reads).toEqual(expected);
+  });
+
+  test("keeps a computed name of a literal non-route fact a non-refusal for tooling", () => {
+    // When
+    const reads = serviceUrlReads(parse("{{ services[vars.name].port }}"));
+    // Then
+    expect(reads.refusal).toBeUndefined();
+    expect([...reads.services]).toEqual([]);
+  });
+});
+
 describe("serviceUrlReadPath", () => {
   test.each([
     ["{{ (services.web).url[0] }}", "url"],

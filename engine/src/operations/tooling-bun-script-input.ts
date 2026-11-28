@@ -34,7 +34,10 @@ export const prepareBunShellScript = Effect.fnUntraced(function* (
   return { script, metadata, input: admitted.values, argv, redactionTokens: admitted.redactionTokens };
 });
 
-export type PreparedBunShellScript = Effect.Success<ReturnType<typeof prepareBunShellScript>>;
+export type PreparedBunShellScript = Effect.Success<ReturnType<typeof prepareBunShellScript>> & {
+  /** Front-matter `env` route facts, resolved before the script starts. */
+  readonly routeEnv?: Readonly<Record<string, string>>;
+};
 
 export const withBunShellScriptInputs = Effect.fnUntraced(function* <
   A extends { readonly stdout?: string; readonly stderr?: string },

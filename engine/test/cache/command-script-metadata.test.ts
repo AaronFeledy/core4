@@ -59,6 +59,15 @@ test.each([{}, { flags: {}, args: {} }])(
   },
 );
 
+test("marks only a script whose env reads a public route fact", () => {
+  // Given one script that reads a route fact and one that does not
+  const reads = compileBunShellScriptCommands([script({ env: { SITE_URL: "{{ services.web.url }}" } })]);
+  const literal = compileBunShellScriptCommands([script({ env: { SITE_URL: "https://example.test" } })]);
+  // Then
+  expect(reads[0]).toMatchObject({ _tag: "Ready", readsRouteFacts: true });
+  expect(literal[0]).not.toHaveProperty("readsRouteFacts");
+});
+
 test("disabled scripts retain refusal context without executable metadata", () => {
   expect(compileBunShellScriptCommands([script({ disabled: true })])).toEqual([
     {

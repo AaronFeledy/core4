@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { normalizeBunShellScript } from "@lando/landofile/bun-sh-metadata";
 import { BunShellScriptFrontMatterError } from "@lando/sdk/errors";
-import { type BunShellScriptFrontMatter, ToolingTaskShape } from "@lando/sdk/schema";
+import { BunShellScriptFrontMatter } from "@lando/sdk/schema";
 import { Result, Schema } from "effect";
 
 const script = (frontMatter: BunShellScriptFrontMatter) => ({
@@ -99,7 +99,7 @@ test.each(conflictingMetadata)(
 
 test("preserves explicit positional ordering from shared tooling semantics", () => {
   // Given
-  const frontMatter = Schema.decodeUnknownSync(ToolingTaskShape)({
+  const frontMatter = Schema.decodeUnknownSync(BunShellScriptFrontMatter)({
     args: { last: { order: 2 }, first: { order: 1 } },
   });
   // When

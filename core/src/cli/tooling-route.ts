@@ -12,7 +12,7 @@ import { type HelpAliasPolicy, type TypeableName, typeableName } from "./help-na
 import type { ToolingRebuildFailure } from "./tooling-cache-status";
 
 export type ToolingAvailability =
-  | Pick<ReadyCommandIndexEntry, "_tag" | "input" | "service" | "wrapper" | "runs">
+  | Pick<ReadyCommandIndexEntry, "_tag" | "input" | "service" | "wrapper" | "runs" | "readsRouteFacts">
   | Pick<DisabledCommandIndexEntry, "_tag" | "source">
   | Pick<UnavailableCommandIndexEntry, "_tag" | "diagnostic">;
 
@@ -83,6 +83,7 @@ export const normalizedToolingRoute = (
         ...(entry.service === undefined ? {} : { service: entry.service }),
         ...(entry.wrapper === undefined ? {} : { wrapper: entry.wrapper }),
         ...(entry.runs === undefined ? {} : { runs: entry.runs }),
+        ...(entry.readsRouteFacts === undefined ? {} : { readsRouteFacts: entry.readsRouteFacts }),
       };
       break;
     case "Disabled":

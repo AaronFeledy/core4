@@ -24,6 +24,7 @@ export const resolveEventScriptTarget = Effect.fnUntraced(function* (name: strin
           relativePath: script.relativePath,
           input: { _tag: "NamedMaps", flags: input.flags, args: input.args, passthroughArgv: input.argv },
           expectedInputRevision: metadata.input.revision,
+          plan,
         },
         String(plan.root),
       ).pipe(

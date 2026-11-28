@@ -11,12 +11,36 @@ type RefusedRead =
   | { readonly refusal: "computed-service"; readonly fact: PublicRouteFact }
   | { readonly refusal: Exclude<ServiceUrlReadRefusal, "computed-service"> };
 
+type UnanalyzableRead =
+  | { readonly refusal: "computed-service"; readonly fact?: PublicRouteFact }
+  | Exclude<RefusedRead, { readonly refusal: "computed-service" }>;
+
+/**
+ * One `services` path the expression reads, classified by the shared path classifier: a literal
+ * route fact, a literal non-route fact, or a read whose service name or member cannot be
+ * attributed. Dot, quoted bracket, indexed bracket, and parenthesized forms classify alike.
+ */
+export type ServicesRead =
+  | {
+      readonly kind: "route";
+      readonly service: string;
+      readonly fact: PublicRouteFact;
+    }
+  | { readonly kind: "named"; readonly service: string; readonly member: string }
+  | ({ readonly kind: "unanalyzable" } & UnanalyzableRead);
+
 export type ServiceUrlReads = {
   /**
    * Services whose public route facts (`url`, `hostname`, `origin`, `publicPort`, `scheme`) the
    * expression reads through literal dot or bracket access, each with the facts read, in first-read order.
    */
   readonly services: ReadonlyMap<string, ReadonlySet<PublicRouteFact>>;
+  /**
+   * Every `services` read in first-read order. Consumers that admit only route facts refuse every
+   * entry whose kind is not `route`; `refusal` stays the narrower tooling/event contract, where a
+   * computed service name may select a literal non-route fact.
+   */
+  readonly reads: readonly ServicesRead[];
 } & (RefusedRead | { readonly refusal?: never });
 
 /** A literal `services.<name>.<fact>` read, normalized from dot, bracket, and parenthesized forms. */
@@ -73,17 +97,24 @@ type Classified =
       readonly fact: PublicRouteFact;
       readonly rest: readonly PathSegment[];
     }
-  | { readonly kind: "other" }
-  | ({ readonly kind: "refused" } & RefusedRead);
+  | { readonly kind: "named"; readonly service: string; readonly member: string }
+  | ({ readonly kind: "refused" } & UnanalyzableRead);
 
-/** A literal non-URL member (`services[name].port`) is another fact's concern, never a URL read. */
+/**
+ * Classify one `services` path. A literal non-route member (`services[name].port`) is another
+ * fact's concern: tooling and events may read it through a computed service name, so it is not a
+ * refusal there, but it is still a classified read for consumers that admit route facts only.
+ */
 const classifySegments = (segments: readonly PathSegment[]): Classified => {
   const [first, second, ...rest] = segments;
   if (first === undefined || second === undefined) return { kind: "refused", refusal: "whole-service" };
   const member = staticServicePathName(second);
   if (member === undefined) return { kind: "refused", refusal: "computed-member" };
-  if (!isPublicRouteFact(member)) return { kind: "other" };
   const service = staticServicePathName(first);
+  if (!isPublicRouteFact(member))
+    return service === undefined
+      ? { kind: "refused", refusal: "computed-service" }
+      : { kind: "named", service, member };
   return service === undefined
     ? { kind: "refused", refusal: "computed-service", fact: member }
     : { kind: "route", service, fact: member, rest };
@@ -105,6 +136,7 @@ export const serviceUrlReadPath = (node: ExpressionNode): ServiceUrlReadPath | u
  */
 export const serviceUrlReads = (ast: ExpressionTemplate | ExpressionNode): ServiceUrlReads => {
   const services = new Map<string, Set<PublicRouteFact>>();
+  const reads: ServicesRead[] = [];
   let refused: RefusedRead | undefined;
   const visitSegments = (segments: readonly PathSegment[]): void => {
     for (const segment of segments) if (segment.type === "dynamic") visit(segment.expr);
@@ -122,18 +154,31 @@ export const serviceUrlReads = (ast: ExpressionTemplate | ExpressionNode): Servi
           return;
         }
         const classified = classifySegments(segments);
-        if (classified.kind === "route")
-          services.set(
-            classified.service,
-            new Set([...(services.get(classified.service) ?? []), classified.fact]),
-          );
-        // A computed-name route-fact read outranks other refusals: sites that admit no URL refuse only it.
-        else if (
-          classified.kind === "refused" &&
-          (refused === undefined || classified.refusal === "computed-service")
-        ) {
-          const { kind: _, ...read } = classified;
-          refused = read;
+        switch (classified.kind) {
+          case "route":
+            services.set(
+              classified.service,
+              new Set([...(services.get(classified.service) ?? []), classified.fact]),
+            );
+            reads.push({ kind: "route", service: classified.service, fact: classified.fact });
+            break;
+          case "named":
+            reads.push({ kind: "named", service: classified.service, member: classified.member });
+            break;
+          case "refused": {
+            const { kind: _, ...read } = classified;
+            reads.push({ kind: "unanalyzable", ...read });
+            // Tooling and events admit computed names for non-route facts. For route facts,
+            // a computed name takes precedence even at sites that ignore the other refusals.
+            if (read.refusal === "computed-service") {
+              if (read.fact !== undefined) refused = { refusal: read.refusal, fact: read.fact };
+            } else {
+              refused ??= read;
+            }
+            break;
+          }
+          default:
+            classified satisfies never;
         }
         visitSegments(segments);
         return;
@@ -160,7 +205,7 @@ export const serviceUrlReads = (ast: ExpressionTemplate | ExpressionNode): Servi
     for (const segment of ast.segments)
       if (segment.kind === "InterpolationSegment") visit(segment.expression);
   } else visit(ast);
-  return { services, ...refused };
+  return { services, reads, ...refused };
 };
 
 /** True when the expression reads at least one public service route fact. */

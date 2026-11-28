@@ -66,6 +66,27 @@ describe("canonicalIdFromRelativePath", () => {
 });
 
 describe("discoverBunShellScripts", () => {
+  test("reports env findings from a block that also has an unsupported key", async () => {
+    await withAppRoot(async (root) => {
+      // Given a script whose block has an unsupported key and an env value from another scope
+      await writeScript(
+        root,
+        "agg.bun.sh",
+        '# ---\n# engine: custom\n# env:\n#   SITE: "{{ env.HOME }}"\n# ---\necho hi\n',
+      );
+      // When
+      const inspected = await Effect.runPromise(inspectBunShellScripts({ appRoot: root }));
+      // Then both independent findings are reported, each located at its front-matter key
+      expect(inspected.problems.map((problem) => [problem.reason, problem.path])).toEqual(
+        expect.arrayContaining([
+          ["unsupported-key", ["engine"]],
+          ["other-scope", ["env", "SITE"]],
+        ]),
+      );
+      expect(inspected.problems.every((problem) => problem.file.endsWith("agg.bun.sh"))).toBe(true);
+    });
+  });
+
   test("inspection collects invalid scripts while strict and skipInvalid discovery preserve their policies", async () => {
     await withAppRoot(async (root) => {
       await writeScript(root, "bad.bun.sh", "echo hi");

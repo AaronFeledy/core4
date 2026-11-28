@@ -13,8 +13,9 @@ export const lintBunShellScripts = Effect.fn("AppOperation.configLintScripts")(f
   const inspection = yield* inspectBunShellScripts({ appRoot: dirname(landofilePath) });
   const fileSystem = yield* Effect.serviceOption(FileSystem);
   const findings: ConfigLintViolation[] = inspection.problems.map(
-    ({ file, path, message, suggestion, line, column }) => ({
+    ({ file, path, reason, message, suggestion, line, column }) => ({
       rule: "script.front-matter",
+      ...(reason === undefined ? {} : { reason }),
       severity: "error",
       path,
       message,
