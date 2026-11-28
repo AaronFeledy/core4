@@ -11,7 +11,7 @@ import {
   withPreservedPathVerdict,
 } from "@lando/container-runtime/capabilities";
 import { volumeCreationLabels } from "@lando/container-runtime/data-plane";
-import { preflightDataRootPurge } from "@lando/container-runtime/data-root-purge";
+import { preflightRecordedPurge } from "@lando/container-runtime/data-root-purge";
 import {
   dockerLifecycleDialect,
   dockerPullDialect,
@@ -889,21 +889,22 @@ export const plugin = definePlugin({
         id: runtimeProviderId,
         purge: Effect.fn("Docker.preflightPurge")(function* (input) {
           const resolved = resolveDockerHost(input);
+          const ctx = dockerContextForEnv(input.env);
+          const scope = { ...input, pluginId: PLUGIN_NAME };
           // Like an engine that does not answer: never substitute the default socket for it.
           if (Result.isFailure(resolved)) {
-            return {
+            return yield* preflightRecordedPurge(ctx, scope, listAppliedPlans, {
               kind: "skipped" as const,
               endpoint: endpointLabel(resolved.failure),
               reason: resolved.failure.message,
-            };
+            });
           }
           const endpoint = resolved.success.host;
-          const ctx = dockerContextForEnv(input.env);
-          return yield* preflightDataRootPurge(
-            makeRuntimeDockerApiClient(endpoint, ctx, { env: input.env }),
-            ctx,
-            { ...input, endpoint, pluginId: PLUGIN_NAME },
-          );
+          return yield* preflightRecordedPurge(ctx, scope, listAppliedPlans, {
+            api: makeRuntimeDockerApiClient(endpoint, ctx, { env: input.env }),
+            endpoint,
+            identify: dockerEngineIdentity,
+          });
         }),
         declaredCapabilities: dockerCapabilitiesForPlatform,
         resourceOwnership: (ctx, root) =>

@@ -75,7 +75,7 @@ export const makePrepareUninstallCleanup =
       switch (found.kind) {
         case "skipped":
           details.push(
-            `${providerId}: no engine answered at ${found.endpoint}, so there was nothing to clean there (${found.reason.replace(/\.$/u, "")}).`,
+            `${providerId}: no engine answered at ${found.endpoint}; cleanup was skipped (${found.reason.replace(/\.$/u, "")}).`,
           );
           return [];
         case "reachable": {

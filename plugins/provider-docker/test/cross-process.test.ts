@@ -9,11 +9,13 @@ import {
 } from "@lando/container-runtime/testing/exec-supervision";
 import { installNonCompensatingExecUmask } from "@lando/container-runtime/testing/exec-umask";
 import { makePluginStateStore } from "@lando/engine/plugins/context-state";
+import { makeLandoPaths } from "@lando/paths";
 import {
   type DockerApiClient,
   type DockerHttpRequest,
   type DockerHttpResponse,
   makeRuntimeProvider,
+  plugin,
 } from "@lando/provider-docker";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import {
@@ -268,6 +270,28 @@ const isUnavailableExec = (error: unknown): boolean => {
 };
 
 describe("provider-docker cross-process state", () => {
+  test("an unusable context cannot report clean while this installation has recorded resources", async () => {
+    await withStateDir(async (dataRoot) => {
+      const stateDir = makeLandoPaths({ userDataRoot: dataRoot }).pluginStateDir(plugin.name);
+      const provider = await makeProvider(stateDir, makeFakeApi().api);
+      await Effect.runPromise(Effect.scoped(provider.apply(plan, { reconcile: false })));
+      const purge = plugin.runtimeProviders?.get(providerId)?.purge;
+      if (!purge) throw new Error("Missing Docker purge hook");
+      const attempt = purge({
+        platform: "linux",
+        dataRoot,
+        buildStore: "test",
+        env: { DOCKER_HOST: "tcp://127.0.0.1:2376", DOCKER_TLS_VERIFY: "1" },
+      });
+      const refused = await Effect.runPromise(Effect.flip(attempt));
+      expect(refused).toBeInstanceOf(ProviderUnavailableError);
+      expect(refused.message).toContain("unix:///var/run/docker.sock");
+      await Effect.runPromise(provider.bringDown({ app: plan.id }, { containers: "remove", volumes: false }));
+      expect(await fileExists(appliedPlanPath(stateDir, plan.id))).toBe(false);
+      expect(await Effect.runPromise(Effect.flip(attempt))).toBeInstanceOf(ProviderUnavailableError);
+    });
+  });
+
   test("apply with appliedPlanState writes the current applied-state envelope", async () => {
     await withStateDir(async (stateDir) => {
       const fake = makeFakeApi();
