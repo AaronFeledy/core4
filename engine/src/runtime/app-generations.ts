@@ -194,7 +194,7 @@ export const makeAppGenerations = Effect.fnUntraced(function* <
                 continue;
               // Other building slots are queued before import; a retry has closed its old attempt.
               if (state.record === undefined) continue;
-              if (state.phase !== "ready" && state.phase !== "superseded") continue;
+              // A slot stays open until its finalizers finish, even when closing was already claimed.
               if (state.phase === "ready") yield* stepSlot(slot.state, "supersede");
               matches.push(slot);
             }
