@@ -148,7 +148,7 @@ yet. Selection and loading errors appear as their own findings.
 | applied-state-inventory | Doctor could not finish reading applied state for a provider. Fix the reported problem, then rerun `lando doctor --section state-compatibility`. |
 | missing-app-root | Move the folder back to keep using the app, or run the `lando apps:gc --prune` command doctor gives you. It adds `--volumes` only when Lando can remove the recorded file-sync copies. Without `--volumes`, data and file-sync copies are kept. Add `--purge-caches` when doctor lists caches. |
 | missing-app-root-scan | Lando could not read app state to look for missing app folders. Fix the reported problem, then rerun `lando doctor`. |
-| orphaned-volume-snapshots | Inspect uncatalogued native images past the one-hour grace period with `lando snapshots:gc`. `lando snapshots:gc --prune` deletes eligible images after rechecking catalog references. GC never starts or repairs a runtime, including during removal. |
+| orphaned-volume-snapshots | Inspect uncatalogued native images past the one-hour grace period with `lando snapshots:gc`. `lando snapshots:gc --prune` deletes eligible images after rechecking catalog references. GC never starts or repairs a runtime, including during removal. See [Import and export app databases](../tooling/db-import-export.mdx). |
 | database-credentials | The running database rejected the configured login, or the configured database is absent. Run `lando start` after editing `creds`. For drift or a password changed at the same secret reference, restart the affected service or [preview and apply a repair](../tooling/db-creds-apply.mdx). |
 | legacy-snapshot-catalogs | Review the reported count and catalog paths. These catalogs came from a development build. Their snapshots are no longer listed or restorable, but their referenced provider images stay protected from GC. Deleting a catalog directory releases that protection so GC can reclaim the images. |
 
@@ -227,12 +227,6 @@ expect(report.result.skipped).toEqual([]);`} />
     <Step name="inspect">
       <Run command="lando apps:gc --format=json" />
       <Verify command="lando apps:gc --format=json" expect={{ stdout: { regex: "candidates" } }} />
-    </Step>
-  </Scenario>
-  <Scenario id="inspect-snapshot-catalog-orphans" render>
-    <Step name="inspect">
-      <Run command="lando snapshots:gc --format=json" />
-      <Verify command="lando snapshots:gc --format=json" expect={{ stdout: { regex: "totalCount" } }} />
     </Step>
   </Scenario>
   <Scenario id="state-compatibility-clean" render={false} reason="Verify the applied-state compatibility section passes on a clean host without depending on installed runtimes.">

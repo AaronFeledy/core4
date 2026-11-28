@@ -67,6 +67,16 @@ lando scratch:destroy <id>
 
 Destroying a scratch app keeps the newest image Lando built for each of its services for up to seven days, the same way `lando destroy` does. The next scratch app of the same stack reuses those images instead of building them again.
 
+<Guide>
+  <Scenario id="gc-report-without-prune" render={false} reason="Check that the default report inspects scratch state and reaps nothing">
+    <Step name="report">
+      <Run command="lando scratch:gc --format=json" />
+      <Verify command="lando scratch:gc --format=json" expect={{ stdout: { regex: "\"inspected\":\\s*\\d+" } }} />
+      <Verify command="lando scratch:gc --format=json" expect={{ stdout: { regex: "\"reaped\":\\s*\\[\\s*\\]" } }} />
+    </Step>
+  </Scenario>
+</Guide>
+
 ## Next
 
 - [List scratch apps](./list-and-info.mdx)
