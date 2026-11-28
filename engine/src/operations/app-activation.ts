@@ -115,11 +115,6 @@ export function withAppActivation<A, E, R>(
         const registry = yield* RuntimeProviderRegistry;
         yield* registry.readAppliedPlanStrict(plan);
         let placement = yield* ensureAppPlacementState(target.app, plan.provider);
-        const selectedProvider = yield* registry.select(plan);
-        yield* requireOwningEngine(selectedProvider, target.app.kind, [
-          placement.plan,
-          ...placement.superseded,
-        ]);
         yield* validateSelectedRename(target, placement.superseded, scoped);
         const pending =
           placement.superseded.length === 0 ? yield* resolvePendingAcceleratedStart(target.app, plan) : null;
@@ -141,10 +136,6 @@ export function withAppActivation<A, E, R>(
             { beforeStart: managed?.resume?.beforeStart ?? Effect.void },
           );
           placement = yield* ensureAppPlacementState(target.app, plan.provider);
-          yield* requireOwningEngine(selectedProvider, target.app.kind, [
-            placement.plan,
-            ...placement.superseded,
-          ]);
           if (digest(services ?? null) !== digest(pending.record.services ?? null)) {
             const events = yield* EventService;
             yield* events.publish(
@@ -158,6 +149,11 @@ export function withAppActivation<A, E, R>(
         if (request.operation === "start" && scoped)
           yield* preflightSelectedStartFileSync(selectedPlan, placement.plan);
         yield* validateDesiredFileSyncEngine(request.operation === "start" ? selectedPlan : plan);
+        const selectedProvider = yield* registry.select(plan);
+        yield* requireOwningEngine(selectedProvider, target.app.kind, [
+          placement.plan,
+          ...placement.superseded,
+        ]);
         const overlays = yield* prepareStartOverlays({ ...target, plan: selectedPlan }, selectedProvider);
         const provider = yield* prepareProvider(selectedProvider);
         if (!scoped) yield* claimDataIdentityBeforeRetirement(target, placement.superseded, provider);

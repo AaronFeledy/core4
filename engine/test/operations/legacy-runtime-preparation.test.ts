@@ -35,12 +35,14 @@ test.each(["stop", "destroy", "restart", "rebuild"] as const)(
             makeTestRuntimeProviderRegistry({
               ...harness.runtimeProviderRegistry,
               select: () =>
-                Effect.succeed({
-                  ...base,
-                  ensureReady: Effect.sync(() => {
-                    preparations++;
-                  }),
-                }),
+                command === "restart" || command === "rebuild"
+                  ? Effect.die("A selected rename must be refused before contacting a provider")
+                  : Effect.succeed({
+                      ...base,
+                      ensureReady: Effect.sync(() => {
+                        preparations++;
+                      }),
+                    }),
             }),
           ),
           Effect.provide(harness.layer),
