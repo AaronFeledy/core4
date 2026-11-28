@@ -223,6 +223,9 @@ export const planServiceDrafts = Effect.fn("AppPlanner.planServices")(function* 
     plannedServiceDrafts.push({
       name,
       ...(extraArgsProcess === undefined ? {} : { extraArgsProcess }),
+      ...(composition.dataVersionProcess === undefined
+        ? {}
+        : { dataVersionProcess: composition.dataVersionProcess }),
       dependencyEnvironments: composition.dependencyEnvironments,
       authoredStorage: service.storage,
       hostnames: service.hostnames ?? [],

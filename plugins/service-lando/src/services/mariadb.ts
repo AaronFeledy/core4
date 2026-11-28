@@ -151,21 +151,21 @@ const applyMariadbFeature = (ctx: ServiceFeatureContext): void => {
   );
 
   applyAuthoredProcessFields(ctx);
-  applyDatabaseVersion(ctx);
 
   const processOwned = service.command !== undefined || service.entrypoint !== undefined;
   const serverConfig = addServerConfigMount(ctx, MARIADB_CONFIG_TARGET);
-  if (processOwned) return;
-
-  const custom = isNonCatalogArtifact(service, CATALOG_IMAGES);
-  const official = stockDatabaseImage(service, image, "mariadb") !== undefined;
-  const daemon = ["mariadbd", `--port=${port}`];
-  const commandOptions = custom ? undefined : MYSQL_FAMILY_EXTRA_ARGS;
-  if (official) {
-    ctx.setCommand(["sh", "-c", GUARD_SCRIPT, "lando-mariadb", ...daemon], commandOptions);
-  } else if (serverConfig || (!custom && (service.extraArgs?.length ?? 0) > 0)) {
-    ctx.setCommand(daemon, commandOptions);
+  if (!processOwned) {
+    const custom = isNonCatalogArtifact(service, CATALOG_IMAGES);
+    const official = stockDatabaseImage(service, image, "mariadb") !== undefined;
+    const daemon = ["mariadbd", `--port=${port}`];
+    const commandOptions = custom ? undefined : MYSQL_FAMILY_EXTRA_ARGS;
+    if (official) {
+      ctx.setCommand(["sh", "-c", GUARD_SCRIPT, "lando-mariadb", ...daemon], commandOptions);
+    } else if (serverConfig || (!custom && (service.extraArgs?.length ?? 0) > 0)) {
+      ctx.setCommand(daemon, commandOptions);
+    }
   }
+  applyDatabaseVersion(ctx);
 };
 
 export const mariadbServiceFeature: ServiceFeatureDefinition = {

@@ -114,7 +114,6 @@ const applyMysqlFeature = (ctx: ServiceFeatureContext): void => {
   );
 
   applyAuthoredProcessFields(ctx);
-  applyDatabaseVersion(ctx);
 
   const catalogImages = Object.values(MYSQL_ARTIFACTS);
   const custom = isNonCatalogArtifact(service, catalogImages);
@@ -124,6 +123,7 @@ const applyMysqlFeature = (ctx: ServiceFeatureContext): void => {
   if (!processOwned && (serverConfig || (!custom && hasExtraArgs))) {
     ctx.setCommand(["mysqld", `--port=${port}`], custom ? undefined : MYSQL_FAMILY_EXTRA_ARGS);
   }
+  applyDatabaseVersion(ctx);
 };
 
 export const mysqlServiceFeature: ServiceFeatureDefinition = {

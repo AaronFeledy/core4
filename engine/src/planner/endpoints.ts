@@ -37,6 +37,7 @@ import {
   recordFileSyncPolicy,
   serviceFileSyncPolicy,
 } from "../plugins/file-sync-policy.ts";
+import { finalizeDataVersion } from "../services/data-version.ts";
 import { validateServiceDependencies } from "../services/dependency-validation.ts";
 import { sortRecord } from "../services/draft.ts";
 import { endpointValidationError, normalizeEndpointFacts } from "../services/endpoint-normalizer.ts";
@@ -441,7 +442,11 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
       persistentStorage: withArtifact.mounts.some((mount) => mount.type === "volume"),
     }))
       yield* Effect.fail(error);
-    const servicePlanWithHome = realizeServiceMounts(withArtifact, input.providerCapabilities, accelerate);
+    const servicePlanWithHome = realizeServiceMounts(
+      finalizeDataVersion(withArtifact, entry.dataVersionProcess),
+      input.providerCapabilities,
+      accelerate,
+    );
 
     const generatedCertificate = draft.normalizedConfig.certs === true;
     const tls = { certificate: draft.certs, generated: generatedCertificate };

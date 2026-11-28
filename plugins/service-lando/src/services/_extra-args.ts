@@ -96,6 +96,8 @@ const assignmentStartsWithKey = (assignment: string, key: string): boolean => {
 };
 
 export const PORT_EXTRA_ARGS_REMEDIATION = "Set port: instead of overriding the listen port in extraArgs.";
+export const DATA_DIRECTORY_EXTRA_ARGS_REMEDIATION =
+  "Keep the default data directory, or use command: to run a custom launcher.";
 
 export const RESERVED_LONG_PORT = {
   form: "long",
@@ -110,6 +112,7 @@ export const extraArgsCommandOptions = (rules: readonly ReservedArgRule[]): Laun
 export const MYSQL_FAMILY_EXTRA_ARGS = extraArgsCommandOptions([
   RESERVED_LONG_PORT,
   { form: "short", name: "P", remediation: PORT_EXTRA_ARGS_REMEDIATION, takesValue: true },
+  { form: "long", name: "datadir", remediation: DATA_DIRECTORY_EXTRA_ARGS_REMEDIATION },
   {
     form: "long-prefix",
     prefix: "defaults-",

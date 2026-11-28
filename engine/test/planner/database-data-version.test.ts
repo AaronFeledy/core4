@@ -1,12 +1,62 @@
 import { expect, test } from "bun:test";
-import { ServiceName, classifyDataVersionRefusal, parseDataVersionRecords } from "@lando/sdk/schema";
+import { LandofileValidationError } from "@lando/sdk/errors";
+import { definePlugin } from "@lando/sdk/plugins";
+import {
+  PluginManifest,
+  ServiceName,
+  classifyDataVersionRefusal,
+  parseDataVersionRecords,
+} from "@lando/sdk/schema";
+import type { AppFeatureDefinition, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
+import { bundledPluginModules } from "../../src/composition.ts";
 import * as PluginRegistry from "../../src/plugins/registry.ts";
 import { compileTestLandofile } from "../compiled-landofile.ts";
 import { planApp } from "../plan-app.ts";
 
-const plan = (services: Readonly<Record<string, unknown>>) =>
+const laterProcess: ServiceFeatureDefinition = {
+  id: "test.database-process",
+  priority: 700,
+  apply: (ctx) => Effect.sync(() => ctx.setCommand(["postgres", "-D", "/different"])),
+};
+const child: ServiceType = {
+  id: "custom-postgres-child",
+  name: "Custom PostgreSQL child",
+  base: "lando",
+  extends: "postgres",
+  schema: Schema.Unknown,
+  resolve: ({ service: normalizedConfig }) =>
+    Effect.succeed({ base: "lando", normalizedConfig, features: [{ id: laterProcess.id }] }),
+};
+const laterArtifact: AppFeatureDefinition = {
+  id: "test.database-artifact",
+  priority: 700,
+  selectors: { names: ["artifact"] },
+  apply: (ctx) =>
+    Effect.sync(() =>
+      ctx.forEachSelected((service) => service.setArtifact({ kind: "ref", ref: "example/postgres:17" })),
+    ),
+};
+const plugin = definePlugin({
+  name: "@example/data-version-overrides",
+  manifest: Schema.decodeUnknownSync(PluginManifest)({
+    name: "@example/data-version-overrides",
+    version: "1.0.0",
+    api: 4,
+    entry: "index.js",
+    contributes: {
+      serviceTypes: [child.id],
+      serviceFeatures: [laterProcess.id],
+      appFeatures: [laterArtifact.id],
+    },
+  }),
+  serviceTypes: new Map([[child.id, child]]),
+  serviceFeatures: new Map([[laterProcess.id, laterProcess]]),
+  appFeatures: new Map([[laterArtifact.id, laterArtifact]]),
+});
+
+const plan = (services: Readonly<Record<string, unknown>>, overrides = false) =>
   Effect.runPromise(
     Effect.gen(function* () {
       const appRoot = "/srv/database-data-version";
@@ -17,7 +67,9 @@ const plan = (services: Readonly<Record<string, unknown>>) =>
           appRoot,
           providerCapabilities: { ...TestRuntimeProvider.capabilities, artifactBuild: true },
         },
-        PluginRegistry.layer,
+        overrides
+          ? PluginRegistry.layerWith({ app: false, user: false }, [...bundledPluginModules(), plugin])
+          : PluginRegistry.layer,
       );
     }),
   );
@@ -55,6 +107,39 @@ test("plans version contracts only for stock database processes and the pinned P
   }
   expect(version("pgdata")?.series).toBeUndefined();
   expect(version("pgdata")?.refusals).not.toBeEmpty();
+});
+
+test("keeps startup refusals but drops series after a child launcher or app feature replaces its inputs", async () => {
+  const { services } = await plan(
+    {
+      child: { type: child.id },
+      artifact: { type: "postgres:17" },
+    },
+    true,
+  );
+  const process = services[ServiceName.make("child")];
+  const artifact = services[ServiceName.make("artifact")];
+  expect(process?.command).toEqual(["postgres", "-D", "/different"]);
+  expect(artifact?.artifact).toEqual({ kind: "ref", ref: "example/postgres:17" });
+  for (const service of [process, artifact]) {
+    expect(service?.dataVersion?.refusals).not.toBeEmpty();
+    expect(service?.dataVersion?.series).toBeUndefined();
+  }
+});
+
+test.each([
+  ["mysql", ["--datadir=/other"]],
+  ["mariadb", ["--datadir", "/other"]],
+  ["postgres", ["-D/other"]],
+  ["postgres", ["-c", "data_directory=/other"]],
+] as const)("refuses %s data directory flags in extraArgs: %j", async (type, extraArgs) => {
+  const error = await plan({ db: { type, extraArgs } }).catch((error: unknown) => error);
+  expect(error).toBeInstanceOf(LandofileValidationError);
+  if (error instanceof LandofileValidationError)
+    expect(error.issues[0]).toMatchObject({
+      path: ["services", "db", "extraArgs", 0],
+      suggestion: expect.stringContaining("default data directory"),
+    });
 });
 
 test("classifies actual database startup diagnostics and reads MySQL upgrade history", async () => {

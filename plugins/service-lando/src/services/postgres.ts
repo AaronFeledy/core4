@@ -11,6 +11,7 @@ import {
   databaseVersionFeature,
 } from "./_data-version.ts";
 import {
+  DATA_DIRECTORY_EXTRA_ARGS_REMEDIATION,
   PORT_EXTRA_ARGS_REMEDIATION,
   RESERVED_LONG_PORT,
   configFileDbExtraArgsRemediation,
@@ -118,6 +119,13 @@ const applyPostgresFeature = (ctx: ServiceFeatureContext): void => {
               remediation: "Set config.server instead of --config_file in extraArgs.",
             },
             { form: "short", name: "p", remediation: PORT_EXTRA_ARGS_REMEDIATION, takesValue: true },
+            {
+              form: "short",
+              name: "D",
+              remediation: DATA_DIRECTORY_EXTRA_ARGS_REMEDIATION,
+              takesValue: true,
+            },
+            { form: "postgres-c", key: "data_directory", remediation: DATA_DIRECTORY_EXTRA_ARGS_REMEDIATION },
             {
               form: "postgres-c",
               key: "port",

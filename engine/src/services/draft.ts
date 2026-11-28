@@ -152,9 +152,17 @@ export interface DraftServicePlan {
   readinessSource?: ServicePlan["readinessSource"];
   listenerAuthority?: ListenerAuthority;
   dataVersion?: ServicePlan["dataVersion"];
+  dataVersionProcess?: DataVersionProcess;
   certs?: ServicePlan["certs"];
   hostAliases: Array<ServicePlan["hostAliases"][number]>;
   provenance?: ServicePlan["provenance"];
+}
+
+export interface DataVersionProcess {
+  readonly artifactRef: string | undefined;
+  readonly command: ServicePlan["command"];
+  readonly entrypoint: ServicePlan["entrypoint"];
+  readonly pgdata: EnvironmentValue | undefined;
 }
 
 export const writeServiceCommand = (
