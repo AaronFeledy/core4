@@ -1,6 +1,7 @@
 import { DATABASE_FAMILY_LOCAL_CLIENT_ARGS } from "@lando/sdk/database-creds";
 import {
   AbsolutePath,
+  DATA_VERSION_REFUSAL_MARKER,
   type Environment,
   type LogSource,
   LogSourceId,
@@ -15,6 +16,12 @@ import { Effect, Schema } from "effect";
 import { dataNameFor } from "../app-name.ts";
 import { connectionFor } from "./_connection-helpers.ts";
 import { claimsCreds, familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
+import {
+  MYSQL_DATA as DATA_TARGET,
+  applyDatabaseVersion,
+  databaseVersionFeature,
+  stockDatabaseImage,
+} from "./_data-version.ts";
 import {
   MYSQL_FAMILY_EXTRA_ARGS,
   configFileDbExtraArgsRemediation,
@@ -31,16 +38,36 @@ import { assertListenerConfig, primaryPortSelector, servicePortEndpoints } from 
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { addServerConfigMount } from "./_volume-helpers.ts";
 
-const DEFAULT_IMAGE = "mariadb:11.4";
-const VERSIONS = ["11.4"] as const;
-const ARTIFACTS = { "11.4": DEFAULT_IMAGE } as const;
+const VERSIONS = ["10.11", "11.4", "11.8"] as const;
+const ARTIFACTS = {
+  "10.11": "mariadb:10.11",
+  "11.4": "mariadb:11.4",
+  "11.8": "mariadb:11.8",
+} as const;
+const DEFAULT_IMAGE = ARTIFACTS["11.4"];
+const CATALOG_IMAGES = Object.values(ARTIFACTS);
 export const MARIADB_LISTENER = {
   port: 3306,
   variables: ["MYSQL_TCP_PORT"],
   daemon: "MariaDB",
   when: "All MariaDB services",
 } as const;
-const DATA_TARGET = PortablePath.make("/var/lib/mysql");
+const GUARD_SCRIPT = `series() { sed -n '1s/^[^0-9]*\\([0-9][0-9]*\\)\\.\\([0-9][0-9]*\\)\\..*/\\1.\\2/p'; }
+series_gt() { [ "\${1%.*}" -gt "\${2%.*}" ] || { [ "\${1%.*}" -eq "\${2%.*}" ] && [ "\${1#*.}" -gt "\${2#*.}" ]; }; }
+running=$(mariadbd --version 2>/dev/null | series)
+data=
+for info in "${DATA_TARGET}/mariadb_upgrade_info" "${DATA_TARGET}/mysql_upgrade_info"; do
+  [ -n "$running" ] && [ -f "$info" ] || continue
+  observed=$(series < "$info")
+  [ -n "$observed" ] || continue
+  if [ -z "$data" ] || series_gt "$observed" "$data"; then data=$observed; fi
+done
+if [ -n "$data" ] && series_gt "$data" "$running"; then
+  printf "${DATA_VERSION_REFUSAL_MARKER} data=%s image=%s: MariaDB %s can't open data written by MariaDB %s.\\n" \\
+    "$data" "$running" "$running" "$data" >&2
+  exit 1
+fi
+exec docker-entrypoint.sh "$@"`;
 export const MARIADB_FEATURE_ID = "service-lando.mariadb";
 export const MARIADB_CONFIG_TARGET = PortablePath.make("/etc/mysql/conf.d/99-lando.cnf");
 
@@ -96,11 +123,13 @@ const mariadbCreds = (
 const applyMariadbFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
   const { creds, port } = connectionFor(ctx);
+  const image = service.image ?? DEFAULT_IMAGE;
 
-  ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
+  ctx.setArtifact({ kind: "ref", ref: image });
   addEnvRecord(ctx, {
     ...familyEnvFor("mariadb", creds),
     ...landoDbEnvFor(creds, port),
+    MARIADB_AUTO_UPGRADE: "1",
     MYSQL_TCP_PORT: String(port),
   });
   ctx.addStorage({
@@ -123,14 +152,20 @@ const applyMariadbFeature = (ctx: ServiceFeatureContext): void => {
 
   applyAuthoredProcessFields(ctx);
 
-  const catalogImages = Object.values(ARTIFACTS);
-  const custom = isNonCatalogArtifact(service, catalogImages);
   const processOwned = service.command !== undefined || service.entrypoint !== undefined;
   const serverConfig = addServerConfigMount(ctx, MARIADB_CONFIG_TARGET);
-  const hasExtraArgs = (service.extraArgs?.length ?? 0) > 0;
-  if (!processOwned && (serverConfig || (!custom && hasExtraArgs))) {
-    ctx.setCommand(["mariadbd", `--port=${port}`], custom ? undefined : MYSQL_FAMILY_EXTRA_ARGS);
+  if (!processOwned) {
+    const custom = isNonCatalogArtifact(service, CATALOG_IMAGES);
+    const official = stockDatabaseImage(service, image, "mariadb") !== undefined;
+    const daemon = ["mariadbd", `--port=${port}`];
+    const commandOptions = custom ? undefined : MYSQL_FAMILY_EXTRA_ARGS;
+    if (official) {
+      ctx.setCommand(["sh", "-c", GUARD_SCRIPT, "lando-mariadb", ...daemon], commandOptions);
+    } else if (serverConfig || (!custom && (service.extraArgs?.length ?? 0) > 0)) {
+      ctx.setCommand(daemon, commandOptions);
+    }
   }
+  applyDatabaseVersion(ctx);
 };
 
 export const mariadbServiceFeature: ServiceFeatureDefinition = {
@@ -177,7 +212,7 @@ export const mariadbServiceType: ServiceType = {
   name: "mariadb",
   base: "lando",
   plannedPort: selectPort,
-  extraArgsRemediation: configFileDbExtraArgsRemediation(Object.values(ARTIFACTS), "MariaDB"),
+  extraArgsRemediation: configFileDbExtraArgsRemediation(CATALOG_IMAGES, "MariaDB"),
   versions: VERSIONS,
   artifacts: ARTIFACTS,
   identity: rootIdentity(),
@@ -201,7 +236,13 @@ export const mariadbServiceType: ServiceType = {
           },
         },
         logSources: MARIADB_LOG_SOURCES,
-        features: [{ id: MARIADB_FEATURE_ID }],
+        features: [
+          databaseVersionFeature("mariadb", {
+            id: MARIADB_FEATURE_ID,
+            service: input.service,
+            image: input.service.image ?? DEFAULT_IMAGE,
+          }),
+        ],
         tooling: mariadbToolingForConnection(ServiceName.make(input.name), {
           family: "mariadb",
           creds,

@@ -1,6 +1,6 @@
 import type { SqlRecoveryUnavailableError } from "@lando/sdk/errors";
 import type { ExecutableCommandStdio } from "@lando/sdk/plugins";
-import type { AbsolutePath } from "@lando/sdk/schema";
+import type { AbsolutePath, ServiceDataVersion } from "@lando/sdk/schema";
 import type { EnvironmentValueResolver, RuntimeProvider } from "@lando/sdk/services";
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
 import type { Effect } from "effect";
@@ -26,6 +26,7 @@ export type DbCommandInput = {
   readonly service?: string;
   readonly file?: string;
   readonly snapshotId?: string;
+  readonly anySeries?: boolean;
   readonly label?: string;
   readonly compression?: "gzip" | "zstd" | "none";
   readonly compressionLevel?: number;
@@ -35,7 +36,6 @@ export type DbCommandInput = {
   readonly hostCwd?: string;
   readonly keepLatest?: number;
   readonly preview?: boolean;
-  /** `db:snapshots:prune` selects automatic recovery snapshots instead of manual ones. */
   readonly recovery?: boolean;
   readonly stdio?: ExecutableCommandStdio;
 };
@@ -51,6 +51,7 @@ export type SqlCommandDeps = SqlMover &
     ) => ReturnType<SqlExec>;
     readonly environmentResolver: EnvironmentValueResolver["Service"];
     readonly providerId: string;
+    readonly desiredDataVersion?: (service: string) => Effect.Effect<ServiceDataVersion | undefined>;
     readonly waitForReady: (service: string) => Effect.Effect<void, unknown>;
     readonly findAppliedSource?: (
       selector: { readonly id: string } | { readonly root: AbsolutePath },

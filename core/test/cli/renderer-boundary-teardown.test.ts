@@ -1,8 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { createBufferedRendererIO } from "@lando/renderer/io";
+import { annotateFailureContext } from "@lando/sdk/command-result";
 import { CommandResultEnvelope, StreamFrame } from "@lando/sdk/schema";
 import { Renderer, StreamFrameSink } from "@lando/sdk/services";
-import { Effect, Layer, Option, Schema } from "effect";
+import { Cause, Effect, Layer, Option, Schema } from "effect";
 import { formatBugReport } from "../../src/cli/bug-report";
 import type { ResultFormat } from "../../src/cli/format-flags";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary";
@@ -88,11 +89,16 @@ describe("a failing runtime teardown", () => {
   });
 
   test("adds itself to a json command failure as one cleanup error", async () => {
-    const run = await runWithFailingTeardown(Effect.fail(commandFailure), { format: "json" });
+    const context = { restorePointIds: ["retained"], discardedRestorePointIds: ["discarded"] };
+    const run = await runWithFailingTeardown(
+      Effect.failCause(annotateFailureContext(Cause.fail(commandFailure), context)),
+      { format: "json" },
+    );
     const lines = run.stdout.trim().split("\n");
     expect(lines).toHaveLength(1);
     const envelope = decodeEnvelope(lines[0] ?? "");
     expect(envelope.error?._tag).toBe("CommandFailure");
+    expect(envelope.error?.context).toEqual(context);
     expect(envelope.error?.additionalErrors?.map((error) => [error._tag, error.role])).toEqual([
       ["LandoInternalError", "cleanup"],
     ]);

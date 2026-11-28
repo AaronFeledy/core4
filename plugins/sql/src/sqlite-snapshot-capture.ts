@@ -1,5 +1,4 @@
 import { SqlRecoveryUnavailableError } from "@lando/sdk/errors";
-import type { SnapshotMetadata } from "@lando/sdk/schema";
 import { Effect } from "effect";
 
 import {
@@ -11,7 +10,11 @@ import {
   withSqliteHelper,
 } from "./sqlite-helper.ts";
 import { requireSqliteIntegrity } from "./sqlite-integrity.ts";
-import { type SqliteSnapshotDeps, persistSqliteSnapshot } from "./sqlite-snapshot.ts";
+import {
+  type SqliteRecoveryReason,
+  type SqliteSnapshotDeps,
+  persistSqliteSnapshot,
+} from "./sqlite-snapshot.ts";
 import type { SqlFileTarget } from "./target.ts";
 import type { SqlPlan, SqlPlanService } from "./views.ts";
 
@@ -74,7 +77,7 @@ export const createSqliteSnapshot = Effect.fn("Sql.createSqliteSnapshot")(functi
   target: SqlFileTarget,
   options?: {
     readonly label?: string;
-    readonly recoveryReason?: Exclude<SnapshotMetadata["recoveryReason"], "seed">;
+    readonly recoveryReason?: SqliteRecoveryReason;
   },
 ) {
   return yield* withSqliteHelper(deps, service, target, (helper) =>

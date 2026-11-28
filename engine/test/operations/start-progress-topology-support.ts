@@ -24,6 +24,7 @@ import {
   AppPlanner,
   type ApplyOptions,
   BuildOrchestrator,
+  type DataMover,
   EventService,
   type FileSyncEngine,
   LandofileService,
@@ -133,6 +134,7 @@ export const appliedPlanRecord = ({ events: _events, ...plan }: AppPlan): AppPla
 export const makeHarness = (
   options: {
     readonly plannedApp?: AppPlan;
+    readonly dataMoverLayer?: Layer.Layer<DataMover>;
     readonly globalServiceIds?: ReadonlyArray<string>;
     /**
      * When omitted, placement uses `resolveAppliedPlan`. Pass `[]` to model no applied user app.
@@ -236,9 +238,9 @@ export const makeHarness = (
       ));
   const userProvider: RuntimeProviderShape = {
     ...TestRuntimeProvider,
+    capabilities,
     ...options.providerOverrides,
     id: "lando",
-    capabilities,
     isAvailable: Effect.succeed(true),
     ...(appliedFileSyncState === undefined && options.providerOverrides?.inspectAppliedFileSync === undefined
       ? {}
@@ -427,7 +429,7 @@ export const makeHarness = (
         )),
   });
   const layer = Layer.mergeAll(
-    emptySnapshotsLayer,
+    options.dataMoverLayer ?? emptySnapshotsLayer,
     BunFileSystem.layer,
     PrivateFileAccessService.layer,
     Layer.succeed(StateStore, fixtureStore),

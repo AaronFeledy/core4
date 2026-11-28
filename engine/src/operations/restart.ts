@@ -68,6 +68,7 @@ export const restartApp = Effect.fn("AppOperation.restart")(
         target: initialTarget,
         services: options.services,
         signal: options.signal,
+        noSnapshot: options.noSnapshot,
         managed,
       },
       Effect.fnUntraced(function* (admitted) {
@@ -120,7 +121,11 @@ export const restartApp = Effect.fn("AppOperation.restart")(
           ...(selected === undefined ? {} : { services: [...selected] }),
         });
         yield* publishAndRunAppEvent(plan, "post-restart", postRestart);
-        return result;
+        const dataVersionChanges = admitted.dataVersionChanges();
+        return {
+          ...result,
+          ...(dataVersionChanges === undefined ? {} : { dataVersionChanges }),
+        };
       }),
     );
   },

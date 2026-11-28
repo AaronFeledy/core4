@@ -1,7 +1,8 @@
 import { realpath } from "node:fs/promises";
 import { PlanReplanRequiredError, SqlRecoveryUnavailableError } from "@lando/sdk/errors";
-import { AbsolutePath, AppId, PortablePath, ServiceName } from "@lando/sdk/schema";
+import { AbsolutePath, AppId, PortablePath, ServiceName, isIdleRunStatus } from "@lando/sdk/schema";
 import {
+  AppPlanner,
   DataMover,
   EnvironmentValueResolver,
   EventService,
@@ -15,12 +16,13 @@ import {
 } from "@lando/sdk/services";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { withPhysicalVolumeLock } from "@lando/state-store/volume-lock";
-import { Effect } from "effect";
+import { Effect, Option } from "effect";
 
 import { requireAppliedSqliteTargets } from "./applied-sqlite.ts";
 import { validateExportCompression } from "./command-input.ts";
 import { providerSqlExec } from "./dispatch.ts";
 import { type DbCommandInput, executeDbCommand } from "./execute.ts";
+import { type SqlRuntimeObservation, recoveryUnavailable } from "./runtime-observation.ts";
 import { resolveSqlTarget } from "./target.ts";
 import { toSqlLandofile, toSqlPlan } from "./views.ts";
 
@@ -62,6 +64,7 @@ export const runDbCommand = Effect.fn("Sql.runDbCommand")(function* (input: DbCo
   const earlyTarget = resolveSqlTarget(plan, input.service);
   if (earlyTarget._tag === "Failure") return yield* Effect.fail(earlyTarget.failure);
   const provider = yield* registry.select(planned);
+  const planner = yield* Effect.serviceOption(AppPlanner);
   return yield* executeDbCommand(
     {
       landofile: authored,
@@ -75,6 +78,16 @@ export const runDbCommand = Effect.fn("Sql.runDbCommand")(function* (input: DbCo
       resolveSnapshot: (reference, scope) => mover.resolveSnapshot(reference, scope),
       pruneSnapshots: (policy) => mover.pruneSnapshots(policy),
       providerId: planned.provider,
+      ...(Option.isNone(planner)
+        ? {}
+        : {
+            desiredDataVersion: (service: string) =>
+              registry.capabilities.pipe(
+                Effect.flatMap((capabilities) => planner.value.plan(landofile, capabilities)),
+                Effect.map((desired) => desired.services[ServiceName.make(service)]?.dataVersion),
+                Effect.catch(() => Effect.succeed(undefined)),
+              ),
+          }),
       waitForReady: (service) =>
         readiness.wait({ provider, plan: planned, services: [ServiceName.make(service)] }),
       findAppliedSource: (selector) =>
@@ -132,17 +145,27 @@ export const runDbCommand = Effect.fn("Sql.runDbCommand")(function* (input: DbCo
         provider
           .inspect({ app: AppId.make(plan.id), service: ServiceName.make(service), plan: planned })
           .pipe(
-            Effect.map((info) => ({
-              status:
-                info.containerId === undefined
-                  ? "missing"
-                  : info.status === "running"
-                    ? "running"
-                    : "stopped",
-              running: info.status === "running",
-              ...(info.containerId === undefined ? {} : { containerId: info.containerId }),
-              ...(info.imageIdentity === undefined ? {} : { imageIdentity: info.imageIdentity }),
-            })),
+            Effect.flatMap((info) =>
+              info.status !== "running" && !isIdleRunStatus(info.status)
+                ? Effect.fail(
+                    recoveryUnavailable(
+                      service,
+                      "The database provider could not prove a running or stopped container.",
+                      "Wait for any in-progress lifecycle operation, inspect the service, and retry.",
+                    ),
+                  )
+                : Effect.succeed<SqlRuntimeObservation>({
+                    status:
+                      info.containerId === undefined
+                        ? "missing"
+                        : info.status === "running"
+                          ? "running"
+                          : "stopped",
+                    running: info.status === "running",
+                    ...(info.containerId === undefined ? {} : { containerId: info.containerId }),
+                    ...(info.imageIdentity === undefined ? {} : { imageIdentity: info.imageIdentity }),
+                  }),
+            ),
           ),
       inspectVolume: (service, store, destination) => {
         const mount = planned.services[ServiceName.make(service)]?.mounts.find(

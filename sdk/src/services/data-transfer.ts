@@ -58,9 +58,11 @@ export class DataMover extends Context.Service<
      * it does not certify sink receipt.
      */
     readonly read: (from: DataEndpoint) => Stream.Stream<Uint8Array, DataMoverError, Scope.Scope>;
+    /** `onCommit` observes the durable handle even if the caller is interrupted before return. */
     readonly snapshot: (
       store: VolumeRef,
       opts?: SnapshotOptions,
+      onCommit?: (handle: SnapshotHandle) => void,
     ) => Effect.Effect<SnapshotHandle, DataMoverError, Scope.Scope>;
     readonly restore: (
       handle: SnapshotHandle,

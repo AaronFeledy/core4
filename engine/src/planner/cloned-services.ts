@@ -193,6 +193,8 @@ const clonePlannedDraft = (
     readiness: "drop",
     readinessSource: "drop",
     listenerAuthority: "drop",
+    dataVersion: "drop",
+    dataVersionProcess: "drop",
     certs: "drop",
     hostAliases: { replace: parentDraft.hostAliases.map((alias) => ({ ...alias })) },
     provenance: {
@@ -217,6 +219,7 @@ const clonePlannedDraft = (
     name: { replace: name },
     dependencyEnvironments: "inherit",
     extraArgsProcess: "drop",
+    dataVersionProcess: "drop",
     authoredStorage: "inherit",
     hostnames: { replace: [] },
     authoredArtifact: "inherit",

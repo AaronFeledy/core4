@@ -122,7 +122,7 @@ export const launchAdmittedSelectedStart = Effect.fnUntraced(function* (
                     completionPlan: readinessPlan,
                     ...(environment === undefined ? {} : { environment }),
                     ...(resolvedOptions.signal === undefined ? {} : { signal: resolvedOptions.signal }),
-                    beforeApply: verifyGlobalConsumerAdmission,
+                    beforeApply: verifyGlobalConsumerAdmission.pipe(Effect.andThen(admitted.prepareUpgrade)),
                   }),
                   ...(pendingStart === undefined ? {} : { afterApply: pendingStart.complete }),
                   prepareGpgHome,

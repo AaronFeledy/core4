@@ -7,11 +7,14 @@ import { renderRestartAppResult } from "../../commands/restart";
 import { type LandoCommandSpec, extractSpecAbortSignal } from "../../spec/command-base";
 import { serviceNamesFlag, specFlagsOf } from "../../spec/input-coercion";
 import { Flags } from "../../spec/metadata";
+import { upgradeSnapshotFlags, upgradeSnapshotOptions } from "./upgrade-snapshot-flag";
 
 export const restartOptionsFromInput = (input: unknown): NonNullable<Parameters<typeof restartApp>[0]> => {
   const signal = extractSpecAbortSignal(input);
-  const services = serviceNamesFlag(specFlagsOf(input));
+  const flags = specFlagsOf(input);
+  const services = serviceNamesFlag(flags);
   return {
+    ...upgradeSnapshotOptions(flags),
     ...(services.length === 0 ? {} : { services }),
     ...(signal === undefined ? {} : { signal }),
   };
@@ -28,6 +31,7 @@ export const restartSpec = {
   bootstrap: "app",
   usage: "[--service SERVICE]",
   flags: {
+    ...upgradeSnapshotFlags,
     service: Flags.string({
       char: "s",
       description: "Restart a specific planned service without pulling in dependencies (repeatable).",

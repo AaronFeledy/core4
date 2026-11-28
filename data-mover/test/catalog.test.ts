@@ -5,6 +5,7 @@ import {
   AbsolutePath,
   AppId,
   SNAPSHOT_INFO_VERSION,
+  ServiceName,
   type SnapshotHandle,
   SnapshotInfo,
   appIdentityKey,
@@ -201,20 +202,42 @@ test.each(["version", "json", "schema", "owner-hash", "owner-path", "store", "id
     }),
 );
 
-test("reads a version 1 server sidecar written before the SQLite metadata arm", () =>
+test.each([
+  [1, "mariadb"],
+  [2, "mariadb"],
+  [2, "sqlite"],
+] as const)("reads version %i %s sidecar metadata unchanged", (version, family) =>
   withCatalog(async (f) => {
-    // Given a sidecar framed at version 1.
     const info = f.info();
     await f.put(info);
     const path = join(f.paths.ownerSnapshotsDir(f.owner.ownerKey), store.store, "snapshot.json");
-    await writeFile(path, JSON.stringify({ version: 1, data: Schema.encodeSync(SnapshotInfo)(info) }));
-    // When scanning the catalog.
+    const metadata =
+      family === "sqlite"
+        ? {
+            service: ServiceName.make("db"),
+            family,
+            path: "data/site.sqlite",
+            version: "3.51.1",
+            recoveryReason: "manual" as const,
+          }
+        : {
+            service: ServiceName.make("db"),
+            family,
+            version: "10.11.19",
+            volumeInstanceId: "original",
+            imageIdentity: "sha256:original",
+            recoveryReason: "import" as const,
+          };
+    await writeFile(
+      path,
+      JSON.stringify({ version, data: { ...Schema.encodeSync(SnapshotInfo)(info), metadata } }),
+    );
+
     const infos = await run(f.mover().listSnapshots({}));
-    // Then the server snapshot decodes unchanged.
-    expect(infos.map((entry) => Schema.encodeSync(SnapshotInfo)(entry))).toEqual([
-      Schema.encodeSync(SnapshotInfo)(info),
-    ]);
-  }));
+
+    expect(infos.map((entry) => entry.metadata)).toEqual([metadata]);
+  }),
+);
 
 test("a sidecar that vanishes after enumeration is absent", () =>
   withCatalog(async (f) => {

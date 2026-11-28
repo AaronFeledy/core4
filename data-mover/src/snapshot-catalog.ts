@@ -43,7 +43,7 @@ export const openSnapshot = Effect.fn("DataMover.openSnapshot")(function* (
       onCorrupt: "fail",
       // Migrator receives only older envelopes; the store refuses newer before this runs.
       onVersionMismatch: (raw, version) => {
-        if (version === 1) return Schema.decodeUnknownSync(SnapshotInfo)(raw);
+        if (version === 1 || version === 2) return Schema.decodeUnknownSync(SnapshotInfo)(raw);
         throw new StateStoreError({
           reason: "version",
           operation: "read-snapshot",

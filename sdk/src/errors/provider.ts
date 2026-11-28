@@ -2,6 +2,7 @@ import { Effect, Schema } from "effect";
 
 import { ListenerObservation } from "../schema/listener-observation.ts";
 import { AbsolutePath, ProviderId } from "../schema/primitives.ts";
+import { ServiceDataVersionFinding } from "../schema/service-data-version.ts";
 import { newerStateRemediation, sanitizeStateWriter } from "./state-version-remediation.ts";
 
 const Remediation = Schema.NonEmptyString.check(Schema.isPattern(/\S/u));
@@ -113,6 +114,32 @@ const ServiceStartLogTail = Schema.Struct({
 });
 export type ServiceStartLogTail = typeof ServiceStartLogTail.Type;
 
+export class ServiceDataVersionError extends Schema.TaggedError<ServiceDataVersionError>()(
+  "ServiceDataVersionError",
+  {
+    app: Schema.String,
+    service: Schema.String,
+    providerId: Schema.optionalKey(Schema.String),
+    dataVersion: ServiceDataVersionFinding,
+    image: Schema.String,
+    appliedImage: Schema.optionalKey(Schema.String),
+    message: Schema.String,
+    remediation: Remediation,
+  },
+) {}
+
+export class ServiceRestorePointError extends Schema.TaggedError<ServiceRestorePointError>()(
+  "ServiceRestorePointError",
+  {
+    app: Schema.String,
+    service: Schema.String,
+    dataVersion: Schema.Struct({ label: Schema.String, from: Schema.String, to: Schema.String }),
+    cause: Schema.optionalKey(Schema.Unknown),
+    message: Schema.String,
+    remediation: Remediation,
+  },
+) {}
+
 /** Post-apply readiness failure; the applied app remains available for diagnosis. */
 export class ServiceNotReadyError extends Schema.TaggedError<ServiceNotReadyError>()("ServiceNotReadyError", {
   message: Schema.String.annotate({ description: "Human-readable post-apply readiness failure." }),
@@ -137,6 +164,7 @@ export class ServiceNotReadyError extends Schema.TaggedError<ServiceNotReadyErro
     Schema.String.annotate({ description: "Redacted last probe or provider observation detail." }),
   ),
   listener: Schema.optional(ListenerObservation),
+  dataVersion: Schema.optionalKey(ServiceDataVersionFinding),
   logTail: Schema.optional(
     ServiceStartLogTail.annotate({ description: "Bounded, redacted service log snapshot." }),
   ),
@@ -147,6 +175,7 @@ export class ServiceStartError extends Schema.TaggedError<ServiceStartError>()("
   service: Schema.String,
   logTail: Schema.optional(ServiceStartLogTail),
   listener: Schema.optional(ListenerObservation),
+  dataVersion: Schema.optionalKey(ServiceDataVersionFinding),
 }) {}
 
 export class ServiceExecError extends Schema.TaggedError<ServiceExecError>()("ServiceExecError", {

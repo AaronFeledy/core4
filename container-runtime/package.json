@@ -54,6 +54,7 @@
     "./applied-plan-cache": "./src/applied-plan-cache.ts",
     "./volume-classes": "./src/volume-classes.ts",
     "./dependency-gates": "./src/dependency-gates.ts",
+    "./data-version-diagnostic": "./src/data-version-diagnostic.ts",
     "./dependency-schedule": "./src/dependency-schedule.ts",
     "./service-start-schedule": "./src/service-start-schedule.ts",
     "./healthcheck-probe": "./src/healthcheck-probe.ts",

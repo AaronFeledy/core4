@@ -1,14 +1,24 @@
 import { expect, test } from "bun:test";
-import { type AppPlan, FileSyncSessionRef, PortablePath } from "@lando/sdk/schema";
-import { type FileSyncEngineShape, RuntimeProviderRegistry } from "@lando/sdk/services";
+import {
+  type AppPlan,
+  FileSyncSessionRef,
+  PortNumber,
+  PortablePath,
+  ServiceName,
+  SnapshotId,
+  planAppIdentity,
+} from "@lando/sdk/schema";
+import { DataMover, type FileSyncEngineShape, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { TestFileSyncEngine, makeTestRuntimeProviderRegistry } from "@lando/sdk/test";
-import { Cause, Effect, Exit } from "effect";
+import { Cause, Effect, Exit, Layer } from "effect";
 import {
   beginOrResumeAcceleratedStart,
   readJournal,
 } from "../../src/operations/accelerated-start-journal.ts";
 import { startApp } from "../../src/operations/start.ts";
 import { app } from "./accelerated-start-recovery-support.ts";
+import { emptySnapshots } from "./data-mover-support.ts";
+import { databaseRuntime, databaseVolume, versionedPlan } from "./data-version-support.ts";
 import {
   type FailurePoint,
   changedPlan,
@@ -24,6 +34,34 @@ const tmpfsTarget = PortablePath.make("/app/tmp");
 
 const start = (harness: Effect.Success<ReturnType<typeof rotationHarness>>) =>
   startApp({}, targetFor(harness.desired)).pipe(Effect.provide(harness.layer));
+
+test("a downgrade refuses before file-sync rotation can quiesce or remove the original database", async () => {
+  const name = ServiceName.make("web");
+  const previousService = oldPlan.services[name];
+  const desiredService = changedPlan.services[name];
+  if (previousService === undefined || desiredService === undefined) throw new Error("Missing web service");
+  const previous = versionedPlan(oldPlan, previousService, "11.4");
+  const desired = versionedPlan(changedPlan, desiredService, "10.11");
+  const original = databaseRuntime(previous, name);
+  const harness = await Effect.runPromise(
+    rotationHarness({
+      previous,
+      desired,
+      inspect: () => Effect.succeed(original),
+      observeBoundVolume: () => Effect.succeed(databaseVolume(previous)),
+      exec: (target) =>
+        target.expectedContainerId === original.containerId
+          ? Effect.succeed({ exitCode: 0, stdout: "+11.4.13-MariaDB\n\0", stderr: "" })
+          : Effect.die("Attempted to read a different container"),
+    }),
+  );
+
+  const error = await Effect.runPromise(Effect.flip(start(harness)));
+
+  expect(error).toMatchObject({ _tag: "ServiceDataVersionError", dataVersion: { direction: "downgrade" } });
+  expect(harness.calls).toEqual([]);
+  expect(harness.applied()).toBe(previous);
+});
 
 test("rotates the complete old session set before init and preserves named volumes without destroy hooks", async () => {
   const harness = await Effect.runPromise(rotationHarness());
@@ -144,6 +182,76 @@ test("completed disposal with old applied record finishes retirement without res
   harness.calls.splice(0);
   await Effect.runPromise(start(harness));
   expect(harness.calls).toEqual(["retire", "init", "prepare", "create:web", "create:worker", "apply"]);
+});
+
+test("failed removal after committed rotation keeps the database stopped and retains its upgrade snapshot", async () => {
+  const name = ServiceName.make("web");
+  const originalService = oldPlan.services[name];
+  const desiredService = changedPlan.services[name];
+  if (originalService === undefined || desiredService === undefined) throw new Error("Missing web service");
+  const { nonSqlCreds: _oldCreds, sqlite: _oldSqlite, ...before } = originalService;
+  const { nonSqlCreds: _newCreds, sqlite: _newSqlite, ...after } = desiredService;
+  const connection = {
+    family: "mariadb" as const,
+    port: PortNumber.make(3306),
+    creds: { user: "user", password: "password", database: "db" },
+  };
+  const previous = versionedPlan(oldPlan, { ...before, connection }, "10.11");
+  const desired = versionedPlan(changedPlan, { ...after, connection }, "11.4");
+  const volume = databaseVolume(previous);
+  const original = databaseRuntime(previous, name);
+  const id = SnapshotId.make("rotation-backup");
+  const snapshots = new Set<SnapshotId>();
+  const runtime: { status: "running" | "exited" } = { status: "running" };
+  const harness = await Effect.runPromise(
+    rotationHarness({
+      previous,
+      desired,
+      failAt: "retire",
+      inspect: () => Effect.sync(() => ({ ...original, status: runtime.status })),
+      exec: () => Effect.succeed({ exitCode: 0, stdout: "+10.11.19-MariaDB\n\0", stderr: "" }),
+      observeBoundVolume: () => Effect.succeed(volume),
+      locateVolume: (ref) =>
+        Effect.succeed(
+          ref.store === volume.ref.store && volume.identity !== undefined
+            ? { ...volume.identity, identity: volume.identity }
+            : { nativeName: ref.store, coordinationKey: ref.store },
+        ),
+      providerOverrides: {
+        run: () => Effect.succeed({ exitCode: 0, stdout: "+10.11.19-MariaDB\n\0", stderr: "" }),
+        suspend: () =>
+          Effect.sync(() => {
+            runtime.status = "exited";
+          }),
+        resume: () =>
+          Effect.sync(() => {
+            runtime.status = "running";
+          }),
+      },
+      dataMoverLayer: Layer.succeed(DataMover, {
+        ...emptySnapshots,
+        snapshot: (store, _options, onCommit) =>
+          Effect.sync(() => {
+            if (runtime.status !== "exited") throw new Error("Captured while the database was running");
+            const handle = { id, store, ownerKey: planAppIdentity(previous).ownerKey };
+            snapshots.add(id);
+            onCommit?.(handle);
+            return handle;
+          }),
+        removeSnapshot: (handle) =>
+          Effect.sync(() => {
+            snapshots.delete(handle.id);
+          }),
+      }),
+    }),
+  );
+
+  const failed = await Effect.runPromiseExit(start(harness));
+
+  expect(Exit.isFailure(failed) && Cause.hasInterrupts(failed.cause)).toBe(true);
+  expect(harness.phase()).toBe("completed");
+  expect(runtime.status).toBe("exited");
+  expect([...snapshots]).toEqual([id]);
 });
 
 test("retired state without a replacement journal starts fresh from the drained host", async () => {

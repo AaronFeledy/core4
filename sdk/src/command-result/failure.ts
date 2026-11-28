@@ -16,8 +16,13 @@ export class ConvertedDefectAnnotation extends Context.Service<ConvertedDefectAn
   "@lando/sdk/ConvertedDefectAnnotation",
 ) {}
 
+type FailureContext = Readonly<Record<string, string | readonly string[]>>;
+
+const FailureContextAnnotation = Context.Service<FailureContext>("@lando/sdk/FailureContextAnnotation");
+
 export interface ProjectedFailure {
   readonly error: unknown;
+  readonly failureContext?: FailureContext;
   readonly additionalErrors: ReadonlyArray<{ readonly role: FailureRole; readonly error: unknown }>;
 }
 
@@ -173,19 +178,40 @@ export const failureOutcomeFromCause = <E>(
       },
     ];
   });
-  if (primary === undefined)
-    return { _tag: "failure", kind: "none", error: Cause.squash(cause), additionalErrors };
+  const contextReason = primary?.reason ?? cause.reasons[0];
+  const context =
+    contextReason === undefined
+      ? undefined
+      : Context.getOrUndefined(Cause.reasonAnnotations(contextReason), FailureContextAnnotation);
+  const extras = { additionalErrors, ...(context === undefined ? {} : { failureContext: context }) };
+  if (primary === undefined) return { _tag: "failure", kind: "none", error: Cause.squash(cause), ...extras };
   const { reason, typed } = primary;
   switch (reason._tag) {
     case "Fail":
-      return { _tag: "failure", kind: "typed", source: "fail", error: reason.error, additionalErrors };
+      return { _tag: "failure", kind: "typed", source: "fail", error: reason.error, ...extras };
     case "Die":
       return typed === "elected"
-        ? { _tag: "failure", kind: "typed", source: "elected", error: reason.defect, additionalErrors }
-        : { _tag: "failure", kind: "defect", error: projectDefect(reason.defect), additionalErrors };
+        ? { _tag: "failure", kind: "typed", source: "elected", error: reason.defect, ...extras }
+        : { _tag: "failure", kind: "defect", error: projectDefect(reason.defect), ...extras };
     default:
       return reason satisfies never;
   }
+};
+
+/** Add structured context to the primary reason without replacing the error. */
+export const annotateFailureContext = <E>(cause: Cause.Cause<E>, context: FailureContext): Cause.Cause<E> => {
+  const primary = primaryFailureReason(cause) ?? cause.reasons[0];
+  if (primary === undefined) return cause;
+  const previous = Context.getOrUndefined(Cause.reasonAnnotations(primary), FailureContextAnnotation);
+  return Cause.fromReasons(
+    cause.reasons.map((reason) =>
+      reason === primary
+        ? reason.annotate(Context.make(FailureContextAnnotation, { ...previous, ...context }), {
+            overwrite: true,
+          })
+        : reason,
+    ),
+  );
 };
 
 /** Re-fail nested command defects without losing reason-local annotations. */

@@ -39,7 +39,7 @@ describe.each([
       metadata: { resolvedAt: "2026-10-23T00:00:00Z", source: "/srv/apps/myapp/.lando.yml", runtime: 4 },
     }),
   );
-  test.each([undefined, ""])("omits the mount and config startup when server is %p", (server) => {
+  test.each([undefined, ""])("omits the mount and keeps the default startup when server is %p", (server) => {
     // Given
     const { ctx, calls } = recordFeatureContext({
       serviceType,
@@ -50,7 +50,8 @@ describe.each([
     // When
     Effect.runSync(feature.apply(ctx));
     // Then
-    expect(calls.filter(([method]) => method === "addMount" || method === "setCommand")).toEqual([]);
+    expect(calls.filter(([method]) => method === "addMount")).toEqual([]);
+    expect(calls.some(([method]) => method === "setCommand")).toBe(serviceType === "mariadb");
   });
 
   test.each([

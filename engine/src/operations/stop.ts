@@ -69,7 +69,7 @@ type StopAppServices =
   | PrivateFileAccessService
   | RuntimeProviderRegistry
   | StateStore;
-type StopExecution = {
+type StopExecution<E = never> = {
   readonly reconcileApp?: AppRef;
   readonly revalidate: boolean;
   readonly requireAppliedEvidence: boolean;
@@ -78,6 +78,7 @@ type StopExecution = {
   readonly evidence?: "applied" | "teardown";
   /** No project folder exists, so there is no retained writer to verify or drain. */
   readonly missingRoot?: boolean;
+  readonly beforeStop?: Effect.Effect<void, E, EventService>;
 };
 
 type StopScope = {
@@ -119,11 +120,11 @@ const withSuperseded = (result: StopAppResult, superseded: StoppedRealizations |
 type StoppedRuntime = { readonly result: StopAppResult; readonly plan: AppPlan };
 
 /** Shared stop body; callers hold the app mutation lock and decide what happens to routes. */
-const stopResolvedRuntime = Effect.fnUntraced(function* (
+const stopResolvedRuntime = Effect.fnUntraced(function* <E>(
   options: StopAppOptions | undefined,
   target: ResolvedAppTarget,
-  execution: StopExecution,
-): Effect.fn.Return<StoppedRuntime, SdkStopAppError, StopAppServices> {
+  execution: StopExecution<E>,
+): Effect.fn.Return<StoppedRuntime, SdkStopAppError | E, StopAppServices> {
   const registry = yield* RuntimeProviderRegistry;
   const stateStore = yield* StateStore;
   let superseded: StoppedRealizations | undefined;
@@ -233,13 +234,15 @@ const stopResolvedRuntime = Effect.fnUntraced(function* (
     }
   }
   const provider = owningProvider;
+  const stopOptions = {
+    runInitEvents: execution.runInitEvents !== false,
+    ...(execution.beforeStop === undefined ? {} : { beforeStop: execution.beforeStop }),
+  };
   const stopped = yield* runtimeState === "idle"
-    ? stopAppWithPlanUnlocked(
-        options ?? {},
-        validatedTarget,
-        execution.runInitEvents !== false,
-        yield* preflightStopApp(validatedTarget, runtimeState, execution.missingRoot === true),
-      )
+    ? stopAppWithPlanUnlocked(validatedTarget, {
+        ...stopOptions,
+        prepared: yield* preflightStopApp(validatedTarget, runtimeState, execution.missingRoot === true),
+      })
     : withPlanVolumeCoordination({
         plan: validatedTarget.plan,
         additionalPlans: placement.plan === undefined ? [] : [placement.plan],
@@ -252,12 +255,7 @@ const stopResolvedRuntime = Effect.fnUntraced(function* (
             runtimeState,
             execution.missingRoot === true,
           );
-          return yield* stopAppWithPlanUnlocked(
-            options ?? {},
-            validatedTarget,
-            execution.runInitEvents !== false,
-            preflight,
-          );
+          return yield* stopAppWithPlanUnlocked(validatedTarget, { ...stopOptions, prepared: preflight });
         }),
       });
   return { ...stopped, result: withSuperseded(stopped.result, superseded) };
@@ -280,10 +278,10 @@ const stopAppWithResolvedPlan = (
     ),
   );
 
-const haltResolvedRuntime = (
+const haltResolvedRuntime = <E>(
   target: ResolvedAppTarget,
-  execution: StopExecution,
-): Effect.Effect<StoppedRuntime, SdkStopAppError, StopAppServices> =>
+  execution: StopExecution<E>,
+): Effect.Effect<StoppedRuntime, SdkStopAppError | E, StopAppServices> =>
   withAppMutationLock(appLockTarget(target.plan), stopResolvedRuntime({}, target, execution));
 
 /**
@@ -291,29 +289,32 @@ const haltResolvedRuntime = (
  * routes are retained so hostnames keep resolving across the cycle; the start that follows reuses
  * or replaces each container and removes those of services the Landofile no longer defines.
  */
-export const haltAppRuntime = Effect.fn("AppOperation.haltRuntime")(function* (
+export const haltAppRuntime = Effect.fn("AppOperation.haltRuntime")(function* <E = never>(
   target?: ResolvedAppTarget,
+  beforeStop?: Effect.Effect<void, E, EventService>,
 ): Effect.fn.Return<
   { readonly result: StopAppResult; readonly plan: AppPlan },
-  StopAppError,
+  StopAppError | E,
   StopAppServices
 > {
   return yield* target === undefined
     ? resolveDesiredAppTarget.pipe(
         Effect.flatMap((resolved) =>
-          haltResolvedRuntime(resolved, {
+          haltResolvedRuntime<E>(resolved, {
             revalidate: false,
             requireAppliedEvidence: true,
             runInitEvents: false,
             evidence: "applied",
+            ...(beforeStop === undefined ? {} : { beforeStop }),
           }),
         ),
       )
-    : haltResolvedRuntime(target, {
+    : haltResolvedRuntime<E>(target, {
         revalidate: true,
         requireAppliedEvidence: target.landofile !== undefined,
         runInitEvents: false,
         evidence: "applied",
+        ...(beforeStop === undefined ? {} : { beforeStop }),
       });
 });
 

@@ -959,6 +959,10 @@
       "digest": "c9c9136dde9088335ea92c3cd10df75dd116b5d96c2fb1fd946c6144a971937f"
     },
     {
+      "fixture": "docs/guides/mariadb/fixtures/mariadb-pinned",
+      "digest": "0ea743cad841a47ddd32a4279198092b045b25a185900d809d4fdbe4b11b585f"
+    },
+    {
       "fixture": "docs/guides/mcp/fixtures/named-inputs",
       "digest": "4678b6d9da5e9f16dd662ed6f1efbb8e09af575cc54324ce18ff12161916f52a"
     },

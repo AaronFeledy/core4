@@ -110,6 +110,7 @@ export const makeRetentionTestDeps = async (
       readonly root?: string;
       readonly service?: string;
       readonly app?: string;
+      readonly dataVersion?: SnapshotMetadata["dataVersion"];
     } = {},
   ) => {
     const root = scope.root ?? harness.root;
@@ -122,7 +123,7 @@ export const makeRetentionTestDeps = async (
             service: ServiceName.make(scope.service ?? "database"),
             volumeInstanceId: `volume-instance:${store}`,
             family: "mysql",
-            version: "8.0",
+            ...(scope.dataVersion === undefined ? { version: "8.0" } : { dataVersion: scope.dataVersion }),
             imageIdentity: "sha256:mysql-runtime",
             recoveryReason: reason,
           },

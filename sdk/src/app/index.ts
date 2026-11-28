@@ -70,8 +70,10 @@ import type {
   SecretNotFoundError,
   SecretReferenceInvalidError,
   SecretStoreUnavailableError,
+  ServiceDataVersionError,
   ServiceNotFoundError,
   ServiceNotReadyError,
+  ServiceRestorePointError,
   ShellExecError,
   ShellScriptOutsideRootError,
   SshAgentTransportError,
@@ -230,6 +232,8 @@ export type AppSelector =
   | { readonly cwd: AbsolutePath };
 
 export interface StartAppOptions {
+  /** Skip physical database restore points before in-place upgrades. */
+  readonly noSnapshot?: boolean;
   readonly reconcile?: boolean;
   readonly signal?: AbortSignal;
   /**
@@ -256,6 +260,8 @@ export type StartAppError =
   | CaError
   | FileSystemError
   | ServiceNotReadyError
+  | ServiceDataVersionError
+  | ServiceRestorePointError
   | UserLandofileError
   | AppPlannerError
   | ProviderSelectionError
@@ -335,6 +341,8 @@ export type StopAppError =
   | VolumeOperationError;
 
 export interface RestartAppOptions {
+  /** Skip physical database restore points before in-place upgrades. */
+  readonly noSnapshot?: boolean;
   readonly reconcile?: boolean;
   readonly signal?: AbortSignal;
   /** Restart only these planned services. Unknown names fail with `ServiceNotFoundError`. */
@@ -344,6 +352,8 @@ export interface RestartAppOptions {
 export type RestartAppError = StartAppError | AppResolveError | ProviderError;
 
 export interface RebuildAppOptions {
+  /** Skip physical database restore points before in-place upgrades. */
+  readonly noSnapshot?: boolean;
   readonly services?: ReadonlyArray<ServiceName>;
   readonly signal?: AbortSignal;
 }

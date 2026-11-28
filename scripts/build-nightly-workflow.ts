@@ -17,8 +17,8 @@ import {
   landoManagedPodmanTeardownCommands,
   landoRootlessPrereqSteps,
   landoRuntimeSocketPath,
-  linuxGuideE2eProviderSetupSteps,
   linuxRuntimeBundleJob,
+  nightlyGuideE2eProviderSetupSteps,
 } from "./build-ci-workflow.ts";
 import {
   CI_PLATFORMS,
@@ -73,7 +73,7 @@ ${regenerateDerivedSourcesStep}
           bun run scripts/sanitize-compiled-binary.ts ./dist/lando
           ./dist/lando --version
 
-${linuxGuideE2eProviderSetupSteps}
+${nightlyGuideE2eProviderSetupSteps}
 
       - name: Run e2e guide scenarios
         run: |

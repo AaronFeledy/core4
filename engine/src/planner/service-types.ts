@@ -214,6 +214,7 @@ export const resolvedServiceCacheInput = (entry: ResolvedService) => ({
     id: feature.id,
     index: feature.index,
     priority: feature.definition.priority,
+    // Generated feature config also carries service-owned contracts, such as data-version evidence.
     originalConfig: feature.originalRawConfig,
     applicationConfig: entry.applicationConfigs.get(feature.index) ?? { _tag: "Original" },
   })),
@@ -240,6 +241,7 @@ export type AuthoredStorageInfo = {
 export type PlannedServiceDraft = {
   readonly name: string;
   readonly extraArgsProcess?: Pick<ServicePlan, "command" | "entrypoint">;
+  readonly dataVersionProcess?: import("../services/draft.ts").DataVersionProcess;
   readonly dependencyEnvironments?: readonly import("@lando/sdk/schema").DependencyEnvironmentIntent[];
   readonly authoredStorage: ServiceConfig["storage"];
   readonly hostnames: ReadonlyArray<string>;

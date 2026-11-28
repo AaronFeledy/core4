@@ -38,6 +38,7 @@ import {
   ServiceName,
   ServiceProjectUser,
 } from "./primitives.ts";
+import { ServiceDataVersion } from "./service-data-version.ts";
 import { SqliteTargetConfig } from "./sqlite.ts";
 import { SHA256_HEX_PATTERN, patternString } from "./string-forms.ts";
 
@@ -143,6 +144,9 @@ const ServicePlanFields = {
   }),
   listenerAuthority: Schema.optionalKey(ListenerAuthority).annotate({
     description: "Structured ownership and configuration advice for the planned listener.",
+  }),
+  dataVersion: Schema.optionalKey(ServiceDataVersion).annotate({
+    description: "Database storage compatibility rules contributed by the service feature.",
   }),
   scanner: Schema.optionalKey(ScanPlan).annotate({
     description: "Fully resolved settings for this service's post-start URL scan.",
