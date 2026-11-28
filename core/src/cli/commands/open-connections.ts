@@ -1,6 +1,10 @@
 import { routerEnabled } from "@lando/engine/config/router-config";
-import { collectPlanConnections } from "@lando/engine/operations/connection-collector";
+import {
+  collectPlanConnections,
+  collectPlanObservations,
+} from "@lando/engine/operations/connection-collector";
 import type { AppPlan, StartedService } from "@lando/sdk/schema";
+import type { RuntimeProviderShape } from "@lando/sdk/services";
 import { Effect } from "effect";
 
 import { type OpenTargetSelection, defaultHttpListeners, resolveOpenTargets } from "./open-targets";
@@ -8,6 +12,7 @@ import { type OpenTargetSelection, defaultHttpListeners, resolveOpenTargets } fr
 export const collectOpenConnections = Effect.fn("OpenApp.collectConnections")(function* (
   plan: AppPlan,
   selection: OpenTargetSelection,
+  provider?: RuntimeProviderShape,
 ) {
   const routes = plan.routes.filter(
     (route) =>
@@ -30,16 +35,19 @@ export const collectOpenConnections = Effect.fn("OpenApp.collectConnections")(fu
   );
   if (Object.keys(services).length === 0) return [];
   const entries = Object.entries(services);
+  // One provider observation per candidate plan, so a caller that already admitted the app
+  // never constructs the provider a second time.
+  const collectPlan = Effect.fnUntraced(function* (candidate: AppPlan) {
+    const observations =
+      provider === undefined ? undefined : yield* collectPlanObservations(candidate, plan, provider);
+    return yield* collectPlanConnections(candidate, observations, plan);
+  });
   const collect = (entry: (typeof entries)[number]) =>
-    collectPlanConnections(
-      {
-        ...plan,
-        services: Object.fromEntries([entry]),
-        routes: routes.filter((route) => route.service === entry[1].name),
-      },
-      undefined,
-      plan,
-    );
+    collectPlan({
+      ...plan,
+      services: Object.fromEntries([entry]),
+      routes: routes.filter((route) => route.service === entry[1].name),
+    });
   if (selection.service === undefined && selection.route === undefined && selection.all !== true) {
     const observed: StartedService[] = [];
     for (const entry of entries) {
@@ -69,9 +77,9 @@ export const collectOpenConnections = Effect.fn("OpenApp.collectConnections")(fu
     }
     return observed;
   }
-  return yield* collectPlanConnections(
-    { ...plan, services, routes: routes.filter((route) => Object.hasOwn(services, route.service)) },
-    undefined,
-    plan,
-  );
+  return yield* collectPlan({
+    ...plan,
+    services,
+    routes: routes.filter((route) => Object.hasOwn(services, route.service)),
+  });
 });
