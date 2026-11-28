@@ -43,8 +43,8 @@ test.each([
     "union-narrowed",
   ],
   ["input widening", bareObject, objectUnion, "input", "compatible", "union-widened"],
-  ["output widening", bareObject, objectUnion, "output", "unknown", "unsupported-construct"],
-  ["input narrowing", objectUnion, bareObject, "input", "unknown", "unsupported-construct"],
+  ["output widening", bareObject, objectUnion, "output", "breaking", "union-widened"],
+  ["input narrowing", objectUnion, bareObject, "input", "breaking", "union-narrowed"],
   ["strict narrowing", objectUnion, bareObject, "strict", "unknown", "unsupported-construct"],
   [
     "constrained output wrapper",
@@ -252,12 +252,12 @@ test.each([
   },
 );
 
-test("proves an outer anyOf widening through a preserved arm's nested union", () => {
+test("reports the nested union path when an outer arm widens", () => {
   const wrap = (members: typeof oldMembers | typeof newMembers): JsonSchema => ({
     anyOf: [{ type: "null" }, { type: "object", additionalProperties: { anyOf: members } }],
   });
   expect(classifySchemaChange(wrap(oldMembers), wrap(newMembers), "input")).toMatchObject([
-    { verdict: "compatible", changeKind: "union-widened", path: "$.anyOf" },
+    { verdict: "compatible", changeKind: "union-widened", path: "$.anyOf[0].additionalProperties.anyOf" },
   ]);
 });
 

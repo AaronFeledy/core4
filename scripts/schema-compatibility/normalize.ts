@@ -60,9 +60,10 @@ export const normalizeJsonSchema = (root: JsonSchema): JsonSchema => {
     if (cycle >= 0) return { $ref: `#cycle/${ancestors.length - cycle}` };
     const stack = [...ancestors, schema];
     const result: Record<string, JsonValue> = {};
+    let referenced: JsonSchema | undefined;
     if (typeof schema.$ref === "string") {
       const target = resolve(schema.$ref);
-      if (isJsonObject(target)) Object.assign(result, visit(target, stack));
+      if (isJsonObject(target)) referenced = visit(target, stack);
       else result.$ref = schema.$ref;
     }
     for (const key of Object.keys(schema).sort()) {
@@ -92,6 +93,11 @@ export const normalizeJsonSchema = (root: JsonSchema): JsonSchema => {
       } else if ((key === "enum" || key === "required" || key === "type") && Array.isArray(value)) {
         result[key] = [...value].sort((a, b) => jsonValueKey(a).localeCompare(jsonValueKey(b)));
       } else result[key] = value;
+    }
+    // Non-alias refs intersect their siblings. Never let a sibling replace a
+    // constraint in the referenced schema, especially a competing literal set.
+    if (referenced !== undefined) {
+      result.allOf = [referenced, ...(Array.isArray(result.allOf) ? result.allOf : [])];
     }
     return normalizeStructure(
       result,

@@ -145,7 +145,10 @@ export const compareArtifactSets = (
         },
       ];
     } else if (oldArtifact !== undefined && newArtifact !== undefined) {
-      findings = classifySchemaChange(oldArtifact.schema, newArtifact.schema, newArtifact.polarity);
+      findings = classifySchemaChange(oldArtifact.schema, newArtifact.schema, {
+        polarity: newArtifact.polarity,
+        persisted: (options.persistedStoresBySurface.get(surface)?.size ?? 0) > 0,
+      });
     } else {
       findings = [];
     }
@@ -212,7 +215,7 @@ const main = async (): Promise<void> => {
   }
   for (const entry of result.findings) process.stdout.write(`${formatFinding(entry)}\n`);
   const counts = {
-    compatible: result.findings.filter((entry) => entry.verdict === "compatible").length,
+    compatible: result.findings.filter((entry) => entry.verdict === "compatible" && !entry.accepted).length,
     breaking: result.findings.filter((entry) => entry.verdict === "breaking" && !entry.accepted).length,
     unknown: result.findings.filter((entry) => entry.verdict === "unknown" && !entry.accepted).length,
     accepted: result.findings.filter((entry) => entry.accepted).length,

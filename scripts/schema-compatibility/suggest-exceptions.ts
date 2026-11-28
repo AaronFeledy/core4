@@ -37,7 +37,8 @@ export const suggestCompatibilityExceptions = (
 ): ReadonlyArray<CompatibilityException> => {
   const pending = new Map<string, { changeKind: string; locations: CompatibilityLocation[] }>();
   for (const entry of findings) {
-    if (entry.accepted || entry.verdict === "compatible") continue;
+    if (entry.accepted || entry.verdict === "compatible" || entry.persistedWidening === "version-only")
+      continue;
     if (findCompatibilityException(exceptions, entry.surface, entry) !== undefined) continue;
     const group = pending.get(entry.fingerprint) ?? { changeKind: entry.changeKind, locations: [] };
     group.locations.push({ surface: entry.surface, path: entry.path });

@@ -70,6 +70,7 @@ import { evolveHistoricalUploadDirs } from "./x-extension-upload-dirs-proof.ts";
 
 const captured = parseCapturedExtension(await Bun.file(FIXTURE_PATH).json());
 const capturedLandofile = withIntentionalChangesSinceCapture(captured.landofile);
+const toolingDefaultsVarsUnionPath = "$.landofile.toolingDefaults.vars.additionalProperties.anyOf";
 
 const requireObject = (value: unknown, label: string): JsonSchema => {
   if (!isJsonObject(value)) throw new Error(`${label} must be a JSON object`);
@@ -313,6 +314,7 @@ describe("closed x-* extension artifact repair", () => {
     expect(findings.map((finding) => `${finding.changeKind} ${finding.path}`).sort()).toEqual([
       "property-added $.landofile.serviceDefaults",
       "property-removed $.landofile.env_file",
+      `union-narrowed ${toolingDefaultsVarsUnionPath}`,
       "unsupported-construct $.landofile.events.post-destroy.items.anyOf",
       "unsupported-construct $.landofile.events.post-init.items.anyOf",
       "unsupported-construct $.landofile.events.post-rebuild.items.anyOf",
@@ -334,8 +336,10 @@ describe("closed x-* extension artifact repair", () => {
       "unsupported-keyword $.landofile.services.additionalProperties",
       "unsupported-keyword $.landofile.services.patternProperties",
       "unsupported-keyword $.landofile.tooling.additionalProperties",
-      "unsupported-keyword $.landofile.toolingDefaults.vars.additionalProperties",
     ]);
+    expect(findings.find((finding) => finding.path === toolingDefaultsVarsUnionPath)?.verdict).toBe(
+      "compatible",
+    );
     expect(findings.every((finding) => finding.accepted === false)).toBe(true);
     const reviewedFinding = findings.find((finding) => finding.path === "$.landofile.propertyNames");
     if (reviewedFinding === undefined) throw new Error("expected the propertyNames finding");

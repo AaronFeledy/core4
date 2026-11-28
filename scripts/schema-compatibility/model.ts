@@ -17,6 +17,7 @@ export interface CompatibilityFinding {
   readonly fingerprint: string;
   readonly accepted: boolean;
   readonly justification?: string;
+  readonly persistedWidening?: "version-only" | "review";
 }
 
 export type PublishedPersistedStoreId = "applied-state" | "tunnel-registry";
@@ -48,6 +49,9 @@ export interface CompatibilityException {
 
 export const isJsonObject = (value: unknown): value is JsonObject =>
   value !== null && typeof value === "object" && !Array.isArray(value);
+
+export const childPath = (path: string, key: string): string =>
+  /^[A-Za-z_$][A-Za-z0-9_$-]*$/.test(key) ? `${path}.${key}` : `${path}[${JSON.stringify(key)}]`;
 
 export const jsonEquals = (left: JsonValue | undefined, right: JsonValue | undefined): boolean => {
   if (left === right) return true;
