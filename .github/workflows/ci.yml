@@ -2362,9 +2362,22 @@ jobs:
           fi
           LANDO_PODMAN="$LANDO_USER_DATA_ROOT/runtime/bin/podman"
           LANDO_PODMAN_ARGS=(--root "$LANDO_USER_DATA_ROOT/runtime/storage" --runroot "$LANDO_USER_DATA_ROOT/runtime/run" --config "$LANDO_USER_DATA_ROOT/runtime/config")
+          # Only CI Podman pulls read this copy; the managed daemon keeps its own registry config.
+          {
+            cat "$LANDO_USER_DATA_ROOT/runtime/config/registries.conf"
+            cat <<'EOF'
+
+          [[registry]]
+          location = "docker.io"
+
+          [[registry.mirror]]
+          location = "mirror.gcr.io"
+          EOF
+          } > "$RUNNER_TEMP/ci-registries.conf"
           pull_image() {
             local image="$1"
             for attempt in 1 2 3; do
+              CONTAINERS_REGISTRIES_CONF="$RUNNER_TEMP/ci-registries.conf" \
               "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" pull "$image" && return 0
               if test "$attempt" -eq 3; then return 1; fi
               sleep $((attempt * 5))
@@ -2378,35 +2391,81 @@ jobs:
               sleep $((attempt * 5))
             done
           }
-          pull_image docker.io/library/alpine:3.21
-          # Every supported Node major is pre-pulled from the service-type table.
-          pull_image docker.io/library/node:22
-          pull_image docker.io/library/node:24
-          pull_image docker.io/library/node:26
-          pull_image docker.io/library/node:22-alpine
-          pull_image docker.io/library/adminer:6
-          pull_image quay.io/keycloak/keycloak:26.8
-          pull_image docker.io/library/postgres:16
-          pull_image docker.io/library/postgres:16-alpine
-          pull_image docker.io/library/postgres:18
-          pull_image docker.io/library/httpd:2.4-alpine
-          pull_image docker.io/library/redis:7
-          pull_image docker.io/library/busybox:1.37
-          pull_image docker.io/library/golang:1.22
-          pull_image docker.elastic.co/elasticsearch/elasticsearch:8.19.25
-          pull_image docker.io/getmeili/meilisearch:v1.11
-          pull_image docker.io/axllent/mailpit:v1.30.1
-          pull_image docker.io/library/mariadb:10.11
-          pull_image docker.io/library/mariadb:11.4
-          pull_image docker.io/library/mariadb:11.8
-          pull_image docker.io/library/memcached:1.6
-          pull_image docker.io/library/mongo:7
-          pull_image docker.io/library/mysql:8.0
-          pull_image docker.io/library/nginx:1.30-alpine
-          pull_image docker.io/opensearchproject/opensearch:2
-          pull_image docker.io/library/solr:9
-          pull_image docker.io/library/traefik:v3.3
-          pull_image docker.io/valkey/valkey:8
+          pull_images() {
+            local images=("$@") pids=()
+            local workers=4 worker pid status=0
+            for ((worker=0; worker<workers && worker<${#images[@]}; worker++)); do
+              (
+                local index failed=0
+                for ((index=worker; index<${#images[@]}; index+=workers)); do
+                  pull_image "${images[index]}" || failed=1
+                done
+                exit "$failed"
+              ) &
+              pids+=("$!")
+            done
+            for pid in "${pids[@]}"; do
+              wait "$pid" || status=1
+            done
+            return "$status"
+          }
+          podman_images=()
+          if test "${{ matrix.suite }}" = services; then
+            podman_images+=(
+              docker.io/library/php:8.1-apache-bookworm
+              docker.io/library/php:8.1-fpm-bookworm
+              docker.io/library/php:8.1-cli-bookworm
+              docker.io/library/php:8.2-apache-bookworm
+              docker.io/library/php:8.2-fpm-bookworm
+              docker.io/library/php:8.2-cli-bookworm
+              docker.io/library/php:8.3-apache-bookworm
+              docker.io/library/php:8.3-fpm-bookworm
+              docker.io/library/php:8.3-cli-bookworm
+              docker.io/library/php:8.4-apache-bookworm
+              docker.io/library/php:8.4-fpm-bookworm
+              docker.io/library/php:8.4-cli-bookworm
+              docker.io/library/php:8.5-apache-bookworm
+              docker.io/library/php:8.5-fpm-bookworm
+              docker.io/library/php:8.5-cli-bookworm
+              docker.io/library/php:8.6-apache-bookworm
+              docker.io/library/php:8.6-fpm-bookworm
+              docker.io/library/php:8.6-cli-bookworm
+              docker.io/library/varnish:6
+              docker.io/library/varnish:7
+            )
+          fi
+          podman_images+=(
+            # Every supported Node major is pre-pulled from the service-type table.
+            docker.io/library/alpine:3.21
+            docker.io/library/node:22
+            docker.io/library/node:24
+            docker.io/library/node:26
+            docker.io/library/node:22-alpine
+            docker.io/library/adminer:6
+            quay.io/keycloak/keycloak:26.8
+            docker.io/library/postgres:16
+            docker.io/library/postgres:16-alpine
+            docker.io/library/postgres:18
+            docker.io/library/httpd:2.4-alpine
+            docker.io/library/redis:7
+            docker.io/library/busybox:1.37
+            docker.io/library/golang:1.22
+            docker.elastic.co/elasticsearch/elasticsearch:8.19.25
+            docker.io/getmeili/meilisearch:v1.11
+            docker.io/axllent/mailpit:v1.30.1
+            docker.io/library/mariadb:10.11
+            docker.io/library/mariadb:11.4
+            docker.io/library/mariadb:11.8
+            docker.io/library/memcached:1.6
+            docker.io/library/mongo:7
+            docker.io/library/mysql:8.0
+            docker.io/library/nginx:1.30-alpine
+            docker.io/opensearchproject/opensearch:2
+            docker.io/library/solr:9
+            docker.io/library/traefik:v3.3
+            docker.io/valkey/valkey:8
+          )
+          pull_images "${podman_images[@]}" || exit 1
           docker_pull_image docker.io/library/node:22-alpine
           docker_pull_image docker.io/library/node:22
           docker_pull_image docker.io/library/alpine:3.20

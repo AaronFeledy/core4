@@ -1,4 +1,4 @@
-import { SUPPORTED_PHP_VERSIONS } from "../plugins/service-lando/src/services/php-via.ts";
+import { SUPPORTED_PHP_VERSIONS } from "../plugins/service-lando/src/services/default-images.ts";
 import { phpXdebugBuildStep } from "../plugins/service-lando/src/services/php-xdebug.ts";
 import pins from "../plugins/service-lando/src/services/php-xdebug-pins.json" with { type: "json" };
 

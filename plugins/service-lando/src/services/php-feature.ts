@@ -24,6 +24,7 @@ import {
   authoredListenPort,
 } from "./apache.ts";
 import { generatedHttpsEndpoint, nativeTlsEligible, nativeTlsListener } from "./apache-native-tls.ts";
+import { SUPPORTED_PHP_VERSIONS } from "./default-images.ts";
 import { landoErrorPagesBuildStep } from "./http-errors.ts";
 import { phpBaselineBuildStep } from "./php-baseline.ts";
 import { phpComposerPackagesBuildStep, resolvePhpComposerPackages } from "./php-composer-packages.ts";
@@ -32,7 +33,6 @@ import { PhpRuntimePolicy } from "./php-runtime-policy.ts";
 import {
   PHP_CLI_KEEP_ALIVE,
   PHP_LISTENERS,
-  SUPPORTED_PHP_VERSIONS,
   apacheDefaultSiteRemovalBuildStep,
   apacheStartCommand,
   fpmStartCommand,

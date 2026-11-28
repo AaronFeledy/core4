@@ -10,14 +10,10 @@ import {
   nativeTlsVirtualHosts,
   plainListenerCanonicalDirectives,
 } from "./apache-native-tls.ts";
+import { PHP_VIA_MODES, type PhpVia } from "./default-images.ts";
 import { apacheErrorPageDirectives } from "./http-errors.ts";
 import { apacheHiddenPathDirectives } from "./http-hidden-paths.ts";
 import { uploadDirRegex } from "./upload-dirs.ts";
-
-export const PHP_VIA_MODES = ["apache", "fpm", "cli"] as const;
-export type PhpVia = (typeof PHP_VIA_MODES)[number];
-export const SUPPORTED_PHP_VERSIONS = ["8.1", "8.2", "8.3", "8.4", "8.5", "8.6"] as const;
-export type SupportedPhpVersion = (typeof SUPPORTED_PHP_VERSIONS)[number];
 
 export const APACHE_DEFAULT_SITE_BUILD_STEP_ID = "service-lando.php:apache-default-site" as const;
 
@@ -98,8 +94,6 @@ export const resolvePhpVia = (value: unknown): PhpVia => {
     VIA_REMEDIATION,
   );
 };
-
-export const phpImageFor = (version: string, via: PhpVia): string => `php:${version}-${via}-bookworm`;
 
 export const phpListenPort = (via: Exclude<PhpVia, "cli">, authoredPort: number | undefined): PortNumber =>
   PortNumber.make(authoredPort ?? PHP_LISTENERS[via].port);

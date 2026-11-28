@@ -357,6 +357,27 @@ describe("codegen catalog", () => {
     }
   });
 
+  test("workflow generators can run before the core-service-env catalog has been written", async () => {
+    const waves = groupCodegenWaves(catalog);
+    const writerWave = waves.findIndex((wave) => wave.some(({ id }) => id === "core-service-env-catalog"));
+    expect(writerWave).toBeGreaterThanOrEqual(0);
+    const entrypoints = waves
+      .slice(0, writerWave + 1)
+      .flat()
+      .filter(({ ownership }) => ownership === "committed-workflow")
+      .map(({ script }) => resolve(repositoryRoot, "scripts", script));
+
+    const result = await Bun.build({ entrypoints, target: "bun", metafile: true });
+
+    expect(result.success).toBe(true);
+    expect(result.metafile).toBeDefined();
+    const generatedModule = resolve(repositoryRoot, "sdk/src/schema/generated/core-service-env.ts");
+    const generatedInputs = Object.keys(result.metafile?.inputs ?? {}).filter(
+      (input) => resolve(input) === generatedModule,
+    );
+    expect(generatedInputs).toEqual([]);
+  });
+
   test("generates command graph prerequisites before schema artifacts", () => {
     // Given: schema generation imports the complete command and plugin graph.
     const prerequisiteIds = [
